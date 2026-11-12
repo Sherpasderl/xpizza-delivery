@@ -97,14 +97,15 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
   });
 
   await cell('G2-BRANCHES-FOR-THE-PICKER', async (L) => {
+    const NO_TABLE_LIMIT = { max_km: null, effective_km: null, above_top: false, limit_invalid: false };   // r5 §3: no table yet → no effective limit
     const w = world();
     const g = await w.get();
     assert.strictEqual(g.status, 200, `${L}: 200`);
     assert.deepStrictEqual(g.body.branches, [
-      { rid: 'tb_r1', brand_id: 'tb_brand', brand_name: 'Marca TB', location_name: 'Centro', hub: { lat: 15.5, lng: -88.0 } },
-      { rid: 'tb_r2', brand_id: null, brand_name: 'TB Dos', location_name: null, hub: null },
-      { rid: 'tb_r3', brand_id: null, brand_name: null, location_name: null, hub: null },
-    ], `${L}: EVERY registry branch, sorted; brand / location / hub only (no phone, no address)`);
+      { rid: 'tb_r1', brand_id: 'tb_brand', brand_name: 'Marca TB', location_name: 'Centro', hub: { lat: 15.5, lng: -88.0 }, ...NO_TABLE_LIMIT, limit_editable: true },
+      { rid: 'tb_r2', brand_id: null, brand_name: 'TB Dos', location_name: null, hub: null, ...NO_TABLE_LIMIT, limit_editable: true },
+      { rid: 'tb_r3', brand_id: null, brand_name: null, location_name: null, hub: null, ...NO_TABLE_LIMIT, limit_editable: false },
+    ], `${L}: EVERY registry branch, sorted; brand / location / hub + the Envío limit fields only (no phone, no address; r5 §3)`);
     assert.strictEqual('branches_unavailable' in g.body, false, `${L}: no failure flag on success`);
     for (const registry of [async () => ({ ok: false, error: 'x' }), async () => ({ ok: true, fresh: false, ids: IDS }), async () => { throw new Error('x'); }]) {
       const r = await world({}, { registry }).get();

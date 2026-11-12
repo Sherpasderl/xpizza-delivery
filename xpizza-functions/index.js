@@ -1642,7 +1642,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      always meet current enforcement). Answered exactly as acquire's reuse is (the same hosted-flow reuse branch). */
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
     const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
-    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
+    if (boundAcq) { const zr = await DW.deliveryResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed
       const never = () => { throw new Error('bound reuse never gates, releases or retires'); };
       const flow = await resolveBoundReuse({ acq: boundAcq, orderId, totalCents: null, releaseHold: never, retireAttempt: never, runGate: never, log: console });
       return res.status(flow.respond.status).json(flow.respond.body);
@@ -1848,7 +1848,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // NOT burn rate-limit quota. Run checkRateLimit ONLY on the unblocked path (cartBlocked === []), where a
   // fresh write may proceed and must be throttled. So a state-drift-blocked fresh attempt writes NOTHING —
   // no order, no payment_attempt, AND no rate_limits.
-  if (cartBlocked.length === 0) {
+  { const lr = await DW.preBookkeepingRefusal(db, orderId, dq, dpP); if (lr) return res.status(lr.httpStatus).json({ error: lr.refusal, ...(lr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); } if (cartBlocked.length === 0) {   // envío limit r5 §2.4: a resume refusal BEFORE any stamp / prune / rate / reserve / acquire write
     // Layer 2 — content-aware phone rate limit (same as createOrder): a same-phone same-content re-tap within
     // the window does NOT consume a phone token. Best-effort + FAIL-SAFE. ip still counts every submit.
     let phoneRetap = false;
@@ -2158,7 +2158,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:begin card-acquire */
     acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed,
       /* a1:begin card-acquire-binding */
-      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env),   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
+      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env), (o) => DW.deliveryResumeRefusal(db, o, dpP),   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
       /* a1:end card-acquire-binding */
     );   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
     /* extras:end card-acquire */
@@ -2231,7 +2231,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      "the hold was released", "the attempt was retired", "the gateway got exactly the gated amount" —
      instead of inferred from where the code sits, which is a thing source-order tests cannot see. */
   const hostedFlowOpts = {
-    acq, orderId, log: console,
+    acq, orderId, log: console, dropOwnStamps: () => DW.dropOwnStamps(db, fields.customer_phone ? rateLimitKey(fields.customer_phone) : null, orderId),   // envío limit r5 §2.4: the backstop's compensation
     totalCents: effBreakdown.total_cents,   // the SERVER total: gated against, and charged — one value, named once
     releaseHold: releaseHoldIfOwned,            // owned-only: a reused / in-progress hold is preserved
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),

@@ -197,19 +197,23 @@ const node = (w) => w.db.get(PATH);
       points: Array.from({ length: 24 }, (_, i) => { const a = (2 * Math.PI * i) / 24; return { lat: worst(-59.123457 + z * 0.03 + 0.009 * Math.sin(a)), lng: worst(-179.123457 + 0.009 * Math.cos(a)) }; }) }));
     const twenty = Array.from({ length: 20 }, (_, i) => ({ max_km: (i + 1) / 2, cents: 15000 }));
     const TOP = 1e15 - 1;
-    const kept = { actor_uid: '\u0001'.repeat(128), prev_version: TOP, new_version: TOP, new: { bands: twenty, zones: { count: 8, sha256: 'f'.repeat(64) } }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
+    const kept = { actor_uid: '\u0001'.repeat(128), prev_version: TOP, new_version: TOP, new: { bands: twenty, zones: { count: 8, sha256: 'f'.repeat(64) }, limits: { set: 300, deleted: 300, sha256: 'f'.repeat(64) } }, at: Number.MAX_SAFE_INTEGER, prev_malformed: true, history_reset: true };
+    // envío restaurant limit (r5 §6, LIMITS-ACCUMULATED-READ-BUDGET): the per-branch map at its cap — 300 entries at the longest key the writer can store
+    // (a registry id, RID_RE: 40 ASCII) with max_km 9.5; 299 already stored (carried), the 300th set by this very save (so its history entry carries the summary)
+    const RIDS = Array.from({ length: 300 }, (_, i) => `r${String(i).padStart(3, '0')}`.padEnd(40, '_'));
+    const MAP = Object.fromEntries(RIDS.slice(0, 299).map((rid) => [rid, { max_km: 9.5 }]));
     assert.ok(A.historyOk(Array(9).fill(kept)), `${L}: premise — the writer RETAINS such a history (historyOk)`);
     const U = '€'.repeat(128);
-    const w = world({ init: { platform_admins: { [U]: true }, [PATH.split('/')[0]]: { [PATH.split('/')[1]]: { policy_version: TOP - 1, bands: 'malformed', history: Array(9).fill(kept) } } } });
+    const w = world({ ids: RIDS, identities: Object.fromEntries(RIDS.map((rid, i) => [rid, ID(`R${i}`, CLOSED)])), init: { platform_admins: { [U]: true }, [PATH.split('/')[0]]: { [PATH.split('/')[1]]: { policy_version: TOP - 1, bands: 'malformed', history: Array(9).fill(kept), restaurants: MAP } } } });
     w.deps.verifyIdToken = async () => ({ uid: U });
     w.deps.timestamp = () => Number.MAX_SAFE_INTEGER;
-    const r = await w.set(body({ expected_policy_version: TOP - 1, bands: twenty, no_delivery_zones: shapes }));
+    const r = await w.set(body({ expected_policy_version: TOP - 1, bands: twenty, no_delivery_zones: shapes, limits: [{ rid: RIDS[299], km: 9.5 }] }));
     const committed = node(w);
     const bytes = Buffer.byteLength(JSON.stringify(committed), 'utf8');
     // the byte pin FIRST (the writer commits before its own verification answers), then the premises
     assert.strictEqual(bytes, A.READ_BYTES_AT_CAPS, `${L}: the pinned worst case of every order read — the complete committed node (got ${bytes})`);
     assert.strictEqual(r.status, 200, `${L}: premise — the writer accepted the save (${JSON.stringify(r.body)})`);
-    assert.deepStrictEqual([committed.policy_version, committed.history.length, committed.history[0].prev_malformed, committed.no_delivery_zones.length], [TOP, 10, true, 8], `${L}: premise — the node is at its bound`);
+    assert.deepStrictEqual([committed.policy_version, committed.history.length, committed.history[0].prev_malformed, committed.no_delivery_zones.length, Object.keys(committed.restaurants).length, committed.history[0].new.limits.set], [TOP, 10, true, 8, 300, 1], `${L}: premise — the node is at its bound`);
   });
 
   // ── Codex build r1 #1 (P1, driver safety): EXACT geometry on the 6-decimal grid — a saved diagonal edge's points are INSIDE ──

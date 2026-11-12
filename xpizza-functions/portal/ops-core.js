@@ -20,6 +20,7 @@ const { isOpenAt } = require('../scheduled-orders');
 const { writePause } = require('../merchant/merchant-control');
 const { availKey } = require('../avail-key');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
+const DP = require('../delivery/delivery-pricing');   // envío restaurant limit (PLAN-envio-restaurant-limit-r5 §5): the ONE reader of the policy node
 const { readVersionMenu } = require('../catalog/catalog-menu'); const { branchPhotosOf } = require('../photos/branch-photos');   // DISH PHOTOS A2 step 12 (E-P4)
 const { hnDateISO } = require('../lib/hn-date');
 const { displayName } = require('./location-name');
@@ -123,6 +124,15 @@ async function operationalOf(db, rid, nowMs) {
   };
 }
 
+// r5 §5: a branch's EFFECTIVE app delivery limit from the ONE policy snapshot this GET read → { app_max_km, limit_invalid } (no valid
+// table → app_max_km null); the merchant sees its own branches' values only, read-only («Definida por Sherpa»)
+function appLimitOf(raw, rid) {
+  const pr = DP.readPricing(raw && typeof raw === 'object' ? { ...raw, restaurants: { app: { active: true, free_delivery: false } } } : raw, 'app');
+  if (!pr || pr.invalid) return { app_max_km: null, limit_invalid: false };
+  const eff = DP.effectiveMaxKm({ ...pr, limits: DP.readLimits(raw.restaurants) }, rid);
+  return eff === DP.LIMIT_INVALID ? { app_max_km: null, limit_invalid: true } : { app_max_km: eff, limit_invalid: false };
+}
+
 async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), log = console }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const v = await verifiedContext({ verifyIdToken }, req);
@@ -138,6 +148,8 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
   // the membership write freeze, for the shell's nav visibility only (the team endpoints enforce it themselves). Read in
   // parallel; writesEnabled never throws (missing / non-true / read error → false).
   const writesFlag = writesEnabled(db);
+  // r5 §5: ONE read of the whole policy node per GET (one consistent snapshot for every row); a failure → the limit fields absent
+  const policyP = val(db, 'platform_config/delivery_pricing').then((v) => ({ ok: true, v }), () => ({ ok: false }));
   // An AUTHORIZATION outage (resolveAccess 'unavailable' or a throw) is the whole reply's 503 — never a 200 that silently
   // drops a branch the caller may hold (codex 1a r1 P2-4). Only a failed read of an ALREADY-authorized branch's operational
   // fields degrades that one row.
@@ -150,7 +162,7 @@ async function getMyBranchesCore({ db, verifyIdToken, now = () => Date.now(), lo
     try {
       const row = { rid: l.rid, brand_id: a.brandId, role: l.role, state: a.state, caps: a.caps, name: await displayName(db, l.rid) };
       // operational fields ONLY under a capability that justifies them (a stats-only / retired branch gets none)
-      if (OPS_CAPS.some((c) => can(a, c))) Object.assign(row, await operationalOf(db, l.rid, nowMs));
+      if (OPS_CAPS.some((c) => can(a, c))) { Object.assign(row, await operationalOf(db, l.rid, nowMs)); const p = await policyP; if (p.ok) Object.assign(row, appLimitOf(p.v, l.rid)); }
       return row;
     } catch (e) {
       log.warn('portal_ops_branch_degraded', JSON.stringify({ fn: 'getMyBranches', rid: l.rid, error: String((e && e.message) || e).slice(0, 160) }));

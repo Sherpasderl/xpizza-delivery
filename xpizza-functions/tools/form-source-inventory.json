@@ -196,6 +196,8 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
@@ -206,6 +208,7 @@
     "xpizza-functions/driver-ledger-wiring.guard.test.js",
     "xpizza-functions/drvc-wiring.guard.test.js",
     "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/factura/factura-labels.test.js",
@@ -253,6 +256,7 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
@@ -263,6 +267,8 @@
     "xpizza-functions/rewards-parity.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -394,6 +400,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -542,6 +549,8 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
@@ -588,10 +597,13 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -718,6 +730,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -929,6 +942,8 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
@@ -939,6 +954,7 @@
     "xpizza-functions/driver-ledger-wiring.guard.test.js",
     "xpizza-functions/drvc-wiring.guard.test.js",
     "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/factura/factura-labels.test.js",
@@ -986,6 +1002,7 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
@@ -996,6 +1013,8 @@
     "xpizza-functions/rewards-parity.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -1126,6 +1145,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1275,6 +1295,8 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
     "xpizza-functions/delivery/pricing-admin.test.js",
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
@@ -1321,10 +1343,13 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -1451,6 +1476,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1978,6 +2004,7 @@
   "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/bake-form-bundle.js",
   "xpizza-functions/tools/draft-drift-report.js",
+  "xpizza-functions/tools/envlim-module-inverse.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/identity-usable-check.js",
@@ -2480,6 +2507,7 @@
   "createorder-classify.js",
   "delivery/delivery-pricing.js",
   "delivery/delivery-wire.js",
+  "delivery/limits.js",
   "delivery/pricing-admin-core.js",
   "delivery/pricing-admin-functions.js",
   "delivery/zone-resume.js",
@@ -2500,6 +2528,7 @@
   "factura/eligibility.js",
   "factura/pricing.js",
   "form-signal.js",
+  "hosted-charge-flow.js",
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
@@ -3435,9 +3464,17 @@
    "lifts": []
   },
   "delivery/delivery-pricing.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/zones-wiring.guard.test.js"
+    "xpizza-functions/envlim-wiring.guard.test.js"
    ]
   },
   "delivery/delivery-wire.js": {
@@ -3446,13 +3483,25 @@
      "file": "xpizza-functions/dpao-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/zones-wiring.guard.test.js"
+    "xpizza-functions/envlim-wiring.guard.test.js"
    ]
+  },
+  "delivery/limits.js": {
+   "pins": [],
+   "lifts": []
   },
   "delivery/pricing-admin-core.js": {
    "pins": [],
@@ -3540,6 +3589,16 @@
    "pins": [],
    "lifts": []
   },
+  "hosted-charge-flow.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/identity-shadow.test.js",
+    "xpizza-functions/charge-gate-placement.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
+    "xpizza-functions/hosted-refusal-reused-hold.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js"
+   ]
+  },
   "index.js": {
    "pins": [
     {
@@ -3554,6 +3613,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -3610,6 +3670,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3672,6 +3733,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3729,6 +3791,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -3766,6 +3829,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -3817,6 +3881,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3871,6 +3936,7 @@
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
@@ -3898,6 +3964,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3955,6 +4022,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -3993,6 +4061,7 @@
      "file": "xpizza-functions/dpao-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     },
@@ -4005,6 +4074,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4045,6 +4115,7 @@
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4083,6 +4154,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4124,6 +4196,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4179,6 +4252,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4217,6 +4291,7 @@
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4257,6 +4332,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h0-inverse.js",
@@ -4312,6 +4388,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -4363,6 +4440,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1c-inverse.js",
@@ -4406,6 +4484,7 @@
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -4424,6 +4503,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
@@ -4440,6 +4520,7 @@
      "file": "xpizza-functions/keymode-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -4466,6 +4547,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4509,6 +4591,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4550,6 +4633,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4597,6 +4681,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4648,6 +4733,7 @@
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -4669,6 +4755,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4706,6 +4793,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -4732,6 +4820,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4788,6 +4877,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4833,6 +4923,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4880,6 +4971,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -4935,6 +5027,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -4982,6 +5075,7 @@
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js",
@@ -4992,6 +5086,7 @@
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
@@ -5005,6 +5100,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5043,6 +5139,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5080,6 +5177,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5120,6 +5218,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5159,6 +5258,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5196,6 +5296,7 @@
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
@@ -5232,6 +5333,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -5281,6 +5383,7 @@
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5315,6 +5418,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5331,6 +5435,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5346,6 +5451,7 @@
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5367,6 +5473,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h0-inverse.js",
@@ -5423,6 +5530,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5475,6 +5583,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -5531,6 +5640,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5571,6 +5681,7 @@
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5612,6 +5723,7 @@
      "inverses": [
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
@@ -5669,6 +5781,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5716,6 +5829,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5765,6 +5879,7 @@
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -5819,6 +5934,7 @@
       "tools/checkout-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5847,6 +5963,13 @@
       "tools/wahealth-inverse.js",
       "tools/zones-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
@@ -5866,6 +5989,7 @@
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
     "xpizza-functions/hosted-refusal-reused-hold.test.js",
@@ -5905,8 +6029,7 @@
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/tools/portal-split.js",
     "xpizza-functions/tracker-hold-inertness.guard.test.js",
-    "xpizza-functions/whatsapp-brand.test.js",
-    "xpizza-functions/zones-wiring.guard.test.js"
+    "xpizza-functions/whatsapp-brand.test.js"
    ]
   },
   "lib/driver-admin-ops.js": {
@@ -6333,6 +6456,8 @@
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
+    "xpizza-functions/delivery/envlim-callers.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
   },

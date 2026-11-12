@@ -66,7 +66,7 @@ function genPollToken() {
    guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
 const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
   && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false) {
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false, reuseGuard = null) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
   const freshFp = (textBinding && textBinding.fresh === 'a8') ? a8() : fingerprint;
@@ -104,7 +104,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
         if (st === 'created') {
           if (Number(att.hosted_expires_at) > now && att.hosted_checkout_url) {
             // I10: one live payable checkout → reuse it.
-            return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };
+            const rf = reuseGuard ? await reuseGuard({ restaurant_id: order.restaurant_id, order_type: order.order_type, delivery_snapshot: order.delivery_snapshot, hub_lat: order.hub_lat, hub_lng: order.hub_lng, lat: order.lat, lng: order.lng }) : null; if (rf) return { outcome: 'delivery_refused', refusal: rf }; return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };   // envío limit r5 §2.3(c): a reuse is a resume — the guard judges the stored order first
           }
           // expired 'created' (TTL passed, never paid) → old checkout is dead → fresh attempt.
           decided = { kind: 'rotate', newAaid: candidate, fromAaid: order.active_attempt_id };

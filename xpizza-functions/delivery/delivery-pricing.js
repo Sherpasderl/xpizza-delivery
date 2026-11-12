@@ -21,7 +21,7 @@
 //   · free_delivery ON + an authenticated customer → promo_discount_cents = delivery_cents (Sherpa-funded); guests pay
 // Driver pay is unaffected (flat L 70, S8).
 
-const crypto = require('crypto'); const Z = require('./zones');   // envío step 2: drawn no-delivery zones (PLAN-envio-zones-step2-r2)
+const crypto = require('crypto'); const Z = require('./zones'); const LIM = require('./limits');   // envío step 2: drawn no-delivery zones (PLAN-envio-zones-step2-r2); the restaurant limit (PLAN-envio-restaurant-limit-r5)
 
 const EARTH_KM = 6371;
 const rad = (d) => (d * Math.PI) / 180;
@@ -63,7 +63,7 @@ function quoteDelivery({ pricing, hub, mode, pin, customerUid, maxKm = null }) {
   if (mode !== 'delivery') return { refusal: 'mode_required' };
   if (!pin || pin.confirmed !== true || !isLat(pin.lat) || !isLng(pin.lng)) return { refusal: 'pin_required' };
   if (!hub || !isLat(hub.lat) || !isLng(hub.lng)) return { refusal: 'delivery_pricing_invalid' };
-  const km = haversineKm(hub.lat, hub.lng, pin.lat, pin.lng);
+  if (maxKm === LIM.LIMIT_INVALID) return { refusal: 'delivery_pricing_invalid' }; const km = haversineKm(hub.lat, hub.lng, pin.lat, pin.lng);   // envío limit: a malformed branch entry fails closed for that branch (r5 §1)
   const band = pricing.bands.findIndex((b) => km <= b.max_km);
   if (band < 0 || (typeof maxKm === 'number' && km > maxKm)) return { refusal: 'outside_delivery_bands' }; if (pricing.zonesInvalid) return { refusal: 'delivery_zones_invalid' }; if (pricing.zones && Z.inZone(pricing.zones, pin)) return { refusal: 'no_delivery_zone' };   // step 2: after the limit; pickup returned above
   const delivery_cents = pricing.bands[band].cents;
@@ -119,4 +119,4 @@ const SERVER_CTX = new WeakSet();
 const isServerDeliveryCtx = (c) => !!c && typeof c === 'object' && SERVER_CTX.has(c);
 const mint = (ctx) => { SERVER_CTX.add(ctx); return ctx; };
 
-module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };
+module.exports = { ...LIM, haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };

@@ -97,7 +97,7 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
 
   await cell('QUOTE-ORDER-BOUNDARY', async (L) => {
     const w = world(); await save(w, { limits: [{ rid: 'tb_r1', km: 4 }] });
-    for (const [km, want] of [[3.99, 'priced'], [4, 'priced'], [4.01, 'outside_delivery_bands']]) {
+    for (const [km, want] of [[3.99, 'priced'], [3.9999, 'priced'], [4.01, 'outside_delivery_bands']]) {   // 3.9999: AT the limit within the pin's 6-decimal rounding (≈ 0.1 m)
       const o = await deliver(w, 'tb_r1', pinAt(HUB1, km));
       const q = await quote(w, 'tb_r1', { mode: 'delivery', pin: pinAt(HUB1, km) });
       assert.strictEqual(o.ctx ? 'priced' : o.refusal, want, `${L}: ORDER at ${km} km → ${want} (m3: deliveryFor without maxKm)`);
@@ -139,7 +139,7 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     w.db.root.orders = { o1: order('tb_r1', HUB1, pinAt(HUB1, 5), { active_attempt_id: 'att1' }) };
     w.db.root.payment_attempts = { att1: { hosted_state: 'created', hosted_expires_at: now + 600000 } };
     const dq = { ctx: null };
-    assert.deepStrictEqual(await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader)), { refusal: 'outside_delivery_bands', httpStatus: 409 },
+    assert.deepStrictEqual(await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader)), { refusal: 'outside_delivery_bands', httpStatus: 409, resume: true },
       `${L}: a LIVE grandfathered checkout beyond the lowered limit is not resumed (m5)`);
     w.db.root.orders.o1 = order('tb_r1', HUB1, pinAt(HUB1, 3), { active_attempt_id: 'att1' });
     assert.strictEqual((await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader))).grandfathered, true, `${L}: inside → grandfathered as today`);
