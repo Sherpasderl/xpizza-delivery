@@ -51,7 +51,7 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     // the per-phone budget is the SAME otp_budget checkout uses (3 sends / 10 min)
     const w = world({ extra: { otp_budget: { [PH]: { sends: [T0 - 120000, T0 - 90000, T0 - 60000] } } } });
     const r = await ASK(w, { order_id: 'ord_guest' });
-    assert.ok(r.status === 429 && w.sends.length === 0, `${L}: the checkout sends count — the 4th in the window is refused, nothing sent (got ${JSON.stringify(r)})`);
+    assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}' && w.sends.length === 0, `${L}: the checkout sends count — the 4th in the window sends NOTHING, and the answer is the same 200 as for any target (Codex r5) (got ${JSON.stringify(r)})`);
   });
 
   await cell('SDK-D4-REC-SINGLE-USE-EXPIRY', async (L) => {
@@ -66,7 +66,7 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     await ASK(w, { order_id: 'ord_guest' });
     const late = codeOf(w);
     w.tick(5 * 60 * 1000);
-    assert.deepStrictEqual(await ASK(w, { order_id: 'ord_guest', code: late }), { status: 400, body: { error: 'code_expired' } }, `${L}: after 5 minutes the code is expired`);
+    assert.deepStrictEqual(await ASK(w, { order_id: 'ord_guest', code: late }), { status: 400, body: { error: 'code_invalid' } }, `${L}: after 5 minutes the code no longer works (the one generic failure)`);
   });
 
   await cell('SDK-D4-REC-SIXTH-ATTEMPT', async (L) => {
@@ -74,9 +74,9 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     await ASK(w, { order_id: 'ord_guest' });
     const code = codeOf(w);
     const wrong = code === '000000' ? '111111' : '000000';
-    for (let i = 0; i < 4; i++) assert.strictEqual((await ASK(w, { order_id: 'ord_guest', code: wrong })).status, 400, `${L}: wrong attempt ${i + 1}`);
-    assert.strictEqual((await ASK(w, { order_id: 'ord_guest', code: wrong })).status, 429, `${L}: the 5th wrong attempt locks`);
-    assert.strictEqual((await ASK(w, { order_id: 'ord_guest', code })).status, 429, `${L}: the 6th attempt is refused even with the right code`);
+    for (let i = 0; i < 5; i++) assert.deepStrictEqual(await ASK(w, { order_id: 'ord_guest', code: wrong }), { status: 400, body: { error: 'code_invalid' } }, `${L}: wrong attempt ${i + 1} ⇒ the generic failure`);
+    assert.deepStrictEqual(await ASK(w, { order_id: 'ord_guest', code }), { status: 400, body: { error: 'code_invalid' } }, `${L}: the 6th attempt is refused even with the right code (locked; the same generic answer)`);
+    assert.strictEqual(w.db.getAt('order_access_tickets'), null, `${L}: no ticket minted after the lock`);
   });
 
   await cell('SDK-D4-REC-TICKET-SCOPE', async (L) => {
@@ -114,7 +114,8 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.strictEqual((await ASK(ok, { order_id: 'ord_guest' })).status, 200, `${L}: a confirmed provider body (the REAL isSendConfirmed) ⇒ ok: true`);
     assert.ok(ok.db.getAt('order_recovery_otp/ord_guest/code_hash'), `${L}: a code is stored`);
     const bad = world({ reply: {} });
-    assert.strictEqual((await ASK(bad, { order_id: 'ord_guest' })).status, 502, `${L}: an UNCONFIRMED body ⇒ fail closed (502)`);
+    const r = await ASK(bad, { order_id: 'ord_guest' });
+    assert.ok(r.status === 200 && JSON.stringify(r.body) === '{"ok":true}', `${L}: an UNCONFIRMED send fails closed internally (no ticket path opens) but answers the same 200 as any target (Codex r5) (got ${JSON.stringify(r)})`);
   });
 
   await cell('SDK-D4-REC-SENDER-INJECTED', async (L) => {
@@ -125,6 +126,48 @@ const codeOf = (w) => { const s = w.sends[w.sends.length - 1]; const m = s && s.
     assert.ok(!/process\.env/.test(src), `${L}: recovery.js never reads process.env`);
   });
 
+
+  // ── Codex S5 r5: UNAUTHENTICATED answers are target-independent; a claimed (member) order is never guest-recoverable ──
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  await cell('SDK-D4-REC-TARGET-INDEPENDENT-REQUEST', async (L) => {
+    // an immediate repeat: absent vs a real guest order (the guest's phone budget refuses the 2nd within 30 s)
+    const w1 = world(); await ASK(w1, { order_id: 'ord_guest' }); const g2 = await ASK(w1, { order_id: 'ord_guest' }, '10.0.0.2');
+    const w2 = world(); await ASK(w2, { order_id: 'no_such_order' }); const a2 = await ASK(w2, { order_id: 'no_such_order' }, '10.0.0.2');
+    assert.ok(same(g2, a2), `${L}: an immediate repeat ⇒ identical bytes for a guest order and an absent one (${JSON.stringify(g2)} vs ${JSON.stringify(a2)})`);
+    // an unconfirmed send
+    const w3 = world({ reply: {} }); const g3 = await ASK(w3, { order_id: 'ord_guest' }); const a3 = await ASK(w3, { order_id: 'no_such_order' });
+    assert.ok(same(g3, a3), `${L}: an unconfirmed send ⇒ identical bytes (${JSON.stringify(g3)} vs ${JSON.stringify(a3)})`);
+  });
+  await cell('SDK-D4-REC-TARGET-INDEPENDENT-VERIFY', async (L) => {
+    const w = world();
+    await ASK(w, { order_id: 'ord_guest' });
+    const real = codeOf(w); const wrong = real === '000000' ? '111111' : '000000';
+    const outs = [await ASK(w, { order_id: 'ord_guest', code: wrong }), await ASK(w, { order_id: 'no_such_order', code: wrong }), await ASK(w, { order_id: 'ord_member', code: wrong })];
+    assert.ok(outs.every((o) => same(o, { status: 400, body: { error: 'code_invalid' } })), `${L}: a wrong code on a guest order ≡ any code on an absent or a member order — ONE generic failure (${JSON.stringify(outs)})`);
+  });
+  await cell('SDK-D4-REC-CALLER-RATE-LIMIT', async (L) => {
+    // the per-CALLER (IP) limit may answer 429, but identically for every target
+    const w = world({ extra: { otp_ip: {} } });
+    const ipHash = require('crypto').createHash('sha256').update('10.9.9.9').digest('hex');
+    w.db.setAt(`otp_ip/${ipHash}`, { window_start: T0, count: 10 });   // otp-lib ipReserve: IP_MAX_PER_HR reached
+    const g = await ASK(w, { order_id: 'ord_guest' }, '10.9.9.9'); const a = await ASK(w, { order_id: 'no_such_order' }, '10.9.9.9');
+    assert.ok(g.status === 429 && same(g, a), `${L}: a caller over its IP budget ⇒ the same 429 for a guest and an absent target (${JSON.stringify(g)} vs ${JSON.stringify(a)})`);
+  });
+  await cell('SDK-D4-REC-CLAIMED-NOT-RECOVERABLE', async (L) => {
+    // the REAL claim: a member with the same phone binds the guest order (claim-order.js keeps guest_verified)
+    const w = world({ extra: { user_profiles: { uid_M: { phone_hash: PH } } } });
+    w.db.setAt('orders/ord_guest/customer_phone', GUEST_PHONE);
+    await ASK(w, { order_id: 'ord_guest' });
+    const { order_ticket } = (await ASK(w, { order_id: 'ord_guest', code: codeOf(w) })).body;   // a ticket minted BEFORE the claim
+    const claim = await require('../../claim-order').claimOrderCore(w.db, { uid: 'uid_M', orderId: 'ord_guest', now: T0 });
+    assert.ok(w.db.getAt('orders/ord_guest/customer_uid') === 'uid_M', `${L}: premise — the real claim bound the member (${JSON.stringify(claim)})`);
+    const sendsBefore = w.sends.length;
+    w.tick(31000);
+    const req = await ASK(w, { order_id: 'ord_guest' });
+    assert.ok(same(req, { status: 200, body: { ok: true } }) && w.sends.length === sendsBefore, `${L}: a claimed order never gets a recovery code (the same 200, nothing sent)`);
+    const A = await require('./order-auth').authorizeExistingOrder({ ...w.deps, verifyIdToken: async () => { throw new Error('x'); } }, { ticket: order_ticket }, 'ord_guest');
+    assert.strictEqual(A.ok, false, `${L}: a guest ticket minted BEFORE the claim is refused once the order is a member's (order-auth checks the CURRENT order)`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s5: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });

@@ -213,7 +213,8 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     let removed = false; let w;
     const hooks = {
       beforeTx: async (p) => { if (!removed && p.startsWith('payment_sdk/') && w.db.getAt('customer_cards/uid_A/cards')) { removed = true; await K().removeCard(w.deps, 'uid_A', Object.keys(w.db.getAt('customer_cards/uid_A/cards'))[0]); } },
-      beforeWrite: async (p) => { if (!removed && p.startsWith('customer_cards/uid_A/cards/') && w.db.getAt('customer_cards/uid_A/by_hash')) { removed = true; await K().removeCard(w.deps, 'uid_A', Object.values(w.db.getAt('customer_cards/uid_A/by_hash'))[0]); } },
+      // Codex S3 r5: the boundary is IMMEDIATELY after the vault transaction resolves — ANY later write to the member node
+      beforeWrite: async (p) => { if (!removed && p.startsWith('customer_cards/uid_A') && w.db.getAt('customer_cards/uid_A/by_hash')) { removed = true; await K().removeCard(w.deps, 'uid_A', Object.values(w.db.getAt('customer_cards/uid_A/by_hash'))[0]); } },
     };
     w = vworld({}, hooks);
     await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_pause_00001', token: 'T-p', amount_cents: 100, card: card(true) });
