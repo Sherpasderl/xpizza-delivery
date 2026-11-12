@@ -63,7 +63,7 @@ async function served(rid, src) {
   const m = await quiet(() => buildPublicMenu(db, rid, { known: new Set(['x_pizza', 'la_musa']), isActive: async () => true }));
   const reader = createCatalogReader({ getRestaurantDocs: (r) => CF.getRestaurantDocs(db, r) });
   const tables = await quiet(() => createPricingResolver({ reader, alarm: () => {} }).getPricingTables(rid));
-  return { menu: adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: clone(m.body) }), tables };
+  return { menu: adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: clone(m.body) }), tables, body: m.body };
 }
 // the honest capp body: a dish with BOTH affected extras ×2, the same dish with the minted one ×1, and a plain dish
 function honest(menu, keys) {
@@ -119,6 +119,16 @@ test('PT-WIRING: both order intakes judge the paid text on the resolution line (
   const top = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('const items = body.items;'));
   assert.ok(top.includes("require('./paid-text').paidTextRefusal(rid, body, tables)"), 'resolveLines judges the paid text before the lines are read');
 });
+// SERVED-ID (§2.5): the identity overlay decorates an affected extra by its ACTUAL key — the renamed (x_pizza: its name is no longer
+// its key) and the minted extra carry their extra_id on the served body
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`SERVED-ID ${rid}: the renamed and the minted extra carry extra_id (the overlay reads the served extra_keys map)`, async () => {
+    const { s, renamed, minted } = recorded(rid);
+    const { body } = await served(rid, s);
+    const byId = new Map(body.extras.map((e) => [String(e.id), e]));
+    for (const x of [renamed, minted]) { const e = byId.get(String(x.display.id)); assert.ok(e && typeof e.extra_id === 'string' && e.extra_id, `${x.display.name}: extra_id ${e && e.extra_id}`); }
+  });
+}
 // KDS-FREE (§4, rewards-redeem-intake.js prepareRedemption): a REDEEMED affected extra's free kitchen line is named by the server LABEL,
 // never the client's redeem name; any other free item keeps today's name (the client's sanitized name, or its id)
 for (const rid of ['x_pizza', 'la_musa']) {

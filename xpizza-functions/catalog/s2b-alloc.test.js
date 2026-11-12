@@ -57,6 +57,13 @@ for (const rid of ['x_pizza', 'la_musa']) {
     refused(() => validateNewExtras(args(badId)), 'client_supplied_key');
     refused(() => validateNewExtras({ ...args(source), mintExtras: false }), 'client_supplied_key');
   });
+  cell(`NAME-UNIQUE-VALIDATE ${rid}: the publish-side validator (not only the allocator) refuses a candidate with two extras behind one name (switch ON)`, () => {
+    const R = retired(rid);
+    const { source } = alloc(rid, R, readd(R.live, R.gone), true);
+    const twin = clone(source); const other = twin.extras.find((e) => e.key !== Object.keys(twin.frozen_extra_keys)[0]);
+    other.display.name = R.gone.display.name;   // an existing extra renamed onto the minted row's name
+    refused(() => validateNewExtras({ extras: twin.extras, activeExtras: R.live.extras, activeItems: R.live.items, keyMode: MODE[rid], reserved: R.reserved, frozenExtraKeys: twin.frozen_extra_keys, mintExtras: true }), 'name_taken');
+  });
   cell(`NAME-UNIQUE ${rid}: two fresh rows reusing ONE retired name (different prices) are name_taken — never two extras behind one name`, () => {
     const R = retired(rid);
     const twice = readd(readd(R.live, R.gone, 'tmp:reuse-0001'), R.gone, 'tmp:reuse-0002');
