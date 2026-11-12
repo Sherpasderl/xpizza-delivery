@@ -74,6 +74,17 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     assert.ok(mr.ok && mr.kind === 'member' && mr.uid === 'uid_A' && m.headers['x-firebase-id-token'] === 'idt_A', `${L}: a conflicting identity header beside a valid Bearer ⇒ the Bearer's token only (${JSON.stringify(mr)})`);
   });
 
+  await cell('SDK-D4-AUTH-MALFORMED', async (L) => {
+    // Codex handler r1 P2: credential PRESENCE is decided by the header, not by a successful parse — a malformed Authorization is
+    // a member credential that failed (401), never a fall-through to the guest path
+    const w = await world();
+    const body = baseBody(); const ticket = await mintTicket(w, body);
+    for (const a of ['Bearer invalid extra', 'Basic dXNlcjpwdw==', 'Bearer', 'bearer idt_A', '']) {
+      assert.deepStrictEqual((await AUTH(w, req({ authorization: a, 'x-sherpa-order-ticket': ticket }, baseBody()))).refuse, { status: 401, body: { error: 'mixed_credentials' } }, `${L}: Authorization ${JSON.stringify(a)} + a valid ticket ⇒ 401 mixed_credentials, never guest`);
+      assert.deepStrictEqual((await AUTH(w, req({ authorization: a }, baseBody()))).refuse, { status: 401, body: { error: 'auth_invalid' } }, `${L}: a malformed Authorization ${JSON.stringify(a)} alone ⇒ 401 auth_invalid`);
+    }
+  });
+
   await cell('SDK-D4-DEPLOYMENT-FORCED', async (L) => {
     const w = await world();
     for (const dep of [undefined, 'forms', 'orders-app', 'whatever']) {
