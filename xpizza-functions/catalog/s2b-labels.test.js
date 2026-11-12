@@ -83,6 +83,10 @@ async function tablesOf(rid, src) {
     const dish = Object.keys(T.menu).find((k) => !/^i_/.test(k));
     const cart = { items: [{ ...(rid === 'la_musa' ? { id: dish } : {}), name: dish, qty: 1, extras: [{ ...(rid === 'la_musa' ? { id: MK } : { name: MK }), qty: 1, extra_key: MK }] }] };
     assert.deepStrictEqual(RL.resolveLines(rid, cart, mt), { ok: true }, `S2BLB-MIRROR-RESOLVE ${rid}: a minted extra resolves against the publish mirror`);
+    { const { createSnapshotFallback } = require('./snapshot-fallback');   // the LAST-GOOD rung carries them too
+      const fb = createSnapshotFallback({ mirrorReader: async () => null, alarm: () => {} }); fb.recordActive(rid, 'v', 1);
+      fb.recordGood(rid, { versionId: 'v', seq: 1, menu: T.menu, extras: T.extras, keyMode: MP.keyModeOfTables(T), labels: MP.labelsOfTables(T) });
+      assert.deepStrictEqual(xOf((await fb.snapshotFor(rid)).labels), want, `S2BLB-LAST-GOOD ${rid}: the last-good rung carries the extra labels + markers`); }
     ok(`${rid}: the publish mirror (= the rollback mirror) and the snapshot carry the extra labels + markers; a minted extra resolves against the mirror`);
   }
   { // P1-1 (Codex S2b r1): OFF, an ORDINARY extra whose name/key merely looks opaque (i_abcdefghijkl) resolves exactly as today
