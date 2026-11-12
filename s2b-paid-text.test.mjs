@@ -74,6 +74,13 @@ function honest(menu, keys) {
   const c = createCart(menu); c.add(d.key, keys.map((k) => ex(k).key), 2); c.add(d.key, [ex(keys[1]).key], 1); c.inc(p.key);
   return serialize(c, menu);
 }
+// one dish with ONE affected extra (one configuration)
+function honest1(menu, key) {
+  const ex = menu.extras.find((e) => e.extra_key === key);
+  const d = menu.dishes.find((x) => !x.launcher && menu.extrasFor(x.key).some((e) => e.extra_key === key));
+  const c = createCart(menu); c.add(d.key, [ex.key], 1);
+  return serialize(c, menu);
+}
 // the REAL intake judgment: resolveLines (both order intakes call it on the resolution line) and its HTTP refusal
 const judge = (rid, body, tables) => { const r = resolveLines(rid, clone(body), tables); return r.ok ? null : resolutionRefusal(r); };
 const MISMATCH = { status: 409, body: { error: 'items_text_mismatch' } };
@@ -133,7 +140,12 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.deepStrictEqual(judge(rid, q5, tables), MISMATCH, 'qty 5');
     const nokey = clone(body); for (const e of nokey.items[0].extras) { delete e.id; delete e.extra_id; }
     assert.deepStrictEqual(judge(rid, nokey, tables), MISMATCH, 'extras with no app key');
-    const price = clone(body); const old = price.items[0].price; price.items[0].price = old + 1; price.items_text = price.items_text.replace(`(L${old})`, `(L${old + 1})`);
+    const one = honest1(menu, MK); assert.equal(judge(rid, one, tables), null, 'premise: a one-extra honest body is accepted');
+    const oneNoKey = clone(one); for (const it of oneNoKey.items) for (const e of it.extras) { delete e.id; delete e.extra_id; }
+    assert.deepStrictEqual(judge(rid, oneNoKey, tables), MISMATCH, 'a lone extra with no app key (nothing else to disagree with)');
+    const price = clone(body); const dk = price.items[0].name; const old = price.items[0].price;   // EVERY line of that dish and EVERY group of its text, consistently
+    for (const it of price.items) if (it.name === dk) it.price = old + 1;
+    price.items_text = price.items_text.split(`${dk} (L${old})`).join(`${dk} (L${old + 1})`);
     assert.deepStrictEqual(judge(rid, price, tables), MISMATCH, 'a line price that is not the server\'s');
   });
 }
