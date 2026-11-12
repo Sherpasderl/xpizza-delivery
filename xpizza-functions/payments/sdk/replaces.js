@@ -4,6 +4,7 @@
 // else 409 previous_payment_unresolved. Anything else — absent, foreign, non-SDK, the request's own id, no caller identity — is
 // IGNORED: nothing about the named order is revealed or changed. Reads only.
 const HC = require('../../pixelpay-hosted-charge');
+const G = require('../../checkout-guest-lib');
 const F = require('./flow');
 const C = require('./coordinator');
 const UNRESOLVED = Object.freeze({ status: 409, body: Object.freeze({ error: 'previous_payment_unresolved' }) });
@@ -18,11 +19,19 @@ async function resolvedOrder(deps, orderId, order) {
   if (o.payment_placed) return true;
   return C.safeToSwitch(await C.readRecord(deps.db, orderId), o);
 }
+// Codex S7 r1 P2-2: an id outside the order-id grammar is IGNORED like an absent one (validated BEFORE any read — RTDB throws on a
+// path like "bad#id"); a READ failure fails CLOSED with a sanitized 503 (never an admission, never an unhandled rejection)
+const UNAVAILABLE = Object.freeze({ status: 503, body: Object.freeze({ error: 'replaces_unavailable', retryable: true }) });
 async function replacesRefusal(deps, { orderId, replacesOrderId, uid = null, pendingOrderRecord = null } = {}) {
-  if (typeof replacesOrderId !== 'string' || !replacesOrderId || replacesOrderId === orderId) return null;
+  if (typeof replacesOrderId !== 'string' || !G.ORDER_ID_RE.test(replacesOrderId) || replacesOrderId === orderId) return null;
   if (!uid && !(pendingOrderRecord && pendingOrderRecord.guest_verified)) return null;
-  const prev = await C.readOrder(deps.db, replacesOrderId);
-  if (!F.isSdkOrder(prev) || !ownedBy({ uid, pendingOrderRecord }, prev)) return null;
-  return (await resolvedOrder(deps, replacesOrderId, prev)) ? null : { status: UNRESOLVED.status, body: { ...UNRESOLVED.body } };
+  try {
+    const prev = await C.readOrder(deps.db, replacesOrderId);
+    if (!F.isSdkOrder(prev) || !ownedBy({ uid, pendingOrderRecord }, prev)) return null;
+    return (await resolvedOrder(deps, replacesOrderId, prev)) ? null : { status: UNRESOLVED.status, body: { ...UNRESOLVED.body } };
+  } catch (e) {
+    console.error('replacesRefusal: read failed', e && e.name);
+    return { status: UNAVAILABLE.status, body: { ...UNAVAILABLE.body } };
+  }
 }
 module.exports = { replacesRefusal, ownedBy, resolvedOrder, UNRESOLVED };
