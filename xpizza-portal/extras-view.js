@@ -86,7 +86,10 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   for (const r of d.rows) {
     const row = el('div', `irow mk-xrow${r.isNew ? ' mk-added' : ''}${r.removed ? ' mk-xgone' : ''}`);
     const info = el('div', 'iinfo'); const nm = el('div', 'nm');
-    if (r.isNew && !r.removed && on.name) {   // a «Nuevo» (keyless) row: the inline row's own name field (advisor 11-12); keyed rows stay text
+    // a KEYLESS row (no key yet: never saved): the inline row's own name field (advisor 11-12). A row the save keyed stays «Nuevo»
+    // until it is published, but its name is text — setExtraName writes keyless rows only (Codex S2 UI r1 P2-7)
+    const keyless = !!r.id && typeof r.id.key !== 'string';
+    if (keyless && !r.removed && on.name) {
       const ni = el('input', 'mk-xname'); ni.type = 'text'; ni.value = r.name; ni.placeholder = 'Nombre del extra'; ni.setAttribute('aria-label', 'Nombre del extra');
       ni.disabled = !canEdit; ni.dataset.k = `xnm:${JSON.stringify(r.id)}`;
       ni.addEventListener('input', () => on.name(r.id, ni.value, ni));
@@ -111,7 +114,7 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     detailHost.append(row);
     // a line under the row: a «Nuevo» row left without a name (the inline row's own line), or the server's line FIX-EXTRA brought here
     const line = model.rowError && JSON.stringify(model.rowError.id) === JSON.stringify(r.id) ? model.rowError.text
-      : (r.isNew && !r.removed && !String(r.name).trim() ? 'Escribí el nombre.' : null);
+      : (keyless && !r.removed && !String(r.name).trim() ? 'Escribí el nombre.' : null);
     if (line) { const lid = `xrow-e-${detailHost.children.length}`; const ln = fieldLine(lid, line); ln.classList.add('mk-xrowline'); detailHost.append(ln); }
   }
   if (model.adding) renderAddRow(detailHost, model.adding, on);

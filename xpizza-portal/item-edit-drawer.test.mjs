@@ -1986,3 +1986,19 @@ test('S2 Codex r1 P2-5 — a dish left with ZERO groups keeps «Agregar grupo de
   await q.open('dimsum_01');
   assert.equal(bAction(q), null, 'without the Extras page: no action (today)');
 });
+
+test('S2 Codex r1 P2-7 — a saved, unpublished extra (keyed by the save, still «Nuevo») shows its name as TEXT — no name field that cannot write; a keyless one keeps the field', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await page({ read: XON, on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 35);
+    assert.ok(row.querySelector('input.mk-xname'), 'keyless («Nuevo», before the save): the name field');
+    p.d.getElementById('review').click(); await settle(80);
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '35');
+    assert.ok(after && after.querySelector('.tag.new'), 'premise: the same row, adopted, still «Nuevo»');
+    assert.match(after.querySelector('.price input').dataset.k, /"key":/, 'premise: keyed now');
+    assert.equal(after.querySelector('input.mk-xname'), null, 'keyed: no name field');
+    assert.equal(after.querySelector('.nm > span').textContent, 'Probe extra', 'keyed: the name as text, beside its «Nuevo» tag');
+  } finally { S2_SERVER.on = false; }
+});
