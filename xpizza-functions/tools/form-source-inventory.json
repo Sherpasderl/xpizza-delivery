@@ -167,6 +167,7 @@
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -176,6 +177,8 @@
     "xpizza-functions/catalog/s2core-flow.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
+    "xpizza-functions/catalog/s2core-r1.test.js",
+    "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -530,6 +533,7 @@
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -539,6 +543,8 @@
     "xpizza-functions/catalog/s2core-flow.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
+    "xpizza-functions/catalog/s2core-r1.test.js",
+    "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -921,6 +927,7 @@
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -930,6 +937,8 @@
     "xpizza-functions/catalog/s2core-flow.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
+    "xpizza-functions/catalog/s2core-r1.test.js",
+    "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1282,6 +1291,7 @@
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
+    "xpizza-functions/catalog/review-diff.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
@@ -1291,6 +1301,8 @@
     "xpizza-functions/catalog/s2core-flow.test.js",
     "xpizza-functions/catalog/s2core-narrow-deny.test.js",
     "xpizza-functions/catalog/s2core-public-maps.test.js",
+    "xpizza-functions/catalog/s2core-r1.test.js",
+    "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1991,6 +2003,7 @@
   "xpizza-functions/catalog/publish-request.js",
   "xpizza-functions/catalog/reserved-keys-audit.js",
   "xpizza-functions/catalog/reset-draft.js",
+  "xpizza-functions/catalog/review-diff.js",
   "xpizza-functions/catalog/source-store.js",
   "xpizza-functions/catalog/structure-budget.js",
   "xpizza-functions/contract/applicability.js",
@@ -2017,6 +2030,7 @@
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
+  "xpizza-functions/test/_s2core-harness.js",
   "xpizza-functions/test/_s2core-scale.js",
   "xpizza-functions/test/d4b-legacy-capture.js",
   "xpizza-functions/test/d4b-legacy-fixtures.js",
@@ -2468,6 +2482,7 @@
   "catalog/bundle-compare.js",
   "catalog/candidate-validate.js",
   "catalog/canonical-binding.js",
+  "catalog/capp-serialize.js",
   "catalog/catalog-edit-auth.js",
   "catalog/catalog-edit.js",
   "catalog/catalog-firestore.js",
@@ -2488,6 +2503,7 @@
   "catalog/extras-entry.js",
   "catalog/extras-intake.js",
   "catalog/extras-projection.js",
+  "catalog/extras-validate.js",
   "catalog/firestore-fake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
@@ -2520,10 +2536,13 @@
   "catalog/reset-draft.js",
   "catalog/resolve-lines.js",
   "catalog/restaurant-registry.js",
+  "catalog/review-diff.js",
   "catalog/reward-icons.js",
   "catalog/snapshot-fallback.js",
+  "catalog/source-accounting.js",
   "catalog/source-store.js",
   "catalog/structure-budget.js",
+  "catalog/structure-gate.js",
   "catalog/text-version.js",
   "checkout-guest-gate.js",
   "checkout-guest-lib.js",
@@ -2929,6 +2948,10 @@
     "xpizza-functions/area-wiring.guard.test.js"
    ]
   },
+  "catalog/capp-serialize.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/catalog-edit-auth.js": {
    "pins": [],
    "lifts": []
@@ -3097,15 +3120,17 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/extras-validate.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/firestore-fake.js": {
    "pins": [],
    "lifts": []
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s2core-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -3324,6 +3349,10 @@
    ],
    "lifts": []
   },
+  "catalog/review-diff.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/reward-icons.js": {
    "pins": [],
    "lifts": []
@@ -3347,6 +3376,10 @@
    ],
    "lifts": []
   },
+  "catalog/source-accounting.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/source-store.js": {
    "pins": [
     {
@@ -3356,7 +3389,8 @@
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/pmdisplay-module-inverse.js"
+      "tools/pmdisplay-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     },
     {
@@ -3366,7 +3400,8 @@
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/pmdisplay-module-inverse.js"
+      "tools/pmdisplay-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     },
     {
@@ -3374,7 +3409,8 @@
      "inverses": [
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
-      "tools/keymode-module-inverse.js"
+      "tools/keymode-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     },
     {
@@ -3383,15 +3419,21 @@
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
-      "tools/pmdisplay-module-inverse.js"
+      "tools/pmdisplay-module-inverse.js",
+      "tools/s2core-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-functions/s2core-wiring.guard.test.js"
    ]
   },
   "catalog/structure-budget.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/structure-gate.js": {
    "pins": [],
    "lifts": []
   },
@@ -6418,8 +6460,10 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/catalog/publish-request-consequences.test.js",
+    "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/stats/stats-guard.test.js",
+    "xpizza-functions/test/_s2core-harness.js",
     "xpizza-functions/tools/portal-split.js"
    ]
   },
