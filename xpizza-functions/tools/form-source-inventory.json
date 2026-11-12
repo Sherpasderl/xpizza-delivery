@@ -3167,17 +3167,16 @@
    "lifts": []
   },
   "catalog/identity-record-verifier.js": {
-   "pins": [
-    {
-     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
-     "inverses": []
-    }
-   ],
-   "lifts": []
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/catalog/identity-record-guards.test.js"
+   ]
   },
   "catalog/identity-record.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/catalog/identity-record-guards.test.js"
+   ]
   },
   "catalog/item-text-edit.js": {
    "pins": [],
@@ -7029,12 +7028,7 @@
    ]
   }
  },
- "unregistered": [
-  {
-   "module": "catalog/identity-record-verifier.js",
-   "site": "xpizza-functions/catalog/identity-record-guards.test.js"
-  }
- ],
+ "unregistered": [],
  "region_pins": [
   {
    "id": "L1-read",
