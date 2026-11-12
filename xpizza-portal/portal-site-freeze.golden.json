@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "c58d67c90a4de65ee7bd09a17999e65fa250ec13af04c198385914481e2f43db",
-   "bytes": 123812
+   "sha256": "4beb6c47292df568ea247d4ce84897bfd07103c2f43861b09f15dfcf19fe21ac",
+   "bytes": 124435
   }
  },
  "diff_aid": {
@@ -1435,6 +1435,12 @@
    ],
    [
     "",
+    ".irow.mk-added",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
     ".irow:hover .iinfo.clk .nm",
     "color",
     "var(--accent)"
@@ -1924,6 +1930,24 @@
     ".mk-xgone-p",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-xnew .mk-xname",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-xnew .mk-xname",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk-xnew .mk-xname:focus",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",

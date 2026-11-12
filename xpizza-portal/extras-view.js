@@ -7,11 +7,14 @@ const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls)
 const svg = (paths) => { const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   for (const d of paths) { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); s.append(p); } return s; };
 const TRASH = ['M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'];
+const PLUS = ['M12 5v14M5 12h14'];
 const WARN = ['M12 3l9 16H3z', 'M12 10v4', 'M12 17.5v.01'];
+const fieldLine = (id, text) => { const p = el('div', 'ferr mk-ferr', text); p.id = id; p.setAttribute('role', 'alert'); return p; };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export const enProductos = (n) => `en ${plural(n, 'producto', 'productos')}`;
 
-// rail + detail into their hosts; `on`: { select(group), price(id, raw, input), remove(row) }; `canEdit`: the draft is editable now
+// rail + detail into their hosts; `on`: { select(group), price(id, raw, input), remove(row), create(btn), and the inline «Agregar extra»
+// row's addOpen() / addInput(field, value) → its check / addCommit() / addCancel() / addLeave() }; `canEdit`: the draft is editable now
 export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = true } = {}) {
   railHost.replaceChildren();
   for (const r of model.rail) {
@@ -36,6 +39,12 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   const head = el('div', 'dhead');
   const countLine = `${plural(d.count, 'extra', 'extras')}${d.reach === null ? '' : ` · ${enProductos(d.reach)}`}`;
   head.append(el('div', 'dtitle', d.group), el('span', 'dcount', countLine));
+  if (on.addOpen) {   // «Agregar extra» (frame X: .dright > .btn)
+    const right = el('span', 'dright'); const addEx = el('button', 'btn'); addEx.type = 'button'; addEx.disabled = !canEdit;
+    addEx.append(svg(PLUS), document.createTextNode('Agregar extra'));
+    addEx.addEventListener('click', () => on.addOpen());
+    right.append(addEx); head.append(right);
+  }
   detailHost.append(head);
   if (d.shared) {
     const w = el('div', 'mk-xwarn'); const s = el('div', 'mgshared');
@@ -64,10 +73,45 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     row.append(price, del);
     detailHost.append(row);
   }
+  if (model.adding) renderAddRow(detailHost, model.adding, on);
+}
+
+// the inline new row (plan §2 item 3: the ONLY name input in S2-core): the committed row's shell (.irow.mk-xrow.mk-added) with X3's row
+// copy — «Nombre del extra», «Precio», «Quitar …» and R6's two lines (extras-logic extraRowCheck). Enter commits a complete row, Escape
+// or the trash drops it, focus leaving the row commits it when complete (§3.5)
+function renderAddRow(host, a, on) {
+  const row = el('div', 'irow mk-xrow mk-added mk-xnew');
+  const info = el('div', 'iinfo'); const nm = el('div', 'nm');
+  const ni = el('input', 'mk-xname'); ni.type = 'text'; ni.value = a.name; ni.placeholder = 'Nombre del extra'; ni.setAttribute('aria-label', 'Nombre del extra'); ni.dataset.k = 'xadd:n';
+  nm.append(ni); info.append(nm);
+  const price = el('div', 'price'); const pi = el('input'); pi.type = 'text'; pi.inputMode = 'numeric'; pi.placeholder = 'Sin precio'; pi.value = a.raw;
+  pi.setAttribute('aria-label', 'Precio'); pi.dataset.k = 'xadd:p';
+  price.append(el('span', 'cur', 'L'), pi);
+  const del = el('button', 'del'); del.type = 'button'; del.append(svg(TRASH));
+  row.append(info, price, del);
+  const lines = el('div', 'mk-xnewlines');
+  const paintLines = (c) => {
+    lines.replaceChildren(); ni.removeAttribute('aria-describedby'); pi.removeAttribute('aria-describedby');
+    del.setAttribute('aria-label', `Quitar ${ni.value.trim() || 'extra'}`);
+    if (c.nameError) { lines.append(fieldLine('xadd-ne', c.nameError)); ni.setAttribute('aria-describedby', 'xadd-ne'); }
+    if (c.priceError) { lines.append(fieldLine('xadd-pe', c.priceError)); pi.setAttribute('aria-describedby', 'xadd-pe'); }
+    if (c.error) lines.append(fieldLine('xadd-err', c.error));
+  };
+  paintLines(a.check);
+  ni.addEventListener('input', () => paintLines(on.addInput('name', ni.value)));
+  pi.addEventListener('input', () => paintLines(on.addInput('raw', pi.value)));
+  const onKey = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); on.addCommit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); on.addCancel(); }
+  };
+  ni.addEventListener('keydown', onKey); pi.addEventListener('keydown', onKey);
+  del.addEventListener('click', () => on.addCancel());
+  row.addEventListener('focusout', () => setTimeout(() => { if (row.isConnected && !row.contains(document.activeElement)) on.addLeave(); }, 0));
+  host.append(row, lines);
 }
 
 // A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?» and the discard confirm. Tab stays inside; Escape and the backdrop take the
-// cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, cls, act: 'cancel' | 'go', focus }] in DOM order.
+// cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods (classes on top of .btn), act: 'cancel' | 'go', focus }] in DOM order.
 function openSmallConfirm(o) {
   const { title, sub = null, body = null, buttons, returnTo = null } = o;
   const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal');
@@ -117,8 +161,6 @@ export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
 // ── X3 «Crear grupo» + X3b (MOCKUP x4b) — the sheet's DOM, from extras-logic.js createGroupView. `on`: { name(v), row(i, patch),
 // addRow(), removeRow(i), mode(m), cat(c), mark(key, on), markAll(cat), markNone(cat), cancel(), create() }. The caller re-renders
 // on every change and restores focus by data-k.
-const PLUS = ['M12 5v14M5 12h14'];
-const fieldLine = (id, text) => { const p = el('div', 'ferr mk-ferr', text); p.id = id; p.setAttribute('role', 'alert'); return p; };
 export function renderCreateGroup(modal, v, on) {
   const mh = el('div', 'mh'); const t = el('div', 'mt', 'Crear grupo'); t.id = 'xcg-t';
   mh.append(t, el('div', 'ms', 'Un grupo de extras · después podés agregarlo a los productos que quieras'));

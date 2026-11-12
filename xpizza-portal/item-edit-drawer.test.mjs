@@ -1266,3 +1266,115 @@ test('S2 X3 — dismissing a DIRTY sheet asks «¿Descartar los cambios?»: «Se
   assert.equal(x3(p), null, '«Descartar» closes the sheet');
   assert.ok(!p.src().structure.extra_categories.includes('Toppings'), 'nothing was written');
 });
+
+// ── STRUCTURE S2 — «Agregar extra», the detail's inline new row (plan r3 §2 item 3, §3.5 row 2; MOCKUP frame X: the button in
+// .dhead .dright, the committed row .irow.mk-xrow.mk-added «Nuevo»; the input row reuses X3's row copy — no new strings) ─────────
+const addBtn = (p) => xpage(p).querySelector('.detail .dhead .dright button.btn');
+const newRow = (p) => xpage(p).querySelector('.detail .irow.mk-xnew');
+const key = (p, target, k) => target.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+async function openAdd(p) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(addBtn(p).textContent, 'Agregar extra');
+  addBtn(p).click(); await settle(5);
+  return newRow(p);
+}
+test('S2 X+ — «Agregar extra» appends ONE inline row at the list’s foot: focus in «Nombre del extra»; the draft untouched; a second press adds no second row', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  assert.ok(r, 'the inline row is drawn');
+  const rows = [...xpage(p).querySelectorAll('.detail .irow')];
+  assert.equal(rows[rows.length - 1], r, 'at the list’s foot');
+  const nm = r.querySelector('input[aria-label="Nombre del extra"]');
+  assert.equal(p.d.activeElement, nm, 'focus in the name');
+  assert.equal(nm.placeholder, 'Nombre del extra');
+  const pr = r.querySelector('.price input');
+  assert.deepEqual([pr.getAttribute('aria-label'), pr.placeholder], ['Precio', 'Sin precio']);
+  assert.equal(r.querySelector('button.del').getAttribute('aria-label'), 'Quitar extra');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'nothing is pending yet: the draft is untouched');
+  addBtn(p).click(); await settle(5);
+  assert.equal(xpage(p).querySelectorAll('.detail .irow.mk-xnew').length, 1, 'still ONE inline row');
+  assert.equal(p.d.activeElement, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'focus back in its name');
+});
+test('S2 X+ — Enter in a COMPLETE row commits ONE extra.add: the extra is «Nuevo» in the list and the draft; the bar counts it; focus on «Agregar extra»', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Arroz frito'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus();
+  p.type(pr, '40'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  assert.equal(newRow(p), null, 'the inline row is gone');
+  const added = extrasIn(p.src(), g);
+  assert.equal(added.length, n0 + 1, 'the extra is in the draft');
+  assert.deepEqual([added[added.length - 1].display.name, added[added.length - 1].price, typeof added[added.length - 1].key], ['Arroz frito', 40, 'undefined'], 'a keyless new extra');
+  const last = xrows(p)[xrows(p).length - 1];
+  assert.ok(last.querySelector('.tag.new') && last.textContent.includes('Arroz frito'), 'the row is «Nuevo»');
+  assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar', 'the bar counts it');
+  assert.equal(p.d.activeElement, addBtn(p), 'focus on «Agregar extra», ready for the next one');
+});
+test('S2 X+ — a started row shows X3’s lines and Enter does not commit it; focus LEAVING a complete row commits it, an incomplete one stays', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus();
+  p.type(pr, '0'); await settle(5);
+  assert.ok(xpage(p).textContent.includes('El precio debe ser al menos L 1.'), 'X3’s price line');
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  assert.equal(extrasIn(p.src(), g).length, n0, 'an incomplete row is never committed');
+  railRows(p)[0].focus(); await settle(10);
+  assert.ok(newRow(p), 'focus leaving an INCOMPLETE row keeps it');
+  assert.equal(extrasIn(p.src(), g).length, n0);
+  const pr2 = newRow(p).querySelector('.price input'); pr2.focus();
+  p.type(pr2, '15'); await settle(5);
+  railRows(p)[0].focus(); await settle(10);
+  assert.equal(newRow(p), null, 'focus leaving a COMPLETE row commits it');
+  assert.equal(extrasIn(p.src(), g).length, n0 + 1, 'committed through the ONE mutator');
+});
+test('S2 X+ — Escape in the row, or its trash, drops it: nothing written, focus back on «Agregar extra»', async () => {
+  const p = await page({ read: XON });
+  let r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  key(p, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Escape'); await settle(5);
+  assert.equal(newRow(p), null, 'Escape drops it');
+  assert.equal(p.d.activeElement, addBtn(p), 'focus back on «Agregar extra»');
+  addBtn(p).click(); await settle(5);
+  r = newRow(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  newRow(p).querySelector('button.del').click(); await settle(5);
+  assert.equal(newRow(p), null, 'the trash drops it');
+  assert.equal(p.d.activeElement, addBtn(p));
+  assert.equal(extrasIn(p.src(), g).length, n0, 'nothing written');
+});
+test('S2 X+ — leaving with a DIRTY row (another group, «Menú») asks «¿Descartar los cambios?»: «Seguir editando» keeps it; «Descartar» drops it and leaves; a clean row just goes', async () => {
+  const p = await page({ read: XON });
+  let r = await openAdd(p);
+  const groups = p.src().structure.extra_categories;
+  railRows(p)[1].click(); await settle(10);
+  assert.equal(newRow(p), null, 'a clean row just goes');
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1]);
+  addBtn(p).click(); await settle(5);
+  r = newRow(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  railRows(p)[0].click(); await settle(10);
+  let cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm');
+  const [, keep] = [...cf.querySelectorAll('.mf button')];
+  keep.click(); await settle(5);
+  assert.equal(newRow(p).querySelector('input[aria-label="Nombre del extra"]').value, 'Maní', '«Seguir editando» keeps the input');
+  assert.equal(p.d.activeElement, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'focus back on the last edited field');
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1], 'still on the same group');
+  tabBtn(p, 'Menú').click(); await settle(10);
+  cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf, 'the «Menú» tab asks too');
+  cf.querySelectorAll('.mf button')[0].click(); await settle(10);
+  assert.ok(xpage(p).classList.contains('hidden'), '«Descartar» leaves');
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(newRow(p), null, 'the row is gone');
+  assert.ok(!extrasIn(p.src(), groups[1]).some((e) => e.display.name === 'Maní'), 'nothing written');
+});

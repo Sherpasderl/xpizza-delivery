@@ -78,7 +78,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp } from './extras-logic.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp } from './extras-logic.js';
 import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
@@ -1258,7 +1258,48 @@ function paintCreateGroup(first) {
   if (back) { back.focus(); if (at !== null) { try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } } }
 }
 
-function setProdTab(t) { prodTab = t === 'xpage' ? 'xpage' : 'menu'; paint(); }
+// ── «Agregar extra» (plan §2 item 3, §3.5 row 2): the inline row is LOCAL state until it commits ONE extra.add ─────────────────
+let extraAdd = null;
+let extraAddK = null;
+let extraAddError = null;
+const addDirty = () => !!extraAdd && (extraAdd.name.trim() !== '' || extraAdd.raw.trim() !== '');
+// §3.5: ONE predicate ORs every local editor's «dirty while»; every leave path consults it first
+function localDirty() { return x3Dirty(createForm) || addDirty(); }
+const focusDetail = (k) => { const x = [...$('xdetail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === k); if (x) x.focus(); };
+const focusAddBtn = () => { const b = $('xdetail').querySelector('.dhead .dright .btn'); if (b) b.focus(); };
+function addOpen() {
+  if (!extraAdd || extraAdd.group !== extrasGroup) { extraAdd = addExtraRow(extrasGroup); extraAddError = null; }
+  paint();
+  focusDetail('xadd:n');
+}
+function addInput(field, v) {
+  extraAdd = { ...extraAdd, [field]: v }; extraAddK = field === 'name' ? 'xadd:n' : 'xadd:p'; extraAddError = null;
+  return extraRowCheck(extraAdd);
+}
+function addCommit(refocus) {
+  const op = addExtraOp(extraAdd);
+  if (!op) return;
+  const r = applyExposureOps(state.draft, [op], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { extraAddError = 'No pudimos aplicar el cambio. Recargá la página.'; paint(); focusDetail(extraAddK || 'xadd:n'); return; }
+  extraAdd = null; extraAddK = null;
+  paint(); refreshBar();
+  if (refocus) focusAddBtn();
+}
+function addCancel() { extraAdd = null; extraAddK = null; extraAddError = null; paint(); focusAddBtn(); }
+// focus leaving the row commits it when complete; an incomplete row stays (§3.5)
+function addLeave() { if (extraAdd && addExtraOp(extraAdd)) addCommit(false); }
+// a leave path on the Extras page: a complete row commits first (focus left it); a dirty one asks the portal's discard confirm
+function leaveExtras(go) {
+  addLeave();
+  if (!localDirty()) { extraAdd = null; go(); return; }
+  openDiscardConfirm({ onDiscard: () => { extraAdd = null; extraAddK = null; extraAddError = null; go(); }, onKeep: () => focusDetail(extraAddK || 'xadd:n') });
+}
+
+function setProdTab(t) {
+  const next = t === 'xpage' ? 'xpage' : 'menu';
+  if (prodTab === 'xpage' && next !== 'xpage') { leaveExtras(() => { prodTab = next; paint(); }); return; }
+  prodTab = next; paint();
+}
 function paintProductTabs() {
   if (!$('prodtabs') || !$('xsplit')) return;   // a page without the S2 markup (and today's tests' trimmed shells): Productos as today
   const on = state.extrasCatalog === true && !!state.draft;
@@ -1274,9 +1315,16 @@ function paintProductTabs() {
   if (!onXpage) return;
   const model = extrasPageModel(state.draft, { group: extrasGroup });
   extrasGroup = model.selected;
+  if (extraAdd && extraAdd.group !== extrasGroup) extraAdd = null;
+  model.adding = extraAdd ? { name: extraAdd.name, raw: extraAdd.raw, check: { ...extraRowCheck(extraAdd), error: extraAddError } } : null;
+  // a repaint keeps the focused field (a typed price, the inline row) or the focused rail group
+  const ae = document.activeElement;
+  const keepK = ae && ae.dataset && $('xdetail').contains(ae) ? ae.dataset.k : null;
+  const keepG = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.group : null;
   renderExtrasPage($('xrail'), $('xdetail'), model, {
-    select: bound((g) => { extrasGroup = g; paint(); }),
+    select: bound((g) => leaveExtras(() => { extrasGroup = g; paint(); })),
     create: bound(() => openCreateGroup()),
+    addOpen: bound(addOpen), addInput, addCommit: bound(() => addCommit(true)), addCancel: bound(addCancel), addLeave: bound(addLeave),
     // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
     price: bound((id, raw, input) => {
       const at = input.selectionStart; const k = input.dataset.k;
@@ -1301,6 +1349,8 @@ function paintProductTabs() {
       });
     }),
   }, { canEdit: canEditDraft(state.draft) });
+  if (keepK) focusDetail(keepK);
+  else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
 }
 
 function paint() {

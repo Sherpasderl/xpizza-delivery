@@ -65,6 +65,23 @@ const newRef = () => {
 };
 const priceOf = (raw) => { const t = String(raw ?? '').trim(); return /^\d+$/.test(t) ? Number(t) : null; };
 
+// ONE row rule (R6) for X3's extra rows and the detail's inline «Agregar extra» row: a row with neither name nor price is not started
+// (ignored); a started row needs a name and a whole price ≥ L 1
+export function extraRowCheck(r) {
+  const name = String((r && r.name) ?? ''), raw = String((r && r.raw) ?? '');
+  const started = name.trim() !== '' || raw.trim() !== '';
+  const p = priceOf(raw);
+  const nameError = started && !name.trim() ? 'Escribí el nombre.' : null;
+  const priceError = started && (p === null || p < 1) ? 'El precio debe ser al menos L 1.' : null;
+  return { started, nameError, priceError, complete: started && !nameError && !priceError };
+}
+// «Agregar extra» (plan §2 item 3, §3.5 row 2): the inline row is LOCAL state { group, ref, name, raw } until it commits ONE extra.add
+export function addExtraRow(group) { return { group: String(group), ref: newRef(), name: '', raw: '' }; }
+export function addExtraOp(r) {
+  if (!r || !extraRowCheck(r).complete) return null;
+  return { op: 'extra.add', group: r.group, ref: r.ref, name: r.name.replace(/\s+/g, ' ').trim(), price: priceOf(r.raw) };
+}
+
 export function createGroupForm() {
   return { name: '', rows: [{ ref: newRef(), name: '', raw: '' }], mode: 'none', cat: null, marked: [] };
 }
@@ -125,13 +142,7 @@ export function createGroupView(draft, f0) {
   const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
   const nm = f.name.replace(/\s+/g, ' ').trim();
   const nameError = nm && groups.includes(nm) ? 'Ya hay un grupo con ese nombre.' : null;
-  const rows = f.rows.map((r) => {
-    const started = r.name.trim() !== '' || r.raw.trim() !== '';
-    const p = priceOf(r.raw);
-    return { ref: r.ref, name: r.name, raw: r.raw, started,
-      nameError: started && !r.name.trim() ? 'Escribí el nombre.' : null,
-      priceError: started && (p === null || p < 1) ? 'El precio debe ser al menos L 1.' : null };
-  });
+  const rows = f.rows.map((r) => { const c = extraRowCheck(r); return { ref: r.ref, name: r.name, raw: r.raw, started: c.started, nameError: c.nameError, priceError: c.priceError }; });
   const complete = rows.filter((r) => r.started && !r.nameError && !r.priceError);
   const pick = sectionsOf(src, f);
   const cats = (src.structure && Array.isArray(src.structure.categories)) ? src.structure.categories : [];

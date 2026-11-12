@@ -179,3 +179,29 @@ test('X3 — createGroupView / createGroupOp are PURE readers (the wiring guards
     assert.equal(JSON.stringify([xp, g]), before, `${mode}: the draft and the form are byte-identical after`);
   }
 });
+
+// ── «Agregar extra» — the Extras detail's inline new row (plan r3 §2 item 3, §3.5 row 2; R6 the same rule as X3's rows) ───────
+import { extraRowCheck, addExtraRow, addExtraOp } from './extras-logic.js';
+test('«Agregar extra» — ONE row rule with X3: every input gets the same lines from extraRowCheck and from the X3 view', () => {
+  const d = createDraft(seed('la_musa'));
+  for (const [name, raw] of [['', ''], ['Maní', ''], ['', '10'], ['Maní', '0'], ['Maní', 'x'], ['Maní', '15'], ['  ', '15']]) {
+    const c = extraRowCheck({ name, raw });
+    const v = createGroupView(d, setCreateField(createGroupForm(), 'row', { i: 0, name, raw })).rows[0];
+    assert.deepEqual([c.started, c.nameError, c.priceError], [v.started, v.nameError, v.priceError], `«${name}» / «${raw}»: one rule`);
+  }
+  assert.equal(extraRowCheck({ name: 'Maní', raw: '15' }).complete, true);
+  assert.equal(extraRowCheck({ name: 'Maní', raw: '0' }).complete, false);
+});
+test('«Agregar extra» — a complete row is ONE extra.add (tmp ref, trimmed name, the price) the REAL writer applies; it lands «Nuevo» at the list’s foot', () => {
+  const d = createDraft(seed('la_musa'));
+  const g = 'Acompañamientos';
+  const r0 = addExtraRow(g);
+  assert.deepEqual([r0.group, r0.name, r0.raw], [g, '', '']);
+  assert.match(r0.ref, /^tmp:[A-Za-z0-9-]{8,64}$/, 'a tmp ref the server accepts');
+  assert.equal(addExtraOp({ ...r0, name: 'Arroz', raw: '0' }), null, 'an incomplete row builds no op');
+  const op = addExtraOp({ ...r0, name: '  Arroz   frito ', raw: '40' });
+  assert.deepEqual(op, { op: 'extra.add', group: g, ref: r0.ref, name: 'Arroz frito', price: 40 }, 'the op: no key, id or stamp');
+  assert.equal(applyExposureOps(d, [op], ON).ok, true);
+  const rows = extrasPageModel(d, { group: g }).detail.rows.filter((r) => !r.removed);
+  assert.deepEqual(rows[rows.length - 1], { id: { ref: r0.ref }, name: 'Arroz frito', price: 40, isNew: true, priceChanged: false, removed: false }, 'the new row, «Nuevo», last');
+});
