@@ -313,6 +313,20 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     assert.deepStrictEqual(['tb_r1' in rows, rows.tb_r2], [false, null], `${L}: the refreshed GET lacks the requested tb_r1 and tb_r2 is unchanged — A's mutations are unresolved (the page shows the conflict)`);
   });
 
+  await cell('PRUNE-IN-HISTORY', async (L) => {
+    // Codex build r1 P2-4: a deregistered branch's entry pruned by a bands-only save is a limits change — the history records it
+    let ids = ['tb_r1', 'tb_r2', 'tb_r3'];
+    const w = world({}, { registry: async () => ({ ok: true, fresh: true, ids }) });
+    await save(w, { limits: [{ rid: 'tb_r1', km: 4 }, { rid: 'tb_r2', km: 5 }] });
+    ids = ['tb_r2', 'tb_r3'];
+    await save(w, { bands: BANDS6 });
+    const s = w.db.get(PATH);
+    const sha = (m) => crypto.createHash('sha256').update(JSON.stringify(m)).digest('hex');
+    assert.deepStrictEqual(s.restaurants, { tb_r2: { max_km: 5 } }, `${L}: premise — tb_r1's entry pruned`);
+    assert.deepStrictEqual(s.history[0].new.limits, { set: 0, deleted: 1, sha256: sha({ tb_r2: { max_km: 5 } }) }, `${L}: the prune is in the history summary (count + hash of the resulting map)`);
+    assert.ok(A.historyOk(s.history), `${L}: the entry is valid`);
+  });
+
   if (fails.length) { console.log(`limits FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`limits: OK (${n})`);
 })();
