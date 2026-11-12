@@ -80,6 +80,8 @@
   "portal-look.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
