@@ -76,7 +76,9 @@ function applyAuth(deps, rec, leg, out, opId) {
   if (out.uuid) leg.pp_uuid = out.uuid;
   if (out.outcome === 'approved') { leg.state = 'approved'; leg.role = rec.phase === 'cancelled' || rec.frozen ? 'surplus' : leg.kind === 'original' ? 'committed' : 'pending'; }
   else if (out.outcome === 'definitive_decline' || out.outcome === 'token_expired_confirmed') { leg.state = 'declined'; leg.role = 'none'; }
-  else if (out.outcome === 'requires_action') { leg.state = 'requires_action'; lockFor(rec, 'requires_action', opId, deps.clock()); }
+  // D4 row 17 (Q3, OWNER 11-10 «3DS on re-auth = decline»): an ORIGINAL leg the bank challenges ends its attempt — no record
+  // lock (the customer may retry with another card at once); the sweeper's bound evidence settles the leg (S2). Other legs keep the lock.
+  else if (out.outcome === 'requires_action') { leg.state = 'requires_action'; if (leg.kind === 'original') leg.role = 'none'; else lockFor(rec, 'requires_action', opId, deps.clock()); }
   else { leg.state = 'unknown'; lockFor(rec, 'unknown_op', opId, deps.clock()); }
 }
 function applyCapture(deps, rec, leg, out, opId) {
@@ -113,48 +115,103 @@ function newLeg(rec, kind, amount_cents, now) {
 }
 
 // ── placement (§2.11: the order goes live on an APPROVED original leg; the go-live decision is an order transaction) ─────
-async function placeOriginal(deps, { orderId, token, amount_cents }) {
+// D4 S1 (PLAN-sdk-d4-r4 rows 1–6): one ATTEMPT per intentional try (attempt_id, client-chosen); the attempt claim is IN the
+// journal CAS (attempts/{id} + the leg + the op, together); a known attempt is a REPLAY (no dispatch); the per-attempt provider
+// reference is computed ONCE (C5); the order's immutable pay_deadline_at fences the claim and the placement.
+const ATTEMPT_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
+// C5: 'sdk' + base32(sha256(ns ‖ 0 ‖ namespace ‖ 0 ‖ order ‖ 0 ‖ attempt))[0:26] — NUL-separated (unambiguous), namespaced, no '-'
+function ppRef(namespace, orderId, attemptId) {
+  const h = require('crypto').createHash('sha256').update(['sdk_auth_v1', namespace, orderId, attemptId].join('\0')).digest();
+  let bits = ''; for (const byte of h) bits += byte.toString(2).padStart(8, '0');
+  let out = ''; for (let i = 0; i + 5 <= bits.length && out.length < 26; i += 5) out += B32[parseInt(bits.slice(i, i + 5), 2)];
+  return `sdk${out}`;
+}
+// an original attempt has ENDED (a new one may start) when its leg was declined or the bank challenged it (row 17)
+const originalEnded = (l) => l.kind !== 'original' || l.state === 'declined' || l.state === 'requires_action';
+const deadlineOf = (order, rec) => (order && Number.isFinite(order.pay_deadline_at) ? order.pay_deadline_at : rec && Number.isFinite(rec.ttl_at) ? rec.ttl_at : null);
+const payerOf = (order) => ({ name: typeof order.customer_name === 'string' && order.customer_name ? order.customer_name : 'Cliente', email: typeof order.customer_email === 'string' && order.customer_email ? order.customer_email : null });
+
+async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, authentication_identifier = null, card = null }) {
   const now = deps.clock();
   if (!R.isCentsInt(amount_cents) || amount_cents <= 0 || typeof token !== 'string' || !token) return { outcome: 'refused', reason: 'bad_input' };
+  if (typeof attempt_id !== 'string' || !ATTEMPT_RE.test(attempt_id)) return { outcome: 'refused', reason: 'bad_attempt' };
+  if (authentication_identifier !== null && (typeof authentication_identifier !== 'string' || !authentication_identifier)) return { outcome: 'refused', reason: 'bad_input' };
+  // a RETRANSMISSION of a known attempt never dispatches again — its outcome is that attempt's (the S2 resolver)
+  const rec0 = await readRecord(deps.db, orderId);
+  const known = (r) => !!(r && r.attempts && r.attempts[attempt_id]);
+  if (known(rec0)) return { outcome: 'replay', attempt_id, leg_id: rec0.attempts[attempt_id].leg_id };
   const order = await readOrder(deps.db, orderId);
   if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed || F.markerFault(order)) return { outcome: 'refused', reason: 'order_state' };
   if (order.scheduled_for != null) return { outcome: 'refused', reason: 'scheduled_unsupported' };   // a LOGGED card-launch gate (ruling #9)
+  const deadline = deadlineOf(order, null);   // enforced IN the claim CAS below (the one authoritative check)
   await enrol(deps, orderId);
-  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: now + R.TTL_MS });
-  let legId = null;
+  await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS });
+  const ref = ppRef(deps.ppNamespace || 'unconfigured', orderId, attempt_id);
+  const tokenHash = require('crypto').createHash('sha256').update(token).digest('hex');
+  let legId = null; let replay = null; let late = false;
   const d = await dispatch(deps, orderId, {
     action: 'auth',
     legId: () => legId,
     amount_cents,
     pre: (rec) => {
+      replay = null; late = false;
+      if (known(rec)) { replay = rec.attempts[attempt_id].leg_id; return undefined; }
       if (rec.phase !== 'open') return undefined;
-      if (Object.values(R.legsOfRecord(rec)).some((l) => l.kind === 'original' && l.state !== 'declined')) return undefined;
+      const dl = deadlineOf(order, rec);
+      if (dl != null && deps.clock() >= dl) { late = true; return undefined; }
+      if (!Object.values(R.legsOfRecord(rec)).every(originalEnded)) return undefined;
       legId = newLeg(rec, 'original', amount_cents, now);
-      rec.legs[legId].state = 'sent';
+      Object.assign(rec.legs[legId], { state: 'sent', attempt_id, pp_ref: ref });
+      rec.attempts = { ...(rec.attempts || {}), [attempt_id]: { leg_id: legId, token_hash: tokenHash, card_ref: card && card.card_ref ? card.card_ref : 'new', display: card && card.display ? card.display : null, save: !!(card && card.save), amount_cents, at: now } };
       rec.token = token;
       rec.fulfillment_total_cents = amount_cents;
       return rec;
     },
-    call: (opId) => deps.psp.pspAuthorize({ token, amount_cents, op_id: opId, ref: orderId }),
+    call: (opId) => deps.psp.pspAuthorize({ token, amount_cents, op_id: opId, ref, authentication_identifier, payer: payerOf(order) }),
     apply: (rec, leg, out, opId) => applyAuth(deps, rec, leg, out, opId),
   });
-  if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
-  if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'requires_action' ? 'requires_action' : d.out.outcome === 'unknown' ? 'unknown' : 'declined' };
-  const box = { won: false };
+  if (!d.dispatched) {
+    if (replay) return { outcome: 'replay', attempt_id, leg_id: replay };
+    if (late) return { outcome: 'refused', reason: 'past_deadline' };
+    const r1 = await readRecord(deps.db, orderId);
+    if (known(r1)) return { outcome: 'replay', attempt_id, leg_id: r1.attempts[attempt_id].leg_id };
+    return { outcome: 'refused', reason: 'locked_or_busy' };
+  }
+  if (d.out.outcome !== 'approved') return { outcome: d.out.outcome === 'requires_action' ? 'requires_action' : d.out.outcome === 'unknown' ? 'unknown' : 'declined', leg_id: legId };
+  return decidePlacement(deps, orderId, legId);
+}
+
+// D4 row 6: THE placement decision for an approved original — shared by placeOriginal and the sweeper (resolveOriginals, S2).
+// Only a leg whose OWN authorization answered approved (role committed) can place an order: a surplus / challenge leg never
+// does. SAME WINNER: an order already placed by THIS leg is `placed`. A transaction that does not win NEVER by itself implies
+// surplus: only an order seen cancelled, past its deadline or placed by ANOTHER leg makes this leg surplus.
+async function decidePlacement(deps, orderId, legId) {
+  const rec = await readRecord(deps.db, orderId);
+  const leg = rec && R.legsOfRecord(rec)[legId];
+  if (leg && leg.kind === 'original' && leg.state === 'approved' && leg.role === 'surplus' && !leg.from_challenge) return { outcome: 'late_surplus', leg_id: legId };   // already surplus (an approval after a cancel / expiry): never placed
+  if (!leg || leg.kind !== 'original' || leg.state !== 'approved' || leg.role !== 'committed' || leg.from_challenge) return { outcome: 'refused', reason: 'leg_not_placeable', leg_id: legId };
+  const box = { won: false, same: false, demote: false };
   const decided = decision(await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
-    box.won = false;
+    box.won = false; box.same = false; box.demote = false;
     if (cur == null) return null;
-    if (cur.status !== 'pending_payment' || cur.payment_cancel || cur.payment_placed || F.markerFault(cur)) return undefined;
+    if (cur.payment_placed && cur.payment_placed.leg_id === legId && !F.markerFault(cur)) { box.same = true; return undefined; }
+    if (F.markerFault(cur)) return undefined;
+    if (cur.payment_cancel || cur.status === 'cancelled' || cur.payment_placed) { box.demote = true; return undefined; }
+    const dl = deadlineOf(cur, rec);
+    if (dl != null && deps.clock() >= dl) { box.demote = true; return undefined; }
+    if (cur.status !== 'pending_payment') return undefined;
     box.won = true;
     return { ...cur, payment_placed: { leg_id: legId, at: deps.clock() } };
   }), box);
-  if (decided.won) {
+  if (decided.won || box.same) {
     // go live through the shared materialization (ruling #9 A); a failure here is re-driven by the sweeper
-    try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk go-live deferred to the sweeper for ${orderId}: ${e && e.message}`); }
+    if (decided.won) { try { await deps.goLive(deps, orderId); } catch (e) { console.error(`sdk go-live deferred to the sweeper for ${orderId}: ${e && e.message}`); } }
     return { outcome: 'placed', leg_id: legId };
   }
-  // the order lost the race (expired / cancelled first): the approved hold is SURPLUS, never captured
-  await R.casRecord(deps.db, orderId, (rec) => { const l = R.legsOfRecord(rec)[legId]; if (!l || l.state !== 'approved') return undefined; l.role = 'surplus'; return rec; });
+  if (!box.demote) return { outcome: 'refused', reason: 'order_state', leg_id: legId };
+  // the order decided otherwise (cancelled / past the deadline / another leg placed it): the approved hold is SURPLUS, never captured
+  await R.casRecord(deps.db, orderId, (r) => { const l = R.legsOfRecord(r)[legId]; if (!l || l.state !== 'approved' || l.role === 'surplus') return undefined; l.role = 'surplus'; return r; });
   return { outcome: 'late_surplus', leg_id: legId };
 }
 
@@ -633,4 +690,4 @@ async function trackExpiry(deps, orderId) {
   }
 }
 
-module.exports = { consumeFulfilledRedemption, markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+module.exports = { decidePlacement, ppRef, consumeFulfilledRedemption, markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
