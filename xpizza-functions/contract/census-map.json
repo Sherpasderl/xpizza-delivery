@@ -424,7 +424,7 @@
   "catalog/review-diff.js#reviewDiff": "catalog",
   "catalog/review-diff.js#reviewDiff>anon": "catalog",
   "catalog/source-accounting.js#accountAuthored": "catalog",
-  "catalog/structure-budget.js#servedUpperBound": "catalog",
+  "catalog/structure-budget.js#servedParts": "catalog",
   "catalog/structure-gate.js#judge": "catalog",
   "catalog/publish-request.js#requestPublishCore": "catalog",
   "catalog/structure-budget.js#enforce": "catalog",

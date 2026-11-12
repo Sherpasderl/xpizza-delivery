@@ -45,7 +45,12 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     body.avail_identity = { field: require('../menu-pricing').availIdentityField('x_pizza', s.key_mode) };
     assert.ok(Object.keys(elig.public_deny).length, `${L}: premise — the deny lists are not empty`);
     const core = Buffer.byteLength(JSON.stringify(require('./identity-overlay').withServedItemKeys('x_pizza', body, null)));
-    assert.strictEqual(m.servedBytes - body.dishes.length * SB.PER_DISH_DECORATION - SB.HEADER_ALLOWANCE, core, `${L}: the bound's core is the complete composition`);
+    const parts = SB.servedParts({ rid: 'x_pizza', draft: d, elig, keyMode: s.key_mode });
+    assert.strictEqual(parts.core, core, `${L}: the bound's core is the complete composition`);
+    assert.strictEqual(m.servedBytes, parts.core + parts.photos + parts.identity + parts.header, `${L}: the bound is its measured parts`);
+    const legacy = require('./public-photos').buildPhotos({ items: d.items }, require('./public-photos').assetBaseFor('x_pizza', require('../platform-manifest').PLATFORM.sites) || '');
+    assert.ok(parts.photos >= Buffer.byteLength(JSON.stringify(legacy)), `${L}: the photos part covers the served legacy photos`);
+    assert.ok(parts.identity >= (body.dishes.length + body.extras.length) * 13, `${L}: the identity part counts every record`);
     assert.ok(core > bare + Buffer.byteLength(JSON.stringify(elig.public_deny)) / 2, `${L}: ${core} is well above the bare body ${bare}`);
     console.log(`      x_pizza at caps: bare body ${(bare / 1024).toFixed(1)} KiB → complete upper bound ${(m.servedBytes / 1024).toFixed(1)} KiB (limit 768)`);
   });
@@ -55,6 +60,39 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     const at = (limit) => SB.enforce({ rid: 'la_musa', source: s, draft: d, active: d, extrasCatalog: true, limits: { ...SB.LIMITS, servedBytes: limit } });
     assert.strictEqual(at(b).servedBytes, b, `${L}: at the limit`);
     refused(() => at(b - 1), 'structure_bytes', 'served');
+  });
+  // Codex build r2 #8: the decorations are MEASURED, not allowed for — a valid 300-dish menu with long relative photo paths (each served
+  // twice in the photos map and once on its dish record) is over 768 KiB served although its source is under 512 KiB
+  const longPhotos = () => { const s = clone(SCALE.la_musa); const img = Array.from({ length: 10 }, () => 'p'.repeat(90)).join('/') + '.webp'; for (const it of s.items) it.display.img = img; return s; };
+  await cell('SERVED-PHOTOS-MEASURED la_musa: long photo paths push the served response past 768 KiB — structure_bytes (served), the source is fine', (L) => {
+    const s = longPhotos();
+    assert.ok(Buffer.byteLength(JSON.stringify(s)) < SB.LIMITS.sourceBytes, `${L}: premise — the source is under its budget`);
+    refused(() => judge('la_musa', s), 'structure_bytes', 'served');
+  });
+  await cell('SERVED-PHOTOS-PUBLISH la_musa: the REAL owner publish refuses that menu (a price edit on it) and publishes nothing', async (L) => {
+    const rid = 'la_musa'; const live = longPhotos();
+    const draft = clone(live); draft.items[0].price += 1; draft.items[0].display.price = draft.items[0].price;
+    const L0 = buildSourceCandidate(rid, live); const D0 = buildSourceCandidate(rid, draft);
+    const liveDiff = { ...L0.built, extras: L0.inputs.extras }; const draftDiff = { ...D0.built, extras: D0.inputs.extras };
+    const diff = require('./review-diff').reviewDiff({ live: liveDiff, liveExtraRecords: L0.built.extras, draftBuilt: draftDiff, draftExtraRecords: D0.built.extras, extrasCatalog: true });
+    const T1 = '2026-11-11T11:00:00.000000Z';
+    const { issueEditToken, sha256 } = require('./catalog-edit');
+    const token = issueEditToken({ rid, baseActiveVersionId: 'v1', sourceUpdateTime: T1, sourceHash: sha256(draft), diff });
+    const publishes = [];
+    const r = await require('./publish-edited-handler').publishEditedCore({ db: {}, authorize: async () => ({ ok: true, uid: 'u', role: 'owner', actor: 'o@x.hn' }),
+      readActiveBuilt: async () => ({ built: liveDiff, versionId: 'v1', extraRecords: L0.built.extras }), readDraft: async () => ({ source: draft, updateTime: T1 }),
+      publishVersion: async (...a) => { publishes.push(a); return { versionId: 'v2', item_count: 0, extra_count: 0 }; } },
+    { restaurantId: rid, token, acknowledgedChanges: diff.largeChangeSet }, {});
+    assert.deepStrictEqual([r.status, r.body.error, r.body.field, publishes.length], [400, 'structure_bytes', 'served', 0], `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+  });
+  await cell('SERVED-VERSION-PHOTOS la_musa: every published-photo entry of the draft is counted at the longest bucket URL', (L) => {
+    const s = clone(SCALE.la_musa); const d = records('la_musa', s);
+    const elig = require('./extras-eligibility-store').buildEligibilityDoc(d);
+    const without = SB.servedUpperBound({ rid: 'la_musa', draft: d, elig, keyMode: s.key_mode });
+    const photos = Object.fromEntries(s.items.slice(0, 50).map((it, i) => [it.key, { state: 'pid', pid: i.toString(16).padStart(32, '0') }]));
+    const withP = SB.servedUpperBound({ rid: 'la_musa', draft: d, elig, keyMode: s.key_mode, photos });
+    const one = Buffer.byteLength(JSON.stringify({ x: { card: SB.publicUrlBound('la_musa', '0'.repeat(32), 'card'), hero: SB.publicUrlBound('la_musa', '0'.repeat(32), 'hero') } }));
+    assert.ok(withP - without >= 50 * (one - 10), `${L}: ${withP - without} ≥ 50 entries × ${one - 10}`);
   });
   await cell('CAPS-GROUPS: a 21st group is structure_caps (extra_categories)', () => {
     const s = allocate(XT.apply(SCALE.la_musa, { op: 'group.create', group: 'Grupo 20', extras: [{ ref: 'tmp:grp20-ex0-xx', name: 'Uno', price: 10 }], attach: { mode: 'none' } }).source);

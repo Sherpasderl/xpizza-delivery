@@ -44,6 +44,12 @@ function allocateExtras({ incoming, stored = null, activeExtras = [], activeItem
   if (!fresh.length) { if (source.extras && source.extras.some((e) => isObj(e) && typeof e.key === 'string' && !activeKeys.has(e.key))) judge(new Map()); return { source, allocated: [] }; }
   if (!switchOn) refuse('extras_catalog_not_supported_yet', 'adding extras is not available yet', { field: 'extras' });
 
+  // a fresh row supplies NOTHING the server allocates — no key, no UI id, no stamp — judged BEFORE the next id is counted, so a
+  // client-chosen id can never shift the allocation (Codex build r2 #1)
+  for (const e of fresh) {
+    const d = isObj(e.display) ? e.display : {};
+    if ('id' in d || 'identity_id' in d) refuse('client_supplied_key', 'a new extra cannot carry an id or a stamp the server did not allocate', { ref: typeof e.ref === 'string' ? e.ref : null, field: 'id' in d ? 'id' : 'identity_id' });
+  }
   const takenKeys = new Set(extras.filter((e) => typeof e.key === 'string').map((e) => e.key));
   const takenIds = new Set(extras.filter((e) => isObj(e.display) && e.display.id != null).map((e) => String(e.display.id)));
   const refs = new Set(); const refOf = new Map();

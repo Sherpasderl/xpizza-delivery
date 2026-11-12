@@ -31,25 +31,41 @@ function opsOf(draft, active) {
   return ops;
 }
 
-// Codex build r1 P2-8 — the COMPLETE served response, bounded from above before any write: the composed body WITH its public extras
-// eligibility (the deny lists the endpoint serves) and its item_keys map, exactly as the endpoint builds them, plus a fixed allowance per
-// served dish for the decorations read at serve time (photo URLs, identity fields: measured ≤ 400 bytes, allowed 768) and a fixed header
-// allowance (avail_identity, versions). Over-counting is the safe side.
-const PER_DISH_DECORATION = 768; const HEADER_ALLOWANCE = 4096;
-function servedUpperBound({ rid, draft, elig, keyMode }) {
+// Codex build r1 P2-8 / r2 #8 — the COMPLETE served response, bounded from above before any write, every part MEASURED from the draft:
+//   · the endpoint's composition (composeServedMenu) with what buildPublicMenu attaches after it — the version's public extras
+//     eligibility and avail_identity — and the item_keys map (identity-overlay withServedItemKeys)
+//   · the photos map: the legacy entries EXACTLY as served (public-photos buildPhotos over the restaurant's real asset base), plus every
+//     published-photo entry of the draft photo map at the LONGEST public URL (a bucket name may be 222 characters)
+//   · the identity decorations: each served dish's dish_id and each extra's extra_id, at the longer of its key and a minted id
+//   · a fixed header allowance (versions and envelope fields). Over-counting is the safe side; nothing is a per-dish guess.
+const HEADER_ALLOWANCE = 4096; const BUCKET_MAX = 222; const MINTED_ID_MAX = 32;
+const publicUrlBound = (rid, pid, kind) => `https://storage.googleapis.com/${'b'.repeat(BUCKET_MAX)}/photos/${rid}/${pid}-${kind}.webp`;
+function servedParts({ rid, draft, elig, keyMode, photos = null }) {
   const PM = require('./public-menu');
   const body = PM.composeServedMenu(rid, { items: draft.items, structure: draft.structure || {}, extras: draft.extras, keyMode });
   // what buildPublicMenu attaches after composing (catalog/public-menu.js:228): the version's public eligibility and avail_identity
   body.extras_eligibility = { version: elig.version, deny: elig.public_deny };
   body.avail_identity = { field: require('../menu-pricing').availIdentityField(rid, keyMode) };
   const withKeys = require('./identity-overlay').withServedItemKeys(rid, body, null);
-  const dishes = Array.isArray(body && body.dishes) ? body.dishes.length : (draft.items || []).length;
-  return bytes(withKeys) + dishes * PER_DISH_DECORATION + HEADER_ALLOWANCE;
+  const PP = require('./public-photos');
+  const base = PP.assetBaseFor(rid, require('../platform-manifest').PLATFORM.sites);
+  const legacy = base ? PP.buildPhotos({ items: draft.items || [] }, base) : {};
+  const idOf = new Map((draft.items || []).filter((it) => it && it.display && it.display.id != null).map((it) => [it.key, String(it.display.id)]));
+  let photoBytes = bytes(legacy) + 12;   // ,"photos":{}
+  for (const [key, e] of Object.entries(photos && typeof photos === 'object' ? photos : {})) {
+    if (!e || e.state !== 'pid' || typeof e.pid !== 'string') continue;
+    photoBytes += bytes({ [idOf.get(key) || key]: { card: publicUrlBound(rid, e.pid, 'card'), hero: publicUrlBound(rid, e.pid, 'hero') } });
+  }
+  let identityBytes = 0;
+  for (const r of Array.isArray(body.dishes) ? body.dishes : []) identityBytes += 13 + Math.max(MINTED_ID_MAX, bytes(String(r && (r.key !== undefined ? r.key : r.id))));
+  for (const r of Array.isArray(body.extras) ? body.extras : []) identityBytes += 14 + Math.max(MINTED_ID_MAX, bytes(String(r && (r.key !== undefined ? r.key : r.id))));
+  return { core: bytes(withKeys), photos: photoBytes, identity: identityBytes, header: HEADER_ALLOWANCE };
 }
+function servedUpperBound(args) { const p = servedParts(args); return p.core + p.photos + p.identity + p.header; }
 
 // rid, source (the draft as it will be stored), draft / active: the built RECORDS { items, extras, structure }. Returns the measurements
 // (null when the switch is off); throws AddProductError structure_caps / structure_bytes { field }.
-function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS }) {
+function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS, photos = undefined }) {
   if (!extrasCatalog) return null;
   const st = draft.structure || {};
   // T21 (§1.3 DERIVED-CLAIM-EXACT): under the switch compareToActive CLAIMS the two maps (they move with every attach / detach), so the
@@ -71,9 +87,9 @@ function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS })
   const elig = require('./extras-eligibility-store').buildEligibilityDoc({ items: draft.items, extras: draft.extras, structure: st });
   const eligibilityBytes = bytes(elig);
   if (eligibilityBytes > limits.eligibilityBytes) refuse('structure_bytes', 'eligibility', `the extras rules would be ${Math.ceil(eligibilityBytes / 1024)} KiB (at most ${limits.eligibilityBytes / 1024})`);
-  const servedBytes = servedUpperBound({ rid, draft, elig, keyMode: source && source.key_mode });
+  const servedBytes = servedUpperBound({ rid, draft, elig, keyMode: source && source.key_mode, photos: photos !== undefined ? photos : (source && source.photos) });
   if (servedBytes > limits.servedBytes) refuse('structure_bytes', 'served', `the served menu would be ${Math.ceil(servedBytes / 1024)} KiB (at most ${limits.servedBytes / 1024})`);
   return { ops, sourceBytes, eligibilityBytes, servedBytes };
 }
 
-module.exports = { enforce, opsOf, servedUpperBound, LIMITS, PER_DISH_DECORATION, HEADER_ALLOWANCE };
+module.exports = { enforce, opsOf, servedUpperBound, servedParts, publicUrlBound, LIMITS, HEADER_ALLOWANCE };

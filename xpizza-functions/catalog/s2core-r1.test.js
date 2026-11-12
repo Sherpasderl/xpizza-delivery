@@ -184,6 +184,64 @@ const groupOf = (rid) => buildSourceFromCode(rid).structure.extra_categories[0];
       assert.ok(plain.status === 200 && !('extraRefs' in plain.body), `${L}: today's save body is unchanged`);
     });
   }
+  // r2 #1: a fresh tmp-ref row supplies NO id — refused before the next id is counted (it would otherwise shift the allocation)
+  for (const rid of ['x_pizza', 'la_musa']) {
+    await cell(`R2-1-FRESH-ID ${rid}: a tmp-ref extra carrying display.id is client_supplied_key, and the allocation is not shifted`, async (L) => {
+      H.SW.extrasCatalog = true;
+      const r = await H.world(rid).save((d) => { d.extras.push({ ref: 'tmp:fresh-id-0001', price: 20, display: { id: rid === 'la_musa' ? 'sneaky_id' : 'e9000', name: 'Con Id', cat: d.structure.extra_categories[0], price: 20 } }); });
+      assert.deepStrictEqual([r.status, r.body.error, r.body.ref], [400, 'client_supplied_key', 'tmp:fresh-id-0001'], `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+      if (rid === 'x_pizza') {
+        const ok2 = await H.world(rid).save((d) => { d.extras.push({ ref: 'tmp:fresh-ok-0001', price: 20, display: { name: 'Sin Id', cat: d.structure.extra_categories[0], price: 20 } }); });
+        const ids = buildSourceFromCode(rid).extras.map((e) => Number(String(e.display.id).slice(1)));
+        assert.strictEqual(ok2.body.source.extras.find((e) => e.display.name === 'Sin Id').display.id, `e${Math.max(...ids) + 1}`, `${L}: the next id follows today's ids only`);
+      }
+    });
+  }
+  // r2 #3: PRESENCE is a change (an added `x: null` is not absence), and a fresh row's unknown field is accounted before allocation
+  for (const rid of ['x_pizza', 'la_musa']) {
+    for (const [tag, mutate, path] of [
+      ['TOP-NULL', (d) => { d.tb_unknown = null; }, 'tb_unknown'],
+      ['ROW-NULL', (d) => { d.items[0].tb_row = null; }, `items.${buildSourceFromCode(rid).items[0].key}.tb_row`],
+      ['FRESH-ROW-FIELD', (d) => { d.extras.push({ ref: 'tmp:fresh-row-0001', price: 20, tb_row: 1, display: { name: 'Fila Rara', cat: d.structure.extra_categories[0], price: 20 } }); }, 'extras.tmp:fresh-row-0001.tb_row'],
+    ]) {
+      await cell(`R2-3-${tag} ${rid}: refused structure_unexplained (${path})`, async (L) => {
+        H.SW.extrasCatalog = true;
+        const r = await H.world(rid).save(mutate);
+        assert.deepStrictEqual([r.status, r.body.error, r.body.field], [400, 'structure_unexplained', path], `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+      });
+    }
+  }
+  // r2 #4: the writer's own cleanup is legitimate even when the group is already offered (no membership delta); a partial or unrelated
+  // cleanup is still refused (S1 OFF)
+  {
+    const XT = require('./exposure-transitions');
+    const via = (op) => (d) => { const t = XT.apply(d, op).source; Object.keys(d).forEach((x) => delete d[x]); Object.assign(d, t); };
+    const salsas = buildSourceFromCode('la_musa').extras.filter((e) => e.display.cat === 'Salsas').map((e) => e.key);
+    const liveWith = (ov) => { const l = buildSourceFromCode('la_musa'); l.structure.exposure.item_overrides.dimsum_01 = ov; return l; };
+    for (const [tag, ov, op, want] of [
+      ['ATTACH-INHERITED-UNTICKED', { deny_extras: [salsas[0]] }, { op: 'attach.item', item: 'dimsum_01', group: 'Salsas' }, [200]],
+      ['ATTACH-CAT-LEGACY-SINGLE', { deny: [salsas[0]] }, { op: 'attach.cat', cat: 'dim_sum', group: 'Salsas' }, [200]],
+      ['ATTACH-ITEM-LEGACY-SINGLE', { deny: [salsas[0]] }, { op: 'attach.item', item: 'dimsum_01', group: 'Salsas' }, [200]],
+    ]) {
+      await cell(`R2-4-${tag} la_musa: the writer's cleanup saves (S1 OFF)`, async (L) => {
+        H.SW.extrasCatalog = true; H.SW.extrasAuthoring = false;
+        const r = await H.world('la_musa', { live: liveWith(ov) }).save(via(op));
+        assert.deepStrictEqual([r.status], want, `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+        assert.strictEqual(r.body.source.structure.exposure.item_overrides.dimsum_01, undefined, `${L}: the dish's Salsas entries are all gone`);
+      });
+    }
+    for (const [tag, ov, mutate, code] of [
+      ['PARTIAL-UNTICK', { deny_extras: [salsas[0], salsas[1]] }, (d) => { d.structure.exposure.item_overrides.dimsum_01 = { deny_extras: [salsas[1]] }; }, 'extras_not_supported_yet'],
+      ['PARTIAL-SINGLE', { deny: [salsas[0], salsas[1]] }, (d) => { d.structure.exposure.item_overrides.dimsum_01 = { deny: [salsas[1]] }; }, 'structure_changed'],
+      ['UNOFFERED-CLEAR', { deny: ['Salsas'], deny_extras: [salsas[0]] }, (d) => { d.structure.exposure.item_overrides.dimsum_01 = { deny: ['Salsas'] }; }, 'extras_not_supported_yet'],
+    ]) {
+      await cell(`R2-4-NOT-${tag} la_musa: an unrelated cleanup is still refused (${code})`, async (L) => {
+        H.SW.extrasCatalog = true; H.SW.extrasAuthoring = false;
+        const r = await H.world('la_musa', { live: liveWith(ov) }).save(mutate);
+        assert.deepStrictEqual([r.status, r.body.error], [400, code], `${L}: ${JSON.stringify(r.body).slice(0, 200)}`);
+      });
+    }
+  }
   await cell('R1-P1-2-ONE-PREDICATE: the server judges labels with the capp serializer\'s OWN predicate (a byte copy), and every label it accepts serializes', (L) => {
     const fs = require('fs'); const path = require('path');
     const capp = path.join(__dirname, '..', '..', 'customer-app', 'capp-serialize.js');

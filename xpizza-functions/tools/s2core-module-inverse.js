@@ -17,7 +17,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "  let extraRefs = {}; let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; extraRefs = xa.refs || {}; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)\n",
+  "now": "  try { require('./source-accounting').accountLeaves({ next: candidate, stored }); } catch (e) { if (e instanceof AP.AddProductError) return refusal(e); throw e; } let extraRefs = {}; let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; extraRefs = xa.refs || {}; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)\n",
   "was": "  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds\n"
  },
  {
@@ -27,7 +27,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims\n    }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §4: caps + byte budgets, before the write\n",
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims\n    }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, photos: photoMap });   // S2-core §4: caps + byte budgets, before the write\n",
   "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n    });\n"
  },
  {

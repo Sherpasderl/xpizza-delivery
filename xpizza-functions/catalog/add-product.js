@@ -634,8 +634,9 @@ function samePhotoStates(a, b) {
    TRANSITION, never as a whole object. Exactly these changes are explained (exposure-transitions.js writes nothing else):
      · category_allow[C] GAINS a group (attach.cat, group.create «A toda una categoría»); nothing ever leaves a category's list
      · a dish's add / deny gains or loses a GROUP entry (attach.item / detach.item) — on a plain dish or a launcher, never an option
-     · the op's own cleanup: a single-extra add / deny entry, or an unticked extra (deny_extras), LEAVES a dish when its extra was removed
-       or its group was attached / detached on that dish (directly or through its category) — whatever S1's switch says
+     · the op's own cleanup: a single-extra add / deny entry, or an unticked extra (deny_extras), LEAVES a dish when its extra was removed,
+       its group was attached / detached on that dish (directly or through its category), or the dish is left with NO per-extra entry of
+       that group while offering it (the writer's attach over an already-offered group) — whatever S1's switch says
      · deny_extras GROWS only with S1's per-dish authoring on (extras_not_supported_yet otherwise)
    Anything else — a new single-extra or '*' entry, an entry leaving for no op, an option's override, an unknown override field — is
    structure_changed. */
@@ -668,14 +669,21 @@ function s2ExposureClaims({ dx, ax, draftBuilt, activeBuilt, extrasAuthoring }) 
     if (!sameJson(without(a, ['add', 'deny', 'deny_extras']), without(d, ['add', 'deny', 'deny_extras']))) bad('item_overrides');
     const touched = new Set(gained.get(String(it.display.cat)) || []);
     for (const f of ['add', 'deny']) { const A = list(a[f]); const D = list(d[f]); for (const v of [...A, ...D]) if (groups.has(v) && (A.includes(v) !== D.includes(v))) touched.add(v); }
+    // the writer's attach (item or category) clears EVERY per-extra entry of the group on the dish and leaves it offered — even when the
+    // group was already offered (no membership delta: Codex build r2 #4); a partial clearing, or one leaving the group unoffered, is not
+    // a writer transition
+    const dca2 = list(dca[String(it.display.cat)]);
+    const offeredAfter = (g) => (dca2.includes(g) || list(d.add).includes(g)) && !list(d.deny).includes(g) && !list(d.deny).includes('*');
+    const clearedOffered = (g) => !!g && offeredAfter(g) && ![...list(d.add), ...list(d.deny), ...list(d.deny_extras)].some((v) => !groups.has(v) && catOfKey.get(v) === g);
+    const cleanup = (v) => removedExtra(v) || touched.has(catOfKey.get(v)) || clearedOffered(catOfKey.get(v));
     for (const f of ['add', 'deny']) {
       const A = list(a[f]); const D = list(d[f]);
       for (const v of D) if (!A.includes(v) && !groups.has(v)) bad('item_overrides');   // a new single-extra or '*' entry
-      for (const v of A) if (!D.includes(v) && !groups.has(v) && !(removedExtra(v) || touched.has(catOfKey.get(v)))) bad('item_overrides');
+      for (const v of A) if (!D.includes(v) && !groups.has(v) && !cleanup(v)) bad('item_overrides');
     }
     const A = list(a.deny_extras); const D = list(d.deny_extras);
     if (D.some((v) => !A.includes(v)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
-    for (const v of A) if (!D.includes(v) && !extrasAuthoring && !(removedExtra(v) || touched.has(catOfKey.get(v)))) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    for (const v of A) if (!D.includes(v) && !extrasAuthoring && !cleanup(v)) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
   }
 }
 
