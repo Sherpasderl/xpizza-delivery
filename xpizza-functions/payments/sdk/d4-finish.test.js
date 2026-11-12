@@ -82,7 +82,8 @@ const snap = (w) => JSON.stringify(w.db.root);
     const w = world({ seed: { orders: { [OID]: { ...pending({ customer_uid: 'uid_A', total_cents: 10000 }), payment_flow: 'sdk_auth_v1', pay_deadline_at: T0 + 9e5, payment_fingerprint: 'fp_cart_1' } } }, script: { authorize: [{ outcome: 'approved' }] } });
     await FINISH(w, { pendingOrderRecord: pending({ customer_uid: 'uid_A', total_cents: 12345 }), runGate: async (cents) => { gated = cents; return { refuse: null, provenance: null }; } });
     assert.strictEqual(gated, 10000, `${L}: the gate runs at the STORED order's total (a reused order keeps its stored economics)`);
-    assert.strictEqual(w.fake.calls.find((c) => c.action === 'authorize').amount_cents, 10000, `${L}: the attempt is charged the STORED total, never the request's`);
+    const auth = w.fake.calls.find((c) => c.action === 'authorize');
+    assert.ok(auth && auth.amount_cents === 10000, `${L}: the attempt is charged the STORED total, never the request's (${JSON.stringify(auth)})`);
   });
 
   await cell('SDK-D4-CREATE-ONCE-CONFLICTS', async (L) => {
