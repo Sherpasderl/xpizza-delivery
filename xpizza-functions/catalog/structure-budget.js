@@ -38,7 +38,10 @@ function opsOf(draft, active) {
 const PER_DISH_DECORATION = 768; const HEADER_ALLOWANCE = 4096;
 function servedUpperBound({ rid, draft, elig, keyMode }) {
   const PM = require('./public-menu');
-  const body = PM.composeServedMenu(rid, { items: draft.items, structure: draft.structure || {}, extras: draft.extras, keyMode, eligibility: { version: elig.version, deny: elig.public_deny } });
+  const body = PM.composeServedMenu(rid, { items: draft.items, structure: draft.structure || {}, extras: draft.extras, keyMode });
+  // what buildPublicMenu attaches after composing (catalog/public-menu.js:228): the version's public eligibility and avail_identity
+  body.extras_eligibility = { version: elig.version, deny: elig.public_deny };
+  body.avail_identity = { field: require('../menu-pricing').availIdentityField(rid, keyMode) };
   const withKeys = require('./identity-overlay').withServedItemKeys(rid, body, null);
   const dishes = Array.isArray(body && body.dishes) ? body.dishes.length : (draft.items || []).length;
   return bytes(withKeys) + dishes * PER_DISH_DECORATION + HEADER_ALLOWANCE;
@@ -73,4 +76,4 @@ function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS })
   return { ops, sourceBytes, eligibilityBytes, servedBytes };
 }
 
-module.exports = { enforce, opsOf, servedUpperBound, LIMITS };
+module.exports = { enforce, opsOf, servedUpperBound, LIMITS, PER_DISH_DECORATION, HEADER_ALLOWANCE };

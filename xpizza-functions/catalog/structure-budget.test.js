@@ -38,7 +38,15 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     const elig = require('./extras-eligibility-store').buildEligibilityDoc(d);
     const bare = Buffer.byteLength(JSON.stringify(require('./public-menu').composeServedMenu('x_pizza', d)));
     const m = judge('x_pizza', s);
-    assert.ok(m.servedBytes >= bare + Buffer.byteLength(JSON.stringify(elig.public_deny)), `${L}: ${m.servedBytes} covers ${bare} + the deny lists`);
+    // the measured CORE (the bound minus its fixed allowances) is exactly the endpoint's composition WITH the public eligibility and item_keys
+    // the endpoint's own sequence (catalog/public-menu.js buildPublicMenu): compose, then attach the version's public eligibility and avail_identity
+    const body = require('./public-menu').composeServedMenu('x_pizza', { ...d, keyMode: s.key_mode });
+    body.extras_eligibility = { version: elig.version, deny: elig.public_deny };
+    body.avail_identity = { field: require('../menu-pricing').availIdentityField('x_pizza', s.key_mode) };
+    assert.ok(Object.keys(elig.public_deny).length, `${L}: premise — the deny lists are not empty`);
+    const core = Buffer.byteLength(JSON.stringify(require('./identity-overlay').withServedItemKeys('x_pizza', body, null)));
+    assert.strictEqual(m.servedBytes - body.dishes.length * SB.PER_DISH_DECORATION - SB.HEADER_ALLOWANCE, core, `${L}: the bound's core is the complete composition`);
+    assert.ok(core > bare + Buffer.byteLength(JSON.stringify(elig.public_deny)) / 2, `${L}: ${core} is well above the bare body ${bare}`);
     console.log(`      x_pizza at caps: bare body ${(bare / 1024).toFixed(1)} KiB → complete upper bound ${(m.servedBytes / 1024).toFixed(1)} KiB (limit 768)`);
   });
   await cell('SERVED-BOUNDARY: a served bound exactly AT the limit passes; one byte over is structure_bytes (served)', (L) => {
