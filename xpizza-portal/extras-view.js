@@ -346,7 +346,7 @@ export function renderAttachSheet(modal, v, on) {
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = r.have || r.checked; cb.disabled = r.have; cb.dataset.k = `xat:${r.group}`;
     cb.addEventListener('change', () => on.toggle(r.group, cb.checked));
     const nm = el('span', 'ogname', r.group); nm.append(el('span', 'ogsub', r.have ? 'Ya está en este producto' : r.extras));
-    row.append(cb, nm, el('span', 'mk-ogn', r.reach === null ? '' : enProductos(r.reach)));
+    row.append(cb, nm, el('span', 'mk-ogn', r.reach === null ? '' : `${enProductos(r.reach)}${r.section ? ` · ${r.section}` : ''}`));
     list.append(row);
     if (!r.have && !first) first = cb;
   }
@@ -359,7 +359,8 @@ export function renderAttachSheet(modal, v, on) {
   const n = v.rows.filter((r) => r.checked && !r.have).length;
   const cancel = el('button', 'btn ghost', 'Cancelar'); cancel.type = 'button'; cancel.dataset.k = 'xat:cancel';
   cancel.addEventListener('click', () => on.cancel());
-  const add = el('button', 'btn accent', `Agregar ${n} ${n === 1 ? 'grupo' : 'grupos'}`); add.type = 'button'; add.disabled = n === 0; add.dataset.k = 'xat:add';
+  // advisor 11-12: at 0 the button is off and reads «Agregar grupos» — never «Agregar 0 grupos»
+  const add = el('button', 'btn accent', n === 0 ? 'Agregar grupos' : `Agregar ${n} ${n === 1 ? 'grupo' : 'grupos'}`); add.type = 'button'; add.disabled = n === 0; add.dataset.k = 'xat:add';
   add.addEventListener('click', () => on.add());
   mf.append(cancel, add);
   modal.replaceChildren(mh, mb, mf);

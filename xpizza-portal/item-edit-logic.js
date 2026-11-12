@@ -270,9 +270,30 @@ export function attachSheet(draft, s) {
   const reach = new Map(extrasPageModel(draft).rail.map((r) => [r.group, r.reach]));
   const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
   const xs = Array.isArray(src.extras) ? src.extras.filter((e) => e && e.display) : [];
+  // «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «· Pastas»): the section name ONLY when every product using the group
+  // (the reach rule: launchers whose effective groups include it, on the draft) sits in ONE section — data, never a new string
+  const users = new Map();
+  if (X && E) {
+    try {
+      const P = E.projectEligibility(src), eff = X.effectiveGroups(P);
+      for (const [k, gs] of Object.entries(eff)) {
+        if (P.items[k].launcherKey || !Array.isArray(gs)) continue;
+        const row = (src.items || []).find((r) => r && r.key === k);
+        if (!row || !row.display) continue;
+        for (const g of gs) { if (!users.has(g)) users.set(g, new Set()); users.get(g).add(String(row.display.cat)); }
+      }
+    } catch (_) { users.clear(); }
+  }
+  const cats = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : [];
+  const sectionOf = (g) => {
+    const set = users.get(g);
+    if (!set || set.size !== 1) return null;
+    const id = [...set][0]; const c = cats.find((x) => String(x.id) === id);
+    return c && typeof c.name === 'string' && c.name.trim() ? c.name : null;
+  };
   return {
     canAdd: !refused, reason: refusalReason(refused),
-    rows: groups.map((g) => ({ group: g, extras: xs.filter((e) => String(e.display.cat) === g).map((e) => e.display.name).join(' \u00b7 '), reach: reach.has(g) ? reach.get(g) : null, have: mine.includes(g) })),
+    rows: groups.map((g) => ({ group: g, extras: xs.filter((e) => String(e.display.cat) === g).map((e) => e.display.name).join(' \u00b7 '), reach: reach.has(g) ? reach.get(g) : null, section: sectionOf(g), have: mine.includes(g) })),
   };
 }
 

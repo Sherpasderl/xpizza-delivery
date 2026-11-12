@@ -363,3 +363,15 @@ test('B — attachSheet is a PURE reader (the wiring guards rule it so): a deep-
   assert.doesNotThrow(() => IE.attachSheet(d, s), 'no write into a frozen draft or copy');
   assert.equal(JSON.stringify([d, s]), before, 'the draft and the copy are byte-identical after');
 });
+test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «· Pastas»): the section ONLY when every product using the group sits in ONE section; mixed ⇒ none', () => {
+  const d = createDraft(seed('la_musa'));
+  const src = draftSource(d);
+  const P = EE.projectEligibility(src), E = XT.effectiveGroups(P);
+  const sectionsOf = (g) => new Set(Object.keys(E).filter((k) => !P.items[k].launcherKey && (E[k] || []).includes(g)).map((k) => String(src.items.find((r) => r.key === k).display.cat)));
+  const rows = IE.attachSheet(d, drawer(d, 'dimsum_01')).rows;
+  const one = rows.find((r) => sectionsOf(r.group).size === 1), mixed = rows.find((r) => sectionsOf(r.group).size > 1);
+  assert.ok(one && mixed, 'non-vacuity: both cases in the seed');
+  const cat = [...sectionsOf(one.group)][0];
+  assert.equal(one.section, src.structure.categories.find((c) => String(c.id) === cat).name, 'one section ⇒ its name');
+  assert.equal(mixed.section, null, 'mixed sections ⇒ no suffix');
+});

@@ -1490,7 +1490,7 @@ test('S2 B — the dish action «Agregar grupo de extras» sits under the cards,
   await q.signIn(); await q.open('dimsum_01');
   assert.equal(q.drawer().querySelector('.mk-adds'), null, 'no dish action without extrasCatalog');
 });
-test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · elegí los grupos que ya tenés»; EXISTING groups in the ONE order, extras joined «·», «en N productos»; the dish’s own checked + inert «Ya está en este producto»; «Agregar 0 grupos» off', async () => {
+test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · elegí los grupos que ya tenés»; EXISTING groups in the ONE order, extras joined «·», «en N productos»; the dish’s own checked + inert «Ya está en este producto»; «Agregar grupos» off at 0; «Agregar 1 grupo» / «Agregar N grupos»; « · {sección}» only for ONE section', async () => {
   const p = await page({ read: XON });
   const m = await openB(p);
   assert.ok(m, 'the sheet is open');
@@ -1504,10 +1504,22 @@ test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · eleg�
     const have = r.classList.contains('have');
     assert.deepEqual([cb.checked, cb.disabled], [have, have], `${g}: the dish’s own is checked and inert`);
     assert.equal(r.querySelector('.ogsub').textContent, have ? 'Ya está en este producto' : src.extras.filter((e) => e.display.cat === g).map((e) => e.display.name).join(' · '), `${g}: its line`);
-    assert.match(r.querySelector('.mk-ogn').textContent, /^en \d+ productos?$/, `${g}: «en N productos»`);
+    assert.match(r.querySelector('.mk-ogn').textContent, /^en \d+ productos?( \u00b7 .+)?$/, `${g}: «en N productos»`);
   }
   assert.ok(bRows(p).some((r) => r.classList.contains('have')) && bRows(p).some((r) => !r.classList.contains('have')), 'non-vacuity: both kinds');
-  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar 0 grupos', true], 'off at 0');
+  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar grupos', true], 'off at 0, without a number');
+  const free = bRows(p).filter((r) => !r.classList.contains('have'));
+  for (const [i, want] of [[0, 'Agregar 1 grupo'], [1, 'Agregar 2 grupos']]) {
+    if (!free[i]) break;
+    const c = bRows(p).find((r) => r.querySelector('.ogname').firstChild.textContent === free[i].querySelector('.ogname').firstChild.textContent).querySelector('input');
+    c.checked = true; c.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+    assert.deepEqual([bGo(p).textContent, bGo(p).disabled], [want, false], `${want}`);
+  }
+  // «· {sección}» (advisor 11-12): Proteínas is used by ONE section (rice) ⇒ its name; Salsas spans many ⇒ none (the logic cell pins
+  // the rule against an independent oracle; this pins the DOM)
+  const rice = src.structure.categories.find((c) => String(c.id) === 'rice').name;
+  assert.equal(bRow(p, 'Proteínas').querySelector('.mk-ogn').textContent, `en 1 producto \u00b7 ${rice}`, 'one section ⇒ « · {sección}»');
+  assert.match(bRow(p, 'Salsas').querySelector('.mk-ogn').textContent, /^en \d+ productos$/, 'mixed sections ⇒ none');
   assert.equal(p.d.activeElement, bRows(p).find((r) => !r.classList.contains('have')).querySelector('input'), 'focus on the first group to pick');
   assert.equal(m.querySelector('.mk-nogroup .mk-lnk').textContent, 'Crealo en Extras');
 });
