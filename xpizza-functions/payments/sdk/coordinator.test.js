@@ -1202,6 +1202,18 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const legacy = { pp_uuid: a.uuid, amount_cents: 100 };
     assert.deepStrictEqual([boundStatus(fakeEv, verified), boundStatus(fakeEv, legacy)], [boundStatus(realEv, verified), boundStatus(realEv, legacy)], `${L}: the fake default binds like production (verified ⇒ bound, legacy ⇒ unbound); fake ${JSON.stringify(fakeEv)}`);
   });
+  await cell('SDK-D4-STORED-TOTAL', async (L) => {
+    // CORE-Δ row 20 (PLAN-sdk-d4-r11 §A4): placeOriginal charges ONLY the stored order total — any other amount is refused before
+    // any record, journal or PSP call
+    for (const amt of [9999, 10001, 1]) {
+      const w = world({ seed: { orders: { [OID]: order({ total_cents: 10000 }) } } });
+      const r = await C().placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_stored_total_0001', token: 'T', amount_cents: amt });
+      assert.ok(r.outcome === 'refused' && r.reason === 'amount_mismatch' && w.fake.callCount('authorize') === 0 && w.rec() == null, `${L}: ${amt} ≠ the stored 10000 ⇒ refused amount_mismatch, zero PSP calls, no record (got ${JSON.stringify(r)})`);
+    }
+    const w = world({ seed: { orders: { [OID]: order({ total_cents: 10000 }) } } });
+    const ok = await C().placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_stored_total_0002', token: 'T', amount_cents: 10000 });
+    assert.ok(ok.outcome !== 'refused' && w.fake.callCount('authorize') === 1, `${L}: the stored total ⇒ dispatched (got ${JSON.stringify(ok)})`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
