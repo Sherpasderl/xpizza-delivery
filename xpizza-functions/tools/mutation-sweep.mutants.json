@@ -4026,8 +4026,8 @@
   "slice": "c5",
   "label": "a failed acquire mints nothing but is treated as ours to gate",
   "file": "hosted-charge-flow.js",
-  "from": "  if (acq.outcome !== 'claimed') {\n    await releaseHold();                       // abandoned: no fresh attempt minted",
-  "to": "  if (false) {\n    await releaseHold();",
+  "from": " if (acq.outcome !== 'claimed') {   // envío limit r5 §2.4: the acquire BACKSTOP (an order-state race) — owned hold only, own stamps removed; never the generic 503\n    await releaseHold();                       // abandoned: no fresh attempt minted",
+  "to": " if (false) {\n    await releaseHold();",
   "command": [
    "node",
    "hosted-charge-flow.test.js"
@@ -23329,8 +23329,8 @@
   "slice": "s2tip",
   "label": "createOrder no longer threads the tip into deliveryFor",
   "file": "index.js",
-  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); const priceBreakdown",
-  "to": "pricingP: dpP, app: DW.isApp(body) }); const priceBreakdown",
+  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); { const early",
+  "to": "pricingP: dpP, app: DW.isApp(body) }); { const early",
   "command": [
    "npm",
    "run",
@@ -23346,8 +23346,8 @@
   "slice": "s2tip",
   "label": "chargeOnlineOrder no longer threads the tip into deliveryFor",
   "file": "index.js",
-  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now());",
-  "to": "pricingP: dpP, app: DW.isApp(body) }), body, Date.now());",
+  "from": "pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP);",
+  "to": "pricingP: dpP, app: DW.isApp(body) }), body, Date.now(), dpP);",
   "command": [
    "npm",
    "run",
@@ -23569,8 +23569,8 @@
   "slice": "s2tip",
   "label": "the quote reads coverage before the invalid-config refusal (TypeError → 500)",
   "file": "delivery/delivery-wire.js",
-  "from": "  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, identity, body);",
-  "to": "  const maxKm = coverageKm(lp.pricing, identity, body);",
+  "from": "  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, rid, body);",
+  "to": "  const maxKm = coverageKm(lp.pricing, rid, body);",
   "command": [
    "node",
    "s2tip.test.js"
