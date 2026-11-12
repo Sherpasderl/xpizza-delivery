@@ -17,12 +17,14 @@ async function assertActivationChoices(db, rid, targetVersionId, expected) {
   const baseId = expected && typeof expected.activeVersionId === 'string' ? expected.activeVersionId : null;
   if (!baseId || baseId === targetVersionId) return;   // a first publish has no version to replace (the flip's own refusals apply)
   // THE SHAPE RULE — UNGATED (advisor 11-12: a fix of a live hole; a deliberate OFF-behaviour change). Two small reads (each version's own
-  // structure document); it refuses ONLY a target with no variant_items over a replaced version that has the field — never a restaurant whose
-  // versions never had it, never a version that keeps variant_items: {} after its groups were removed.
+  // structure document); it refuses ONLY a target with no variant_items over a replaced version whose groups map is NON-EMPTY (groups a frozen form may have
+  // retained) — never a never-grouped restaurant, never a version that keeps variant_items: {}, never {} → absent (nothing retained to orphan).
   const structureOf = (v) => db.collection('restaurants').doc(rid).collection('versions').doc(v).collection('meta').doc('menu_structure').get();
   const [bs, ts] = await Promise.all([structureOf(baseId), structureOf(targetVersionId)]);
-  const own = (snap, k) => !!(snap && snap.exists) && Object.prototype.hasOwnProperty.call(snap.data() || {}, k);
-  if (own(bs, 'variant_items') && ts && ts.exists && !own(ts, 'variant_items')) {
+  const data = (snap) => (snap && snap.exists ? (snap.data() || {}) : null);
+  const b0 = data(bs); const t0 = data(ts);
+  const liveGroups = !!b0 && b0.variant_items && typeof b0.variant_items === 'object' && Object.keys(b0.variant_items).length > 0;   // groups a form may RETAIN
+  if (liveGroups && t0 && !Object.prototype.hasOwnProperty.call(t0, 'variant_items')) {
     throw new AddProductError('choice_groups_would_vanish', 'this version has no choice groups at all, while the live menu does — it cannot replace it (publish a version that keeps them)', { status: 409, field: 'choices' });
   }
   if (!require('./platform-structure').structureCapabilities().choiceEdit) return;   // the classifier: choiceEdit ON only
