@@ -16,9 +16,9 @@ const T0 = 1_000_000;
 const PREV = 'sdk_261112-101500-PREVAAAA';
 const UNRESOLVED = { status: 409, body: { error: 'previous_payment_unresolved' } };
 const sdkOrder = (o = {}) => ({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', total_cents: 10000, pay_deadline_at: T0 + 9e5, ...o });
-function world(prev) {
+function world(prev, reads = null) {
   const t = T0;
-  const db = makeHonestDb(prev === undefined ? {} : { orders: { [PREV]: prev } }, { now: () => t });
+  const db = makeHonestDb(prev === undefined ? {} : { orders: { [PREV]: prev } }, { now: () => t, ...(reads ? { beforeRead: async (p) => { reads.push(p); } } : {}) });
   return { db, deps: { db, psp: makeAdapter(makeFakePsp({}).impl), clock: () => t, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, releaseResources: async () => {},
     verifyIdToken: async (x) => (x === 'idt_A' ? { uid: 'uid_A' } : (() => { throw new Error('bad'); })()) } };
 }
@@ -44,6 +44,12 @@ const ASK = (w, o = {}) => RP().replacesRefusal(w.deps, { orderId: 'sdk_new_orde
       assert.strictEqual(await ASK(w, o), null, `${L}: ${label} ⇒ ignored (A2)`);
       assert.strictEqual(JSON.stringify(w.db.root), before, `${L}: ${label}: nothing written`);
     }
+  });
+  await cell('SDK-D4-REPLACES-ANONYMOUS-NO-READ', async (L) => {
+    // no caller identity (a form / a guest with no verified phone) ⇒ ignored WITHOUT reading the named order (no existence probe)
+    const reads = []; const w = world(sdkOrder(), reads);
+    assert.strictEqual(await ASK(w, { uid: null, pendingOrderRecord: null }), null, `${L}: ignored`);
+    assert.deepStrictEqual(reads, [], `${L}: ZERO reads of the named order for an anonymous caller (${JSON.stringify(reads)})`);
   });
   await cell('SDK-D4-REPLACES-GUEST', async (L) => {
     // a guest (the SDK finish): the order is the caller's when its verified phone is the pending record's — and never a member's
