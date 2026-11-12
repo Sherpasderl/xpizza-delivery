@@ -85,14 +85,14 @@ const snap = (w) => JSON.stringify(w.db.root);
     for (const [label, existing, extra, want] of [
       ['a hosted / cash order under the id', { ...pending({ customer_uid: 'uid_A' }), payment_fingerprint: 'fp_cart_1' }, {}, 'conflict'],
       ['another member\'s SDK order', sdk({ customer_uid: 'uid_B' }), {}, 'conflict'],
-      ['a changed cart (fingerprint)', sdk({ payment_fingerprint: 'fp_other' }), {}, 'fingerprint'],
+      ['a changed cart (fingerprint ⇒ hosted\'s neutral conflict)', sdk({ payment_fingerprint: 'fp_other' }), {}, 'conflict'],
       ['a changed tip', sdk({ tip_cents: 500 }), {}, 'tip'],
       ['a placed SDK order', sdk({ payment_placed: { leg_id: 'L1', at: T0 }, status: 'new' }), {}, 'closed'],
       ['a cancelled SDK order', sdk({ payment_cancel: { kind: 'cancel', at: T0 } }), {}, 'closed'],
     ]) {
       const w = world({ seed: { orders: { [OID]: existing } } }); const before = JSON.stringify(w.ord());
       const r = await FINISH(w, extra);
-      const reason = r.body && (r.body.reason || r.body.outcome);
+      const reason = r.body && (want === 'closed' ? r.body.outcome : (r.body.reason || r.body.outcome));   // a closed answer carries the order's state as its reason (as hosted's)
       assert.ok(r.status === 'REFUSAL' && (reason === want || (want === 'conflict' && r.body.outcome === 'conflict')), `${L}: ${label} ⇒ the ${want} answer (got ${JSON.stringify(r)})`);
       assert.ok(JSON.stringify(w.ord()) === before && w.fake.callCount('authorize') === 0, `${L}: ${label}: the existing order untouched, zero PSP calls`);
     }
