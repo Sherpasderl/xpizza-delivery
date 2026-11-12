@@ -271,7 +271,8 @@ export function attachSheet(draft, s) {
   const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
   const xs = Array.isArray(src.extras) ? src.extras.filter((e) => e && e.display) : [];
   // «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «· Pastas»): the section name ONLY when every product using the group
-  // (the reach rule: launchers whose effective groups include it, on the draft) sits in ONE section — data, never a new string
+  // (the reach rule: launchers whose effective groups include it, on the draft) sits in ONE section AND that section is not this dish's
+  // own (as the copy would save it) — «this group lives in another part of the menu»; data, never a new string
   const users = new Map();
   if (X && E) {
     try {
@@ -285,10 +286,14 @@ export function attachSheet(draft, s) {
     } catch (_) { users.clear(); }
   }
   const cats = src.structure && Array.isArray(src.structure.categories) ? src.structure.categories : [];
+  const dishRow = ((prospect || src).items || []).find((r) => r && r.key === s.key);
+  const ownSection = dishRow && dishRow.display ? String(dishRow.display.cat) : null;
   const sectionOf = (g) => {
     const set = users.get(g);
     if (!set || set.size !== 1) return null;
-    const id = [...set][0]; const c = cats.find((x) => String(x.id) === id);
+    const id = [...set][0];
+    if (id === ownSection) return null;
+    const c = cats.find((x) => String(x.id) === id);
     return c && typeof c.name === 'string' && c.name.trim() ? c.name : null;
   };
   return {

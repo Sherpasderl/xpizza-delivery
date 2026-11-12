@@ -363,7 +363,7 @@ test('B — attachSheet is a PURE reader (the wiring guards rule it so): a deep-
   assert.doesNotThrow(() => IE.attachSheet(d, s), 'no write into a frozen draft or copy');
   assert.equal(JSON.stringify([d, s]), before, 'the draft and the copy are byte-identical after');
 });
-test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «· Pastas»): the section ONLY when every product using the group sits in ONE section; mixed ⇒ none', () => {
+test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «· Pastas»): the section ONLY when every product using the group sits in ONE section that is NOT the dish\u2019s own; mixed ⇒ none', () => {
   const d = createDraft(seed('la_musa'));
   const src = draftSource(d);
   const P = EE.projectEligibility(src), E = XT.effectiveGroups(P);
@@ -374,6 +374,10 @@ test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «·
   const cat = [...sectionsOf(one.group)][0];
   assert.equal(one.section, src.structure.categories.find((c) => String(c.id) === cat).name, 'one section ⇒ its name');
   assert.equal(mixed.section, null, 'mixed sections ⇒ no suffix');
+  // advisor 11-12 (the narrower rule, frame B): a one-section group on the dish's OWN section ⇒ no suffix
+  const ownKey = Object.keys(E).find((k) => !P.items[k].launcherKey && (E[k] || []).includes(one.group) && String(src.items.find((r) => r.key === k).display.cat) === cat);
+  assert.ok(ownKey, 'non-vacuity: a dish of that section using the group');
+  assert.equal(IE.attachSheet(d, drawer(d, ownKey)).rows.find((r) => r.group === one.group).section, null, 'the dish\u2019s own section ⇒ no suffix');
 });
 test('A — «Quitar de este producto» is refused only by the WRITER’s own dry run on the copy: a legacy option rule (5f XT-REFUSALS) → «Sus opciones tienen reglas propias»; otherwise allowed; the dry run writes nothing', () => {
   const d = createDraft(seed('la_musa'));
