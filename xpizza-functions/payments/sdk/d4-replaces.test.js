@@ -51,6 +51,23 @@ const ASK = (w, o = {}) => RP().replacesRefusal(w.deps, { orderId: 'sdk_new_orde
     assert.strictEqual(await ASK(w, { uid: null, pendingOrderRecord: null }), null, `${L}: ignored`);
     assert.deepStrictEqual(reads, [], `${L}: ZERO reads of the named order for an anonymous caller (${JSON.stringify(reads)})`);
   });
+  await cell('SDK-D4-REPLACES-BAD-ID', async (L) => {
+    // Codex S7 r1 P2-2: an id outside the order-id grammar (e.g. "bad#id", which RTDB refuses as a path) is IGNORED like an
+    // absent one — validated BEFORE any read, so it can never throw
+    for (const bad of ['bad#id', 'a/b', 'x.y', 'sp ace', '$x', 'a'.repeat(65), '']) {
+      const reads = []; const w = world(sdkOrder(), reads);
+      assert.strictEqual(await ASK(w, { replacesOrderId: bad }), null, `${L}: ${JSON.stringify(bad)} ⇒ ignored`);
+      assert.deepStrictEqual(reads, [], `${L}: ${JSON.stringify(bad)} ⇒ ZERO reads`);
+    }
+  });
+  await cell('SDK-D4-REPLACES-READ-FAILS-CLOSED', async (L) => {
+    // a read failure is never an unhandled rejection and never an admission: a SANITIZED 503 (no error text)
+    const t = T0;
+    const db = makeHonestDb({ orders: { [PREV]: sdkOrder() } }, { now: () => t, beforeRead: async (p) => { if (p.startsWith('orders/') || p.startsWith('payment_sdk/')) throw new Error('UNAVAILABLE secret detail'); } });
+    const w = { db, deps: { db, clock: () => t } };
+    const r = await RP().replacesRefusal(w.deps, { orderId: 'sdk_new_order_1', replacesOrderId: PREV, uid: 'uid_A' });
+    assert.deepStrictEqual(r, { status: 503, body: { error: 'replaces_unavailable', retryable: true } }, `${L}: a read failure ⇒ a sanitized 503, fail CLOSED (${JSON.stringify(r)})`);
+  });
   await cell('SDK-D4-REPLACES-GUEST', async (L) => {
     // a guest (the SDK finish): the order is the caller's when its verified phone is the pending record's — and never a member's
     const gv = { phone: '50499990000', phone_hash: 'h_me' };

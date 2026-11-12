@@ -273,6 +273,24 @@ async function mintTicket(b) {
     assert.ok(c2.status === 200 && (await val(`orders/${c2b.order_id}`)), `CASH-NEEDS-SAFE: once safe ⇒ the cash order is admitted (${c2.text.slice(0, 120)})`);
     ok('cash replacing the member\'s own SDK order: 409 while unresolved, admitted after the real switch made it safe'); }
 
+  // Codex S7 r1 P2-2 through the REAL createOrder: an invalid replaces id is IGNORED (never a thrown RTDB path error); a read
+  // failure of the named order fails CLOSED with a sanitized 503 (never an unhandled rejection, nothing written)
+  { await fresh();
+    const bb = orderBody('x_pizza', { payment_method: 'cash', replaces_order_id: 'bad#id' });
+    const b1 = await post(app.createOrder, bb, { Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-firebase-id-token': 'idt_member' });
+    assert.ok(b1.status === 200 && (await val(`orders/${bb.order_id}`)), `REPLACES-BAD-ID: "bad#id" ⇒ ignored, the cash order admitted (${b1.text.slice(0, 120)})`);
+    FAKE = makeFakePsp({ authorize: [{ outcome: 'definitive_decline', code: '05' }] });
+    const prev = sdkBody('x_pizza'); assert.strictEqual((await SDK(prev)).status, 200, 'REPLACES-READ-FAILS premise: an SDK order to name');
+    const refProto = (() => { let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'once')) p = Object.getPrototypeOf(p); return p; })();
+    const realOnce = refProto.once;
+    refProto.once = function (...a) { if (String(this.toString()).includes(`/orders/${prev.order_id}`)) return Promise.reject(new Error('UNAVAILABLE injected secret detail')); return realOnce.apply(this, a); };
+    await fresh();
+    const fb = orderBody('x_pizza', { payment_method: 'cash', replaces_order_id: prev.order_id });
+    let f1; try { f1 = await post(app.createOrder, fb, { Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-firebase-id-token': 'idt_member' }); } finally { refProto.once = realOnce; }
+    assert.ok(f1.status === 503 && f1.json && f1.json.error === 'replaces_unavailable' && !/secret detail/.test(f1.text) && (await val(`orders/${fb.order_id}`)) === null,
+      `REPLACES-READ-FAILS: a read failure ⇒ a sanitized 503, nothing written (${f1.status} ${f1.text.slice(0, 120)})`);
+    ok('createOrder: an invalid replaces id is ignored; a failed read of the named order answers a sanitized 503 (fail closed)'); }
+
   // 9. SDK-D4-UNAVAILABLE / SCHEDULED — before any write
   await rtdb.ref('platform_config/sdk_pay/restaurants/x_pizza').remove();
   const ub = sdkBody('x_pizza'); const u = await SDK(ub);
