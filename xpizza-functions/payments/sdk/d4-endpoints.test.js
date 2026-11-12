@@ -58,7 +58,9 @@ const call = async (h, rq) => { const r = res(); await h(rq, r); return r; };
       const r = await call(EP().makeHandlers(() => a.deps)[name], rq);
       const want = await core(b.deps);
       assert.deepStrictEqual({ status: r.statusCode, body: r.payload }, { status: want.status, body: want.body }, `${L}: ${name} answers exactly its core`);
-      assert.strictEqual(JSON.stringify(a.db.root), JSON.stringify(b.db.root), `${L}: ${name} writes exactly what its core writes`);
+      // the recovery queue's entry id is RANDOM (crypto) — canonicalised; the entries' contents are compared
+      const canonQ = (root) => JSON.stringify({ ...root, ...(root.sdk_recovery_queue ? { sdk_recovery_queue: Object.values(root.sdk_recovery_queue) } : {}) });
+      assert.strictEqual(canonQ(a.db.root), canonQ(b.db.root), `${L}: ${name} writes exactly what its core writes`);
     }
   });
 
