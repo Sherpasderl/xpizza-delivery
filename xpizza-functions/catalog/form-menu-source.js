@@ -179,7 +179,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   const extras = [];
   const byKey = new Set();
   for (const display of (extrasDisplay || [])) {
-    const key = extrasKeyOf(restaurantId, display, opts.keyMode);
+    const key = fd && fd.frozen_extra_keys && display && display.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_extra_keys, String(display.id)) ? fd.frozen_extra_keys[String(display.id)] : extrasKeyOf(restaurantId, display, opts.keyMode);   // S2b §3: a recorded extra keeps its key
     if (typeof key !== 'string' || !key) throw new Error(`bootstrap_bad_extra_key: ${restaurantId}`);
     if (byKey.has(key)) throw new Error(`bootstrap_duplicate_extra_key: ${restaurantId}/${key}`);
     if (!Object.prototype.hasOwnProperty.call(extrasTable, key)) throw new Error(`bootstrap_unpriced_extra: ${restaurantId}/${key}`);
@@ -305,7 +305,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   } else {
     attachRedeemFields(restaurantId, structure, items, opts.extrasTable || EXTRAS_BY_RESTAURANT[restaurantId]);
   }
-  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };
+  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }), ...(opts.frozenExtraKeys == null ? {} : { frozen_extra_keys: opts.frozenExtraKeys }) };
 }
 
 // 🔴 "DESDE" IS DERIVED, EVERY TIME. The launcher keeps its own authoritative price — a bare launcher

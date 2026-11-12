@@ -831,7 +831,14 @@ const GOOD = () => ({
     ['validateSource :: !isPositiveInt(ex.price)', 'shape', 'this predicate IS the type test'],
     ['validateSource :: eseen.has(ex.key)', 'post-type', 'membership, asked after the value has been typed'],
     ['validateSource :: ex.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
-    ['validateSource :: derived !== ex.key', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
+    ['validateSource :: derived !== ex.key && !recorded', 'not-a-presence-test', 'S2b §3: an ordinary value comparison (the derived key vs the row key), relaxed only by a server-recorded entry'],
+    ['validateSource :: source.frozen_extra_keys === undefined', 'requiredness', 'S2b §3: undefined only; a present value (null included) reaches its shape check (frozenExtraKeysProblem)'],
+    ['validateSource :: fxProblem', 'not-a-presence-test', 'S2b §3: the shape verdict of a present map — it asks what the value IS, not whether it is there'],
+    ['validateSource :: frozenX.get(String(ex.display.id)) === ex.key', 'post-type', 'S2b §3: membership in the active-entry map built from the already shape-checked frozen_extra_keys'],
+    ['validateSource :: !source.frozen_extra_keys[ex.key].minted', 'post-type', 'S2b §3: a field of an entry already shape-checked and known active (read only when the entry matched)'],
+    ['sourceToBuildInputs :: source.frozen_extra_keys === undefined', 'post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it maps the recorded extras, it does not check'],
+    ['sourceToBuildInputs :: fx && fx.size', 'post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; a count over the already-typed active entries'],
+    ['sourceToBuildInputs :: source.frozen_extra_keys === undefined #2', 'post-type', 'sourceToBuildInputs runs on an ALREADY VALIDATED source; it forwards the recorded map, it does not check'],
     ['validateSource :: i.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: i.display #2', 'post-type', 'S2-core §2.2: an already-validated item record, read for its display id (the projection keys extras_by_item by it)'],
     ['validateSource :: !catIds.has(c)', 'post-type', 'membership, asked after the value has been typed'],
@@ -978,7 +985,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 186, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 193, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -992,7 +999,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 27, 'post-type': 84, shape: 52, 'not-a-presence-test': 23 },   // S2-core §2.2: +1 post-type (the extras_by_item key's display-id read; the membership predicate kept its kind) · S1a: +1 requiredness (frozen_keys), +4 post-type (the shadow set's item read, 3 forwards), +2 shape (the map's shape verdict, the items array), +1 not-a-presence (the key rule split in two, the shadow rule);   // S0: +1 requiredness (key_mode), +1 post-type (its forward);   // plan 4: +1 requiredness, +1 post-type (badge_priority); public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
+  assert.deepStrictEqual(counts, { requiredness: 28, 'post-type': 89, shape: 52, 'not-a-presence-test': 24 },   // S2b §3: +1 requiredness, +5 post-type, +1 not-a-presence-test (frozen_extra_keys), each ruled above;   // S2-core §2.2: +1 post-type (the extras_by_item key's display-id read; the membership predicate kept its kind) · S1a: +1 requiredness (frozen_keys), +4 post-type (the shadow set's item read, 3 forwards), +2 shape (the map's shape verdict, the items array), +1 not-a-presence (the key rule split in two, the shadow rule);   // S0: +1 requiredness (key_mode), +1 post-type (its forward);   // plan 4: +1 requiredness, +1 post-type (badge_priority); public-menu-display T1: +3 requiredness (all-or-nothing names); add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

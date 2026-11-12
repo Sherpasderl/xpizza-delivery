@@ -204,7 +204,7 @@ const dishIdTypeFor = (rid, keyMode) => (pricingKeyOf(rid, { id: ID_S, name: NAM
 // identity → shape → values → bijection → structural coverage, so the error names the first real problem.
 function validateSource(source, rid) {
   if (!source || typeof source !== 'object') fail(`${rid} — source is not an object`);
-  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`); const fkProblem = source.frozen_keys === undefined ? null : FK.frozenKeysProblem(source.frozen_keys); if (fkProblem) fail(`${rid} — ${fkProblem}`); const frozen = FK.activeFrozenKeys(source); const itemKeys = new Set((Array.isArray(source.items) ? source.items : []).map((i) => i && i.key));
+  if (source.restaurant_id !== rid) fail(`${rid} — restaurant_id mismatch (${String(source.restaurant_id)})`); const keyMode = source.key_mode; if (keyMode !== undefined && keyMode !== 'id' && keyMode !== 'name') fail(`${rid} — key_mode must be 'id' or 'name' (${JSON.stringify(keyMode).slice(0, 30)})`); const fkProblem = source.frozen_keys === undefined ? null : FK.frozenKeysProblem(source.frozen_keys); if (fkProblem) fail(`${rid} — ${fkProblem}`); const frozen = FK.activeFrozenKeys(source); const FXK = require('./frozen-extra-keys'); const fxProblem = source.frozen_extra_keys === undefined ? null : FXK.frozenExtraKeysProblem(source.frozen_extra_keys); if (fxProblem) fail(`${rid} — ${fxProblem}`); const frozenX = FXK.activeFrozenExtraKeys(source);   /* S2b §3: the recorded extras */ const itemKeys = new Set((Array.isArray(source.items) ? source.items : []).map((i) => i && i.key));
   if (!Array.isArray(source.items) || source.items.length === 0) fail(`${rid} — items must be a non-empty array`);
   if (!Array.isArray(source.extras)) fail(`${rid} — extras must be an array`);
   const st = source.structure;
@@ -272,7 +272,8 @@ function validateSource(source, rid) {
     // stably — and price nothing, because no cart line would ever match. Fail closed on it.
     if (ex.display) {
       const derived = extrasKeyOf(rid, ex.display, keyMode);
-      if (derived !== ex.key) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
+      const recorded = frozenX.get(String(ex.display.id)) === ex.key && (!source.frozen_extra_keys[ex.key].minted || require('./mint-opaque').OPAQUE_SYNTAX.test(ex.key));   // S2b §3: a server-recorded entry (a minted reuse / a rename)
+      if (derived !== ex.key && !recorded) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
     }
   }
   // (The old conditional display-price checks lived here. They only compared when the field happened
@@ -768,7 +769,7 @@ function sourceToBuildInputs(source) {
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {
     formData.extras_display = source.extras.map((e) => e.display).filter(Boolean);
   }
-  const fz = source.frozen_keys === undefined ? null : FK.activeFrozenKeys(source); if (fz) formData.frozen_keys = Object.fromEntries(fz); return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }), ...(fz ? { frozenKeys: source.frozen_keys } : {}) };
+  const fz = source.frozen_keys === undefined ? null : FK.activeFrozenKeys(source); if (fz) formData.frozen_keys = Object.fromEntries(fz); const fx = source.frozen_extra_keys === undefined ? null : require('./frozen-extra-keys').activeFrozenExtraKeys(source); if (fx && fx.size) formData.frozen_extra_keys = Object.fromEntries(fx); return { priceTable, formData, extras, ...(source.key_mode === undefined ? {} : { keyMode: source.key_mode }), ...(fz ? { frozenKeys: source.frozen_keys } : {}), ...(source.frozen_extra_keys === undefined ? {} : { frozenExtraKeys: source.frozen_extra_keys }) };   // S2b §3: the extras' display id → kept key, losslessly
 }
 
 // Read + validate in one step. There is deliberately no "read without validating" export: every
