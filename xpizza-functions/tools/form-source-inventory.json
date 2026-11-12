@@ -2562,6 +2562,7 @@
   "payments/sdk/record.js",
   "payments/sdk/recovery.js",
   "payments/sdk/release.js",
+  "payments/sdk/replaces.js",
   "payments/sdk/rules-clauses.js",
   "payments/sdk/sdk-pay-flag.js",
   "payments/sdk/secrets.js",
@@ -6213,6 +6214,10 @@
    "lifts": []
   },
   "payments/sdk/release.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/replaces.js": {
    "pins": [],
    "lifts": []
   },
