@@ -1,7 +1,7 @@
 'use strict';
 // ENVÍO STEP 2 (PLAN-envio-zones-step2-r2 §4.4, Codex r1 F1) + the RESTAURANT LIMIT (PLAN-envio-restaurant-limit-r5 §2.3) — the read-only
 // guard for RESUMING a live issued checkout, at EVERY actual reuse: chargeContext's grandfathered reuse (delivery-wire.js), the
-// reward-BOUND reuse (index.js), the hosted acquire's reuseGuard and chargeOnlineOrder's pre-bookkeeping check. App deliveries only (a
+// reward-BOUND reuse (index.js), the hosted acquire's reuseGuard and the card charge handler's pre-bookkeeping check. App deliveries only (a
 // stored delivery_snapshot with mode 'delivery'; forms carry none), on the STORED order: its pin to its IMMUTABLE hub snapshot
 // (hub_lat / hub_lng, written at issuance), recomputed with haversine — never the rounded snapshot km, never the identity (zero reads
 // beyond the request's ONE pricing read). It reads; it never releases, retires, captures or reverses — the caller answers first.
@@ -31,7 +31,7 @@ async function deliveryResumeRefusal(db, order, pricingP) {
   return pr.zones && Z.inZone(pr.zones, pin) ? { refusal: 'no_delivery_zone', httpStatus: 409 } : null;
 }
 
-/* r5 §2.4 — chargeOnlineOrder's PRE-BOOKKEEPING check, immediately before the content stamp / prune / rate limits (and so before the
+/* r5 §2.4 — the card charge handler's PRE-BOOKKEEPING check, immediately before the content stamp / prune / rate limits (and so before the
    reserve, the A8 stamp and the acquire): no order, reservation, content-stamp, rate or payment write precedes a limit refusal.
    · dq route: nothing to do — index.js:1676 already answered ANY dq refusal (chargeContext's guarded resume included) right after it
    · null-dq route (a non-app-classified retry: entry_mode omitted / direct): ONE read of orders/{id}; a first attempt reads null → null */
