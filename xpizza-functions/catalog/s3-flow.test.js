@@ -10,6 +10,7 @@ const TEXT = { enabled: true };   // the S1 text switch (ON in production); the 
 { const p = require.resolve('./item-text-edit'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { textEditCapabilities: () => ({ enabled: TEXT.enabled }) } }; }
 { const p = require.resolve('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { structureCapabilities: () => ({ extrasCatalog: false, choiceEdit: STRUCT.choiceEdit, sections: false }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
+const { publishEditedCore } = require('./publish-edited-handler');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceToBuildInputs } = require('./source-store');
 const { buildCatalogV2 } = require('./form-menu-source');
@@ -55,6 +56,14 @@ const save = (rid, source, deletedIds, liveSrc = null) => {
   return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid, liveSrc), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0, ...(deletedIds ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}).then((r) => ({ r, db }));
 };
 const apply = (src, op) => CT.apply(src, op).source;
+// the owner publish (s2core-flow.test.js's harness): the stored draft, today's live, a captured publishVersion
+const publishDeps = (rid, draft) => {
+  const state = { publishes: [] };
+  return { state, deps: { db: {}, authorize: owner, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid),
+    readDraft: async () => ({ source: draft, updateTime: T1 }),
+    publishVersion: async (_db, r, input, opts) => { state.publishes.push({ r, input, opts }); return { versionId: 'v-new-2', item_count: input.items.length, extra_count: Object.keys(input.extras).length }; } } };
+};
+const publishBody = (rid, r) => ({ restaurantId: rid, token: r.body.token, acknowledgedChanges: r.body.diff.largeChangeSet, ...(rid === 'x_pizza' ? { fiscalAck: true } : {}) });
 const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
 
 (async () => {
@@ -129,6 +138,36 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     assert.ok(o && o.display.name === `${dish.display.name} - Mediana`, 'S3F-RENAME-XP: the option keeps its key under its new name');
     assert.ok(Object.values(saved.frozen_keys || {}).includes(optKey), `S3F-RENAME-XP: the kept key is recorded (${JSON.stringify(saved.frozen_keys)})`);
     ok('ON: an x_pizza option rename keeps its name-mode key, recorded as a frozen key by the save — with the S1 text switch OFF too');
+  }
+  {   // the owner PUBLISH re-judges: a D2 saved ON publishes ON (the version carries the group); saved ON, published OFF → refused
+    const { r, db } = await save('x_pizza', apply(XP, D2(plain)));
+    assert.strictEqual(r.status, 200, `S3F-PUBLISH premise: ${show(r)}`);
+    const stored = db.state.source.data;
+    const p = publishDeps('x_pizza', stored);
+    const pub = await publishEditedCore(p.deps, publishBody('x_pizza', r), {});
+    assert.strictEqual(pub.status, 200, `S3F-PUBLISH: ${show(pub)}`);
+    const dish = p.state.publishes[0].input.items.find((i) => i.key === plain);
+    assert.ok(p.state.publishes[0].input.structure.variant_items[String(dish.display.id)], 'S3F-PUBLISH: the published version carries the group');
+    STRUCT.choiceEdit = false;
+    const p2 = publishDeps('x_pizza', stored);
+    const off = await publishEditedCore(p2.deps, publishBody('x_pizza', r), {});
+    STRUCT.choiceEdit = true;
+    assert.ok(off.status >= 400 && p2.state.publishes.length === 0, `S3F-PUBLISH-OFF: refused, nothing published (${show(off)})`);
+    ok('ON: the owner publish re-judges the draft — published ON with its group; saved ON, published OFF is refused, nothing written');
+  }
+  {   // the MANAGER REQUEST's judgment (structure-gate, compare on): the same classifier through the same wrapper
+    const SG = require('./structure-gate');
+    const { buildSourceCandidate } = require('./candidate-validate');
+    const live = (await liveRead('x_pizza')()); const draftOf = (src) => { const { built } = buildSourceCandidate('x_pizza', src); return { items: built.items, extras: built.extras, structure: built.structure }; };
+    const judge = (src) => SG.judge({ rid: 'x_pizza', draft: src, draftRecords: draftOf(src), live: live.built, liveExtraRecords: live.extraRecords, addProduct: addProductOf('x_pizza'), compare: true });
+    const settled = async (src) => { const { r, db } = await save('x_pizza', src); assert.strictEqual(r.status === 200 || r.status === 409, true, show(r)); return r.status === 200 ? db.state.source.data : null; };
+    const okDraft = await settled(apply(XP, D2(plain)));
+    assert.deepStrictEqual(await judge(okDraft), { ok: true }, 'S3F-REQUEST: a non-reward D2 passes the request judgment');
+    // a reward-dish D2, allocated the way the save would (the save itself refuses it): hand the request a draft that carries it
+    const AP = require('./add-product'); const CC = require('./choice-compare');
+    const rewardDraft = AP.allocateAdditions({ incoming: apply(XP, D2(reward)), stored: XP, activeItems: XP.items, keyMode: 'name', hwm: null, registryHasKey: () => false, authoring: true, prepareExisting: CC.prepareExistingGroups }).source;
+    await assert.rejects(() => judge(rewardDraft), (e) => e && e.code === 'choice_on_reward_dish' && e.key === reward, 'S3F-REQUEST: the reward-dish D2 is refused by the request judgment');
+    ok('ON: the manager request\'s judgment (structure-gate) passes a non-reward D2 and refuses a reward-dish D2 (choice_on_reward_dish)');
   }
   STRUCT.choiceEdit = false;
   FINISHED = true;

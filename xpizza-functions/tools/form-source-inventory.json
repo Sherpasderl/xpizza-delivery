@@ -2036,6 +2036,7 @@
   "xpizza-functions/catalog/review-diff.js",
   "xpizza-functions/catalog/source-store.js",
   "xpizza-functions/catalog/structure-budget.js",
+  "xpizza-functions/catalog/structure-gate.js",
   "xpizza-functions/contract/applicability.js",
   "xpizza-functions/contract/census-build.js",
   "xpizza-functions/contract/census.js",
