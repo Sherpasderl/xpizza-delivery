@@ -122,7 +122,7 @@ try {
     const { unapplyS2tipModule, FILES: S2T_FILES } = require('../tools/s2tip-module-inverse');
     // order colonia landed after S2-srv-tip (create-order-build.js; tools/area-inverse.js, proven by area-wiring.guard): reversed FIRST
     // DRYRUN R-WIRE (2e): PLAN-avail-identity landed newest — its exact inverse (tools/avail-identity-inverse.js, 6 hunks) is reversed FIRST (innermost)
-    const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, require('../tools/sd-inverse').unapplySdModuleIfAny(f, require('../tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('../tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('../tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, require('../tools/s1srv-module-inverse').unapplyS1srvModule(f, read(f)))))))))));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost, under avail-identity (disjoint hunks, assembly note 4)
+    const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, require('../tools/sd-inverse').unapplySdModuleIfAny(f, require('../tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('../tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('../tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, require('../tools/s1srv-module-inverse').unapplyS1srvModule(f, require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f))))))))))));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost, under avail-identity (disjoint hunks, assembly note 4)
     const aiRead = (f) => require('../tools/avail-identity-inverse').unapplyAvailIdentity(f, phRead(f));
     const areaRead = (f) => require('../tools/area-inverse').unapplyAreaModule(f, aiRead(f));
     const s2tRead = (f) => (S2T_FILES.includes(f) ? unapplyS2tipModule(f, areaRead(f)) : areaRead(f));
@@ -155,7 +155,7 @@ try {
 
   // ── The new modules: what they write, and nothing else ───────────────────────────────────────────────────────
   const NEW = ['catalog/identity-record.js', 'catalog/identity-record-writer.js', 'catalog/identity-record-verifier.js'];
-  const code = Object.fromEntries(NEW.map((f) => [f, strip(read(f))]));
+  const code = Object.fromEntries(NEW.map((f) => [f, strip(require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f)))]));
   {
     const writes = /\b(tx|batch|b|vref|ref|docRef|snapRef|db|rtdb|fs|cref|rref)\.(set|update|delete|create|push|remove)\(|\.(ref|child|doc)\([^)]*\)\.(set|update|delete|create|push|remove)\(|\.batch\(\)/;
     for (const [f, src] of Object.entries(code)) assert.ok(!writes.test(src), `🔴 ${f} performs a datastore write other than its transactions`);

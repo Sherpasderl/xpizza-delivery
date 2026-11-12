@@ -11,7 +11,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyFrozenKeysModule } = require('./tools/frozenkeys-module-inverse'); const peelS1c = require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule; const peelS1d = require('./tools/s1d-module-inverse').unapplyS1dModule;
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => peelS1c(f, peelS1d(f, require('./tools/pp-module-inverse').unapplyPpModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, require('./tools/s2core-module-inverse').unapplyS2coreModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))));   // F-1 (portal line, the newer layer — train asm4) is peeled first
+const read = (f) => peelS1c(f, peelS1d(f, require('./tools/pp-module-inverse').unapplyPpModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, require('./tools/s2core-module-inverse').unapplyS2coreModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))));   // F-1 (portal line, the newer layer — train asm4) is peeled first
 
 // ── 1 ──
 {

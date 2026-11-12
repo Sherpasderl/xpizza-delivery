@@ -11,7 +11,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));
+const read = (f) => require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));
 const src = read('index.js');
 const STAGE = 'RL.resolveLines(restaurantId, body, ';
 

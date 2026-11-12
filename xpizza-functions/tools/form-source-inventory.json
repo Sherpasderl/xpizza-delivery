@@ -3077,6 +3077,7 @@
     }
    ],
    "lifts": [
+    "xpizza-functions/grpid-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
@@ -3157,16 +3158,17 @@
    "lifts": []
   },
   "catalog/identity-record-verifier.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/catalog/identity-record-guards.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/catalog/identity-record-guards.test.js",
+     "inverses": []
+    }
+   ],
+   "lifts": []
   },
   "catalog/identity-record.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/catalog/identity-record-guards.test.js"
-   ]
+   "lifts": []
   },
   "catalog/item-text-edit.js": {
    "pins": [],
@@ -3291,9 +3293,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/s2core-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/public-photos.js": {
    "pins": [],
@@ -3308,17 +3308,26 @@
       "tools/s2-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s2core-wiring.guard.test.js",
+     "inverses": [
+      "tools/grpid-module-inverse.js",
+      "tools/s2core-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
-    "xpizza-functions/s2-wiring.guard.test.js",
-    "xpizza-functions/s2core-wiring.guard.test.js"
+    "xpizza-functions/grpid-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/grpid-wiring.guard.test.js"
+   ]
   },
   "catalog/reserved-keys-audit.js": {
    "pins": [],
@@ -3422,11 +3431,16 @@
       "tools/pmdisplay-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s2core-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2core-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js",
-    "xpizza-functions/s2core-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
   },
   "catalog/structure-budget.js": {
@@ -3573,10 +3587,15 @@
    "lifts": []
   },
   "delivery/delivery-wire.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/s1srv-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/s1srv-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1srv-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "directory/directory-deps.js": {
    "pins": [],
@@ -5058,6 +5077,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/s1srv-wiring.guard.test.js",
+     "inverses": [
+      "tools/s1srv-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
       "tools/s1srv-module-inverse.js",
@@ -5937,7 +5962,6 @@
     "xpizza-functions/reorder-price-snapshot.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s1srv-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
     "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
@@ -6996,7 +7020,12 @@
    ]
   }
  },
- "unregistered": [],
+ "unregistered": [
+  {
+   "module": "catalog/identity-record-verifier.js",
+   "site": "xpizza-functions/catalog/identity-record-guards.test.js"
+  }
+ ],
  "region_pins": [
   {
    "id": "L1-read",

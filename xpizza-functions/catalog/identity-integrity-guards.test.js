@@ -42,7 +42,7 @@ try {
   // S7a directory core (merged newest in this assembly): its exact module inverse (tools/directory-module-inverse.js, proven by
   // directory-wiring.guard) is applied FIRST (innermost), returning restaurant-registry.js / public-menu.js to the pre-S7a bytes
   const { unapplyDirectoryModule, FILES: DIR_FILES } = require('../tools/directory-module-inverse');
-  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
+  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f)));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
   const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, phRead(f)) : phRead(f));
   // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
   // proven by formbake-module-wiring.guard) is reversed next — source-store.js gains badge_priority / reward_icon
@@ -80,7 +80,7 @@ try {
     const files = ['catalog/identity-integrity.js', 'catalog/identity-integrity-state.js', 'catalog/identity-integrity-monitor.js', 'tools/record-evidence-boundary.js',
       'tools/identity-boundary-core.js', 'tools/ack-identity-finding.js', 'tools/setup-identity-alerts.js', 'tools/identity-alerts-core.js'];
     for (const f of files) {
-      const src = strip(read(f));
+      const src = strip(require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f)));
       assert.ok(!/x_pizza|la_musa|xpizza|lamusa/i.test(src.replace(/xpizza-delivery|xpizza-reference/g, '')), `🔴 ${f} names a restaurant`);
       assert.ok(!/(restaurantId|rid)\s*[!=]==?\s*['"`]/.test(src), `🔴 ${f} branches on a restaurant id literal`);
     }
