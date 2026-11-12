@@ -147,6 +147,18 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     const p = await publishOf(rid, saved, r.body.token);
     assert.deepStrictEqual([p.r.status, p.r.body.error], [403, 'fiscal_ack_required'], `${L}: OFF — today's ack (${show(p.r)})`);
   });
+  await cell('Q12: the save states fiscalAckRequired: false exactly when the publish gate would waive the ack (ON + removal-only); absent otherwise', async (L) => {
+    const rid = 'x_pizza';
+    await ON(async () => {
+      const { r } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
+      assert.strictEqual(r.body.fiscalAckRequired, false, `${L}: removal-only (${show(r)})`);
+      const both = removed(base(rid), 'Carnivora'); const o = both.items.find((i) => i.key !== 'Carnivora' && !i.display.variantOf); o.price += 5; o.display.price = o.price;
+      const { r: r2 } = await save(rid, both, [stamp(rid, 'Carnivora')]);
+      assert.ok(r2.status === 200 && !('fiscalAckRequired' in r2.body), `${L}: removal + reprice → absent`);
+    });
+    const { r } = await save(rid, removed(base(rid), 'Carnivora'), [stamp(rid, 'Carnivora')]);
+    assert.ok(r.status === 200 && !('fiscalAckRequired' in r.body), `${L}: OFF → absent (today's bytes)`);
+  });
   await cell('A1+B2: pendingRemovals carries the ACTIVE photo entry (draft shape) and the dish\'s own refs (override, extras_by_item, reward position)', () => ON(async () => {
     const rid = 'la_musa'; const live = activeOf(rid).built;
     const pid = 'a'.repeat(32);
