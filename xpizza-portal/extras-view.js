@@ -47,8 +47,8 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
       rr.append(grip);
       if (open === r.group) {
         const pair = el('div', 'mk-updown'); pair.setAttribute('role', 'group'); pair.setAttribute('aria-label', `Mover ${r.group}`);
-        const up = el('button', 'btn', 'Subir'); up.type = 'button'; up.classList.add('ghost', 'sm', 'mk-ud'); up.dataset.k = `x4:up:${r.group}`; up.disabled = !canEdit || i === 0;
-        const dn = el('button', 'btn', 'Bajar'); dn.type = 'button'; dn.classList.add('ghost', 'sm', 'mk-ud'); dn.dataset.k = `x4:dn:${r.group}`; dn.disabled = !canEdit || i === model.rail.length - 1;
+        const up = el('button', 'btn', 'Subir'); up.type = 'button'; up.classList.add('ghost', 'sm', 'mk-ud'); up.dataset.k = `x4:up:${r.group}`; up.disabled = !canEdit; endState(up, i === 0);
+        const dn = el('button', 'btn', 'Bajar'); dn.type = 'button'; dn.classList.add('ghost', 'sm', 'mk-ud'); dn.dataset.k = `x4:dn:${r.group}`; dn.disabled = !canEdit; endState(dn, i === model.rail.length - 1);
         up.addEventListener('click', () => on.move(r.group, -1, 'up'));
         dn.addEventListener('click', () => on.move(r.group, 1, 'down'));
         pair.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); on.gripClose(r.group); } });
@@ -107,6 +107,10 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   if (model.adding) renderAddRow(detailHost, model.adding, on);
 }
 
+// X4b at an end (advisor 2026-11-12, plan §2.8 «focus stays on the pressed button»): «Subir» at the top / «Bajar» at the bottom are
+// aria-disabled — still focusable, so focus never jumps; they look exactly as disabled; a press goes to the ONE boundary rule
+// (extras-logic moveGroupOrder → null), which writes nothing
+function endState(btn, atEnd) { if (atEnd) { btn.setAttribute('aria-disabled', 'true'); btn.classList.add('mk-udend'); } }
 // the grip's six dots (MOCKUP x4b)
 function dots() {
   const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');

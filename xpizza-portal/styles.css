@@ -652,8 +652,8 @@
   .mk-updown{display:flex;gap:6px;padding:2px 13px 8px 37px}
   .btn.mk-ud{min-height:32px;padding:5px 11px;font-size:12px;color:var(--mute)}
   .btn.mk-ud:hover{color:var(--ink)}
-  .btn.mk-ud:disabled{opacity:.42;cursor:not-allowed}
-  .btn.mk-ud:disabled:hover{background:transparent;border-color:var(--line);color:var(--mute)}
+  .btn.mk-ud:disabled,.btn.mk-ud.mk-udend{opacity:.42;cursor:not-allowed}
+  .btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover{background:transparent;border-color:var(--line);color:var(--mute)}
   .railitem.mk-drag{background:var(--card);box-shadow:var(--shadow-lg);outline:1px solid var(--accent-line);position:relative;z-index:2;transform:translateY(-10px) rotate(-.3deg)}
   .mk-dropline{height:3px;background:var(--accent);margin:3px 8px 1px;border-radius:2px;position:relative;z-index:1}
   .mk-dropdot{position:absolute;left:-5px;top:-3px;width:9px;height:9px;border-radius:50%;background:var(--accent)}   /* the mockup's ::before dot, as an element (the look grammar) */

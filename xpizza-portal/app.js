@@ -1309,12 +1309,12 @@ function x4Write(next, g, from) {
   railError = null;
   paint(); refreshBar();
   $('xlive').textContent = `${g} · ${next.indexOf(g) + 1}.\u00ba lugar`;
-  // focus STAYS on the pressed control of the moved group's row; a boundary just reached disables it — then its pair's other button
+  // focus STAYS on the pressed control of the moved group's row (an end it just reached is aria-disabled, still focusable)
   if (from === 'up' || from === 'down') {
     const k = (d) => `x4:${d}:${g}`;
-    const mine = from === 'up' ? 'up' : 'dn', other = from === 'up' ? 'dn' : 'up';
+    const mine = from === 'up' ? 'up' : 'dn';
     const at = [...$('xrail').querySelectorAll('[data-k]')];
-    const pick = at.find((n) => n.dataset.k === k(mine) && !n.disabled) || at.find((n) => n.dataset.k === k(other));
+    const pick = at.find((n) => n.dataset.k === k(mine));
     if (pick) pick.focus();
   } else focusGrip(g);
 }

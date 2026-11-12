@@ -1402,9 +1402,11 @@ test('S2 X4b — the grip reveals «Subir» / «Bajar» (aria-expanded): at the 
   gripOf(p, groups[0]).click(); await settle(5);
   assert.equal(gripOf(p, groups[0]).getAttribute('aria-expanded'), 'true');
   assert.equal(pairOf(p, groups[0]).getAttribute('aria-label'), `Mover ${groups[0]}`);
-  assert.deepEqual([...pairOf(p, groups[0]).querySelectorAll('button')].map((b) => [b.textContent, b.disabled]), [['Subir', true], ['Bajar', false]], 'at the top «Subir» is disabled');
+  assert.deepEqual([...pairOf(p, groups[0]).querySelectorAll('button')].map((b) => [b.textContent, b.getAttribute('aria-disabled'), b.disabled]), [['Subir', 'true', false], ['Bajar', null, false]], 'at the top «Subir» is disabled');
+  pairBtn(p, groups[0], 'Subir').focus();
   pairBtn(p, groups[0], 'Subir').click(); await settle(5);
   assert.deepEqual(p.src().structure.extra_categories, groups, 'a boundary press writes nothing');
+  assert.equal(p.d.activeElement, pairBtn(p, groups[0], 'Subir'), 'the end-state «Subir» keeps focus (aria-disabled, never a jump)');
   assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'and dirties nothing');
   key(p, pairBtn(p, groups[0], 'Bajar'), 'Escape'); await settle(5);
   assert.equal(pairOf(p, groups[0]), null, 'Escape closes them');
@@ -1428,7 +1430,12 @@ test('S2 X4b — «Bajar» moves the group one place through ONE group.order: th
   assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar · 1 grupo', 'the bar counts the group');
   pairBtn(p, g, 'Subir').click(); await settle(10);
   assert.deepEqual(p.src().structure.extra_categories, groups, 'back up: the original order');
-  assert.ok(p.d.activeElement && p.d.activeElement.textContent === 'Bajar' && pairOf(p, g).contains(p.d.activeElement), 'at the top «Subir» is disabled: focus on its pair’s «Bajar»');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Subir'), 'at the top focus STAYS on the pressed «Subir» (now aria-disabled)');
+  assert.equal(pairBtn(p, g, 'Subir').getAttribute('aria-disabled'), 'true');
+  pairBtn(p, g, 'Subir').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'an aria-disabled press writes nothing');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'and dirties nothing');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Subir'), 'focus still on «Subir»');
 });
 test('S2 X4 — the keyboard on the grip: ArrowDown / ArrowUp move the group one place (the same op), focus stays on its grip', async () => {
   const p = await page({ read: XON });

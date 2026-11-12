@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "0dfd2b3f27ca0154d533c842e2d2821600c5ef85908a7b714097f8944de9940f",
-   "bytes": 126262
+   "sha256": "37ba3144636dc1cbdf1d774718fe378506da171c8c6c78e05dddf3e95412ba7d",
+   "bytes": 126308
   }
  },
  "diff_aid": {
@@ -709,19 +709,19 @@
    ],
    [
     "",
-    ".btn.mk-ud:disabled:hover",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
     "background",
     "transparent"
    ],
    [
     "",
-    ".btn.mk-ud:disabled:hover",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
     "border-color",
     "var(--line)"
    ],
    [
     "",
-    ".btn.mk-ud:disabled:hover",
+    ".btn.mk-ud:disabled:hover,.btn.mk-ud.mk-udend:hover",
     "color",
     "var(--mute)"
    ],
