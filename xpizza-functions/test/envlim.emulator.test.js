@@ -199,6 +199,7 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   {
     const before = await tree(); const a0 = await alertsN();
     CATALOG.fail = true;
+    await new Promise((r) => setTimeout(r, 46000));   // the catalog reader serves its cached active-version pointer for 45 s (catalog/catalog.js pointerTtlMs): wait it out so THIS request probes the (down) catalog
     const r = await post(app.chargeOnlineOrder, appBody('g1', { km: 5, method: 'online', ph: '99770900' }));
     CATALOG.fail = false;
     assert.deepStrictEqual(REFUSED(r), [409, 'outside_delivery_bands', false], `L6 (${r.text.slice(0, 200)})`);
