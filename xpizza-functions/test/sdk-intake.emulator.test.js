@@ -214,6 +214,32 @@ async function mintTicket(b) {
   await rtdb.ref('order_control/la_musa/current').set({ paused: false });
   ok('a paused restaurant refuses both handlers the same way; the SDK asks no money');
 
+  // 8b. Codex handler r2 (e): SDK-vs-hosted COMPETING refusals beyond the pause — the same condition ⇒ the same status and the same
+  // FULL body (only the order id differs, normalised); the SDK asks no money
+  const { availKey } = require('../avail-key');
+  const sameRefusal = async (label, hostedBody, sdkB, setup, teardown) => {
+    if (setup) await setup();
+    FAKE = makeFakePsp({});
+    const h = await HOSTED_CALL(hostedBody); const sp = await SDK(sdkB);
+    if (teardown) await teardown();
+    const norm = (r, id) => JSON.parse(JSON.stringify(r.json || null).split(id).join('<oid>'));
+    assert.ok(h.status >= 400 && h.status === sp.status, `${label}: the same status (${h.status} vs ${sp.status}: ${h.text.slice(0, 100)} | ${sp.text.slice(0, 100)})`);
+    assert.deepStrictEqual(norm(sp, sdkB.order_id), norm(h, hostedBody.order_id), `${label}: the same FULL body`);
+    assert.strictEqual(FAKE.callCount('authorize'), 0, `${label}: the SDK asked no money`);
+  };
+  const M86 = availKey('Margherita');
+  await sameRefusal('an 86\'d item', orderBody('x_pizza'), sdkBody('x_pizza'),
+    () => rtdb.ref(`restaurants/x_pizza/item_availability/${M86}`).set({ available: false, updated_at: Date.now() }),
+    () => rtdb.ref(`restaurants/x_pizza/item_availability/${M86}`).set({ available: true, updated_at: Date.now() }));
+  const unknown = { items: [{ name: 'NoSuchDishAnywhere', qty: 1, price: 0 }], items_text: '1x NoSuchDishAnywhere' };
+  await sameRefusal('an unknown menu key (menu / resolution)', orderBody('x_pizza', unknown), sdkBody('x_pizza', unknown));
+  { const hb = orderBody('x_pizza'); const sb = sdkBody('x_pizza');
+    await sameRefusal('a closed order', hb, sb, async () => {
+      await rtdb.ref(`orders/${hb.order_id}`).set({ order_id: hb.order_id, restaurant_id: 'x_pizza', status: 'cancelled', payment_method: 'online', payment_status: 'pending', created_at: 1 });
+      await rtdb.ref(`orders/${sb.order_id}`).set({ order_id: sb.order_id, restaurant_id: 'x_pizza', status: 'cancelled', payment_flow: 'sdk_auth_v1', payment_method: 'online', payment_status: 'pending', customer_uid: 'uid_member', payment_cancel: { kind: 'cancel', at: 1 }, created_at: 1 });
+    }); }
+  ok('competing refusals beyond the pause (86\'d, unknown key, closed): the SDK answers exactly as hosted (status + full body), no money');
+
   // 9. SDK-D4-UNAVAILABLE / SCHEDULED — before any write
   await rtdb.ref('platform_config/sdk_pay/restaurants/x_pizza').remove();
   const ub = sdkBody('x_pizza'); const u = await SDK(ub);
