@@ -62,7 +62,7 @@ async function chargeContext(db, orderId, dq, body, now, pricingP) {
     // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
     // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
     // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
-    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await deliveryResumeRefusal(db, order, pricingP); if (zr) return { ...zr, resume: true }; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await deliveryResumeRefusal(db, order, pricingP); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
   }
   const pin = orderPin(body);
   const same = order.order_type === (body && body.order_type)

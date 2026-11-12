@@ -79,8 +79,8 @@ async function limitedWorld(km) {
     assert.deepStrictEqual(await DW.preBookkeepingRefusal(w.both, 'O1', null, dpP), { refusal: 'outside_delivery_bands', httpStatus: 409 }, `${L}: null-dq route — ONE order read, refused (m15)`);
     assert.strictEqual(await DW.preBookkeepingRefusal(w.both, 'O_NEW', null, dpP), null, `${L}: a first attempt (no order) → null`);
     const dq = await DW.chargeContext(w.both, 'O1', { ctx: null }, { order_type: 'delivery' }, NOW, dpP);
-    assert.deepStrictEqual(await DW.preBookkeepingRefusal(w.both, 'O1', dq, dpP), { refusal: 'outside_delivery_bands', httpStatus: 409, resume: true }, `${L}: dq route — chargeContext's guarded return answers here`);
-    assert.strictEqual(await DW.preBookkeepingRefusal(w.both, 'O1', { refusal: 'pin_required', httpStatus: 409 }, dpP), null, `${L}: a FRESH refusal keeps today's gate placement`);
+    assert.deepStrictEqual(dq, { refusal: 'outside_delivery_bands', httpStatus: 409 }, `${L}: premise — chargeContext's guarded return refuses (index.js:1676 answers it, before any bookkeeping)`);
+    assert.strictEqual(await DW.preBookkeepingRefusal(w.both, 'O1', dq, dpP), null, `${L}: the dq route has nothing left to check`);
     let reads = 0; const counting = { ref: (p) => { reads++; return w.both.ref(p); } };
     await DW.preBookkeepingRefusal(counting, 'O1', dq, dpP);
     assert.strictEqual(reads, 0, `${L}: the dq route re-reads nothing`);

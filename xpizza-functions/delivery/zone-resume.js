@@ -33,10 +33,10 @@ async function deliveryResumeRefusal(db, order, pricingP) {
 
 /* r5 §2.4 — chargeOnlineOrder's PRE-BOOKKEEPING check, immediately before the content stamp / prune / rate limits (and so before the
    reserve, the A8 stamp and the acquire): no order, reservation, content-stamp, rate or payment write precedes a limit refusal.
-   · dq route: chargeContext already read the stored order and its guarded grandfathered return answered (`resume`) — nothing re-read
+   · dq route: nothing to do — index.js:1676 already answered ANY dq refusal (chargeContext's guarded resume included) right after it
    · null-dq route (a non-app-classified retry: entry_mode omitted / direct): ONE read of orders/{id}; a first attempt reads null → null */
 async function preBookkeepingRefusal(db, orderId, dq, pricingP) {
-  if (dq) return dq.resume ? dq : null;
+  if (dq) return null;
   return deliveryResumeRefusal(db, (await db.ref(`orders/${orderId}`).get()).val(), pricingP);
 }
 /* r5 §2.4 — the acquire BACKSTOP's compensation: the content stamps (the bookkeeping stamp and the A8 stamp share the

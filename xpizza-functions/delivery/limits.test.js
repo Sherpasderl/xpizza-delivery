@@ -141,7 +141,7 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     w.db.root.orders = { o1: order('tb_r1', HUB1, pinAt(HUB1, 5), { active_attempt_id: 'att1' }) };
     w.db.root.payment_attempts = { att1: { hosted_state: 'created', hosted_expires_at: now + 600000 } };
     const dq = { ctx: null };
-    assert.deepStrictEqual(await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader)), { refusal: 'outside_delivery_bands', httpStatus: 409, resume: true },
+    assert.deepStrictEqual(await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader)), { refusal: 'outside_delivery_bands', httpStatus: 409 },
       `${L}: a LIVE grandfathered checkout beyond the lowered limit is not resumed (m5)`);
     w.db.root.orders.o1 = order('tb_r1', HUB1, pinAt(HUB1, 3), { active_attempt_id: 'att1' });
     assert.strictEqual((await DW.chargeContext(w.reader, 'o1', dq, { order_type: 'delivery' }, now, DW.loadPricing(w.reader))).grandfathered, true, `${L}: inside → grandfathered as today`);

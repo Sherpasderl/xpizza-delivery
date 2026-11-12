@@ -255,14 +255,18 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   await limit(4, ZERO);
   {
     const realPre = DW.preBookkeepingRefusal; let raced = false; const PH = '99770905';
-    const bodyA = appBody('x1', { km: 5, method: 'online', ph: PH, extra: { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` } });
+    // A retries the SAME order with a pin INSIDE the lowered limit (its own dq is valid, so index.js:1676 lets it through and chargeContext
+    // finds no order yet); B — an earlier request carrying ITS snapshot (6 km) — lands the order and its live checkout at 5 km in between
+    const cart = { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` };
+    const bodyA = appBody('x1', { km: 3, method: 'online', ph: PH, extra: cart });
+    const bodyB = appBody('x1', { km: 5, method: 'online', ph: PH, extra: cart });
     DW.preBookkeepingRefusal = async (db, oid, dq, pp) => {
       const out = await realPre(db, oid, dq, pp);
       if (oid === 'el_x1' && !raced && out === null) {
         raced = true;
         await limit(6, ZERO);   // B started BEFORE the owner lowered the limit: its snapshot allows 5 km
         CHARGED.length = 0;
-        const B = await post(app.chargeOnlineOrder, bodyA, { 'x-firebase-id-token': MEMBER });
+        const B = await post(app.chargeOnlineOrder, bodyB, { 'x-firebase-id-token': MEMBER });
         assert.ok(B.status === 200 && B.json.checkout_url && CHARGED.length === 1, `L7 premise: B created the live checkout (${B.text.slice(0, 200)})`);
         await limit(4, ZERO);
       }

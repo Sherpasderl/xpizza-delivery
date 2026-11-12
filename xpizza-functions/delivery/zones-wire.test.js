@@ -74,7 +74,7 @@ const PRICING = 'platform_config/delivery_pricing';
     const order = { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng, hub_lat: HUB.lat, hub_lng: HUB.lng, payment_status: 'pending', active_attempt_id: 'att1', delivery_cents: 5000, promo_discount_cents: 0, delivery_snapshot: { mode: 'delivery', policy_version: 3, km: 4, band: 1, promo: null } };
     const paths = (zones) => ({ [PRICING]: RAW(zones ? { no_delivery_zones: zones } : {}), 'orders/o1': order, 'payment_attempts/att1': { hosted_state: 'created', hosted_expires_at: now + 600000 } });
     const refused = { refusal: 'no_delivery_zone', httpStatus: 409 };
-    assert.deepStrictEqual(await DW.chargeContext(fakeDb(paths(ZONES)), 'o1', refused, { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng }, now), { ...refused, resume: true }, `${L}: a LIVE checkout whose stored pin is in a zone is NOT resumed (F1; tagged as a resume refusal, r5 §2.4)`);
+    assert.deepStrictEqual(await DW.chargeContext(fakeDb(paths(ZONES)), 'o1', refused, { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng }, now), refused, `${L}: a LIVE checkout whose stored pin is in a zone is NOT resumed (F1)`);
     const g = await DW.chargeContext(fakeDb(paths(null)), 'o1', refused, { order_type: 'delivery', lat: PIN.lat, lng: PIN.lng }, now);
     assert.strictEqual(g.grandfathered, true, `${L}: premise — with no zones the live checkout is grandfathered (step 1)`);
     const pick = { ...order, order_type: 'pickup', delivery_snapshot: { mode: 'pickup', policy_version: 3 } };
@@ -114,7 +114,7 @@ const PRICING = 'platform_config/delivery_pricing';
     const c = counting(world); const pricingP = DW.loadPricing(c.db, 'tb_r1');
     const dq = await DW.deliveryFor(c.db, { rid: 'tb_r1', mode: 'delivery', pin: { ...north(1), confirmed: true }, getIdentity, pricingP, app: true });
     const out = await DW.chargeContext(c.db, 'o1', dq, { entry_mode: 'app' }, NOW, pricingP);
-    assert.deepStrictEqual(out, { refusal: 'no_delivery_zone', httpStatus: 409, resume: true }, `${L}: premise: the live resume is refused`);
+    assert.deepStrictEqual(out, { refusal: 'no_delivery_zone', httpStatus: 409 }, `${L}: premise: the live resume is refused`);
     assert.deepStrictEqual(c.reads, [PRICING, 'orders/o1', 'payment_attempts/att1'], `${L}: chargeContext trace (${JSON.stringify(c.reads)})`);
     // the reward-bound resume: the probe already read the order; the guard reads NOTHING when handed the request's pricing
     const b = counting(world); const pb = DW.loadPricing(b.db, 'tb_r1'); await pb;
