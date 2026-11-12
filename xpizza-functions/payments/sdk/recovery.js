@@ -38,23 +38,17 @@ async function recoverOrderAccessCore(deps, { ip, body } = {}) {
   const db = deps.db;
   const t = deps.clock();
   if (b.code === undefined) {
-    // ── request a code ──
+    // ── request a code: UNIFORM by design (Codex build r5) — the sender check, the CALLER-keyed IP budget, ONE create-once queue
+    // write, then 200. No read of the target, no budget, no send here: the background processor does that work.
     const env = senderEnv(deps.senderConfig ? deps.senderConfig() : null);
-    if (!env || !platformSenderConfigured(env, 'RECOVERY_OTP_TEMPLATE')) return { status: 503, body: { error: 'recovery_unavailable' } };   // BEFORE any reservation
+    if (!env || !platformSenderConfigured(env, 'RECOVERY_OTP_TEMPLATE')) return { status: 503, body: { error: 'recovery_unavailable' } };   // target-independent
     const ipHash = crypto.createHash('sha256').update(String(ip || '')).digest('hex');
     const ipTx = await db.ref('otp_ip/' + ipHash).transaction((v) => OTP.ipReserve(v, t));
     if (!ipTx.committed) return { status: 429, body: { error: 'rate_limited', retry_in_s: 60 } };
-    const target = guestTarget((await db.ref(`orders/${orderId}`).once('value')).val());
-    if (!target) return { status: 200, body: { ...OK } };   // absent / a member's / not SDK: the same answer, nothing sent
-    let signupSends = [];
-    try { const s = await db.ref('otp/' + target.h + '/sends').once('value'); const v = s.val(); signupSends = Array.isArray(v) ? v : []; } catch (_) { signupSends = []; }
-    let verdict = null;
-    const bTx = await db.ref('otp_budget/' + target.h).transaction((cur) => { verdict = G.budgetReserve(cur, t, signupSends); return verdict.next; });
-    if (!bTx.committed || !verdict || !verdict.ok) { suppressed('phone_budget'); return { status: 200, body: { ...OK } }; }
-    const code = OTP.genCode();
-    await db.ref(`order_recovery_otp/${orderId}`).set({ code_hash: OTP.hashCode(code), expires_at: t + OTP.LIMITS.CODE_TTL, attempts: 0, phone_hash: target.h });
-    const sent = await sendPlatformOtp(target.digits, code, { env, fetchImpl: deps.fetchImpl, isSendConfirmed: wa.isSendConfirmed, templateKey: 'RECOVERY_OTP_TEMPLATE' });
-    if (!sent.ok) suppressed('send_unconfirmed');
+    const id = crypto.randomBytes(16).toString('hex');
+    try {
+      await db.ref(`sdk_recovery_queue/${id}`).transaction((cur) => (cur == null ? { order_id: orderId, at: t } : undefined));   // create-once
+    } catch (_) { return { status: 503, body: { error: 'recovery_unavailable' } }; }   // the ONE write's failure: target-independent
     return { status: 200, body: { ...OK } };
   }
   // ── verify the code ⇒ an order ticket ──
@@ -80,4 +74,35 @@ async function recoverOrderAccessCore(deps, { ip, body } = {}) {
   await db.ref(`order_access_tickets/${ticketKey(ticket)}`).set({ order_id: orderId, phone_hash: target.h, exp: t + ORDER_TICKET_TTL_MS });
   return { status: 200, body: { order_ticket: ticket } };
 }
-module.exports = { recoverOrderAccessCore, RECOVERY_OTP_TEMPLATE, ORDER_TICKET_TTL_MS, ticketKey };
+// ── the BACKGROUND processor (an RTDB create trigger on sdk_recovery_queue/{id}; the SDK sweeper as the fallback) ──
+// It CLAIMS the entry (a delete-if-present transaction: exactly one processor), checks the target — absent / a member's / CLAIMED
+// (customer_uid) / non-SDK ⇒ dropped silently — and for a guest spends the recovery's OWN budget (recovery_phone_budget, never
+// checkout's otp_budget), writes the code and sends it. Every failure is recorded internally, never thrown, never surfaced.
+async function processRecoveryEntry(deps, id) {
+  const OTP = deps.OTP || require('../../otp-lib');
+  const wa = deps.whatsapp || require('../../whatsapp');
+  const db = deps.db;
+  let entry = null;
+  await db.ref(`sdk_recovery_queue/${id}`).transaction((cur) => { entry = null; if (cur == null) return null; entry = cur; return null; });
+  if (!entry || typeof entry.order_id !== 'string' || !G.ORDER_ID_RE.test(entry.order_id)) return { outcome: 'none' };
+  try {
+    const t = deps.clock();
+    const env = senderEnv(deps.senderConfig ? deps.senderConfig() : null);
+    if (!env || !platformSenderConfigured(env, 'RECOVERY_OTP_TEMPLATE')) { suppressed('sender_unconfigured'); return { outcome: 'suppressed' }; }
+    const target = guestTarget((await db.ref(`orders/${entry.order_id}`).once('value')).val());
+    if (!target) return { outcome: 'dropped' };
+    let verdict = null;
+    const bTx = await db.ref('recovery_phone_budget/' + target.h).transaction((cur) => { verdict = G.budgetReserve(cur, t, []); return verdict.next; });
+    if (!bTx.committed || !verdict || !verdict.ok) { suppressed('phone_budget'); return { outcome: 'suppressed' }; }
+    const code = OTP.genCode();
+    await db.ref(`order_recovery_otp/${entry.order_id}`).set({ code_hash: OTP.hashCode(code), expires_at: t + OTP.LIMITS.CODE_TTL, attempts: 0, phone_hash: target.h });
+    const sent = await sendPlatformOtp(target.digits, code, { env, fetchImpl: deps.fetchImpl, isSendConfirmed: wa.isSendConfirmed, templateKey: 'RECOVERY_OTP_TEMPLATE' });
+    if (!sent.ok) { suppressed('send_unconfirmed'); return { outcome: 'suppressed' }; }
+    return { outcome: 'sent' };
+  } catch (_) { suppressed('processor_error'); return { outcome: 'suppressed' }; }
+}
+async function processRecoveryQueue(deps) {
+  const q = (await deps.db.ref('sdk_recovery_queue').once('value')).val() || {};
+  for (const id of Object.keys(q)) await processRecoveryEntry(deps, id);
+}
+module.exports = { processRecoveryEntry, processRecoveryQueue, recoverOrderAccessCore, RECOVERY_OTP_TEMPLATE, ORDER_TICKET_TTL_MS, ticketKey };
