@@ -2,6 +2,7 @@
  "files": [
   "DESIGN.md",
   "PRODUCT.md",
+  "account-footer.test.mjs",
   "aceptar-boot.js",
   "aceptar.css",
   "aceptar.html",
@@ -138,8 +139,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "65666c836fc5a679d884d50713f4f17a7644fe73664ba3aa41d838460cffa393",
-   "bytes": 13457
+   "sha256": "cd1e83413ab66d61b105ca66f999ec60d92f3301657c91424deefad258a756f1",
+   "bytes": 13446
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -166,8 +167,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "f6609e7cf1cc519bfaca28a3c5f585c111fb8298a2c6d351dd7182bafc1251f6",
-   "bytes": 130958
+   "sha256": "ac29c3f403fcbea8d46374da4d8436372aaf10c323b4001740af9b7f769b9fa2",
+   "bytes": 131521
   }
  },
  "diff_aid": {
