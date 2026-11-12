@@ -751,6 +751,30 @@
       ".read": false,
       ".write": false
     },
+    "sdk_recovery_queue": {
+      ".read": false,
+      ".write": false
+    },
+    "recovery_phone_budget": {
+      ".read": false,
+      ".write": false
+    },
+    "order_recovery_otp": {
+      ".read": false,
+      ".write": false
+    },
+    "order_access_tickets": {
+      ".read": false,
+      ".write": false
+    },
+    "customer_cards": {
+      ".read": false,
+      ".write": false
+    },
+    "sdk_checkout_subject": {
+      ".read": false,
+      ".write": false
+    },
     "outbox": {
       ".read": false,
       ".write": false
