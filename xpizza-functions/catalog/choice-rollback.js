@@ -6,22 +6,28 @@
 //   · the ONE classifier (choice-activation): the reward-dish refusal, exactly one «Recomendada» per touched group, the D3 price
 //   · the served-shape rule: a version WITHOUT variant_items never replaces one that HAS it (choice_groups_would_vanish, 409) — a frozen
 //     form keeps its retained map when the field is absent, so the next update would be refused (Codex build r1 P1-2; ruled: refuse)
-// Both versions are read through the ONE version reader and rebuilt as the pre-flip check rebuilds them. OFF: nothing is read (today).
+// Both versions are read through the ONE version reader and rebuilt as the pre-flip check rebuilds them (choiceEdit ON). The shape rule is
+// UNGATED (advisor 11-12): it reads only the two structure documents, whatever the switch.
 const { readVersionMenu } = require('./catalog-menu');
 const { candidateSource, buildSourceCandidate } = require('./candidate-validate');
 const { choiceActivation } = require('./choice-activation');
 const { AddProductError } = require('./add-product');
 
 async function assertActivationChoices(db, rid, targetVersionId, expected) {
-  if (!require('./platform-structure').structureCapabilities().choiceEdit) return;
   const baseId = expected && typeof expected.activeVersionId === 'string' ? expected.activeVersionId : null;
   if (!baseId || baseId === targetVersionId) return;   // a first publish has no version to replace (the flip's own refusals apply)
-  const built = (v) => buildSourceCandidate(rid, candidateSource(rid, { items: v.items, extras: v.extras, structure: v.structure, key_mode: v.keyMode, frozen_keys: v.frozenKeys })).built;
-  const [b, t] = await Promise.all([readVersionMenu(db, rid, baseId), readVersionMenu(db, rid, targetVersionId)]);
-  const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
-  if (own(b.structure, 'variant_items') && !own(t.structure, 'variant_items')) {
+  // THE SHAPE RULE — UNGATED (advisor 11-12: a fix of a live hole; a deliberate OFF-behaviour change). Two small reads (each version's own
+  // structure document); it refuses ONLY a target with no variant_items over a replaced version that has the field — never a restaurant whose
+  // versions never had it, never a version that keeps variant_items: {} after its groups were removed.
+  const structureOf = (v) => db.collection('restaurants').doc(rid).collection('versions').doc(v).collection('meta').doc('menu_structure').get();
+  const [bs, ts] = await Promise.all([structureOf(baseId), structureOf(targetVersionId)]);
+  const own = (snap, k) => !!(snap && snap.exists) && Object.prototype.hasOwnProperty.call(snap.data() || {}, k);
+  if (own(bs, 'variant_items') && ts && ts.exists && !own(ts, 'variant_items')) {
     throw new AddProductError('choice_groups_would_vanish', 'this version has no choice groups at all, while the live menu does — it cannot replace it (publish a version that keeps them)', { status: 409, field: 'choices' });
   }
+  if (!require('./platform-structure').structureCapabilities().choiceEdit) return;   // the classifier: choiceEdit ON only
+  const built = (v) => buildSourceCandidate(rid, candidateSource(rid, { items: v.items, extras: v.extras, structure: v.structure, key_mode: v.keyMode, frozen_keys: v.frozenKeys })).built;
+  const [b, t] = await Promise.all([readVersionMenu(db, rid, baseId), readVersionMenu(db, rid, targetVersionId)]);
   choiceActivation({ rid, baseline: built(b), target: built(t), choiceEdit: true });
 }
 
