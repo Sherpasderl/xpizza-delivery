@@ -2155,6 +2155,29 @@ for (const who of ['owner', 'manager']) {
   }
 }
 
+test('S2 Codex r2 P2-6 — a NEW group\'s card follows the ONE group order, counts its real attachments, and stays (disabled) under «Sin extras»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  const E = await import('./editor.js');
+  const d = p.mods.app.state.draft;
+  // Codex's repro, through the page's real writer: create Toppings / Miel on dimsum_01, then move Toppings FIRST
+  assert.equal(E.applyExposureOps(d, [{ op: 'group.create', group: 'Toppings', extras: [{ ref: 'tmp:p26-r2-00001', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['dimsum_01'] } }], { extrasCatalog: true }).ok, true, 'premise: group.create');
+  const order = ['Toppings', ...p.src().structure.extra_categories.map(String).filter((g) => g !== 'Toppings')];
+  assert.equal(E.applyExposureOps(d, [{ op: 'group.order', order }], { extrasCatalog: true }).ok, true, 'premise: group.order');
+  await p.open('dimsum_01');
+  const drawn = () => [...p.drawer().querySelectorAll('.mk-grp.mk-ext')].map((c) => c.querySelector('.mk-gtn').textContent);
+  const want = order.filter((g) => drawn().includes(g));
+  assert.deepEqual(drawn(), want, 'the cards follow the ONE group order (a new group is not appended after the published ones)');
+  assert.equal(drawn()[0], 'Toppings', 'the reordered new group is first');
+  assert.match(cardOf(p, 'Toppings').querySelector('.mk-gts').textContent, /· en 1 producto$/, 'a new group counts its real attachments (ref-aware reach)');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const t = cardOf(p, 'Toppings');
+  assert.ok(t, 'under «Sin extras» the new group\'s card stays');
+  assert.deepEqual(drawn(), want, 'under «Sin extras» the order holds');
+  assert.ok(p.fld('Opciones').querySelector('.mk-opc').classList.contains('mk-off'), 'premise: «Sin extras» on');
+  assert.ok([...t.querySelectorAll('input[type=checkbox]')].every((c) => c.disabled), 'under «Sin extras» the new group\'s card is disabled like the others');
+});
+
 test('S2 Codex r1 P2-6 — the drawer is ref-aware: a NEW extra in an offered group and a NEW group attached to the dish show CHECKED and inert with «Nuevo · se elige por producto al publicarlo», counted in their cards', async () => {
   const p = await page({ read: XON });
   await p.signIn();

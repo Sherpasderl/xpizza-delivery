@@ -175,10 +175,16 @@ function extrasGroupReach(src0) {
   if (io) for (const k of Object.keys(io)) { delete io[k].deny_extras; if (!Object.keys(io[k]).length) delete io[k]; }
   for (const r of src.items || []) if (r && r.display) delete r.display.extras_policy;
   const proj = E.projectEligibility(src);
+  // REF-AWARE (Codex S2 UI r2 P2-6): the projection sees keyed extras only, so a group whose extras are all NEW (keyless) counts on
+  // the dishes the shared writer's effectiveGroups offers it to — the group level those extras will be eligible by once keyed
+  const X = globalThis.ExposureTransitions;
+  const keylessCats = new Set((src.extras || []).filter((x) => x && typeof x.key !== 'string' && x.display).map((x) => String(x.display.cat)));
+  const eff = X && keylessCats.size ? X.effectiveGroups(proj) : {};
   const used = new Map();
   for (const r of src.items || []) {
     if (!r || typeof r.key !== 'string' || !r.display || r.display.variantOf != null) continue;
     const cats = new Set(E.eligibleExtras(proj, r.key).map((k) => proj.extraCat[k]));
+    for (const g of eff[r.key] || []) if (keylessCats.has(g)) cats.add(g);
     for (const c of cats) used.set(c, (used.get(c) || 0) + 1);
   }
   return used;
@@ -198,11 +204,22 @@ function extrasCards(draft, s) {
   // its own card — CHECKED and inert («Nuevo · se elige por producto al publicarlo»; deny_extras is key-only), counted in «N de M»
   const keyless = (g) => (prospect.extras || []).filter((x) => x && typeof x.key !== 'string' && x.display && String(x.display.cat) === g)
     .map((x) => ({ key: null, ref: x.ref, name: x.display.name, price: x.price, on: true, isNew: true }));
+  // Codex S2 UI r2 P2-6: a new group is discovered on the dish with ITS «Sin extras» set aside (the baseline's own rule — the card
+  // stays, disabled, under the switch), and every card sits in THE ONE group order (structure.extra_categories; an unlisted group after)
   const X = globalThis.ExposureTransitions, E = globalThis.ExtrasEligibility;
   let offered = [];
-  if (s.extrasCatalog === true && X && E) { try { offered = X.effectiveGroups(E.projectEligibility(prospect))[s.key] || []; } catch (_) { offered = []; } }
+  if (s.extrasCatalog === true && X && E) {
+    try {
+      const aside = JSON.parse(JSON.stringify(prospect));
+      for (const r of aside.items || []) if (r && r.key === s.key && r.display) delete r.display.extras_policy;
+      offered = X.effectiveGroups(E.projectEligibility(aside))[s.key] || [];
+    } catch (_) { offered = []; }
+  }
   const known = new Set(b.groups.map((g) => g.cat));
-  const groups = [...b.groups, ...offered.filter((g) => !known.has(g)).map((g) => ({ cat: g, keys: [] }))];
+  const one = prospect.structure && Array.isArray(prospect.structure.extra_categories) ? prospect.structure.extra_categories.map(String) : [];
+  const rank = (c) => { const i = one.indexOf(String(c)); return i < 0 ? one.length : i; };
+  const groups = [...b.groups, ...offered.filter((g) => !known.has(g)).map((g) => ({ cat: g, keys: [] }))]
+    .map((g, i) => [g, i]).sort((a, c) => rank(a[0].cat) - rank(c[0].cat) || a[1] - c[1]).map(([g]) => g);
   const cards = groups.map((g) => {
     const rows = g.keys.map((k) => { const x = byKey.get(k); const nm = x && x.display && typeof x.display.name === 'string' && x.display.name.trim() ? x.display.name : k;
       return { key: k, name: nm, price: w.extraPrices[k], on: !deny.has(k) }; });
