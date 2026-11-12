@@ -20,7 +20,7 @@ ok('payment_sdk + payment_sdk_due are server-only');
 for (const node of SR.D4_SERVER_ONLY) {
   assert.deepStrictEqual(rules[node], { '.read': false, '.write': false }, `SPR-D4-SERVER-ONLY: /${node} must be an explicit server-only deny (got ${JSON.stringify(rules[node])})`);
 }
-assert.deepStrictEqual([...SR.D4_SERVER_ONLY].sort(), ['customer_cards', 'order_access_tickets', 'order_recovery_otp', 'recovery_phone_budget', 'sdk_checkout_subject', 'sdk_recovery_queue'], 'SPR-D4-SERVER-ONLY: the D4 server-only list');
+assert.deepStrictEqual([...SR.D4_SERVER_ONLY].sort(), ['customer_cards', 'order_access_tickets', 'order_recovery_otp', 'recovery_phone_budget', 'recovery_verify_pad', 'sdk_checkout_subject', 'sdk_recovery_queue'], 'SPR-D4-SERVER-ONLY: the D4 server-only list');
 ok('every D4 server node is server-only');
 const o = rules.orders.$order_id;
 assert.ok(o['.write'].endsWith(` && ${SR.PRESERVE} && ${SR.NO_REVERSAL_ORDER}`), 'SPR-PRESERVE: the order-level .write must END with the server-field preservation clause (create / change / leaf delete / whole-order replace / order delete) AND the no-reversal clause (a status DELETE runs no .validate)');
