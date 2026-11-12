@@ -969,7 +969,7 @@ const S2_SERVER = { on: false };
 { const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
   req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
 // the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
-const REAL_LIVE = { src: null };
+const REAL_LIVE = { src: null, pointer: null };   // pointer: the live active_version {version, generation} (an activation moves it)
 const realSave = (call) => (async () => {
   const { editCatalogCore } = req('./catalog/edit-catalog-handler');
   const { sourceToBuildInputs } = req('./catalog/source-store');
@@ -978,7 +978,7 @@ const realSave = (call) => (async () => {
   const st = { data: JSON.parse(JSON.stringify(live)), updateTime: T0 };
   const doc = (path) => ({
     get: async () => (path.endsWith('/meta/source') ? { exists: true, data: () => JSON.parse(JSON.stringify(st.data)), updateTime: st.updateTime }
-      : path.endsWith('/meta/active_version') ? { exists: true, data: () => ({ version: 'v-live' }) } : { exists: false, data: () => ({}) }),
+      : path.endsWith('/meta/active_version') ? { exists: true, data: () => (REAL_LIVE.pointer ? { ...REAL_LIVE.pointer } : { version: 'v-live' }) } : { exists: false, data: () => ({}) }),
     set: async (data) => { st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
     update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== st.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
   });
@@ -991,9 +991,12 @@ const realSave = (call) => (async () => {
   // new extras need it to be allocated; the S1 cells (switch off) keep today's call
   const addProduct = S2_SERVER.on ? { readKeyMode: async () => 'id', hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }),
     registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => req('./catalog/reserved-keys').reservedKeySet(undefined) } : undefined;
-  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, ...(addProduct ? { addProduct } : {}) }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0, ...(call.body.deleted_ids_loaded_base ? { deleted_ids_loaded_base: call.body.deleted_ids_loaded_base } : {}) }, {});
+  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, ...(addProduct ? { addProduct } : {}) }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0, ...(call.body.deleted_ids_loaded_base ? { deleted_ids_loaded_base: call.body.deleted_ids_loaded_base } : {}),
+    ...(call.body.deleted_ids_reviewed !== undefined ? { deleted_ids_reviewed: call.body.deleted_ids_reviewed } : {}) }, {});   // Codex S2 UI r1 P2-11: the WHOLE claim contract
+  realSave.statuses.push(r.status);
   return r.status === 200 ? okJson(r.body) : errJson(r.status, r.body);
 })();
+realSave.statuses = [];
 const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
 test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown, it counts, «Publicar» is enabled', async () => {
   const p = await page({ read: ON, on: { editCatalog: realSave } });
@@ -2100,3 +2103,54 @@ test('S2 Codex r1 P2-14 — NO AMBER on the Extras page (MOCKUP-pastel-chips): t
   assert.ok(gone && gone.classList.contains('mk-sand'), '«Se quita al publicar»: sand');
   for (const t of xpage(p).querySelectorAll('.tag.new')) assert.ok(!t.classList.contains('mk-sky') && !t.classList.contains('mk-sand'), '«Nuevo» stays green');
 });
+
+// ── S2 Codex r1 P2-11 — the stale-claim recovery against 5f's REAL editCatalogCore (no canned success): an activation moves the live
+// pointer under the merchant's claim → the server's own deleted_ids_base_moved → the sheet → «Confirmar y seguir» resends the SAME
+// request acknowledged with the fresh base → the server accepts. The owner's save and the manager's request; «Cancelar» sends nothing
+// and the next ordinary review is refused AGAIN by the server (the sheet again, never a silent resend).
+for (const who of ['owner', 'manager']) {
+  for (const path of ['confirm', 'cancel']) {
+    test(`S2 Codex r1 P2-11 — ${who}: a real stale claim → «${path === 'confirm' ? 'Confirmar y seguir' : 'Cancelar'}» (5f's real handler decides)`, async () => {
+      // the CERTIFIED live menu, stamped exactly as 5f's own S2-core suite certifies the seed (catalog/s2core-compare.test.js activeOf):
+      // a removed extra's identity joins the claim, so the server's loaded-base guard is reached
+      const certified = JSON.parse(JSON.stringify(SRC)); certified.extras.forEach((e, i) => { e.display.identity_id = `xid_${i}`; });
+      S2_SERVER.on = true; REAL_LIVE.src = certified; REAL_LIVE.pointer = { version: 'v-live', generation: 1 }; realSave.statuses = [];
+      try {
+        let reads = 0;
+        const read = () => editable({ source: JSON.parse(JSON.stringify(certified)), extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 }, publish_via_request: who === 'manager' });
+        const p = await page({ read, on: {
+          editCatalog: realSave,
+          catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 0, removed: 1, large: 0 } }),
+          getEditableCatalog: () => (reads++ ? okJson({ ...read(), deletionBase: { ...REAL_LIVE.pointer } }) : null),
+        } });
+        await p.signIn();
+        tabBtn(p, 'Extras').click(); await settle(10);
+        xrows(p)[1].querySelector('button.del').click(); await settle(5);
+        [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
+        REAL_LIVE.pointer = { version: 'v-new', generation: 2 };   // an activation lands after the merchant loaded the menu
+        p.d.getElementById('review').click(); await settle(80);
+        assert.deepEqual(realSave.statuses, [409], 'premise: the REAL server refused the moved base');
+        assert.ok(x2b(p), 'the recovery sheet');
+        const [cancel, go] = [...x2b(p).querySelectorAll('.mf button')];
+        if (path === 'confirm') {
+          go.click(); await settle(80);
+          const sent = p.n('editCatalog');
+          assert.equal(sent.length, 2, 'ONE resend');
+          assert.equal(sent[1].body.deleted_ids_reviewed, true, 'acknowledged');
+          assert.deepEqual(sent[1].body.deleted_ids_loaded_base, { version: 'v-new', generation: 2 }, 'the fresh base');
+          assert.deepEqual(realSave.statuses, [409, 200], 'the REAL server accepted the acknowledged resend');
+          if (who === 'manager') assert.equal(p.n('catalogRequestPublish').length, 1, 'the manager’s request went to the owner once');
+          else assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), 'the owner is back at the review, no refusal panel');
+        } else {
+          cancel.click(); await settle(20);
+          assert.equal(p.n('editCatalog').length, 1, '«Cancelar»: nothing resent');
+          p.d.getElementById('review').click(); await settle(80);
+          assert.deepEqual(p.n('editCatalog')[1].body.deleted_ids_loaded_base, { version: 'v-live', generation: 1 }, 'the PREVIOUS base (P1-1)');
+          assert.deepEqual(realSave.statuses, [409, 409], 'the REAL server refuses it again');
+          assert.ok(x2b(p), 'the sheet again — never a silent resend');
+          if (who === 'manager') assert.equal(p.n('catalogRequestPublish').length, 0, 'nothing reached the owner');
+        }
+      } finally { S2_SERVER.on = false; REAL_LIVE.pointer = null; REAL_LIVE.src = null; }
+    });
+  }
+}
