@@ -2,12 +2,12 @@
 // S2_BASE (S1 99477204 + 5f's S2-core, the merge it is built on). Folded out FIRST by portalui-guards (the newest layer, above S1),
 // so S1 and every older pin judge exactly what they judged before. Regenerated only from the change's diff
 // (D4c-grill/review-portal/structure-s2/gen_s2_fold.py); an edit outside these hunks, or inside one, fails.
-export const S2_BASE = '33afb453';
+export const S2_BASE = '03754fed';
 export const S2_FOLD = {
  "app.js": [
   [
-   "  // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the\n  // server sends S2 fields only for an S2 op\n  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },\n    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };\n  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review), structure };\n",
-   "  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review) };\n"
+   "  // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the\n  // server sends S2 fields only for an S2 op\n  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },\n    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };\n  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null, structure };\n",
+   "  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null };\n"
   ],
   [
    "  // STRUCTURE S2 (§3.2): «Guardar» swaps in the composed document (the writer returns a new one), so the list is re-derived from\n  // the draft — never painted from row objects the swap replaced\n  repaintFromDraft();\n",
@@ -28,8 +28,8 @@ export const S2_FOLD = {
    "export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, raw);\n"
   ],
   [
-   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.fields.length, 0)\n  + pendingStructure(draft).length;\n",
-   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.fields.length, 0);\n"
+   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)\n  + pendingStructure(draft).length;\n",
+   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0);\n"
   ],
   [
    "// The section an edit moves a product to (a section change without a subsection clears it), and the move itself: the product\n// and every option move together. One rule for editItem and the drawer's composition (S2 §3.2).\nfunction resolveMove(d, e) {\n  const moving = own(e, 'cat') || own(e, 'subcat');\n  const cat = own(e, 'cat') ? e.cat : d.cat;\n  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));\n  return { moving, cat, subcat };\n}\nfunction writeMove(members, cat, subcat) {\n  for (const r of members) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }\n}\n",
@@ -112,8 +112,8 @@ export const S2_FOLD = {
    ""
   ],
   [
-   "    total: structure.length + rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,\n",
-   "    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,\n"
+   "    total: structure.length + rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,\n",
+   "    total: rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,\n"
   ],
   [
    "\n  // STRUCTURE S2 (frame F): «Estructura» first — one .prow.mk-srow per server fact: the dish / group / section on the left, the kind\n  // chip (Nuevo · Cambio · Quitado · Orden) and the change in plain words; a long change wraps under the name, as the text rows do\n  const structure = Array.isArray(model.structure) ? model.structure : [];\n  if (structure.length) {\n    const g = el('div', 'mgroup');\n    g.append(groupHead('Estructura', structure.length));\n    for (const r of structure) {\n      const row = el('div', 'prow mk-srow');\n      const main = el('div', 'pmain');\n      main.append(el('div', 'pname', r.name), el('div', 'psub', r.sub));\n      const v = el('div', 'pval');\n      v.append(el('span', `bchip ${r.chip}`, r.kind));\n      // [what] or [what, '·', was, '→', now]: the was / arrow / now spans of the approved price rows\n      if (r.parts.length === 5) v.append(el('span', 'now plain', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'was', r.parts[2]), el('span', 'arr', r.parts[3]), el('span', 'now', r.parts[4]));\n      else v.append(el('span', 'now plain', r.parts.join(' ')));\n      row.append(main, v);\n      g.append(row);\n    }\n    root.append(g);\n  }\n",
