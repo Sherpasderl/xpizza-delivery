@@ -163,12 +163,15 @@ export function confirmDiff(wasBands, nowBands) {
   const from = last(wasBands), to = last(nowBands);
   return { rows, limit: from === to ? null : { from, to } };
 }
-export function limitCallout(limit) {
+// ENVÍO v3 (copy table «Changed»): the table-top line, then one line per restaurant whose maximum stays ABOVE the new top (it delivers to
+// the top). `restaurants` (restaurantsOf) may be omitted. A first table (no previous top) keeps step 1's own line. → [lines] | null
+export function limitCallout(limit, restaurants = []) {
   if (!limit) return null;
   const { from: a, to: b } = limit;
-  if (a === null) return `El límite de entrega queda en ${b} km para todos los restaurantes.`;
-  if (b > a) return `El límite de entrega pasa de ${a} km a ${b} km para todos los restaurantes. Las direcciones entre ${a} y ${b} km ya se pueden pedir desde que guardés.`;
-  return `El límite de entrega pasa de ${a} km a ${b} km para todos los restaurantes. Las direcciones entre ${b} y ${a} km ya no se pueden pedir desde que guardés.`;
+  if (a === null) return [`El límite de entrega queda en ${b} km para todos los restaurantes.`];
+  const lines = [`La distancia máxima de la tabla pasa de ${a} km a ${b} km.`];
+  if (b < a) for (const r of restaurants) if (Number.isFinite(r.stored) && r.stored > b) lines.push(`${r.name} entrega hasta ${b} km (su distancia máxima, ${r.stored} km, queda por encima).`);
+  return lines;
 }
 
 // ── the picker ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -181,7 +184,9 @@ const okBranch = (b) => plain(b) && typeof b.rid === 'string' && b.rid !== '' &&
 const brandKey = (b) => (typeof b.brand_id === 'string' && b.brand_id ? `b:${b.brand_id}` : `r:${b.rid}`);
 
 // one line per BRANCH (rings are measured from a branch's pin): «Marca» alone, «Marca · Sucursal» when the brand has more
-export function pickerEntries(branches) {
+// ENVÍO v3 (A1): with the table's `top`, each line's sub reads «{n} sucursal(es) · hasta {km} km» — that BRANCH's own effective reach
+// (min(its max_km, top); none stored = the top; a flagged branch asserts no reach: the count alone)
+export function pickerEntries(branches, top = null) {
   const rows = (Array.isArray(branches) ? branches : []).filter(okBranch);
   const per = new Map();
   for (const b of rows) per.set(brandKey(b), (per.get(brandKey(b)) || 0) + 1);
@@ -189,7 +194,9 @@ export function pickerEntries(branches) {
     const n = per.get(brandKey(b));
     const name = typeof b.brand_name === 'string' && b.brand_name.trim() ? b.brand_name.trim() : COPY.unnamedRestaurant;
     const loc = typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch;
-    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, name, loc: n > 1 ? loc : null, sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
+    const count = n === 1 ? '1 sucursal' : `${n} sucursales`;
+    const reach = b.limit_invalid === true ? null : effectiveKm(Number.isFinite(b.max_km) ? b.max_km : null, top);
+    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, name, loc: n > 1 ? loc : null, sub: reach === null ? count : `${count} · hasta ${reach} km`,
       initial: name[0].toUpperCase(), hub: b.hub ? { lat: b.hub.lat, lng: b.hub.lng } : null };
   }).sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }) || a.rid.localeCompare(b.rid));
 }
@@ -281,7 +288,8 @@ export function restaurantsOf(branches) {
     const name = typeof bs[0].brand_name === 'string' && bs[0].brand_name.trim() ? bs[0].brand_name.trim() : COPY.unnamedRestaurant;
     return { key, name, rids: edit.map((b) => b.rid), n: bs.length, editable: edit.length > 0, invalid,
       stored: invalid ? null : (nums.length ? Math.min(...nums) : null),
-      branches: edit.map((b) => ({ rid: b.rid, max_km: b.limit_invalid === true || !Number.isFinite(b.max_km) ? null : b.max_km, invalid: b.limit_invalid === true })) };
+      branches: edit.map((b) => ({ rid: b.rid, max_km: b.limit_invalid === true || !Number.isFinite(b.max_km) ? null : b.max_km, invalid: b.limit_invalid === true,
+        label: bs.length > 1 ? `${name} · ${typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch}` : name })) };
   }).sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }) || a.key.localeCompare(b.key));
 }
 // min(stored, the CURRENT table top as edited); no stored value → the top; no table → nothing asserted
@@ -326,4 +334,23 @@ function limitsLanded(sent, branches) {
   if (!Array.isArray(sent) || !sent.length) return true;
   const rows = Array.isArray(branches) ? branches : [];
   return sent.every((e) => { const r = rows.find((b) => plain(b) && b.rid === e.rid); return !!r && r.limit_invalid !== true && r.max_km === e.km; });
+}
+
+// the confirm sheet's «Distancia máxima por restaurante» (A3): one row per pending BRANCH — was (its stored value, or the loaded top when
+// none; a flagged branch: null, «—») → now — and, per row with a known was, the copy table's lowering / raising callout
+export function limitChanges(restaurants, pending, loadedTop) {
+  const rows = [], callouts = [];
+  for (const r of Array.isArray(restaurants) ? restaurants : []) for (const b of r.branches) {
+    if (!pending || !Object.prototype.hasOwnProperty.call(pending, b.rid)) continue;
+    const was = b.invalid ? null : (b.max_km === null ? (Number.isFinite(loadedTop) ? loadedTop : null) : b.max_km);
+    rows.push({ rid: b.rid, label: b.label, was, now: pending[b.rid] });
+  }
+  rows.sort((x, y) => x.label.localeCompare(y.label, 'es', { sensitivity: 'base' }) || x.rid.localeCompare(y.rid));
+  for (const r of rows) {
+    if (r.was === null || r.was === r.now) continue;
+    callouts.push(r.now < r.was
+      ? `${r.label}: distancia máxima ${r.was} km → ${r.now} km. Las direcciones entre ${r.now} y ${r.was} km ya no se pueden pedir desde que guardés.`
+      : `${r.label}: distancia máxima ${r.was} km → ${r.now} km. Las direcciones entre ${r.was} y ${r.now} km ya se pueden pedir desde que guardés.`);
+  }
+  return { rows, callouts };
 }

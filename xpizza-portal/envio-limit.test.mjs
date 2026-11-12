@@ -126,3 +126,41 @@ test('L1 — recovery judges ONLY the requested mutations (r4/r5): bands + each 
   copyNode(gone, w3);
   assert.equal(classifyRecovery(attU, await gone.get()), 'saved', 'the untouched r3 (pruned / unregistered) is excluded');
 });
+
+// ── stage 2 — the confirm sheet (A3) and the picker (A1): the copy table verbatim ──────────────────────────────────────────────────
+import { limitChanges, limitCallout, pickerEntries } from './envio-logic.js';
+test('L2 — limitChanges: one row per pending BRANCH (was → now: 5 → 6 and 7 → 6), the restaurant’s callout lowering / raising in the copy table’s words', async () => {
+  const w = await seeded([{ rid: 'r1', km: 5 }, { rid: 'r2', km: 7 }, { rid: 'r3', km: 6 }]);
+  const rs = restaurantsOf((await w.get()).body.branches);
+  const uno = rs.find((r) => r.name === 'Marca Uno'), dos = rs.find((r) => r.name === 'Marca Dos');
+  const c = limitChanges(rs, pendingLimits(rs, { [uno.key]: '6', [dos.key]: '4' }, 8), 8);
+  assert.deepEqual(c.rows.map((r) => [r.label, r.was, r.now]), [['Marca Dos', 6, 4], ['Marca Uno · Centro', 5, 6], ['Marca Uno · Norte', 7, 6]], 'every branch was → now');
+  assert.deepEqual(c.callouts, [
+    'Marca Dos: distancia máxima 6 km → 4 km. Las direcciones entre 4 y 6 km ya no se pueden pedir desde que guardés.',
+    'Marca Uno · Centro: distancia máxima 5 km → 6 km. Las direcciones entre 5 y 6 km ya se pueden pedir desde que guardés.',
+    'Marca Uno · Norte: distancia máxima 7 km → 6 km. Las direcciones entre 6 y 7 km ya no se pueden pedir desde que guardés.',
+  ]);
+  assert.deepEqual(limitChanges(rs, {}, 8), { rows: [], callouts: [] }, 'nothing pending: no section');
+});
+test('L2 — the table-top callout (Changed): «La distancia máxima de la tabla pasa de {a} km a {b} km.» + one line per restaurant left above the new top', async () => {
+  const w = await seeded([{ rid: 'r3', km: 7 }]);
+  const rs = restaurantsOf((await w.get()).body.branches);
+  assert.deepEqual(limitCallout({ from: 8, to: 6 }, rs), [
+    'La distancia máxima de la tabla pasa de 8 km a 6 km.',
+    'Marca Dos entrega hasta 6 km (su distancia máxima, 7 km, queda por encima).',
+  ]);
+  assert.deepEqual(limitCallout({ from: 6, to: 8 }, rs), ['La distancia máxima de la tabla pasa de 6 km a 8 km.'], 'raising: no capped line');
+  assert.equal(limitCallout(null, rs), null);
+});
+test('L2 — the picker sub-line «{n} sucursal(es) · hasta {km} km»: each branch’s OWN effective reach (divergent branches each say theirs)', async () => {
+  // a value above the top exists only when the table is CUT later (the real writer refuses km > top): save 9 under a 9.5 top, then cut to 8
+  const w = world();
+  const v0 = (await w.get()).body.policy_version;
+  assert.equal((await w.set({ expected_policy_version: v0, bands: [...BANDS, { max_km: 9.5, cents: 7000 }], limits: [{ rid: 'r1', km: 5 }, { rid: 'r2', km: 9 }] })).status, 200);
+  assert.equal((await w.set({ expected_policy_version: v0 + 1, bands: BANDS })).status, 200, 'the table cut to 8; the stored 9 is kept');
+  const g = await w.get();
+  assert.ok(g.body.branches.find((b) => b.rid === 'r2').above_top === true, 'premise: the server says r2 is above the top');
+  const e = pickerEntries(g.body.branches, 8);
+  const sub = (rid) => e.find((x) => x.rid === rid).sub;
+  assert.deepEqual([sub('r1'), sub('r2'), sub('r3')], ['2 sucursales · hasta 5 km', '2 sucursales · hasta 8 km', '1 sucursal · hasta 8 km'], 'its own; capped at the top; none stored = the top');
+});
