@@ -1593,6 +1593,7 @@
     "avail-key.test.mjs",
     "customer-app/capp-readers.test.mjs",
     "d4b-availability.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -2006,6 +2007,7 @@
     "capp-s0prod-config.test.mjs",
     "customer-app/capp-api.test.mjs",
     "customer-app/capp-price-notice-copy.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/menus.test.mjs",
@@ -2596,6 +2598,7 @@
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
   "catalog/move-rules.js",
+  "catalog/paid-text.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
   "catalog/platform-structure.js",
@@ -3350,6 +3353,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/paid-text.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/pickup-backstop.js": {
    "pins": [],
    "lifts": []
@@ -3495,6 +3502,7 @@
   "catalog/resolve-lines.js": {
    "pins": [],
    "lifts": [
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/resolvelines-wiring.guard.test.js"
    ]
   },
@@ -6091,6 +6099,7 @@
    ],
    "lifts": [
     "charge-boundary.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/attribution-refire.test.js",
     "xpizza-functions/catalog/charge-inputs.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -6874,6 +6883,7 @@
     }
    ],
    "lifts": [
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]

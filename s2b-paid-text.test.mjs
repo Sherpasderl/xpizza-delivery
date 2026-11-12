@@ -1,8 +1,8 @@
 // S2b (PLAN-structure-S2b-r3 §2.6, Codex r2 P1-3) — the PAID kitchen text. When a resolved line carries an AFFECTED extra (its key is
 // label-required: a minted reuse or a rename), the server derives the order's items_text with its OWN byte copy of the capp serializer
 // (catalog/capp-serialize.js) from the client's lines and the server LABELS, and refuses a client text that differs —
-// items_text_mismatch (409), on both order intakes, on the resolution line (before any fingerprint, reservation, charge or write).
-// A cart with no affected extra is today's path (no derivation, no refusal). Real publish → the real pricing tables; the honest body is
+// items_text_mismatch (409) — judged inside resolveLines (every intake, before any fingerprint, reservation, charge or write) when the
+// body carries an items_text. A cart with no affected extra, and a quote body with no items_text, are today's path. Real publish → the real pricing tables; the honest body is
 // the REAL capp (adaptMenu → createCart → serialize) over the REAL endpoint body; the kitchen's REAL renderItems (extracted from
 // xpizza-kitchen/index.html) and the REAL handheld orderView read the accepted text.
 // Run: node --test s2b-paid-text.test.mjs
@@ -27,7 +27,7 @@ const { buildSourceFromCode } = F('tools/seed-source-store.js');
 const { createCatalogReader } = F('catalog/catalog.js');
 const { createPricingResolver } = F('catalog/pricing-tables.js');
 const CF = F('catalog/catalog-firestore.js');
-const { resolveLines } = F('catalog/resolve-lines.js');
+const { resolveLines, resolutionRefusal } = F('catalog/resolve-lines.js');
 const { orderView } = await import(pathToFileURL(join(ROOT, 'xpizza-handheld/model.js')).href);
 
 function extractFn(src, name) {
@@ -74,8 +74,8 @@ function honest(menu, keys) {
   const c = createCart(menu); c.add(d.key, keys.map((k) => ex(k).key), 2); c.add(d.key, [ex(keys[1]).key], 1); c.inc(p.key);
   return serialize(c, menu);
 }
-const paidTextRefusal = () => F('catalog/paid-text.js').paidTextRefusal;
-const judge = (rid, body, tables) => { const b = clone(body); assert.deepEqual(resolveLines(rid, b, tables), { ok: true }, 'premise: the lines resolve'); return paidTextRefusal()(rid, b, tables); };
+// the REAL intake judgment: resolveLines (both order intakes call it on the resolution line) and its HTTP refusal
+const judge = (rid, body, tables) => { const r = resolveLines(rid, clone(body), tables); return r.ok ? null : resolutionRefusal(r); };
 const MISMATCH = { status: 409, body: { error: 'items_text_mismatch' } };
 
 for (const rid of ['x_pizza', 'la_musa']) {
@@ -84,6 +84,8 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const { menu, tables } = await served(rid, s);
     const body = honest(menu, [renamed.key, MK]);
     assert.equal(judge(rid, body, tables), null);
+    const { items_text: _t, ...quote } = body;   // a quote body without items_text is not judged
+    assert.equal(judge(rid, { ...quote, items: quote.items.map((l) => ({ ...l, extras: l.extras.map((e) => ({ ...e, name: 'viejo' })) })) }, tables), null);
     const kds = kdsRender(body.items_text);
     assert.ok(kds.includes('Renombrado S2b') && kds.includes('Reusado S2b'), 'the KDS shows both labels');
     const mods = orderView({ id: 'o1', items_text: body.items_text }).items.map((i) => i.mod).join(' / ');
@@ -109,9 +111,30 @@ for (const rid of ['x_pizza', 'la_musa']) {
     assert.equal(judge(rid, body, tables), null);
   });
 }
-test('PT-WIRING: both order intakes refuse on the resolution line — after resolveLines, before any money step', () => {
+test('PT-WIRING: both order intakes judge the paid text on the resolution line (resolveLines → resolutionRefusal), before any money step', () => {
   const src = readFileSync(join(ROOT, 'xpizza-functions/index.js'), 'utf8').split('\n');
-  const hits = src.filter((l) => l.includes("require('./catalog/paid-text').paidTextRefusal(restaurantId, body, pricingTables)"));
+  const hits = src.filter((l) => l.includes('{ const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); }'));
   assert.equal(hits.length, 2, 'createOrder + chargeOnlineOrder');
-  for (const l of hits) assert.ok(l.indexOf('RL.resolveLines(restaurantId, body, pricingTables)') >= 0 && l.indexOf('RL.resolveLines(') < l.indexOf('paidTextRefusal('), 'on the resolution line, after resolveLines');
+  const rl = readFileSync(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'), 'utf8');
+  const top = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('const items = body.items;'));
+  assert.ok(top.includes("require('./paid-text').paidTextRefusal(rid, body, tables)"), 'resolveLines judges the paid text before the lines are read');
+});
+// KDS-FREE (§4, rewards-redeem-intake.js prepareRedemption): a REDEEMED affected extra's free kitchen line is named by the server LABEL,
+// never the client's redeem name; any other free item keeps today's name (the client's sanitized name, or its id)
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`KDS-FREE ${rid}: freeLineLabel gives the label for an affected extra, null otherwise (today's name)`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { tables } = await served(rid, s);
+    const { freeLineLabel } = F('catalog/paid-text.js');
+    assert.deepEqual([freeLineLabel(tables, MK), freeLineLabel(tables, renamed.key)], ['Reusado S2b', 'Renombrado S2b']);
+    const plain = s.extras[2].key;
+    assert.equal(freeLineLabel(tables, plain), null, 'an unaffected extra: today\'s name');
+    const { tables: t0 } = await served(rid, buildSourceFromCode(rid));
+    assert.equal(freeLineLabel(t0, s.extras[0].key), null, 'no affected extra at all: today');
+  });
+}
+test('KDS-FREE wiring: prepareRedemption names each free line by freeLineLabel first, else today\'s name', () => {
+  const src = readFileSync(join(ROOT, 'xpizza-functions/rewards-redeem-intake.js'), 'utf8');
+  const fn = src.slice(src.indexOf('async function prepareRedemption('), src.indexOf('const appends = freeItems.map('));
+  assert.ok(fn.includes("name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),"), 'the free line reads the label');
 });

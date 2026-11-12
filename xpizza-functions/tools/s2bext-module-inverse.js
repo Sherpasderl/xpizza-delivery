@@ -117,13 +117,13 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/resolve-lines.js",
-  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; } { const xl = require('./extra-labels').extraLabelRefusal(rid, body, tables); if (xl) return xl; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
+  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; } { const xl = require('./extra-labels').extraLabelRefusal(rid, body, tables); if (xl) return xl; } { const pt = require('./paid-text').paidTextRefusal(rid, body, tables); if (pt) return pt; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
   "was": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }\n"
  },
  {
   "file": "catalog/resolve-lines.js",
-  "now": "function resolutionRefusal(res) { if (res && res.code === 'labels_unavailable') return { status: 503, body: { error: 'labels_unavailable', retryable: true } };   // S2b §4.3: an affected extra's label is not served\n",
-  "was": "function resolutionRefusal(res) {\n"
+  "now": "function resolutionRefusal(res) { if (res && res.code === 'labels_unavailable') return { status: 503, body: { error: 'labels_unavailable', retryable: true } };   // S2b §4.3: an affected extra's label is not served\n  if (res && res.code === 'menu_changed') return { status: 409, body: { error: 'menu_changed', detail: MENU_CHANGED_DETAIL, retryable: false } }; if (res && res.code === 'items_text_mismatch') return { status: 409, body: { error: 'items_text_mismatch' } };   // S2b §2.6\n",
+  "was": "function resolutionRefusal(res) {\n  if (res && res.code === 'menu_changed') return { status: 409, body: { error: 'menu_changed', detail: MENU_CHANGED_DETAIL, retryable: false } };\n"
  },
  {
   "file": "catalog/source-accounting.js",
