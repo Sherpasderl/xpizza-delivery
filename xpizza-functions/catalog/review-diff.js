@@ -77,8 +77,8 @@ function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, pho
     const a = lov[k] || {}; const d = dov[k] || {};
     for (const g of groupsAll) {
       const was = list(a.add).includes(g) ? 'attached' : list(a.deny).includes(g) ? 'detached' : null;
-      const now = list(d.add).includes(g) ? 'attached' : list(d.deny).includes(g) ? 'detached' : null;
-      if (was !== now) attachments.push({ group: g, scope: 'item', target: k, change: now || (was === 'attached' ? 'detached' : 'attached') });
+      const after = list(d.add).includes(g) ? 'attached' : list(d.deny).includes(g) ? 'detached' : null;
+      if (was !== after) attachments.push({ group: g, scope: 'item', target: k, change: after || (was === 'attached' ? 'detached' : 'attached') });
     }
   }
   const key = (r) => `${r.group}\u0000${r.scope}\u0000${r.target}`;
