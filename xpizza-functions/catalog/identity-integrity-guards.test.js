@@ -12,7 +12,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const read = (f) => require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('../tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('../tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, require('../tools/s1srv-module-inverse').unapplyS1srvModule(f, require('../tools/s2core-module-inverse').unapplyS2coreModule(f, fs.readFileSync(path.join(ROOT, f), 'utf8')))))))));   // S0 key mode (newest) reversed first
+const read = (f) => require('../tools/keymode-module-inverse').unapplyKeyModeModule(f, require('../tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('../tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('../tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('../tools/s1d-module-inverse').unapplyS1dModule(f, require('../tools/s2-module-inverse').unapplyS2Module(f, require('../tools/s1srv-module-inverse').unapplyS1srvModule(f, require('../tools/s2core-module-inverse').unapplyS2coreModule(f, require('../tools/grpid-module-inverse').unapplyGrpidModule(f, require('../tools/s3choice-module-inverse').unapplyS3choiceModule(f, fs.readFileSync(path.join(ROOT, f), 'utf8')))))))))));   // S0 key mode (newest) reversed first
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -42,7 +42,7 @@ try {
   // S7a directory core (merged newest in this assembly): its exact module inverse (tools/directory-module-inverse.js, proven by
   // directory-wiring.guard) is applied FIRST (innermost), returning restaurant-registry.js / public-menu.js to the pre-S7a bytes
   const { unapplyDirectoryModule, FILES: DIR_FILES } = require('../tools/directory-module-inverse');
-  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f)));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
+  const phRead = (f) => require('../tools/photos-module-inverse').unapplyPhotosModule(f, read(f));   // DRYRUN R-WIRE (2e): DISH PHOTOS A2 (newest) innermost
   const dirRead = (f) => (DIR_FILES.includes(f) ? unapplyDirectoryModule(f, phRead(f)) : phRead(f));
   // PLAN 4 (bake from published) landed after public-menu-display: its exact module inverse (tools/formbake-module-inverse.js,
   // proven by formbake-module-wiring.guard) is reversed next — source-store.js gains badge_priority / reward_icon
@@ -80,7 +80,7 @@ try {
     const files = ['catalog/identity-integrity.js', 'catalog/identity-integrity-state.js', 'catalog/identity-integrity-monitor.js', 'tools/record-evidence-boundary.js',
       'tools/identity-boundary-core.js', 'tools/ack-identity-finding.js', 'tools/setup-identity-alerts.js', 'tools/identity-alerts-core.js'];
     for (const f of files) {
-      const src = strip(require('../tools/grpid-module-inverse').unapplyGrpidModule(f, read(f)));
+      const src = strip(read(f));
       assert.ok(!/x_pizza|la_musa|xpizza|lamusa/i.test(src.replace(/xpizza-delivery|xpizza-reference/g, '')), `🔴 ${f} names a restaurant`);
       assert.ok(!/(restaurantId|rid)\s*[!=]==?\s*['"`]/.test(src), `🔴 ${f} branches on a restaurant id literal`);
     }

@@ -5,8 +5,7 @@
 //   extrasCatalog — the «Extras» page: add / remove / reprice extras, create a group, attach / detach groups, the one group order (S2-core)
 //   choiceEdit    — the required choice on an existing dish (S3)
 //   sections      — categories / subcategories, moves, reorders (S4)
-const EXTRAS_CATALOG = false;
-const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): OFF at ship; flipped in its own commit after the portal's choice editor ships
+const EXTRAS_CATALOG = false; const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): choiceEdit OFF at ship; flipped in its own commit after the portal's choice editor ships
 function structureCapabilities() {
   return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: false };
 }

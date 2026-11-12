@@ -3103,14 +3103,15 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/grpid-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/grpid-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
@@ -3268,7 +3269,9 @@
   },
   "catalog/platform-structure.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s3choice-wiring.guard.test.js"
+   ]
   },
   "catalog/portal-reads.js": {
    "pins": [],
@@ -3336,30 +3339,45 @@
     {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
+      "tools/grpid-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/grpid-wiring.guard.test.js",
+     "inverses": [
+      "tools/grpid-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
-    "xpizza-functions/grpid-wiring.guard.test.js",
-    "xpizza-functions/s2-wiring.guard.test.js"
+    "xpizza-functions/s2-wiring.guard.test.js",
+    "xpizza-functions/s3choice-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/grpid-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/grpid-wiring.guard.test.js",
+     "inverses": [
+      "tools/grpid-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "catalog/reserved-keys-audit.js": {
    "pins": [],
@@ -3481,7 +3499,9 @@
   },
   "catalog/structure-gate.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s3choice-wiring.guard.test.js"
+   ]
   },
   "catalog/text-version.js": {
    "pins": [],

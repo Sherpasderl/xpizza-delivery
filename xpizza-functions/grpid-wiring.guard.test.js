@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyGrpidModule } = require('./tools/grpid-module
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/draft-assess.js', 'catalog/edit-catalog-handler.js', 'catalog/publish-edited-handler.js', 'catalog/publish-request.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
+  const src = require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // the NEWEST layer: the file on disk
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyGrpidModule(f, src), b, `🔴 ${f} minus the grpid hunks is not ${BASE}:${f}`);
