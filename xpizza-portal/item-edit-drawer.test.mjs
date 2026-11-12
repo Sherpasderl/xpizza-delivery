@@ -964,6 +964,10 @@ test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar�
 // carried no checklist line, and the portal used to invent one)
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 { const pe = req.resolve('./catalog/platform-extras'); if (!req.cache[pe]) req.cache[pe] = { id: pe, filename: pe, loaded: true, exports: { extrasCapabilities: () => ({ authoring: true }) } }; }
+// the server's S2 switch (5f catalog/platform-structure), OFF unless a cell turns it on — the P-6 cells run 5f's REAL handler with it on
+const S2_SERVER = { on: false };
+{ const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
+  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
 const realSave = (call) => (async () => {
   const { editCatalogCore } = req('./catalog/edit-catalog-handler');
   const { sourceToBuildInputs } = req('./catalog/source-store');
@@ -981,7 +985,11 @@ const realSave = (call) => (async () => {
   const b = buildCatalogV2(RID, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras });
   const readActiveBuilt = async () => ({ built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras });
   const owner = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
-  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0 }, {});
+  // with the S2 switch on, the add-product I/O exactly as 5f's own S2-core flow suite wires it (catalog/s2core-flow.test.js addProductOf) —
+  // new extras need it to be allocated; the S1 cells (switch off) keep today's call
+  const addProduct = S2_SERVER.on ? { readKeyMode: async () => 'id', hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }),
+    registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => req('./catalog/reserved-keys').reservedKeySet(undefined) } : undefined;
+  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, ...(addProduct ? { addProduct } : {}) }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0, ...(call.body.deleted_ids_loaded_base ? { deleted_ids_loaded_base: call.body.deleted_ids_loaded_base } : {}) }, {});
   return r.status === 200 ? okJson(r.body) : errJson(r.status, r.body);
 })();
 const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
@@ -1774,4 +1782,57 @@ test('S2 §5.2 — REVIEW-DELETIONS: «Cancelar» keeps the draft and sends noth
   q.d.getElementById('review').click(); await settle(80);
   assert.ok(x2b(q).textContent.includes('No pudimos leer el menú publicado. Recargá la página.'), 'the re-read failed: said');
   assert.equal([...x2b(q).querySelectorAll('.mf button')][1].disabled, true, '«Confirmar y seguir» held');
+});
+
+// ── STRUCTURE S2 P-6 — extraRefs: after a save, a NEW extra's view state follows it to its allocated key (5f's REAL handler) ──────────
+async function probeOnPage(p, price) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), '  Probe   extra  '); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, String(price)); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  return xrows(p).find((r) => r.querySelector('.tag.new') && rowName(r) === 'Probe extra');
+}
+test('S2 P-6 — the owner\u2019s save adopts the server\u2019s keys: the SAME row (same price), now keyed through extraRefs, still «Nuevo»', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await page({ read: XON, on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 33);
+    assert.ok(row, 'premise: the new row');
+    assert.match(row.querySelector('.price input').dataset.k, /"ref":"tmp:/, 'premise: keyed by its ref before the save');
+    p.d.getElementById('review').click(); await settle(80);
+    assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), `premise: the review, no refusal panel (${panel(p) && panel(p).title})`);
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '33' && r.querySelector('.tag.new'));
+    assert.ok(after, 'the same row, same price, still «Nuevo»');
+    const k = JSON.parse(after.querySelector('.price input').dataset.k);
+    const ext = p.src().extras.find((e) => e.key === k.key);
+    assert.ok(typeof k.key === 'string' && ext && ext.display.name === 'Probe extra', `adopted through extraRefs (Probe extra) — ${JSON.stringify(k)}`);
+  } finally { S2_SERVER.on = false; }
+});
+test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s price across the adoption (its restore key re-keyed by extraRefs); without the map the view state is dropped, nothing mis-keyed', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, publish_via_request: true }), on: { editCatalog: realSave, catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 1, removed: 0, large: 0 } }) } });
+    const row = await probeOnPage(p, 34);
+    row.querySelector('.price input').focus();
+    p.d.getElementById('review').click(); await settle(80);
+    const ae = p.d.activeElement;
+    assert.ok(ae && ae.matches && ae.matches('#xdetail .price input'), 'focus kept in a price field');
+    const k = JSON.parse(ae.dataset.k);
+    assert.ok(typeof k.key === 'string' && p.src().extras.find((e) => e.key === k.key).display.name === 'Probe extra', 'the SAME row, now keyed');
+    assert.equal(ae.value, '34');
+    assert.equal(addBtn(p).disabled, false, 'the Extras page is editable again after the send (it kept its write-time disabled controls before)');
+    // a stubbed answer WITHOUT extraRefs: 5f's real handler with the map removed (never laxer) — nothing is re-keyed by a guess
+    const noMap = (call) => realSave(call).then(async (r) => { const b = await r.json(); if (!r.ok) return errJson(r.status, b); delete b.extraRefs; return okJson(b); });
+    const q = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, publish_via_request: true }), on: { editCatalog: noMap, catalogRequestPublish: () => okJson({ ok: true, counts: { changed: 0, added: 1, removed: 0, large: 0 } }) } });
+    const row2 = await probeOnPage(q, 35);
+    row2.querySelector('.price input').focus();
+    q.d.getElementById('review').click(); await settle(80);
+    assert.equal(panel(q), null, 'premise: the save went through (no refusal panel)');
+    assert.ok(q.src().extras.some((e) => typeof e.key === 'string' && e.display.name === 'Probe extra'), 'premise: the adopted source keyed the new extra');
+    const ae2 = q.d.activeElement;
+    assert.ok(!(ae2 && ae2.matches && ae2.matches('#xdetail .price input')), 'an unmapped ref is dropped, nothing mis-keyed (no focus guessed onto a row)');
+  } finally { S2_SERVER.on = false; }
 });

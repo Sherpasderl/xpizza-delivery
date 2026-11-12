@@ -37,7 +37,8 @@ export function extrasPageModel(draft, { group = null } = {}) {
   if (selected !== null) {
     const was = new Map(extrasOf(orig).filter((e) => typeof e.key === 'string').map((e) => [e.key, e]));
     const rows = xs.filter((e) => String(e.display.cat) === selected).map((e) => {
-      const isNew = typeof e.key !== 'string';
+      // «Nuevo» = not in the PUBLISHED menu: a keyless row, or one the save keyed (P-6 extraRefs) that has not been published yet
+      const isNew = typeof e.key !== 'string' || !was.has(e.key);
       const before = isNew ? null : was.get(e.key);
       return { id: idOf(e), name: e.display.name, price: e.price, isNew, priceChanged: !!before && before.price !== e.price, removed: false };
     });
@@ -224,4 +225,14 @@ export function deletionRows(draft, ids) {
     for (const e of extrasOf(src)) { const id = e.display.identity_id; if (typeof id === 'string' && id && !byId.has(id)) byId.set(id, { name: e.display.name, group: String(e.display.cat) }); }
   }
   return [...new Set((Array.isArray(ids) ? ids : []).map(String))].sort().map((id) => (byId.has(id) ? { id, ...byId.get(id), gone: false } : { id, name: 'Un extra que ya no está en el menú', group: null, gone: true }));
+}
+
+// P-6 (plan r3 §3.3, Codex r2 #5): re-key a view-state id after adopting a save — ONLY through the server's authoritative extraRefs
+// ({ tmpRef: key }). A key stays itself; a ref the map names → { key }; a ref it does not name → null (the view state is DROPPED, never
+// re-keyed by a guess such as a name match: the allocator tidies names, the portal keeps no second copy of that fold).
+export function rekeyId(id, extraRefs) {
+  if (!id || typeof id !== 'object') return null;
+  if (typeof id.key === 'string') return { key: id.key };
+  const k = typeof id.ref === 'string' && extraRefs && typeof extraRefs === 'object' && Object.prototype.hasOwnProperty.call(extraRefs, id.ref) ? extraRefs[id.ref] : null;
+  return typeof k === 'string' && k ? { key: k } : null;
 }

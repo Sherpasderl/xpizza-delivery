@@ -975,8 +975,12 @@ test('the drawer cannot overlay the fiscal attestation', () => {
   assert.ok(z('.drawer') > z('.scrim'), `premise: the drawer (${z('.drawer')}) really does stack above the review scrim (${z('.scrim')})`);
   const app = codeOf('app.js');
   assert.ok(/function closeDrawer\(\)/.test(app), 'closing the drawer is its own operation');
-  const open = app.slice(app.indexOf('async function openReviewFlow'), app.indexOf('async function openReviewFlow') + 2600);
+  // the WHOLE openReviewFlow (to its closing brace), not a 2600-char window — S2's ack + extraRefs lines pushed the call past a size
+  // heuristic; the function's own boundary is the honest scope (non-vacuity: removed from the function, the rule turns red)
+  const fnOf = (src) => { const i = src.indexOf('async function openReviewFlow'); return src.slice(i, src.indexOf('\n}\n', i)); };
+  const open = fnOf(app);
   assert.ok(/closeDrawer\(\)/.test(open), 'and the review closes it before opening');
+  assert.equal(/closeDrawer\(\)/.test(fnOf(app.replace(/(async function openReviewFlow[\s\S]*?)closeDrawer\(\)/, '$1noop()'))), false, 'non-vacuity: without it in openReviewFlow the rule is red');
 });
 
 // ── THE SHARED-STATE WRITER CENSUS ───────────────────────────────────────────────────────────────

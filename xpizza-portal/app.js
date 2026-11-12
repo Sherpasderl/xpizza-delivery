@@ -78,7 +78,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows } from './extras-logic.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
 import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
@@ -396,6 +396,9 @@ function releaseEditLock(ticket) {
 // skipped publish clearing the live one's spinner, a stale publish stranding busy='1', a save's
 // release un-inerting the drawer while a review was pending.
 function syncUi() {
+  // STRUCTURE S2 (SBS-class defect, P-6 cell): after a locked write the Extras page kept its disabled controls — repaint it when the edit
+  // state it was painted under has changed (a no-op otherwise: typing never pays for it)
+  if (prodTab === 'xpage' && state.draft && xPaintedCanEdit !== null && xPaintedCanEdit !== canEditDraft(state.draft)) paintProductTabs();
   const owned = editLockHolder !== null;
   // "Is a request on the wire" is not quite the question. After an auth change or a tenant switch the
   // request genuinely IS still in flight — but it belongs to a world the merchant has left, and this
@@ -1208,6 +1211,11 @@ let reviewAck = false;
 const takeReviewAck = () => { const r = reviewAck; reviewAck = false; return r; };
 // STRUCTURE S2 §5.2 — the server's line FIX-EXTRA brought to an extra's row ({ id, text }); editing that row clears it
 let extrasRowError = null;
+// a detail field's restore key held across a LOCKED write (inputs disabled, repainted): restored on a later paint while nothing else holds
+// focus; re-keyed by P-6 adoption; dropped the moment the merchant focuses anything else (focus is never stolen)
+let xFocusK = null;
+// the edit state the Extras page was last painted under: its controls bake `disabled` in, so syncUi repaints it when that state changes
+let xPaintedCanEdit = null;
 // ── X3 «Crear grupo» (plan §2 items 5 / 5b, §3.5): the form is LOCAL state until «Crear grupo» sends ONE group.create op ───────
 let createForm = null;
 let createError = null;
@@ -1458,8 +1466,16 @@ function paintProductTabs() {
       });
     }),
   }, { canEdit: canEditDraft(state.draft) });
-  if (keepK) focusDetail(keepK);
-  else if (keepRailK) { const x = [...$('xrail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === keepRailK); if (x) x.focus(); }
+  xPaintedCanEdit = canEditDraft(state.draft);
+  // `ae` is the focus BEFORE this repaint: a held key is used only when nothing held focus then
+  const held = !keepK && xFocusK && (!ae || ae === document.body) ? xFocusK : null;
+  if (!keepK && !held) xFocusK = null;   // the merchant is elsewhere now
+  const want = keepK || held;
+  if (want) {
+    focusDetail(want);
+    const landed = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k === want;
+    xFocusK = landed ? null : want;   // a disabled target (a write in flight): hold it for the next paint
+  } else if (keepRailK) { const x = [...$('xrail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === keepRailK); if (x) x.focus(); }
   else if (keepGrip) focusGrip(keepGrip);
   else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
 }
@@ -2787,6 +2803,7 @@ async function openReviewFlow() {
     // by key.
     if (res && res.source) {
       adopt(state.draft, res.source);
+      adoptExtraRefs(res.extraRefs);
       for (const a of ((diff && diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
       state.drawerError = null;
       repaintFromDraft();
@@ -3116,6 +3133,7 @@ async function sendToOwnerFlow() {
     if (gen !== opGeneration) return;
     if (res && res.source) {
       adopt(state.draft, res.source);
+      adoptExtraRefs(res.extraRefs);
       // the saved additions are now known by key — still unpublished, still removable (the review flow's bookkeeping)
       for (const a of ((res.diff && res.diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
     }
@@ -3181,6 +3199,26 @@ async function reviewDeletions(outcome) {
     onCancel: () => { reviewAck = false; },
     onGo: bound(() => { reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
   });
+}
+// P-6 (plan r3 §3.3, Codex r2 #5): after a save is adopted, the view state keyed by a NEW extra's ref follows it to its allocated key —
+// ONLY through the save answer's extraRefs (rekeyId); a ref the map does not name is DROPPED (its price is already in the adopted source).
+// Covers the FIX-EXTRA row line and the focused detail field's restore key (data-k), so the repaint keeps focus on the SAME row.
+function rekeyK(k, extraRefs) {   // a detail field's restore key ('{"ref":…}' or 'xnm:{"ref":…}') → its keyed price field, or null (dropped)
+  if (typeof k !== 'string') return k;
+  const pre = k.startsWith('xnm:') ? 'xnm:' : '';
+  let id = null;
+  try { id = JSON.parse(k.slice(pre.length)); } catch (_) { return k; }   // not an extra row's field
+  if (!id || typeof id !== 'object' || typeof id.ref !== 'string') return k;
+  const next = rekeyId(id, extraRefs);
+  return next ? JSON.stringify(next) : null;   // a keyed row has no name field: its price
+}
+function adoptExtraRefs(extraRefs) {
+  if (extrasRowError) { const id = rekeyId(extrasRowError.id, extraRefs); extrasRowError = id ? { id, text: extrasRowError.text } : null; }
+  if (xFocusK) xFocusK = rekeyK(xFocusK, extraRefs);
+  const ae = document.activeElement;
+  if (!ae || !ae.dataset || typeof ae.dataset.k !== 'string' || !$('xdetail') || !$('xdetail').contains(ae)) return;
+  const k = rekeyK(ae.dataset.k, extraRefs);
+  if (k) ae.dataset.k = k; else delete ae.dataset.k;
 }
 async function rereadSections() {
   const rid = state.draftRid, gen = opGeneration;

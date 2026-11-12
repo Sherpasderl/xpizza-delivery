@@ -243,6 +243,7 @@ async function realSaveDiff(rid, live, draftSrc) {
   const r = await editCatalogCore({ db, addProduct, authorize: async () => ({ ok: true, uid: 'u', role: 'owner', actor: 'o@x.hn' }), readActiveBuilt: async () => ({ built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }) },
     { restaurantId: rid, source: clone(draftSrc), baseSourceUpdateTime: T0 }, {});
   assert.equal(r.status, 200, `premise: the real save accepts the portal's draft (${JSON.stringify(r.body).slice(0, 200)})`);
+  realSaveDiff.last = r.body;   // the whole 200 body (extraRefs, source) for the adoption cells
   return r.body.diff;
 }
 const ctxOf = (src) => {
@@ -435,4 +436,29 @@ test('X — setExtraName renames a NEW (keyless) extra by its ref; never a keyed
   E.setExtraName(d, keyed.key, 'Otro');
   E.setExtraName(d, { ref: keyed.key }, 'Otro');
   assert.equal(JSON.stringify(draftSource(d)), before, 'a keyed (published) extra is never renamed here');
+});
+
+// ── P-6 extraRefs (plan r3 §3.3, Codex r2 #5): after a save, a NEW extra is re-keyed ONLY through the server's extraRefs — never a name match ──
+test('P-6 — rekeyId: a ref the map names → its allocated key; a ref the map does NOT name → dropped (never a guess); a key → itself', async () => {
+  const { rekeyId } = await import('./extras-logic.js');
+  const map = { 'tmp:a-0001': 'arroz_probe' };
+  assert.deepEqual(rekeyId({ ref: 'tmp:a-0001' }, map), { key: 'arroz_probe' });
+  assert.equal(rekeyId({ ref: 'tmp:zz-0009' }, map), null, 'an unmapped ref is dropped, nothing mis-keyed');
+  assert.equal(rekeyId({ ref: 'tmp:a-0001' }, null), null, 'no map: dropped');
+  assert.deepEqual(rekeyId({ key: 'rice_white' }, map), { key: 'rice_white' });
+});
+test('P-6 — «  Probe   extra  » saved through 5f\u2019s REAL handler: extraRefs maps its ref; after adoption the SAME row (same price), keyed, still «Nuevo» (unpublished)', async () => {
+  const { extrasPageModel, rekeyId } = await import('./extras-logic.js');
+  const live = seed('la_musa'); const d = createDraft(clone(live));
+  assert.equal(applyExposureOps(d, [{ op: 'extra.add', group: 'Salsas', ref: 'tmp:probe-0001', name: '  Probe   extra  ', price: 33 }], ON).ok, true);
+  await realSaveDiff('la_musa', live, draftSource(d));
+  const body = realSaveDiff.last;
+  const key = body.extraRefs && body.extraRefs['tmp:probe-0001'];
+  assert.ok(typeof key === 'string' && key, `the save answer maps the ref (${JSON.stringify(body.extraRefs)})`);
+  const E = await import('./editor.js');
+  E.adopt(d, body.source);
+  const row = extrasPageModel(d, { group: 'Salsas' }).detail.rows.find((r) => r.id.key === key);
+  assert.ok(row, 'adopted through extraRefs (Probe extra)');
+  assert.deepEqual([row.price, row.isNew, row.removed], [33, true, false], 'the same price; still «Nuevo» until published');
+  assert.deepEqual(rekeyId({ ref: 'tmp:probe-0001' }, body.extraRefs), { key }, 're-keyed by the map');
 });
