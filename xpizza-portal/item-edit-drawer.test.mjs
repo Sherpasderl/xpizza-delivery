@@ -1950,3 +1950,21 @@ test('S2 Codex r1 P1-4 — the portal’s review: detaching a group whose extra 
     assert.ok(!body.includes(xk), 'never the raw key');
   } finally { S2_SERVER.on = false; REAL_LIVE.src = null; }
 });
+
+test('S2 Codex r1 P2-12 — X3 backdrop: a clean «Crear grupo» closes on a backdrop click; a dirty one asks «¿Descartar los cambios?» and stays', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  const scrim = () => p.d.getElementById('xcreate');
+  scrim().dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.equal(x3(p), null, 'clean: the backdrop closes the sheet');
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Bordes'); await settle(5);
+  x3(p).dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.ok(x3(p) && !p.d.querySelector('#xscrim.show'), 'a click INSIDE the sheet is not the backdrop');
+  scrim().dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.ok(x3(p), 'dirty: the sheet stays');
+  assert.ok(p.d.querySelector('#xscrim.show'), 'dirty: the backdrop asks the discard confirm');
+  assert.equal(p.d.querySelector('#xscrim .mt').textContent, '¿Descartar los cambios?');
+});

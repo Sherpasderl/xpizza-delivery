@@ -1229,16 +1229,18 @@ function x3Key(e) {
   const f = x3Focusables(); const i = f.indexOf(document.activeElement);
   if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
 }
+// the backdrop (Codex S2 UI r1 P2-12): the same dismissal as Escape — clean closes, dirty asks the discard confirm
+function x3Scrim(e) { if (e.target === $('xcreate') && !$('xscrim').classList.contains('show')) x3Dismiss(); }
 function openCreateGroup() {
   createForm = createGroupForm(); createError = null;
   $('xcreate').classList.add('show');
-  document.addEventListener('keydown', x3Key, true);
+  document.addEventListener('keydown', x3Key, true); $('xcreate').addEventListener('click', x3Scrim);
   paintCreateGroup(true);
 }
 function closeCreateGroup(refocus) {
   createForm = null; createError = null;
   $('xcreate').classList.remove('show'); $('xcreate').querySelector('.modal').replaceChildren();
-  document.removeEventListener('keydown', x3Key, true);
+  document.removeEventListener('keydown', x3Key, true); $('xcreate').removeEventListener('click', x3Scrim);
   if (refocus) { const a = $('xrail') && $('xrail').querySelector('.railadd'); if (a) a.focus(); }
 }
 function x3Dismiss() {

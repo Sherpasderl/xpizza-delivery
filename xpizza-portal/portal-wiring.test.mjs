@@ -1303,6 +1303,7 @@ const LISTENERS = {
   "ieFoldName::click":            ['bound', [], 'S1 — folds / unfolds one «Opciones» card: view state (opcFolded, per drawer session) and a drawer re-render'],
   "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
   "$('tabmenu')::click":          ['view', ['setProdTab'], 'S2 — «Menú»: which page shows (view state), never a write'],
+  "$('xcreate')::click":         ['view', ['x3Dismiss'], 'S2 X3 — the backdrop is Escape\u2019s dismissal (Codex S2 UI r1 P2-12): clean closes, dirty asks the discard confirm; nothing is written'],
   "$('xattach')::click":         ['view', ['bClose'], 'S2 B — the backdrop cancels the «Agregar grupo de extras» sheet (an explicit picker cancel): it closes, nothing is recorded'],
   "window::beforeunload":         ['singleton', [], 'S2 §3.5 — the reload / close: reads the reload facts (portalReloadFacts) and asks the browser for its own prompt while unsaved work or a write exists; writes nothing'],
   "$('tabextras')::click":        ['view', ['setProdTab'], 'S2 — «Extras»: which page shows (view state), never a write'],

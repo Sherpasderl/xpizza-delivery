@@ -134,8 +134,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "53e64444a8a90df3adf0d33b3203dde9cfcfe4da3960b886dc77b60df6cb8021",
-   "bytes": 14106
+   "sha256": "5cc7e1b6c85968f4498591b6b5f070c8328639a68d6284d565f6ad7a172fd416",
+   "bytes": 14116
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "2951cfb748050e61995269f74d8f525a071a2422c1931f8617ba96c8d08be606",
-   "bytes": 129879
+   "sha256": "ba1b68b5d05483c9983401b4d127d147567d5450349cf425784fe79c15acd9b5",
+   "bytes": 129936
   }
  },
  "diff_aid": {

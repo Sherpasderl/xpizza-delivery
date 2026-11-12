@@ -704,7 +704,7 @@
   .irow.mk-xgone{opacity:.45}
   .mk-xgone-p{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:650}
   #xscrim{cursor:pointer}
-  #xcreate{cursor:pointer}
+  .mk-cscrim{cursor:pointer}   /* X3's backdrop dismisses (Codex S2 UI r1 P2-12) */
   #xcreate .modal{cursor:auto}
   /* X3 «Crear grupo» + X3b (MOCKUP x4b, verbatim): the radio set, the category select + its note, the product checklist */
   .modal .mb.mk-form{display:flex;flex-direction:column;gap:16px}
