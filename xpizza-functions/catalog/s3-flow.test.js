@@ -1,0 +1,115 @@
+'use strict';
+// S3 (PLAN-structure-S3-r3 §0, §1a, §2) — the required choice on an EXISTING dish through the REAL editCatalogCore, the choiceEdit
+// switch stubbed (shipped OFF). Drafts are written by the REAL writer (choice-transitions) over the REAL sources; the save allocates
+// the new options' keys itself. OFF: today's refusals. ON: D2 / option.add / an option rename / D3 save; a reward dish refuses.
+// Run: node catalog/s3-flow.test.js
+const assert = require('assert');
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+const STRUCT = { choiceEdit: false };
+{ const p = require.resolve('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { structureCapabilities: () => ({ extrasCatalog: false, choiceEdit: STRUCT.choiceEdit, sections: false }) } }; }
+const { editCatalogCore } = require('./edit-catalog-handler');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceToBuildInputs } = require('./source-store');
+const { buildCatalogV2 } = require('./form-menu-source');
+const CT = require('./choice-transitions');
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('s3-flow: FAILED — exited without completing'); process.exitCode = 1; } });
+
+const T0 = '2026-10-24T10:00:00.000000Z';
+const T1 = '2026-10-24T11:00:00.000000Z';
+const ACTIVE = 'v-active-1';
+const owner = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
+const clone = (x) => JSON.parse(JSON.stringify(x));
+// certified rows (identity stamps) in the live AND the stored draft, so a removal can be declared
+const base = (rid) => { const s = clone(buildSourceFromCode(rid)); for (const it of s.items) it.display.identity_id = `id_${String(it.key).replace(/[^A-Za-z0-9]/g, '_')}`; return s; };
+const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
+const liveRead = (rid) => async () => {
+  const src = base(rid); const i = sourceToBuildInputs(src);
+  return { built: builtOf(src, rid), versionId: ACTIVE, extraRecords: buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }).extras };
+};
+function saveDb(rid) {
+  const state = { source: { data: base(rid), updateTime: T0 } };
+  const doc = (path) => ({
+    get: async () => {
+      if (path === `restaurants/${rid}/meta/source`) { const frozen = clone(state.source.data); return { exists: true, data: () => frozen, updateTime: state.source.updateTime }; }
+      if (path === `restaurants/${rid}/meta/active_version`) return { exists: true, data: () => ({ version: ACTIVE }) };
+      return { exists: false, data: () => ({}) };
+    },
+    set: async (data) => { state.source = { data, updateTime: T1 }; return { writeTime: T1 }; },
+    update: async (data, pre) => {
+      if (!pre || pre.lastUpdateTime !== state.source.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; }
+      state.source = { data, updateTime: T1 }; return { writeTime: T1 };
+    },
+  });
+  return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+}
+const addProductOf = (rid) => ({ readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }), set: async () => {} }), registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => require('./reserved-keys').reservedKeySet(undefined) });
+const save = (rid, source, deletedIds) => {
+  const db = saveDb(rid);
+  const src = deletedIds ? { ...source, deleted_ids: { ids: deletedIds } } : source;
+  return editCatalogCore({ db, authorize: owner, readActiveBuilt: liveRead(rid), addProduct: addProductOf(rid) }, { restaurantId: rid, source: src, baseSourceUpdateTime: T0 }, {}).then((r) => ({ r, db }));
+};
+const apply = (src, op) => CT.apply(src, op).source;
+const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
+
+(async () => {
+  const XP = base('x_pizza'); const LM = base('la_musa');
+  const PAD = 'noodle_01';
+  const padOpts = LM.structure.variant_items[PAD].variantIds.map((id) => LM.items.find((i) => String(i.display.id) === String(id)).key);
+  const nonReward = XP.structure.categories.map((c) => c.id).find((c) => !(XP.structure.redeem_eligible_cats || []).includes(c) && XP.items.some((i) => i.display.cat === c));
+  const plain = XP.items.find((i) => i.display.cat === nonReward && i.display.variantOf == null).key;
+  const reward = XP.items.find((i) => i.display.cat === 'individual' && i.display.variantOf == null).key;
+  const D2 = (key) => ({ op: 'choice.add', key, label: 'Tamaño', options: [{ ref: 'tmp:s3f-a-xxxxxx', choice: 'Personal' }, { ref: 'tmp:s3f-b-xxxxxx', choice: 'Grande', price: 999 }] });
+
+  // OFF: today
+  {
+    const { r } = await save('x_pizza', apply(XP, D2(plain)));
+    assert.deepStrictEqual([r.status, r.body.error], [400, 'choices_not_supported_yet'], `S3F-OFF: ${show(r)}`);
+    ok('OFF: a plain dish gaining a group is today\'s refusal');
+  }
+  STRUCT.choiceEdit = true;
+  {
+    const { r, db } = await save('x_pizza', apply(XP, D2(plain)));
+    assert.strictEqual(r.status, 200, `S3F-D2: ${show(r)}`);
+    const saved = db.state.source.data;
+    const dish = saved.items.find((i) => i.key === plain);
+    const ids = saved.structure.variant_items[String(dish.display.id)].variantIds;
+    const opts = ids.map((id) => saved.items.find((i) => String(i.display.id) === String(id)));
+    assert.deepStrictEqual(opts.map((o) => [o.key, o.display.name, o.display.cat]), [[`${dish.display.name} - Personal`, `${dish.display.name} - Personal`, dish.display.cat], [`${dish.display.name} - Grande`, `${dish.display.name} - Grande`, dish.display.cat]], 'S3F-D2: keys allocated (name mode), names derived');
+    assert.ok(!opts.some((o) => o.ref), 'no tmp ref survives');
+    ok('ON: a plain non-reward dish gains a group — the options get their keys and derived names on save');
+  }
+  {
+    const { r } = await save('x_pizza', apply(XP, D2(reward)));
+    assert.deepStrictEqual([r.status, r.body.error, r.body.key], [409, 'choice_on_reward_dish', reward], `S3F-REWARD: ${show(r)}`);
+    ok('ON: a reward dish gaining a group is choice_on_reward_dish (409, its key)');
+  }
+  {
+    const d = apply(apply(LM, { op: 'option.add', launcher: PAD, ref: 'tmp:s3f-tofu-xxxx', choice: 'Tofu', price: 330 }), { op: 'choice.recommended', launcher: PAD, option: padOpts[0] });
+    const { r, db } = await save('la_musa', d);
+    assert.strictEqual(r.status, 200, `S3F-ADD: ${show(r)}`);
+    const tofu = db.state.source.data.items.find((i) => i.display.choice === 'Tofu');
+    assert.ok(tofu && tofu.key && !tofu.ref && db.state.source.data.structure.variant_items[PAD].variantIds.includes(tofu.display.id), 'S3F-ADD: allocated and listed by the group');
+    ok('ON: an option added under an existing dish saves with its allocated key, listed by its group');
+  }
+  {
+    const d = apply(apply(LM, { op: 'option.rename', key: padOpts[1], choice: 'Pollo al Wok' }), { op: 'choice.recommended', launcher: PAD, option: padOpts[1] });
+    const { r, db } = await save('la_musa', d);
+    assert.strictEqual(r.status, 200, `S3F-RENAME: ${show(r)}`);
+    const o = db.state.source.data.items.find((i) => i.key === padOpts[1]);
+    assert.deepStrictEqual([o.display.choice, o.display.name], ['Pollo al Wok', `${LM.items.find((i) => i.key === PAD).display.name} - Pollo al Wok`]);
+    ok('ON: an option rename saves under its kept key, its full name derived');
+  }
+  {
+    const d = apply(LM, { op: 'choice.remove', launcher: PAD, price_from: padOpts[1] });
+    const ids = padOpts.map((k) => LM.items.find((i) => i.key === k).display.identity_id);
+    const { r, db } = await save('la_musa', d, ids);
+    assert.strictEqual(r.status, 200, `S3F-D3: ${show(r)}`);
+    assert.ok(!db.state.source.data.items.some((i) => padOpts.includes(i.key)), 'S3F-D3: the options left');
+    ok('ON: a group removed with its declared options saves; the dish is plain at the chosen option\'s price');
+  }
+  STRUCT.choiceEdit = false;
+  FINISHED = true;
+  console.log(`s3-flow: OK (${n})`);
+})().catch((e) => { console.error('s3-flow FAILED:', e && e.message); process.exit(1); });
