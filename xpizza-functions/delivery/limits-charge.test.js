@@ -73,6 +73,15 @@ async function limitedWorld(km) {
     assert.ok(true);
   });
 
+  await cell('DROP-OWN-STAMPS-REPLACEMENT-RACE', async (L) => {
+    // Codex build r1 P2-3: between the discovery read and the per-stamp transaction, ANOTHER order's stamp replaces one of ours (a new
+    // order with the same cart) — the transaction re-checks ownership and leaves it; our other stamp is still removed
+    const w = world({ recent_order_content: { ph: { ck1: { at: 1, order_id: 'O1', payment_method: 'online' }, a8: { at: 2, order_id: 'O1', payment_method: 'online' } } } });
+    w.db.hooks['recent_order_content/ph/ck1'] = async () => { await w.db.ref('recent_order_content/ph/ck1').set({ at: 9, order_id: 'O3', payment_method: 'cash' }); };
+    await DW.dropOwnStamps(w.db, 'ph', 'O1');
+    assert.deepStrictEqual(w.db.get('recent_order_content/ph'), { ck1: { at: 9, order_id: 'O3', payment_method: 'cash' } }, `${L}: the replacing order's stamp survives; ours (a8) is gone (m29c: no ownership recheck in the txn)`);
+  });
+
   await cell('PRE-BOOKKEEPING', async (L) => {
     const w = await limitedWorld(5);
     const dpP = DW.loadPricing(w.both);
