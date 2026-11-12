@@ -1371,8 +1371,13 @@
   .envio .inp{display:flex;align-items:center;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:0 11px;min-height:42px;gap:6px}
   .envio .inp span{font-size:12.5px;color:var(--mute);font-weight:600;flex:none}
   .envio .inp input{flex:1;min-width:0;width:100%;border:none;background:transparent;font-family:var(--disp);font-size:16px;font-weight:800;letter-spacing:-.02em;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums;outline:none}
-  .envio .inp:focus-within{box-shadow:var(--focus)}
+  /* OWNER 11-11 (live bug: two ink rectangles on an invalid «Hasta» field): the portal's FIELD focus — the green border + a soft
+     halo on the field box, the red border (+ red halo) when invalid — and NO ink ring on the box or on its input (the global
+     :focus-visible ring is cancelled here; the box itself shows where focus is) */
+  .envio .inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint2)}
+  .envio .inp input:focus,.envio .inp input:focus-visible{outline:none;box-shadow:none}
   .envio .inp.bad{border-color:var(--red);background:var(--red-soft)}
+  .envio .inp.bad:focus-within{border-color:var(--red);box-shadow:0 0 0 3px var(--red-line)}
   .envio .inp.bad input{color:var(--red-text)}
   .envio .inp.bad span{color:var(--red-text)}
   .envio .band .bdel{color:var(--mute2);display:flex;justify-content:center;padding:5px;border-radius:7px;background:none;border:none;cursor:pointer}
@@ -1397,6 +1402,7 @@
   .envio .psearch svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--mute2);fill:none;stroke-width:2}
   .envio .psearch input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:9px 11px 9px 32px;font-size:13px;color:var(--ink);outline:none;font-family:inherit}
   .envio .psearch input::placeholder{color:var(--mute2)}
+  .envio .psearch input:focus,.envio .psearch input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--tint2)}
   .envio .plist{overflow:auto;display:flex;flex-direction:column;gap:2px}
   .envio .pitem{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;border:none;background:none;text-align:left;cursor:pointer;color:var(--ink);font-size:13px;width:100%;font-family:inherit}
   .envio .pitem:hover,.envio .pitem.phi{background:var(--card-2)}

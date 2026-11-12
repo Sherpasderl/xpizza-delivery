@@ -31,6 +31,7 @@
   "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
+  "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
@@ -70,6 +71,8 @@
   "portal-fonts.test.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
+  "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -163,8 +166,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "d8dbe5c8559e0f47d4cbdbeb6c0665639398a280f8fd275a43c55a42dae0dbf9",
-   "bytes": 130253
+   "sha256": "f6609e7cf1cc519bfaca28a3c5f585c111fb8298a2c6d351dd7182bafc1251f6",
+   "bytes": 130958
   }
  },
  "diff_aid": {
@@ -1399,6 +1402,18 @@
    ],
    [
     "",
+    ".envio .inp.bad:focus-within",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".envio .inp:focus-within",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".envio .legend .lg-band",
     "background",
     "var(--env-band)"
@@ -1546,6 +1561,12 @@
     ".envio .psearch input::placeholder",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .psearch input:focus,.envio .psearch input:focus-visible",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
