@@ -118,8 +118,10 @@ ok('production boundary: loading index.js loads no test module, the loader reads
 // 5. BOTH CLI entrypoints: poisoned legacy env, no dotenv ever opened; the committed config decides
 {
   const POISON = { PHOTOS_PUBLIC_BUCKET: 'tb-poison-pub', PHOTOS_PRIVATE_BUCKET: 'tb-poison-priv' };
-  const co = child({ file: 'tools/photo-create-only-check.js', args: ['--project', 'xpizza-delivery', '--bucket', 'xpizza-delivery.firebasestorage.app'], env: POISON, spy: true });
-  assert.strictEqual(co.r.status, 2, `CLI-CREATE-ONLY committed public "" → refused until launch (exit ${co.r.status})\n${co.r.stdout}${co.r.stderr}`);
+  // an UNNAMED public bucket (public "", the pre-launch state) still refuses: kept as a fixture since the owner named it (2026-11-11 §8a)
+  const unnamed = { schema: 1, public_bucket: { 'xpizza-delivery': '' }, private_bucket: { 'xpizza-delivery': 'xpizza-delivery.firebasestorage.app' } };
+  const co = child({ file: 'tools/photo-create-only-check.js', args: ['--project', 'xpizza-delivery', '--bucket', 'xpizza-delivery.firebasestorage.app'], fixture: unnamed, env: POISON, spy: true });
+  assert.strictEqual(co.r.status, 2, `CLI-CREATE-ONLY public "" → refused (exit ${co.r.status})\n${co.r.stdout}${co.r.stderr}`);
   assert.ok(/not configured/.test(co.r.stderr || ''), `CLI-CREATE-ONLY says the public bucket is not configured: ${co.r.stderr}`);
   assert.deepStrictEqual(co.seen, [], `🔴 CLI-CREATE-ONLY-NO-DOTENV opened ${JSON.stringify(co.seen)}`);
   const launched = { schema: 1, public_bucket: { 'xpizza-delivery': 'tb-pub-launched' }, private_bucket: { 'xpizza-delivery': 'xpizza-delivery.firebasestorage.app' } };
@@ -127,6 +129,11 @@ ok('production boundary: loading index.js loads no test module, the loader reads
   assert.strictEqual(dry.r.status, 0, `CLI-CREATE-ONLY-DRY with a public name (exit ${dry.r.status})\n${dry.r.stderr}`);
   assert.ok(/private xpizza-delivery\.firebasestorage\.app, public tb-pub-launched/.test(dry.r.stdout) && !/tb-poison/.test(dry.r.stdout), `CLI-CREATE-ONLY-DRY names the committed buckets, never the poison: ${dry.r.stdout}`);
   assert.deepStrictEqual(dry.seen, [], 'CLI-CREATE-ONLY-DRY-NO-DOTENV');
+  // the COMMITTED file (no fixture) now names the public bucket: the dry run names both committed buckets, never the poison
+  const real = child({ file: 'tools/photo-create-only-check.js', args: ['--project', 'xpizza-delivery', '--bucket', 'xpizza-delivery.firebasestorage.app'], env: POISON, spy: true });
+  assert.strictEqual(real.r.status, 0, `CLI-CREATE-ONLY-COMMITTED dry run (exit ${real.r.status})\n${real.r.stderr}`);
+  assert.ok(/private xpizza-delivery\.firebasestorage\.app, public sherpa-delivery-photos/.test(real.r.stdout) && !/tb-poison/.test(real.r.stdout), `CLI-CREATE-ONLY-COMMITTED names the committed buckets: ${real.r.stdout}`);
+  assert.deepStrictEqual(real.seen, [], 'CLI-CREATE-ONLY-COMMITTED-NO-DOTENV');
   const bf = child({ file: 'tools/photos-legacy-backfill.js', args: ['--project', 'xpizza-delivery', '--rid', 'x_pizza', '--apply'], fixture: demoCfg(), env: POISON, spy: true });
   assert.strictEqual(bf.r.status, 2, `CLI-BACKFILL --apply with no committed entry for the project → refused (exit ${bf.r.status})\n${bf.r.stderr}`);
   assert.ok(/refused this project \(photos_private_bucket_unknown\)/.test(bf.r.stderr || ''), `CLI-BACKFILL names the refusal: ${bf.r.stderr}`);

@@ -69,8 +69,8 @@ const run = (b) => runCheck({ store: b.store, gens: b.gens, randomHex: () => HEX
     assert.strictEqual(resolveTargets({ projectId: 'tb-proj', env: { PHOTOS_PRIVATE_BUCKET: 'tb-poison', PHOTOS_PUBLIC_BUCKET: 'tb-poison-2' }, loaded: loaded() }).privateBucket, 'tb-priv', 'E4CLI-LEGACY-ENV-IGNORED');
     const msg = dryRunMessage({ projectId: 'tb-proj', privateBucket: 'tb-priv', publicBucket: 'tb-pub', bucket: 'tb-priv' });
     assert.ok(msg.includes('tb-priv') && msg.includes('tb-pub'), 'E4CLI-DRY-RUN-NAMES-THE-BUCKETS (names, not secrets — the owner confirms the target)');
-    // the REAL committed file: the owner-verified private name resolves; public not configured until launch
-    assert.deepStrictEqual(resolveTargets({ projectId: 'xpizza-delivery', env: {} }), { privateBucket: 'xpizza-delivery.firebasestorage.app', publicBucket: null, reason: null }, 'E4CLI-RESOLVE-COMMITTED-PROD');
+    // the REAL committed file: the owner-verified private name and the owner-named public bucket (2026-11-11 §8a step 3) resolve
+    assert.deepStrictEqual(resolveTargets({ projectId: 'xpizza-delivery', env: {} }), { privateBucket: 'xpizza-delivery.firebasestorage.app', publicBucket: 'sherpa-delivery-photos', reason: null }, 'E4CLI-RESOLVE-COMMITTED-PROD');
   }
   assert.strictEqual(checkTarget({ bucket: 'tb-priv', privateBucket: 'tb-priv', publicBucket: 'tb-pub' }), null, 'E4CLI-TARGET-OK');
   assert.ok(/public photo bucket/.test(checkTarget({ bucket: 'tb-priv', privateBucket: 'tb-priv', publicBucket: null }) || ''), 'E4CLI-TARGET-PUBLIC-UNRESOLVED-REFUSED (codex r1 P1: fails CLOSED)');

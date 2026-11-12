@@ -47,7 +47,7 @@ assert.ok(canon.equals(bundled), '🔴 PCFG-COPIES-EQUAL platform/photos.json dr
 const committed = JSON.parse(bundled.toString('utf8'));
 assert.deepStrictEqual(C.validatePhotosConfig(committed), { ok: true }, 'PCFG-COMMITTED-VALID');
 assert.strictEqual(committed.private_bucket[PROD], 'xpizza-delivery.firebasestorage.app', '🔴 PCFG-PRIVATE-VERIFIED the committed private bucket is the owner-read storageBucket (decide row 3, 2026-11-01)');
-assert.strictEqual(committed.public_bucket[PROD], '', 'PCFG-PUBLIC-NOT-YET (public "" until the owner names it at launch)');
+assert.strictEqual(committed.public_bucket[PROD], 'sherpa-delivery-photos', 'PCFG-PUBLIC-NAMED (owner 2026-11-11, PLAN-photos-public-bucket-config §8a step 3: gs://sherpa-delivery-photos exists, GET public / LIST denied)');
 const real = C.loadPhotosConfig();
 assert.ok(real.ok && real.config.private_bucket[PROD] === committed.private_bucket[PROD], 'PCFG-LOADER-READS-THE-COMMITTED-FILE');
 assert.strictEqual(C.loadPhotosConfig(), real, 'PCFG-LOADER-MEMOIZED');
