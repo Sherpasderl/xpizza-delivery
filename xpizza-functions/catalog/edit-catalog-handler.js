@@ -446,7 +446,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }));
   // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
   // keys and ids, canonical order) before it builds the review.
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived(live, next, diff) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };

@@ -113,6 +113,9 @@ function removalOnlyDiff(diff, opts) {
   return none(diff.added) && none(diff.renamed) && none(diff.changed) && none(diff.largeChangeSet) && none(diff.consequences)
     && Array.isArray(diff.removed) && diff.removed.length > 0 && diff.removed.every((r) => r && r.surface === 'item' && declared.has(r.key));
 }
+// Q-12 (advisor RULED): THE one answer to «does this publish waive the fiscal acknowledgement?» — the switch ON (removalDiffOptions is
+// null when OFF) and a removal-only diff. The owner publish's gate and the save's `fiscalAckRequired: false` both read it.
+function fiscalAckWaived(liveBuilt, draft, diff) { return removalOnlyDiff(diff, removalDiffOptions(liveBuilt, draft)); }
 // B-5 (advisor RULED): with photo uploads off, the draft map may differ from the stored one ONLY by the declared removals' own entries leaving
 function onlyRemovedPhotosLeave(map, stored, opts) {
   const declared = opts && opts.declared instanceof Set ? opts.declared : null;
@@ -264,4 +267,4 @@ function verifyEditToken(token, state) {
   return { ok: true, reason: null };
 }
 
-module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, onlyRemovedPhotosLeave };
+module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, onlyRemovedPhotosLeave, fiscalAckWaived };

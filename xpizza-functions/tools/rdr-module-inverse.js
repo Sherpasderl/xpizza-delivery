@@ -56,6 +56,11 @@ const HUNKS = Object.freeze([
   "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically\n"
  },
  {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived(live, next, diff) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today\n",
+  "was": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });\n"
+ },
+ {
   "file": "catalog/publish-edited-handler.js",
   "now": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: draftPhotos } : draftBuilt, require('./catalog-edit').removalDiffOptions(live, draft)); if (textEditCapabilities().enabled) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the same consequences as the save, before the token re-match\n",
   "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: draftPhotos } : draftBuilt); if (textEditCapabilities().enabled) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the same consequences as the save, before the token re-match\n"
@@ -67,7 +72,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "  { const g = fiscalPublishGate(rid, auth, body, !(require('./platform-removal').removalCapabilities().productRemoval && require('./catalog-edit').removalOnlyDiff(diff, require('./catalog-edit').removalDiffOptions(live, draft)))); if (g) return g; }   // B-1 (advisor RULED): a removal-only publish changes no factura price — the owner rule stands, the ack is not asked\n",
+  "now": "  { const g = fiscalPublishGate(rid, auth, body, !require('./catalog-edit').fiscalAckWaived(live, draft, diff)); if (g) return g; }   // B-1 (advisor RULED): a removal-only publish changes no factura price — the owner rule stands, the ack is not asked\n",
   "was": "  { const g = fiscalPublishGate(rid, auth, body); if (g) return g; }\n"
  },
  {
