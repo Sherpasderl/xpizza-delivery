@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyD4Module } = require('./tools/d4-intake-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, '53edc481', 'D4-WIRING: the base is the D4 branch point');
-assert.deepStrictEqual([...FILES].sort(), ['rewards-reserve.js'], 'D4-WIRING: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
