@@ -375,3 +375,25 @@ test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «·
   assert.equal(one.section, src.structure.categories.find((c) => String(c.id) === cat).name, 'one section ⇒ its name');
   assert.equal(mixed.section, null, 'mixed sections ⇒ no suffix');
 });
+test('A — «Quitar de este producto» is refused only by the WRITER’s own dry run on the copy: a legacy option rule (5f XT-REFUSALS) → «Sus opciones tienen reglas propias»; otherwise allowed; the dry run writes nothing', () => {
+  const d = createDraft(seed('la_musa'));
+  const s = drawer(d, 'dimsum_01');
+  const before = JSON.stringify([draftSource(d), s.ops]);
+  assert.equal(IE.detachRefusal(d, s, 'Salsas'), null, 'a plain dish may drop a group');
+  assert.equal(JSON.stringify([draftSource(d), s.ops]), before, 'the dry run writes nothing');
+  const s0 = buildSourceFromCode('la_musa');
+  s0.structure.exposure.item_overrides.noodle_01_pollo = { deny: ['Salsas'] };   // exactly catalog/exposure-transitions.test.js XT-REFUSALS
+  const d2 = createDraft(canonicalize(s0));
+  assert.equal(IE.detachRefusal(d2, drawer(d2, 'noodle_01'), 'Salsas'), 'Sus opciones tienen reglas propias', 'an option rule refuses it, in words');
+});
+test('A — detachRefusal is a PURE reader (the wiring guards rule it so): a deep-frozen draft and copy, byte-identical after', () => {
+  'use strict';
+  const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  const d = createDraft(seed('la_musa'));
+  const s = drawer(d, 'dimsum_01');
+  IE.setGroupAttached(s, 'Proteínas', true);
+  const before = JSON.stringify([d, s]);
+  deepFreeze(d); deepFreeze(s);
+  assert.doesNotThrow(() => IE.detachRefusal(d, s, 'Salsas'), 'no write into a frozen draft or copy');
+  assert.equal(JSON.stringify([d, s]), before, 'the draft and the copy are byte-identical after');
+});

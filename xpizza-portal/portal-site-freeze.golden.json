@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "6e0a8a90bc90b4cb28b2fb29c287eecfcee65cc7197ae23e9ad48cb10be21997",
-   "bytes": 126884
+   "sha256": "758d829a50f5103d8ea3010e0f6b9c60c4015168441d387b4b6ebbfd1445264c",
+   "bytes": 127302
   }
  },
  "diff_aid": {
@@ -1855,6 +1855,12 @@
    ],
    [
     "",
+    ".mk-lnk.danger",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
     ".mk-lnk:disabled",
     "color",
     "var(--mute2)"
@@ -1876,6 +1882,12 @@
     ".mk-modhr",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-mp",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

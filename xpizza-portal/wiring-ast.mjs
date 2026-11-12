@@ -141,6 +141,8 @@ export const ALLOWED_CONSUMERS = new Set([
   'groupOrders',
   // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
   'IE.attachSheet',
+  // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
+  'IE.detachRefusal',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.

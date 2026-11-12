@@ -1927,7 +1927,7 @@ function renderEditDrawer(d, it, keepScroll) {
     const box = mk('div', `mk-opc${ex.none ? ' mk-off' : ''}`);
     const folded = (id) => opcFolded.has(`${s.id}|${id}`);
     const fold = (id) => { const k = `${s.id}|${id}`; if (opcFolded.has(k)) opcFolded.delete(k); else opcFolded.add(k); relayout(); refocus([`ie-fold::${id}`]); };
-    const header = (id, name, sub, subCls, open) => {
+    const header = (id, name, sub, subCls, open, lead = null) => {
       const gh = mk('div', 'mk-gh');
       const ieFoldName = document.createElement('button'); ieFoldName.type = 'button'; ieFoldName.className = 'mk-gt';
       ieFoldName.setAttribute('aria-expanded', String(open));
@@ -1940,6 +1940,7 @@ function renderEditDrawer(d, it, keepScroll) {
       ieFoldChev.setAttribute('aria-label', `${open ? 'Ocultar' : 'Mostrar'} ${name}`); ieFoldChev.setAttribute('aria-expanded', String(open));
       ieFoldChev.append(svgChevron());
       ieFoldChev.addEventListener('click', bound(() => fold(id)));
+      if (lead) act.append(lead);   // S2 frame A: «Editar en Extras» before the chevron
       act.append(ieFoldChev);
       gh.append(ieFoldName, act);
       return { gh, st };
@@ -2010,7 +2011,17 @@ function renderEditDrawer(d, it, keepScroll) {
       const id = `x::${c.cat}`;
       const open = !folded(id);
       const card = mk('div', `mk-grp mk-ext${open ? ' mk-open' : ''}`);
-      const h = header(id, c.cat, opcExtSub(c, open), 'mk-gts', open);
+      // STRUCTURE S2 (plan §2 item 7, MOCKUP frame A) — ONLY with the server's Extras page: «Editar en Extras» in the header, «Quitar de
+      // este producto» at the foot, the prices read-only (R4 ends: an extra is repriced on the Extras page); without it, S1 exactly
+      const s2 = state.extrasCatalog === true;
+      let ieEditInExtras = null;
+      if (s2) {
+        ieEditInExtras = document.createElement('button'); ieEditInExtras.type = 'button'; ieEditInExtras.className = 'mk-lnk mk-gol';
+        ieEditInExtras.textContent = 'Editar en Extras'; ieEditInExtras.setAttribute('aria-label', `Editar ${c.cat} en Extras`);
+        ieEditInExtras.addEventListener('click', bound(() => requestClose(() => { closeDrawer(); extrasGroup = c.cat; setProdTab('xpage'); const r = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === c.cat); if (r) r.focus(); })));
+        focusKey(ieEditInExtras, `ie-gol::${c.cat}`);
+      }
+      const h = header(id, c.cat, opcExtSub(c, open), 'mk-gts', open, ieEditInExtras);
       card.append(h.gh);
       const ref = { cat: c.cat, open, st: h.st, rows: [] };
       if (open) {
@@ -2037,6 +2048,12 @@ function renderEditDrawer(d, it, keepScroll) {
           ieExtraOn.addEventListener('change', bound(() => { IE.set(s, 'extraOn', { key: r.key, on: ieExtraOn.checked }); syncEdit(); }));
           focusKey(ieExtraOn, `ie-x::${r.key}`);
           lab.append(ieExtraOn, mk('span', 'mk-xnm', r.name));
+          if (s2) {   // S2: the group's price, read-only here (repriced on the Extras page)
+            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));
+            gb.append(row);
+            ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: null });
+            continue;
+          }
           // R4: the group's price, editable as today (it is the group's, not the dish's — shown for an unchecked extra too)
           const pr = mk('span', 'mopr');
           const ieExtraPrice = document.createElement('input');
@@ -2048,6 +2065,17 @@ function renderEditDrawer(d, it, keepScroll) {
           row.append(lab, pr);
           gb.append(row);
           ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: ieExtraPrice });
+        }
+        if (s2) {   // «Quitar de este producto»: detach.item into the COPY; off with the writer's line when the copy refuses it
+          const foot = mk('div', 'mk-gfoot');
+          const refused = IE.detachRefusal(state.draft, s, c.cat);
+          const ieDetach = document.createElement('button'); ieDetach.type = 'button'; ieDetach.className = 'mk-lnk danger'; ieDetach.textContent = 'Quitar de este producto';
+          lockControl(ieDetach, !s.extrasAuthoring || !!refused);
+          ieDetach.addEventListener('click', bound(() => { IE.setGroupAttached(s, c.cat, false); relayout(); refocus(['ie-badd']); }));
+          focusKey(ieDetach, `ie-detach::${c.cat}`);
+          foot.append(ieDetach);
+          if (refused) foot.append(mk('div', 'ferr mk-ferr', refused));
+          gb.append(foot);
         }
         card.append(gb);
       }
@@ -2164,7 +2192,7 @@ function syncEdit() {
         if (!row) continue;
         r.cb.checked = row.on;
         r.row.classList.toggle('mk-xoff', !row.on);
-        if (r.pi.value !== (row.price || '') && document.activeElement !== r.pi) r.pi.value = row.price || '';
+        if (r.pi && r.pi.value !== (row.price || '') && document.activeElement !== r.pi) r.pi.value = row.price || '';   // S2: read-only text (no input) with extrasCatalog
       }
     }
   }

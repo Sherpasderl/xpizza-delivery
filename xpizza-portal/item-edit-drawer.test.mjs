@@ -1585,3 +1585,66 @@ test('S2 B — «Crealo en Extras»: a clean drawer → the sheet and the drawer
   assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
   assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
 });
+
+// ── STRUCTURE S2 — the drawer's S2 parts (plan r3 §2 item 7; MOCKUP frame A): «Editar en Extras» in an extras card's header,
+// «Quitar de este producto» at its foot (detach.item into the COPY), the card's prices read-only text (.mk-mp) — ONLY with the
+// server's Extras page (without it the prices stay editable: no gap) ───────────────────────────────────────────────────────────
+const gol = (c) => c.querySelector('.mk-gh .mk-gact .mk-lnk.mk-gol');
+const quitar = (c) => c.querySelector('.mk-gfoot .mk-lnk.danger');
+test('S2 A — with extrasCatalog: «Editar en Extras» before the chevron, «Quitar de este producto» at the foot, the prices read-only «L {n}»; without it: today’s editable prices, no S2 control', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  const c = cardOf(p, 'Salsas');
+  assert.ok(gol(c), '«Editar en Extras»');
+  assert.deepEqual([gol(c).textContent, gol(c).getAttribute('aria-label'), gol(c).nextElementSibling.classList.contains('mk-chev')], ['Editar en Extras', 'Editar Salsas en Extras', true]);
+  assert.equal(quitar(c) && quitar(c).textContent, 'Quitar de este producto');
+  assert.equal(c.querySelectorAll('.mk-xopt input[type=text]').length, 0, 'no price input on an extras card');
+  const xs = extrasIn(p.src(), 'Salsas');
+  assert.deepEqual(rowsOfCard(c).map((r) => r.querySelector('.mk-mp').textContent), xs.map((x) => `L ${x.price}`), 'the prices, read-only');
+  const q = await page({ read: ON });
+  await q.signIn(); await q.open('dimsum_01');
+  const c2 = cardOf(q, 'Salsas');
+  assert.equal(gol(c2) || quitar(c2) || c2.querySelector('.mk-mp'), null, 'no S2 control without extrasCatalog');
+  assert.equal(c2.querySelectorAll('.mk-xopt input[type=text]').length, rowsOfCard(c2).length, 'today’s editable prices stay (no gap)');
+});
+test('S2 A — «Quitar de este producto» detaches the group in the COPY: the card goes, the draft is untouched, B lists it again; «Guardar» commits it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  const before = JSON.stringify(p.src());
+  quitar(cardOf(p, 'Salsas')).click(); await settle(10);
+  assert.equal(cardOf(p, 'Salsas'), undefined, 'the card is gone');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft is untouched until «Guardar»');
+  assert.equal(p.d.activeElement, bAction(p), 'focus on «Agregar grupo de extras»');
+  bAction(p).click(); await settle(5);
+  assert.ok(!bRow(p, 'Salsas').classList.contains('have'), 'B offers it again');
+  [...bSheet(p).querySelectorAll('.mf button')][0].click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const ov = p.src().structure.exposure.item_overrides.dimsum_01;
+  assert.ok(ov && JSON.stringify(ov).includes('Salsas'), '«Guardar» commits the detach');
+});
+test('S2 A — «Quitar de este producto» off with the writer’s line when an option has its own rule (5f XT-REFUSALS fixture)', async () => {
+  const src = JSON.parse(JSON.stringify(SRC)); src.structure.exposure.item_overrides.noodle_01_pollo = { deny: ['Salsas'] };
+  const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, source: src }) });
+  await p.signIn(); await p.open('noodle_01');
+  const c = cardOf(p, 'Acompañamientos') || [...p.drawer().querySelectorAll('.mk-grp.mk-ext')][0];
+  assert.ok(c, 'non-vacuity: a card');
+  assert.equal(quitar(c).disabled, true, 'the refused «Quitar» is off');
+  assert.equal(c.querySelector('.mk-gfoot .ferr').textContent, 'Sus opciones tienen reglas propias');
+});
+test('S2 A — «Editar en Extras»: a clean copy → the drawer closes, the Extras tab with THAT group selected and focused; a dirty copy asks the drawer’s confirm first', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  gol(cardOf(p, 'Salsas')).click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  const on = railRows(p).find((r) => r.classList.contains('on'));
+  assert.equal(on && on.dataset.group, 'Salsas', 'that group selected');
+  assert.equal(p.d.activeElement, on, 'and focused');
+  const q = await page({ read: XON });
+  await q.signIn(); await q.open('dimsum_01');
+  const cb0 = q.drawer().querySelector('.mk-xopt input[type=checkbox]'); cb0.checked = !cb0.checked; cb0.dispatchEvent(new q.w.Event('change', { bubbles: true })); await settle(10);
+  gol(cardOf(q, 'Salsas')).click(); await settle(10);
+  const cf = q.drawer().querySelector('.mk-cf');
+  assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
+  assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
+});

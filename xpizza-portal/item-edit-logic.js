@@ -297,6 +297,16 @@ export function attachSheet(draft, s) {
   };
 }
 
+// STRUCTURE S2 — A «Quitar de este producto» (plan r3 §2 item 7): may the copy drop this group? Decided by the WRITER's own dry run
+// (detach.item on the copy's prospect — apply returns a new source, the input is never written). → null | the row's line (X3b's table).
+export function detachRefusal(draft, s, group) {
+  const p = prospectSource(draft, s);
+  const X = globalThis.ExposureTransitions;
+  if (!p || !X || typeof X.apply !== 'function') return 'No pudimos aplicar el cambio. Recargá la página.';
+  try { X.apply(p, { op: 'detach.item', item: s.key, group }); return null; }
+  catch (err) { return refusalReason({ reason: err && err.code === 'exposure_option_override' ? 'option_override' : null }) || 'No pudimos aplicar el cambio. Recargá la página.'; }
+}
+
 export function view(draft, s) {
   const w = s.work;
   const ch = changed(s);

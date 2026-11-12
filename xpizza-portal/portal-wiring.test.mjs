@@ -1307,6 +1307,8 @@ const LISTENERS = {
   "ieAllExtras::click":           ['bound', [], 'S1 — «Marcar todos» / «Ninguno» for one group, into the working copy (IE.set extraGroupOn: that group\u2019s current keys)'],
   "ieExtraOn::change":            ['bound', [], 'S1 — one extra\u2019s check, into the working copy (IE.set extraOn)'],
   "ieAddGroup::click":            ['bound', [], 'S2 B — opens the «Agregar grupo de extras» sheet over the drawer copy; its «Agregar N grupos» records attaches in the COPY (IE.setGroupAttached), never the draft'],
+  "ieEditInExtras::click":        ['bound', [], 'S2 A — «Editar en Extras»: the drawer\u2019s unsaved-copy confirm first (requestClose), then the Extras tab with that group selected — view state only, the draft untouched'],
+  "ieDetach::click":              ['bound', [], 'S2 A — «Quitar de este producto»: detach.item into the drawer COPY (IE.setGroupAttached false), never the draft'],
   "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
@@ -1560,6 +1562,8 @@ const ALLOWED_CONSUMERS = new Set([
   'groupOrders',
   // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
   'IE.attachSheet',
+  // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
+  'IE.detachRefusal',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
