@@ -117,6 +117,20 @@ async function served(rid, captured) {
     STRUCT.extrasCatalog = true;
     ok(`${rid}: a new extra saves with its server key and publishes (switch ON); OFF, the save and the publish of that change are refused`);
   }
+  // SF-GROUP-EMPTY-ID (advisor 11-12, portal-ui FIX-EXTRA): the extras_group_empty refusal names the emptied group by the SAME
+  // identifier the draft uses (its extra_categories entry), not only in the English detail
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const s = base(rid); const g0 = s.extras[0].display.cat;
+    const keys = new Set(s.extras.filter((e) => e.display.cat === g0).map((e) => e.key));
+    s.extras = s.extras.filter((e) => e.display.cat !== g0);
+    s.structure.extra_categories = s.structure.extra_categories.filter((c) => c !== g0);
+    if (Array.isArray(s.structure.redeem_eligible_extras)) s.structure.redeem_eligible_extras = s.structure.redeem_eligible_extras.filter((k) => !keys.has(k));
+    const scrub = (v) => { if (Array.isArray(v)) { for (let i = v.length - 1; i >= 0; i--) { if (v[i] === g0 || keys.has(v[i])) v.splice(i, 1); else scrub(v[i]); } } else if (v && typeof v === 'object') Object.values(v).forEach(scrub); };
+    for (const f of ['exposure', 'extras_by_category', 'extras_by_item', 'extra_order']) scrub(s.structure[f]);   // every reference to the emptied group / its extras
+    const { r } = await save(rid, s);
+    assert.deepStrictEqual([r.status, r.body.error, r.body.field, r.body.group], [400, 'extras_group_empty', 'extras', g0], `SF-GROUP-EMPTY-ID ${rid}: (${JSON.stringify(r.body).slice(0, 200)})`);
+    ok(`${rid}: extras_group_empty carries the emptied group's identifier`);
+  }
   FINISHED = true;
   console.log(`s2core-flow: OK (${n})`);
 })().catch((e) => { console.error('s2core-flow FAILED:', e && e.message); process.exit(1); });

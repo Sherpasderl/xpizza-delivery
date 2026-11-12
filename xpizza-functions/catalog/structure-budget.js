@@ -81,7 +81,7 @@ function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS, p
   if (groups.length > LIMITS.groups) refuse('structure_caps', 'extra_categories', `at most ${LIMITS.groups} extras groups (${groups.length})`);
   const per = new Map();
   for (const e of draft.extras || []) { const g = e && e.display && e.display.cat; per.set(g, (per.get(g) || 0) + 1); }
-  for (const [g, c] of per) if (c > LIMITS.perGroup) refuse('structure_caps', 'extras', `at most ${LIMITS.perGroup} options in the group «${g}» (${c})`);
+  for (const [g, c] of per) if (c > LIMITS.perGroup) throw new AddProductError('structure_caps', `at most ${LIMITS.perGroup} options in the group «${g}» (${c})`, { field: 'extras_in_group', group: g });   // its OWN field + the group (advisor 11-12); the menu-wide cap below stays 'extras'
   if ((draft.extras || []).length > LIMITS.extras) refuse('structure_caps', 'extras', `at most ${LIMITS.extras} options (${draft.extras.length})`);
   const ops = opsOf(draft, active);
   if (ops > LIMITS.ops) refuse('structure_caps', 'ops', `at most ${LIMITS.ops} Extras changes in one publish (${ops}) — publish part of them first`);

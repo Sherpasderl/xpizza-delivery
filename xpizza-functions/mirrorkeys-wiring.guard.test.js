@@ -12,7 +12,7 @@ const BASE = '0bc8170f';   // R-WIRE train re-point: M4^1, the train state just 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/mirror-rtdb.js', 'catalog/snapshot-fallback.js']);
 for (const f of FILES) {
-  const src = require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))));   // S0 key mode (newest) reversed first
+  const src = require('./tools/keymode-module-inverse').unapplyKeyModeModule(f, require('./tools/frozenkeys-module-inverse').unapplyFrozenKeysModule(f, require('./tools/resolvelines-module-inverse').unapplyResolveLinesModule(f, require('./tools/reservedkeys-module-inverse').unapplyReservedKeysModule(f, require('./tools/s1d-module-inverse').unapplyS1dModule(f, require('./tools/s2-module-inverse').unapplyS2Module(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));   // S0 key mode (newest) reversed first
   const base = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8' });
   assert.notStrictEqual(src, base, `non-vacuity: ${f} carries the fix`);
   assert.strictEqual(unapplyMirrorKeysModule(f, src), base, `🔴 ${f} minus the mirror-keys hunks is not ${BASE}:${f}`);

@@ -122,9 +122,16 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     const s = allocate(XT.apply(SCALE.la_musa, { op: 'group.create', group: 'Grupo 20', extras: [{ ref: 'tmp:grp20-ex0-xx', name: 'Uno', price: 10 }], attach: { mode: 'none' } }).source);
     refused(() => judge('la_musa', s), 'structure_caps', 'extra_categories');
   });
-  await cell('CAPS-PER-GROUP: a 31st extra in a group is structure_caps (extras)', () => {
-    const s = allocate(XT.apply(SCALE.la_musa, { op: 'extra.add', group: SCALE.la_musa.structure.extra_categories[0], ref: 'tmp:extra-31-xx', name: 'Extra Treinta Y Uno', price: 10 }).source);
-    refused(() => judge('la_musa', s), 'structure_caps', 'extras');
+  await cell('CAPS-PER-GROUP: a 31st extra in a group is structure_caps (extras_in_group + the group, advisor 11-12)', () => {
+    const g = SCALE.la_musa.structure.extra_categories[0];
+    const s = allocate(XT.apply(SCALE.la_musa, { op: 'extra.add', group: g, ref: 'tmp:extra-31-xx', name: 'Extra Treinta Y Uno', price: 10 }).source);
+    refused(() => judge('la_musa', s), 'structure_caps', 'extras_in_group');
+    try { judge('la_musa', s); } catch (e) { assert.strictEqual(e.group, g, `the refusal names the group (${e.group})`); }
+  });
+  await cell('CAPS-MENU-WIDE: the menu-wide cap keeps field extras (no group); unreachable alone — groups × perGroup = extras', () => {
+    const SBsrc = require('fs').readFileSync(require('path').join(__dirname, 'structure-budget.js'), 'utf8');
+    assert.ok(SBsrc.includes("if ((draft.extras || []).length > LIMITS.extras) refuse('structure_caps', 'extras', `at most ${LIMITS.extras} options (${draft.extras.length})`);"), 'the menu-wide refusal still answers field extras, with no group');
+    assert.strictEqual(SB.LIMITS.groups * SB.LIMITS.perGroup, SB.LIMITS.extras, 'premise: the group caps bound the menu at exactly the menu-wide cap');
   });
   await cell('CAPS-OPS: 60 ops in one draft pass; a 61st is structure_caps (ops)', () => {
     const base = buildSourceFromCode('x_pizza');

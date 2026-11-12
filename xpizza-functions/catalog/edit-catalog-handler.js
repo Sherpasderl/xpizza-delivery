@@ -52,7 +52,7 @@ const isPreconditionFailure = (e) =>
 // with the Firestore code that produces it; the default is identity, for stubs that deal in opaque
 // strings. This is deliberately injected rather than imported: the core stays free of firebase-admin.
 // An add-product refusal, typed and field-mapped for the portal.
-const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}) });
+const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}), ...(e.group != null ? { group: e.group } : {}) });
 
 async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v, addProduct = null, photos = null }, body, req) {
   const rid = body && body.restaurantId;
