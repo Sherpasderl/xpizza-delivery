@@ -130,6 +130,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -511,6 +512,7 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -909,6 +911,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -1286,6 +1289,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -2552,6 +2556,7 @@
   "catalog/firestore-fake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
+  "catalog/frozen-extra-keys.js",
   "catalog/frozen-keys.js",
   "catalog/group-intake.js",
   "catalog/identity-grace.js",
@@ -3206,6 +3211,10 @@
    "lifts": []
   },
   "catalog/form-rebake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/frozen-extra-keys.js": {
    "pins": [],
    "lifts": []
   },
