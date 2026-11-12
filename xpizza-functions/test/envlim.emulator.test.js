@@ -230,7 +230,7 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
     const holdB = () => holdOf('x1');
     let A;
     try { A = await post(app.chargeOnlineOrder, bodyA, { 'x-firebase-id-token': MEMBER }); } finally { DW.preBookkeepingRefusal = realPre; }
-    assert.ok(raced, 'L7 premise: the race ran inside A (after its pre-check)');
+    assert.ok(raced, `L7 premise: the race ran inside A (after its pre-check) — A answered ${A.status} ${A.text.slice(0, 240)}`);
     assert.deepStrictEqual([...REFUSED(A), CHARGED.length], [409, 'outside_delivery_bands', false, 1], `L7 A answers the refusal — no 503, no URL, B's single charge only (m25) (${A.text.slice(0, 200)})`);
     assert.strictEqual((await holdB()).state, 'reserved', 'L7 B\'s hold (reused from A\'s view) is untouched (m26)');
     assert.strictEqual(await stampsNaming('el_x1'), 0, 'L7 the content stamps naming the order (bookkeeping + A8) are removed (m28, m29)');
