@@ -100,6 +100,47 @@ const pointerOf = async (db) => { const s = await db.collection('restaurants').d
     await assert.rejects(() => publishVersion(db, 'x_pizza', inp(XP, 'fg3'), { expected: { activeVersionId: v2 } }), (e) => e && e.code === 'choice_groups_would_vanish', 'S3RB-SHAPE: a publish of a field-less version over a grouped one is refused too');
     ok('ON: original → first group → rollback to the original (and a publish of it) is choice_groups_would_vanish; the pointer stays');
   }
+  // ── advisor 11-12: the shape rule is UNGATED (a fix of a live hole) — it holds with the switch OFF, and never refuses (a) a restaurant whose
+  //    versions never had the field, nor (b) a version that keeps variant_items: {} after its groups were removed
+  STRUCT.choiceEdit = false;
+  {
+    const XP = buildSourceFromCode('x_pizza');
+    const inp = (s, sha) => { const i = sourceToBuildInputs(s); const b = buildCatalogV2('x_pizza', { formData: i.formData, priceTable: i.priceTable }); return { items: b.items, structure: b.structure, extras: i.extras, extraRecords: b.extras, key_mode: s.key_mode, source_sha: sha }; };
+    const ptr = async (db, rid) => (await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get()).data().version;
+    // the DRAWER (today's feature, the switch OFF): a NEW sized dish creates the brand's first group
+    const AP = require('./add-product');
+    const add = JSON.parse(JSON.stringify(XP));
+    add.items.push({ ref: 'tmp:dr-pie-xxxxxx', price: 300, display: { name: 'Pizza Drawer', cat: 'individual', price: 300 } }); add.structure.item_order.push('tmp:dr-pie-xxxxxx');
+    add.structure.variant_items = { 'tmp:dr-pie-xxxxxx': { label: 'Tamaño', variantIds: ['tmp:dr-a-xxxxxxx', 'tmp:dr-b-xxxxxxx'] } };
+    for (const [ref, ch, pr] of [['tmp:dr-a-xxxxxxx', 'Chica', 300], ['tmp:dr-b-xxxxxxx', 'Grande', 500]]) { add.items.push({ ref, price: pr, display: { variantOf: 'tmp:dr-pie-xxxxxx', choice: ch, price: pr } }); add.structure.item_order.push(ref); }
+    const drawer = AP.allocateAdditions({ incoming: add, stored: XP, activeItems: XP.items, keyMode: 'name', hwm: null, registryHasKey: () => false, authoring: true }).source;
+    const db = makeDb();
+    const v1 = (await publishVersion(db, 'x_pizza', inp(XP, 'off1'), { expected: { activeVersionId: null } })).versionId;
+    const v2 = (await publishVersion(db, 'x_pizza', inp(drawer, 'off2'), { expected: { activeVersionId: v1 } })).versionId;
+    await assert.rejects(() => rollbackVersion(db, 'x_pizza', v1, { expected: { activeVersionId: v2 } }), (e) => e && e.code === 'choice_groups_would_vanish', 'S3RB-SHAPE-OFF: the drawer-created first group → rollback to the pre-group version is refused with the switch OFF');
+    assert.strictEqual(await ptr(db, 'x_pizza'), v2, 'S3RB-SHAPE-OFF: the pointer stays');
+    ok('OFF (ungated fix): a drawer-created first group → rollback to the pre-group version is choice_groups_would_vanish; the pointer stays');
+    // (a) a restaurant whose versions never had the field: rollback and republish are today's
+    const dbA = makeDb(); const priced = JSON.parse(JSON.stringify(XP)); priced.items[0].price += 1; priced.items[0].display.price = priced.items[0].price;
+    const a1 = (await publishVersion(dbA, 'x_pizza', inp(XP, 'a1'), { expected: { activeVersionId: null } })).versionId;
+    const a2 = (await publishVersion(dbA, 'x_pizza', inp(priced, 'a2'), { expected: { activeVersionId: a1 } })).versionId;
+    await rollbackVersion(dbA, 'x_pizza', a1, { expected: { activeVersionId: a2 } });
+    assert.strictEqual(await ptr(dbA, 'x_pizza'), a1, 'S3RB-SHAPE-A: a never-grouped restaurant rolls back as today');
+    ok('OFF (a): a restaurant whose versions never had variant_items rolls back as today');
+  }
+  {   // (b) a version that KEEPS variant_items: {} after its groups were removed is never refused — publish it over a grouped one, roll back to it
+    const LM2 = buildSourceFromCode(RID);
+    const o2 = LM2.structure.variant_items[PAD].variantIds.map((id) => LM2.items.find((i) => String(i.display.id) === String(id)).key);
+    const D3b = CT.apply(LM2, { op: 'choice.remove', launcher: PAD, price_from: o2[1] }).source;
+    assert.ok(D3b.structure.variant_items && Object.keys(D3b.structure.variant_items).length === 0, 'premise: the D3 version keeps variant_items: {}');
+    const db = makeDb();
+    const b1 = (await publishVersion(db, RID, inputOf(LM2, 'b1'), { expected: { activeVersionId: null } })).versionId;
+    const b2 = (await publishVersion(db, RID, inputOf(D3b, 'b2'), { expected: { activeVersionId: b1 } })).versionId;
+    const b3 = (await publishVersion(db, RID, inputOf(LM2, 'b3'), { expected: { activeVersionId: b2 } })).versionId;
+    await rollbackVersion(db, RID, b2, { expected: { activeVersionId: b3 } });
+    assert.strictEqual(await pointerOf(db), b2, 'S3RB-SHAPE-B: rollback to the {} version is allowed');
+    ok('OFF (b): a version keeping variant_items: {} is published over a grouped one and rolled back to, never refused');
+  }
   STRUCT.choiceEdit = false;
   FINISHED = true;
   console.log(`choice-rollback: OK (${n})`);
