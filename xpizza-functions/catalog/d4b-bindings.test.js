@@ -231,9 +231,9 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
     assert.deepStrictEqual(cls(null, unv), { action: '409', reason: 'cart_unverifiable' }, '🔴 canonical unverifiable → REFUSED (409), not the legacy fail-open 200');
     const other = await computeCanonicalIncomingFingerprint({ ...ctxArgs, items: carts.collisionOne }, { ...deps, context: ctx });
     assert.deepStrictEqual(cls(null, other), { action: '409', reason: 'cart' });
-    // legacy: today's fail-open preserved (null incoming → 200), today's mismatch → 409 cart
+    // legacy: a null incoming against a FINGERPRINTED order is now unverifiable (NOTE-security-null-fp, Option A — the canonical answer), a mismatch → 409 cart
     const legacy = { restaurant_id: rid, payment_method: 'cash', status: 'new', payment_fingerprint: GOLDEN.values[rid].order_fp_plain };
-    assert.deepStrictEqual(classifyExistingOrder(legacy, { paymentMethod: 'cash', restaurantMatches: true }, null, {}), { action: '200' }, 'legacy null → 200 (fail-open preserved)');
+    assert.deepStrictEqual(classifyExistingOrder(legacy, { paymentMethod: 'cash', restaurantMatches: true }, null, {}), { action: '409', reason: 'cart_unverifiable' }, 'legacy null + a stored fingerprint → 409 cart_unverifiable (never the token-bearing 200)');
     const legacyInc = await computeIncomingFingerprint(ctxArgs, { ...deps, tables: F.tablesFor(rid) });
     assert.strictEqual(legacyInc, GOLDEN.values[rid].order_fp_plain);
     assert.deepStrictEqual(classifyExistingOrder(legacy, { paymentMethod: 'cash', restaurantMatches: true }, legacyInc, {}), { action: '200' });

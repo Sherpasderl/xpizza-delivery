@@ -44,7 +44,7 @@ const fpDeps = (o = {}) => ({ orderBreakdownCents, orderFingerprint, schedFinger
   // 10 — different restaurant → 409 restaurant
   assert.deepEqual(cls(live(), 'cash', false, null), { action: '409', reason: 'restaurant' }); ok('10 different restaurant → 409 restaurant');
   // 11 — fail-safe: covered structurally at #14 (existence read throw → 500). Assert fail-open recompute here:
-  assert.deepEqual(cls(live({ payment_fingerprint: 'AAA' }), 'cash', true, null), { action: '200' }); ok('11 incoming fp null (fail-open recompute) → 200, never 409');
+  assert.deepEqual(cls(live({ payment_fingerprint: 'AAA' }), 'cash', true, null), { action: '409', reason: 'cart_unverifiable' }); ok('11 incoming fp null against a FINGERPRINTED order → 409 cart_unverifiable (NOTE-security-null-fp: never the 200 that returns its tracking token)');
 
   // 12 — STORE == COMPARE parity with the REAL builder (drift → double orders). For each cart variant, the
   //      payment_fingerprint the builder STORES must equal what a retry RECOMPUTES from the same inputs.
