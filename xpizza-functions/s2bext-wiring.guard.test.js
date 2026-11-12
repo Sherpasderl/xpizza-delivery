@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyS2bextModule } = require('./tools/s2bext-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/candidate-validate.js', 'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-publish.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/identity-overlay.js', 'catalog/public-menu.js', 'catalog/publish-edited-handler.js', 'catalog/reset-draft.js', 'catalog/resolve-lines.js', 'catalog/source-accounting.js', 'catalog/source-store.js', 'catalog/structure-gate.js', 'factura/pricing.js', 'menu-pricing.js', 'quote-token.js', 'rewards-redeem-intake.js', 'tools/publish-version.js'], 'the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/candidate-validate.js', 'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-publish.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/identity-overlay.js', 'catalog/public-menu.js', 'catalog/publish-edited-handler.js', 'catalog/reset-draft.js', 'catalog/resolve-lines.js', 'catalog/source-accounting.js', 'catalog/source-store.js', 'catalog/structure-gate.js', 'factura/pricing.js', 'index.js', 'menu-pricing.js', 'quote-token.js', 'rewards-redeem-intake.js', 'tools/publish-version.js'], 'the owned files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

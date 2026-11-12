@@ -161,6 +161,26 @@ const HUNKS = Object.freeze([
   "was": "      extraNames.push(ename);\n"
  },
  {
+  "file": "index.js",
+  "now": "  CF.logClientVersion('createOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)\n",
+  "was": "  CF.logClientVersion('createOrder', clientHdr);\n"
+ },
+ {
+  "file": "index.js",
+  "now": "  CF.logClientVersion('chargeOnlineOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)\n",
+  "was": "  CF.logClientVersion('chargeOnlineOrder', clientHdr);\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      CF.logClientVersion('quoteOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)\n",
+  "was": "      CF.logClientVersion('quoteOrder', clientHdr);\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      CF.logClientVersion('quoteRedemption', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)\n",
+  "was": "      CF.logClientVersion('quoteRedemption', clientHdr);\n"
+ },
+ {
   "file": "menu-pricing.js",
   "now": "  return ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name));   // S2b §2: a validated extra_key (resolveLines) decides first\n",
   "was": "  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);\n"
