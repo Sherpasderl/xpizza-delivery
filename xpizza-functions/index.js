@@ -766,6 +766,7 @@ createOrderApp.all('*', async (req, res) => {
     console.warn('createOrder: bad/missing bearer token');
     return unauthorized(res, 'invalid bearer token');
   }
+  if ((req.body || {}).order_id != null && typeof req.body.order_id !== 'string') return badRequest(res, 'order_id must be a string');   // D4 (Codex r2 P1): a non-string id is refused FIRST — String(['sdk_…']) would persist inside the SDK namespace
   if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');   // D4: an SDK order id belongs to placeSdkOrder ONLY (a cash / hosted request never writes over an SDK order)
 
   /* P-SELFUPDATE §5 — client identity log line + the EARLY, side-effect-free floor admission (before pricing, the rate
@@ -1517,6 +1518,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.warn('chargeOnlineOrder: bad/missing bearer token');
       return unauthorized(res, 'invalid bearer token');
     }
+    if ((req.body || {}).order_id != null && typeof req.body.order_id !== 'string') return badRequest(res, 'order_id must be a string');   // D4 (Codex r2 P1): a non-string id is refused FIRST — String(['sdk_…']) would persist inside the SDK namespace
     if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');   // D4: an SDK order id belongs to placeSdkOrder ONLY (a cash / hosted request never writes over an SDK order)
   }
 

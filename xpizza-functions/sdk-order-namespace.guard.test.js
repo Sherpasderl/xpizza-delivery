@@ -17,7 +17,7 @@ const SRC = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');   // RAW 
 const AST = acorn.parse(SRC, { ecmaVersion: 'latest', sourceType: 'script', allowHashBang: true, allowReturnOutsideFunction: true });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const TYPE_REFUSAL = "if ((req.body || {}).order_id != null && typeof req.body.order_id !== 'string') return badRequest(res, 'order_id must be a string');";
-const REFUSAL = "if (require('./payments/sdk/order-id').inSdkNamespace(req.body.order_id)) return badRequest(res, 'order_id_namespace');";
+const REFUSAL = "if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');";
 
 // A. the creation sinks (the same inventory order-creators.guard reads)
 const census = JSON.parse(fs.readFileSync(path.join(__dirname, 'contract', 'census.json'), 'utf8'));
