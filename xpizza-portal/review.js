@@ -110,6 +110,53 @@ function productsOf(lines, optionParent, optionIndex, extraName) {
   return [...byKey.values()];
 }
 
+// ── STRUCTURE S2 — the review's «Estructura» group (MOCKUP frame F; PLAN-portal-structure-S2-ui r3 §4) ─────────────────────────
+// ONLY the server's token-bound S2 fields: `attachments` (the authored attach / detach, P-2), `extras` (added / removed / repriced),
+// `structure.extra_categories` (the one group order) and `reach` («en N productos», P-3). Never a client operation log.
+const S2_CHIP = { Nuevo: 'add', Quitado: 'rem', Cambio: 'chg', Orden: 'chg' };
+const enN = (n) => (Number.isInteger(n) ? `Extras \u00b7 en ${n} ${n === 1 ? 'producto' : 'productos'}` : 'Extras');
+// the groups that MOVED: those outside the longest run kept in their old relative order (one move ⇒ one row, not every shifted group)
+function movedGroups(was, now) {
+  const kept = now.filter((g) => was.includes(g));
+  const idx = kept.map((g) => was.indexOf(g));
+  const best = []; const prev = new Array(idx.length).fill(-1); const tails = [];
+  for (let i = 0; i < idx.length; i++) {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (idx[tails[mid]] < idx[i]) lo = mid + 1; else hi = mid; }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) best.push(kept[i]);
+  const stay = new Set(best);
+  return kept.filter((g) => !stay.has(g));
+}
+function structureRowsOf(d, names = {}) {
+  const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);
+  const catName = typeof names.categoryName === 'function' ? names.categoryName : (id) => String(id);
+  const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });
+  const reach = d.reach && typeof d.reach === 'object' ? d.reach : {};
+  const rows = [];
+  const row = (name, sub, kind, parts, src) => rows.push({ name, sub, kind, chip: S2_CHIP[kind], parts, src });
+  for (const a of Array.isArray(d.attachments) ? d.attachments : []) {
+    if (!a || typeof a.group !== 'string') continue;
+    const kind = a.change === 'attached' ? 'Nuevo' : 'Quitado';
+    if (a.scope === 'category') row(catName(a.target), 'Categoría', kind, [`grupo ${a.group}`], a);
+    else { const sec = sectionOf(a.target) || {}; row(nameOf(a.target), [sec.cat == null ? null : catName(sec.cat), sec.subcat || null].filter(Boolean).join(' \u00b7 ') || '\u2014', kind, [`grupo ${a.group}`], a); }
+  }
+  const oldPrice = new Map((Array.isArray(d.changed) ? d.changed : []).filter((c) => c && c.surface === 'extra' && c.field === 'price').map((c) => [c.key, c.old]));
+  for (const x of Array.isArray(d.extras) ? d.extras : []) {
+    if (!x || typeof x.group !== 'string') continue;
+    if (x.change === 'added') row(x.group, enN(reach[x.group]), 'Nuevo', [`${x.name} \u00b7 L ${x.price}`], x);
+    else if (x.change === 'removed') row(x.group, enN(reach[x.group]), 'Quitado', [x.name], x);
+    else if (x.change === 'repriced') row(x.group, enN(reach[x.group]), 'Cambio', [x.name, '\u00b7', `L ${oldPrice.has(x.key) ? oldPrice.get(x.key) : '\u2014'}`, '\u2192', `L ${x.price}`], x);
+  }
+  const ec = d.structure && d.structure.extra_categories;
+  if (ec && Array.isArray(ec.old) && Array.isArray(ec.new)) {
+    for (const g of movedGroups(ec.old, ec.new)) row(g, 'Extras', 'Orden', [`pasa al ${ec.new.indexOf(g) + 1}.\u00ba lugar`], { group: g });
+  }
+  return rows;
+}
+
 export function reviewModel(diff, ctx = {}) {
   const d = diff || {};
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
@@ -117,12 +164,19 @@ export function reviewModel(diff, ctx = {}) {
   const all = Array.isArray(d.changed) ? d.changed : [];
   const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
   const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);
-  for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+  // STRUCTURE S2: an authored attach / detach is its «Estructura» row — the same group's consequence on that dish is not shown twice
+  const authored = new Set((Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.scope === 'item').map((a) => `${a.target}\u0000${a.group}`));
+  for (const c0 of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+    const c = { ...c0, gained: c0.gained.filter((g) => !authored.has(`${c0.key}\u0000${g}`)), lost: c0.lost.filter((g) => !authored.has(`${c0.key}\u0000${g}`)) };
+    if (!c.gained.length && !c.lost.length) continue;
     let p = products.find((x) => x.key === c.key);
     if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
   }
-  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
+  const structure = structureRowsOf(d, ctx && ctx.structure);
+  // a repriced extra is its «Estructura» row; its price line is not ALSO a «Precios» row (every server fact shown once)
+  const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));
+  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));
   const photos = all.filter(isPhotoLine);
   const added = Array.isArray(d.added) ? d.added : [];
   const removed = Array.isArray(d.removed) ? d.removed : [];
@@ -161,10 +215,11 @@ export function reviewModel(diff, ctx = {}) {
     removed,
     renamed,
     photos,
+    structure,
     // everything that will publish, so the header cannot understate it
     // every product sentence once, as rendered (an option's identical line folded, a checklist swap = two sentences); a move's
     // «Acepta / Deja de aceptar» explanations (diff.consequences) describe a counted change, they are not changes of their own
-    total: rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,
+    total: structure.length + rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -201,6 +256,27 @@ export function renderReview(root, model, opts = {}) {
     l.append(el('span', 'mgn', String(count)));
     return l;
   };
+
+  // STRUCTURE S2 (frame F): «Estructura» first — one .prow.mk-srow per server fact: the dish / group / section on the left, the kind
+  // chip (Nuevo · Cambio · Quitado · Orden) and the change in plain words; a long change wraps under the name, as the text rows do
+  const structure = Array.isArray(model.structure) ? model.structure : [];
+  if (structure.length) {
+    const g = el('div', 'mgroup');
+    g.append(groupHead('Estructura', structure.length));
+    for (const r of structure) {
+      const row = el('div', 'prow mk-srow');
+      const main = el('div', 'pmain');
+      main.append(el('div', 'pname', r.name), el('div', 'psub', r.sub));
+      const v = el('div', 'pval');
+      v.append(el('span', `bchip ${r.chip}`, r.kind));
+      // [what] or [what, '·', was, '→', now]: the was / arrow / now spans of the approved price rows
+      if (r.parts.length === 5) v.append(el('span', 'now plain', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'was', r.parts[2]), el('span', 'arr', r.parts[3]), el('span', 'now', r.parts[4]));
+      else v.append(el('span', 'now plain', r.parts.join(' ')));
+      row.append(main, v);
+      g.append(row);
+    }
+    root.append(g);
+  }
 
   const sections = Array.isArray(model.sections) ? model.sections : [];
   if (sections.length) {

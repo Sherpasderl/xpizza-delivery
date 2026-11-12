@@ -628,6 +628,14 @@
   .bchip{font-size:11px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:6px;flex:none}
   .bchip.add{background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line)}
   .bchip.rem{background:var(--red-soft);color:var(--red-text);border:1px solid var(--red-line)}
+  /* STRUCTURE S2 — the review's «Estructura» rows (MOCKUP-portal-structure-edit frame F, verbatim): the «Cambio» / «Orden» chip, the
+     row's wrap (a long change wraps under the name), the plain «now» text */
+  .bchip.chg{background:var(--card-2);color:var(--mute);border:1px solid var(--line2)}
+  .prow.mk-srow{gap:10px 14px}
+  .prow.mk-srow .pmain{flex:1 1 180px}
+  .prow.mk-srow .pval{white-space:normal;text-align:right;flex:0 1 auto;max-width:100%;line-height:1.5}
+  .prow.mk-srow .pval .arr{white-space:nowrap}
+  .prow .pval .now.plain{font-weight:650;font-size:13.5px}
   .brow .bnm{font-weight:650}.brow .bval{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute)}
   .brow.rem .bnm{text-decoration:line-through;color:var(--mute)}
 

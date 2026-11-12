@@ -10,6 +10,7 @@ import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { createDraft, draftSource, pendingCount, setExtraPrice, applyExposureOps, composeDish, pendingStructure, attachRefusal } from './editor.js';
 import * as IE from './item-edit-logic.js';
+import { reviewModel, renderReview } from './review.js';
 
 const req = createRequire(import.meta.url);
 const { buildSourceFromCode } = req('../xpizza-functions/tools/seed-source-store');
@@ -216,4 +217,102 @@ test('attachRefusal — X3b rows and category mode are decided by the WRITER (a 
   assert.equal(attachRefusal(lm, { mode: 'cat', cat: 'no_such' }).code, 'unknown_category');
   const t0 = performance.now(); for (const c of lm.structure.categories) attachRefusal(lm, { mode: 'cat', cat: c.id });
   assert.ok((performance.now() - t0) / lm.structure.categories.length <= 15, 'the category dry run stays within 15 ms per section');
+});
+
+// ── §4 the review's «Estructura» group — ONLY the server's token-bound diff (MOCKUP frame F; contract §3 + P-2 / P-3) ─────────────
+// the diff is what 5f's REAL editCatalogCore answers for the portal's own draft (the S1 chain's pattern), the Extras-page switch ON
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+{ const ps = req.resolve('../xpizza-functions/catalog/platform-structure'); req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ extrasCatalog: true }) } }; }
+async function realSaveDiff(rid, live, draftSrc) {
+  const { editCatalogCore } = req('../xpizza-functions/catalog/edit-catalog-handler');
+  const { sourceToBuildInputs } = req('../xpizza-functions/catalog/source-store');
+  const { buildCatalogV2 } = req('../xpizza-functions/catalog/form-menu-source');
+  const T0 = '2026-11-12T10:00:00.000000Z', T1 = '2026-11-12T11:00:00.000000Z';
+  const st = { data: clone(live), updateTime: T0 };
+  const doc = (path) => ({
+    get: async () => (path.endsWith('/meta/source') ? { exists: true, data: () => clone(st.data), updateTime: st.updateTime }
+      : path.endsWith('/meta/active_version') ? { exists: true, data: () => ({ version: 'v-live' }) } : { exists: false, data: () => ({}) }),
+    set: async (d) => { st.data = d; st.updateTime = T1; return { writeTime: T1 }; },
+    update: async (d, pre) => { if (!pre || pre.lastUpdateTime !== st.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } st.data = d; st.updateTime = T1; return { writeTime: T1 }; },
+  });
+  const db = { collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+  const i = sourceToBuildInputs(live); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras });
+  // the add-product I/O exactly as 5f's own S2-core flow suite wires it (catalog/s2core-flow.test.js addProductOf): each brand's key mode
+  const addProduct = { readKeyMode: async () => (rid === 'la_musa' ? 'id' : 'name'), hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }),
+    registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => req('../xpizza-functions/catalog/reserved-keys').reservedKeySet(undefined) };
+  const r = await editCatalogCore({ db, addProduct, authorize: async () => ({ ok: true, uid: 'u', role: 'owner', actor: 'o@x.hn' }), readActiveBuilt: async () => ({ built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras }) },
+    { restaurantId: rid, source: clone(draftSrc), baseSourceUpdateTime: T0 }, {});
+  assert.equal(r.status, 200, `premise: the real save accepts the portal's draft (${JSON.stringify(r.body).slice(0, 200)})`);
+  return r.body.diff;
+}
+const ctxOf = (src) => {
+  const items = src.items.filter((r) => r && r.display && typeof r.key === 'string');
+  const cats = src.structure.categories || [];
+  return { structure: { nameOf: (k) => { const r = items.find((x) => x.key === k); return r ? r.display.name : k; },
+    categoryName: (id) => { const c = cats.find((x) => String(x.id) === String(id)); return c && c.name ? c.name : String(id); },
+    sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: String(r.display.cat), subcat: r.display.subcat || null } : { cat: null, subcat: null }; } } };
+};
+const rowsText = (m) => m.structure.map((r) => [r.name, r.sub, r.kind, ...r.parts].join(' | '));
+
+test('Estructura — a detach, a reprice and the group order: rows from the SERVER diff, each fact once, «en N productos» from reach', async () => {
+  const live = seed('la_musa'); const d = createDraft(clone(live));
+  assert.equal(applyExposureOps(d, [{ op: 'detach.item', item: 'dimsum_01', group: 'Salsas' }, { op: 'group.order', order: ['Salsas', 'Acompañamientos', 'Proteínas'] }], ON).ok, true);
+  const rx = clone(draftSource(d).extras.find((e) => e.display.cat === 'Acompañamientos'));   // a copy: the row itself is repriced below
+  setExtraPrice(d, rx.key, String(rx.price + 5));
+  const diff = await realSaveDiff('la_musa', live, draftSource(d));
+  assert.ok(diff.attachments && diff.reach, 'premise: the server diff carries P-2 / P-3');
+  const m = reviewModel(diff, ctxOf(draftSource(d)));
+  const dish = draftSource(d).items.find((r) => r.key === 'dimsum_01').display;
+  const sect = (live.structure.categories.find((c) => c.id === dish.cat) || {}).name;
+  assert.deepEqual(rowsText(m), [
+    `${dish.name} | ${sect} | Quitado | grupo Salsas`,
+    `Acompañamientos | Extras · en ${diff.reach['Acompañamientos']} productos | Cambio | ${rx.display.name} | · | L ${rx.price} | → | L ${rx.price + 5}`,
+    `Salsas | Extras | Orden | pasa al 1.º lugar`,
+  ], 'the Estructura rows, in words');
+  assert.equal(m.rows.filter((r) => r.surface === 'extra' && r.key === rx.key).length, 0, 'the reprice is not ALSO a price row (each fact once)');
+  const p = m.products.find((x) => x.key === 'dimsum_01');
+  assert.ok(!p || !p.consequences.some((c) => /Salsas/.test(c)), 'the detach is not ALSO a consequence line (each fact once)');
+  assert.equal(m.total, 3, 'it counts each fact once');
+});
+test('Estructura — a new group on chosen dishes and a new extra: «Nuevo» rows with the server’s reach; the attach rows name the dishes', async () => {
+  const live = seed('x_pizza'); const d = createDraft(clone(live));
+  const group = 'Toppings dulces';
+  assert.equal(applyExposureOps(d, [{ op: 'group.create', group, extras: [{ ref: 'tmp:probe-new-1', name: 'Miel', price: 20 }], attach: { mode: 'items', items: ['Carnivora'] } }], ON).ok, true);
+  const diff = await realSaveDiff('x_pizza', live, draftSource(d));
+  const m = reviewModel(diff, ctxOf(draftSource(d)));
+  const t = rowsText(m);
+  const n = diff.reach[group];
+  assert.ok(t.includes(`${group} | Extras · en ${n} ${n === 1 ? 'producto' : 'productos'} | Nuevo | Miel · L 20`), `the new extra's row (${JSON.stringify(t)})`);
+  assert.ok(t.some((r) => r.startsWith('Carnivora |') && r.endsWith('| Nuevo | grupo Toppings dulces')), 'the dish’s attach row');
+  assert.ok(t.some((r) => r.endsWith('| Orden | pasa al 4.º lugar')) === false, 'a NEW group is not an «Orden» row');
+});
+test('Estructura — no S2 op: today’s review exactly (no group, no count change)', async () => {
+  const live = seed('la_musa'); const d = createDraft(clone(live));
+  const rx = draftSource(d).extras[0]; setExtraPrice(d, rx.key, String(rx.price + 3));
+  const diff = await realSaveDiff('la_musa', live, draftSource(d));
+  const m = reviewModel(diff, ctxOf(draftSource(d)));
+  assert.deepEqual(m.structure, [], 'no Estructura rows without an S2 op');
+  assert.equal(m.rows.filter((r) => r.surface === 'extra').length, 1, 'the reprice stays today’s price row');
+});
+
+test('Estructura — rendered as frame F: the FIRST group «Estructura N», one .prow.mk-srow per row (name, sub, chip, the change)', async () => {
+  const { JSDOM } = req('../xpizza-functions/node_modules/jsdom');
+  const w = new JSDOM('<!doctype html><div id="r"></div>').window;
+  const saved = globalThis.document; globalThis.document = w.document;
+  try {
+    const live = seed('la_musa'); const d = createDraft(clone(live));
+    applyExposureOps(d, [{ op: 'detach.item', item: 'dimsum_01', group: 'Salsas' }, { op: 'group.order', order: ['Salsas', 'Acompañamientos', 'Proteínas'] }], ON);
+    const diff = await realSaveDiff('la_musa', live, draftSource(d));
+    const root = w.document.getElementById('r');
+    renderReview(root, reviewModel(diff, ctxOf(draftSource(d))), {});
+    const g = root.querySelector('.mgroup');
+    assert.equal(g && g.querySelector('.mglabel span').textContent, 'Estructura', 'the first group is «Estructura»');
+    assert.equal(g.querySelector('.mglabel .mgn').textContent, '2', 'its count');
+    const rows = [...g.querySelectorAll('.prow.mk-srow')];
+    assert.equal(rows.length, 2);
+    const chip = (r) => r.querySelector('.pval .bchip');
+    assert.deepEqual(rows.map((r) => [r.querySelector('.pname').textContent, chip(r).className, chip(r).textContent]),
+      [[draftSource(d).items.find((x) => x.key === 'dimsum_01').display.name, 'bchip rem', 'Quitado'], ['Salsas', 'bchip chg', 'Orden']], 'frame F’s rows and chips');
+    assert.equal(rows[1].querySelector('.pval .now.plain').textContent, 'pasa al 1.º lugar');
+  } finally { globalThis.document = saved; }
 });

@@ -159,8 +159,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "4bd34696af0fa8b644fa51239063b36d26421ebaf79c1dd7a5b2d25526a72982",
-   "bytes": 121062
+   "sha256": "d300b491b5666dcbc20f8fab95b4becf98ee3ae9baa19f562a3ace093513dc39",
+   "bytes": 121651
   }
  },
  "diff_aid": {
@@ -511,6 +511,18 @@
     ".bchip.add",
     "color",
     "var(--green-text)"
+   ],
+   [
+    "",
+    ".bchip.chg",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".bchip.chg",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

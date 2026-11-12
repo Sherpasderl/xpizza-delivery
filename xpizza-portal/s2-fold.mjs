@@ -6,6 +6,10 @@ export const S2_BASE = '33afb453';
 export const S2_FOLD = {
  "app.js": [
   [
+   "  // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the\n  // server sends S2 fields only for an S2 op\n  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },\n    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };\n  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review), structure };\n",
+   "  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review) };\n"
+  ],
+  [
    "  // STRUCTURE S2 (§3.2): «Guardar» swaps in the composed document (the writer returns a new one), so the list is re-derived from\n  // the draft — never painted from row objects the swap replaced\n  repaintFromDraft();\n",
    "  paint(); refreshBar();\n"
   ]
@@ -88,6 +92,32 @@ export const S2_FOLD = {
   [
    "  // STRUCTURE S2 (§3.2): ONE composition — «Sin extras» off, the move, the copy's ops, then the rest — swapped in once\n  if (!commitDish(draft, s.key, e, s.ops, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog }).ok) return { ok: false, error: 'invalid' };\n",
    "  if (!editItem(draft, s.key, e, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring })) return { ok: false, error: 'invalid' };\n"
+  ]
+ ],
+ "review.js": [
+  [
+   "// ── STRUCTURE S2 — the review's «Estructura» group (MOCKUP frame F; PLAN-portal-structure-S2-ui r3 §4) ─────────────────────────\n// ONLY the server's token-bound S2 fields: `attachments` (the authored attach / detach, P-2), `extras` (added / removed / repriced),\n// `structure.extra_categories` (the one group order) and `reach` («en N productos», P-3). Never a client operation log.\nconst S2_CHIP = { Nuevo: 'add', Quitado: 'rem', Cambio: 'chg', Orden: 'chg' };\nconst enN = (n) => (Number.isInteger(n) ? `Extras \\u00b7 en ${n} ${n === 1 ? 'producto' : 'productos'}` : 'Extras');\n// the groups that MOVED: those outside the longest run kept in their old relative order (one move ⇒ one row, not every shifted group)\nfunction movedGroups(was, now) {\n  const kept = now.filter((g) => was.includes(g));\n  const idx = kept.map((g) => was.indexOf(g));\n  const best = []; const prev = new Array(idx.length).fill(-1); const tails = [];\n  for (let i = 0; i < idx.length; i++) {\n    let lo = 0, hi = tails.length;\n    while (lo < hi) { const mid = (lo + hi) >> 1; if (idx[tails[mid]] < idx[i]) lo = mid + 1; else hi = mid; }\n    if (lo > 0) prev[i] = tails[lo - 1];\n    tails[lo] = i;\n  }\n  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) best.push(kept[i]);\n  const stay = new Set(best);\n  return kept.filter((g) => !stay.has(g));\n}\nfunction structureRowsOf(d, names = {}) {\n  const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);\n  const catName = typeof names.categoryName === 'function' ? names.categoryName : (id) => String(id);\n  const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });\n  const reach = d.reach && typeof d.reach === 'object' ? d.reach : {};\n  const rows = [];\n  const row = (name, sub, kind, parts, src) => rows.push({ name, sub, kind, chip: S2_CHIP[kind], parts, src });\n  for (const a of Array.isArray(d.attachments) ? d.attachments : []) {\n    if (!a || typeof a.group !== 'string') continue;\n    const kind = a.change === 'attached' ? 'Nuevo' : 'Quitado';\n    if (a.scope === 'category') row(catName(a.target), 'Categoría', kind, [`grupo ${a.group}`], a);\n    else { const sec = sectionOf(a.target) || {}; row(nameOf(a.target), [sec.cat == null ? null : catName(sec.cat), sec.subcat || null].filter(Boolean).join(' \\u00b7 ') || '\\u2014', kind, [`grupo ${a.group}`], a); }\n  }\n  const oldPrice = new Map((Array.isArray(d.changed) ? d.changed : []).filter((c) => c && c.surface === 'extra' && c.field === 'price').map((c) => [c.key, c.old]));\n  for (const x of Array.isArray(d.extras) ? d.extras : []) {\n    if (!x || typeof x.group !== 'string') continue;\n    if (x.change === 'added') row(x.group, enN(reach[x.group]), 'Nuevo', [`${x.name} \\u00b7 L ${x.price}`], x);\n    else if (x.change === 'removed') row(x.group, enN(reach[x.group]), 'Quitado', [x.name], x);\n    else if (x.change === 'repriced') row(x.group, enN(reach[x.group]), 'Cambio', [x.name, '\\u00b7', `L ${oldPrice.has(x.key) ? oldPrice.get(x.key) : '\\u2014'}`, '\\u2192', `L ${x.price}`], x);\n  }\n  const ec = d.structure && d.structure.extra_categories;\n  if (ec && Array.isArray(ec.old) && Array.isArray(ec.new)) {\n    for (const g of movedGroups(ec.old, ec.new)) row(g, 'Extras', 'Orden', [`pasa al ${ec.new.indexOf(g) + 1}.\\u00ba lugar`], { group: g });\n  }\n  return rows;\n}\n\n",
+   ""
+  ],
+  [
+   "  // STRUCTURE S2: an authored attach / detach is its «Estructura» row — the same group's consequence on that dish is not shown twice\n  const authored = new Set((Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.scope === 'item').map((a) => `${a.target}\\u0000${a.group}`));\n  for (const c0 of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {\n    const c = { ...c0, gained: c0.gained.filter((g) => !authored.has(`${c0.key}\\u0000${g}`)), lost: c0.lost.filter((g) => !authored.has(`${c0.key}\\u0000${g}`)) };\n    if (!c.gained.length && !c.lost.length) continue;\n",
+   "  for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {\n"
+  ],
+  [
+   "  const structure = structureRowsOf(d, ctx && ctx.structure);\n  // a repriced extra is its «Estructura» row; its price line is not ALSO a «Precios» row (every server fact shown once)\n  const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));\n  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));\n",
+   "  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));\n"
+  ],
+  [
+   "    structure,\n",
+   ""
+  ],
+  [
+   "    total: structure.length + rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,\n",
+   "    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,\n"
+  ],
+  [
+   "\n  // STRUCTURE S2 (frame F): «Estructura» first — one .prow.mk-srow per server fact: the dish / group / section on the left, the kind\n  // chip (Nuevo · Cambio · Quitado · Orden) and the change in plain words; a long change wraps under the name, as the text rows do\n  const structure = Array.isArray(model.structure) ? model.structure : [];\n  if (structure.length) {\n    const g = el('div', 'mgroup');\n    g.append(groupHead('Estructura', structure.length));\n    for (const r of structure) {\n      const row = el('div', 'prow mk-srow');\n      const main = el('div', 'pmain');\n      main.append(el('div', 'pname', r.name), el('div', 'psub', r.sub));\n      const v = el('div', 'pval');\n      v.append(el('span', `bchip ${r.chip}`, r.kind));\n      // [what] or [what, '·', was, '→', now]: the was / arrow / now spans of the approved price rows\n      if (r.parts.length === 5) v.append(el('span', 'now plain', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'was', r.parts[2]), el('span', 'arr', r.parts[3]), el('span', 'now', r.parts[4]));\n      else v.append(el('span', 'now plain', r.parts.join(' ')));\n      row.append(main, v);\n      g.append(row);\n    }\n    root.append(g);\n  }\n",
+   ""
   ]
  ]
 };
