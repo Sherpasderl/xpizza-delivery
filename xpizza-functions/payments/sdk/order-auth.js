@@ -19,9 +19,12 @@ async function authorizeExistingOrder(deps, { authorization, ticket } = {}, orde
     return { ok: true, uid };
   }
   if (typeof ticket !== 'string' || !ticket) return { ...GUEST_REQUIRED };
-  const rec = (await deps.db.ref(`checkout_tickets/${ticketKey(ticket)}`).once('value')).val();
+  // the checkout ticket, or (S5) a recovery-issued ORDER ticket (order_access_tickets) — both bound to this order + its phone hash
   const gv = order && order.guest_verified;
-  const ok = !!rec && Number.isFinite(rec.exp) && deps.clock() < rec.exp && rec.order_id === orderId && !!gv && typeof gv.phone_hash === 'string' && rec.phone_hash === gv.phone_hash;
-  return ok ? { ok: true, guest: true } : { ...GUEST_REQUIRED };
+  const valid = (rec) => !!rec && Number.isFinite(rec.exp) && deps.clock() < rec.exp && rec.order_id === orderId && !!gv && typeof gv.phone_hash === 'string' && rec.phone_hash === gv.phone_hash;
+  const key = ticketKey(ticket);
+  if (valid((await deps.db.ref(`checkout_tickets/${key}`).once('value')).val())) return { ok: true, guest: true };
+  if (valid((await deps.db.ref(`order_access_tickets/${key}`).once('value')).val())) return { ok: true, guest: true };
+  return { ...GUEST_REQUIRED };
 }
 module.exports = { authorizeExistingOrder };
