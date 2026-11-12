@@ -97,7 +97,7 @@ const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 *
   });
 
   await cell('SDK-D4-STATUS-TABLE', async (L) => {
-    const R = (o, r, opts) => ST().resolveStatus(o, r, { now: T0, ...opts });
+    const R = (o, r, opts) => ST().resolveStatus(OID, o, r, { now: T0, ...opts });
     const read = (x) => PC.readPlacement(x.body);
     // row 1: placed (with the winning attempt's card)
     const placed = R(order({ payment_placed: { leg_id: 'L1', at: T0 }, tracking_token: 'tt_1' }), rec({ legs: { L1: { kind: 'original', state: 'approved', role: 'committed' } }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));

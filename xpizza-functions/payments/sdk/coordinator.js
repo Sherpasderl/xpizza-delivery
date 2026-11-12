@@ -215,6 +215,17 @@ async function decidePlacement(deps, orderId, legId) {
   return { outcome: 'late_surplus', leg_id: legId };
 }
 
+// D4 row 9 (§5): the old order is safe to switch away from — the pending-only cancel committed on the ORDER, the record fenced
+// (phase cancelled), nothing unanswered / unknown, no lock, and no hold that may still be live. Stable once true.
+const LIVE_LEG = Object.freeze(['approved', 'requires_action', 'sent', 'unknown', 'journaled']);
+function safeToSwitch(rec, order) {
+  if (!rec || !order || !order.payment_cancel || order.payment_placed) return false;
+  if (rec.phase !== 'cancelled' || rec.lock) return false;
+  if (R.unansweredMoneyOps(rec).length) return false;
+  if (Object.values(R.opsOf(rec)).some((o) => R.MONEY_ACTIONS.includes(o.action) && o.result && o.result.kind === 'unknown')) return false;
+  return !Object.values(R.legsOfRecord(rec)).some((l) => LIVE_LEG.includes(l.state));
+}
+
 // ── reconciliation: status queries never resolve an op implicitly; a separate CAS does, on BOUND definitive evidence ─────
 async function reconcileSdkOps(deps, { orderId }) {
   const now = deps.clock();
@@ -690,4 +701,4 @@ async function trackExpiry(deps, orderId) {
   }
 }
 
-module.exports = { decidePlacement, ppRef, consumeFulfilledRedemption, markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
+module.exports = { safeToSwitch, decidePlacement, ppRef, consumeFulfilledRedemption, markerGuard, sweepPendingRoles, trackExpiry, cancelSdkOrder, expirePending, placeOriginal, reconcileSdkOps, settleTerminal, openObligations, completeObligation, requestDecrease, recordConsent, applyIncrease, recoverProjection, classifyLostProposals, voidSurplus, readOrder, readRecord, alertOnce, RECONCILE_AFTER_MS, CONSENT_WINDOW_MS };
