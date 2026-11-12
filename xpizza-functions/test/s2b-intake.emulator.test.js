@@ -22,7 +22,8 @@ const SW = { on: false };
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 stub('../catalog/extra-identity', (r) => ({ ...r, extraIdentityCapabilities: () => ({ mintExtras: SW.on }) }));
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
-stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => ({ ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }) }));
+const CHARGES = [];   // every gateway call (Codex S2b r1 P2-6: refused requests are asserted to make none)
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGES.push(q.pixelpayOrderId); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -97,7 +98,7 @@ function honest(menu, keys) {
 }
 const bodyOf = (rid, oid, method, cappBody, extra = {}) => ({ restaurant_id: rid, order_id: oid, customer_name: 'S2b Intake', customer_phone: phone(), customer_email: 's2bi@example.com',
   items_text: cappBody.items_text, order_type: 'pickup', payment_method: method, items: cappBody.items, ...extra });
-const place = async (rid, oid, method, cappBody, extra = {}, headers = {}) => { await clean(); return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, bodyOf(rid, oid, method, cappBody, extra), headers); };
+const place = async (rid, oid, method, cappBody, extra = {}, headers = {}) => { await clean(); return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, bodyOf(rid, oid, method, cappBody, extra), { 'x-firebase-id-token': `u_${rid}`, ...headers }); };   // an authenticated customer (members may pay cash)
 const placedOk = (r, label) => { assert.strictEqual(r.status, 200, `${label}: ${r.text.slice(0, 200)}`); };
 const stamp = (dep) => (dep ? { 'X-Client-App': dep.app, 'X-Client-Deployment': dep.id, 'X-Client-Build': 'b1', 'X-Client-Compat': '3' } : {});
 
@@ -153,37 +154,55 @@ async function wipe() {
     ok('KDS-FREE (la_musa): a redeemed minted extra sent with its stale name prints the server label on the kitchen line');
   }
 
-  // ── 3 ADMISSION ──
+  // ── 3 ADMISSION (Codex S2b r1 P2-6: authenticated, valid positive controls on all 4 intakes; refusals assert no order, no gateway call,
+  //    no payment attempt and no reward hold — the refused order bodies DO request a redemption) ──
   {
     const forms = PLATFORM.sites.deployments.filter((d) => d.app === 'orders' && d.context !== 'platform');
     const appDep = PLATFORM.sites.deployments.find((d) => d.app === 'orders' && d.context === 'platform');
     assert.ok(forms.length >= 2 && appDep, 'premise: the manifest declares the forms and the app');
     const rid = 'x_pizza'; const menu = await servedMenu(rid); const body = honest(menu, [R[rid].renamed.key, MK]);
-    const off = await place(rid, 's2bi_adm_off', 'cash', body);
-    placedOk(off, 'ADMISSION OFF: a header-less request is today\'s');
+    const TOKEN = { 'x-firebase-id-token': `u_${rid}` };
+    const REDEEM = { redeem: { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' } };
+    const attempts = async () => Object.keys((await rtdb.ref('payment_attempts').get()).val() || {}).length;
+    const intakes = (dep, tag) => [
+      ['createOrder', () => post(app.createOrder, bodyOf(rid, `s2bi_${tag}_co`, 'cash', body, REDEEM), { ...stamp(dep), ...TOKEN }), `s2bi_${tag}_co`],
+      ['chargeOnlineOrder', () => post(app.chargeOnlineOrder, bodyOf(rid, `s2bi_${tag}_ch`, 'online', body, REDEEM), { ...stamp(dep), ...TOKEN }), `s2bi_${tag}_ch`],
+      ['quoteOrder', () => post(app.quoteOrder, { restaurant_id: rid, items: body.items, order_type: 'pickup' }, { ...stamp(dep), ...TOKEN }), null],
+      ['quoteRedemption', () => post(app.quoteRedemption, { restaurant_id: rid, items: body.items, ...REDEEM }, { ...stamp(dep), ...TOKEN }), null],
+    ];
+    const positive = async (dep, tag, label) => {
+      for (const [ep, call, oid] of intakes(dep, tag)) {
+        await clean(); const r = await call();
+        assert.strictEqual(r.status, 200, `${label} ${ep}: a valid authenticated request is admitted (${r.text.slice(0, 200)})`);
+        if (ep === 'quoteOrder' || ep === 'quoteRedemption') assert.ok(r.json && r.json.ok === true, `${label} ${ep}: ok:true (${r.text.slice(0, 160)})`);
+        if (oid) assert.ok(await order(oid), `${label} ${ep}: the order is written`);
+        if (oid) { await rtdb.ref(`orders/${oid}`).remove(); await rtdb.ref(`user_rewards/u_${rid}/${rid}/reserved`).set(0); }
+      }
+    };
+    await positive(null, 'off', 'ADMISSION OFF (header-less, today)');
     SW.on = true;
     try {
-      const held = await reserved(rid);
       for (const dep of [...forms, null]) {
         const label = dep ? dep.id : 'header-less';
-        for (const [ep, h] of [['createOrder', app.createOrder], ['chargeOnlineOrder', app.chargeOnlineOrder]]) {
-          const oid = `s2bi_adm_${label}_${ep}`.replace(/[^A-Za-z0-9_-]/g, '_'); await clean();
-          const r = await post(h, bodyOf(rid, oid, ep === 'createOrder' ? 'cash' : 'online', body), stamp(dep));
+        const before = { holds: await reserved(rid), charges: CHARGES.length, attempts: await attempts() };
+        for (const [ep, call, oid] of intakes(dep, `adm_${label}`.replace(/[^A-Za-z0-9_]/g, '_'))) {
+          await clean(); const r = await call();
           assert.deepStrictEqual([r.status, r.json && r.json.error], [410, 'client_retired'], `🔴 ADMISSION ${label} ${ep}: ${r.text.slice(0, 160)}`);
-          assert.strictEqual(await order(oid), null, `🔴 ADMISSION ${label} ${ep}: no order`);
+          if (oid) assert.strictEqual(await order(oid), null, `🔴 ADMISSION ${label} ${ep}: no order`);
         }
-        for (const [ep, h, b] of [['quoteOrder', app.quoteOrder, { restaurant_id: rid, items: body.items, order_type: 'pickup' }], ['quoteRedemption', app.quoteRedemption, { restaurant_id: rid, items: body.items, redeem: { type: 'free_pizza_choice', item_id: 'Carnivora', name: 'Carnivora' } }]]) {
-          const r = await post(h, b, { ...stamp(dep), 'x-firebase-id-token': `u_${rid}` });
-          assert.deepStrictEqual([r.status, r.json && r.json.error], [410, 'client_retired'], `🔴 ADMISSION ${label} ${ep}: ${r.text.slice(0, 160)}`);
-        }
+        assert.deepStrictEqual({ holds: await reserved(rid), charges: CHARGES.length, attempts: await attempts() }, before, `🔴 ADMISSION ${label}: no reward hold, no gateway call, no payment attempt`);
       }
-      assert.strictEqual(await reserved(rid), held, '🔴 ADMISSION: no reward hold taken');
-      for (const id of [appDep.id, PLATFORM.nativeDeployment()]) {
-        const r = await place(rid, `s2bi_adm_ok_${id}`.replace(/[^A-Za-z0-9_-]/g, '_'), 'cash', body, {}, stamp({ app: 'orders', id }));
-        placedOk(r, `ADMISSION ON: the platform app (${id}) is admitted`);
-      }
+      // La Musa's FORM sending a minted display id (its legacy field) — the case the resolver alone would accept — is retired at admission
+      { const lm = 'la_musa'; const lmMenu = await servedMenu(lm); const lmBody = honest(lmMenu, [R[lm].renamed.key, MK]);
+        const formish = clone(lmBody); for (const it of formish.items) for (const e of it.extras) { delete e.extra_key; delete e.extra_id; }   // the form sends id (= the minted display id) only
+        assert.ok(formish.items.some((it) => it.extras.some((e) => e.id === MK)), 'premise: the form-shaped line names the minted id');
+        const dep = forms.find((d) => d.context === lm); await clean();
+        const r = await post(app.createOrder, bodyOf(lm, 's2bi_adm_lm_minted', 'cash', formish), { ...stamp(dep), 'x-firebase-id-token': `u_${lm}` });
+        assert.deepStrictEqual([r.status, r.json && r.json.error], [410, 'client_retired'], `🔴 ADMISSION la_musa form + minted id: ${r.text.slice(0, 160)}`);
+        assert.strictEqual(await order('s2bi_adm_lm_minted'), null, '🔴 ADMISSION la_musa form + minted id: no order'); }
+      for (const id of [appDep.id, PLATFORM.nativeDeployment()]) await positive({ app: 'orders', id }, `ok_${id}`.replace(/[^A-Za-z0-9_]/g, '_'), `ADMISSION ON (${id})`);
     } finally { SW.on = false; }
-    ok('ADMISSION: switch ON — every stamped form deployment and a header-less request are 410 client_retired on all 4 intakes (no order, no hold); the app + its native deployment are admitted; OFF is today');
+    ok('ADMISSION: OFF header-less is today on all 4 intakes; ON every stamped form deployment and a header-less request are 410 client_retired on all 4 (no order, no hold, no gateway call, no attempt), incl. La Musa\'s form with a minted id; the app + its native deployment are admitted on all 4');
   }
   FINISHED = true;
   console.log(`s2b-intake: OK (${n})`);
