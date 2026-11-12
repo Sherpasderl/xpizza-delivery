@@ -146,7 +146,10 @@ async function removedOptionCells(rid) {
 
 // T9's four endpoints on a cart line (a removed extra's or a removed option's), with ZERO effects
 async function typedEverywhere(rid, line, tag) {
-  const f = await fresh(); const before = JSON.stringify((await rtdb.ref().get()).val()); const charged = CHARGED.length;
+  // ZERO effects = no RTDB byte moves OUTSIDE rate_limits: quoteOrder counts its caller (quote_ip) before any resolution (index.js
+  // quoteOrder, today's design and every quote's), which is the request being seen, not an effect of the refused cart
+  const effects = async () => { const all = (await rtdb.ref().get()).val() || {}; delete all.rate_limits; return JSON.stringify(all); };
+  const f = await fresh(); const before = await effects(); const charged = CHARGED.length;
   const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [line]), { 'x-firebase-id-token': UID });
   assert.deepStrictEqual([co.status, co.json], [409, MENU_CHANGED], `${tag} createOrder 409 menu_changed (${co.text.slice(0, 160)})`);
   const g = `${f.oid}_ch`;
@@ -156,7 +159,7 @@ async function typedEverywhere(rid, line, tag) {
   assert.deepStrictEqual([q.status, q.json], [200, { ok: false, error: 'menu_changed' }], `${tag} quoteOrder fail-soft menu_changed (${q.text.slice(0, 160)})`);
   const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [line], order_type: 'pickup', redeem: REDEEM[rid] }, { 'x-firebase-id-token': UID });
   assert.deepStrictEqual([qr.status, qr.json], [409, { ok: false, ...MENU_CHANGED }], `${tag} quoteRedemption 409 { ok:false } (${qr.text.slice(0, 160)})`);
-  assert.strictEqual(JSON.stringify((await rtdb.ref().get()).val()), before, `${tag} ZERO RTDB writes (rate limit, dedupe, reserve, order)`);
+  assert.strictEqual(await effects(), before, `${tag} ZERO RTDB effects (dedupe, reserve, order, holds — every path but the rate counters)`);
   assert.strictEqual(CHARGED.length, charged, `${tag} nothing charged`);
 }
 
