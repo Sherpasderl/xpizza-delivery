@@ -10,14 +10,14 @@
 //   could never sell it; EXTRA_LABEL_UNSAFE is the capp's own rule, pinned byte for byte by extras-allocate.test.js) · name_taken (an
 //   ACTIVE extra's or dish's name) · name_needs_new_id (a key an EXTRA once had — reserved kind 'extra' — until S2b gives extras
 //   fresh ids; a retired DISH key does not block).
-const { AddProductError, TMP_RE, tidyName, slugify } = require('./add-product');
+const { AddProductError, TMP_RE, tidyName, slugify, normalizeName } = require('./add-product');
 // the judgment of every new extra (label, names, reserved keys, stamps, the allocation's own shape) is the ONE validator's — the same
 // one the publish and the manager request run (Codex build r1 P1-1 / P1-2); EXTRA_LABEL_UNSAFE is the capp serializer's own object
 const { validateNewExtras, EXTRA_LABEL_UNSAFE } = require('./extras-validate');
 const refuse = (code, detail, opts) => { throw new AddProductError(code, detail, opts); };
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
-function allocateExtras({ incoming, stored = null, activeExtras = [], activeItems = [], keyMode, reserved = new Map(), switchOn = false }) {
+function allocateExtras({ incoming, stored = null, activeExtras = [], activeItems = [], keyMode, reserved = new Map(), switchOn = false, mintExtras = false, mint = null }) {
   const source = JSON.parse(JSON.stringify(incoming));
   const extras = Array.isArray(source.extras) ? source.extras : [];
   const activeKeys = new Set(activeExtras.map((e) => e.key));
@@ -36,7 +36,7 @@ function allocateExtras({ incoming, stored = null, activeExtras = [], activeItem
     fresh.push(e);
   }
   const judge = (refOfKey) => {
-    try { validateNewExtras({ extras: source.extras, activeExtras, activeItems, keyMode, reserved }); } catch (e) {
+    try { validateNewExtras({ extras: source.extras, activeExtras, activeItems, keyMode, reserved, frozenExtraKeys: source.frozen_extra_keys, mintExtras }); } catch (e) {
       if (e instanceof AddProductError && e.key && refOfKey.has(e.key)) { e.ref = refOfKey.get(e.key); e.key = null; }
       throw e;
     }
@@ -54,6 +54,11 @@ function allocateExtras({ incoming, stored = null, activeExtras = [], activeItem
   const takenIds = new Set(extras.filter((e) => isObj(e.display) && e.display.id != null).map((e) => String(e.display.id)));
   const refs = new Set(); const refOf = new Map();
   let nextE = Math.max(0, ...[...takenIds].map((id) => (/^e(\d+)$/.exec(id) ? Number(/^e(\d+)$/.exec(id)[1]) : 0))) + 1;
+  // S2b (PLAN-structure-S2b-r3 §1): the shared collision set of a minted extra key — every item, extra, frozen and reserved key
+  const used = new Set([...takenKeys, ...(activeItems || []).map((i) => i && i.key), ...((source.items || []).map((i) => i && i.key)),
+    ...Object.values(isObj(source.frozen_keys) ? source.frozen_keys : {}), ...Object.keys(isObj(source.frozen_extra_keys) ? source.frozen_extra_keys : {}), ...reserved.keys()]);
+  const draw = () => { const k = (mint && mint.newKey ? mint.newKey : require('./mint-opaque').mintKey)(); if (used.has(k)) refuse('mint_unavailable', 'could not allocate a new option identifier — try again', { status: 503, field: 'name' }); used.add(k); return k; };
+  const names = new Set(extras.filter((e) => typeof e.key === 'string' && isObj(e.display)).map((e) => normalizeName(e.display.name)));
   for (const e of fresh) {
     if (typeof e.ref !== 'string' || !TMP_RE.test(e.ref) || refs.has(e.ref)) refuse('addition_malformed', 'a new extra needs a unique temporary reference tmp:<id>', { field: 'ref' });
     refs.add(e.ref);
@@ -67,6 +72,12 @@ function allocateExtras({ incoming, stored = null, activeExtras = [], activeItem
       id = key;
     } else {
       key = name; id = `e${nextE}`;
+    }
+    if (mintExtras && names.has(normalizeName(name))) refuse('name_taken', `«${name}» is already on your menu`, { ref: e.ref, field: 'name' });   // S2b §1.3(a): candidate-wide
+    names.add(normalizeName(name));
+    if (mintExtras && (reserved.get(key) || []).includes('extra')) {   // S2b §1.3(c): a RETIRED extra name reused — a fresh key, the reuse recorded
+      const reuses = key; key = draw(); if (keyMode === 'id') id = key;
+      source.frozen_extra_keys = { ...(isObj(source.frozen_extra_keys) ? source.frozen_extra_keys : {}), [key]: { display_id: String(id), minted: true, reuses } };
     }
     if (takenKeys.has(key) || takenIds.has(id)) refuse('name_taken', `«${name}» is already on your menu`, { ref: e.ref, field: 'name' });
     const price = typeof e.price === 'number' ? e.price : d.price;
@@ -99,7 +110,7 @@ async function forSave({ candidate, stored, live, extrasLive, addProduct, rid, s
     reserved = await addProduct.readReservedKeys(rid);
   } catch (_) { return { unavailable: true }; }
   try {
-    const a = allocateExtras({ incoming: candidate, stored, activeExtras: extrasLive || [], activeItems: live.items || [], keyMode, reserved, switchOn });
+    const a = allocateExtras({ incoming: candidate, stored, activeExtras: extrasLive || [], activeItems: live.items || [], keyMode, reserved, switchOn, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: the dark switch
     return { source: a.source, refs: a.refs || {} };
   } catch (e) { if (e instanceof AddProductError) return { error: e }; throw e; }
 }

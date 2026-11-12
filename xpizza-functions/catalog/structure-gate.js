@@ -32,7 +32,7 @@ async function judge({ rid, draft, draftRecords, live, liveExtraRecords, addProd
       if (e instanceof AP.AddProductError) throw e;
       return { unavailable: true };
     }
-    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved });
+    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved, frozenExtraKeys: draft.frozen_extra_keys, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: a minted row only with its recorded reuse
   }
   require('./structure-budget').enforce({ rid, source: draft, draft: draftRecords, active, extrasCatalog });
   return { ok: true };
