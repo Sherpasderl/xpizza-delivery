@@ -1,0 +1,32 @@
+{
+ "provenance": {
+  "recorded": "2026-11-12",
+  "host": "pixelpay.dev (public sandbox)",
+  "sdk": "@pixelpay/sdk-core 2.5.2",
+  "run": "owner, with the gateway token (value never recorded)",
+  "redaction": "payments/sdk/fixtures/redact-pixelpay.js (schema allowlist)",
+  "source_case": "t01-tokenize-visa"
+ },
+ "http_status": 200,
+ "request_body_keys": null,
+ "response": {
+  "success": true,
+  "message": "Información obtenida con exito",
+  "data": {
+   "status": "active",
+   "mask": "<mask>",
+   "network": "visa",
+   "type": "CREDIT",
+   "bin": "<bin>",
+   "last": "<last>",
+   "hash": "<hash>",
+   "address": "<address>",
+   "country": "<country>",
+   "state": "<state>",
+   "city": "<city>",
+   "zip": "<zip>",
+   "phone": "<phone>",
+   "token": "<token>"
+  }
+ }
+}

@@ -47,7 +47,10 @@ function makeAdapter(impl) {
   };
 }
 
-// Evidence is BOUND only if it names the journaled leg's uuid and amount; anything else is inconclusive (lock kept).
-const boundStatus = (ev, leg) => !!(ev && leg && ev.state !== 'inconclusive' && ev.uuid === leg.pp_uuid && ev.amount_cents === leg.amount_cents);
+// Evidence is BOUND only if it names the journaled leg's uuid AND (its amount equals the leg's, OR — D4 row 19, 5f's narrowed
+// version — it carries NO amount and the leg's uuid is VERIFIED, i.e. journaled from an approved outcome). A present, differing
+// amount never binds; an unverified uuid never binds an amount-less status (the lock stays: a person).
+const boundStatus = (ev, leg) => !!(ev && leg && ev.state !== 'inconclusive' && ev.uuid === leg.pp_uuid
+  && (ev.amount_cents === leg.amount_cents || (ev.amount_cents === undefined && leg.uuid_verified === true)));
 
 module.exports = { makeAdapter, boundStatus, AUTH, CAPTURE, VOID, STATUS };

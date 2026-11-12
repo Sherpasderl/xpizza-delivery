@@ -191,8 +191,12 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     assert.strictEqual((await run({ status: 412, body: { success: false } }, (a) => a.pspVoid({ uuid: 'P-uuid-1', op_id: 'o', ref: AUTH_IN.ref }))).outcome, 'unknown', `${L}: an unrecorded void refusal ⇒ unknown`);
     const nr = await (async () => { const srv = await server(() => ({ status: 200, body: { success: true, data: { payment_uuid: 'P-uuid-1' } } })); try { return await makeAdapter(A().makePixelPayImpl(cfgOf(srv.url, { mode: 'production', namespace: 'prod' }), { log: { info: () => {} } })).pspVoid({ uuid: 'P-uuid-1', op_id: 'o' }); } finally { await srv.close(); } })();
     assert.strictEqual(nr.outcome, 'unknown', `${L}: a production void with no pp_ref ⇒ unknown, never a guessed signature`);
-    const st = await run({ status: 200, body: { success: true, data: { status: 'authorized', payment_uuid: 'P-uuid-1' } } }, (a) => a.pspStatus({ uuid: 'P-uuid-1' }));
-    assert.strictEqual(st.state, 'inconclusive', `${L}: status stays inconclusive until a RECORDED status table + amount field exist`);
+    const st = await run({ status: 200, body: { success: true, message: 'Información obtenida con exito', data: { status: 'authorized', attemps: 1, history: {} } } }, (a) => a.pspStatus({ uuid: 'P-uuid-1' }));
+    assert.deepStrictEqual([st.state, st.uuid, st.amount_cents], ['authorized', 'P-uuid-1', undefined], `${L}: a recorded status word ⇒ that state, bound to the requested uuid, with NO amount`);
+    const st2 = await run({ status: 200, body: { success: true, data: { status: 'refunded' } } }, (a) => a.pspStatus({ uuid: 'P-uuid-1' }));
+    assert.strictEqual(st2.state, 'inconclusive', `${L}: an UNRECORDED status word ⇒ inconclusive`);
+    const st3 = await run({ status: 412, body: { success: false, message: 'Error al encontrar el cobro' } }, (a) => a.pspStatus({ uuid: 'P-uuid-1' }));
+    assert.strictEqual(st3.state, 'inconclusive', `${L}: 412 «not found» is never evidence (of a void or anything)`);
   });
 
   await cell('SDK-D4-PP-DEADLINE', async (L) => {
@@ -298,7 +302,7 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     // Codex r1 P1-1 through the REAL writers: coordinator (place, then cancel the same day) → wrapper → the production-mode impl
     const { makeHonestDb } = require('../../_honest-rtdb-model');
     const C = require('./coordinator');
-    const srv = await server((r) => (r.url.endsWith('/auth') ? { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1', transaction_approved_amount: 100, response_approved: true } } } : { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1' } } }));
+    const srv = await server((r) => (r.url.endsWith('/auth') ? { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1', transaction_approved_amount: 1, response_approved: true } }   /* L 1.00 = 100 cents, a NUMBER as the sandbox sends it */ } : { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1' } } }));
     try {
       let t = 1_000_000;
       const OID = 'tb_prod_void';
@@ -343,6 +347,22 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     const have = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '')) : [];
     const missing = need.filter((n) => !have.includes(n));
     assert.deepStrictEqual(missing, [], `${L}: recorded, redacted sandbox evidence is required for the mapping (missing: ${missing.join(', ')})`);
+    // every recorded envelope replayed through the REAL impl (the loopback server answers with the fixture's status + body)
+    const F = (n) => JSON.parse(fs.readFileSync(path.join(dir, `${n}.json`), 'utf8'));
+    const replay = async (n, fn) => { const fx = F(n); const srv = await server(() => ({ status: fx.http_status, body: fx.response })); try { return await fn(makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } }))); } finally { await srv.close(); } };
+    const U = '<payment_uuid>';   // the redacted uuid placeholder stands in for the provider's uuid
+    const a1 = await replay('auth-approved', (a) => a.pspAuthorize({ ...AUTH_IN, amount_cents: 100 }));
+    assert.deepStrictEqual([a1.outcome, a1.amount_cents], ['approved', 100], `${L}: auth-approved ⇒ approved (L 1.00 as a NUMBER)`);
+    assert.deepStrictEqual(await replay('auth-declined', (a) => a.pspAuthorize({ ...AUTH_IN, amount_cents: 200 })), { outcome: 'definitive_decline', uuid: undefined, amount_cents: undefined, code: '05' }, `${L}: auth-declined ⇒ definitive_decline, code 05`);
+    const ch = await replay('auth-challenge', (a) => a.pspAuthorize({ ...AUTH_IN, amount_cents: 100 }));
+    assert.deepStrictEqual([ch.outcome, ch.uuid], ['requires_action', U], `${L}: auth-challenge (the server token path) ⇒ requires_action, with its uuid`);
+    assert.strictEqual((await replay('capture', (a) => a.pspCapture({ uuid: U, amount_cents: 100, op_id: 'o' }))).outcome, 'captured', `${L}: capture ⇒ captured`);
+    assert.strictEqual((await replay('capture-over-auth', (a) => a.pspCapture({ uuid: U, amount_cents: 200, op_id: 'o' }))).outcome, 'declined', `${L}: capture over the authorized amount ⇒ declined`);
+    assert.strictEqual((await replay('void', (a) => a.pspVoid({ uuid: U, op_id: 'o', ref: AUTH_IN.ref }))).outcome, 'voided', `${L}: void ⇒ voided`);
+    assert.strictEqual((await replay('status-authorized', (a) => a.pspStatus({ uuid: U }))).state, 'authorized', `${L}: status-authorized ⇒ authorized`);
+    assert.strictEqual((await replay('status-captured', (a) => a.pspStatus({ uuid: U }))).state, 'captured', `${L}: status «paid» ⇒ captured`);
+    assert.strictEqual((await replay('status-voided', (a) => a.pspStatus({ uuid: U }))).state, 'inconclusive', `${L}: the 412 after a void ⇒ inconclusive (never void evidence)`);
+    assert.strictEqual((await replay('auth-duplicate-ref', (a) => a.pspAuthorize({ ...AUTH_IN, amount_cents: 100 }))).outcome, 'approved', `${L}: PixelPay ACCEPTS a duplicate reference (we never rely on its dedupe)`);
   });
 
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\npixelpay-adapter: OK (${pass})`);

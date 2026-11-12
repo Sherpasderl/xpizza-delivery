@@ -73,7 +73,9 @@ const lockFor = (rec, reason, opId, now) => { rec.lock = { reason, op_id: opId |
 
 function applyAuth(deps, rec, leg, out, opId) {
   if (!leg) return;
-  if (out.uuid) leg.pp_uuid = out.uuid;
+  // D4 row 19: a uuid from an APPROVED outcome is VERIFIED (the adapter guarantees approved ⇒ the amount equals the request);
+  // only a verified uuid may later bind an amount-less status. Any other outcome's uuid stays unverified.
+  if (out.uuid) { leg.pp_uuid = out.uuid; leg.uuid_verified = out.outcome === 'approved'; }
   if (out.outcome === 'approved') { leg.state = 'approved'; leg.role = rec.phase === 'cancelled' || rec.frozen ? 'surplus' : leg.kind === 'original' ? 'committed' : 'pending'; }
   else if (out.outcome === 'definitive_decline' || out.outcome === 'token_expired_confirmed') { leg.state = 'declined'; leg.role = 'none'; }
   // D4 row 17 (Q3, OWNER 11-10 «3DS on re-auth = decline»): an ORIGINAL leg the bank challenges ends its attempt — no record
@@ -142,7 +144,13 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
   const known = (r) => !!(r && r.attempts && r.attempts[attempt_id]);
   if (known(rec0)) return { outcome: 'replay', attempt_id, leg_id: rec0.attempts[attempt_id].leg_id };
   const order = await readOrder(deps.db, orderId);
-  if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed || F.markerFault(order)) return { outcome: 'refused', reason: 'order_state' };
+  if (!isSdk(order) || order.status !== 'pending_payment' || order.payment_cancel || order.payment_placed || F.markerFault(order)) {
+    // Codex r1 P2: a known attempt is resolved BEFORE the fresh-attempt rejection (a stale first read must not turn a replay of a
+    // successful attempt into order_state)
+    const r1 = await readRecord(deps.db, orderId);
+    if (known(r1)) return { outcome: 'replay', attempt_id, leg_id: r1.attempts[attempt_id].leg_id };
+    return { outcome: 'refused', reason: 'order_state' };
+  }
   if (order.scheduled_for != null) return { outcome: 'refused', reason: 'scheduled_unsupported' };   // a LOGGED card-launch gate (ruling #9)
   const deadline = deadlineOf(order, null);   // enforced IN the claim CAS below (the one authoritative check)
   await enrol(deps, orderId);
@@ -486,7 +494,8 @@ async function voidSurplus(deps, orderId, voidRule = deps.voidEligible) {
         if (Object.values(R.opsOf(r)).some((o) => o.leg_id === legId && o.action === 'void') || !voidRule(l, deps.clock())) return undefined;
         return r;
       },
-      call: (opId) => deps.psp.pspVoid({ uuid: leg.pp_uuid, op_id: opId }),
+      // Codex r1 P1-1: the provider's order id rides with the void (a production void is signed over it)
+      call: (opId) => deps.psp.pspVoid({ uuid: leg.pp_uuid, op_id: opId, ...(leg.pp_ref ? { ref: leg.pp_ref } : {}) }),
       apply: (r, l, out, opId) => applyVoid(deps, r, l, out, opId),
     });
   }
@@ -519,7 +528,7 @@ async function requestDecrease(deps, { orderId, new_total_cents, revision }) {
     let legId = null;
     const d = await dispatch(deps, orderId, {
       action: 'auth', legId: () => legId, amount_cents: new_total_cents,
-      pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; return r; },
+      pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; r.legs[legId].pp_ref = orderId; return r; },   // the provider order id this auth is sent with (its void is signed over it)
       call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
       apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
     });

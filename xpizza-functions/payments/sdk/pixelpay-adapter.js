@@ -14,14 +14,22 @@ const NAMESPACES = Object.freeze(['prod', 'staging', 'sandbox']);
 const CONFIG_KEYS = Object.freeze(['mode', 'namespace', 'endpoint', 'app_url', 'key_id', 'auth_hash', 'secret', 'merchant_email', 'gw_token']);
 const VOID_REASON = 'sherpa_cancel_hold';
 
-// Recorded sandbox evidence. EMPTY until the fixtures exist: every 202 / 402 / non-success envelope is then `unknown`, and every
-// status read `inconclusive` (it can only lock, never decide). Each entry is added from a recorded, redacted fixture.
+// Recorded sandbox evidence (payments/sdk/fixtures/pixelpay, recorded 2026-11-12, schema-redacted). Each matcher is the EXACT
+// envelope shape a fixture shows; anything else stays `unknown` / `inconclusive` (it can only lock, never decide).
+const isObjJ = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const keysAre = (o, ks) => isObjJ(o) && Object.keys(o).length === ks.length && ks.every((k) => Object.prototype.hasOwnProperty.call(o, k));
+// status words PROVEN by a fixture (status-authorized.json, status-captured.json); a 412 «Error al encontrar el cobro» is never evidence
+const STATUS_WORDS = Object.freeze({ authorized: 'authorized', paid: 'captured' });
 const EVIDENCE = Object.freeze({
-  challenge: Object.freeze([]),       // (status, json) → true for a recorded 3DS challenge envelope
-  decline: Object.freeze([]),         // (status, json) → { code } for a recorded definitive decline
-  captureDecline: Object.freeze([]),
-  voidRefused: Object.freeze([]),
-  status: null,                       // (json) → { state, uuid, amount } from a recorded status envelope, or null
+  // fixtures/pixelpay/auth-challenge.json: a server token auth the bank challenges
+  challenge: Object.freeze([(status, j) => status === 202 && isObjJ(j) && j.success === true && keysAre(j.data, ['payment_uuid', 'transaction_type', 'payload']) && j.data.transaction_type === 'songbird' && isStr(j.data.payment_uuid)]),
+  // fixtures/pixelpay/auth-declined.json
+  decline: Object.freeze([(status, j) => (status === 402 && isObjJ(j) && j.success === false && isObjJ(j.data) && j.data.transaction_type === 'auth' && j.data.response_approved === false && typeof j.data.response_code === 'string' && /^\d{2}$/.test(j.data.response_code) ? { code: j.data.response_code } : null)]),
+  // fixtures/pixelpay/capture-over-auth.json
+  captureDecline: Object.freeze([(status, j) => (status === 402 && isObjJ(j) && j.success === false && j.message === 'El monto enviado es mayor al monto autorizado' && j.data == null ? { code: 'over_authorized' } : null)]),
+  voidRefused: Object.freeze([]),   // none recorded: a refused void stays unknown (a person)
+  // the recorded status envelope carries NO amount and NO uuid: the state only (bound to the requested uuid; row 19)
+  status: (j) => (isObjJ(j) && j.success === true && isObjJ(j.data) && Object.prototype.hasOwnProperty.call(STATUS_WORDS, j.data.status) ? { state: STATUS_WORDS[j.data.status] } : null),
 });
 
 const isStr = (v) => typeof v === 'string' && v.length > 0;
@@ -40,10 +48,14 @@ function parseConfig(raw) {
 
 // integer cents ⇄ the provider's 2-decimal lempira STRING (strict both ways)
 const toLempiras = (cents) => `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+// the provider's amount: a NUMBER (the recorded sandbox envelopes) or a STRING, ≤ 2 decimals, < 1,000,000 lempiras; converted
+// through its own decimal text (never float arithmetic), so 1.5 ⇒ 150 and 0.1 + 0.2 (…00000004) is refused
+const AMOUNT_RE = /^(0|[1-9]\d{0,5})(\.\d{1,2})?$/;
 function parseLempiras(v) {
-  if (typeof v !== 'string' || !/^\d+\.\d{2}$/.test(v) || /^0\d/.test(v)) return null;
-  const [w, f] = v.split('.');
-  return Number(w) * 100 + Number(f);
+  const t = typeof v === 'number' ? (Number.isFinite(v) && v >= 0 ? String(v) : '') : typeof v === 'string' ? v : '';
+  if (!AMOUNT_RE.test(t)) return null;
+  const [w, f = ''] = t.split('.');
+  return Number(w) * 100 + Number(f.padEnd(2, '0'));
 }
 
 function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, log = console } = {}) {
@@ -115,7 +127,7 @@ function makePixelPayImpl(cfg, { fetchImpl = fetch, deadlineMs = DEADLINE_MS, lo
       const { status, json } = await post('status', { payment_uuid: uuid }, [cfg.key_id, uuid, cfg.app_url]);
       let out = { state: 'inconclusive', uuid };
       const ev = status === 200 && EVIDENCE.status ? EVIDENCE.status(json) : null;
-      if (ev && ev.uuid === uuid) { const cents = parseLempiras(ev.amount); if (cents != null) out = { state: ev.state, uuid, amount_cents: cents }; }
+      if (ev) out = { state: ev.state, uuid };   // no amount_cents: boundStatus binds it only to a VERIFIED uuid (row 19)
       diag('status', status, out.state, null, null);
       return out;
     },

@@ -1,0 +1,30 @@
+{
+ "provenance": {
+  "recorded": "2026-11-12",
+  "host": "pixelpay.dev (public sandbox)",
+  "sdk": "@pixelpay/sdk-core 2.5.2",
+  "run": "owner, with the gateway token (value never recorded)",
+  "redaction": "payments/sdk/fixtures/redact-pixelpay.js (schema allowlist)",
+  "source_case": "auth-challenge"
+ },
+ "http_status": 202,
+ "request_body_keys": [
+  "authentication_request",
+  "card_token",
+  "customer_email",
+  "customer_name",
+  "env",
+  "order_amount",
+  "order_currency",
+  "order_id"
+ ],
+ "response": {
+  "success": true,
+  "message": "Información obtenida con exito",
+  "data": {
+   "payment_uuid": "<payment_uuid>",
+   "transaction_type": "songbird",
+   "payload": "<payload>"
+  }
+ }
+}
