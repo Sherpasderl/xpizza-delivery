@@ -52,7 +52,7 @@ const getIdentity = async (_db, rid) => identities[rid];
 const pricingOf = async (w) => (await DW.loadPricing(w.reader)).pricing;
 const plant = (w, restaurants) => { const node = w.db.get(PATH); w.db.root.platform_config.delivery_pricing = { ...node, restaurants }; };
 const order = (rid, hub, pin, extra = {}) => ({ restaurant_id: rid, order_type: 'delivery', lat: pin.lat, lng: pin.lng, hub_lat: hub.lat, hub_lng: hub.lng,
-  payment_status: 'pending', delivery_cents: 5000, promo_discount_cents: 0, delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 4, band: 1, promo: null }, ...extra });
+  payment_status: 'pending', delivery_cents: 5000, promo_discount_cents: 0, delivery_snapshot: { mode: 'delivery', policy_version: 1, km: Math.round(P.haversineKm(hub.lat, hub.lng, pin.lat, pin.lng) * 1000) / 1000, band: 1, promo: null }, ...extra });   // the snapshot km the issuance records
 const quote = (w, rid, body) => DW.quoteDeliveryFor({ get: () => null }, w.reader, rid, { entry_mode: 'app', ...body }, { getIdentity, knownUid: null });
 const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { rid, mode, pin, getIdentity, app: true });
 
@@ -114,6 +114,8 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     const w = world(); await save(w, { limits: [{ rid: 'tb_r1', km: 4 }] });
     const lp = () => DW.loadPricing(w.reader);
     const far = order('tb_r1', HUB1, pinAt(HUB1, 5));
+    { const reads = []; const trace = { ref: (p) => { reads.push(p); return w.reader.ref(p); } }; const lp0 = DW.loadPricing(w.reader); await lp0;
+      await DW.deliveryResumeRefusal(trace, far, lp0); assert.deepStrictEqual(reads, [], `${L}: the guard reads NOTHING beyond the request's pricing read — no identity read (m16)`); }
     assert.deepStrictEqual(await DW.deliveryResumeRefusal(w.reader, far, lp()), { refusal: 'outside_delivery_bands', httpStatus: 409 }, `${L}: a stored pin beyond the lowered limit is not resumed`);
     assert.strictEqual(await DW.deliveryResumeRefusal(w.reader, order('tb_r1', HUB1, pinAt(HUB1, 3)), lp()), null, `${L}: inside → null`);
     // the distance is recomputed from the order's pin to the order's HUB SNAPSHOT — never the rounded snapshot km, never the identity
@@ -178,7 +180,8 @@ const deliver = (w, rid, pin, mode = 'delivery') => DW.deliveryFor(w.reader, { r
     assert.deepStrictEqual(s.restaurants, { tb_r1: { max_km: 5 }, tb_r2: { max_km: 9.5 } }, `${L}: entries NOT named are carried (m7)`);
     await save(w, { limits: [{ rid: 'tb_r1', km: null }] });
     s = w.db.get(PATH);
-    assert.deepStrictEqual([s.restaurants, s.history[0].new.limits.deleted], [{ tb_r2: { max_km: 9.5 } }, 1], `${L}: km:null DELETES (m8)`);
+    assert.deepStrictEqual(s.restaurants, { tb_r2: { max_km: 9.5 } }, `${L}: km:null DELETES (m8)`);
+    assert.strictEqual(s.history[0].new.limits.deleted, 1, `${L}: the summary counts the deletion`);
     await save(w, { limits: [{ rid: 'tb_r2', km: null }] });
     s = w.db.get(PATH);
     assert.strictEqual('restaurants' in s, false, `${L}: deleting the LAST entry leaves the key ABSENT (never {})`);
