@@ -9,6 +9,10 @@
 //   2 RENAME (la_musa): the renamed option, picked from the form's picker, redeems exactly as before the rename (cash + card)
 //   3 D3 STALE (la_musa): a reward naming a removed option → 409 before any write (no order, no hold)
 //   4 RENAME (x_pizza, a NEW sized 12" pizza — Q3): the live picker's kept key redeems; the baked bundle's new name → 409, nothing written
+// HONEST SCOPE (advisor r2): the reward PAYLOADS are reconstructed in the form's own redeem shape (account.js rkCommit) from the REAL picker's
+// row — this suite does not drive the frozen form's submit button; the form's submission serializer for renamed options is covered by
+// s3-rewards.test.mjs (the real picker) and the served-menu cells (s3-served.test.mjs). The PAID cart is the capp's own serializer.
+// Every comparison is preceded by an asserted SUCCESS (status + the body's own fields).
 // Run: npm run test:s3-rewards
 require('./_emulator-required')('database', 'firestore');
 
@@ -107,6 +111,9 @@ const bodyOf = (rid, oid, method, items, redeem) => ({ restaurant_id: rid, order
   items_text: items.map((i) => `${i.qty}x ${i.name}`).join(', '), order_type: 'pickup', payment_method: method, items, redeem });
 const place = async (rid, oid, method, items, redeem) => { await clean(); return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, bodyOf(rid, oid, method, items, redeem), { 'x-firebase-id-token': `u_${rid}` }); };
 const quote = async (rid, items, redeem) => post(app.quoteRedemption, { restaurant_id: rid, items, redeem }, { 'x-firebase-id-token': `u_${rid}` });
+// SUCCESS first: the status and the body's own fields, before any comparison
+const placedOk = (r, label, method) => { assert.strictEqual(r.status, 200, `${label}: ${r.text.slice(0, 200)}`); assert.ok(r.json && (method === 'online' ? typeof r.json.url === 'string' || r.json.ok === true : r.json.ok === true || typeof r.json.tracking_token === 'string'), `${label}: the success body (${r.text.slice(0, 160)})`); };
+const quotedOk = (q, label) => { assert.strictEqual(q.status, 200, `${label}: ${q.text.slice(0, 200)}`); assert.ok(q.json && Array.isArray(q.json.free_items) && q.json.free_items.length === 1 && Number.isInteger(q.json.total_cost), `${label}: the quote body (${q.text.slice(0, 160)})`); };
 
 async function wipe() {
   assert.match(rtdb.ref().toString(), /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\//, '🔴 refusing to wipe a non-emulator RTDB');
@@ -141,34 +148,47 @@ async function wipe() {
   const base = {};
   for (const [label, row] of [['steady', steadyRow], ['option', optRow0]]) {
     const r = await place('la_musa', `s3re_base_${label}`, 'cash', items0, redeemOf('la_musa', row));
-    assert.strictEqual(r.status, 200, `premise: the base ${label} reward redeems (${r.text.slice(0, 160)})`);
+    placedOk(r, `premise: the base ${label} reward redeems`, 'cash');
     base[label] = (await order(`s3re_base_${label}`)).redemption;
   }
-  const q0 = await quote('la_musa', items0, redeemOf('la_musa', steadyRow));
+  const q0 = await quote('la_musa', items0, redeemOf('la_musa', steadyRow)); quotedOk(q0, 'premise: the base quote');
   await publish('la_musa', saved('la_musa', LM, mark(CT.apply(LM, { op: 'option.rename', key: opts[1], choice: 'Pollo al Wok' }).source)));
   {
     const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
     const s = await place('la_musa', 's3re_ren_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
-    assert.strictEqual(s.status, 200, `UNCHANGED after rename: ${s.text.slice(0, 160)}`);
+    placedOk(s, 'UNCHANGED after rename', 'cash');
     const so = (await order('s3re_ren_steady')).redemption;
     assert.deepStrictEqual(so, base.steady, '🔴 UNCHANGED after rename: the same stored canonical redemption');
     assert.strictEqual(redemptionFingerprint(so), redemptionFingerprint(base.steady), '🔴 UNCHANGED after rename: the same redemption fingerprint');
-    const q = await quote('la_musa', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
+    const q = await quote('la_musa', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY))); quotedOk(q, 'UNCHANGED after rename: the quote');
     assert.deepStrictEqual([q.status, q.json && q.json.free_items, q.json && q.json.total_cost], [q0.status, q0.json && q0.json.free_items, q0.json && q0.json.total_cost], 'UNCHANGED after rename: the same quote');
     const row = rows.find((r) => r.key === opts[1]);
     assert.ok(row && /Pollo al Wok$/.test(row.name), `premise: the picker shows the renamed option under its kept key (${JSON.stringify(row)})`);
     const c = await place('la_musa', 's3re_ren_opt', 'cash', items, redeemOf('la_musa', row));
-    assert.strictEqual(c.status, 200, `🔴 RENAME cash: ${c.text.slice(0, 160)}`);
+    placedOk(c, '🔴 RENAME cash', 'cash');
     assert.deepStrictEqual((await order('s3re_ren_opt')).redemption, base.option, '🔴 RENAME cash: the renamed option redeems exactly as before (canonical)');
     const k = await place('la_musa', 's3re_ren_card', 'online', items, redeemOf('la_musa', row));
-    assert.strictEqual(k.status, 200, `🔴 RENAME card: ${k.text.slice(0, 160)}`);
+    placedOk(k, '🔴 RENAME card', 'online');
     ok('UNCHANGED + RENAME (la_musa): after an option rename the steady reward stores the same canonical + fingerprint and quotes the same; the renamed option (picked from the form) redeems as before, cash and card');
+  }
+  {   // the OPTION ADD transition (planned): a new option under the group — the steady reward unchanged; the new option redeems
+    const cur = (await sourceRefOf(fs, 'la_musa').get()).data();
+    await publish('la_musa', saved('la_musa', cur, CT.apply(cur, { op: 'option.add', launcher: PAD, ref: 'tmp:s3re-tofu-xxxx', choice: 'Tofu', price: 330 }).source));
+    const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
+    const s = await place('la_musa', 's3re_add_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
+    placedOk(s, 'UNCHANGED after option add', 'cash');
+    assert.deepStrictEqual((await order('s3re_add_steady')).redemption, base.steady, '🔴 UNCHANGED after option add: the same stored canonical redemption');
+    const tofu = rows.find((r) => /Tofu$/.test(r.name));
+    assert.ok(tofu, 'premise: the new option is a reward row');
+    const t = await place('la_musa', 's3re_add_tofu', 'cash', items, redeemOf('la_musa', tofu));
+    placedOk(t, 'ADD: the new option redeems', 'cash');
+    ok('OPTION ADD (la_musa): the steady reward is unchanged; the new option redeems from the picker');
   }
   await publish('la_musa', saved('la_musa', (await sourceRefOf(fs, 'la_musa').get()).data(), CT.apply((await sourceRefOf(fs, 'la_musa').get()).data(), { op: 'choice.remove', launcher: PAD, price_from: opts[1] }).source));
   {
     const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
     const s = await place('la_musa', 's3re_d3_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
-    assert.strictEqual(s.status, 200, `UNCHANGED after D3: ${s.text.slice(0, 160)}`);
+    placedOk(s, 'UNCHANGED after D3', 'cash');
     assert.deepStrictEqual((await order('s3re_d3_steady')).redemption, base.steady, '🔴 UNCHANGED after D3: the same stored canonical redemption');
     const held = await reserved('la_musa');
     const stale = await place('la_musa', 's3re_d3_stale', 'cash', items, redeemOf('la_musa', optRow0));
@@ -186,19 +206,21 @@ async function wipe() {
     add.items.push({ ref: 'tmp:s3re-pie-xxxxx', price: 300, display: { name: 'Pizza Doble S3', cat: 'individual', price: 300 } });
     add.structure.item_order.push('tmp:s3re-pie-xxxxx');
     add.structure.variant_items = { ...(add.structure.variant_items || {}), 'tmp:s3re-pie-xxxxx': { label: 'Tamaño', variantIds: ['tmp:s3re-p12-xxxxx', 'tmp:s3re-p18-xxxxx'] } };
-    for (const [ref, choice, price] of [['tmp:s3re-p12-xxxxx', '12 pulgadas', 300], ['tmp:s3re-p18-xxxxx', '18 pulgadas', 520]]) { add.items.push({ ref, price, display: { variantOf: 'tmp:s3re-pie-xxxxx', choice, price } }); add.structure.item_order.push(ref); }
+    for (const [ref, choice, price] of [['tmp:s3re-p12-xxxxx', '12 pulgadas', 300], ['tmp:s3re-p18-xxxxx', '18 pulgadas', 520]]) { add.items.push({ ref, price, display: { variantOf: 'tmp:s3re-pie-xxxxx', choice, price, ...(choice === '12 pulgadas' ? { tags: ['recommended'] } : {}) } }); add.structure.item_order.push(ref); }   // its one «Recomendada», before the first publish (a new group is a touched group)
     const v1 = saved('x_pizza', XP, add);
     await publish('x_pizza', v1);
     const small = v1.items.find((i) => i.display.choice === '12 pulgadas');
     let v2 = CT.apply(v1, { op: 'option.rename', key: small.key, choice: 'Personal' }).source;
-    v2 = CT.apply(v2, { op: 'choice.recommended', launcher: 'Pizza Doble S3', option: small.key }).source;
     await publish('x_pizza', saved('x_pizza', v1, v2));
     const env = await servedEnv('x_pizza'); const rows = await pickerRows('x_pizza', env);
     const live = rows.find((r) => r.name === 'Pizza Doble S3 - Personal');
     assert.ok(live && live.key === small.key, `🔴 the live picker keys the renamed option by its kept key (${JSON.stringify(live)})`);
     const items = paidItems(env, (d) => d.cat === 'individual' && d.key !== small.key && !d.variantOf);
     const ok1 = await place('x_pizza', 's3re_xp_live', 'cash', items, redeemOf('x_pizza', live));
-    assert.strictEqual(ok1.status, 200, `🔴 RENAME-XP live: ${ok1.text.slice(0, 160)}`);
+    placedOk(ok1, '🔴 RENAME-XP live', 'cash');
+    const okc = await place('x_pizza', 's3re_xp_live_card', 'online', items, redeemOf('x_pizza', live));
+    placedOk(okc, '🔴 RENAME-XP live card', 'online');
+    const qx = await quote('x_pizza', items, redeemOf('x_pizza', live)); assert.strictEqual(qx.status, 200, `RENAME-XP quote: ${qx.text.slice(0, 160)}`);
     const baked = clone(env); delete baked.menu.item_keys;
     const bk = (await pickerRows('x_pizza', baked)).find((r) => r.name === 'Pizza Doble S3 - Personal');
     assert.ok(bk && bk.key === 'Pizza Doble S3 - Personal', 'premise: without item_keys the picker keys the row by its name');
