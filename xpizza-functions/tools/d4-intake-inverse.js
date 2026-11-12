@@ -37,7 +37,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "pixelpay-hosted-charge.js",
-  "now": "\nmodule.exports = { freshIssueRefusal, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n",
+  "now": "\nmodule.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n",
   "was": "\nmodule.exports = { acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };\n"
  }
 ]);

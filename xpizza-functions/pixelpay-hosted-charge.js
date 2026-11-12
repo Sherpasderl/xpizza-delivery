@@ -280,4 +280,4 @@ async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp 
   return { willIssueFreshUrl: true };                                // non-money terminal → rotate (fresh URL)
 }
 
-module.exports = { freshIssueRefusal, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
+module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
