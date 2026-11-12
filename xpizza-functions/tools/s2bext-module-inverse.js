@@ -37,13 +37,23 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/catalog-firestore.js",
-  "now": "  const itemDocs = mapDocs(items, where); const xl = require('./extra-labels').extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)\n",
+  "now": "const { assertComplete } = require('./catalog-integrity'); const XLB = require('./extra-labels');   // S2b §4: loaded with the module (the ops closure pins runtime = static)\n",
+  "was": "const { assertComplete } = require('./catalog-integrity');\n"
+ },
+ {
+  "file": "catalog/catalog-firestore.js",
+  "now": "  const itemDocs = mapDocs(items, where); const xl = XLB.extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)\n",
   "was": "  const itemDocs = mapDocs(items, where); const itemLabels = labelsFromSnap(items);   // S1d: dish labels BESIDE the price docs (never inside them)\n"
  },
  {
   "file": "catalog/catalog-menu.js",
   "now": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }), ...(record.frozen_extra_keys == null ? {} : { frozenExtraKeys: record.frozen_extra_keys }) };   // S0: the version's key mode, when it has one\n",
   "was": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }) };   // S0: the version's key mode, when it has one\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode, extraLabels = null) => ({\n  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }), ...(extraLabels ? { extra_labels: extraLabels } : {}),   /* S2b P1-2: the affected extras' labels + markers (absent ⇒ today's bytes) */\n",
+  "was": "const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode) => ({\n  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }),\n"
  },
  {
   "file": "catalog/catalog-publish.js",
@@ -62,8 +72,23 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/catalog-publish.js",
+  "now": "    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode, require('./extra-labels').extraLabelEntriesOf(input && input.extraRecords, input && input.frozen_extra_keys));\n",
+  "was": "    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode);\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: ((xl, il) => (xl ? { ...(il || {}), ...xl } : il))(require('./extra-labels').extraLabelEntriesOf(input && input.extraRecords, input && input.frozen_extra_keys), labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name })))) });   /* S2b P1-2: + the affected extras' labels + markers, as the version docs carry them */\n",
+  "was": "    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name }))) });\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
   "now": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys, frozen_extra_keys: served.frozenExtraKeys }),\n",
   "was": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode, require('./extra-labels').extraEntriesOfLabels(targetDocs.itemLabels));\n",
+  "was": "    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);\n"
  },
  {
   "file": "catalog/edit-catalog-handler.js",

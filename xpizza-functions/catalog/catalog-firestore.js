@@ -28,7 +28,7 @@
 // pointer from ever flipping to a version containing a zero price — the guard reaches publish time
 // with no separate publish-side change.
 const { buildTablesFromDocs, labelsFromSnap } = require('./catalog-transform');
-const { assertComplete } = require('./catalog-integrity');
+const { assertComplete } = require('./catalog-integrity'); const XLB = require('./extra-labels');   // S2b §4: loaded with the module (the ops closure pins runtime = static)
 
 // Shared per-doc validation → [{key, price}]. Identical rules for the flat layout AND a version's docs.
 function mapDocs(snap, where) {
@@ -171,7 +171,7 @@ async function readVersionDocs(db, restaurantId, versionId) {
   if (!recSnap.exists) throw new Error(`version_missing: ${restaurantId}/${versionId}`);
   const record = recSnap.data() || {};
   const where = `${restaurantId}/versions/${versionId}`;
-  const itemDocs = mapDocs(items, where); const xl = require('./extra-labels').extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)
+  const itemDocs = mapDocs(items, where); const xl = XLB.extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)
   const extraDocs = mapDocs(extras, where);
   // Completeness-on-read (money PIN): the read set MUST match the version-record's counts AND both full
   // hashes, or the read was torn/tampered → THROW (never serve partial). buildTablesFromDocs is the SAME

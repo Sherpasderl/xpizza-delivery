@@ -45,4 +45,9 @@ function extraLabelRefusal(rid, body, tables) {
   return null;
 }
 
-module.exports = { extraLabelEntries, extraLabelOf, extraLabelRequired, extraLabelRefusal, LABEL, REQUIRED };
+// the same entries from the publish INPUT's extra records (plain { key, display }) — the publish mirror and snapshot carriers (Codex S2b r1 P1-2)
+const extraLabelEntriesOf = (records, frozenExtraKeys) => extraLabelEntries({ docs: (Array.isArray(records) ? records : []).map((r) => ({ data: () => r })) }, frozenExtraKeys);
+// the x:/x?: entries of a merged labels map (null when none) — the rollback snapshot carrier
+const extraEntriesOfLabels = (labels) => { const e = Object.entries(isObj(labels) ? labels : {}).filter(([k]) => /^x\??:/.test(k)); return e.length ? Object.fromEntries(e) : null; };
+
+module.exports = { extraLabelEntriesOf, extraEntriesOfLabels, extraLabelEntries, extraLabelOf, extraLabelRequired, extraLabelRefusal, LABEL, REQUIRED };

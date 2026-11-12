@@ -84,8 +84,8 @@ const snapshotRefOf = (db, rid) => db.collection('restaurants').doc(rid).collect
 // on both ends the 2b max-version-distance (K) check has nothing to measure from: `version` is an
 // opaque id, not an ordinal, and resolving it to one would require a Firestore lookup — the very
 // dependency the RTDB mirror exists to remove.
-const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode) => ({
-  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }),
+const snapshotOf = (rid, versionId, seq, menuTable, extraTable, keyMode, extraLabels = null) => ({
+  version: versionId, seq, rid, menu: menuTable, extras: extraTable, at: FieldValue.serverTimestamp(), ...(keyMode == null ? {} : { key_mode: keyMode }), ...(extraLabels ? { extra_labels: extraLabels } : {}),   /* S2b P1-2: the affected extras' labels + markers (absent ⇒ today's bytes) */
 });
 
 // The RTDB mirror is the Firestore-INDEPENDENT disaster fallback, so it must be bounded: a hung write
@@ -1590,7 +1590,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); await require('./choice-rollback').assertActivationChoices(db, rid, versionId, expected); if (input && input.photos) await input.photos.commit(db, rid, versionId); // throws on a broken menu_structure bijection; DISH PHOTOS A2 step 10: meta/photos + registry refs in ONE transaction, BEFORE the flip
-    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode);
+    const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable, input && input.key_mode, require('./extra-labels').extraLabelEntriesOf(input && input.extraRecords, input && input.frozen_extra_keys));
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
     const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn,
@@ -1598,7 +1598,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
-    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name }))) });
+    const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable, ...(input && input.key_mode != null ? { keyMode: input.key_mode } : {}), labels: ((xl, il) => (xl ? { ...(il || {}), ...xl } : il))(require('./extra-labels').extraLabelEntriesOf(input && input.extraRecords, input && input.frozen_extra_keys), labelsFromDocs(((input && input.items) || []).map((i) => ({ key: i && i.key, label: i && i.display && i.display.name })))) });   /* S2b P1-2: + the affected extras' labels + markers, as the version docs carry them */
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
 
     identityKeys = { dish: Object.keys(menuTable || {}), extra: Object.keys(extraTable || {}) };
@@ -1719,7 +1719,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
     // verify (a missing / torn target keeps its own refusal), and before the pointer moves
     await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertActivationChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation
-    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
+    const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode, require('./extra-labels').extraEntriesOfLabels(targetDocs.itemLabels));
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });
     return { versionId: targetVersionId, rolledBack: true, mirrored: mirrorResult.mirrored };
