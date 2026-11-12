@@ -200,8 +200,9 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
     const srv = await server(() => ({ stall: true }));
     try {
       const t = Date.now();
-      const out = await makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { deadlineMs: 300, log: { info: () => {} } })).pspAuthorize(AUTH_IN);
-      assert.strictEqual(out.outcome, 'unknown', `${L}: headers then a stalled body ⇒ unknown`);
+      const guard = new Promise((r) => setTimeout(() => r({ outcome: 'HUNG' }), 3000));   // a hang fails HERE, never at the runner's alarm
+      const out = await Promise.race([makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { deadlineMs: 300, log: { info: () => {} } })).pspAuthorize(AUTH_IN), guard]);
+      assert.strictEqual(out.outcome, 'unknown', `${L}: headers then a stalled body ⇒ unknown — the deadline covers the BODY read (got ${out.outcome})`);
       assert.ok(Date.now() - t < 3000, `${L}: the deadline covers the BODY read (returned after ${Date.now() - t} ms)`);
     } finally { await srv.close(); }
   });
