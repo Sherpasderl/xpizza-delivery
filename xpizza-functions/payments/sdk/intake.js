@@ -15,15 +15,19 @@ async function authorize(req, deps) {
   const h = req.headers || (req.headers = {});
   const body = req.body && typeof req.body === 'object' ? req.body : (req.body = {});
   h['x-client-deployment'] = 'orders-app';                                    // B1.0: FIRST, for both credential kinds
+  // B1.1: credential PRESENCE is the header itself (Codex handler r1 P2) — a malformed Authorization is a member credential that
+  // failed, never a fall-through to the guest path
+  const authPresent = h.authorization !== undefined && h.authorization !== null;
   const m = typeof h.authorization === 'string' ? h.authorization.match(BEARER_RE) : null;
   const bearer = m ? m[1] : null;
   const tHdr = h['x-sherpa-order-ticket']; const tBody = body.checkout_ticket;
   const hasTicket = tHdr != null || tBody != null;
   delete h['x-firebase-id-token'];                                            // B1.2: downstream sees only what B1 puts there
-  if (bearer && hasTicket) return refuse(401, 'mixed_credentials');            // B1.1: exactly ONE credential kind
-  if (!bearer && !hasTicket) return refuse(401, 'guest_auth_required');
+  if (authPresent && hasTicket) return refuse(401, 'mixed_credentials');       // exactly ONE credential kind
+  if (!authPresent && !hasTicket) return refuse(401, 'guest_auth_required');
   let out;
-  if (bearer) {                                                                // B1.3: the member, NO fail-open
+  if (authPresent) {                                                           // B1.3: the member, NO fail-open
+    if (!bearer) return refuse(401, 'auth_invalid');
     let dec;
     try {
       dec = await Promise.race([
