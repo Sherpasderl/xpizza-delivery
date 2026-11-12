@@ -136,8 +136,11 @@ ok(`CLOSURE: the static require closure is EXACTLY the ${EXPECTED.length} review
   fs.writeFileSync(path.join(tmp, 'index.js'), execFileSync('git', ['show', '613f7e08:xpizza-functions/index.js'], { cwd: FN, maxBuffer: 1 << 28 }));
   const baseNames = [...new Set([...fs.readFileSync(path.join(tmp, 'index.js'), 'utf8').matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map((m) => m[1]))];
   fs.rmSync(tmp, { recursive: true, force: true });
-  for (const k of baseNames) assert.ok(full.exports.includes(k), `the full load still exports ${k}`);
-  ok(`FULL LOAD: the ${OPS.length} are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there`);
+  // RETIRED on purpose since the base: confirmOnlinePayment's HTTP export (NOTE-security-confirm-tracking-token, 2026-11-12) — it must be GONE
+  const RETIRED = ['confirmOnlinePayment'];
+  for (const k of RETIRED) { assert.ok(baseNames.includes(k), `premise: the base exported ${k}`); assert.ok(!full.exports.includes(k), `the retired ${k} is no longer exported`); }
+  for (const k of baseNames.filter((n) => !RETIRED.includes(n))) assert.ok(full.exports.includes(k), `the full load still exports ${k}`);
+  ok(`FULL LOAD: the ${OPS.length} are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there, bar the ${RETIRED.length} retired (${RETIRED.join(', ')}), which is gone`);
 }
 
 // ── 4. THE WRAPPER ──────────────────────────────────────────────────────────────────────────────────────────────────────
