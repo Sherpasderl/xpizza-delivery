@@ -276,6 +276,8 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
+    "xpizza-functions/secfp-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -607,6 +609,7 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -1014,6 +1017,8 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
+    "xpizza-functions/secfp-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -1345,6 +1350,7 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -3432,7 +3438,8 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s2tip-module-inverse.js"
+      "tools/s2tip-module-inverse.js",
+      "tools/secfp-module-inverse.js"
      ]
     },
     {
@@ -3446,11 +3453,14 @@
      "file": "xpizza-functions/order-control-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s2tip-module-inverse.js"
+      "tools/s2tip-module-inverse.js",
+      "tools/secfp-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/secfp-wiring.guard.test.js"
+   ]
   },
   "delivery/delivery-pricing.js": {
    "pins": [],

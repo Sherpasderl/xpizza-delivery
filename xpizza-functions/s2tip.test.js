@@ -275,7 +275,7 @@ const seq = (...ids) => { let i = 0; return () => ids[i++]; };
     assert.deepStrictEqual(cls(live, 0), { action: '200' });
     assert.deepStrictEqual(cls({ ...live, tip_cents: 500 }, 500), { action: '200' }, 'same order + same tip → idempotent 200');
     assert.deepStrictEqual(cls(live, 500), { action: '409', reason: 'tip' }, 'a changed tip on a live cash order → 409 tip');
-    assert.deepStrictEqual(cls({ ...live, tip_cents: 500 }, 500, null), { action: '200' }, 'a null recompute + the same tip → 200 (fail-open kept)');
+    assert.deepStrictEqual(cls({ ...live, tip_cents: 500 }, 500, null), { action: '409', reason: 'cart_unverifiable' }, 'a null recompute + the same tip, on a fingerprinted order → 409 cart_unverifiable (NOTE-security-null-fp; the tip check still answers first)');
     assert.deepStrictEqual(cls({ ...live, tip_cents: 500 }, 700, null), { action: '409', reason: 'tip' }, 'a null recompute (prepareRedemption failure) + a CHANGED tip → 409 tip, not 200');
     assert.deepStrictEqual(cls({ ...live, tip_cents: 500 }, 700, 'OTHER'), { action: '409', reason: 'tip' }, 'a changed tip answers tip before the fingerprint (precedence)');
     assert.deepStrictEqual(cls(live, 0, 'OTHER'), { action: '409', reason: 'cart' }, 'a fingerprint-only conflict (same tip) answers cart, as today');

@@ -50,9 +50,9 @@ const live = (over = {}) => ({ restaurant_id: 'la_musa', payment_method: 'cash',
   // legacy (no stored fp) → skip content → 200 even with an incoming fp
   assert.deepEqual(classifyExistingOrder(live(), { paymentMethod: 'cash', restaurantMatches: true }, 'BBB', deps), { action: '200' });
   ok('legacy order w/o stored fp → content skipped → 200');
-  // incoming fp null (fail-open recompute) + stored fp present → skip content → 200
-  assert.deepEqual(classifyExistingOrder(live({ payment_fingerprint: 'AAA' }), { paymentMethod: 'cash', restaurantMatches: true }, null, deps), { action: '200' });
-  ok('incoming fp null (fail-open) → content skipped → 200');
+  // incoming fp null (a recompute that cannot price the cart) + stored fp present → unverifiable, refused (NOTE-security-null-fp, Option A)
+  assert.deepEqual(classifyExistingOrder(live({ payment_fingerprint: 'AAA' }), { paymentMethod: 'cash', restaurantMatches: true }, null, deps), { action: '409', reason: 'cart_unverifiable' });
+  ok('incoming fp null + stored fp → 409 cart_unverifiable (never the token-bearing 200)');
 }
 
 // ── computeIncomingFingerprint (read-only) ───────────────────────────────────
