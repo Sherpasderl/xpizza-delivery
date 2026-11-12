@@ -146,7 +146,7 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
       w.fake = makeFakePsp(script); w.deps.psp = makeAdapter(w.fake.impl);
       return w;
     };
-    const w = await mk({ customer_uid: 'uid_A' }, { authorize: [{ outcome: 'declined', uuid: 'P-d1', code: '05' }] });
+    const w = await mk({ customer_uid: 'uid_A' }, { authorize: [{ outcome: 'definitive_decline', code: '05' }] });
     await C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T', amount_cents: 10000 });
     const before = JSON.stringify(w.db.root);
     const r = await I().replay(w.deps, { orderId: OID, attemptId: ATT, uid: 'uid_A' });
@@ -168,7 +168,7 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     assert.ok(rb && rb.status === 200 && wb.db.getAt(`orders/${OID}/payment_placed/leg_id`) === 'L1' && golive.length === 1, `${L}: (b) approved-unplaced ⇒ placed by decidePlacement (got ${JSON.stringify(rb)})`);
     assert.strictEqual(wb.fake.callCount('authorize'), 0, `${L}: (b) no new authorization`);
     // guest: the same phone hash replays its own guest order
-    const wg = await mk({ guest_verified: { phone: normalizePhone(PHONE), phone_hash: OTP.phoneHash(normalizePhone(PHONE)) } }, { authorize: [{ outcome: 'declined', uuid: 'P-d2', code: '05' }] });
+    const wg = await mk({ guest_verified: { phone: normalizePhone(PHONE), phone_hash: OTP.phoneHash(normalizePhone(PHONE)) } }, { authorize: [{ outcome: 'definitive_decline', code: '05' }] });
     await C.placeOriginal(wg.deps, { orderId: OID, attempt_id: ATT, token: 'T', amount_cents: 10000 });
     const rg = await I().replay(wg.deps, { orderId: OID, attemptId: ATT, uid: null, guestPhoneHash: OTP.phoneHash(normalizePhone(PHONE)) });
     assert.ok(rg && rg.body.outcome === 'declined', `${L}: a guest replays ITS order by the verified phone hash (got ${JSON.stringify(rg)})`);
