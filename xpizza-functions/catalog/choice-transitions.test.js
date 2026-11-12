@@ -90,7 +90,7 @@ cell('CT-CHOICE-ADD x_pizza: a plain dish gains a group under its display id; th
   refused(() => CT.apply(XP, { op: 'choice.add', key: CARN, label: 'Tamaño', options: [{ ref: 'tmp:carn-one-xxxx', choice: 'Única' }] }), 'choices_too_few');
   refused(() => CT.apply(s, { op: 'choice.add', key: CARN, label: 'Otra', options: [{ ref: 'tmp:c1-xxxxxxx', choice: 'a' }, { ref: 'tmp:c2-xxxxxxx', choice: 'b' }] }), 'choice_group_exists');
 });
-cell('CT-CHOICE-REMOVE la_musa: every option leaves; the dish is plain at price_from\'s price; the map goes back to ABSENT when it empties; it builds', () => {
+cell('CT-CHOICE-REMOVE la_musa: every option leaves; the dish is plain at price_from\'s price; an emptied map stays {} (the authored field is kept); it builds', () => {
   const from = PAD_OPTS[1];
   const r = CT.apply(LM, { op: 'choice.remove', launcher: PAD, price_from: from });
   const s = r.source;
@@ -98,7 +98,7 @@ cell('CT-CHOICE-REMOVE la_musa: every option leaves; the dish is plain at price_
   assert.strictEqual(row(s, PAD).price, row(LM, from).price);
   assert.strictEqual(row(s, PAD).display.price, row(LM, from).price);
   const others = Object.keys(LM.structure.variant_items).filter((k) => k !== PAD);
-  if (others.length) assert.deepStrictEqual(Object.keys(s.structure.variant_items), others); else assert.ok(!('variant_items' in s.structure), 'absent when empty');
+  assert.deepStrictEqual(Object.keys(s.structure.variant_items), others, 'the other groups stay; an emptied map is {} — the field stays authored (assertSameAuthoredFields keeps a brand\'s structure fields)');
   const b = builds('la_musa', s);
   assert.ok(groupIndexFrom(b).ok && !groupIndexFrom(b).launchers.has(PAD), 'the built index no longer has the group');
   refused(() => CT.apply(LM, { op: 'choice.remove', launcher: PAD, price_from: 'noodle_02' }), 'choice_option_missing');
