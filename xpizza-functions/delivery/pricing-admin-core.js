@@ -135,6 +135,12 @@ async function admit(deps, req) {
 // branches_unavailable) — never a partial list. A registered branch without an identity yet is listed with nulls.
 const str = (x) => (typeof x === 'string' && x.trim() ? x : null);
 const coord = (x) => typeof x === 'number' && Number.isFinite(x);
+// the ONE identity read of this module (hours tripwire R4: allowlisted — name / location / brand / hub, and the save's existence check;
+// never hours): the G2 picker rows and setDeliveryPricing's directory_changed check share it
+async function identityOf(deps, rid) {
+  const id = (await deps.db.ref(`restaurants/${rid}/identity`).once('value')).val();
+  return id;
+}
 async function branchesOf(deps) {
   try {
     const reg = await deps.readRegistry();
@@ -142,7 +148,7 @@ async function branchesOf(deps) {
     const ids = [...new Set(reg.ids)].filter((rid) => PATH_SAFE.test(rid)).sort();
     const brandName = new Map();
     const rows = await Promise.all(ids.map(async (rid) => {
-      const id = (await deps.db.ref(`restaurants/${rid}/identity`).once('value')).val();
+      const id = await identityOf(deps, rid);
       const o = isObj(id) ? id : {};
       const brand_id = str(o.brand_id) && PATH_SAFE.test(o.brand_id) ? o.brand_id : null;
       if (brand_id && !brandName.has(brand_id)) brandName.set(brand_id, deps.db.ref(`brands/${brand_id}/name`).once('value').then((sn) => ({ ok: true, name: str(sn.val()) }), () => ({ ok: false })));
@@ -204,7 +210,7 @@ async function setDeliveryPricingCore(deps, req) {
     reg = new Set(reg.ids.filter((rid) => typeof rid === 'string' && RID_RE.test(rid)));
     if (limits !== undefined) {
       let ids;
-      try { ids = await Promise.all(limits.map((e) => (reg.has(e.rid) ? deps.db.ref(`restaurants/${e.rid}/identity`).once('value').then((sn) => isObj(sn.val())) : false))); } catch (_) { return UNAVAILABLE(); }
+      try { ids = await Promise.all(limits.map((e) => (reg.has(e.rid) ? identityOf(deps, e.rid).then(isObj) : false))); } catch (_) { return UNAVAILABLE(); }
       if (ids.some((ok) => !ok)) return reply(400, { error: 'bad_request', field: 'limits', reason: 'directory_changed' });
     }
   }
