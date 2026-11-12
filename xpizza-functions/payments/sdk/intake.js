@@ -53,7 +53,33 @@ async function authorize(req, deps) {
   if (body.entry_mode === undefined) body.entry_mode = 'app';                  // B1.6: app semantics, server-side
   else if (body.entry_mode !== 'app') return refuse(400, 'entry_mode');
   if (body.redeem != null) return refuse(400, 'redeem_not_available');          // B1.7: SDK card orders never redeem (§A00)
+  if (!envelopeOk(body, out.kind, deps.clock())) return refuse(400, 'bad_request');   // CONTRACT-Δ C1
   return out;
+}
+
+// CONTRACT-Δ C1: the SDK envelope is exact-keyed (the priced order body is validated as chargeOnlineOrder validates it, which
+// ignores unknown ORDER keys). A saved card is a member's only. The display is the client's mask, schema-checked.
+const exactKeys = (o, keys) => !!o && typeof o === 'object' && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.prototype.hasOwnProperty.call(o, k));
+const SAVED_ID_RE = /^[A-Za-z0-9]{20}$/;
+function envelopeOk(body, kind, now) {
+  if (typeof body.attempt_id !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(body.attempt_id)) return false;
+  if (body.replaces_order_id !== undefined && body.replaces_order_id !== null && (typeof body.replaces_order_id !== 'string' || !G.ORDER_ID_RE.test(body.replaces_order_id))) return false;
+  const c = body.card;
+  if (exactKeys(c, ['kind', 'card_id']) && c.kind === 'saved') return kind === 'member' && typeof c.card_id === 'string' && SAVED_ID_RE.test(c.card_id);
+  if (!(exactKeys(c, ['kind', 'sdk_token', 'save', 'authentication_identifier', 'display']) && c.kind === 'new')) return false;
+  if (typeof c.sdk_token !== 'string' || !c.sdk_token || typeof c.save !== 'boolean') return false;
+  if (c.authentication_identifier !== null && (typeof c.authentication_identifier !== 'string' || !c.authentication_identifier)) return false;
+  if (!exactKeys(c.display, ['brand', 'last4', 'exp_month', 'exp_year']) || !require('./display').sanitizeDisplay(c.display)) return false;
+  return c.display.exp_year >= new Date(now).getUTCFullYear();
+}
+
+// B2's pre-write gates, after the replay lookup fell through (a NEW attempt): a scheduled order ⇒ not_allowed (no scheduled SDK
+// orders in this slice); the card-availability flag (§9) ⇒ unavailable. Reads only.
+async function admit(deps, { restaurantId, scheduledFor }) {
+  if (scheduledFor != null) return { status: 200, body: { outcome: 'not_allowed', reason: 'scheduled' } };
+  const FLAG = require('./sdk-pay-flag');
+  if (!(await FLAG.newAttemptsAllowed(deps.db, restaurantId))) return { status: 200, body: { outcome: 'unavailable', retry_after_s: (await FLAG.sdkPayStatusCore(deps.db)).retry_after_s } };
+  return null;
 }
 
 async function replay(deps, { orderId, attemptId, uid = null, guestPhoneHash = null } = {}) {
@@ -67,4 +93,4 @@ async function replay(deps, { orderId, attemptId, uid = null, guestPhoneHash = n
   if (!(rec && rec.attempts && rec.attempts[attemptId])) return null;
   return require('./status-endpoint').answerOrder(deps, orderId, order, { attempt_id: attemptId });
 }
-module.exports = { authorize, replay, TICKET_RE };
+module.exports = { authorize, replay, admit, TICKET_RE };
