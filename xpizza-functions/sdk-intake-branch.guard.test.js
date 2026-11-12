@@ -45,6 +45,10 @@ const reqName = mw.params[0].name;
 assert.strictEqual(all(mw.body, (x) => x.type === 'Identifier' && x.name === reqName).length, 0, 'SIB-WRITER: the middleware reads NOTHING from req (nothing request-derived decides the mode)');
 assert.ok(uses.some((u) => u.node.arguments[0] && u.node.arguments[0].type === 'Identifier' && u.node.arguments[0].name === 'chargeOnlineApp'), 'SIB-WRITER: placeSdkApp mounts chargeOnlineApp');
 assert.ok(all(AST, (x) => x.type === 'VariableDeclarator' && x.id.name === 'placeSdkApp' && x.init && x.init.type === 'CallExpression' && x.init.callee.name === 'express').length === 1, 'SIB-WRITER: placeSdkApp = express()');
+// Codex handler r1 P2: the middleware SEQUENCE is exactly [the literal writer, chargeOnlineApp]; res.locals appears in index.js
+// ONLY as the write's and the read's object (no Object.assign / defineProperty / any other mutation path)
+assert.deepStrictEqual(uses.map((u) => (u.node.arguments[0] === mw ? 'writer' : u.node.arguments[0] && u.node.arguments[0].name)), ['writer', 'chargeOnlineApp'], 'SIB-WRITER: placeSdkApp.use is exactly [the literal writer, chargeOnlineApp], in that order');
+assert.strictEqual(all(AST, (x) => isResLocals(x)).length, 2, 'SIB-WRITER: res.locals appears exactly twice in index.js — the write and the read (no Object.assign / other mutation path)');
 ok('the ONLY sdkMode writer is the literal true in placeSdkApp\'s request-blind middleware');
 
 // ── the exports ──
@@ -83,7 +87,21 @@ assert.ok(b4.start < at(/acquireHostedAttempt\(db,/), 'SIB-POSITIONS: B4 before 
 const last = b4.consequent.type === 'BlockStatement' ? b4.consequent.body[b4.consequent.body.length - 1] : b4.consequent;
 assert.ok(last && last.type === 'ReturnStatement', 'SIB-POSITIONS: B4\'s last statement is a return');
 assert.ok(b1.start < b2.start && b2.start < b3.start && b3.start < b4.start, 'SIB-POSITIONS: B1 < B2 < B3 < B4');
+// Codex handler r1 P2: the branch CONTENTS (never an empty branch; B3's hosted side is EXACTLY its four statements)
+const body = (st) => (st && st.type === 'BlockStatement' ? st.body : st ? [st] : []);
+const txt = (st) => src(st).replace(/\s+/g, ' ');
+{ const c = body(b1.consequent);
+  assert.ok(c.length === 2 && /^const b1 = await require\('\.\/payments\/sdk\/intake'\)\.authorize\(req, \{/.test(txt(c[0])) && /^if \(b1\.refuse\) return res\.status\(b1\.refuse\.status\)\.json\(b1\.refuse\.body\);$/.test(txt(c[1])), 'SIB-B1: B1 is exactly the intake authorize + its refusal return');
+  assert.ok(b1.alternate && /process\.env\.MAKE_SECRET/.test(src(b1.alternate)), 'SIB-B1: the hosted intake-key compare is B1\'s else'); }
+{ const c = body(b2.consequent); const t = c.map(txt).join(' ');
+  assert.ok(/SDKI\.replay\(sdkDeps,/.test(t) && /SDKI\.admit\(sdkDeps,/.test(t) && /^if \(b2\) return res\.status\(b2\.status\)\.json\(b2\.body\);$/.test(txt(c[c.length - 1])), 'SIB-B2: B2 is the replay lookup then the admit, returning its answer'); }
+{ assert.strictEqual(body(b3.consequent).length, 0, 'SIB-B3: B3\'s SDK side does nothing (it only SKIPS the hosted-provider setup)');
+  const a = body(b3.alternate).map(txt);
+  assert.ok(a.length === 4 && /^try \{ pp = resolvePixelPayConfig\(\);/.test(a[0]) && /^returnBase = await resolveReturnBaseForCharge\(/.test(a[1]) && /^if \(returnBase\.error\) \{/.test(a[2]) && /^if \(await PE\.refusesFresh\(/.test(a[3]), `SIB-B3: B3\'s hosted side is EXACTLY the four provider statements (got ${a.length})`); }
+{ const c = body(b4.consequent);
+  assert.ok(c.length === 2 && /^const fin = await require\('\.\/payments\/sdk\/finish'\)\.finishSdk\(/.test(txt(c[0])) && c[1].type === 'ReturnStatement', 'SIB-B4: B4 is exactly the SDK finish + its return'); }
 ok('B1 / B2 / B3 / B4 at their pinned positions; B3 skips exactly the hosted-provider setup; B4 returns');
+ok('the branch CONTENTS are pinned (no empty branch; B3\'s hosted side is exactly its four statements)');
 
 // ── the runGate hoist (r7: the release is a parameter; hosted passes releaseHoldIfOwned) ──
 const rg = all(H.body, (x) => x.type === 'VariableDeclarator' && x.id.name === 'runGate' && x.init && x.init.type === 'ArrowFunctionExpression');
