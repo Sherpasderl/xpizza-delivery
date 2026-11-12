@@ -171,7 +171,7 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
       if (!Object.values(R.legsOfRecord(rec)).every(originalEnded)) return undefined;
       legId = newLeg(rec, 'original', amount_cents, now);
       Object.assign(rec.legs[legId], { state: 'sent', attempt_id, pp_ref: ref });
-      rec.attempts = { ...(rec.attempts || {}), [attempt_id]: { leg_id: legId, token_hash: tokenHash, card_ref: card && card.card_ref ? card.card_ref : 'new', display: card && card.display ? card.display : null, save: !!(card && card.save), amount_cents, at: now } };
+      rec.attempts = { ...(rec.attempts || {}), [attempt_id]: { leg_id: legId, token_hash: tokenHash, card_ref: card && card.card_ref ? card.card_ref : 'new', display: card && card.display ? card.display : null, save: !!(card && card.save), vault_gen: card && Number.isInteger(card.vault_gen) ? card.vault_gen : 0, amount_cents, at: now } };
       rec.token = token;
       rec.fulfillment_total_cents = amount_cents;
       return rec;

@@ -105,4 +105,25 @@ async function removeCardCore(deps, { headers, body } = {}) {
   if (!mine) return { status: 404, body: { error: 'not_found' } };
   return { status: 200, body: await removeCard(deps, uid, id) };
 }
-module.exports = { resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+// The vault write after `placed` (§6, S3) — from the WINNING attempt ONLY (legs[payment_placed.leg_id].attempt_id): a member, a NEW
+// card, save:true. Idempotent and resumable: the record's `vault.state` (done / dropped / skipped) ends it; the sweeper calls this
+// on every visit (CORE-Δ row 12), so a crash between the card write and the record note completes once (the card is reused).
+async function completeVaultForOrder(deps, orderId) {
+  const R = require('./record');
+  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  if (!isObj(order) || !isObj(order.payment_placed) || typeof order.customer_uid !== 'string' || !order.customer_uid) return { outcome: 'none' };
+  const rec = (await deps.db.ref(`payment_sdk/${orderId}`).once('value')).val();
+  if (!isObj(rec) || (isObj(rec.vault) && ['done', 'dropped', 'skipped'].includes(rec.vault.state))) return { outcome: 'none' };
+  const leg = R.legsOfRecord(rec)[order.payment_placed.leg_id];
+  const aid = leg && leg.attempt_id;
+  const att = aid && isObj(rec.attempts) ? rec.attempts[aid] : null;
+  if (!isObj(att) || att.save !== true || att.card_ref !== 'new' || !isObj(att.display)) return { outcome: 'none' };
+  // the record's token is the WINNING attempt's (claims serialize; the winner is the last claimed) — verified by its hash
+  const token = rec.token;
+  const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
+  const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };
+  const state = r.outcome === 'dropped' ? 'dropped' : r.outcome === 'skipped' ? 'skipped' : 'done';
+  await R.casRecord(deps.db, orderId, (x) => { if (isObj(x.vault) && x.vault.state) return undefined; x.vault = { attempt_id: aid, state, at: deps.clock() }; return x; });
+  return { outcome: state };
+}
+module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
