@@ -151,6 +151,7 @@
     "test:rewards-earn": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rewards-earn.emulator.test.js\"",
     "test:rewards-reserve": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rewards-reserve.emulator.test.js\"",
     "test:s3-rewards": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3-rewards-endpoints.emulator.test.js\"",
+    "test:s2b-intake": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s2b-intake.emulator.test.js\"",
     "test:rewards-intake": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rewards-redeem-intake.emulator.test.js\"",
     "test:rewards-settle": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/rewards-redeem-settle.emulator.test.js\"",
     "test:ledger-repair": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/reward-ledger-repair.emulator.test.js\"",
