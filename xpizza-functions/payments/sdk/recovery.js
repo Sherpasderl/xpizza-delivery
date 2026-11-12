@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const G = require('../../checkout-guest-lib');
 const { sendPlatformOtp, platformSenderConfigured } = require('../../checkout-otp');
 const RECOVERY_OTP_TEMPLATE = 'El código para ver tu pedido en Sherpa es {code}. Vence en 5 minutos.';
+const RECOVERY_PAD = 'recovery_verify_pad';   // one always-present server-only node: the no-challenge verify's transaction target
 const ORDER_TICKET_TTL_MS = 30 * 60 * 1000;
 const CODE_RE = /^\d{6}$/;
 const OK = Object.freeze({ ok: true });
@@ -55,22 +56,30 @@ async function recoverOrderAccessCore(deps, { ip, body } = {}) {
   }
   // ── verify the code ⇒ an order ticket ──
   if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) return { status: CODE_INVALID.status, body: { ...CODE_INVALID.body } };
+  // Codex S5b r1 (advisor ruling): UNIFORM work for every target — one order read, one challenge read, then ONE transaction that
+  // takes the same passes and ONE commit whatever the state: on the challenge when one exists, else on the always-present
+  // RECOVERY_PAD (rewritten unchanged). No branch aborts, so no state has a cheaper or a dearer path.
   const target = guestTarget((await db.ref(`orders/${orderId}`).once('value')).val());
+  const seen = (await db.ref(`order_recovery_otp/${orderId}`).once('value')).val();
   let outcome = null;
-  await db.ref(`order_recovery_otp/${orderId}`).transaction((v) => {
-    outcome = null;
-    if (v === null) { outcome = 'code_expired'; return null; }   // the speculative first pass: null stays null
-    if (typeof v !== 'object' || !target || v.phone_hash !== target.h) { outcome = 'code_wrong'; return undefined; }
-    if (!(t < v.expires_at)) { outcome = 'code_expired'; return null; }
-    if ((v.attempts || 0) >= OTP.LIMITS.MAX_ATTEMPTS) { outcome = 'too_many_attempts'; return undefined; }
-    if (!OTP.constEq(v.code_hash, OTP.hashCode(b.code))) {
-      const attempts = (v.attempts || 0) + 1;
-      outcome = attempts >= OTP.LIMITS.MAX_ATTEMPTS ? 'too_many_attempts' : 'code_wrong';
-      return { ...v, attempts };
-    }
-    outcome = 'ok';
-    return null;   // consumed on success (single use)
-  });
+  if (seen == null) {
+    await db.ref(RECOVERY_PAD).transaction((v) => { outcome = 'code_invalid'; return v == null ? 1 : v; });
+  } else {
+    await db.ref(`order_recovery_otp/${orderId}`).transaction((v) => {
+      outcome = null;
+      if (v === null) { outcome = 'code_expired'; return null; }   // the speculative first pass: null stays null
+      if (typeof v !== 'object' || !target || v.phone_hash !== target.h) { outcome = 'code_wrong'; return v; }   // unchanged
+      if (!(t < v.expires_at)) { outcome = 'code_expired'; return null; }
+      if ((v.attempts || 0) >= OTP.LIMITS.MAX_ATTEMPTS) { outcome = 'too_many_attempts'; return v; }   // unchanged
+      if (!OTP.constEq(v.code_hash, OTP.hashCode(b.code))) {
+        const attempts = (v.attempts || 0) + 1;
+        outcome = attempts >= OTP.LIMITS.MAX_ATTEMPTS ? 'too_many_attempts' : 'code_wrong';
+        return { ...v, attempts };
+      }
+      outcome = 'ok';
+      return null;   // consumed on success (single use)
+    });
+  }
   if (outcome !== 'ok' || !target) return { status: CODE_INVALID.status, body: { ...CODE_INVALID.body } };   // one generic failure (no retry hint)
   const ticket = 'ot_' + crypto.randomBytes(16).toString('hex');
   await db.ref(`order_access_tickets/${ticketKey(ticket)}`).set({ order_id: orderId, phone_hash: target.h, exp: t + ORDER_TICKET_TTL_MS });
@@ -84,10 +93,10 @@ async function processRecoveryEntry(deps, id) {
   const OTP = deps.OTP || require('../../otp-lib');
   const wa = deps.whatsapp || require('../../whatsapp');
   const db = deps.db;
-  let entry = null;
-  await db.ref(`sdk_recovery_queue/${id}`).transaction((cur) => { entry = null; if (cur == null) return null; entry = cur; return null; });
-  if (!entry || typeof entry.order_id !== 'string' || !G.ORDER_ID_RE.test(entry.order_id)) return { outcome: 'none' };
   try {
+    let entry = null;
+    await db.ref(`sdk_recovery_queue/${id}`).transaction((cur) => { entry = null; if (cur == null) return null; entry = cur; return null; });
+    if (!entry || typeof entry.order_id !== 'string' || !G.ORDER_ID_RE.test(entry.order_id)) return { outcome: 'none' };   // at-most-once (accepted: the customer can ask again)
     const t = deps.clock();
     const env = senderEnv(deps.senderConfig ? deps.senderConfig() : null);
     if (!env || !platformSenderConfigured(env, 'RECOVERY_OTP_TEMPLATE')) { suppressed('sender_unconfigured'); return { outcome: 'suppressed' }; }
@@ -107,4 +116,4 @@ async function processRecoveryQueue(deps) {
   const q = (await deps.db.ref('sdk_recovery_queue').once('value')).val() || {};
   for (const id of Object.keys(q)) await processRecoveryEntry(deps, id);
 }
-module.exports = { processRecoveryEntry, processRecoveryQueue, recoverOrderAccessCore, RECOVERY_OTP_TEMPLATE, ORDER_TICKET_TTL_MS, ticketKey };
+module.exports = { RECOVERY_PAD, processRecoveryEntry, processRecoveryQueue, recoverOrderAccessCore, RECOVERY_OTP_TEMPLATE, ORDER_TICKET_TTL_MS, ticketKey };

@@ -22,12 +22,14 @@ async function authorizeExistingOrder(deps, { authorization, ticket } = {}, orde
   // the checkout ticket, or (S5) a recovery-issued ORDER ticket (order_access_tickets) — both bound to this order + its phone hash.
   // Codex S5 r5: an order with customer_uid (a member's, or CLAIMED by a member) is NEVER guest-authorizable — checked on the
   // CURRENT order, so a ticket minted before the claim is refused too.
+  // Codex S5b r1 (advisor ruling): BOTH ticket reads run FIRST for every request, so every target class does the same DB work.
+  const key = ticketKey(ticket);
+  const checkoutRec = (await deps.db.ref(`checkout_tickets/${key}`).once('value')).val();
+  const accessRec = (await deps.db.ref(`order_access_tickets/${key}`).once('value')).val();
   if (order && order.customer_uid) return { ...GUEST_REQUIRED };
   const gv = order && order.guest_verified;
   const valid = (rec) => !!rec && Number.isFinite(rec.exp) && deps.clock() < rec.exp && rec.order_id === orderId && !!gv && typeof gv.phone_hash === 'string' && rec.phone_hash === gv.phone_hash;
-  const key = ticketKey(ticket);
-  if (valid((await deps.db.ref(`checkout_tickets/${key}`).once('value')).val())) return { ok: true, guest: true };
-  if (valid((await deps.db.ref(`order_access_tickets/${key}`).once('value')).val())) return { ok: true, guest: true };
+  if (valid(checkoutRec) || valid(accessRec)) return { ok: true, guest: true };
   return { ...GUEST_REQUIRED };
 }
 module.exports = { authorizeExistingOrder };
