@@ -237,6 +237,7 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-order-id.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -384,6 +385,8 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -708,6 +711,8 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -971,6 +976,7 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-order-id.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -1117,6 +1123,8 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -1442,6 +1450,8 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -2538,11 +2548,14 @@
   "payments/sdk/deps.js",
   "payments/sdk/display.js",
   "payments/sdk/fake-adapter.js",
+  "payments/sdk/finish.js",
   "payments/sdk/fixtures/redact-pixelpay.js",
   "payments/sdk/flow.js",
   "payments/sdk/functions.js",
+  "payments/sdk/intake.js",
   "payments/sdk/materialize-sdk.js",
   "payments/sdk/order-auth.js",
+  "payments/sdk/order-id.js",
   "payments/sdk/pixelpay-adapter.js",
   "payments/sdk/psp-adapter.js",
   "payments/sdk/record.js",
@@ -3458,10 +3471,15 @@
    "lifts": []
   },
   "delivery/delivery-wire.js": {
-   "pins": [],
-   "lifts": [
-    "xpizza-functions/dpao-wiring.guard.test.js"
-   ]
+   "pins": [
+    {
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
+     "inverses": [
+      "tools/dpao-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": []
   },
   "delivery/pricing-admin-core.js": {
    "pins": [],
@@ -3548,6 +3566,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -3602,6 +3621,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -3663,6 +3683,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -3722,6 +3743,7 @@
       "tools/area-inverse.js",
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -3756,6 +3778,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -3803,6 +3826,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
@@ -3863,6 +3887,7 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
@@ -3885,6 +3910,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -3941,6 +3967,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -3980,10 +4007,18 @@
      ]
     },
     {
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/driver-ledger-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4024,6 +4059,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4060,6 +4096,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4099,6 +4136,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4154,6 +4192,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4193,6 +4232,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
@@ -4229,6 +4269,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4283,6 +4324,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4333,6 +4375,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4379,6 +4422,7 @@
     {
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
@@ -4396,6 +4440,7 @@
      "file": "xpizza-functions/intl-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
@@ -4411,6 +4456,7 @@
     {
      "file": "xpizza-functions/keymode-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -4433,6 +4479,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4475,6 +4522,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4515,6 +4563,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4558,6 +4607,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
@@ -4614,6 +4664,7 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -4631,6 +4682,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4670,6 +4722,7 @@
      "file": "xpizza-functions/photos-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-inverse.js",
@@ -4688,6 +4741,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
@@ -4747,6 +4801,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4790,6 +4845,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4836,6 +4892,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4890,6 +4947,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4940,6 +4998,7 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -4949,6 +5008,7 @@
     {
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/tippref-inverse.js"
@@ -4959,6 +5019,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -4996,6 +5057,7 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -5032,6 +5094,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -5071,6 +5134,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -5109,6 +5173,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -5146,6 +5211,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
@@ -5178,6 +5244,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5228,6 +5295,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -5263,6 +5331,7 @@
      "file": "xpizza-functions/sb-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5278,6 +5347,7 @@
      "file": "xpizza-functions/sd-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5292,6 +5362,7 @@
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5308,6 +5379,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5363,6 +5435,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5413,6 +5486,7 @@
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
@@ -5470,6 +5544,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5512,6 +5587,7 @@
     {
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5549,9 +5625,16 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tools/mem512-inverse.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
@@ -5604,6 +5687,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5650,6 +5734,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5698,6 +5783,7 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5754,6 +5840,7 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/formbake-inverse.js",
@@ -5801,7 +5888,7 @@
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
-    "xpizza-functions/dpao-wiring.guard.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
@@ -5829,6 +5916,8 @@
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/sdk-intake-branch.guard.test.js",
+    "xpizza-functions/sdk-order-namespace.guard.test.js",
     "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -6060,6 +6149,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/finish.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/fixtures/redact-pixelpay.js": {
    "pins": [],
    "lifts": []
@@ -6072,6 +6165,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/intake.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/materialize-sdk.js": {
    "pins": [],
    "lifts": []
@@ -6079,6 +6176,12 @@
   "payments/sdk/order-auth.js": {
    "pins": [],
    "lifts": []
+  },
+  "payments/sdk/order-id.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/sdk-order-namespace.guard.test.js"
+   ]
   },
   "payments/sdk/pixelpay-adapter.js": {
    "pins": [],
@@ -6321,10 +6424,18 @@
    ]
   },
   "pixelpay-hosted-charge.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
   },
@@ -6648,11 +6759,20 @@
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/sdkpay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/d4-wiring.guard.test.js"
+   ]
   },
   "schedule/hours-grammar.js": {
    "pins": [],

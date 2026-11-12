@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyD4Module } = require('./tools/d4-intake-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, '53edc481', 'D4-WIRING: the base is the D4 branch point');
-assert.deepStrictEqual([...FILES].sort(), ['index.js', 'pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['catalog/charge-inputs.js', 'index.js', 'pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
@@ -45,6 +45,13 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
     sites += a;
   }
   assert.ok(sites >= 70, `D4-WIRING: premise — the registration covers the chains (${sites} sites)`);
+  // and EVERY innermost raw read under ANY inverse chain (not only the dpao ones) goes through D4 first
+  const INNER = /require\('[./]*(?:tools\/)?([a-z0-9-]+)-inverse'\)\.unapply\w+\(\w+, (?:fs|fsys)\.readFileSync\(/g;
+  for (const f of files) {
+    if (/^tools\/.*-inverse\.js$/.test(f)) continue;
+    const bad = [...fs.readFileSync(path.join(__dirname, f), 'utf8').matchAll(INNER)].filter((m) => m[1] !== 'd4-intake');
+    assert.strictEqual(bad.length, 0, `D4-WIRING: ${f}: ${bad.length} raw read(s) feed the ${bad.map((m) => m[1]).join(', ')} inverse WITHOUT the D4 layer innermost`);
+  }
   ok(`the D4 layer sits innermost at all ${sites} raw-read sites that compose the older layers`);
 }
 // §A7 NEVER composed: the CURRENT-code checks must SEE the SDK code — none of them may read through the D4 layer

@@ -661,13 +661,13 @@
   },
   {
     "file": "index.js",
-    "line_sha256": "c2e650f1e4436df9685c49b9b3510b66b9d9e2ce8fe7a4a118a7b5aab72f1f6a",
+    "line_sha256": "2d449df5897dc181c05487f7df578fa47cddfa435a0a81bc00dbb99e0a4d8c78",
     "occurrence": 1,
     "rules": [
       "R4"
     ],
-    "line": 2060,
-    "text": "const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('orig",
+    "line": 2113,
+    "text": "returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });",
     "reason": "R4 false positive: S3b hosted-checkout return routing reads identity/brand_id (resolveReturnBaseForCharge readBrandId), no hours"
   }
 ]
