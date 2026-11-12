@@ -22,6 +22,11 @@ export const DEFAULT_BUCKET = 'xpizza-delivery.firebasestorage.app';
 export const PUBLIC_BUCKET = 'sherpa-delivery-photos';     // owner-named 2026-11-11 (netlify.toml carries the same)
 const GCS = 'https://storage.googleapis.com';
 const MAX = 10485760;
+// the SERVER's own shape check for an op_id (photos/upload-start.js OP_ID_RE) — LIVE 2026-11-12: this fake once accepted any non-empty
+// string (laxer than production) and missed the portal's `op:` ids. The suite hands it the server's regex, read from the server's
+// source (useServerOpIdRe); there is NO lax default — a start before that throws.
+let OP_ID_RE = null;
+export function useServerOpIdRe(re) { if (!(re instanceof RegExp)) throw new Error('photo fake: the server OP_ID_RE'); OP_ID_RE = re; }
 const FRAMES = { card: { a: 4 / 3, w: 400, h: 300 }, hero: { a: 16 / 10, w: 496, h: 310 } };
 import { createHash } from 'node:crypto';
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -119,7 +124,8 @@ export function createPhotoFake({ rid = 'r_s', brandId = 'marca_s', draftTtlMs =
     photoUploadStart(b) {
       const a = authz(b.rid); if (a) return a;
       if (!fake.flags.uploads) return err(409, 'photos_disabled');
-      if (typeof b.op_id !== 'string' || !b.op_id) return err(400, 'bad_request');
+      if (!OP_ID_RE) throw new Error('photo fake: useServerOpIdRe(...) first — the server\u2019s shape check, never a laxer one');
+      if (typeof b.op_id !== 'string' || !OP_ID_RE.test(b.op_id)) return err(400, 'bad_request');
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(b.contentType) || !Number.isInteger(b.bytes) || b.bytes < 1 || b.bytes > MAX) return err(400, 'bad_request');
       const k = `${fake.uid}|${b.rid}|${b.op_id}`;
       if (fake.byOp.has(k)) {

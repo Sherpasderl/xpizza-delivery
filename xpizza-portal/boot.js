@@ -130,6 +130,7 @@
       showError('');
       $('pass').value = '';                   // do not leave a password sitting in the DOM
       $('whoami').textContent = user.email || user.uid;
+      $('whoami').title = user.email || '';   // the footer truncates a long email: the full one in the tooltip
       $('avatar').textContent = (user.email || '?').slice(0, 1).toUpperCase();
       document.dispatchEvent(new CustomEvent('portal:signed-in'));   // Task 5 listens for this
     }

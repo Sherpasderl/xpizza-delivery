@@ -2,6 +2,7 @@
  "files": [
   "DESIGN.md",
   "PRODUCT.md",
+  "account-footer.test.mjs",
   "aceptar-boot.js",
   "aceptar.css",
   "aceptar.html",
@@ -31,6 +32,7 @@
   "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
+  "envio-field-focus.test.mjs",
   "envio-geometry.test.mjs",
   "envio-logic.js",
   "envio-logic.test.mjs",
@@ -48,6 +50,7 @@
   "fonts/archivo-latin.7150c0ec5a.woff2",
   "fonts/archivo-vietnamese.2518e8eb97.woff2",
   "gate-early.js",
+  "hotfix-1112-fold.mjs",
   "index.html",
   "invite-mail.js",
   "item-edit-drawer.test.mjs",
@@ -70,6 +73,7 @@
   "portal-fonts.test.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
+  "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -135,8 +139,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "65666c836fc5a679d884d50713f4f17a7644fe73664ba3aa41d838460cffa393",
-   "bytes": 13457
+   "sha256": "cd1e83413ab66d61b105ca66f999ec60d92f3301657c91424deefad258a756f1",
+   "bytes": 13446
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -163,8 +167,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "d8dbe5c8559e0f47d4cbdbeb6c0665639398a280f8fd275a43c55a42dae0dbf9",
-   "bytes": 130253
+   "sha256": "ac29c3f403fcbea8d46374da4d8436372aaf10c323b4001740af9b7f769b9fa2",
+   "bytes": 131521
   }
  },
  "diff_aid": {
@@ -1399,6 +1403,18 @@
    ],
    [
     "",
+    ".envio .inp.bad:focus-within",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
+    ".envio .inp:focus-within",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
     ".envio .legend .lg-band",
     "background",
     "var(--env-band)"
@@ -1546,6 +1562,12 @@
     ".envio .psearch input::placeholder",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".envio .psearch input:focus,.envio .psearch input:focus-visible",
+    "border-color",
+    "var(--accent)"
    ],
    [
     "",
