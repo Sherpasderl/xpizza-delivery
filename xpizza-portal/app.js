@@ -1477,7 +1477,7 @@ function paintProductTabs() {
         }),
       });
     }),
-  }, { canEdit: canEditDraft(state.draft) });
+  }, { canEdit: canEditDraft(state.draft), baseReadable: state.deletionBase !== null });
   xPaintedCanEdit = canEditDraft(state.draft);
   // `ae` is the focus BEFORE this repaint: a held key is used only when nothing held focus then
   const held = !keepK && xFocusK && (!ae || ae === document.body) ? xFocusK : null;

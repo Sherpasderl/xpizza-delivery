@@ -16,7 +16,7 @@ export const enProductos = (n) => `en ${plural(n, 'producto', 'productos')}`;
 
 // rail + detail into their hosts; `on`: { select(group), move(group, ±1, from) / gripToggle / gripClose / drop(group, index) (X4), price(id, raw, input), remove(row), create(btn), and the inline «Agregar extra»
 // row's addOpen() / addInput(field, value) → its check / addCommit() / addCancel() / addLeave() }; `canEdit`: the draft is editable now
-export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = true } = {}) {
+export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = true, baseReadable = true } = {}) {
   railHost.replaceChildren();
   // X4b (plan §2 item 8): each row is a .rrow — the select button and the grip are SIBLINGS (no button inside a button), plus the
   // revealed «Subir» / «Bajar» pair of the open row; X4: the grip drags (the lift + ONE green drop line)
@@ -83,6 +83,11 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     w.append(s); detailHost.append(w);
   }
   const lastOne = d.rows.filter((x) => !x.removed).length === 1;   // the writer refuses a group's last extra (extras_group_empty)
+  // plan §3.4 (Codex S2 UI r1 P2-9): no published baseline read (deletionBase null) → an EXISTING extra cannot be removed (its removal
+  // is a claim that needs the base); a new (keyless) row's removal claims nothing. Said ONCE above the rows, and on each trash
+  const UNREAD = 'No pudimos leer el menú publicado. Recargá la página.';
+  const unread = baseReadable === false && d.rows.some((x) => !x.removed && x.id && typeof x.id.key === 'string');
+  if (unread) detailHost.append(fieldLine('xrows-unread', UNREAD));
   d.rows.forEach((r, i) => {
     const row = el('div', `irow mk-xrow${r.isNew ? ' mk-added' : ''}${r.removed ? ' mk-xgone' : ''}`);
     const info = el('div', 'iinfo'); const nm = el('div', 'nm');
@@ -109,8 +114,10 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     inp.dataset.k = JSON.stringify(r.id);
     inp.addEventListener('input', () => on.price(r.id, inp.value, inp));
     price.append(el('span', 'cur', 'L'), inp);
-    const del = el('button', 'del'); del.type = 'button'; del.setAttribute('aria-label', `Quitar ${r.name}`); del.append(svg(TRASH)); del.disabled = !canEdit || lastOne;
+    const noBase = baseReadable === false && !keyless;
+    const del = el('button', 'del'); del.type = 'button'; del.setAttribute('aria-label', `Quitar ${r.name}`); del.append(svg(TRASH)); del.disabled = !canEdit || lastOne || noBase;
     if (lastOne) del.title = 'Un grupo necesita al menos un extra';   // plan §5.2: prevented, never refused at a press
+    else if (noBase) { del.title = UNREAD; del.setAttribute('aria-describedby', 'xrows-unread'); }
     del.addEventListener('click', () => on.remove(r, del));
     row.append(price, del);
     detailHost.append(row);

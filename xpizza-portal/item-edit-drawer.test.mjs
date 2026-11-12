@@ -1069,7 +1069,8 @@ test('S1 r1 #9 — the required choice\'s helper line is table H\'s, with the di
 });
 
 // ── STRUCTURE S2 — the «Extras» page (PLAN-portal-structure-S2-ui r3 §2 items 1–3; MOCKUP frame X; names TEXT in S2-core) ─────
-const XON = () => editable({ extrasAuthoring: true, extrasCatalog: true });
+// the real getEditableCatalog serves the deletion baseline with the Extras page (P-1); null = unreadable (Codex S2 UI r1 P2-9)
+const XON = () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 } });
 const tabs = (p) => p.d.getElementById('prodtabs');
 const tabBtn = (p, label) => [...tabs(p).querySelectorAll('[role=tab]')].find((t) => t.textContent === label);
 const xpage = (p) => p.d.getElementById('xsplit');
@@ -2048,4 +2049,28 @@ test('S2 Codex r1 P2-13 — a row’s line is named by its field (aria-described
   const ln = lineEl(nRow());
   assert.equal(ln && ln.textContent, 'Escribí el nombre.', 'premise: the name line');
   assert.equal(nRow().querySelector('input.mk-xname').getAttribute('aria-describedby'), ln.id, 'the name field names its line');
+});
+
+test('S2 Codex r1 P2-9 — the published menu unreadable (deletionBase null): an EXISTING extra’s trash is off with «No pudimos leer el menú publicado. Recargá la página.»; a new row stays removable; a readable base: on', async () => {
+  const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: null }) });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const trash = (r) => r.querySelector('button.del');
+  const existing = xrows(p).filter((r) => !r.querySelector('.tag.new'));
+  assert.ok(existing.length > 1, 'premise: existing rows (not the last one)');
+  for (const r of existing) assert.equal(trash(r).disabled, true, 'an existing extra’s trash is off');
+  const line = [...xpage(p).querySelectorAll('.detail .ferr')].map((x) => x.textContent);
+  assert.deepEqual(line.filter((t) => t === 'No pudimos leer el menú publicado. Recargá la página.').length, 1, `the line, once (${JSON.stringify(line)})`);
+  assert.equal(trash(existing[0]).title, 'No pudimos leer el menú publicado. Recargá la página.', 'the trash says why');
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Nueva'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const added = xrows(p).find((r) => r.querySelector('.tag.new'));
+  assert.equal(trash(added).disabled, false, 'a new (keyless) row stays removable: its removal claims nothing');
+  const q = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 } }) });
+  await q.signIn();
+  tabBtn(q, 'Extras').click(); await settle(10);
+  assert.equal(trash(xrows(q)[0]).disabled, false, 'a readable base: the trash is on');
+  assert.ok(![...xpage(q).querySelectorAll('.detail .ferr')].some((x) => /No pudimos leer/.test(x.textContent)), 'and no line');
 });
