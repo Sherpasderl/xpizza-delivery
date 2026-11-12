@@ -86,6 +86,25 @@ const holdOf = async (id) => ((await rtdb.ref(`user_rewards/${MEMBER}/x_pizza/re
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
 // the WHOLE tree outside the dispatcher_alerts allowlist (r5 §2.4)
 const tree = async () => { const v = (await rtdb.ref().get()).val() || {}; delete v.dispatcher_alerts; return JSON.stringify(canon(v)); };
+// WRITE-TRACE (Codex build r1 P2-2): every ACTUAL write op the handler issues through the Admin SDK — set / update (a multi-path update expanded
+// to its paths) / remove / push(value) / a COMMITTED transaction — recorded by path; only dispatcher_alerts/* is allowed before a refusal
+const refProto = (() => { let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'update')) p = Object.getPrototypeOf(p); return p; })();
+const pathOf = (r) => decodeURIComponent(new URL(r.toString()).pathname).replace(/^\/+/, '').replace(/\/+$/, '');
+const WRITES = { on: false, list: [], start() { this.list = []; this.on = true; }, stop() { this.on = false; return this.list.filter((p) => !/^dispatcher_alerts(\/|$)/.test(p)); } };
+for (const m of ['set', 'update', 'remove', 'transaction', 'setWithPriority', 'setPriority']) {
+  const orig = refProto[m]; if (typeof orig !== 'function') continue;
+  refProto[m] = async function (...a) {
+    const p = pathOf(this);
+    if (m === 'transaction') { const r = await orig.apply(this, a); if (WRITES.on && r && r.committed) WRITES.list.push(p); return r; }
+    if (WRITES.on) { if (m === 'update' && a[0] && typeof a[0] === 'object') for (const k of Object.keys(a[0])) WRITES.list.push(p ? `${p}/${k}` : k); else WRITES.list.push(p); }
+    return orig.apply(this, a);
+  };
+}
+{ const origPush = refProto.push; refProto.push = function (v, ...r) { if (WRITES.on && v !== undefined) WRITES.list.push(`${pathOf(this)}/<push>`); return origPush.call(this, v, ...r); }; }
+const TV = require('../catalog/text-version');
+const withMode = async (mode, fn) => { const prev = TV.WRITE_MODE; TV.WRITE_MODE = mode; try { return await fn(); } finally { TV.WRITE_MODE = prev; } };
+const LONG = ` | nota: ${'llamar al portón '.repeat(100)}X`;   // a paid text past 1500 chars: the 'a8' text differs from the legacy one
+const phoneTokens = async () => Object.values((await rtdb.ref('rate_limits/phone').get()).val() || {}).reduce((a, v) => a + ((v && v.count) || 0), 0);
 const alertsN = async () => Object.keys((await rtdb.ref('dispatcher_alerts').get()).val() || {}).length;
 const stampsNaming = async (oid) => { const all = (await rtdb.ref('recent_order_content').get()).val() || {}; let k = 0; for (const ph of Object.values(all)) for (const s of Object.values(ph || {})) if (s && s.order_id === oid) k++; return k; };
 let PV = 0;
@@ -134,10 +153,10 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   assert.ok(g.status === 200 && g.json.checkout_url && CHARGED.length === 1, `premise: a live app checkout at 5 km under 6 (${g.text.slice(0, 200)})`);
   await limit(4);
   {
-    const before = await tree(); CHARGED.length = 0;
+    WRITES.start(); CHARGED.length = 0;
     const r = await post(app.chargeOnlineOrder, appBody('g1', { km: 5, method: 'online', ph: '99770900' }));
     assert.deepStrictEqual([...REFUSED(r), CHARGED.length], [409, 'outside_delivery_bands', false, 0], `L2 (${r.text.slice(0, 200)})`);
-    assert.strictEqual(await tree(), before, 'L2 WRITE-TRACE: zero writes outside dispatcher_alerts (no stamp, prune, rate token, attempt or order change)');
+    assert.deepStrictEqual(WRITES.stop(), [], 'L2 WRITE-TRACE: zero writes outside dispatcher_alerts (no stamp, prune, rate token, attempt or order change)');
   }
   ok('L2 RESUME-GRANDFATHERED: the owner lowers the limit under a live checkout → its resume is refused, no URL, nothing charged; WRITE-TRACE: zero writes');
 
@@ -148,10 +167,10 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   assert.ok(b.status === 200 && b.json.checkout_url, `premise: a reward-bound checkout (${b.text.slice(0, 200)})`);
   await limit(4);
   {
-    const before = await tree();
+    WRITES.start();
     const r = await post(app.chargeOnlineOrder, appBody('b1', { km: 5, method: 'online', ph: '99770901', extra: { redeem: REDEEM } }), { 'x-firebase-id-token': MEMBER });
     assert.deepStrictEqual(REFUSED(r), [409, 'outside_delivery_bands', false], `L3 (${r.text.slice(0, 200)})`);
-    assert.strictEqual(await tree(), before, 'L3 WRITE-TRACE: zero writes (the hold, attempt and order untouched)');
+    assert.deepStrictEqual(WRITES.stop(), [], 'L3 WRITE-TRACE: zero writes (the hold, attempt and order untouched)');
   }
   CAPS.render = false;
   ok('L3 RESUME-BOUND: the reward-bound reuse is refused the same way; WRITE-TRACE: zero writes');
@@ -164,10 +183,10 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   for (const state of ['reused', 'released', 'none']) {
     if (state === 'released') await releaseRedemption(rtdb, { uid: MEMBER, rid: 'x_pizza', orderId: 'el_r1', now: Date.now() });
     if (state === 'none') await rtdb.ref(`user_rewards/${MEMBER}/x_pizza/reservations/el_r1`).remove();
-    const before = await tree();
+    WRITES.start();
     const r = await post(app.chargeOnlineOrder, appBody('r1', { km: 5, method: 'online', ph: '99770902', extra: { redeem: REDEEM } }), { 'x-firebase-id-token': MEMBER });
     assert.deepStrictEqual(REFUSED(r), [409, 'outside_delivery_bands', false], `L4 ${state} (${r.text.slice(0, 200)})`);
-    assert.strictEqual(await tree(), before, `L4 WRITE-TRACE (${state}): zero writes — no reserve, no stamp, no rate token`);
+    assert.deepStrictEqual(WRITES.stop(), [], `L4 WRITE-TRACE (${state}): zero writes — no reserve, no stamp, no rate token`);
   }
   ok('L4 dq + redemption (reservation reused / released / none): refused before the reserve; WRITE-TRACE: zero writes each');
 
@@ -178,33 +197,37 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   const zr = await post(app.chargeOnlineOrder, appBody('n2', { km: 5, method: 'online', ph: '99770904', extra: { redeem: REDEEM } }), { 'x-firebase-id-token': MEMBER });
   assert.ok(zr.status === 200 && zr.json.checkout_url, `premise: a reward app checkout on the zero-fee band (${zr.text.slice(0, 200)})`);
   await limit(4, ZERO);
+  const n2Wallet = (await rtdb.ref(`user_rewards/${MEMBER}/x_pizza`).get()).val();   // the reward fixture every mode starts from
+  assert.strictEqual(n2Wallet.reservations.el_n2.state, 'reserved', 'premise: n2 holds its reservation');
   for (const mode of [undefined, 'direct']) {
+    await rtdb.ref(`user_rewards/${MEMBER}/x_pizza`).set(n2Wallet);
     const nb = (id, ph, extra = {}) => { const x = formBody(id, { km: 5, method: 'online', ph, extra: { pin_confirmed: true, ...(mode ? { entry_mode: mode } : {}), ...extra } }); return x; };
-    let before = await tree(); CHARGED.length = 0;
+    WRITES.start(); CHARGED.length = 0;
     const r = await post(app.chargeOnlineOrder, nb('n1', '99770903'));
     assert.deepStrictEqual([...REFUSED(r), CHARGED.length], [409, 'outside_delivery_bands', false, 0], `L5 entry_mode ${mode}: refused (${r.text.slice(0, 200)})`);
-    assert.strictEqual(await tree(), before, `L5 WRITE-TRACE (null-dq, entry_mode ${mode}): zero writes (m15: only the acquire would have caught it, after the stamps)`);
+    assert.deepStrictEqual(WRITES.stop(), [], `L5 WRITE-TRACE (null-dq, entry_mode ${mode}): zero writes (m15: only the acquire would have caught it, after the stamps)`);
     for (const state of ['reused', 'released', 'none']) {
-      if (mode === undefined && state === 'released') await releaseRedemption(rtdb, { uid: MEMBER, rid: 'x_pizza', orderId: 'el_n2', now: Date.now() });
-      if (mode === undefined && state === 'none') await rtdb.ref(`user_rewards/${MEMBER}/x_pizza/reservations/el_n2`).remove();
-      before = await tree();
+      if (state === 'released') await releaseRedemption(rtdb, { uid: MEMBER, rid: 'x_pizza', orderId: 'el_n2', now: Date.now() });
+      if (state === 'none') await rtdb.ref(`user_rewards/${MEMBER}/x_pizza/reservations/el_n2`).remove();
+      assert.strictEqual(((await holdOf('n2')) || { state: 'none' }).state, state === 'reused' ? 'reserved' : state, `premise: the ${state} fixture (entry_mode ${mode})`);
+      WRITES.start();
       const rq = await post(app.chargeOnlineOrder, nb('n2', '99770904', { redeem: REDEEM }), { 'x-firebase-id-token': MEMBER });
       assert.deepStrictEqual(REFUSED(rq), [409, 'outside_delivery_bands', false], `L5 redeeming ${state} entry_mode ${mode} (${rq.text.slice(0, 200)})`);
-      assert.strictEqual(await tree(), before, `L5 WRITE-TRACE (null-dq + redemption ${state}, entry_mode ${mode}): zero writes`);
+      assert.deepStrictEqual(WRITES.stop(), [], `L5 WRITE-TRACE (null-dq + redemption ${state}, entry_mode ${mode}): zero writes`);
     }
   }
   ok('L5 RESUME-NULL-DQ: a retry without the app marker (omitted / direct) is refused by the pre-bookkeeping check, with or without a redemption; WRITE-TRACE: zero writes');
 
   // ── L6 the catalog-fallback row: pricing via the ladder writes its alert — the ONE allowed write — then the refusal ──
   {
-    const before = await tree(); const a0 = await alertsN();
+    const a0 = await alertsN(); WRITES.start();
     CATALOG.fail = true;
     await new Promise((r) => setTimeout(r, 46000));   // the catalog reader serves its cached active-version pointer for 45 s (catalog/catalog.js pointerTtlMs): wait it out so THIS request probes the (down) catalog
     const r = await post(app.chargeOnlineOrder, appBody('g1', { km: 5, method: 'online', ph: '99770900' }));
     CATALOG.fail = false;
     assert.deepStrictEqual(REFUSED(r), [409, 'outside_delivery_bands', false], `L6 (${r.text.slice(0, 200)})`);
     assert.ok((await alertsN()) > a0, 'L6 premise: the catalog fallback wrote its dispatcher alert');
-    assert.strictEqual(await tree(), before, 'L6 WRITE-TRACE: the alert is the ONLY write');
+    assert.deepStrictEqual(WRITES.stop(), [], 'L6 WRITE-TRACE: the alert is the ONLY write');
   }
   ok('L6 catalog-fallback row: the ladder\'s dispatcher_alerts write precedes the refusal and is the only write');
 
@@ -214,9 +237,9 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   assert.ok(h.status === 200 && h.json.checkout_url, `premise (${h.text.slice(0, 200)})`);
   await rtdb.ref('orders/el_h1/hub_lat').remove();
   {
-    const before = await tree();
+    WRITES.start();
     const r = await post(app.chargeOnlineOrder, appBody('h1', { km: 3, method: 'online', ph: '99770906' }));
-    assert.deepStrictEqual([r.status, r.json, await tree() === before], [409, { error: 'order_context_changed', order_id: 'el_h1' }, true],
+    assert.deepStrictEqual([r.status, r.json, WRITES.stop()], [409, { error: 'order_context_changed', order_id: 'el_h1' }, []],
       `L8 the server answer the capp maps to existing_order (capp-api.test.mjs «order_context_changed: kept») (${r.text.slice(0, 200)})`);
   }
   ok('L8 HUB-MISSING: a missing hub snapshot → 409 {error: order_context_changed, order_id} (the capp keeps the id and shows the existing order), zero writes');
@@ -248,42 +271,88 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   }
   ok('L10 FORMS-UNCHANGED: a form order at 6.5 km (beyond the 5 km limit) is placed dark, exactly as today (m14)');
 
-  // L7 runs LAST: it monkeypatches the pre-check to inject the race (r5 BACKSTOP-ORDER-RACE)
-  // ── L7 BACKSTOP-ORDER-RACE: A's pre-check finds no order; B (its earlier snapshot) creates the live checkout; A's guarded reuse refuses ──
-  // the ZERO-fee table: B's total (food + 0 envío) equals A's (food, its own dq refused) — so A's reserve REUSES B's hold, and the
-  // cart is two pizzas (one free), never a $0 order refused before the pre-check
-  await limit(4, ZERO);
+  // ── L11 createOrder (cash) — Codex build r1 P1: the delivery admission runs BEFORE the content stamp, prune, rate tokens and reserve ──
+  await limit(4);
   {
-    const realPre = DW.preBookkeepingRefusal; let raced = false; const PH = '99770905';
-    // A retries the SAME order with a pin INSIDE the lowered limit (its own dq is valid, so index.js:1676 lets it through and chargeContext
-    // finds no order yet); B — an earlier request carrying ITS snapshot (6 km) — lands the order and its live checkout at 5 km in between
-    const cart = { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` };
-    const bodyA = appBody('x1', { km: 3, method: 'online', ph: PH, extra: cart });
-    const bodyB = appBody('x1', { km: 5, method: 'online', ph: PH, extra: cart });
+    const cashBody = (id, ph, extra = {}) => appBody(id, { km: 5, ph, extra });
+    const cases = [
+      ['no redemption', 'c11a', '99770910', {}, {}],
+      ['redemption, no reservation', 'c11b', '99770911', { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` }, { 'x-firebase-id-token': MEMBER }],
+      ['free order (the reward zeroes the food)', 'c11c', '99770912', { redeem: REDEEM, free_order: true }, { 'x-firebase-id-token': MEMBER }],
+    ];
+    for (const [label, id, ph, extra, hdr] of cases) {
+      const t0 = await phoneTokens();
+      WRITES.start();
+      const r = await post(app.createOrder, cashBody(id, ph, extra), hdr);
+      assert.deepStrictEqual([r.status, r.json && r.json.error, r.json && r.json.order_id], [409, 'outside_delivery_bands', `el_${id}`], `L11 cash ${label}: the refusal's bytes (${r.text.slice(0, 200)})`);
+      assert.deepStrictEqual(WRITES.stop(), [], `L11 WRITE-TRACE cash ${label}: no stamp, prune, rate token, reservation or order write`);
+      assert.deepStrictEqual([await recOf(id), await holdOf(id), await stampsNaming(`el_${id}`), await phoneTokens()], [null, null, 0, t0], `L11 cash ${label}: nothing left behind`);
+    }
+    // a RELEASED reservation for the order id (a gate-refused earlier attempt, made by the real handler): the retry beyond the limit leaves it untouched
+    const ph = '99770913', rel = { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` };
+    const g = await post(app.createOrder, appBody('c11d', { km: 3, ph, extra: { ...rel, expected_net_cents: 1 } }), { 'x-firebase-id-token': MEMBER });
+    assert.ok(g.status >= 400 && (await recOf('c11d')) === null && (await holdOf('c11d')).state === 'released', `premise: the gate refused and released the hold (${g.text.slice(0, 200)})`);
+    const relBefore = await holdOf('c11d');
+    WRITES.start();
+    const r = await post(app.createOrder, appBody('c11d', { km: 5, ph, extra: rel }), { 'x-firebase-id-token': MEMBER });
+    assert.deepStrictEqual([r.status, r.json && r.json.error], [409, 'outside_delivery_bands'], `L11 cash, released reservation (${r.text.slice(0, 200)})`);
+    assert.deepStrictEqual(WRITES.stop(), [], 'L11 WRITE-TRACE cash with a released reservation: no re-reserve, no stamp, no rate token');
+    assert.deepStrictEqual(await holdOf('c11d'), relBefore, 'L11 the released reservation is untouched');
+  }
+  ok('L11 createOrder (cash): beyond the limit → today\'s refusal bytes, with ZERO writes (no stamp / prune / rate token / reserve) — no redemption, a redemption, a free order, a released reservation');
+
+  // L7 runs LAST: it monkeypatches the pre-check to inject the race (r5 BACKSTOP-ORDER-RACE)
+  // ── L7 BACKSTOP-ORDER-RACE: A retries the SAME order with a pin INSIDE the lowered limit (its own dq is valid, so index.js:1676 lets it through and
+  // chargeContext finds no order yet); B — an earlier request carrying ITS snapshot (6 km) — lands the order and its live checkout at 5 km in
+  // between; A's acquire meets it and the reuseGuard refuses under A's snapshot. The ZERO-fee table keeps A's total equal to B's (A's reserve
+  // REUSES B's hold); the cart is two pizzas (one free) with a paid text past 1500 chars, B issued in 'a8' mode (the REAL A8 writer) — so A,
+  // re-placing in the retained 'a8' reservation's binding, writes BOTH the bookkeeping stamp and the A8 stamp (index.js :1863 / :2143)
+  await limit(4, ZERO);
+  const race = async (id, PH, { releaseB = false } = {}) => {
+    const realPre = DW.preBookkeepingRefusal; let raced = false;
+    const cart = { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}${LONG}` };
+    const bodyA = appBody(id, { km: 3, method: 'online', ph: PH, extra: cart });
+    const bodyB = appBody(id, { km: 5, method: 'online', ph: PH, extra: cart });
     DW.preBookkeepingRefusal = async (db, oid, dq, pp) => {
       const out = await realPre(db, oid, dq, pp);
-      if (oid === 'el_x1' && !raced && out === null) {
-        raced = true;
-        await limit(6, ZERO);   // B started BEFORE the owner lowered the limit: its snapshot allows 5 km
+      if (oid === `el_${id}` && !raced && out === null) {
+        raced = true; WRITES.on = false;   // B's own writes are not A's
+        await limit(6, ZERO);
         CHARGED.length = 0;
-        const B = await post(app.chargeOnlineOrder, bodyB, { 'x-firebase-id-token': MEMBER });
+        const B = await withMode('a8', () => post(app.chargeOnlineOrder, bodyB, { 'x-firebase-id-token': MEMBER }));
         assert.ok(B.status === 200 && B.json.checkout_url && CHARGED.length === 1, `L7 premise: B created the live checkout (${B.text.slice(0, 200)})`);
+        assert.strictEqual((await holdOf(id)).text_version, 'a8', 'L7 premise: B\'s reservation is a retained \'a8\' reservation (the real A8 writer)');
+        if (releaseB) await releaseRedemption(rtdb, { uid: MEMBER, rid: 'x_pizza', orderId: `el_${id}`, now: Date.now() });   // A will RE-RESERVE: an OWNED hold
         await limit(4, ZERO);
+        WRITES.on = true;
       }
       return out;
     };
-    const holdB = () => holdOf('x1');
     let A;
+    WRITES.start();
     try { A = await post(app.chargeOnlineOrder, bodyA, { 'x-firebase-id-token': MEMBER }); } finally { DW.preBookkeepingRefusal = realPre; }
+    const writes = WRITES.stop();
     assert.ok(raced, `L7 premise: the race ran inside A (after its pre-check) — A answered ${A.status} ${A.text.slice(0, 240)}`);
     assert.deepStrictEqual([...REFUSED(A), CHARGED.length], [409, 'outside_delivery_bands', false, 1], `L7 A answers the refusal — no 503, no URL, B's single charge only (m25) (${A.text.slice(0, 200)})`);
-    assert.strictEqual((await holdB()).state, 'reserved', 'L7 B\'s hold (reused from A\'s view) is untouched (m26)');
-    assert.strictEqual(await stampsNaming('el_x1'), 0, 'L7 the content stamps naming the order (bookkeeping + A8) are removed (m28, m29)');
-    assert.strictEqual(await stampsNaming('el_x2'), 0, 'L7 premise: the next order is new');
-    const next = await post(app.createOrder, appBody('x2', { km: 3, ph: PH, extra: { items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` } }));
-    assert.strictEqual(next.status, 200, `L7 the next legitimate same-cart order passes as fresh (${next.text.slice(0, 200)})`);
+    const stampKeys = [...new Set(writes.filter((p) => p.startsWith('recent_order_content/')).map((p) => p.split('/').slice(0, 3).join('/')))];
+    assert.strictEqual(stampKeys.length, 2, `L7 premise: A wrote TWO content stamps — the bookkeeping one and the A8 one (${JSON.stringify(stampKeys)})`);
+    assert.strictEqual(await stampsNaming(`el_${id}`), 0, 'L7 the content stamps naming the order (bookkeeping + A8) are removed (m28, m29)');
+    return { A, PH, cart };
+  };
+  {
+    const { PH, cart } = await race('x1', '99770905');
+    assert.strictEqual((await holdOf('x1')).state, 'reserved', 'L7 B\'s hold (reused from A\'s view) is untouched (m26)');
+    // the next legitimate same-cart order is FRESH: not a re-tap (its phone token is consumed) and stamped as its own
+    const t0 = await phoneTokens();
+    const next = await post(app.chargeOnlineOrder, appBody('x2', { km: 3, method: 'online', ph: PH, extra: cart }), { 'x-firebase-id-token': MEMBER });
+    assert.ok(next.status === 200 && next.json.checkout_url, `L7 the next same-cart order is placed (${next.text.slice(0, 200)})`);
+    assert.deepStrictEqual([await phoneTokens(), (await stampsNaming('el_x2')) >= 1], [t0 + 1, true], 'L7 the next order is FRESH: its phone token is consumed (no re-tap from a stale stamp) and it carries its own stamp');
   }
-  ok('L7 BACKSTOP-ORDER-RACE: B\'s live checkout under its earlier snapshot is refused for A (delivery_refused → 409), only owned holds released, A\'s stamps removed, the next order fresh');
+  {
+    await race('x3', '99770906', { releaseB: true });
+    assert.strictEqual((await holdOf('x3')).state, 'released', 'L7 the hold A RE-RESERVED (owned) is released by the backstop — never left reserved behind a refused request');
+  }
+  ok('L7 BACKSTOP-ORDER-RACE: B\'s live checkout (a retained a8 reservation) under its earlier snapshot is refused for A — no 503, no URL; a reused hold kept, an owned one released; both A stamps (bookkeeping + A8) removed; the next same-cart order fresh');
 
   FINISHED = true;
   console.log(`\nenvlim: OK (${n})`);
