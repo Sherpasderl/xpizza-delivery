@@ -101,6 +101,7 @@
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
     "xpizza-functions/catalog/context-suspension.test.js",
@@ -474,6 +475,7 @@
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
     "xpizza-functions/catalog/context-suspension.test.js",
@@ -862,6 +864,7 @@
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
     "xpizza-functions/catalog/context-suspension.test.js",
@@ -1230,6 +1233,7 @@
     "xpizza-functions/catalog/category-rename-flow.test.js",
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
     "xpizza-functions/catalog/context-suspension.test.js",
@@ -2491,6 +2495,7 @@
   "catalog/catalog-transform.js",
   "catalog/catalog.js",
   "catalog/charge-inputs.js",
+  "catalog/choice-transitions.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
@@ -3060,6 +3065,10 @@
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
+  },
+  "catalog/choice-transitions.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/draft-assess.js": {
    "pins": [],
