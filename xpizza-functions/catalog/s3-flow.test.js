@@ -6,6 +6,8 @@
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const STRUCT = { choiceEdit: false };
+const TEXT = { enabled: true };   // the S1 text switch (ON in production); the x_pizza rename cell turns it OFF: S3 records renames on its own
+{ const p = require.resolve('./item-text-edit'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { textEditCapabilities: () => ({ enabled: TEXT.enabled }) } }; }
 { const p = require.resolve('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { structureCapabilities: () => ({ extrasCatalog: false, choiceEdit: STRUCT.choiceEdit, sections: false }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
@@ -118,13 +120,15 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
     const dish = live.items.find((i) => i.key === plain);
     const optKey = live.structure.variant_items[String(dish.display.id)].variantIds.map((id) => live.items.find((i) => String(i.display.id) === String(id)).key)[0];
     const d = apply(apply(live, { op: 'option.rename', key: optKey, choice: 'Mediana' }), { op: 'choice.recommended', launcher: plain, option: optKey });
+    TEXT.enabled = false;   // S3 alone (the S1 text switch off) still re-derives the name and records the kept key
     const { r, db } = await save('x_pizza', d, null, live);
+    TEXT.enabled = true;
     assert.strictEqual(r.status, 200, `S3F-RENAME-XP: ${show(r)}`);
     const saved = db.state.source.data;
     const o = saved.items.find((i) => i.key === optKey);
     assert.ok(o && o.display.name === `${dish.display.name} - Mediana`, 'S3F-RENAME-XP: the option keeps its key under its new name');
     assert.ok(Object.values(saved.frozen_keys || {}).includes(optKey), `S3F-RENAME-XP: the kept key is recorded (${JSON.stringify(saved.frozen_keys)})`);
-    ok('ON: an x_pizza option rename keeps its name-mode key, recorded as a frozen key by the save');
+    ok('ON: an x_pizza option rename keeps its name-mode key, recorded as a frozen key by the save — with the S1 text switch OFF too');
   }
   STRUCT.choiceEdit = false;
   FINISHED = true;
