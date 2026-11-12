@@ -164,3 +164,18 @@ test('X3b — category mode, a REFUSED category (5f\u2019s XT-REFUSALS fixture: 
   assert.equal(o && o.disabled, true, 'a refused category is never offered');
   assert.match(o.label, / · un producto tiene opciones con reglas propias$/);
 });
+test('X3 — createGroupView / createGroupOp are PURE readers (the wiring guards rule them so): a deep-frozen draft and form, byte-identical after', () => {
+  'use strict';
+  const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  const xp = createDraft(seed('x_pizza'));
+  let f = setCreateField(createGroupForm(), 'name', 'Toppings');
+  f = setCreateField(f, 'row', { i: 0, name: 'Maní', raw: '15' });
+  for (const mode of ['none', 'cat', 'items']) {
+    let g = setCreateField(f, 'mode', mode);
+    if (mode === 'items') g = setCreateField(setCreateField(g, 'mark', { key: draftSource(xp).items[0].key, on: true }), 'markAll', { cat: 'individual' });
+    const before = JSON.stringify([xp, g]);
+    deepFreeze(xp); deepFreeze(g);
+    assert.doesNotThrow(() => { createGroupView(xp, g); createGroupOp(xp, g); }, `${mode}: no write into a frozen draft or form`);
+    assert.equal(JSON.stringify([xp, g]), before, `${mode}: the draft and the form are byte-identical after`);
+  }
+});
