@@ -30,7 +30,7 @@ function structuralRefusal({ rid, draft, draftBuilt, activeBuilt }) {
   try {
     AP.compareToActive({ draftBuilt, activeBuilt, draftAuthored: Object.keys(draft.structure || {}), renderedCategories: require('./source-store').rendererContract(rid).renderedCategories,
       deletedIds: draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? draft.deleted_ids.ids : [], authoring: require('./platform-groups').groupCapabilities().authoring,
-      extrasAuthoring: require('./platform-extras').extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled });
+      extrasAuthoring: require('./platform-extras').extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, productRemoval: require('./platform-removal').removalCapabilities().productRemoval });
     return null;
   } catch (e) {
     if (e instanceof AP.AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}) });
@@ -87,7 +87,7 @@ async function requestPublishCore(deps, ctx, body) {
   try {
     const { inputs, built } = buildSourceCandidate(rid, draft);
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
-    diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...draftBuilt, ...(photos ? { photos: draftPhotos } : {}) });
+    diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...draftBuilt, ...(photos ? { photos: draftPhotos } : {}) }, require('./catalog-edit').removalDiffOptions(live, draft));
     // with item_text_edit ON the save and the owner publish fold the extras consequences into the token-bound diff; recompute it the same way
     if (textEditCapabilities().enabled) diff = withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));

@@ -77,6 +77,27 @@ function priceSanity(key, surface, old, next, out) {
   if (old > 0 && Math.abs(next - old) / old > SWING_LIMIT) out.push({ key, surface, reason: 'swing_gt_50', old, new: next });
 }
 
+// «Quitar del menú» P-R1: the editor read's rows for the live dishes a SAVED draft removes (the comparator's honoured removals) —
+// { key, identity_id, row: the live item, after: its live item_order predecessor or null, photo: its live photo entry or null }, sorted
+// by key. Here (not in portal-reads) because the stamp is identity: this module already owns reading it for the diff.
+function pendingRemovalRows(liveBuilt, keys) {
+  const items = new Map(((liveBuilt && liveBuilt.items) || []).map((it) => [it && it.key, it]));
+  const order = (liveBuilt && liveBuilt.structure && liveBuilt.structure.item_order) || [];
+  const photos = new Map(liveBuilt && liveBuilt.photos && typeof liveBuilt.photos === 'object' ? Object.entries(liveBuilt.photos) : []);
+  return [...keys].sort().map((key) => { const row = items.get(key) || null; const i = order.indexOf(key);
+    return { key, identity_id: row && row.display && row.display.identity_id !== undefined ? row.display.identity_id : null, row, after: i > 0 ? order.slice(i - 1, i).pop() : null, photo: photos.has(key) ? photos.get(key) : null }; });
+}
+// «Quitar del menú» P-R3 (switch P-R5): the diff option for a draft whose deletion claim names live dishes — { declared: Set<live key> },
+// the live dishes whose identity stamp is in `draft.deleted_ids.ids` and whose key the draft no longer has. Switch OFF, or no claim → null
+// (today's diff). The save, the owner publish and the manager request pass it alike, so the token-bound diff re-matches.
+function removalDiffOptions(liveBuilt, draft) {
+  if (!require('./platform-removal').removalCapabilities().productRemoval) return null;
+  const ids = draft && draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? new Set(draft.deleted_ids.ids) : null;
+  if (!ids || !ids.size) return null;
+  const inDraft = new Set(((draft && draft.items) || []).map((it) => it && it.key));
+  const declared = new Set(((liveBuilt && liveBuilt.items) || []).filter((it) => it && it.display && ids.has(it.display.identity_id) && !inDraft.has(it.key)).map((it) => it.key));
+  return declared.size ? { declared } : null;
+}
 // Pair removals with additions ONLY when the pairing is unambiguous: exactly one of each at that price.
 // Guessing is worse than not pairing. A deletion mislabelled as a "rename" is a deletion nobody reviewed,
 // and this diff is the only review there is — so ambiguity stays visible as add + remove.
@@ -99,7 +120,7 @@ function pairRenames(removed, added, surface) {
   };
 }
 
-function catalogDiff(liveBuilt, draftBuilt) {
+function catalogDiff(liveBuilt, draftBuilt, opts = null) {
   const added = [], removed = [], changed = [], largeChangeSet = [];
 
   // ── items
@@ -159,7 +180,10 @@ function catalogDiff(liveBuilt, draftBuilt) {
   // Same field order as every other `changed` line. Never in largeChangeSet.
   for (const l of PS.photoDiffLines(liveBuilt.photos, draftBuilt.photos)) changed.push({ key: l.key, surface: l.surface, field: l.field, old: l.old, new: l.new });
 
-  const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');
+  // «Quitar del menú» P-R3: a DECLARED removal (removalDiffOptions) is never rename-paired — it stays «Quitado» beside the addition
+  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
+  const itemPairs = pairRenames(declared ? rawRemovedItems.filter((r) => !declared.has(r.key)) : rawRemovedItems, rawAddedItems, 'item');
+  if (declared) itemPairs.removed.push(...rawRemovedItems.filter((r) => declared.has(r.key)));
   const extraPairs = pairRenames(rawRemovedEx, rawAddedEx, 'extra');
   added.push(...itemPairs.added, ...extraPairs.added);
   removed.push(...itemPairs.removed, ...extraPairs.removed);
@@ -217,4 +241,4 @@ function verifyEditToken(token, state) {
   return { ok: true, reason: null };
 }
 
-module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT };
+module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows };

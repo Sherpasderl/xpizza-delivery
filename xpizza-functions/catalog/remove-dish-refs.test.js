@@ -9,6 +9,8 @@
 // Run: node catalog/remove-dish-refs.test.js
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+// these cells judge the removal path ON (P-R5 platform-removal.js; OFF = today's refusals, pinned by remove-product-server.test.js)
+{ const p = require.resolve('./platform-removal'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { removalCapabilities: () => ({ productRemoval: true }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceToBuildInputs } = require('./source-store');

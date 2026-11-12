@@ -36,7 +36,7 @@ function assessDraft(rid, source, activeRes) {
       // 1D add-product B (PB-3): judged by the switch the save was judged by — without it a SAVED, unpublished group read as
       // choices_not_supported_yet once authoring is on, and the reloaded editor offered "Volver al menú publicado" instead
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
     // PLAN-public-menu-display T1 (portal r1 #3) — what the saved draft has PENDING against the published menu, from the SAME
     // comparison a save and a publish are judged by: the section names that differ (paired by index — compareToActive has

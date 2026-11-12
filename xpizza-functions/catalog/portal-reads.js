@@ -186,6 +186,10 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
       reservedNames = null;
     }
   }
+  // «Quitar del menú» (PLAN-portal-remove-product-r1 P-R5): the platform switch, stated ONLY while on (off ⇒ today's response bytes)
+  let productRemoval = false;
+  try { productRemoval = require('./platform-removal').removalCapabilities().productRemoval === true; } catch (_) { productRemoval = false; }
+  let pendingRemovals = null; let rewardKeys = null;
   let pendingTexts = null;
   let draftUnpublishable = null;
   let pendingAdditions = null;
@@ -196,6 +200,8 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     try {
       liveRead = await readActiveBuilt(rid); const activeRes = liveRead;   // asm5: F-1's liveRead and S1c's activeRes name the SAME one read
       const a = assessDraft(rid, source, liveRead);
+      // P-R2: the live reward dishes from the ONE derivation (gateFlagsOf: redeem_eligible by category or by item) — never re-derived in the portal
+      if (productRemoval) rewardKeys = [...require('./catalog-edit').gateFlagsOf(activeRes.built)].filter(([, f]) => f.redeem_eligible).map(([k]) => k).sort();
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
       // and lets the owner remove them ("Quitar") — present only when there are some
@@ -206,6 +212,9 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
         // anything else does. Present only when there is something, exactly like pendingAdditions.
         if (Array.isArray(a.renames) && a.renames.length) pendingRenames = a.renames;
         if (a.other === true) pendingOther = true;
+        /* P-R1: the live dishes the SAVED draft removes (a declared, honoured claim) — so a reloaded editor still lists them as pending
+           («Deshacer» restores the live row at its live place) and the review names them. Sorted by key; present only when there are some. */
+        if (productRemoval && Array.isArray(a.removals) && a.removals.length) pendingRemovals = require('./catalog-edit').pendingRemovalRows(activeRes.built, a.removals);
         // S2-4 (§1.1, G5): the saved-but-unpublished TEXT edits per product against live — a launcher or plain product, never an
         // option row; served only for a publishable draft and only while the switch is on (pendingOther keeps its meaning)
         if (textEditEnabled) {
@@ -308,6 +317,9 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     ...(pendingOther ? { pendingOther: true } : {}),
     ...(pendingTexts ? { pendingTexts } : {}),
     textEditEnabled,
+    ...(productRemoval ? { productRemoval: true } : {}),   // P-R5
+    ...(pendingRemovals ? { pendingRemovals } : {}),   // P-R1
+    ...(rewardKeys ? { rewardKeys } : {}),   // P-R2
     ...(reservedNames ? { reservedNames } : {}),
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,

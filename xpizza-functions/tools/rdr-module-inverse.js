@@ -12,12 +12,17 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/add-product.js",
-  "now": "  const removed = new Set(removals); const AS = removed.size ? (() => { const st = JSON.parse(JSON.stringify(activeBuilt.structure)); const ov = st.exposure && st.exposure.item_overrides; if (isObj(ov)) for (const k of removed) delete ov[k]; if (isObj(st.extras_by_item)) { for (const k of removed) delete st.extras_by_item[k]; } if (Array.isArray(st.redeem_eligible_items)) st.redeem_eligible_items = st.redeem_eligible_items.filter((k) => !removed.has(k)); return st; })() : activeBuilt.structure;   // «Quitar del menú»: a DECLARED removal takes its OWN explicit entries (item_overrides[key], extras_by_item[key], redeem_eligible_items) with it — nothing else\n",
+  "now": "function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, productRemoval = false }) {\n",
+  "was": "function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false }) {\n"
+ },
+ {
+  "file": "catalog/add-product.js",
+  "now": "  const removed = new Set(removals); const AS = removed.size && productRemoval ? (() => { const st = JSON.parse(JSON.stringify(activeBuilt.structure)); const ov = st.exposure && st.exposure.item_overrides; if (isObj(ov)) for (const k of removed) delete ov[k]; if (isObj(st.extras_by_item)) { for (const k of removed) delete st.extras_by_item[k]; } if (Array.isArray(st.redeem_eligible_items)) st.redeem_eligible_items = st.redeem_eligible_items.filter((k) => !removed.has(k)); return st; })() : activeBuilt.structure;   // «Quitar del menú»: a DECLARED removal takes its OWN explicit entries (item_overrides[key], extras_by_item[key], redeem_eligible_items) with it — nothing else\n",
   "was": "  const removed = new Set(removals);\n"
  },
  {
   "file": "catalog/add-product.js",
-  "now": "    if (!sameJson(keepClearedMaps(draftBuilt.structure, activeBuilt.structure)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n",
+  "now": "    if (!sameJson((productRemoval ? keepClearedMaps(draftBuilt.structure, activeBuilt.structure) : draftBuilt.structure)[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n",
   "was": "    if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });\n"
  },
  {
@@ -31,8 +36,33 @@ const HUNKS = Object.freeze([
   "was": "  ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,\n"
  },
  {
+  "file": "catalog/draft-assess.js",
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception)\n",
+  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "      extrasAuthoring: extrasCapabilities().authoring, textEdit, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception)\n",
+  "was": "      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt, require('./catalog-edit').removalDiffOptions(live, next)); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically\n",
+  "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically\n"
+ },
+ {
   "file": "catalog/publish-edited-handler.js",
-  "now": "      items: draftBuilt.items, structure: AP.keepClearedMaps(draftBuilt.structure, live.structure), extras: inputs.extras,\n",
+  "now": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: draftPhotos } : draftBuilt, require('./catalog-edit').removalDiffOptions(live, draft)); if (textEditCapabilities().enabled) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the same consequences as the save, before the token re-match\n",
+  "was": "  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: draftPhotos } : draftBuilt); if (textEditCapabilities().enabled) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveExtraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the same consequences as the save, before the token re-match\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras: judged on PUBLISH too, not only on save\n",
+  "was": "        extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras: judged on PUBLISH too, not only on save\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "      items: draftBuilt.items, structure: require('./platform-removal').removalCapabilities().productRemoval ? AP.keepClearedMaps(draftBuilt.structure, live.structure) : draftBuilt.structure, extras: inputs.extras,\n",
   "was": "      items: draftBuilt.items, structure: draftBuilt.structure, extras: inputs.extras,\n"
  }
 ]);
