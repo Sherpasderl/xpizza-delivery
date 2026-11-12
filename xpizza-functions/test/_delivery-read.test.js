@@ -20,4 +20,18 @@ assert.deepStrictEqual(DR.without([w], 'release', { expected: 0 }), [w], 'a non-
 assert.throws(() => DR.without([R, w], 'release with read', { expected: 0 }), /must carry NO envío config read/);
 assert.throws(() => DR.without([floor], 'intake, no write, none', { expected: 1 }), /exactly one/);
 ok('without(): one early plain get removed; two reads / a write at that path / a read after a write / none on a writing request → RED');
+// envío restaurant limit (PLAN r5 §2.4/§8, the ONE declared I/O delta): chargeOnlineOrder's pre-bookkeeping check — ONE plain
+// `get orders/<oid>` on the null-dq route, the op right before the bookkeeping opens (the content-stamp read / a rate-limit op),
+// ahead of every write — is set aside with the config read; anything else at that path is untouched, and a second / late one is RED
+{
+  const pre = { db: 'rtdb', op: 'get', path: 'orders/<oid>' };
+  const stamp = { db: 'rtdb', op: 'once', path: 'recent_order_content/<phoneKey>/ck' };
+  const rate = { db: 'rtdb', op: 'transaction', path: 'rate_limits/ip/k' };
+  assert.deepStrictEqual(DR.without([floor, R, pre, stamp, w], 'precheck + stamp'), [floor, stamp, w], 'the pre-check read before the stamp read is set aside');
+  assert.deepStrictEqual(DR.without([R, pre, rate, w], 'precheck + rate'), [rate, w], 'before a rate-limit op (no phone) too');
+  assert.deepStrictEqual(DR.without([R, pre, floor, w], 'other get'), [pre, floor, w], 'an orders read NOT opening the bookkeeping is kept (compared to the golden)');
+  assert.throws(() => DR.without([R, pre, stamp, pre, rate, w], 'two prechecks'), /pre-check read must occur at most ONCE/);
+  assert.throws(() => DR.without([R, w, pre, stamp], 'late precheck'), /pre-check read must precede every write/);
+  ok('without(): the envío limit pre-check read (one plain get orders/<oid> opening the bookkeeping) set aside; two / late → RED; any other orders read kept');
+}
 console.log(`\n_delivery-read: ${n} passed`);
