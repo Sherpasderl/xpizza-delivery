@@ -23,6 +23,27 @@ const TAG = 'recommended';
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const refuse = (code, detail, key = null) => { throw new AddProductError(code, detail, { status: 409, field: 'choices', key }); };
 
+// THE touched-group rule (§2), the ONE definition the classifier and the review diff share: a group in the target that is new, or whose
+// label, membership, an option's choice text or an option's mark changed. A price change alone touches nothing (P2-4).
+function isTouched(ib, it, baseline, target, bItems, tItems, k) {
+  if (!ib.launchers.has(k)) return true;
+  const tm = membersOf(it, k); const bm = membersOf(ib, k);
+  const bs = specOf(baseline, k) || {}; const ts = specOf(target, k) || {};
+  return bs.label !== ts.label || bm.length !== tm.length || bm.some((v, i) => v !== tm[i])
+    || tm.some((v) => { const a = bItems.get(v); const b = tItems.get(v); return !a || (a.display || {}).choice !== (b.display || {}).choice || marked(a) !== marked(b); });
+}
+
+// An S3 edit is present (the review diff's switch, §4; Codex build r1 P2-3) iff an EXISTING dish's group is touched by the rule above, or an
+// existing dish lost its group (D3). A dish new to the menu is an addition (today's diff). false when either index cannot be read.
+function s3EditPresent({ baseline, target }) {
+  const ib = groupIndexFrom(baseline); const it = groupIndexFrom(target);
+  if (!ib.ok || !it.ok) return false;
+  const bItems = new Map(baseline.items.map((i) => [i.key, i])); const tItems = new Map(target.items.map((i) => [i.key, i]));
+  for (const k of it.launchers) if (bItems.has(k) && isTouched(ib, it, baseline, target, bItems, tItems, k)) return true;
+  for (const k of ib.launchers) if (!it.launchers.has(k) && tItems.has(k)) return true;
+  return false;
+}
+
 function membersOf(index, launcherKey) {
   const out = [];
   for (const [v, l] of index.parentOf) if (l === launcherKey) out.push(v);
@@ -58,14 +79,7 @@ function choiceActivation({ rid, baseline, target, choiceEdit }) {
   // §2 — exactly one «Recomendada» per TOUCHED group
   for (const k of it.launchers) {
     const tm = membersOf(it, k);
-    let touched = !ib.launchers.has(k);
-    if (!touched) {
-      const bm = membersOf(ib, k);
-      const bs = specOf(baseline, k) || {}; const ts = specOf(target, k) || {};
-      touched = bs.label !== ts.label || bm.length !== tm.length || bm.some((v, i) => v !== tm[i])
-        || tm.some((v) => { const a = bItems.get(v); const b = tItems.get(v); return !a || (a.display || {}).choice !== (b.display || {}).choice || marked(a) !== marked(b); });
-    }
-    if (!touched) continue;
+    if (!isTouched(ib, it, baseline, target, bItems, tItems, k)) continue;
     const count = tm.filter((v) => marked(tItems.get(v))).length;
     if (count === 0) refuse('choice_recommended_required', `choose the «Recomendada» option of "${(tItems.get(k).display || {}).name}"`, k);
     if (count > 1) refuse('choice_recommended_many', `only one option of "${(tItems.get(k).display || {}).name}" can be «Recomendada»`, k);
@@ -108,4 +122,4 @@ function choiceRows({ baseline, target }) {
   return rows;
 }
 
-module.exports = { choiceActivation, choiceRows, TAG };
+module.exports = { choiceActivation, choiceRows, s3EditPresent, TAG };

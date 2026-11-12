@@ -39,8 +39,8 @@ function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) 
 
 function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit }) {
   const s2 = !!extrasCatalog && s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords });
-  const choices = choiceEdit ? require('./choice-activation').choiceRows({ baseline: live, target: draftBuilt }) : [];   // S3 §4: an S3 edit is present iff a group row exists
-  const s3 = choices.length > 0;
+  const s3 = !!choiceEdit && require('./choice-activation').s3EditPresent({ baseline: live, target: draftBuilt });   // S3 §4: the classifier's touched-group rule (Codex build r1 P2-3)
+  const choices = s3 ? require('./choice-activation').choiceRows({ baseline: live, target: draftBuilt }) : [];
   const L = photos ? { ...live, photos: photos.active } : live;
   const D = photos ? { ...draftBuilt, photos: photos.draft } : draftBuilt;
   const diff = withConsequences(catalogDiff(L, D, { pairExtras: !s2, ...(s3 ? { pairItems: false } : {}) }), { live, liveExtraRecords, draftBuilt, draftExtraRecords });
