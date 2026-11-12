@@ -155,9 +155,12 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     // falls through: unknown attempt / foreign caller / guest phone mismatch / a non-SDK order
     assert.strictEqual(await I().replay(w.deps, { orderId: OID, attemptId: 'att_unknown_000000001', uid: 'uid_A' }), null, `${L}: an unknown attempt falls through`);
     assert.strictEqual(await I().replay(w.deps, { orderId: OID, attemptId: ATT, uid: 'uid_B' }), null, `${L}: another member's order falls through (refused later by the create-once flow / owner check)`);
+    // a CLAIMED order (customer_uid + the guest's verified phone kept by the claim): the guest's phone no longer replays it
+    w.db.setAt(`orders/${OID}/guest_verified`, { phone: normalizePhone(PHONE), phone_hash: OTP.phoneHash(normalizePhone(PHONE)) });
     assert.strictEqual(await I().replay(w.deps, { orderId: OID, attemptId: ATT, uid: null, guestPhoneHash: OTP.phoneHash(normalizePhone(PHONE)) }), null, `${L}: a guest never replays a member's order`);
-    const wh = await mk({ payment_flow: undefined, customer_uid: 'uid_A' }, {});
-    assert.strictEqual(await I().replay(wh.deps, { orderId: OID, attemptId: ATT, uid: 'uid_A' }), null, `${L}: a non-SDK order falls through`);
+    // a record carrying the attempt under an order that is NOT (or no longer reads as) SDK ⇒ falls through
+    w.db.setAt(`orders/${OID}/payment_flow`, null);
+    assert.strictEqual(await I().replay(w.deps, { orderId: OID, attemptId: ATT, uid: 'uid_A' }), null, `${L}: a non-SDK order falls through`);
     // (b) an APPROVED-but-unplaced attempt ⇒ the resolver places it (decidePlacement); no new authorization
     const wb = await mk({ customer_uid: 'uid_A' }, {});
     const golive = []; wb.deps.goLive = async (dp, id) => { golive.push(id); };
