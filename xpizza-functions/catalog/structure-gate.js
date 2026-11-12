@@ -15,7 +15,7 @@ async function judge({ rid, draft, draftRecords, live, liveExtraRecords, addProd
   if (!extrasCatalog && require('./review-diff').s2OpPresent({ live: active, liveExtraRecords: active.extras, draftBuilt: draftRecords, draftExtraRecords: draftRecords.extras })) {
     throw new AP.AddProductError('extras_catalog_not_supported_yet', 'the Extras page is not available yet', { field: 'extras', status: 409 });
   }
-  if (compare) {
+  if (require('./extra-identity').extraIdentityCapabilities().mintExtras) { const np = require('./frozen-extra-keys').renameNameProblems(draft, liveExtraRecords || [])[0]; if (np) throw new AP.AddProductError(np.error, `the option name cannot be used (${np.error})`, { key: np.key, field: np.field }); } if (compare) {   // S2b §1.3 (Codex S2b r1 P1-4): the name rules on the FULL candidate, new keys or not
     require('./choice-compare').compareToActive(rid, {
       draftBuilt: { ...draftRecords, ...(photos ? { photos: photos.draft } : {}) }, activeBuilt: { ...active, ...(photos ? { photos: photos.active } : {}) },
       draftAuthored: Object.keys(draft.structure || {}), renderedCategories: require('./source-store').rendererContract(rid).renderedCategories,

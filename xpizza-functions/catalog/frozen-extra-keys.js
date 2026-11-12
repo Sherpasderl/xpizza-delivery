@@ -75,19 +75,22 @@ function recordExtraRenames({ draft, live, stored }) {
   return { ok: true, frozen_extra_keys: Object.keys(out).length || kept ? out : undefined };
 }
 
-// The name rules of a RENAMED extra (§1.3, switch ON): its new name is unique among the candidate's extras (normalized) and is not ANOTHER
-// extra's key; a label the capp can serialize. Returns [{ error, key, field }] (the first one is answered); [] = none.
+// The name rules (§1.3, switch ON) of every extra a draft TOUCHES — a new row (a ref, or a key live does not have) or a renamed one — over the
+// FULL candidate (Codex S2b r1 P1-4): a name in the opaque i_… shape is extra_name_opaque (§1.3 #4); a label the capp cannot serialize is
+// extra_name_unsafe; a name equal (normalized) to ANOTHER extra's name or KEY is name_taken. Untouched rows are today's. Run at the save, the
+// owner publish and the manager request (structure-gate). Returns [{ error, key, field }] (the first one is answered); [] = none.
 function renameNameProblems(draft, liveExtras) {
-  const { normalizeName } = require('./add-product'); const { EXTRA_LABEL_UNSAFE } = require('./extras-validate');
+  const { normalizeName } = require('./add-product'); const { EXTRA_LABEL_UNSAFE } = require('./extras-validate'); const { OPAQUE_SYNTAX } = require('./mint-opaque');
   const liveByKey = new Map((liveExtras || []).filter((e) => isPlain(e) && isPlain(e.display)).map((e) => [e.key, e]));
-  const rows = ((draft && draft.extras) || []).filter((e) => isPlain(e) && isPlain(e.display) && typeof e.key === 'string');
+  const rows = ((draft && draft.extras) || []).filter((e) => isPlain(e) && isPlain(e.display));
   const out = [];
   for (const e of rows) {
-    const l = liveByKey.get(e.key);
-    if (!l || l.display.name === e.display.name) continue;
-    const name = String(e.display.name || ''); const n = normalizeName(name);
-    if (EXTRA_LABEL_UNSAFE.test(name)) { out.push({ error: 'extra_name_unsafe', key: e.key, field: 'name' }); continue; }
-    if (rows.some((o) => o !== e && (normalizeName(o.display.name) === n || normalizeName(o.key) === n))) out.push({ error: 'name_taken', key: e.key, field: 'name' });
+    const isNew = typeof e.key !== 'string' || own(e, 'ref') || !liveByKey.has(e.key);
+    if (!isNew && liveByKey.get(e.key).display.name === e.display.name) continue;
+    const name = String(e.display.name || ''); const n = normalizeName(name); const id = typeof e.key === 'string' ? e.key : e.ref;
+    if (OPAQUE_SYNTAX.test(name.trim())) { out.push({ error: 'extra_name_opaque', key: id, field: 'name' }); continue; }
+    if (EXTRA_LABEL_UNSAFE.test(name)) { out.push({ error: 'extra_name_unsafe', key: id, field: 'name' }); continue; }
+    if (rows.some((o) => o !== e && (normalizeName(o.display.name) === n || (typeof o.key === 'string' && normalizeName(o.key) === n)))) out.push({ error: 'name_taken', key: id, field: 'name' });
   }
   return out;
 }

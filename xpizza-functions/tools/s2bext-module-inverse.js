@@ -147,6 +147,11 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/structure-gate.js",
+  "now": "  if (require('./extra-identity').extraIdentityCapabilities().mintExtras) { const np = require('./frozen-extra-keys').renameNameProblems(draft, liveExtraRecords || [])[0]; if (np) throw new AP.AddProductError(np.error, `the option name cannot be used (${np.error})`, { key: np.key, field: np.field }); } if (compare) {   // S2b §1.3 (Codex S2b r1 P1-4): the name rules on the FULL candidate, new keys or not\n",
+  "was": "  if (compare) {\n"
+ },
+ {
+  "file": "catalog/structure-gate.js",
   "now": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved, frozenExtraKeys: draft.frozen_extra_keys, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: a minted row only with its recorded reuse\n",
   "was": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved });\n"
  },

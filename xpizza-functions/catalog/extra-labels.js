@@ -4,8 +4,7 @@
 // handoff, the snapshot and both mirror payloads already carry — under a namespace no dish key can take: `x:<key>` → the label,
 // `x?:<key>` → '1' (required). Both are written from the version's OWN frozen_extra_keys (authoritative server metadata, never «key ≠
 // derived»); a version with no affected extra adds nothing, so its tables are today's bytes. Refusal (resolveLines, every intake, every
-// brand): a cart / reward extra whose key is REQUIRED (marked, or minted-opaque) and has no label → labels_unavailable. Pure.
-const { OPAQUE_SYNTAX } = require('./mint-opaque');
+// brand): a cart / reward extra whose key is REQUIRED (marked) and has no label → labels_unavailable. Pure.
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const LABEL = (k) => `x:${k}`;
 const REQUIRED = (k) => `x?:${k}`;
@@ -25,7 +24,8 @@ function extraLabelEntries(extrasSnap, frozenExtraKeys) {
 }
 
 const extraLabelOf = (labels, key) => (isObj(labels) && typeof labels[LABEL(key)] === 'string' ? labels[LABEL(key)] : null);
-const extraLabelRequired = (labels, key) => typeof key === 'string' && (OPAQUE_SYNTAX.test(key) || (isObj(labels) && labels[REQUIRED(key)] === '1'));
+// «affected» comes ONLY from the authoritative marker the version's frozen_extra_keys wrote (Codex S2b r1 P1-1) — never from a key's shape
+const extraLabelRequired = (labels, key) => typeof key === 'string' && isObj(labels) && labels[REQUIRED(key)] === '1';
 
 // resolveLines: every cart extra (by pricing's own resolver) and every reward extra id the calculator would read
 function extraLabelRefusal(rid, body, tables) {
