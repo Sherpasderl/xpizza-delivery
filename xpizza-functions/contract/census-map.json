@@ -422,6 +422,7 @@
   "catalog/choice-transitions.js#removeRow": "catalog",
   "catalog/choice-transitions.js#rowOf": "catalog",
   "catalog/extra-key-intake.js#extraKeyRefusal": "catalog",
+  "catalog/extra-labels.js#extraLabelRefusal": "catalog",
   "catalog/choice-activation.js#choiceActivation": "catalog",
   "catalog/choice-activation.js#specOf": "catalog",
   "catalog/choice-activation.js#choiceRows": "catalog",

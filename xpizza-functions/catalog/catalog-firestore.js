@@ -171,7 +171,7 @@ async function readVersionDocs(db, restaurantId, versionId) {
   if (!recSnap.exists) throw new Error(`version_missing: ${restaurantId}/${versionId}`);
   const record = recSnap.data() || {};
   const where = `${restaurantId}/versions/${versionId}`;
-  const itemDocs = mapDocs(items, where); const itemLabels = labelsFromSnap(items);   // S1d: dish labels BESIDE the price docs (never inside them)
+  const itemDocs = mapDocs(items, where); const xl = require('./extra-labels').extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)
   const extraDocs = mapDocs(extras, where);
   // Completeness-on-read (money PIN): the read set MUST match the version-record's counts AND both full
   // hashes, or the read was torn/tampered → THROW (never serve partial). buildTablesFromDocs is the SAME

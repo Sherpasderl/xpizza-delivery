@@ -36,6 +36,11 @@ const HUNKS = Object.freeze([
   "was": "  assertCandidateValid(restaurantId, candidateSource(restaurantId, { items: built.items, extras: built.extras, structure: built.structure, key_mode: built.key_mode, frozen_keys: built.frozen_keys }), where);\n"
  },
  {
+  "file": "catalog/catalog-firestore.js",
+  "now": "  const itemDocs = mapDocs(items, where); const xl = require('./extra-labels').extraLabelEntries(extras, record.frozen_extra_keys); const itemLabels = xl ? { ...(labelsFromSnap(items) || {}), ...xl } : labelsFromSnap(items);   /* S2b §4: an affected extra's label + marker ride beside the dish labels */   // S1d: dish labels BESIDE the price docs (never inside them)\n",
+  "was": "  const itemDocs = mapDocs(items, where); const itemLabels = labelsFromSnap(items);   // S1d: dish labels BESIDE the price docs (never inside them)\n"
+ },
+ {
   "file": "catalog/catalog-menu.js",
   "now": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }), ...(record.frozen_extra_keys == null ? {} : { frozenExtraKeys: record.frozen_extra_keys }) };   // S0: the version's key mode, when it has one\n",
   "was": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }) };   // S0: the version's key mode, when it has one\n"
@@ -92,8 +97,13 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/resolve-lines.js",
-  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
+  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; } { const xl = require('./extra-labels').extraLabelRefusal(rid, body, tables); if (xl) return xl; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
   "was": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }\n"
+ },
+ {
+  "file": "catalog/resolve-lines.js",
+  "now": "function resolutionRefusal(res) { if (res && res.code === 'labels_unavailable') return { status: 503, body: { error: 'labels_unavailable', retryable: true } };   // S2b §4.3: an affected extra's label is not served\n",
+  "was": "function resolutionRefusal(res) {\n"
  },
  {
   "file": "catalog/source-accounting.js",
@@ -119,6 +129,16 @@ const HUNKS = Object.freeze([
   "file": "catalog/structure-gate.js",
   "now": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved, frozenExtraKeys: draft.frozen_extra_keys, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: a minted row only with its recorded reuse\n",
   "was": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved });\n"
+ },
+ {
+  "file": "factura/pricing.js",
+  "now": "      const ename = ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : ex && ex.name;   // S2b §2: the key it is priced by\n",
+  "was": "      const ename = ex && ex.name;\n"
+ },
+ {
+  "file": "factura/pricing.js",
+  "now": "      { const XL = require('../catalog/extra-labels'); const lab = XL.extraLabelOf(labels, ename); if (!lab && XL.extraLabelRequired(labels, ename)) return { items: null, error: 'labels_unavailable' }; extraNames.push(lab || ename); }   // S2b §4: an affected extra is described by its label\n",
+  "was": "      extraNames.push(ename);\n"
  },
  {
   "file": "menu-pricing.js",

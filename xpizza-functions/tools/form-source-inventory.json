@@ -182,6 +182,7 @@
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
     "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
@@ -562,6 +563,7 @@
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
     "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
@@ -970,6 +972,7 @@
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
     "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
@@ -1348,6 +1351,7 @@
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
     "xpizza-functions/catalog/s2b-alloc.test.js",
     "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
     "xpizza-functions/catalog/s2b-lifecycle.test.js",
     "xpizza-functions/catalog/s2b-resolve.test.js",
     "xpizza-functions/catalog/s2b-save.test.js",
@@ -2563,6 +2567,7 @@
   "catalog/exposure-transitions.js",
   "catalog/extra-identity.js",
   "catalog/extra-key-intake.js",
+  "catalog/extra-labels.js",
   "catalog/extras-allocate.js",
   "catalog/extras-consequences.js",
   "catalog/extras-eligibility-store.js",
@@ -3034,13 +3039,15 @@
      "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     }
    ],
@@ -3195,6 +3202,10 @@
    "lifts": []
   },
   "catalog/extra-key-intake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-labels.js": {
    "pins": [],
    "lifts": []
   },
@@ -3804,7 +3815,9 @@
   },
   "factura/pricing.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2bext-wiring.guard.test.js"
+   ]
   },
   "form-signal.js": {
    "pins": [],

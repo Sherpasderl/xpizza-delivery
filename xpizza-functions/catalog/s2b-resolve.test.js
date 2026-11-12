@@ -23,7 +23,7 @@ function tablesWithMinted() {
   s.frozen_extra_keys = { [MK]: { display_id: MK, minted: true, reuses: old } };
   const { inputs, built } = buildSourceCandidate('la_musa', s);
   const menu = {}; for (const it of built.items) menu[it.key] = it.price;
-  return { tables: MP.attachTablesKeyMode({ restaurantId: 'la_musa', menu, extras: inputs.extras }, 'id'), other: s.extras[0].key, dish: built.items.find((i) => !i.display.variantOf && !(built.structure.variant_items || {})[i.display.id]) };
+  return { tables: MP.attachTablesLabels(MP.attachTablesKeyMode({ restaurantId: 'la_musa', menu, extras: inputs.extras }, 'id'), { [`x:${MK}`]: 'Reusado', [`x?:${MK}`]: '1' }) /* the minted extra's label (s2b-labels: an unlabelled minted key is refused) */, other: s.extras[0].key, dish: built.items.find((i) => !i.display.variantOf && !(built.structure.variant_items || {})[i.display.id]) };
 }
 const T = tablesWithMinted();
 const line = (extras) => ({ id: T.dish.key, name: T.dish.display.name, qty: 1, price: T.dish.price, extras });
