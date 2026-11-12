@@ -134,8 +134,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "48d3310f151d92cb64b453a69d6306e362e1f460fdc0754f31194c127754d0fd",
-   "bytes": 13972
+   "sha256": "53e64444a8a90df3adf0d33b3203dde9cfcfe4da3960b886dc77b60df6cb8021",
+   "bytes": 14106
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "37ba3144636dc1cbdf1d774718fe378506da171c8c6c78e05dddf3e95412ba7d",
-   "bytes": 126308
+   "sha256": "6e0a8a90bc90b4cb28b2fb29c287eecfcee65cc7197ae23e9ad48cb10be21997",
+   "bytes": 126884
   }
  },
  "diff_aid": {
@@ -1879,6 +1879,12 @@
    ],
    [
     "",
+    ".mk-nogroup",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".mk-note b",
     "color",
     "var(--ink)"
@@ -1894,6 +1900,12 @@
     ".mk-note",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".mk-ogn",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

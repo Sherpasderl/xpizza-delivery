@@ -139,6 +139,8 @@ export const ALLOWED_CONSUMERS = new Set([
   'createGroupView', 'createGroupOp',
   // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
   'groupOrders',
+  // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
+  'IE.attachSheet',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.

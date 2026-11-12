@@ -1468,3 +1468,108 @@ test('S2 X4 — the drag (rows laid out by a stubbed box — jsdom has no layout
   assert.equal(xpage(p).querySelector('.mk-dropline'), null, 'the line goes with the drop');
   assert.equal(xpage(p).querySelector('.mk-updown'), null, 'a drag is not a click: the pair stays closed');
 });
+
+// ── STRUCTURE S2 — B «Agregar grupo de extras» (plan r3 §2 item 6, §3.5; MOCKUP frame B: .mk-adds > .railadd; the sheet on the review
+// modal's .modal/.mh/.mb/.mf; rows .optrow; «Ya está en este producto»; «¿No está el grupo? Crealo en Extras») ─────────────────────
+const bAction = (p) => p.drawer().querySelector('.mk-adds .railadd');
+const bSheet = (p) => p.d.querySelector('#xattach.show .modal');
+const bRows = (p) => [...bSheet(p).querySelectorAll('.optrow')];
+const bRow = (p, g) => bRows(p).find((r) => r.querySelector('.ogname').firstChild.textContent === g);
+const bGo = (p) => [...bSheet(p).querySelectorAll('.mf button')].pop();
+async function openB(p, key = 'dimsum_01') {
+  await p.signIn(); await p.open(key);
+  bAction(p).click(); await settle(5);
+  return bSheet(p);
+}
+test('S2 B — the dish action «Agregar grupo de extras» sits under the cards, ONLY with the server’s extrasCatalog (no «Agregar elección requerida»: S3)', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  assert.equal(bAction(p) && bAction(p).textContent, 'Agregar grupo de extras');
+  assert.equal(p.drawer().querySelectorAll('.mk-adds .railadd').length, 1, 'no S3 action');
+  const q = await page({ read: ON });
+  await q.signIn(); await q.open('dimsum_01');
+  assert.equal(q.drawer().querySelector('.mk-adds'), null, 'no dish action without extrasCatalog');
+});
+test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · elegí los grupos que ya tenés»; EXISTING groups in the ONE order, extras joined «·», «en N productos»; the dish’s own checked + inert «Ya está en este producto»; «Agregar 0 grupos» off', async () => {
+  const p = await page({ read: XON });
+  const m = await openB(p);
+  assert.ok(m, 'the sheet is open');
+  assert.equal(m.querySelector('.mt').textContent, 'Agregar grupo de extras');
+  assert.equal(m.querySelector('.ms').textContent, `Para ${p.drawer().querySelector('.dwt').textContent} · elegí los grupos que ya tenés`);
+  assert.equal(m.querySelector('.attach-note').textContent, 'Grupos de extras existentes');
+  const src = p.src();
+  assert.deepEqual(bRows(p).map((r) => r.querySelector('.ogname').firstChild.textContent), src.structure.extra_categories, 'the ONE order');
+  for (const r of bRows(p)) {
+    const g = r.querySelector('.ogname').firstChild.textContent, cb = r.querySelector('input[type=checkbox]');
+    const have = r.classList.contains('have');
+    assert.deepEqual([cb.checked, cb.disabled], [have, have], `${g}: the dish’s own is checked and inert`);
+    assert.equal(r.querySelector('.ogsub').textContent, have ? 'Ya está en este producto' : src.extras.filter((e) => e.display.cat === g).map((e) => e.display.name).join(' · '), `${g}: its line`);
+    assert.match(r.querySelector('.mk-ogn').textContent, /^en \d+ productos?$/, `${g}: «en N productos»`);
+  }
+  assert.ok(bRows(p).some((r) => r.classList.contains('have')) && bRows(p).some((r) => !r.classList.contains('have')), 'non-vacuity: both kinds');
+  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar 0 grupos', true], 'off at 0');
+  assert.equal(p.d.activeElement, bRows(p).find((r) => !r.classList.contains('have')).querySelector('input'), 'focus on the first group to pick');
+  assert.equal(m.querySelector('.mk-nogroup .mk-lnk').textContent, 'Crealo en Extras');
+});
+test('S2 B — «Agregar 1 grupo» records the attach in the COPY (never the draft): the card appears in the drawer, focus back on the action; «Guardar» commits it', async () => {
+  const p = await page({ read: XON });
+  await openB(p);
+  const g = bRows(p).find((r) => !r.classList.contains('have')).querySelector('.ogname').firstChild.textContent;
+  const before = JSON.stringify(p.src());
+  const cb = bRow(p, g).querySelector('input'); cb.checked = true; cb.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar 1 grupo', false]);
+  bGo(p).click(); await settle(10);
+  assert.equal(bSheet(p), null, 'the sheet closed');
+  assert.ok(cardOf(p, g), 'the group’s card is in the drawer');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft is untouched until «Guardar»');
+  assert.equal(p.d.activeElement, bAction(p), 'focus back on «Agregar grupo de extras»');
+  p.btn('Guardar').click(); await settle(10);
+  const ov = p.src().structure.exposure.item_overrides.dimsum_01;
+  assert.ok(ov && JSON.stringify(ov).includes(g), '«Guardar» commits the attach');
+});
+test('S2 B — «Cancelar», Escape and the backdrop close the sheet: nothing recorded; focus back on the action; Tab stays inside', async () => {
+  const p = await page({ read: XON });
+  for (const how of ['cancel', 'escape', 'scrim']) {
+    if (!bSheet(p)) { if (!p.drawer().querySelector('.mk-adds')) { await p.signIn(); await p.open('dimsum_01'); } bAction(p).click(); await settle(5); }
+    const g = bRows(p).find((r) => !r.classList.contains('have')).querySelector('.ogname').firstChild.textContent;
+    const cb = bRow(p, g).querySelector('input'); cb.checked = true; cb.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+    const last = [...bSheet(p).querySelectorAll('button, input')].filter((x) => !x.disabled).pop();
+    last.focus(); key(p, last, 'Tab'); await settle(2);
+    assert.ok(bSheet(p).contains(p.d.activeElement), `${how}: Tab stays inside`);
+    if (how === 'cancel') [...bSheet(p).querySelectorAll('.mf button')][0].click();
+    else if (how === 'escape') key(p, p.d.activeElement, 'Escape');
+    else p.d.getElementById('xattach').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
+    await settle(5);
+    assert.equal(bSheet(p), null, `${how}: closed`);
+    assert.equal(cardOf(p, g), undefined, `${how}: nothing recorded`);
+    assert.equal(p.d.activeElement, bAction(p), `${how}: focus back on the action`);
+  }
+});
+test('S2 B — the action is off with the writer’s line when the COPY refuses it: «Sin extras» on → «Tiene «Sin extras»»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  p.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);
+  assert.equal(bAction(p).disabled, true, 'the refused action is off');
+  assert.equal(p.drawer().querySelector('.mk-adds .ferr').textContent, 'Tiene «Sin extras»');
+});
+test('S2 B — «Crealo en Extras»: a clean drawer → the sheet and the drawer close, the Extras tab opens with «Crear grupo»; a dirty copy asks the drawer’s confirm first', async () => {
+  const p = await page({ read: XON });
+  await openB(p);
+  bSheet(p).querySelector('.mk-nogroup .mk-lnk').click(); await settle(10);
+  assert.equal(bSheet(p), null, 'the sheet closed');
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  assert.ok(p.d.querySelector('#xcreate.show .modal'), '«Crear grupo» is open');
+  assert.equal(p.d.activeElement && p.d.activeElement.id, 'xcg-name');
+  const q = await page({ read: XON });
+  await q.signIn(); await q.open('dimsum_01');
+  q.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);   // a dirty copy
+  q.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);
+  const cb0 = q.drawer().querySelector('.mk-xopt input[type=checkbox]'); cb0.checked = !cb0.checked; cb0.dispatchEvent(new q.w.Event('change', { bubbles: true })); await settle(10);
+  bAction(q).click(); await settle(5);
+  bSheet(q).querySelector('.mk-nogroup .mk-lnk').click(); await settle(10);
+  assert.equal(bSheet(q), null);
+  const cf = q.drawer().querySelector('.mk-cf');
+  assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
+  assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
+});

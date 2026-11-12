@@ -316,3 +316,50 @@ test('Estructura — rendered as frame F: the FIRST group «Estructura N», one 
     assert.equal(rows[1].querySelector('.pval .now.plain').textContent, 'pasa al 1.º lugar');
   } finally { globalThis.document = saved; }
 });
+
+// ── B «Agregar grupo de extras» (plan r3 §2 item 6; MOCKUP frame B): the sheet's MODEL over the drawer copy's ONE prospect ─────
+test('B — the sheet: every EXISTING group in the ONE order, its extras joined «·», «en N productos» = the Extras page’s reach; a group already on the dish (in the copy) is «have»', () => {
+  const d = createDraft(seed('la_musa'));
+  const s = drawer(d, 'dimsum_01');
+  const b = IE.attachSheet(d, s);
+  const src = draftSource(d);
+  assert.deepEqual(b.rows.map((r) => r.group), src.structure.extra_categories, 'the ONE order');
+  const onDish = new Set(offered(src, 'dimsum_01') || []);
+  for (const r of b.rows) {
+    assert.equal(r.extras, src.extras.filter((e) => e.display.cat === r.group).map((e) => e.display.name).join(' · '), `${r.group}: its extras`);
+    assert.equal(r.have, onDish.has(r.group), `${r.group}: «Ya está en este producto» exactly when the dish offers it`);
+    assert.ok(Number.isInteger(r.reach), `${r.group}: a reach`);
+  }
+  assert.ok(b.rows.some((r) => !r.have), 'non-vacuity: a group to add');
+  assert.deepEqual([b.canAdd, b.reason], [true, null]);
+  // the copy, not the draft: an attach recorded in the copy makes that group «have»
+  const g = b.rows.find((r) => !r.have).group;
+  const before = JSON.stringify(draftSource(d));
+  IE.setGroupAttached(s, g, true);
+  assert.equal(IE.attachSheet(d, s).rows.find((r) => r.group === g).have, true, 'the copy’s attach counts');
+  assert.equal(JSON.stringify(draftSource(d)), before, 'the draft is untouched');
+});
+test('B — the dish action is refused by the WRITER’s own dry run on the copy: «Sin extras» on in the copy → «Tiene «Sin extras»»; a legacy option rule (5f XT-REFUSALS fixture) → «Sus opciones tienen reglas propias»', () => {
+  const d = createDraft(seed('la_musa'));
+  const s = drawer(d, 'dimsum_01');
+  IE.set(s, 'extrasNone', true);
+  assert.deepEqual([IE.attachSheet(d, s).canAdd, IE.attachSheet(d, s).reason], [false, 'Tiene «Sin extras»'], '«Sin extras» in the copy refuses it');
+  IE.set(s, 'extrasNone', false);
+  assert.equal(IE.attachSheet(d, s).canAdd, true, 'and back');
+  const s0 = buildSourceFromCode('la_musa');
+  s0.structure.exposure.item_overrides.noodle_01_pollo = { deny: ['Salsas'] };   // exactly catalog/exposure-transitions.test.js XT-REFUSALS
+  const d2 = createDraft(canonicalize(s0));
+  const b2 = IE.attachSheet(d2, drawer(d2, 'noodle_01'));
+  assert.deepEqual([b2.canAdd, b2.reason], [false, 'Sus opciones tienen reglas propias'], 'an option rule refuses it');
+});
+test('B — attachSheet is a PURE reader (the wiring guards rule it so): a deep-frozen draft and copy, byte-identical after', () => {
+  'use strict';
+  const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  const d = createDraft(seed('la_musa'));
+  const s = drawer(d, 'dimsum_01');
+  IE.setGroupAttached(s, 'Proteínas', true);
+  const before = JSON.stringify([d, s]);
+  deepFreeze(d); deepFreeze(s);
+  assert.doesNotThrow(() => IE.attachSheet(d, s), 'no write into a frozen draft or copy');
+  assert.equal(JSON.stringify([d, s]), before, 'the draft and the copy are byte-identical after');
+});

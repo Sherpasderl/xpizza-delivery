@@ -11,8 +11,9 @@
 // hold (the merchant may save the rest, then retry or remove it).
 import {
   draftSource, choiceGroup, editItem, itemNameProblem, itemDescProblem, itemCategoryProblem, tidyItemName, parsePrice,
-  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras, composeDish, commitDish,
+  draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras, composeDish, commitDish, attachRefusal,
 } from './editor.js';
+import { extrasPageModel, refusalReason } from './extras-logic.js';
 
 export const COPY = {
   name: { empty: 'Escribí un nombre', long: 'Hasta 60 letras', quote: 'Quitá las comillas y los signos < >',
@@ -255,6 +256,26 @@ export const categoryProblem = (draft, key, target) => itemCategoryProblem(draft
 // Everything the drawer shows, derived from the copy. errors: { name, desc, cat, subcat, options, price } — the line under
 // each field (options: frame F2's line under the Opciones block); a server refusal (setServerError) shows on its field until
 // the merchant changes that field.
+// STRUCTURE S2 — B «Agregar grupo de extras» (plan r3 §2 item 6; MOCKUP frame B): the sheet's MODEL, read over the copy's ONE
+// prospect (so an attach / detach / «Sin extras» in the copy counts before «Guardar»). rows: every EXISTING group in the ONE order —
+// its extras joined «·», «en N productos» (the Extras page's reach, the server's rule), `have` when the dish (as the copy would save
+// it) already offers it. canAdd / reason: the WRITER's own dry run on the copy (editor.js attachRefusal), the X3b table's line.
+export function attachSheet(draft, s) {
+  const src = draftSource(draft);
+  const prospect = prospectSource(draft, s);
+  const refused = prospect ? attachRefusal(prospect, { mode: 'items', items: [s.key] }) : { code: 'unknown' };
+  const X = globalThis.ExposureTransitions, E = globalThis.ExtrasEligibility;
+  let mine = [];
+  if (prospect && X && E) { try { mine = X.effectiveGroups(E.projectEligibility(prospect))[s.key] || []; } catch (_) { mine = []; } }
+  const reach = new Map(extrasPageModel(draft).rail.map((r) => [r.group, r.reach]));
+  const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
+  const xs = Array.isArray(src.extras) ? src.extras.filter((e) => e && e.display) : [];
+  return {
+    canAdd: !refused, reason: refusalReason(refused),
+    rows: groups.map((g) => ({ group: g, extras: xs.filter((e) => String(e.display.cat) === g).map((e) => e.display.name).join(' \u00b7 '), reach: reach.has(g) ? reach.get(g) : null, have: mine.includes(g) })),
+  };
+}
+
 export function view(draft, s) {
   const w = s.work;
   const ch = changed(s);

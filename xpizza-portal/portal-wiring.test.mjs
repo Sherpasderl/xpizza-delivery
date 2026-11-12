@@ -1299,12 +1299,14 @@ const LISTENERS = {
   "ieFoldName::click":            ['bound', [], 'S1 — folds / unfolds one «Opciones» card: view state (opcFolded, per drawer session) and a drawer re-render'],
   "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
   "$('tabmenu')::click":          ['view', ['setProdTab'], 'S2 — «Menú»: which page shows (view state), never a write'],
+  "$('xattach')::click":         ['view', ['bClose'], 'S2 B — the backdrop cancels the «Agregar grupo de extras» sheet (an explicit picker cancel): it closes, nothing is recorded'],
   "$('tabextras')::click":        ['view', ['setProdTab'], 'S2 — «Extras»: which page shows (view state), never a write'],
   "$('tabmenu')::keydown":        ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
   "$('tabextras')::keydown":      ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
   "ieNoExtras::click":            ['bound', [], 'S1 — «Sin extras», into the working copy (IE.set extrasNone; inert while the server switch is off); the drawer re-lays out'],
   "ieAllExtras::click":           ['bound', [], 'S1 — «Marcar todos» / «Ninguno» for one group, into the working copy (IE.set extraGroupOn: that group\u2019s current keys)'],
   "ieExtraOn::change":            ['bound', [], 'S1 — one extra\u2019s check, into the working copy (IE.set extraOn)'],
+  "ieAddGroup::click":            ['bound', [], 'S2 B — opens the «Agregar grupo de extras» sheet over the drawer copy; its «Agregar N grupos» records attaches in the COPY (IE.setGroupAttached), never the draft'],
   "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
@@ -1556,6 +1558,8 @@ const ALLOWED_CONSUMERS = new Set([
   'createGroupView', 'createGroupOp',
   // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
   'groupOrders',
+  // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
+  'IE.attachSheet',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

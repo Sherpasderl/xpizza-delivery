@@ -79,7 +79,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, enProductos } from './extras-view.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
 function renderSwitcher() {
@@ -1324,6 +1324,56 @@ function x4Drop(g, index) { const next = groupOrderTo(railOrder(), g, index); if
 function x4Toggle(g) { railOpen = railOpen === g ? null : g; railError = null; paint(); focusGrip(g); }
 function x4Close(g) { railOpen = null; paint(); focusGrip(g); }
 
+// ── B «Agregar grupo de extras» (plan §2 item 6, §3.5): the checked set is LOCAL until «Agregar N grupos» records the attaches in
+// the drawer COPY (setGroupAttached — never the draft; «Guardar» composes them). Cancelar / Escape / the backdrop: an explicit cancel.
+let attachPick = null;
+function bFocusables() { return [...$('xattach').querySelectorAll('input, button')].filter((x) => !x.disabled); }
+function bKey(e) {
+  if (!attachPick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); bClose(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = bFocusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function bScrim(e) { if (e.target === $('xattach')) bClose(true); }
+function bOpen(s, action, after) {
+  attachPick = { s, action, after, checked: new Set() };
+  $('xattach').classList.add('show');
+  document.addEventListener('keydown', bKey, true); $('xattach').addEventListener('click', bScrim);
+  bPaint(true);
+}
+function bClose(refocus) {
+  const p = attachPick; attachPick = null;
+  $('xattach').classList.remove('show'); $('xattach').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', bKey, true); $('xattach').removeEventListener('click', bScrim);
+  if (refocus && p && p.action && p.action.isConnected) p.action.focus();
+}
+function bPaint(first) {
+  if (!attachPick) return;
+  const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
+  const sheet = IE.attachSheet(state.draft, attachPick.s);
+  const v = { dish: attachPick.s.base.name || attachPick.s.key, rows: sheet.rows.map((r) => ({ ...r, checked: attachPick.checked.has(r.group) })) };
+  const r = renderAttachSheet($('xattach').querySelector('.modal'), v, {
+    toggle: bound((g, on) => { if (on) attachPick.checked.add(g); else attachPick.checked.delete(g); bPaint(false); }),
+    cancel: () => bClose(true),
+    add: bound(() => {
+      const p = attachPick; const order = sheet.rows.map((x) => x.group).filter((g) => p.checked.has(g));
+      for (const g of order) IE.setGroupAttached(p.s, g, true);
+      bClose(false); p.after();
+    }),
+    create: bound(() => { bClose(false); requestClose(() => { closeDrawer(); setProdTab('xpage'); openCreateGroup(); }); }),
+  });
+  if (first) { r.first.focus(); return; }
+  const back = k ? [...$('xattach').querySelectorAll('[data-k]')].find((x) => x.dataset.k === k) : null;
+  if (back) back.focus();
+}
+
+function svgPlusIcon() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M12 5v14M5 12h14'); s.append(p);
+  return s;
+}
+
 function setProdTab(t) {
   const next = t === 'xpage' ? 'xpage' : 'menu';
   if (prodTab === 'xpage' && next !== 'xpage') { leaveExtras(() => { prodTab = next; paint(); }); return; }
@@ -1773,7 +1823,9 @@ function renderEditDrawer(d, it, keepScroll) {
   const key = rowId(it);
   if (!editSess || editSess.closed || editSess.key !== key || editSess.draft !== state.draft) {
     endEditSession();
-    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true });
+    // the copy carries BOTH server switches: extrasCatalog turns on its group ops (B's attach, «Quitar de este producto») — without it
+    // setGroupAttached stays dark by design, so an app that forgot to pass it would record nothing
+    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true });
   }
   const s = editSess;
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
@@ -2001,6 +2053,20 @@ function renderEditDrawer(d, it, keepScroll) {
       }
       R.opc.cards.push(ref);
       box.append(card);
+    }
+    // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;
+    // off with the writer's line when the COPY refuses an attach (the X3b predicate)
+    if (state.extrasCatalog === true && ex.show) {
+      const adds = mk('div', 'mk-adds');
+      const sheet = IE.attachSheet(state.draft, s);
+      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
+      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
+      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
+      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
+      focusKey(ieAddGroup, 'ie-badd');
+      adds.append(ieAddGroup);
+      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      box.append(adds);
     }
     fOpc.append(lrO, box);
     body.append(fOpc);

@@ -56,6 +56,8 @@ export function extrasPageModel(draft, { group = null } = {}) {
 // The form is LOCAL state (never the draft) until «Crear grupo» builds ONE group.create op for the writer. Each mode keeps its own
 // inputs; the op reads only the selected one. Eligibility is the WRITER's own dry run (editor.js attachRefusal), never a parallel rule.
 export const GROUP_NAME_MAX = 40;
+// the writer's refusal → the row's line (X3b and B read ONE table)
+export const refusalReason = (r) => (r ? (REASON[r.reason] || null) : null);
 const REASON = { none: 'Tiene «Sin extras»', deny_all: 'No ofrece extras', option_override: 'Sus opciones tienen reglas propias', unsaved: 'Guardá el producto primero' };
 const chars = (x) => [...String(x)].length;
 const newRef = () => {
@@ -107,7 +109,7 @@ function sectionsOf(src, f) {
   const rows = launchersOf(src).map((r) => {
     const key = typeof r.key === 'string' ? r.key : r.ref;
     const refused = attachRefusal(src, { mode: 'items', items: [key] });
-    return { key, name: r.display.name, sub: r.display.subcat || null, cat: String(r.display.cat), disabled: !!refused, reason: refused ? (REASON[refused.reason] || null) : null };
+    return { key, name: r.display.name, sub: r.display.subcat || null, cat: String(r.display.cat), disabled: !!refused, reason: refusalReason(refused) };
   });
   let marked = new Set(f.marked);
   if (f.__sectionOp) {   // «Marcar todos» / «Ninguno» on one section: its ELIGIBLE rows only

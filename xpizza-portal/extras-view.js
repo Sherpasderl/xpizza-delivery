@@ -330,3 +330,38 @@ export function renderCreateGroup(modal, v, on) {
   modal.replaceChildren(mh, mb, mf);
   return { first: nm, cancel, go };
 }
+
+// B «Agregar grupo de extras» (plan r3 §2 item 6; MOCKUP frame B) — the sheet on the review modal's .modal/.mh/.mb/.mf: one .optrow per
+// EXISTING group (checkbox, the name with its extras joined «·» under it, «en N productos»); the dish's own checked + inert with «Ya está en
+// este producto»; «¿No está el grupo? Crealo en Extras»; «Cancelar» / «Agregar N grupo(s)» (off at 0). `v`: { dish, rows: [{ group,
+// extras, reach, have, checked }] }; `on`: { toggle(group, on), cancel(), add(), create() }. Returns the first control to focus.
+export function renderAttachSheet(modal, v, on) {
+  const mh = el('div', 'mh'); const t = el('div', 'mt', 'Agregar grupo de extras'); t.id = 'xat-t';
+  mh.append(t, el('div', 'ms', `Para ${v.dish} · elegí los grupos que ya tenés`));
+  const mb = el('div', 'mb mscroll mk-form'); const list = el('div');
+  list.append(el('div', 'attach-note', 'Grupos de extras existentes'));
+  let first = null;
+  for (const r of v.rows) {
+    const row = el('label', `optrow${r.have ? ' have' : ''}${r.checked && !r.have ? ' sel' : ''}`);
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = r.have || r.checked; cb.disabled = r.have; cb.dataset.k = `xat:${r.group}`;
+    cb.addEventListener('change', () => on.toggle(r.group, cb.checked));
+    const nm = el('span', 'ogname', r.group); nm.append(el('span', 'ogsub', r.have ? 'Ya está en este producto' : r.extras));
+    row.append(cb, nm, el('span', 'mk-ogn', r.reach === null ? '' : enProductos(r.reach)));
+    list.append(row);
+    if (!r.have && !first) first = cb;
+  }
+  const none = el('p', 'mk-nogroup', '¿No está el grupo?');
+  const crear = el('button', 'mk-lnk', 'Crealo en Extras'); crear.type = 'button'; crear.dataset.k = 'xat:crear';
+  crear.addEventListener('click', () => on.create());
+  none.append(crear);
+  mb.append(list, none);
+  const mf = el('div', 'mf');
+  const n = v.rows.filter((r) => r.checked && !r.have).length;
+  const cancel = el('button', 'btn ghost', 'Cancelar'); cancel.type = 'button'; cancel.dataset.k = 'xat:cancel';
+  cancel.addEventListener('click', () => on.cancel());
+  const add = el('button', 'btn accent', `Agregar ${n} ${n === 1 ? 'grupo' : 'grupos'}`); add.type = 'button'; add.disabled = n === 0; add.dataset.k = 'xat:add';
+  add.addEventListener('click', () => on.add());
+  mf.append(cancel, add);
+  modal.replaceChildren(mh, mb, mf);
+  return { first: first || crear };
+}
