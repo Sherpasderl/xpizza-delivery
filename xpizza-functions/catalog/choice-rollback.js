@@ -28,7 +28,7 @@ async function assertActivationChoices(db, rid, targetVersionId, expected) {
     throw new AddProductError('choice_groups_would_vanish', 'this version has no choice groups at all, while the live menu does — it cannot replace it (publish a version that keeps them)', { status: 409, field: 'choices' });
   }
   if (!require('./platform-structure').structureCapabilities().choiceEdit) return;   // the classifier: choiceEdit ON only
-  const built = (v) => buildSourceCandidate(rid, candidateSource(rid, { items: v.items, extras: v.extras, structure: v.structure, key_mode: v.keyMode, frozen_keys: v.frozenKeys })).built;
+  const built = (v) => buildSourceCandidate(rid, candidateSource(rid, { items: v.items, extras: v.extras, structure: v.structure, key_mode: v.keyMode, frozen_keys: v.frozenKeys, frozen_extra_keys: v.frozenExtraKeys })).built;
   const [b, t] = await Promise.all([readVersionMenu(db, rid, baseId), readVersionMenu(db, rid, targetVersionId)]);
   choiceActivation({ rid, baseline: built(b), target: built(t), choiceEdit: true });
 }

@@ -1211,7 +1211,7 @@ function normalizeInputs({ items, extras, extraRecords }) {
    function was not given is a stamp that does not exist, which is what keeps a draft field from ever
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined, frozen_keys = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`); if (frozen_keys != null && frozenKeysProblem(frozen_keys)) throw new Error(`write_version_frozen_keys_invalid: ${rid}`);
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined, frozen_keys = undefined, frozen_extra_keys = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`); if (frozen_keys != null && frozenKeysProblem(frozen_keys)) throw new Error(`write_version_frozen_keys_invalid: ${rid}`); if (frozen_extra_keys != null && require('./frozen-extra-keys').frozenExtraKeysProblem(frozen_extra_keys)) throw new Error(`write_version_frozen_extra_keys_invalid: ${rid}`);   /* S2b §3 */
   /* 🔴 THE BASELINE IS REQUIRED, SO "RECORDLESS" STOPS BEING A STATE ANYONE CAN CREATE. It defaulted
      to null and the record was omitted when absent — and the eligibility predicate then treated an
      absent record as permitted, so a version with no record at all was creatable through this exported
@@ -1399,7 +1399,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     item_count: desc.item_count, extra_count: desc.extra_count,
     menu_hash: desc.menu_hash, extras_hash: desc.extras_hash,
     content_hash,
-    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }),
+    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }), ...(frozen_extra_keys == null ? {} : { frozen_extra_keys }),
   });
   return { versionId, descriptor: desc, seq, menuTable, extraTable };   // 1b: tables for the coherent snapshot; 2b-pre: + the ordinal
 }
@@ -1525,7 +1525,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   // and rollbackVersion are the only two functions that reach flipPointer, and flipPointer is the
   // only thing that moves the pointer, so validating here covers every path that exists AND every
   // path anyone adds later.
-  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);
+  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys, frozen_extra_keys: input && input.frozen_extra_keys }), `${rid} (pre-publish)`);
 
   // §3.3 — the whole draft accounts for the active certified set before anything is minted or moved.
   /* …and it hands back the stamp map it validated, plus the pointer pair it validated AGAINST. Both
@@ -1700,7 +1700,7 @@ async function verifyVersionStructure(db, rid, versionId) {
   // (2) ...and what was PERSISTED is a valid candidate, not merely a readable one. The pre-publish
   // check validated the publisher's intention; this validates the fact. They are not the same claim,
   // and only the second one describes what customers would get.
-  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),
+  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys, frozen_extra_keys: served.frozenExtraKeys }),
     `${rid}/versions/${versionId} (pre-flip)`);
   return served;
 }

@@ -21,6 +21,31 @@ const HUNKS = Object.freeze([
   "was": "  assertCandidateValid(restaurantId, candidateSource(restaurantId, { items: built.items, extras: built.extras, structure: built.structure, key_mode: built.key_mode, frozen_keys: built.frozen_keys }), where);\n"
  },
  {
+  "file": "catalog/catalog-menu.js",
+  "now": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }), ...(record.frozen_extra_keys == null ? {} : { frozenExtraKeys: record.frozen_extra_keys }) };   // S0: the version's key mode, when it has one\n",
+  "was": "    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }) };   // S0: the version's key mode, when it has one\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined, frozen_keys = undefined, frozen_extra_keys = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`); if (frozen_keys != null && frozenKeysProblem(frozen_keys)) throw new Error(`write_version_frozen_keys_invalid: ${rid}`); if (frozen_extra_keys != null && require('./frozen-extra-keys').frozenExtraKeysProblem(frozen_extra_keys)) throw new Error(`write_version_frozen_extra_keys_invalid: ${rid}`);   /* S2b §3 */\n",
+  "was": "async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined, key_mode = undefined, frozen_keys = undefined }, nowServer) { if (key_mode != null && key_mode !== 'id' && key_mode !== 'name') throw new Error(`write_version_key_mode_invalid: ${rid}`); if (frozen_keys != null && frozenKeysProblem(frozen_keys)) throw new Error(`write_version_frozen_keys_invalid: ${rid}`);\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }), ...(frozen_extra_keys == null ? {} : { frozen_extra_keys }),\n",
+  "was": "    source_sha: source_sha || 'unknown', created_at: FieldValue.serverTimestamp(), ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }),\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys, frozen_extra_keys: input && input.frozen_extra_keys }), `${rid} (pre-publish)`);\n",
+  "was": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);\n"
+ },
+ {
+  "file": "catalog/catalog-publish.js",
+  "now": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys, frozen_extra_keys: served.frozenExtraKeys }),\n",
+  "was": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n"
+ },
+ {
   "file": "catalog/form-menu-source.js",
   "now": "    const key = fd && fd.frozen_extra_keys && display && display.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_extra_keys, String(display.id)) ? fd.frozen_extra_keys[String(display.id)] : extrasKeyOf(restaurantId, display, opts.keyMode);   // S2b §3: a recorded extra keeps its key\n",
   "was": "    const key = extrasKeyOf(restaurantId, display, opts.keyMode);\n"
@@ -29,6 +54,11 @@ const HUNKS = Object.freeze([
   "file": "catalog/form-menu-source.js",
   "now": "  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }), ...(opts.frozenExtraKeys == null ? {} : { frozen_extra_keys: opts.frozenExtraKeys }) };\n",
   "was": "  return { items, extras, structure, ...(opts.keyMode == null ? {} : { key_mode: opts.keyMode }), ...(opts.frozenKeys == null ? {} : { frozen_keys: opts.frozenKeys }) };\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }), ...(draftBuilt.frozen_extra_keys == null ? {} : { frozen_extra_keys: draftBuilt.frozen_extra_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n",
+  "was": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n"
  },
  {
   "file": "catalog/source-store.js",
@@ -49,6 +79,11 @@ const HUNKS = Object.freeze([
   "file": "catalog/structure-gate.js",
   "now": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved, frozenExtraKeys: draft.frozen_extra_keys, mintExtras: require('./extra-identity').extraIdentityCapabilities().mintExtras });   // S2b: a minted row only with its recorded reuse\n",
   "was": "    require('./extras-validate').validateNewExtras({ extras: draftRecords.extras, activeExtras: active.extras, activeItems: live.items, keyMode, reserved });\n"
+ },
+ {
+  "file": "tools/publish-version.js",
+  "now": "    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }), ...(built.frozen_extra_keys == null ? {} : { frozen_extra_keys: built.frozen_extra_keys }) }, expected };\n",
+  "was": "    return { input: { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha, ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }) }, expected };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
