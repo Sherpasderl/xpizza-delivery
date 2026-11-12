@@ -352,7 +352,12 @@ async function sweepSdkHold(db, { uid, rid, orderId, rec, order, now, expired, r
     return;
   }
   const terminal = !!order.payment_cancel || SDK_TERMINAL_STATUS.has(order.status);
-  if (expired && terminal) { await releaseRedemption(db, { uid, rid, orderId, now }); released.push({ uid, rid, orderId, kind: 'sdk_nonadopted_released' }); return; }
+  if (expired && terminal) {   // reported ONLY when the transition applied (Codex r1 P2-2): a concurrent sweep or a held_paid race is not a release
+    const r = await releaseRedemption(db, { uid, rid, orderId, now });
+    if (r && r.action === 'applied') released.push({ uid, rid, orderId, kind: 'sdk_nonadopted_released' });
+    else if (!(r && r.ok)) audited.push({ uid, rid, orderId, kind: 'sdk_release_refused', state: (r && r.state) || null, reason: (r && r.reason) || null });
+    return;
+  }
   if (expired && order.status === 'pending_payment' && !order.payment_placed && Number(order.pay_deadline_at) < now) {
     await db.ref(`payment_sdk_due/${orderId}`).transaction((cur) => (cur == null ? now : undefined)).catch(() => {});   // create-once
   }
@@ -376,6 +381,7 @@ async function sweepStaleReservations(db, { now }) {
           const rec = reservations[orderId];
           if (!rec || rec.state !== 'reserved') continue;                 // only reserved orphans
           if (rec.hosted_expires_at != null) {                            // online checkout
+            if (!(Number(rec.hosted_expires_at) < now)) { const pre = (await db.ref(`orders/${orderId}`).get()).val(); if (require('./payments/sdk/flow').isSdkOrder(pre)) await sweepSdkHold(db, { uid, rid, orderId, rec, order: pre, now, expired: false, released, audited }); continue; }   // D4 row 24 (Codex r1 P2-1): an SDK hold is classified before its expiry too
             if (Number(rec.hosted_expires_at) < now) {
               // Expired ≠ necessarily abandoned: a PAID order whose primary consume fail-opened ALSO has an
               // expired expiry + a reserved hold. Consult the order — if it realized (paid + live/terminal),
