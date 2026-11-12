@@ -31,7 +31,8 @@ ok('without(): one early plain get removed; two reads / a write at that path / a
   assert.deepStrictEqual(DR.without([R, pre, rate, w], 'precheck + rate'), [rate, w], 'before a rate-limit op (no phone) too');
   assert.deepStrictEqual(DR.without([R, pre, floor, w], 'other get'), [pre, floor, w], 'an orders read NOT opening the bookkeeping is kept (compared to the golden)');
   assert.throws(() => DR.without([R, pre, stamp, pre, rate, w], 'two prechecks'), /pre-check read must occur at most ONCE/);
-  assert.throws(() => DR.without([R, w, pre, stamp], 'late precheck'), /pre-check read must precede every RTDB write/);
+  assert.throws(() => DR.without([R, { db: 'rtdb', op: 'set', path: 'recent_order_content/<phoneKey>/ck' }, pre, rate], 'late precheck'), /must precede every bookkeeping write/);
+  assert.deepStrictEqual(DR.without([R, { db: 'rtdb', op: 'set', path: 'payment_attempts/a/hosted_expires_at' }, pre, stamp], 'drift first'), [{ db: 'rtdb', op: 'set', path: 'payment_attempts/a/hosted_expires_at' }, stamp], 'an injected non-bookkeeping write ahead of it is allowed');
   assert.deepStrictEqual(DR.without([R, { db: 'fs', op: 'runTransaction', path: '' }, pre, stamp], 'fs read txn first'), [{ db: 'fs', op: 'runTransaction', path: '' }, stamp], 'a Firestore read transaction ahead of it is not an RTDB write');
   ok('without(): the envío limit pre-check read (one plain get orders/<oid> opening the bookkeeping) set aside; two / late → RED; any other orders read kept');
 }
