@@ -370,7 +370,11 @@ test('B — «en N productos · {sección}» (advisor 11-12, MOCKUP frame B «·
   const P = EE.projectEligibility(src), E = XT.effectiveGroups(P);
   const sectionsOf = (g) => new Set(Object.keys(E).filter((k) => !P.items[k].launcherKey && (E[k] || []).includes(g)).map((k) => String(src.items.find((r) => r.key === k).display.cat)));
   const rows = IE.attachSheet(d, drawer(d, 'dimsum_01')).rows;
-  const one = rows.find((r) => sectionsOf(r.group).size === 1), mixed = rows.find((r) => sectionsOf(r.group).size > 1);
+  const one = rows.find((r) => sectionsOf(r.group).size === 1), mixed0 = rows.find((r) => sectionsOf(r.group).size > 1);
+  // the mixed group read from a dish OUTSIDE its first section (from inside it, the own-section rule alone would also say null)
+  const firstSec = mixed0 && [...sectionsOf(mixed0.group)][0];
+  const outsider = Object.keys(E).find((k) => !P.items[k].launcherKey && String(src.items.find((r) => r.key === k).display.cat) !== firstSec);
+  const mixed = outsider && IE.attachSheet(d, drawer(d, outsider)).rows.find((r) => r.group === mixed0.group);
   assert.ok(one && mixed, 'non-vacuity: both cases in the seed');
   const cat = [...sectionsOf(one.group)][0];
   assert.equal(one.section, src.structure.categories.find((c) => String(c.id) === cat).name, 'one section ⇒ its name');
@@ -411,6 +415,7 @@ test('Estructura — an extra removed and one added: the «Quitado» / «Nuevo»
   const m = reviewModel(diff, ctxOf(draftSource(d)));
   assert.deepEqual(rowsText(m).filter((t) => /Quitado|Nuevo/.test(t)).length, 2, 'premise: the two Estructura rows');
   assert.equal(m.removed.filter((r) => r && (r.key === gone.key || r.name === gone.display.name || r.label === gone.display.name)).length, 0, 'the removed extra is its «Quitado» row, not ALSO a «Se eliminan» line');
-  assert.equal(m.added.filter((r) => r && /Salsa de mango/.test(JSON.stringify(r))).length, 0, 'the new extra is its «Nuevo» row, not ALSO a «Se agregan» line');
+  const newKey = (diff.extras || []).find((x) => x.change === 'added').key;   // the server's generic entry carries the KEY only
+  assert.equal(m.added.filter((r) => r && r.key === newKey).length, 0, 'the new extra is its «Nuevo» row, not ALSO a «Se agregan» line');
   assert.equal(m.total, 2, 'it counts each fact once');
 });
