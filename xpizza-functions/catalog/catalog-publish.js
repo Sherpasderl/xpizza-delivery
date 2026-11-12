@@ -1718,7 +1718,7 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     await verifyVersionStructure(db, rid, targetVersionId);
     // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
     // verify (a missing / torn target keeps its own refusal), and before the pointer moves
-    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
+    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertRollbackChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable, targetDocs.keyMode);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable, ...(targetDocs.keyMode != null ? { keyMode: targetDocs.keyMode } : {}), labels: targetDocs.itemLabels || null });

@@ -31,6 +31,11 @@ const HUNKS = Object.freeze([
   "was": "  const freshVariants = fresh.map(({ item }) => item).filter(isGroupVariant);\n"
  },
  {
+  "file": "catalog/catalog-publish.js",
+  "now": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode); await require('./choice-rollback').assertRollbackChoices(db, rid, targetVersionId, expected);   // S3 §1c: a rollback is an activation\n",
+  "was": "    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);\n"
+ },
+ {
   "file": "catalog/draft-assess.js",
   "now": "    const r = require('./choice-compare').compareToActive(rid, {\n",
   "was": "    const r = AP.compareToActive({\n"
