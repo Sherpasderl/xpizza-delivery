@@ -142,6 +142,13 @@ const pointerOf = async (db) => { const s = await db.collection('restaurants').d
     } catch (e) { assert.fail(`S3RB-SHAPE-B: a kept {} must never be refused (${e && e.code}: ${String(e && e.message).slice(0, 100)})`); }
     assert.strictEqual(await pointerOf(db), b2, 'S3RB-SHAPE-B: rollback to the {} version is allowed');
     ok('OFF (b): a version keeping variant_items: {} is published over a grouped one and rolled back to, never refused');
+    // (c) {} → ABSENT: a version with no field over one whose map is EMPTY — no retained group to orphan → allowed (advisor 11-12 r2 fold)
+    const bare = JSON.parse(JSON.stringify(D3b)); delete bare.structure.variant_items;
+    try {
+      const c1 = (await publishVersion(db, RID, inputOf(bare, 'c1'), { expected: { activeVersionId: b2 } })).versionId;
+      assert.strictEqual(await pointerOf(db), c1);
+    } catch (e) { assert.fail(`S3RB-SHAPE-C: {} → absent must never be refused (${e && e.code}: ${String(e && e.message).slice(0, 100)})`); }
+    ok('OFF (c): a field-less version over one whose variant_items is {} is allowed (no retained group to orphan)');
   }
   STRUCT.choiceEdit = false;
   FINISHED = true;
