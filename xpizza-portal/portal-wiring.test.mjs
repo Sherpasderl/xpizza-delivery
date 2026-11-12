@@ -397,7 +397,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // dishDenyExtras and pendingDishExtras (in pendingCount). No new mutator.
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitTo', 'createDraft', 'discard', 'dishDenyExtras', 'dishExtrasChanges', 'draftExtrasChanges', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'commit', 'commitTo', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
@@ -1531,9 +1531,7 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.open', 'IE.view', 'IE.save',
   // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
   'pendingTexts', 'loadedName',
-  // STRUCTURE S1 (Codex build r1 #1) — pure readers: the draft's dish extras changes against the submitted snapshot, and the minted
-  // review's copy of them (never a reference to the record)
-  'draftExtrasChanges', 'extrasOfReview',
+  // (STRUCTURE S1's draftExtrasChanges / extrasOfReview are gone — advisor 11-12: the checklist review lines are the SERVER's)
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

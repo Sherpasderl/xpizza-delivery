@@ -3030,9 +3030,7 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-portal/structure-s1.test.mjs"
-   ]
+   "lifts": []
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -3304,8 +3302,7 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js",
-    "xpizza-portal/structure-s1.test.mjs"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js"
    ]
   },
   "catalog/text-version.js": {

@@ -958,10 +958,34 @@ test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar�
 });
 
 // ── STRUCTURE S1 — Codex build r1 (advisor: fix all 9, RED-first) ───────────────────────────────────────────────────────
-const EMPTY_DIFF = { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] };
+// S1 follow-up (advisor 11-12): the review's checklist line is the SERVER's — so this save is 5f's REAL editCatalogCore (extras
+// authoring ON) on the posted source, against the seed the page loaded as the published menu (a canned diff would be laxer: it
+// carried no checklist line, and the portal used to invent one)
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+{ const pe = req.resolve('./catalog/platform-extras'); if (!req.cache[pe]) req.cache[pe] = { id: pe, filename: pe, loaded: true, exports: { extrasCapabilities: () => ({ authoring: true }) } }; }
+const realSave = (call) => (async () => {
+  const { editCatalogCore } = req('./catalog/edit-catalog-handler');
+  const { sourceToBuildInputs } = req('./catalog/source-store');
+  const { buildCatalogV2 } = req('./catalog/form-menu-source');
+  const live = JSON.parse(JSON.stringify(SRC)), T0 = '1700000000.000000001', T1 = '1700000001.000000001';
+  const st = { data: JSON.parse(JSON.stringify(live)), updateTime: T0 };
+  const doc = (path) => ({
+    get: async () => (path.endsWith('/meta/source') ? { exists: true, data: () => JSON.parse(JSON.stringify(st.data)), updateTime: st.updateTime }
+      : path.endsWith('/meta/active_version') ? { exists: true, data: () => ({ version: 'v-live' }) } : { exists: false, data: () => ({}) }),
+    set: async (data) => { st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
+    update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== st.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
+  });
+  const db = { collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+  const i = sourceToBuildInputs(live);
+  const b = buildCatalogV2(RID, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras });
+  const readActiveBuilt = async () => ({ built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras });
+  const owner = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
+  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0 }, {});
+  return r.status === 200 ? okJson(r.body) : errJson(r.status, r.body);
+})();
 const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
 test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown, it counts, «Publicar» is enabled', async () => {
-  const p = await page({ read: ON, on: { editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h', diff: EMPTY_DIFF }) } });
+  const p = await page({ read: ON, on: { editCatalog: realSave } });
   await p.signIn();
   await p.open('dimsum_01');
   const cb = rowsOfCard(cardOf(p, 'Salsas'))[1].querySelector('input[type=checkbox]');

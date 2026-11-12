@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId, draftExtrasChanges } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
 import { pendingTexts, loadedName } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar); a product's loaded name
@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS, extrasOfReview } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
@@ -1500,8 +1500,9 @@ function productReviewCtx() {
     const pk = keyOfId.get(String(r.display.variantOf));
     if (pk) { parent.set(r.key, pk); index.set(r.key, index.size); }
   }
-  // STRUCTURE S1: the reviewed snapshot's dish extras changes, from the MINTED record (never re-derived from the draft)
-  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extras: extrasOfReview(state.review) };
+  // STRUCTURE S1 (advisor 11-12): the server's checklist lines name extras by key — their display names, from the draft
+  const extraNames = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display).map((x) => [x.key, x.display.name]));
+  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null };
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly
@@ -2433,7 +2434,6 @@ async function openReviewFlow() {
     // The exact document being submitted — captured BEFORE the await, so what is reviewed, saved and
     // later committed as the baseline is one snapshot rather than whatever the draft holds by then.
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
-    const rx = draftExtrasChanges(state.draft, submitted);   // S1 (Codex build r1 #1): this snapshot's dish extras changes (rx)
     writeId = beginWrite(lock);   // admitted by construction: the lock was taken exclusively
     const res = await editCatalog({
       // 🔴 THE RID THE SOURCE WAS LOADED FOR, never "the tenant currently selected". They differ for
@@ -2464,7 +2464,7 @@ async function openReviewFlow() {
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
     const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent,
-      extras: rx });   // S4: a group's options fold under its «Nombre en factura»
+      extraName: productReviewCtx().extraName });   // S4: a group's options fold under its «Nombre en factura»
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -2473,7 +2473,6 @@ async function openReviewFlow() {
       gen,                                    // the world this review belongs to
       rid: state.draftRid,
       attestation: att,
-      extras: rx,
     }, gen);
     state.review = minted.review;
     liveReview = minted.review;                 // this one, and only until it closes

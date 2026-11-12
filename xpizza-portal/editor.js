@@ -897,30 +897,6 @@ export function extrasBaseline(src, key, move = null) {
   for (const [k, c] of keys) { const last = groups[groups.length - 1]; if (last && last.cat === c) last.keys.push(k); else groups.push({ cat: c, keys: [k] }); }
   return { groups };
 }
-// What the checklist / «Sin extras» of each EXISTING product changes between two sources (the loaded one and the one submitted for
-// review — Codex S1 build r1 #1: the server's diff carries no line for them): [{ key, denied, restored, policy: 'on'|'off'|null }],
-// keys in the newer source's extras order, document order of products; `names` = each changed extra's display name.
-export function dishExtrasChanges(beforeSrc, afterSrc) {
-  const out = [];
-  const order = rowsOf(afterSrc, 'extra').map((x) => x && x.key);
-  const byOrder = (a, b) => order.indexOf(a) - order.indexOf(b);
-  for (const row of rowsOf(afterSrc, 'item')) {
-    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string' || !row.display) continue;
-    const was = existingRow(beforeSrc, row.key);
-    if (!was || !was.display) continue;
-    const a = new Set(denyExtrasOf(beforeSrc, row.key)), b = new Set(denyExtrasOf(afterSrc, row.key));
-    const denied = [...b].filter((k) => !a.has(k)).sort(byOrder), restored = [...a].filter((k) => !b.has(k)).sort(byOrder);
-    const wasNone = was.display.extras_policy === 'none', isNone = row.display.extras_policy === 'none';
-    const policy = wasNone === isNone ? null : (isNone ? 'on' : 'off');
-    if (!(denied.length || restored.length || policy)) continue;
-    const names = {};
-    for (const k of [...denied, ...restored]) { const x = rowsOf(afterSrc, 'extra').find((e) => e && e.key === k); names[k] = x && x.display && typeof x.display.name === 'string' && x.display.name.trim() ? x.display.name : k; }
-    out.push({ key: row.key, denied, restored, policy, names });
-  }
-  return out;
-}
-// …of a draft: what it LOADED against the snapshot submitted for review (a pure reader of the draft)
-export const draftExtrasChanges = (draft, submitted) => dishExtrasChanges(draft.orig, submitted);
 // Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],
 // in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.
 export function pendingDishExtras(draft) {

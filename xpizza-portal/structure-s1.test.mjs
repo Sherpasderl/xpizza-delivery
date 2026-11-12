@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingDishExtras, dishExtrasChanges, setExtraPrice } from './editor.js';
+import { createDraft, draftSource, pendingCount, editItem, extrasBaseline, pendingDishExtras, setExtraPrice } from './editor.js';
 import { reviewModel, attestationModel } from './review.js';
 import * as IE from './item-edit-logic.js';
 
@@ -21,6 +21,10 @@ const AP = req('../xpizza-functions/catalog/add-product.js');
 const { buildSourceFromCode } = req('../xpizza-functions/tools/seed-source-store.js');
 const { canonicalize, validateSource, sourceToBuildInputs, rendererContract } = req('../xpizza-functions/catalog/source-store.js');
 const { buildCatalogV2 } = req('../xpizza-functions/catalog/form-menu-source.js');
+// the SERVER's review diff — the very function editCatalog binds the token to (5f 98ba304f: the checklist is a token-bound line)
+const { catalogDiff } = req('../xpizza-functions/catalog/catalog-edit.js');
+const builtOf = (rid, src) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras }), extras: i.extras }; };
+const serverDiff = (rid, live, draft) => catalogDiff(builtOf(rid, live), builtOf(rid, draft));
 runInThisContext(readFileSync(new URL('./extras-eligibility.js', import.meta.url), 'utf8'));
 const EE = globalThis.ExtrasEligibility;
 
@@ -245,28 +249,49 @@ for (const rid of ['x_pizza', 'la_musa']) {
   });
 }
 
-// ── Codex build r1 #1: the review carries the dish's extras changes and counts them ─────────────────────────────────────
-test('review (Codex r1 #1) — a checklist / «Sin extras» change on an EMPTY server diff is shown and counted; nothing → «nothing to publish»', () => {
-  const d = draftOf('x_pizza');
-  const orig = clone(draftSource(d));
-  const s = openOn(d, PLAIN.x_pizza);
-  const xk = IE.view(d, s).extras.cards[0].rows[0].key;
-  IE.set(s, 'extraOn', { key: xk, on: false });
-  assert.ok(IE.save(d, s).ok);
-  const extras = dishExtrasChanges(orig, clone(draftSource(d)));
-  assert.deepEqual(extras, [{ key: PLAIN.x_pizza, denied: [xk], restored: [], policy: null, names: { [xk]: draftSource(d).extras.find((x) => x.key === xk).display.name } }]);
+// ── S1 follow-up (advisor 11-12): the checklist / «Sin extras» review lines are the SERVER's (5f 98ba304f), never the portal's ───────
+const extraNameIn = (src) => (k) => { const x = src.extras.find((e) => e.key === k); return x ? x.display.name : k; };
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`review (${rid}) — the checklist and «Sin extras» lines come from the SERVER's diff; they are shown and counted`, () => {
+    const d = draftOf(rid);
+    const orig = clone(draftSource(d));
+    const s = openOn(d, PLAIN[rid]);
+    const xk = IE.view(d, s).extras.cards[0].rows[0].key;
+    IE.set(s, 'extraOn', { key: xk, on: false });
+    assert.ok(IE.save(d, s).ok);
+    const diff = serverDiff(rid, orig, clone(draftSource(d)));
+    assert.deepEqual(diff.changed.filter((c) => c.field === 'deny_extras'), [{ key: PLAIN[rid], surface: 'item', field: 'deny_extras', old: [], new: [xk] }], 'premise: the server diff carries the line');
+    const ctx = { extraName: extraNameIn(draftSource(d)) };
+    const m = reviewModel(diff, ctx);
+    assert.equal(m.total, 1, 'it counts');
+    assert.deepEqual(m.products.find((p) => p.key === PLAIN[rid]).consequences, [`Sin ${extraNameIn(draftSource(d))(xk)} (solo en la app Sherpa)`], 'the server line, in words');
+    assert.equal(attestationModel(diff, ctx).hasNothing, false, 'not «nothing to publish»');
+    // re-ticking it (the published state now excludes it) is a server line too
+    const live2 = clone(draftSource(d)); const d2 = createDraft(clone(live2)); const s2 = openOn(d2, PLAIN[rid]);
+    IE.set(s2, 'extraOn', { key: xk, on: true }); assert.ok(IE.save(d2, s2).ok);
+    assert.deepEqual(reviewModel(serverDiff(rid, live2, clone(draftSource(d2))), ctx).products.find((p) => p.key === PLAIN[rid]).consequences, [`Vuelve a ofrecer ${extraNameIn(draftSource(d))(xk)}`]);
+    // «Sin extras» on, then off again
+    const d3 = draftOf(rid); const s3 = openOn(d3, PLAIN[rid]); IE.set(s3, 'extrasNone', true); assert.ok(IE.save(d3, s3).ok);
+    const m3 = reviewModel(serverDiff(rid, orig, clone(draftSource(d3))), ctx);
+    assert.deepEqual(m3.products.find((p) => p.key === PLAIN[rid]).consequences, ['Sin extras']);
+    const live4 = clone(draftSource(d3)); const d4 = createDraft(clone(live4)); const s4 = openOn(d4, PLAIN[rid]); IE.set(s4, 'extrasNone', false); assert.ok(IE.save(d4, s4).ok);
+    assert.deepEqual(reviewModel(serverDiff(rid, live4, clone(draftSource(d4))), ctx).products.find((p) => p.key === PLAIN[rid]).consequences, ['Vuelve a ofrecer extras']);
+  });
+}
+test('review — «Sin extras» on a product WITH options is ONE line (the options\u2019 identical lines fold into it)', () => {
+  const d = draftOf('la_musa'); const orig = clone(draftSource(d));
+  const s = openOn(d, LAUNCHER); IE.set(s, 'extrasNone', true); assert.ok(IE.save(d, s).ok);
+  const diff = serverDiff('la_musa', orig, clone(draftSource(d)));
+  assert.ok(diff.changed.filter((c) => c.field === 'extras_policy').length > 1, 'premise: the server stamps the launcher AND its options');
+  const parent = (k) => (VARIANTS.includes(k) ? LAUNCHER : null);
+  const p = reviewModel(diff, { optionParent: parent }).products.find((x) => x.key === LAUNCHER);
+  assert.deepEqual(p.consequences, ['Sin extras'], 'one line for the product');
+});
+test('review — NO client-only line: lines the server did not send are never shown or counted', () => {
   const EMPTY = { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] };
-  const m = reviewModel(EMPTY, { extras });
-  assert.equal(m.total, 1, 'it counts');
-  assert.deepEqual(m.products.find((p) => p.key === PLAIN.x_pizza).consequences, [`Sin ${xk} (solo en la app Sherpa)`]);
-  assert.equal(attestationModel(EMPTY, { extras }).hasNothing, false, 'not «nothing to publish»');
-  assert.equal(attestationModel(EMPTY, {}).hasNothing, true, 'premise: the server diff alone is empty');
-  const back = dishExtrasChanges(orig, orig);
-  assert.deepEqual(back, []);
-  // «Sin extras» on, and a restore + policy off, in words
-  const d2 = draftOf('x_pizza'); const s2 = openOn(d2, PLAIN.x_pizza); IE.set(s2, 'extrasNone', true); assert.ok(IE.save(d2, s2).ok);
-  const m2 = reviewModel(EMPTY, { extras: dishExtrasChanges(orig, clone(draftSource(d2))) });
-  assert.deepEqual(m2.products[0].consequences, ['Sin extras']);
+  const stale = { extras: [{ key: PLAIN.x_pizza, denied: ['x'], restored: [], policy: 'on', names: {} }] };
+  assert.equal(reviewModel(EMPTY, stale).total, 0, 'every review line comes from the server diff');
+  assert.equal(attestationModel(EMPTY, stale).hasNothing, true, 'nothing to publish');
 });
 
 // ── Codex build r1 #4: ONE prospect (section + checklist + «Sin extras») for the cards, the move consequences and the reach ──

@@ -48,8 +48,18 @@ const GATES = [['pickup_only', 'Queda solo para recoger', 'Vuelve a entregarse a
 const EXTRA_LOST = (x) => `Deja de aceptar el extra ${x}`;
 const EXTRA_GAINED = (x) => `Acepta el extra ${x}`;
 const isExtrasConsequence = (c) => !!c && c.kind === 'extras' && typeof c.key === 'string' && Array.isArray(c.gained) && Array.isArray(c.lost);
-const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));
-function productsOf(lines, optionParent, optionIndex) {
+// STRUCTURE S1 (advisor 11-12; 5f 98ba304f): a dish's checklist and «Sin extras» are the SERVER's token-bound lines —
+// { field:'deny_extras', old:[keys], new:[keys] } and { field:'extras_policy', old, new } — read here as the product's sentences
+const DISH_EXTRAS = ['deny_extras', 'extras_policy'];
+const dishExtrasLines = (c, extraName) => {
+  const nm = (k) => { const n = typeof extraName === 'function' ? extraName(k) : null; return typeof n === 'string' && n ? n : String(k); };
+  if (c.field === 'extras_policy') return c.new === 'none' ? ['Sin extras'] : (c.old === 'none' ? ['Vuelve a ofrecer extras'] : []);
+  const was = Array.isArray(c.old) ? c.old.map(String) : [], now = Array.isArray(c.new) ? c.new.map(String) : [];
+  const denied = now.filter((k) => !was.includes(k)), restored = was.filter((k) => !now.includes(k));
+  return [...(denied.length ? [`Sin ${denied.map(nm).join(', ')} (solo en la app Sherpa)`] : []), ...(restored.length ? [`Vuelve a ofrecer ${restored.map(nm).join(', ')}`] : [])];
+};
+const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field) || DISH_EXTRAS.includes(c.field));
+function productsOf(lines, optionParent, optionIndex, extraName) {
   const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
   const byKey = new Map();
   const productOf = (key) => {
@@ -75,7 +85,8 @@ function productsOf(lines, optionParent, optionIndex) {
       let l = p.lines.find((x) => x.kind === 'cat');
       if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }
       l[c.field] = { was: c.old, now: c.new };
-    } else {
+    } else if (DISH_EXTRAS.includes(c.field)) p.consequences.push(...dishExtrasLines(c, extraName));
+    else {
       const g = GATES.find(([f]) => f === c.field);
       p.consequences.push(c.new ? g[1] : g[2]);
     }
@@ -86,14 +97,11 @@ function productsOf(lines, optionParent, optionIndex) {
   for (const p of byKey.values()) {
     p.options.sort((a, b) => idx(a.key) - idx(b.key));
     p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-    p.consequences.sort((a, b) => GATES.findIndex((g) => g.includes(a)) - GATES.findIndex((g) => g.includes(b)));
+    // the gates in their order; the dish's extras sentences after them (their own order kept)
+    const rank = (x) => { const i = GATES.findIndex((g) => g.includes(x)); return i < 0 ? GATES.length : i; };
+    p.consequences.sort((a, b) => rank(a) - rank(b));
   }
   return [...byKey.values()];
-}
-
-// STRUCTURE S1: the minted review's dish extras changes, as a copy (a pure reader of the review record)
-export function extrasOfReview(review) {
-  return review && Array.isArray(review.extras) ? JSON.parse(JSON.stringify(review.extras)) : [];
 }
 
 export function reviewModel(diff, ctx = {}) {
@@ -102,26 +110,11 @@ export function reviewModel(diff, ctx = {}) {
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
   const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
-  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex);
+  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);
   for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
     let p = products.find((x) => x.key === c.key);
     if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
-  }
-  // STRUCTURE S1 (Codex build r1 #1): a dish's checklist / «Sin extras» change — computed by the caller from the SUBMITTED snapshot
-  // the token is bound to (the server's diff carries no line for it) — joins its product's lines and the count
-  let extrasCount = 0;
-  for (const c of (ctx && Array.isArray(ctx.extras) ? ctx.extras : [])) {
-    const xname = (k) => (c.names && typeof c.names[k] === 'string' ? c.names[k] : String(k));
-    const lines = [];
-    if (c.denied && c.denied.length) lines.push(`Sin ${c.denied.map(xname).join(', ')} (solo en la app Sherpa)`);
-    if (c.restored && c.restored.length) lines.push(`Vuelve a ofrecer ${c.restored.map(xname).join(', ')}`);
-    if (c.policy === 'on') lines.push('Sin extras'); else if (c.policy === 'off') lines.push('Vuelve a ofrecer extras');
-    if (!lines.length) continue;
-    extrasCount += ((c.denied && c.denied.length) || (c.restored && c.restored.length) ? 1 : 0) + (c.policy ? 1 : 0);
-    let p = products.find((x) => x.key === c.key);
-    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
-    p.consequences = [...p.consequences, ...lines];
   }
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
   const photos = all.filter(isPhotoLine);
@@ -163,7 +156,7 @@ export function reviewModel(diff, ctx = {}) {
     renamed,
     photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length + extrasCount,
+    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -484,7 +477,7 @@ export function attestationModel(diff, ctx = {}) {
   // merchant record a SAR attestation against zero changes. A signature for nothing makes the fiscal
   // record say something untrue, which is the same class as a signature for someone else's changes —
   // so no signature is collected and the gate refuses outright.
-  const hasNothing = reviewModel(diff, ctx).total === 0;   // STRUCTURE S1: the extras lines count (ctx.extras)
+  const hasNothing = reviewModel(diff, ctx).total === 0;
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
   // 1D add-product A — NEW products are priced lines too: they join the zero-price refusal and the attestation copy.
