@@ -150,6 +150,53 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     assert.strictEqual(r.body.cards[0].expired, true, `${L}: token_expired ⇒ the card lists as expired`);
   });
 
+
+  // ── the vault write from the WINNING attempt only; the sweeper completes it after a crash (row 12) ──
+  const { makeAdapter } = require('./psp-adapter');
+  const { makeFakePsp } = require('./fake-adapter');
+  const C = require('./coordinator');
+  const OID = 'tb_vault_1';
+  const vworld = (script = {}) => {
+    const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', pay_deadline_at: T0 + 900000 } } });
+    const fake = makeFakePsp(script);
+    return { db, fake, deps: { db, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, verifyIdToken: async () => ({ uid: 'uid_A' }) } };
+  };
+  const card = (save) => ({ card_ref: 'new', display: DISP, save, vault_gen: 0 });
+  await cell('SDK-D4-VAULT-WINNER-ONLY', async (L) => {
+    const w = vworld({ authorize: [{ outcome: 'definitive_decline', code: 'X' }] });
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_first_00001', token: 'T-loser', amount_cents: 100, card: card(true) });
+    const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_second_0002', token: 'T-winner', amount_cents: 100, card: card(false) });
+    assert.strictEqual(p.outcome, 'placed', `${L}: premise — the second attempt placed`);
+    await K().completeVaultForOrder(w.deps, OID);
+    assert.strictEqual(w.db.getAt('customer_cards/uid_A'), null, `${L}: the LOSING attempt's save:true never vaults (the winner did not ask to save)`);
+    const w2 = vworld({ authorize: [{ outcome: 'definitive_decline', code: 'X' }] });
+    await C.placeOriginal(w2.deps, { orderId: OID, attempt_id: 'att_vault_first_00001', token: 'T-loser', amount_cents: 100, card: card(false) });
+    await C.placeOriginal(w2.deps, { orderId: OID, attempt_id: 'att_vault_second_0002', token: 'T-winner', amount_cents: 100, card: card(true) });
+    await K().completeVaultForOrder(w2.deps, OID);
+    const cards = Object.values(w2.db.getAt('customer_cards/uid_A/cards') || {});
+    assert.ok(cards.length === 1 && cards[0].token === 'T-winner', `${L}: only the WINNER's card is vaulted`);
+  });
+  await cell('SDK-D4-VAULT-CRASH', async (L) => {
+    const w = vworld();
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_crash_00001', token: 'T-c', amount_cents: 100, card: card(true) });
+    // the placement's own completion crashed after writing the card, before recording it: the sweeper finishes ONCE
+    await K().completeVault(w.deps, { uid: 'uid_A', token: 'T-c', token_hash: H('T-c'), display: DISP, vault_gen: 0 });
+    await require('./sweeper').visitDueOrder(w.deps, OID);
+    await require('./sweeper').visitDueOrder(w.deps, OID);
+    assert.strictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}).length, 1, `${L}: the sweeper completes it once — no duplicate card`);
+    assert.strictEqual(w.db.getAt(`payment_sdk/${OID}/vault/state`), 'done', `${L}: the record notes the vault done`);
+  });
+  await cell('SDK-D4-REMOVE-AFTER-ADMIT', async (L) => {
+    const w = vworld();
+    await K().completeVault(w.deps, { uid: 'uid_A', token: 'T-saved', token_hash: H('T-saved'), display: DISP, vault_gen: 0 });
+    const id = Object.keys(w.db.getAt('customer_cards/uid_A/cards'))[0];
+    const resolved = await K().resolveSavedCard(w.deps, 'uid_A', id);   // admission
+    await K().removeCard(w.deps, 'uid_A', id);                          // removed AFTER admission
+    const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_saved_00001', token: resolved.token, amount_cents: 100, card: { card_ref: `saved:${id}`, display: resolved.display, save: false, vault_gen: 0 } });
+    assert.ok(p.outcome === 'placed' && w.fake.calls.find((c) => c.action === 'authorize').token === 'T-saved', `${L}: the admitted attempt charges its BOUND token`);
+    await K().completeVaultForOrder(w.deps, OID);
+    assert.deepStrictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}), [], `${L}: the card stays removed (a saved-card attempt never re-vaults)`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s3: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
