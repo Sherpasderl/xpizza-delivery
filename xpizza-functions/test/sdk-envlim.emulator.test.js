@@ -65,10 +65,13 @@ async function wipe() {
 const refProto = (() => { let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'update')) p = Object.getPrototypeOf(p); return p; })();
 const pathOf = (r) => decodeURIComponent(new URL(r.toString()).pathname).replace(/^\/+/, '').replace(/\/+$/, '');
 const WRITES = { on: false, list: [], start() { this.list = []; this.on = true; }, stop() { this.on = false; return this.list.filter((p) => !/^dispatcher_alerts(\/|$)/.test(p)); } };
+// RACE hook (the documented residual's cell): called ONCE before the first matching write op, to land a concurrent create
+let RACE = null;   // { when: (method, path) => boolean, run: async () => {} }
 for (const m of ['set', 'update', 'remove', 'transaction', 'setWithPriority', 'setPriority']) {
   const orig = refProto[m]; if (typeof orig !== 'function') continue;
   refProto[m] = async function (...a) {
     const p = pathOf(this);
+    if (RACE && RACE.when(m, p)) { const r = RACE; RACE = null; const on = WRITES.on; WRITES.on = false; try { await r.run(); } finally { WRITES.on = on; } }
     if (m === 'transaction') { const r = await orig.apply(this, a); if (WRITES.on && r && r.committed) WRITES.list.push(p); return r; }
     if (WRITES.on) { if (m === 'update' && a[0] && typeof a[0] === 'object') for (const k of Object.keys(a[0])) WRITES.list.push(p ? `${p}/${k}` : k); else WRITES.list.push(p); }
     return orig.apply(this, a);
@@ -182,6 +185,38 @@ async function existing(km, under, ph) {
     assert.deepStrictEqual(writes, [], `FRESH WRITE-TRACE: zero writes (${JSON.stringify(writes)})`);
   }
   ok('FRESH: a new SDK order beyond the limit is refused by the fresh context as before, zero writes');
+
+  // 5. SDK-ENVLIM-RACE-RESIDUAL (advisor RULED 2026-11-12: a DOCUMENTED residual, pinned here) — the SAME customer's concurrent request
+  //    creates the order AFTER B2b admitted this one (no order yet). Both timings end in the correct 409 with ZERO authorizations; the
+  //    writes before the refusal are exactly the bookkeeping that names the order that really exists (the content stamp + the ip / phone
+  //    rate tokens), plus — when the create lands after finishSdk's first read — enrol's sweeper due entry (it only schedules reconciliation).
+  //    (a) the create lands at the first bookkeeping write (after B2b, before finishSdk's read) ⇒ finishSdk's pre-enrol admission refuses;
+  //    (b) the create lands just before finishSdk's create-once txn (after its read) ⇒ the post-txn backstop refuses.
+  for (const [timing, ph, when, extra] of [
+    ['a: after B2b', '99771005', (m, p) => /^(recent_order_content|rate_limits)\//.test(p), []],
+    ['b: after finishSdk\'s read', '99771006', (m, p) => m === 'transaction' && /^orders\/sdk_/.test(p), ['payment_sdk_due']],
+  ]) {
+    const id = await existing(5, 7, ph);                     // the order the concurrent request will create — from the REAL writer
+    const raced = await val(`orders/${id}`);
+    await rtdb.ref(`orders/${id}`).remove();                  // … not yet there when THIS request passes B2b
+    await rtdb.ref(`sdk_checkout_subject`).remove(); await rtdb.ref(`payment_sdk_due/${id}`).remove();
+    await setHub(north(2)); await limit(4); await fresh();    // the fresh context passes; the stored hub does not
+    FAKE = makeFakePsp({ authorize: [{ outcome: 'approved' }] });
+    let landed = false;
+    RACE = { when, run: async () => { landed = true; await rtdb.ref(`orders/${id}`).set(raced); } };
+    WRITES.start();
+    const r = await SDK(sdkBody(id, 5, att(), ph));
+    const writes = WRITES.stop(); RACE = null;
+    assert.ok(landed, `RACE ${timing}: premise — the concurrent create landed`);
+    assert.deepStrictEqual([r.status, r.json], [409, { error: 'outside_delivery_bands', order_id: id }], `RACE ${timing}: the correct refusal (${r.text.slice(0, 200)})`);
+    assert.strictEqual(FAKE.callCount('authorize'), 0, `RACE ${timing}: ZERO authorizations`);
+    const kinds = [...new Set(writes.map((p) => p.split('/')[0] + (p.startsWith('rate_limits/') ? `/${p.split('/')[1]}` : '')))].sort();
+    assert.deepStrictEqual(kinds, ['rate_limits/ip', 'rate_limits/phone', 'recent_order_content', ...extra].sort(), `RACE ${timing}: ONLY the documented residual writes (${JSON.stringify(writes)})`);
+    assert.ok(writes.filter((p) => p.startsWith('payment_sdk_due/')).every((p) => p === `payment_sdk_due/${id}`), `RACE ${timing}: the due entry (if any) is this order's`);
+    assert.deepStrictEqual(await val(`orders/${id}`), raced, `RACE ${timing}: the raced order is untouched (no attempt, no subject)`);
+    assert.strictEqual(await val('sdk_checkout_subject'), null, `RACE ${timing}: no subject claimed`);
+  }
+  ok('RACE-RESIDUAL (documented, advisor-accepted): a concurrent same-customer create after B2b ⇒ 409, zero authorizations; writes = stamp + ip/phone rate tokens (+ the due entry when it lands after finishSdk\'s read), nothing else');
 
   FINISHED = true;
   console.log(`\nsdk-envlim: OK (${n})`);
