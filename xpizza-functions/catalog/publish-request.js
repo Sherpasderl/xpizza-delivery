@@ -15,12 +15,10 @@
 // a publish never makes an old request fresh again.
 const { validateSource, sourceRefOf, encodeUpdateTime, canonicalize } = require('./source-store');
 const { buildSourceCandidate } = require('./candidate-validate');
-const { catalogDiff, verifyEditToken, sha256 } = require('./catalog-edit');
+const { verifyEditToken, sha256 } = require('./catalog-edit');
 const { activePointerRef, readPointerSnap, getActivePointer } = require('./catalog-firestore');
 const { usesPlatformFactura } = require('../factura/eligibility');
 const { resolveAccess, refuseContext } = require('../access/membership');
-const { textEditCapabilities } = require('./item-text-edit');
-const { withConsequences } = require('./extras-consequences');
 
 const MAX_AGE_MS = 14 * 24 * 3600 * 1000;   // an older request is ignored (never shown)
 const requestRefOf = (fs, rid) => fs.collection('restaurants').doc(rid).collection('meta').doc('publish_request');
@@ -72,14 +70,26 @@ async function requestPublishCore(deps, ctx, body) {
   try {
     const { inputs, built } = buildSourceCandidate(rid, draft);
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
-    diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, { ...draftBuilt, ...(photos ? { photos: draftPhotos } : {}) });
-    // with item_text_edit ON the save and the owner publish fold the extras consequences into the token-bound diff; recompute it the same way
-    if (textEditCapabilities().enabled) diff = withConsequences(diff, { live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras });
+    // S2-core §1.6: THE one canonical review diff — the same function the save and the owner publish bind their token to
+    diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);
   const v = verifyEditToken(token, { rid, baseActiveVersionId, sourceUpdateTime, sourceHash, diff });
   if (!v.ok) return reply(409, { error: 'edit_superseded', reason: v.reason });
+  // S2-core (Codex build r1 P2-6): the SAME current-state judgment the owner publish runs — the typed switch refusal, accounting and the
+  // claims (compareToActive), every new extra, the caps and budgets — before anything is written; a request is never a draft the owner's
+  // publish would refuse
+  try {
+    const { inputs: gi, built: gb } = buildSourceCandidate(rid, draft);
+    const g = await require('./structure-gate').judge({ rid, draft, draftRecords: { items: gb.items, extras: gb.extras, structure: gb.structure }, live, liveExtraRecords,
+      addProduct: deps.addProduct, compare: true, photos: photos ? { active: activePhotos, draft: draftPhotos } : null });
+    void gi;
+    if (g.unavailable) return reply(503, { error: 'store_unavailable', retryable: true });
+  } catch (e) {
+    if (e instanceof require('./add-product').AddProductError) return reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}) });
+    return reply(500, { error: 'structural_check_failed' });
+  }
   // NOTHING TO PUBLISH (codex plan r2 P1-1): a request exists only while draft ≠ active. Getting back to equality then
   // needs a source change (a new updateTime) or an activation (a new generation), and either retires the request, so a
   // no-op reset (Firestore keeps the updateTime of an unchanged document) can never resurrect one.

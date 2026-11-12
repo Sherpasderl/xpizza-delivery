@@ -740,7 +740,7 @@ function validateSource(source, rid) {
     for (const c of Object.keys(st.extras_by_category)) if (!catIds.has(c)) fail(`${rid} — extras_by_category references unknown category ${c}`);
   }
   if (st.extras_by_item) {
-    for (const k of Object.keys(st.extras_by_item)) if (!seen.has(k)) fail(`${rid} — extras_by_item references unknown item ${k}`);
+    { const ids = new Set(source.items.map((i) => String(i.display && i.display.id))); for (const k of Object.keys(st.extras_by_item)) if (!seen.has(k) && !ids.has(k)) fail(`${rid} — extras_by_item references unknown item ${k}`); }   // S2-core §2.2: the build's projection keys by display id (both readers try it first)
   }
 }
 

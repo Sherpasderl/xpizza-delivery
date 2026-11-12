@@ -1,0 +1,87 @@
+{
+ "_captured_from": "9269859d (main, before S2-core): buildSourceCandidate(rid, buildSourceFromCode(rid)).built.structure",
+ "x_pizza": {
+  "extras_by_category": {
+   "individual": [
+    "Salsas & Queso",
+    "Carnes",
+    "Vegetales & Hierbas"
+   ],
+   "ny": [
+    "Salsas & Queso",
+    "Carnes",
+    "Vegetales & Hierbas"
+   ]
+  },
+  "extras_by_item": null,
+  "extra_order": [
+   "Salsa Roja",
+   "Salsa Blanca",
+   "Salsa Calabrian Chili",
+   "Mozzarella",
+   "Whipped Ricotta",
+   "Salchicha Italiana",
+   "Pepperoni",
+   "Jamón",
+   "Prosciutto",
+   "Mortadella",
+   "Espinaca",
+   "Maíz",
+   "Hongos",
+   "Basil Pesto"
+  ]
+ },
+ "la_musa": {
+  "extras_by_category": {
+   "dim_sum": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "starters": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "house_specials": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "crudo": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "noodles": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "rice": [
+    "Acompañamientos",
+    "Salsas"
+   ],
+   "soups_salads": [
+    "Acompañamientos",
+    "Salsas"
+   ]
+  },
+  "extras_by_item": {
+   "rice_03": [
+    "Proteínas"
+   ]
+  },
+  "extra_order": [
+   "rice_white",
+   "rice_chinese",
+   "papas_fritas",
+   "sauce_chili_oil",
+   "sauce_aioli",
+   "sauce_chipotle",
+   "sauce_dumpling",
+   "sauce_wonton",
+   "sauce_pad_thai",
+   "sauce_spicy_mayo",
+   "sauce_tuna_tartar",
+   "protein_chicken",
+   "protein_beef",
+   "protein_shrimp"
+  ]
+ }
+}

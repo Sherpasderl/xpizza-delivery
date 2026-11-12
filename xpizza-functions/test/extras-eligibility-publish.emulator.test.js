@@ -1,6 +1,7 @@
 'use strict';
 // PER-PRODUCT EXTRAS, stage 2 (catalog half) — on the emulator, through the REAL publisher and the REAL public-menu builder:
-//   • every publish writes the version's eligibility document (versions/{vid}/meta/extras_eligibility), DENSE, from the
+//   • every publish writes the version's eligibility document (versions/{vid}/meta/extras_eligibility), DENSE per item (each list NARROWED to
+//     the groups the served maps offer it — S2-core ruling R3), from the
 //     same docs the version carries — x_pizza: Nutella denied every extra (legacy '*'), every other item []; la_musa:
 //     rice_03 has the proteins, rice_02 does not;
 //   • getPublicMenu's body carries `extras_eligibility` = { version, deny } for that version, exactly the document;
@@ -49,16 +50,32 @@ const deps = { known: new Set(['x_pizza', 'la_musa']), isActive: async () => tru
     const snap = await eligibilityRefOf(db, rid, vid).get();
     assert.ok(snap.exists, `${rid}: the publish wrote the version's eligibility document`);
     const doc = snap.data();
-    // independently: the evaluator over the brand's code-seeded source (the seed publishes exactly that)
-    const want = publicDeny(projectEligibility(buildSourceFromCode(rid)));
-    assert.deepStrictEqual(doc.public_deny, want, `${rid}: public_deny equals the evaluator over the published source`);
+    // independently: the evaluator over the brand's code-seeded source (the seed publishes exactly that), NARROWED per dish to the groups
+    // the served maps offer it (S2-core ruling R3, PLAN-structure-S2core-r3 §4: the capp filters to those groups first, so it renders the
+    // same extras — catalog/s2core-narrow-deny.test.js DENY-NARROW-SAME-LISTS)
+    const src = buildSourceFromCode(rid);
+    const proj = projectEligibility(src);
+    const dense = publicDeny(proj);
+    const maps = require('../catalog/extras-projection').projectExtrasMaps({ items: src.items, extras: [], structure: src.structure });
+    const want = {};
+    for (const it of src.items) {
+      if (!Object.prototype.hasOwnProperty.call(dense, it.key)) continue;
+      const offered = new Set([...(maps.byCategory[it.display.cat] || []), ...(maps.byItem[String(it.display.id)] || [])]);
+      want[it.key] = dense[it.key].filter((k) => offered.has(proj.extraCat[k]));
+    }
+    assert.deepStrictEqual(doc.public_deny, want, `${rid}: public_deny equals the evaluator over the published source, narrowed to the offered groups`);
+    for (const [k, l] of Object.entries(doc.public_deny)) assert.ok(l.every((x) => dense[k].includes(x)), `${rid}: ${k}'s narrowed list is within the dense complement`);
     assert.ok(Object.values(doc.public_deny).every(Array.isArray), `${rid}: DENSE — every item has a list`);
     if (rid === 'x_pizza') {
       assert.strictEqual(doc.public_deny.Nutella.length, 14, 'x_pizza: Nutella denied every extra');
       assert.deepStrictEqual(doc.public_deny.Margherita, [], 'x_pizza: an ordinary pizza is unrestricted ([])');
     } else {
       assert.ok(!doc.public_deny.rice_03.some((k) => /^protein_/.test(k)), 'la_musa: rice_03 takes the proteins');
-      assert.ok(['protein_chicken', 'protein_beef', 'protein_shrimp'].every((k) => doc.public_deny.rice_02.includes(k)), 'la_musa: rice_02 does not');
+      // rice_02 does not take them: the served maps never OFFER it «Proteínas», so its narrowed deny need not list them (ruling R3) — the
+      // dense complement still does, and the capp renders nothing of a group it is not offered
+      const rice02 = src.items.find((i) => i.key === 'rice_02');
+      assert.ok(!(maps.byCategory[rice02.display.cat] || []).includes('Proteínas') && !(maps.byItem[String(rice02.display.id)] || []).includes('Proteínas'), 'la_musa: rice_02 is not offered «Proteínas»');
+      assert.ok(['protein_chicken', 'protein_beef', 'protein_shrimp'].every((k) => dense.rice_02.includes(k) && !doc.public_deny.rice_02.includes(k)), 'la_musa: rice_02 does not take the proteins (dense) and the narrowed list omits the unoffered group');
     }
     // the public body carries exactly that document
     const pub = await buildPublicMenu(db, rid, deps);

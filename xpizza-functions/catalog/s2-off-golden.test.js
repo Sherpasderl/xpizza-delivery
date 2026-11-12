@@ -111,8 +111,21 @@ const itemOf = (s, key) => s.items.find((i) => i.key === key);
     if (k === 'editor-read') {
       assert.strictEqual(out[k].body.textEditEnabled, false, 'S2OFF-READ textEditEnabled:false is present');
       assert.strictEqual(out[k].body.extrasAuthoring, false, 'S2OFF-READ S1 extrasAuthoring:false is present (switch off)');
-      const { textEditEnabled: _t, extrasAuthoring: _x, ...rest } = out[k].body;   // eslint-disable-line no-unused-vars
-      assert.deepStrictEqual({ status: out[k].status, body: rest }, g[k], 'S2OFF-READ the editor read is the base\'s, plus ONLY textEditEnabled:false and S1 extrasAuthoring:false');
+      assert.strictEqual(out[k].body.extrasCatalog, false, 'S2OFF-READ extrasCatalog:false is present (S2-core: the Extras-page switch, fail-closed)');
+      const { textEditEnabled: _t, extrasAuthoring: _a, extrasCatalog: _x, deletionBase: _b, deletionClaim: _c, ...rest } = out[k].body;   // eslint-disable-line no-unused-vars
+      assert.deepStrictEqual(_c, { ids: [] }, 'S2OFF-READ deletionClaim is the normalized empty claim');
+      assert.deepStrictEqual({ status: out[k].status, body: rest }, g[k], 'S2OFF-READ the editor read is the base\'s, plus ONLY textEditEnabled:false, S1 extrasAuthoring:false, extrasCatalog:false and the S2 deletion fields');
+    } else if (k === 'extras-policy:save' || k === 'extras-policy:publish') {
+      // S2-core §1.6 (PLAN-structure-S2core-r3): the ONE canonical review diff folds the extras consequences UNGATED — item_text_edit OFF
+      // too (prod runs it ON, where this was already the answer) — so this save's (and its publish's) diff gains them: the ONE declared delta, and it is
+      // exactly the REAL evaluator's answer over the live and the draft records
+      const { consequences, ...diffRest } = out[k].body.diff;
+      const { buildSourceCandidate } = require(R('catalog/candidate-validate'));
+      const d = clone(XP); itemOf(d, 'Carnivora').display.extras_policy = 'none';
+      const want = require(R('catalog/extras-consequences')).extrasConsequences({ live: buildSourceCandidate('x_pizza', XP).built, draft: buildSourceCandidate('x_pizza', d).built });
+      assert.ok(want.length && consequences, `S2OFF-${k} premise: the toggle has a consequence`);
+      assert.deepStrictEqual(consequences, want, `S2OFF-${k} the declared delta is the real consequences`);
+      assert.deepStrictEqual({ ...out[k], body: { ...out[k].body, diff: diffRest } }, g[k], `S2OFF-${k} otherwise byte-identical to the base`);
     } else {
       assert.deepStrictEqual(out[k], g[k], `S2OFF-${k} switch OFF answers byte-identically to the base`);
     }

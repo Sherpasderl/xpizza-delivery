@@ -1082,13 +1082,18 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   assert.ok(codes.length >= 15, `the server source was actually read (${codes.length} codes)`);
   // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
   // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
-  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
+  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent', 'structure_unexplained']);   // S2-core accounting: the portal writers never produce a residual (proven by the zero-residual cells)
   // per-product extras: STRUCTURE S1 (Codex build r1 #7) built the extras form, so both codes have designed panels NOW,
   // independent of the platform switch (no exemption tied to it any more)
   // S1c opaque minting: a minted-key collision (mint_unavailable) is unreachable ONLY while the one-time minting switch is OFF —
   // allocation draws no opaque key. The exemption is TIED to the switch: turning minting on turns this test red until the code has a panel.
   const { mintCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/mint-opaque.js');
   if (!mintCapabilities().enabled) GENERIC_BY_DESIGN.add('mint_unavailable');
+  // S2-core (PLAN-structure-S2core-r3): an extra removed without its claim / a group emptied is unreachable ONLY while the extrasCatalog
+  // switch is OFF — the portal has no Extras page to remove an extra with. TIED to the switch: turning it on turns this test red until
+  // both codes have designed panels (portal-ui's Extras page).
+  const { structureCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-structure.js');
+  if (!structureCapabilities().extrasCatalog) for (const c of ['existing_extra_removed', 'extras_group_empty']) GENERIC_BY_DESIGN.add(c);
   // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
   // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
   // first portal source line that assigns a category `.name` turns this test red until the code has a designed panel.

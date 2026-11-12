@@ -11,7 +11,7 @@
 // A cart this stage does not judge (not a non-empty array of objects, no tables, or a line whose legacy field is not a
 // well-typed string — advisor ruling, option A) passes through untouched, so today's refusals keep their codes and copy. Pure: reads nothing; the only write is the stamp, and only on full success.
 // ---------------------------------------------------------------------------
-const { PRICING_KEY_STAMP, keyModeOfTables, availIdentityField, labelsOfTables } = require('../menu-pricing');
+const { PRICING_KEY_STAMP, keyModeOfTables, availIdentityField, labelsOfTables, extraPricingKey } = require('../menu-pricing');
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -90,6 +90,17 @@ function resolveLines(rid, body, tables) {
     if (r.code) return { ok: false, code: r.code, at: 'items', index: i };
     stamps.push([items[i], r.key]);
   }
+  // S2-core (PLAN-structure-S2core-r3 §1.4): every cart EXTRA, by the key pricing reads (extraPricingKey). A well-typed key the served
+  // tables do not hold (a removed extra) is menu_changed, like a removed dish; a malformed extra is left to today's refusal.
+  { const xt = isObj(tables.extras) ? tables.extras : {}; const km = keyModeOfTables(tables);
+    for (let i = 0; i < items.length; i++) {
+      const exs = items[i].extras;
+      if (!Array.isArray(exs)) continue;
+      for (let j = 0; j < exs.length; j++) {
+        const k = isObj(exs[j]) ? extraPricingKey(exs[j], rid, km) : undefined;
+        if (typeof k === 'string' && k && !own(xt, k)) return { ok: false, code: 'menu_changed', at: 'extras', index: i, extra: j };
+      }
+    } }
   // reward lines (advisor ruling Q3): stamped only when they resolve. Any other reward line is NOT refused here — it falls
   // through to prepareRedemption and today's 409 redemption_invalid, which the frozen forms' classifyRedeemError handles.
   const rls = rewardLines(body.redeem, rid);

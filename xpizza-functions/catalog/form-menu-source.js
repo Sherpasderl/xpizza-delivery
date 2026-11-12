@@ -280,7 +280,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
       if (typeof c === 'string' && c && !cats.includes(c)) cats.push(c);
     }
     if (cats.length) structure.extra_categories = cats;
-  }
+  } structure.extra_order = require('./extras-projection').groupMajorOrder(structure.extra_order, extras, structure.extra_categories);   // S2-core §2.3: the ONE group order (group-major)
 
   // 🔴 EXPOSURE — which options each dish is offered — and the LEGACY maps DERIVED from it.
   //

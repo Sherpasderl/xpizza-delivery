@@ -420,7 +420,7 @@ const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'wee
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
 
-function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false }) {
+function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, extrasCatalog = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
   const draft = new Map(draftBuilt.items.map((it) => [it.key, it]));
   const declared = deletedIds instanceof Set ? deletedIds : new Set(Array.isArray(deletedIds) ? deletedIds : []);
@@ -492,10 +492,16 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   // Extras: same membership, everything but price.
   const ae = new Map((activeBuilt.extras || []).map((e) => [e.key, e]));
   const de = new Map((draftBuilt.extras || []).map((e) => [e.key, e]));
-  if (ae.size !== de.size || [...ae.keys()].some((k) => !de.has(k))) refuse('extras_changed', 'options (extras) cannot be added or removed here');
+  if (!extrasCatalog && (ae.size !== de.size || [...ae.keys()].some((k) => !de.has(k)))) refuse('extras_changed', 'options (extras) cannot be added or removed here');
   for (const [k, a] of ae) {
+    if (!de.has(k)) {   // S2-core: a removal (switch on only, above) — a certified extra leaves only through the reviewed deletion claim
+      const stamp = a.display && a.display.identity_id;
+      if (typeof stamp === 'string' && stamp && !declared.has(stamp)) refuse('existing_extra_removed', `the option ${JSON.stringify(k)} can only leave through the reviewed removal`, { key: k });
+      continue;
+    }
     if (!sameJson(without(de.get(k).display, ['price']), without(a.display, ['price']))) refuse('extras_changed', `the option ${JSON.stringify(k)} can only have its price changed here`, { key: k });
   }
+  if (extrasCatalog) extrasCatalogClaims({ draftBuilt, activeBuilt, ae, de });
 
   // Structure: item_order is the active order with the new keys appended; everything else is frozen.
   const removed = new Set(removals);
@@ -506,7 +512,8 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     refuse('item_order_changed', 'existing products cannot be reordered here; new products go at the end', { field: 'item_order' });
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
-  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items' && x !== 'categories'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, categories, exposure: their own rules
+  const S2_CLAIMED = extrasCatalog ? new Set(['extra_order', 'extra_categories', 'extras_by_category', 'extras_by_item', 'redeem_eligible_extras']) : new Set();   // judged by extrasCatalogClaims
+  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items' && x !== 'categories'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')].filter((x) => !S2_CLAIMED.has(x))) {   // variant_items, categories, exposure: their own rules
     if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
   }
   // categories (PLAN-public-menu-display r2 T1): frozen except each category's display `name` — same count, the same id
@@ -522,10 +529,73 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   // and normalizing an override left empty by that removal (an existing `add` is never deleted by the normalization)
   if (authored.has('exposure')) {
     const de = draftBuilt.structure.exposure; const ae = activeBuilt.structure.exposure;
-    if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
-    if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    if (extrasCatalog) s2ExposureClaims({ dx: de, ax: ae, draftBuilt, activeBuilt, extrasAuthoring });   // S2-core: claimed per transition (Codex build r1 P1-4)
+    else {
+      if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
+      if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    }
   }
+  accountResidual({ draftBuilt, activeBuilt, authored });
   return { additions: additions.map((it) => it.key), removals };
+}
+
+/* S2-core (PLAN-structure-S2core-r3 §1.2; Codex #4, ruling R1) — EXHAUSTIVE ACCOUNTING, the final gate. The rules above explain a
+   change only through the fields they compare; anything else that differs and is not code-derived is a RESIDUAL and refuses
+   `structure_unexplained` naming its path: a structure field the draft AUTHORS that no rule handles (badge_priority, schema_version,
+   an unknown field), an unknown field on an existing item or extra row, an unknown top-level field, or a key-mode change. An
+   UNAUTHORED structure field stays skipped (it is derived from code; a code change must not refuse every save). */
+const HANDLED_STRUCTURE = new Set([...ALWAYS_COMPARED, ...COMPARED_WHEN_AUTHORED, 'item_order']);
+const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos']);   // frozen_keys / photos: their own rules
+function accountResidual({ draftBuilt, activeBuilt, authored }) {
+  const residual = (path) => refuse('structure_unexplained', `this change is not one the menu editor can make (${path})`, { field: path });
+  const ds = draftBuilt.structure || {}; const as = activeBuilt.structure || {};
+  for (const f of new Set([...Object.keys(ds), ...Object.keys(as)])) {
+    if (HANDLED_STRUCTURE.has(f) || !authored.has(f)) continue;
+    if (!sameJson(ds[f], as[f])) residual(`structure.${f}`);
+  }
+  for (const f of new Set([...Object.keys(draftBuilt), ...Object.keys(activeBuilt)])) {
+    if (!HANDLED_TOP.has(f) && !sameJson(draftBuilt[f], activeBuilt[f])) residual(f);
+  }
+  if (draftBuilt.key_mode !== activeBuilt.key_mode) residual('key_mode');
+  const rows = (kind, list, other, known) => {
+    const byKey = new Map((other || []).map((r) => [r.key, r]));
+    for (const r of list || []) {
+      const prev = byKey.get(r.key); if (!prev) continue;
+      for (const f of new Set([...Object.keys(r), ...Object.keys(prev)])) if (!known.includes(f) && !sameJson(r[f], prev[f])) residual(`${kind}.${r.key}.${f}`);
+    }
+  };
+  rows('items', draftBuilt.items, activeBuilt.items, ['key', 'price', 'display', 'has_photo']);
+  rows('extras', draftBuilt.extras, activeBuilt.extras, ['key', 'price', 'display']);
+}
+
+/* S2-core (PLAN-structure-S2core-r3 §1.3, §3.3) — the Extras-page claims, behind the extrasCatalog switch. The removed extras' identity
+   claims are judged above; here: no group emptied (extras_group_empty); extra_order is exactly today's order minus the removals plus the
+   additions, group-major in the draft's group order (no in-group reorder); redeem_eligible_extras may only lose removed keys; the
+   exposure maps are the build's projection of the draft (derived, never edited); extra_categories may be reordered or extended. */
+function extrasCatalogClaims({ draftBuilt, activeBuilt, ae, de }) {
+  const ds = draftBuilt.structure || {}, as = activeBuilt.structure || {};
+  const draftGroups = new Set([...de.values()].map((e) => e && e.display && e.display.cat));
+  for (const g of (Array.isArray(as.extra_categories) ? as.extra_categories : [])) {
+    if (!draftGroups.has(g)) refuse('extras_group_empty', `the group ${JSON.stringify(g)} would be left with no options`, { field: 'extras' });
+  }
+  const added = (draftBuilt.extras || []).map((e) => e.key).filter((k) => !ae.has(k));
+  const kept = (Array.isArray(as.extra_order) ? as.extra_order : []).filter((k) => de.has(k));
+  // the order the build derives (group-major in the draft's group order — extras-projection groupMajorOrder) must hold exactly the kept
+  // and added extras, each group contiguous and in the group order, its kept extras in today's relative order, its new ones after them
+  const seq = Array.isArray(ds.extra_order) ? ds.extra_order : [];
+  const catOf = new Map((draftBuilt.extras || []).map((e) => [e.key, e && e.display && e.display.cat]));
+  const groups = Array.isArray(ds.extra_categories) ? ds.extra_categories : [];
+  const rank = (k) => { const i = groups.indexOf(catOf.get(k)); return i < 0 ? groups.length : i; };
+  const bad = () => refuse('structure_changed', "the options' order can only change by adding, removing or reordering groups", { field: 'extra_order' });
+  if (seq.length !== kept.length + added.length || !sameJson([...seq].sort(), [...kept, ...added].sort())) bad();
+  for (let i = 1; i < seq.length; i++) if (rank(seq[i]) < rank(seq[i - 1])) bad();
+  for (const g of new Set(seq.map((k) => catOf.get(k)))) {
+    if (!sameJson(seq.filter((k) => catOf.get(k) === g), [...kept, ...added].filter((k) => catOf.get(k) === g))) bad();
+  }
+  if (Array.isArray(as.redeem_eligible_extras) || Array.isArray(ds.redeem_eligible_extras)) {
+    const keep = (as.redeem_eligible_extras || []).filter((k) => de.has(k));
+    if (!sameJson(ds.redeem_eligible_extras || [], keep)) refuse('structure_changed', "the menu's redeem_eligible_extras can only lose removed options", { field: 'redeem_eligible_extras' });
+  }
 }
 
 // Two category lists that differ at most in `name`: same length, and at each index every field but `name` equal — the id
@@ -560,6 +630,63 @@ function samePhotoStates(a, b) {
 
 // exposure minus the typed deny_extras: each override without the field, and an override left EMPTY by that removal
 // dropped (it said only deny_extras). `deny` / `add` / everything else stays — so any other difference is still caught.
+/* S2-core (PLAN-structure-S2core-r3 §3.2 / §3.3; Codex build r1 P1-4) — under the extrasCatalog switch the exposure is claimed PER
+   TRANSITION, never as a whole object. Exactly these changes are explained (exposure-transitions.js writes nothing else):
+     · category_allow[C] GAINS a group (attach.cat, group.create «A toda una categoría»); nothing ever leaves a category's list
+     · a dish's add / deny gains or loses a GROUP entry (attach.item / detach.item) — on a plain dish or a launcher, never an option
+     · the op's own cleanup: a single-extra add / deny entry, or an unticked extra (deny_extras), LEAVES a dish when its extra was removed,
+       its group was attached / detached on that dish (directly or through its category), or the dish is left with NO per-extra entry of
+       that group while offering it (the writer's attach over an already-offered group) — whatever S1's switch says
+     · deny_extras GROWS only with S1's per-dish authoring on (extras_not_supported_yet otherwise)
+   Anything else — a new single-extra or '*' entry, an entry leaving for no op, an option's override, an unknown override field — is
+   structure_changed. */
+function s2ExposureClaims({ dx, ax, draftBuilt, activeBuilt, extrasAuthoring }) {
+  const bad = (field) => refuse('structure_changed', "the menu's exposure cannot change here", { field });
+  const d0 = isObj(dx) ? dx : {}; const a0 = isObj(ax) ? ax : {};
+  if (!sameJson(without(d0, ['category_allow', 'item_overrides']), without(a0, ['category_allow', 'item_overrides']))) bad('exposure');
+  const list = (v) => (Array.isArray(v) ? v.map(String) : v === undefined || v === null ? [] : [String(v)]);
+  const groups = new Set([...list((draftBuilt.structure || {}).extra_categories), ...list((activeBuilt.structure || {}).extra_categories)]);
+  const allExtras = [...(activeBuilt.extras || []), ...(draftBuilt.extras || [])].filter(isObj);
+  const catOfKey = new Map(allExtras.map((e) => [String(e.key), e.display && e.display.cat]));
+  for (const e of allExtras) if (isObj(e.display) && e.display.id != null && !catOfKey.has(String(e.display.id))) catOfKey.set(String(e.display.id), e.display.cat);
+  const keyOfId = new Map(allExtras.filter((e) => isObj(e.display) && e.display.id != null).map((e) => [String(e.display.id), String(e.key)]));
+  const draftKeys = new Set((draftBuilt.extras || []).filter(isObj).map((e) => String(e.key)));
+  const removedExtra = (v) => catOfKey.has(v) && !draftKeys.has(keyOfId.get(v) || v);   // an entry naming an extra (by key or UI id) the draft no longer has
+  const dca = isObj(d0.category_allow) ? d0.category_allow : {}; const aca = isObj(a0.category_allow) ? a0.category_allow : {};
+  const gained = new Map();
+  for (const c of new Set([...Object.keys(dca), ...Object.keys(aca)])) {
+    const A = list(aca[c]); const D = list(dca[c]);
+    if (A.some((g) => !D.includes(g))) bad('category_allow');
+    for (const g of D) if (!A.includes(g)) { if (!groups.has(g)) bad('category_allow'); if (!gained.has(c)) gained.set(c, new Set()); gained.get(c).add(g); }
+  }
+  const items = new Map([...(activeBuilt.items || []), ...(draftBuilt.items || [])].filter(isObj).map((it) => [it.key, it]));
+  const dov = isObj(d0.item_overrides) ? d0.item_overrides : {}; const aov = isObj(a0.item_overrides) ? a0.item_overrides : {};
+  for (const k of new Set([...Object.keys(dov), ...Object.keys(aov)])) {
+    const a = isObj(aov[k]) ? aov[k] : {}; const d = isObj(dov[k]) ? dov[k] : {};
+    if (sameJson(a, d)) continue;
+    const it = items.get(k);
+    if (!it || !isObj(it.display) || (it.display.variantOf !== undefined && it.display.variantOf !== null)) bad('item_overrides');
+    if (!sameJson(without(a, ['add', 'deny', 'deny_extras']), without(d, ['add', 'deny', 'deny_extras']))) bad('item_overrides');
+    const touched = new Set(gained.get(String(it.display.cat)) || []);
+    for (const f of ['add', 'deny']) { const A = list(a[f]); const D = list(d[f]); for (const v of [...A, ...D]) if (groups.has(v) && (A.includes(v) !== D.includes(v))) touched.add(v); }
+    // the writer's attach (item or category) clears EVERY per-extra entry of the group on the dish and leaves it offered — even when the
+    // group was already offered (no membership delta: Codex build r2 #4); a partial clearing, or one leaving the group unoffered, is not
+    // a writer transition
+    const dca2 = list(dca[String(it.display.cat)]);
+    const offeredAfter = (g) => (dca2.includes(g) || list(d.add).includes(g)) && !list(d.deny).includes(g) && !list(d.deny).includes('*');
+    const clearedOffered = (g) => !!g && offeredAfter(g) && ![...list(d.add), ...list(d.deny), ...list(d.deny_extras)].some((v) => !groups.has(v) && catOfKey.get(v) === g);
+    const cleanup = (v) => removedExtra(v) || touched.has(catOfKey.get(v)) || clearedOffered(catOfKey.get(v));
+    for (const f of ['add', 'deny']) {
+      const A = list(a[f]); const D = list(d[f]);
+      for (const v of D) if (!A.includes(v) && !groups.has(v)) bad('item_overrides');   // a new single-extra or '*' entry
+      for (const v of A) if (!D.includes(v) && !groups.has(v) && !cleanup(v)) bad('item_overrides');
+    }
+    const A = list(a.deny_extras); const D = list(d.deny_extras);
+    if (D.some((v) => !A.includes(v)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+    for (const v of A) if (!D.includes(v) && !extrasAuthoring && !cleanup(v)) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+  }
+}
+
 function exposureWithoutDenyExtras(ex) {
   if (!isObj(ex)) return ex;
   const out = { ...ex };
