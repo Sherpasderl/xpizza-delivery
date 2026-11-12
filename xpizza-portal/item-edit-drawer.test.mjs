@@ -1545,9 +1545,11 @@ test('S2 B — «Cancelar», Escape and the backdrop close the sheet: nothing re
     if (!bSheet(p)) { if (!p.drawer().querySelector('.mk-adds')) { await p.signIn(); await p.open('dimsum_01'); } bAction(p).click(); await settle(5); }
     const g = bRows(p).find((r) => !r.classList.contains('have')).querySelector('.ogname').firstChild.textContent;
     const cb = bRow(p, g).querySelector('input'); cb.checked = true; cb.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
-    const last = [...bSheet(p).querySelectorAll('button, input')].filter((x) => !x.disabled).pop();
+    const live = [...bSheet(p).querySelectorAll('button, input')].filter((x) => !x.disabled);
+    const last = live[live.length - 1];
     last.focus(); key(p, last, 'Tab'); await settle(2);
-    assert.ok(bSheet(p).contains(p.d.activeElement), `${how}: Tab stays inside`);
+    // a synthetic Tab never moves focus by itself: the TRAP must move it — from the last control it wraps to the first
+    assert.equal(p.d.activeElement, live[0], `${how}: Tab stays inside (the last wraps to the first)`);
     if (how === 'cancel') [...bSheet(p).querySelectorAll('.mf button')][0].click();
     else if (how === 'escape') key(p, p.d.activeElement, 'Escape');
     else p.d.getElementById('xattach').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
