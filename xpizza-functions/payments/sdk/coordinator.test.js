@@ -69,7 +69,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-RECONCILE-BOUND-STATUS-RESOLVES', async (L) => {
     // approved with a mismatched amount → adapter says unknown WITH a uuid; status (bound, authorized) resolves it
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-77', amount_cents: 9999, effect: (st) => { st['P-77'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-77', amount_cents: 9999, effect: (st) => { st['P-77'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
     await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00006', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(w.rec().lock, `${L}: PREMISE — locked on the mismatched answer`);
     w.tick(3 * 60 * 1000);
@@ -202,13 +202,13 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [9000], `${L}: only B is captured; surplus never`);
   });
   await cell('SDK-UNKNOWN-B-LIVE-BECOMES-SURPLUS', async (L) => {
-    const w = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
+    const w = await placed({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) });
     assert.strictEqual(r.outcome, 'unknown', `${L}: B unknown (got ${JSON.stringify(r)})`);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation', `${L}: no uuid for a lost B → manual (the lost-UUID lookup is §7.V)`);
     // the same with a uuid known (an amount-mismatched answer): status says live → B surplus, S committed
-    const w2 = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
+    const w2 = await placed({ contractOnlyStatus: true /* CONTRACT-ONLY: the unverified B2 uuid binds only an amount-bearing status */, eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
     await C().requestDecrease(w2.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) });
     w2.tick(3 * 60 * 1000); await C().reconcileSdkOps(w2.deps, { orderId: OID });
     assert.deepStrictEqual([committedIds(w2.rec()).join(), w2.rec().legs.L2.role, w2.rec().legs.L2.state, w2.rec().fulfillment_total_cents], ['L1', 'surplus', 'approved', 10000], `${L}: B found live → SURPLUS; S stays committed; the total unchanged (got ${JSON.stringify(w2.rec().legs.L2)})`);
@@ -709,7 +709,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   // #6 a late approval is classified against cancellation and the frozen set
   await cell('SDK-LATE-ORIGINAL-OUTSIDE-FROZEN-SET-SURPLUS', async (L) => {
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-90', amount_cents: 9999, effect: (st) => { st['P-90'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-90', amount_cents: 9999, effect: (st) => { st['P-90'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
     await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00020', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     await C().settleTerminal(w.deps, { orderId: OID });
@@ -720,7 +720,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-LATE-ORIGINAL-AFTER-CANCEL-SURPLUS', async (L) => {
     // the status is still inconclusive while the cancel runs, so only the LATER reconciliation classifies the approval
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }], status: [{ state: 'inconclusive' }] } });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }], status: [{ state: 'inconclusive' }] } });
     await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00021', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     w.tick(3 * 60 * 1000);

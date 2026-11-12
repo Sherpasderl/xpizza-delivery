@@ -35,8 +35,10 @@ async function vaultGenOf(deps, uid, tokenHash) {
   return Number.isInteger(g) ? g : 0;
 }
 
-async function completeVault(deps, { uid, token, token_hash: h, display, vault_gen: gen }) {
+async function completeVault(deps, { uid, token, token_hash: h, display: rawDisplay, vault_gen: gen }) {
   const now = deps.clock();
+  const display = require('./display').sanitizeDisplay(rawDisplay);   // validated AGAIN at the vault write (Codex S3 r4 P1)
+  if (!display) return { outcome: 'invalid_display' };
   let outcome = null;
   await node(deps.db, uid).transaction((cur) => {
     outcome = null;
@@ -89,9 +91,10 @@ async function listCardsCore(deps, { headers } = {}) {
   const v = (await node(deps.db, uid).once('value')).val();
   const now = deps.clock();
   const cards = Object.entries(isObj(v) && isObj(v.cards) ? v.cards : {})
-    .filter(([, c]) => isObj(c))
+    .map(([card_id, c]) => [card_id, c, isObj(c) ? require('./display').sanitizeDisplay(c) : null])
+    .filter(([, , d]) => d)   // a row that fails the schema is never listed
     .sort(([, a], [, b]) => (b.last_used_at || 0) - (a.last_used_at || 0))
-    .map(([card_id, c]) => ({ card_id, brand: c.brand, last4: c.last4, exp_month: c.exp_month, exp_year: c.exp_year, expired: expiredNow(c, now) }));
+    .map(([card_id, c, d]) => ({ card_id, brand: d.brand, last4: d.last4, exp_month: d.exp_month, exp_year: d.exp_year, expired: expiredNow(c, now) }));
   return { status: 200, body: { cards } };
 }
 // POST removeCard { card_id } → { removed: true } (idempotent for the owner; another member's / unknown ⇒ 404)
