@@ -914,6 +914,8 @@
   "payments/sdk/intake.js#exactKeys": "intake",
   "payments/sdk/finish.js#bindingRefusal": "intake",
   "payments/sdk/finish.js#finishSdk": "intake",
+  "payments/sdk/endpoints.js#http>anon": "payment",
+  "payments/sdk/endpoints.js#makeHandlers>anon": "payment",
   "index.js#acquireRefusal>anon": "intake"
  },
  "pageFunctionExemptions": {
