@@ -78,7 +78,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders } from './extras-logic.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx } from './extras-logic.js';
 import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
@@ -2837,7 +2837,7 @@ async function openReviewFlow() {
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit'));
+      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));
       $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
@@ -3000,7 +3000,7 @@ async function runPublish() {
     out = await attempt;
   } catch (e) {
     if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
-    showOutcome(outcomeFor(e, 'publish'));
+    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));
     return;
   } finally {
     endWrite(writeId, lock, gen);
@@ -3129,7 +3129,7 @@ async function sendToOwnerFlow() {
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
   } catch (e) {
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit'));
+      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));
       $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);
@@ -3201,6 +3201,28 @@ function showOutcome(outcome) {
       // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
       restorePublishFooter();
       await runPublish();
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX_EXTRA) {
+      // STRUCTURE S2 §5.2 — an EXTRA needs a correction: the «Extras» tab, that extra's group, its row with the server's line under it
+      // (focus: a new row's name, a published row's price); extras_group_empty → the group the server named, its «Agregar extra» row open
+      $('scrim').classList.remove('show');
+      clearReview();
+      const ctx = extrasOutcomeCtx(state.draft);
+      const named = outcome.target && ctx.isExtra(outcome.target) ? outcome.target : null;
+      const g = outcome.group || (named ? ctx.groupOf(named) : null);
+      if (g) extrasGroup = g;
+      extraAdd = null; extraAddK = null;
+      extrasRowError = named ? { id: outcome.targetIs === 'ref' ? { ref: named } : { key: named }, text: outcome.detail } : null;
+      prodTab = 'xpage';
+      paint(); syncUi();
+      if (outcome.code === 'extras_group_empty' && outcome.group) { addOpen(); return; }
+      if (extrasRowError) {
+        const k = JSON.stringify(extrasRowError.id);
+        const all = [...$('xdetail').querySelectorAll('[data-k]')];
+        const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);
+        if (ctl) ctl.focus();
+      }
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX && outcome.productLine) {

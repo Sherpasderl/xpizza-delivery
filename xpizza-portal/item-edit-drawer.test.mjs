@@ -1670,3 +1670,54 @@ test('S2 X — a «Nuevo» row’s name is the inline row’s field (typing rena
   assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra', 'focus stays in the field while typing');
   assert.equal(xrows(p)[0].querySelector('input[aria-label="Nombre del extra"]'), null, 'a published row’s name is text');
 });
+
+// ── STRUCTURE S2 §5.2 — FIX-EXTRA: an extra's refusal lands on the Extras tab, its group, its row, the server's line under it ─────
+test('S2 §5.2 — FIX-EXTRA «Corregir el nombre»: the Extras tab, the new extra’s group selected, focus in its NAME, the server’s line under it; the draft byte-identical', async () => {
+  let ref = null;
+  const p = await page({ read: XON, on: { editCatalog: (call) => { ref = (call.body.source.extras.find((e) => typeof e.key !== 'string') || {}).ref; return errJson(409, { error: 'name_taken', ref, field: 'name' }); } } });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  railRows(p)[1].click(); await settle(10);
+  const g = p.src().structure.extra_categories[1];
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Salsa nueva'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  railRows(p)[0].click(); await settle(10);   // another group selected: FIX-EXTRA must SWITCH to the extra's own group
+  tabBtn(p, 'Menú').click(); await settle(10);   // the merchant left the page; FIX-EXTRA must bring them back
+  const before = JSON.stringify(p.src());
+  p.d.getElementById('review').click(); await settle(60);
+  const pn = panel(p);
+  assert.ok(pn && pn.title === 'Ese nombre ya está en tu menú', `the extra's panel (${pn && pn.title})`);
+  assert.equal(pn.detail, 'Elegí otro nombre para el extra nuevo.');
+  pn.action.click(); await settle(30);
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  assert.equal(railRows(p).find((r) => r.classList.contains('on')).dataset.group, g, 'the new extra’s group');
+  const row = xrows(p).find((r) => rowName(r) === 'Salsa nueva');
+  const nm = row.querySelector('input[aria-label="Nombre del extra"]');
+  assert.equal(p.d.activeElement, nm, 'focus in its name');
+  assert.equal(row.nextElementSibling && row.nextElementSibling.textContent, 'Elegí otro nombre para el extra nuevo.', 'the server’s line under the row');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft byte-identical');
+  assert.ok(ref && ref.startsWith('tmp:'), 'premise: the refusal named the new extra by its ref');
+});
+test('S2 §5.2 — FIX-EXTRA «Agregar un extra» (extras_group_empty): with the server’s `group` → that group, its «Agregar extra» row open; without it → the Extras tab as it was', async () => {
+  const groupName = () => XON().source.structure.extra_categories[2];
+  const p = await page({ read: XON, on: { editCatalog: () => errJson(409, { error: 'extras_group_empty', field: 'extras', group: groupName() }) } });
+  await p.signIn(); await p.open('dimsum_01');
+  quitar(cardOf(p, 'Salsas')).click(); await settle(10);   // any change, so «Revisar y publicar» saves
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  assert.equal(panel(p).action.textContent, 'Agregar un extra');
+  panel(p).action.click(); await settle(30);
+  assert.equal(railRows(p).find((r) => r.classList.contains('on')).dataset.group, groupName(), '(a) the group the server named');
+  assert.ok(newRow(p), '(a) its «Agregar extra» row open');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra');
+  const q = await page({ read: XON, on: { editCatalog: () => errJson(409, { error: 'extras_group_empty', field: 'extras' }) } });
+  await q.signIn(); await q.open('dimsum_01');
+  quitar(cardOf(q, 'Salsas')).click(); await settle(10);
+  q.btn('Guardar').click(); await settle(10);
+  q.d.getElementById('review').click(); await settle(60);
+  panel(q).action.click(); await settle(30);
+  assert.ok(!xpage(q).classList.contains('hidden'), '(b) the Extras tab');
+  assert.equal(newRow(q), null, '(b) no row opened (the server named no group)');
+});

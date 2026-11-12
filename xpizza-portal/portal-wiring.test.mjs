@@ -746,8 +746,8 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
 
 test('every publish state is wired — and edit_superseded re-reviews rather than retrying', () => {
   const app = codeOf('app.js');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
   // 🔴 RETRY must redo the operation that FAILED, not always the publish
   const soIdx2 = app.indexOf('function showOutcome');
   const retryBranch = app.slice(app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2), app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2) + 420);
@@ -852,7 +852,7 @@ test('no server error on the write path escapes the designed panels', () => {
   // which is the 2b-2a surface for "your menu could not be loaded".
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
-  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'\)\)/.test(c));
+  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(c));
   // T-d (3a): the THIRD is sendToOwnerFlow (editCatalog + catalogRequestPublish), routed to the SAME panels as the review's save
   assert.strictEqual(routed.length, 3, 'ALL write calls — editCatalog, publishEdited and the manager\'s send — route to the panels');
 
@@ -1566,6 +1566,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.attachSheet',
   // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
   'IE.detachRefusal',
+  // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
+  'extrasOutcomeCtx',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

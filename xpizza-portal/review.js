@@ -1112,8 +1112,8 @@ const GENERIC = {
 // them to distrust the one panel that will someday be telling the truth.
 const serverAnswered = (err) => !!(err && typeof err.status === 'number' && err.status > 0);
 
-// `ctx` (STRUCTURE S2 §5.2, optional): { isExtra(target) → whether the named ref / key is an EXTRA row of the draft; counts() → { maxPerGroup }
-// of the draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart
+// `ctx` (STRUCTURE S2 §5.2, optional; extras-logic extrasOutcomeCtx): { isExtra(target) → whether the named ref / key is an EXTRA row of the
+// draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart
 export function outcomeFor(err, op = 'publish', ctx = {}) {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
@@ -1122,7 +1122,7 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
   const b = err && err.body && typeof err.body === 'object' ? err.body : null;
   if (b) {
     const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
-    if (target) base.target = target;
+    if (target) { base.target = target; base.targetIs = typeof b.ref === 'string' ? 'ref' : 'key'; }   // S2 §5.2: a new extra by its ref, a published one by its key
     if (typeof b.field === 'string') base.field = b.field;
     if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal
   }
@@ -1134,12 +1134,11 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
   }
   if (code === 'extras_group_empty' && b && typeof b.group === 'string' && b.group) base.group = b.group;   // (a): the group, once the server names it
   if (code === 'deleted_ids_stale_baseline' && b && Array.isArray(b.existing_ids)) base.existingIds = b.existing_ids.map(String);
-  if (code === 'structure_caps' && b && (b.field === 'extra_categories' || b.field === 'extras')) {
-    // the server reports a group's cap and the menu's cap alike (field 'extras'): the draft's own counts tell which was crossed
-    const c = ctx && typeof ctx.counts === 'function' ? ctx.counts() : null;
-    const perGroup = b.field === 'extras' && !!c && c.maxPerGroup > STRUCTURE_CAPS.perGroup;
+  if (code === 'structure_caps' && b && ['extra_categories', 'extras_in_group', 'extras'].includes(b.field)) {
+    // 5f 3290d9d0: a group's cap answers field 'extras_in_group' (+ group); 'extras' is the menu-wide cap only
+    if (b.field === 'extras_in_group' && typeof b.group === 'string' && b.group) base.group = b.group;
     if (b.field === 'extra_categories') { base.title = 'Llegaste al máximo de grupos'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.groups} grupos de extras.`; }
-    else if (perGroup) { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }
+    else if (b.field === 'extras_in_group') { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }
     else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }
     base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };
   }

@@ -202,3 +202,15 @@ export function groupOrderTo(order, g, index) {
 }
 // the pointer's y against the other rows' midlines → the drop index
 export function dropIndexAt(mids, y) { return mids.filter((m) => m < y).length; }
+
+// STRUCTURE S2 §5.2 — the outcome context for review.js outcomeFor: which refusal target names an EXTRA row of the draft (a new one by
+// its ref, a published one by its key) and its group. Pure; precomputed, so the returned functions hold no reference to the draft.
+export function extrasOutcomeCtx(draft) {
+  const groupById = new Map();
+  for (const e of extrasOf(draftSource(draft))) {
+    const g = String(e.display.cat);
+    if (typeof e.key === 'string') groupById.set(e.key, g);
+    else if (typeof e.ref === 'string') groupById.set(e.ref, g);
+  }
+  return { isExtra: (t) => groupById.has(t), groupOf: (t) => (groupById.has(t) ? groupById.get(t) : null) };
+}

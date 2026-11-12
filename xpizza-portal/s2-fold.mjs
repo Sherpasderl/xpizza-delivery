@@ -14,7 +14,7 @@ export const S2_FOLD = {
    "import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';\n"
   ],
   [
-   "// STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM\nimport { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders } from './extras-logic.js';\nimport { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, enProductos } from './extras-view.js';\nimport { applyExposureOps, mergeDeletionClaim } from './editor.js';\n",
+   "// STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM\nimport { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx } from './extras-logic.js';\nimport { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, enProductos } from './extras-view.js';\nimport { applyExposureOps, mergeDeletionClaim } from './editor.js';\n",
    ""
   ],
   [
@@ -90,8 +90,24 @@ export const S2_FOLD = {
    ""
   ],
   [
+   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));\n",
+   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n"
+  ],
+  [
+   "    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));\n",
+   "    showOutcome(outcomeFor(e, 'publish'));\n"
+  ],
+  [
    "    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token, loadedBase: baseFor(submitted) });   // S2 §3.4\n",
    "    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token });\n"
+  ],
+  [
+   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));\n",
+   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n"
+  ],
+  [
+   "      return;\n    }\n    if (id === PUBLISH_ACTIONS.FIX_EXTRA) {\n      // STRUCTURE S2 §5.2 — an EXTRA needs a correction: the «Extras» tab, that extra's group, its row with the server's line under it\n      // (focus: a new row's name, a published row's price); extras_group_empty → the group the server named, its «Agregar extra» row open\n      $('scrim').classList.remove('show');\n      clearReview();\n      const ctx = extrasOutcomeCtx(state.draft);\n      const named = outcome.target && ctx.isExtra(outcome.target) ? outcome.target : null;\n      const g = outcome.group || (named ? ctx.groupOf(named) : null);\n      if (g) extrasGroup = g;\n      extraAdd = null; extraAddK = null;\n      extrasRowError = named ? { id: outcome.targetIs === 'ref' ? { ref: named } : { key: named }, text: outcome.detail } : null;\n      prodTab = 'xpage';\n      paint(); syncUi();\n      if (outcome.code === 'extras_group_empty' && outcome.group) { addOpen(); return; }\n      if (extrasRowError) {\n        const k = JSON.stringify(extrasRowError.id);\n        const all = [...$('xdetail').querySelectorAll('[data-k]')];\n        const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);\n        if (ctl) ctl.focus();\n      }\n",
+   ""
   ],
   [
    "// STRUCTURE S2: the «Menú» / «Extras» tabs — VIEW state only (which page shows), never a write, so not world-bound; ← / → move between\n// them (the tablist pattern)\nconst tabKey = (t) => (e) => {\n  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;\n  e.preventDefault();\n  const next = t === 'menu' ? 'xpage' : 'menu';\n  setProdTab(next);\n  const nb = $(next === 'menu' ? 'tabmenu' : 'tabextras'); if (nb) nb.focus();\n};\nif ($('tabmenu') && $('tabextras')) {\n  $('tabmenu').addEventListener('click', () => setProdTab('menu'));\n  $('tabextras').addEventListener('click', () => setProdTab('xpage'));\n  $('tabmenu').addEventListener('keydown', tabKey('menu'));\n  $('tabextras').addEventListener('keydown', tabKey('xpage'));\n}\n",
@@ -228,11 +244,15 @@ export const S2_FOLD = {
    ""
   ],
   [
-   "// `ctx` (STRUCTURE S2 §5.2, optional): { isExtra(target) → whether the named ref / key is an EXTRA row of the draft; counts() → { maxPerGroup }\n// of the draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart\nexport function outcomeFor(err, op = 'publish', ctx = {}) {\n",
+   "// `ctx` (STRUCTURE S2 §5.2, optional; extras-logic extrasOutcomeCtx): { isExtra(target) → whether the named ref / key is an EXTRA row of the\n// draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart\nexport function outcomeFor(err, op = 'publish', ctx = {}) {\n",
    "export function outcomeFor(err, op = 'publish') {\n"
   ],
   [
-   "  }\n  // ── STRUCTURE S2 §5.2 — an EXTRA's refusal (the draft says the target is an extra row): the extra's copy, FIX-EXTRA to its row ──\n  const isExtra = !!(base.target && ctx && typeof ctx.isExtra === 'function' && ctx.isExtra(base.target));\n  if (isExtra && code === 'name_taken') {\n    base.title = 'Ese nombre ya está en tu menú'; base.detail = 'Elegí otro nombre para el extra nuevo.';\n    base.action = { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' };\n  }\n  if (code === 'extras_group_empty' && b && typeof b.group === 'string' && b.group) base.group = b.group;   // (a): the group, once the server names it\n  if (code === 'deleted_ids_stale_baseline' && b && Array.isArray(b.existing_ids)) base.existingIds = b.existing_ids.map(String);\n  if (code === 'structure_caps' && b && (b.field === 'extra_categories' || b.field === 'extras')) {\n    // the server reports a group's cap and the menu's cap alike (field 'extras'): the draft's own counts tell which was crossed\n    const c = ctx && typeof ctx.counts === 'function' ? ctx.counts() : null;\n    const perGroup = b.field === 'extras' && !!c && c.maxPerGroup > STRUCTURE_CAPS.perGroup;\n    if (b.field === 'extra_categories') { base.title = 'Llegaste al máximo de grupos'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.groups} grupos de extras.`; }\n    else if (perGroup) { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }\n    else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }\n    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };\n",
+   "    if (target) { base.target = target; base.targetIs = typeof b.ref === 'string' ? 'ref' : 'key'; }   // S2 §5.2: a new extra by its ref, a published one by its key\n",
+   "    if (target) base.target = target;\n"
+  ],
+  [
+   "  }\n  // ── STRUCTURE S2 §5.2 — an EXTRA's refusal (the draft says the target is an extra row): the extra's copy, FIX-EXTRA to its row ──\n  const isExtra = !!(base.target && ctx && typeof ctx.isExtra === 'function' && ctx.isExtra(base.target));\n  if (isExtra && code === 'name_taken') {\n    base.title = 'Ese nombre ya está en tu menú'; base.detail = 'Elegí otro nombre para el extra nuevo.';\n    base.action = { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' };\n  }\n  if (code === 'extras_group_empty' && b && typeof b.group === 'string' && b.group) base.group = b.group;   // (a): the group, once the server names it\n  if (code === 'deleted_ids_stale_baseline' && b && Array.isArray(b.existing_ids)) base.existingIds = b.existing_ids.map(String);\n  if (code === 'structure_caps' && b && ['extra_categories', 'extras_in_group', 'extras'].includes(b.field)) {\n    // 5f 3290d9d0: a group's cap answers field 'extras_in_group' (+ group); 'extras' is the menu-wide cap only\n    if (b.field === 'extras_in_group' && typeof b.group === 'string' && b.group) base.group = b.group;\n    if (b.field === 'extra_categories') { base.title = 'Llegaste al máximo de grupos'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.groups} grupos de extras.`; }\n    else if (b.field === 'extras_in_group') { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }\n    else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }\n    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };\n",
    ""
   ],
   [

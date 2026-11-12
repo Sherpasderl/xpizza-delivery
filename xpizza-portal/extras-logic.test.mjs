@@ -253,3 +253,21 @@ test('X4 — groupOrders is a PURE reader (the bar’s «· N grupos»): the pub
   assert.deepEqual(r, { was: o, now: next }, 'the published order and the draft’s');
   assert.equal(JSON.stringify(d), before, 'the draft is byte-identical after');
 });
+
+// ── §5.2 — the outcome context: which refusal target is an EXTRA (and its group), and the draft's largest group ─────────────────
+import { extrasOutcomeCtx } from './extras-logic.js';
+test('§5.2 — extrasOutcomeCtx: a new extra by its ref and a published one by its key are extras (with their group); a dish is not; the largest group’s size; PURE', () => {
+  'use strict';
+  const d = createDraft(seed('la_musa'));
+  assert.equal(applyExposureOps(d, [{ op: 'extra.add', group: 'Salsas', ref: 'tmp:ctx-0001', name: 'Salsa nueva', price: 20 }], ON).ok, true);
+  const src = draftSource(d);
+  const keyed = src.extras.find((e) => typeof e.key === 'string');
+  const before = JSON.stringify(d);
+  const deepFreeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
+  deepFreeze(d);
+  const ctx = extrasOutcomeCtx(d);
+  assert.equal(JSON.stringify(d), before, 'a pure reader');
+  assert.deepEqual([ctx.isExtra('tmp:ctx-0001'), ctx.groupOf('tmp:ctx-0001')], [true, 'Salsas'], 'a new extra by its ref');
+  assert.deepEqual([ctx.isExtra(keyed.key), ctx.groupOf(keyed.key)], [true, keyed.display.cat], 'a published extra by its key');
+  assert.deepEqual([ctx.isExtra('dimsum_01'), ctx.groupOf('dimsum_01')], [false, null], 'a dish is not an extra');
+});

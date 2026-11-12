@@ -1361,8 +1361,8 @@ test('S2 §5.2 — the caps panels: the three owner-approved lines, the numbers 
   assert.deepStrictEqual({ ...STRUCTURE_CAPS }, { groups: LIMITS.groups, perGroup: LIMITS.perGroup, extras: LIMITS.extras }, 'the copy\u2019s numbers ARE the server\u2019s caps');
   const g = outcomeFor(xErr('structure_caps', 409, { field: 'extra_categories' }), 'edit', EXTRA_CTX);
   assert.deepStrictEqual([g.title, g.detail, g.action.label], ['Llegaste al máximo de grupos', 'Podés tener hasta 20 grupos de extras.', 'Entendido']);
-  const pg = outcomeFor(xErr('structure_caps', 409, { field: 'extras' }), 'edit', { ...EXTRA_CTX, counts: () => ({ maxPerGroup: 31 }) });
-  assert.deepStrictEqual([pg.title, pg.detail], ['Llegaste al máximo de extras en un grupo', 'Un grupo puede tener hasta 30 extras.'], 'a group over its cap (the draft says which)');
-  const all = outcomeFor(xErr('structure_caps', 409, { field: 'extras' }), 'edit', { ...EXTRA_CTX, counts: () => ({ maxPerGroup: 12 }) });
-  assert.deepStrictEqual([all.title, all.detail], ['Llegaste al máximo de extras', 'Podés tener hasta 600 extras.'], 'the menu over its cap');
+  const pg = outcomeFor(xErr('structure_caps', 409, { field: 'extras_in_group', group: 'Salsas' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([pg.title, pg.detail, pg.group], ['Llegaste al máximo de extras en un grupo', 'Un grupo puede tener hasta 30 extras.', 'Salsas'], 'a group over its cap (5f: field extras_in_group + group)');
+  const all = outcomeFor(xErr('structure_caps', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([all.title, all.detail], ['Llegaste al máximo de extras', 'Podés tener hasta 600 extras.'], 'the menu over its cap (field extras = menu-wide only)');
 });
