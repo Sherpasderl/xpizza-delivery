@@ -209,19 +209,21 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
   ok('L6 catalog-fallback row: the ladder\'s dispatcher_alerts write precedes the refusal and is the only write');
 
   // ── L7 BACKSTOP-ORDER-RACE: A's pre-check finds no order; B (its earlier snapshot) creates the live checkout; A's guarded reuse refuses ──
-  await limit(4);
+  // the ZERO-fee table: B's total (food + 0 envío) equals A's (food, its own dq refused) — so A's reserve REUSES B's hold, and the
+  // cart is two pizzas (one free), never a $0 order refused before the pre-check
+  await limit(4, ZERO);
   {
     const realPre = DW.preBookkeepingRefusal; let raced = false; const PH = '99770905';
-    const bodyA = appBody('x1', { km: 5, method: 'online', ph: PH, extra: { redeem: REDEEM } });
+    const bodyA = appBody('x1', { km: 5, method: 'online', ph: PH, extra: { redeem: REDEEM, items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` } });
     DW.preBookkeepingRefusal = async (db, oid, dq, pp) => {
       const out = await realPre(db, oid, dq, pp);
       if (oid === 'el_x1' && !raced && out === null) {
         raced = true;
-        await limit(6);   // B started BEFORE the owner lowered the limit: its snapshot allows 5 km
+        await limit(6, ZERO);   // B started BEFORE the owner lowered the limit: its snapshot allows 5 km
         CHARGED.length = 0;
         const B = await post(app.chargeOnlineOrder, bodyA, { 'x-firebase-id-token': MEMBER });
         assert.ok(B.status === 200 && B.json.checkout_url && CHARGED.length === 1, `L7 premise: B created the live checkout (${B.text.slice(0, 200)})`);
-        await limit(4);
+        await limit(4, ZERO);
       }
       return out;
     };
@@ -232,7 +234,8 @@ const REFUSED = (r, err = 'outside_delivery_bands') => [r.status, r.json && r.js
     assert.deepStrictEqual([...REFUSED(A), CHARGED.length], [409, 'outside_delivery_bands', false, 1], `L7 A answers the refusal — no 503, no URL, B's single charge only (m25) (${A.text.slice(0, 200)})`);
     assert.strictEqual((await holdB()).state, 'reserved', 'L7 B\'s hold (reused from A\'s view) is untouched (m26)');
     assert.strictEqual(await stampsNaming('el_x1'), 0, 'L7 the content stamps naming the order (bookkeeping + A8) are removed (m28, m29)');
-    const next = await post(app.createOrder, appBody('x2', { km: 3, ph: PH }));
+    assert.strictEqual(await stampsNaming('el_x2'), 0, 'L7 premise: the next order is new');
+    const next = await post(app.createOrder, appBody('x2', { km: 3, ph: PH, extra: { items: [{ ...LINES.x_pizza, qty: 2 }], items_text: `2x ${LINES.x_pizza.name}` } }));
     assert.strictEqual(next.status, 200, `L7 the next legitimate same-cart order passes as fresh (${next.text.slice(0, 200)})`);
   }
   ok('L7 BACKSTOP-ORDER-RACE: B\'s live checkout under its earlier snapshot is refused for A (delivery_refused → 409), only owned holds released, A\'s stamps removed, the next order fresh');
