@@ -134,7 +134,7 @@ async function scenarios(rid) {
   // accepts it), and a RETIRED extra name re-added (name_needs_new_id)
   { const keyMode = rid === 'la_musa' ? 'id' : 'name'; const g = seed.extras[0].display.cat;
     const inc = clone(seed); inc.extras.push({ ref: 'tmp:off-gold-0001', price: 15, display: { name: 'Nueva Salsa Off', cat: g, price: 15 } }, { ref: 'tmp:off-gold-0002', price: 16, display: { name: 'i_abcdefghijkl', cat: g, price: 16 } });
-    const call = (incoming, live, reserved) => { try { return { ok: true, source: canon(allocateExtras({ incoming, activeExtras: live.extras, activeItems: live.items, keyMode, reserved, switchOn: true }).source) }; } catch (e) { return { ok: false, code: e.code || String(e.message).slice(0, 80) }; } };
+    const call = (incoming, live, reserved) => { try { return { ok: true, source: canon(allocateExtras({ incoming, activeExtras: live.extras, activeItems: live.items, keyMode, reserved, switchOn: true, mintExtras: SW.on }).source) }; } catch (e) { return { ok: false, code: e.code || String(e.message).slice(0, 80) }; } };
     const gone = seed.extras[0]; const live = clone(seed); live.extras = live.extras.slice(1);
     for (const f of ['extras_by_category', 'extras_by_item']) if (live.structure[f]) for (const v of Object.values(live.structure[f])) if (Array.isArray(v)) { const i = v.indexOf(gone.key); if (i >= 0) v.splice(i, 1); }
     if (Array.isArray(live.structure.extra_order)) live.structure.extra_order = live.structure.extra_order.filter((k) => k !== gone.key);
@@ -172,7 +172,11 @@ function normalize(out) {
   for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
     assert.deepStrictEqual(now[rid][k], golden[rid][k], `🔴 S2B-OFF ${rid} ${k}: differs from the base (e97f70f2) bytes`);
     console.log(`  ✓ ${++n} ${rid} ${k} byte-identical to the base`);
-    if (on) { assert.deepStrictEqual(on[rid][k], golden[rid][k], `🔴 S2B-ON-BEFORE-MINT ${rid} ${k}: the switch ON with no affected identity differs from the base bytes`); console.log(`  ✓ ${++n} ${rid} ${k} ON-before-first-mint byte-identical`); }
+    if (on && k === 'EXTRA_ALLOC') {   // the allocator WITH the switch (Codex S2b r2 P2-7): a fresh / i_… extra allocates as today; the retired name now MINTS (the first mint)
+      assert.deepStrictEqual(on[rid][k].fresh, golden[rid][k].fresh, `🔴 S2B-ON-BEFORE-MINT ${rid} EXTRA_ALLOC.fresh differs from the base bytes`);
+      const m = on[rid][k].retired; assert.ok(m.ok === true && m.source && m.source.frozen_extra_keys && Object.values(m.source.frozen_extra_keys).some((e) => e.minted === true), `S2B-ON ${rid}: the retired name mints with the switch ON (${JSON.stringify(m).slice(0, 160)})`);
+      console.log(`  ✓ ${++n} ${rid} ${k} ON: fresh byte-identical, the retired name mints`);
+    } else if (on) { assert.deepStrictEqual(on[rid][k], golden[rid][k], `🔴 S2B-ON-BEFORE-MINT ${rid} ${k}: the switch ON with no affected identity differs from the base bytes`); console.log(`  ✓ ${++n} ${rid} ${k} ON-before-first-mint byte-identical`); }
   }
   assert.deepStrictEqual(Object.keys(now).map((r) => Object.keys(now[r]).sort()), Object.keys(golden).map((r) => Object.keys(golden[r]).sort()), 'the same scenarios as the golden');
   console.log(`s2b-off-golden: OK (${n})`);

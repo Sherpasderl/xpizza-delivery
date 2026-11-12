@@ -11,10 +11,11 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'l'.repeat(32);
 { const p = require.resolve('./extra-identity'); const real = require('./extra-identity'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, extraIdentityCapabilities: () => ({ mintExtras: true }) } }; }
 const { makeDb } = require('./firestore-fake');
 const { createFakeDb } = require('../merchant/_fake-db');
-const { publishVersion } = require('./catalog-publish');
+const { publishVersion, rollbackVersion, previewVersion } = require('./catalog-publish');
+const { resetDraftToLiveCore } = require('./reset-draft');
 const { buildSourceCandidate } = require('./candidate-validate');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
-const { sourceRefOf, canonicalize } = require('./source-store');
+const { sourceRefOf, canonicalize, encodeUpdateTime } = require('./source-store');
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { publishEditedCore } = require('./publish-edited-handler');
 const PR = require('./publish-request');
@@ -87,6 +88,7 @@ const inputOf = (rid, src, sha) => { const { inputs, built } = buildSourceCandid
       assert.ok(!Object.prototype.hasOwnProperty.call(T.extras, C.key), `${label} ${rid}: the retired key prices nothing`);
     };
     await check('S2BLR-AFTER1', C.price + 7);
+    const vP1 = await CF.getActiveVersionId(fs, rid);
     // ── save 2: a later price edit of the minted extra; the map is kept ──
     const s2 = await save((d) => { const x = d.extras.find((e) => e.key === minted.key); x.price += 2; x.display.price = x.price; return d; });
     assert.strictEqual(s2.status, 200, `S2BLR-SAVE2 ${rid}: ${show(s2)}`);
@@ -98,7 +100,18 @@ const inputOf = (rid, src, sha) => { const { inputs, built } = buildSourceCandid
     const p2 = await publish(s2.body.token, s2.body.diff);
     assert.strictEqual(p2.status, 200, `S2BLR-PUBLISH2 ${rid}: ${show(p2)}`);
     await check('S2BLR-AFTER2', C.price + 9);
-    ok(`${rid}: two renamed + one minted extra at three prices — save → publish → save → ${rid === 'x_pizza' ? 'manager request → ' : ''}publish, each priced and labelled at its own key; the map kept`);
+    // ── rollback to the first published version, then reset the draft to it (Codex S2b r2 P2-7) ──
+    const vP2 = await CF.getActiveVersionId(fs, rid);
+    await quiet(() => rollbackVersion(fs, rid, vP1, { expected: { activeVersionId: vP2 } }));
+    await check('S2BLR-ROLLBACK', C.price + 7);
+    { const snap = await sourceRefOf(fs, rid).get();
+      const r = await quiet(() => resetDraftToLiveCore({ db: fs, authorize: owner, readActiveVersionId: async () => vP1, previewVersion, toPrecondition: PROD_DECODE },
+        { restaurantId: rid, expectedRevision: encodeUpdateTime(snap.updateTime) }, {}));
+      assert.strictEqual(r.status, 200, `S2BLR-RESET ${rid}: ${show(r)}`);
+      const d = (await PR.readDraftFrom(fs, rid)).source;
+      assert.deepStrictEqual(d.frozen_extra_keys, src1.frozen_extra_keys, `S2BLR-RESET ${rid}: the draft takes the rolled-back version's map`);
+      assert.strictEqual(d.extras.find((e) => e.key === minted.key).price, C.price + 7, `S2BLR-RESET ${rid}: the draft takes its prices`); }
+    ok(`${rid}: two renamed + one minted extra at three prices — save → publish → save → ${rid === 'x_pizza' ? 'manager request → ' : ''}publish → rollback → reset, each priced and labelled at its own key; the map kept`);
   }
   FINISHED = true;
   console.log(`s2b-lifecycle-real: OK (${n})`);

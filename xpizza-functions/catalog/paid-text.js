@@ -15,20 +15,24 @@ const MISMATCH = Object.freeze({ ok: false, code: 'items_text_mismatch' });   //
 // the capp's own extra cart key (customer-app/capp-menu.js extraKeyOf) — present on every line extra the app sends
 const extraKeyOf = (e) => (e.extra_id != null && e.extra_id !== '' ? String(e.extra_id) : e.id != null && e.id !== '' ? String(e.id) : null);
 
-// Codex S2b r1 P1-3: built from the RESOLVED identities (resolveLines' stamps: itemPricingKey / extraPricingKey), the SERVER price and the
-// quantities. A body the app's serializer cannot represent faithfully — a line quantity other than 1 (the app sends one line per
-// instance), an extra quantity other than 1, an extra the app could not have keyed (no extra_id / id), one app key for two server
-// identities (or the reverse), a dish split across non-adjacent lines, a key the tables do not price — is refused, never approximated.
+// Codex S2b r1 P1-3 + r2: built from the RESOLVED identities (resolveLines' stamps: itemPricingKey / extraPricingKey), the SERVER price and
+// the quantities — over the LINES that carry an affected extra ONLY (r2, RULED: every other line keeps today's handling, its text trusted
+// as today). On those lines a body the app's serializer cannot represent faithfully — a line quantity other than 1 (the app sends one line
+// per instance), an extra quantity other than 1, an extra the app could not have keyed (no extra_id / id), one app key for two server
+// identities (or the reverse), a dish split across non-adjacent affected lines, a key the tables do not price — is refused, never
+// approximated. The instance maps are prototype-less (r2: an extra_id "__proto__" can never vanish). Each derived row (the app's
+// `${n}x ${name} (L${price}) [labels]`) must appear in the client's text (a multiset: as many times as derived).
 function paidTextRefusal(rid, body, tables) {
   if (!isObj(body) || !Object.prototype.hasOwnProperty.call(body, 'items_text')) return null;
   const items = Array.isArray(body.items) ? body.items : [];
   const labels = MP.labelsOfTables(tables); const km = MP.keyModeOfTables(tables);
   const menuPrices = isObj(tables && tables.menu) ? tables.menu : {};
   const affected = (e) => isObj(e) && extraLabelRequired(labels, MP.extraPricingKey(e, rid, km));
-  if (!items.some((l) => isObj(l) && Array.isArray(l.extras) && l.extras.some(affected))) return null;
+  const lines = items.filter((l) => isObj(l) && Array.isArray(l.extras) && l.extras.some(affected));
+  if (!lines.length) return null;
   const runs = [];
-  for (const l of items) {
-    if (!isObj(l) || Number(l.qty) !== 1) return MISMATCH;
+  for (const l of lines) {
+    if (Number(l.qty) !== 1) return MISMATCH;
     const k = MP.itemPricingKey(l, rid, km);
     if (typeof k !== 'string' || !k || typeof menuPrices[k] !== 'number') return MISMATCH;
     const last = runs[runs.length - 1];
@@ -40,12 +44,12 @@ function paidTextRefusal(rid, body, tables) {
     const byApp = new Map(); const byServer = new Map();
     const inst = [];
     for (const l of r.items) {
-      const ex = {};
-      for (const e of (Array.isArray(l.extras) ? l.extras : [])) {
+      const ex = Object.create(null);
+      for (const e of l.extras) {
         if (!isObj(e) || Number(e.qty) !== 1) return MISMATCH;
         const ck = extraKeyOf(e); const pk = MP.extraPricingKey(e, rid, km);
         if (ck === null || typeof pk !== 'string' || !pk) return MISMATCH;
-        if ((byApp.has(ck) && byApp.get(ck).pk !== pk) || (byServer.has(pk) && byServer.get(pk) !== ck) || Object.prototype.hasOwnProperty.call(ex, ck)) return MISMATCH;
+        if ((byApp.has(ck) && byApp.get(ck).pk !== pk) || (byServer.has(pk) && byServer.get(pk) !== ck) || ck in ex) return MISMATCH;
         byApp.set(ck, { pk, e }); byServer.set(pk, ck); ex[ck] = 1;
       }
       inst.push(ex);
@@ -60,7 +64,9 @@ function paidTextRefusal(rid, body, tables) {
   };
   let derived;
   try { derived = serialize(cart, menu).items_text; } catch (_) { return MISMATCH; }
-  return body.items_text === derived ? null : MISMATCH;
+  const rows = typeof body.items_text === 'string' ? body.items_text.split(' | ') : [];
+  for (const row of derived.split(' | ')) { const i = rows.indexOf(row); if (i < 0) return MISMATCH; rows.splice(i, 1); }
+  return null;
 }
 
 // prepareRedemption's FREE kitchen line: a redeemed affected extra is named by its server label (null → today's name)
