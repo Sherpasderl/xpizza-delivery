@@ -46,6 +46,7 @@ const readActiveBuilt = (rid) => async () => {
   return { built: { items: p.items, structure: p.structure, extras }, versionId, extraRecords: p.extras };
 };
 const readDraft = (rid) => async () => { const s = await sourceRefOf(db, rid).get(); return { source: s.data(), updateTime: encodeUpdateTime(s.updateTime) }; };
+const { mintCapabilities, OPAQUE_SYNTAX } = require('../catalog/mint-opaque'); const MINT_ON = mintCapabilities().enabled === true;   // MINT (main 7407138c)
 const rev = async (rid) => encodeUpdateTime((await sourceRefOf(db, rid).get()).updateTime);
 const draft = async (rid) => (await sourceRefOf(db, rid).get()).data();
 const save = async (rid, source, role = 'owner') => editCatalogCore({ db, authorize: as(role), readActiveBuilt: readActiveBuilt(rid), toPrecondition, addProduct: io },
@@ -130,9 +131,12 @@ const wipe = async () => {
       assert.deepStrictEqual([staff.status, staff.body.error], [403, 'not_owner']);
       const twin = await save(rid, withAdds(rid, cur, [added.display.name.toUpperCase()]));
       assert.deepStrictEqual([twin.status, twin.body.error], [400, 'name_taken'], `${tag}: ${JSON.stringify(twin.body)}`);
-      await keysColOf(db, rid, 'dish').doc(encodeKey(rid === 'x_pizza' ? 'Ya Existio' : 'ya_existio')).set({ canonical_id: 'old', legacy_key: 'x' });
-      const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
-      assert.deepStrictEqual([reused.status, reused.body.error, reused.body.detail], [400, 'name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.']);
+      const usedKey = rid === 'x_pizza' ? 'Ya Existio' : 'ya_existio';
+      await keysColOf(db, rid, 'dish').doc(encodeKey(usedKey)).set({ canonical_id: 'old', legacy_key: 'x' });
+      if (!MINT_ON) {   // MINT OFF: a name with a registry row is refused (today's rule without MINT)
+        const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
+        assert.deepStrictEqual([reused.status, reused.body.error, reused.body.detail], [400, 'name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.']);
+      }
       const many = await save(rid, withAdds(rid, cur, Array.from({ length: 21 }, (_, i) => `Muchos ${i}`)));
       assert.deepStrictEqual([many.status, many.body.error], [400, 'too_many_additions']);
       // with item_text_edit ON a description is an allowed text edit; an existing product's identity stamp is still never editable here
@@ -143,7 +147,16 @@ const wipe = async () => {
       const fk = await save(rid, forged);
       assert.deepStrictEqual([fk.status, fk.body.error], [400, 'client_supplied_key']);
       assert.strictEqual(await rev(rid), before, `${tag}: no refused save wrote anything`);
-      ok(`${tag}: refused at save with nothing written — staff adds (403), a folded duplicate name, a name with a registry row ("Ese nombre ya existió…"), > 20 additions, an existing item changed, a client key`);
+      if (MINT_ON) {   // MINT ON (owner 2026-11-09: a re-added name is a NEW product with a fresh id): it saves under a FRESH opaque key; the old registry row is untouched
+        const reused = await save(rid, withAdds(rid, cur, ['Ya Existio']));
+        assert.strictEqual(reused.status, 200, `${tag}: a re-added name saves with MINT on (${JSON.stringify(reused.body).slice(0, 200)})`);
+        const row = reused.body.source.items.find((i) => i.display && i.display.name === 'Ya Existio');
+        assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== usedKey, `${tag}: under a fresh i_ key, never the used one (${row && row.key})`);
+        assert.deepStrictEqual((await keysColOf(db, rid, 'dish').doc(encodeKey(usedKey)).get()).data(), { canonical_id: 'old', legacy_key: 'x' }, `${tag}: the old key's registry row stays`);
+        const back = await save(rid, cur);   // the draft back to what the later steps expect
+        assert.strictEqual(back.status, 200, `${tag}: the draft restored (${JSON.stringify(back.body).slice(0, 200)})`);
+      }
+      ok(`${tag}: refused at save with nothing written — staff adds (403), a folded duplicate name, a name with a registry row ("Ese nombre ya existió…", MINT off; MINT on: a fresh i_ key, the old row kept), > 20 additions, an existing item changed, a client key`);
 
       // ── ROLLBACK after the add (certified target → retired; uncertified → stays live) ──
       const versions = (await db.collection('restaurants').doc(rid).collection('versions').get()).docs.map((d) => d.id);

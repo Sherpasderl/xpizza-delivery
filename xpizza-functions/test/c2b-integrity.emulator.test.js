@@ -267,8 +267,9 @@ const evidence = async (rid) => (await db.collection('restaurants').doc(rid).col
     assert.deepStrictEqual([[oldRename.status, oldRename.body.error], [oldRecreate.status, oldRecreate.body.error]], [[400, 'client_supplied_key'], [400, 'client_supplied_key']],
       `main's add-only rule: ${JSON.stringify([oldRename.body, oldRecreate.body])}`);
     await F.portalSaveAndPublish(R, (src) => src, 'legit-unchanged'); await checkAfter(R, 'legit-unchanged');
-    const live = (await F.candidateFromSource(R)).items.map((i) => i.key);
-    assert.ok(live.includes('Producto C2B') && live.includes(`${renamed.display.name} Nueva`) && !live.includes(gone.key) && !live.includes(renamed.key), `premise: the lifecycle happened ${JSON.stringify(live)}`);
+    // MINT (main 7407138c): a new product's key is a fresh opaque i_ key, so the additions are found by their display NAME; the removals by key
+    const liveItems = (await F.candidateFromSource(R)).items; const live = liveItems.map((i) => i.key); const names = liveItems.map((i) => i.display && i.display.name);
+    assert.ok(names.includes('Producto C2B') && names.includes(`${renamed.display.name} Nueva`) && !live.includes(gone.key) && !live.includes(renamed.key), `premise: the lifecycle happened ${JSON.stringify(names)} / ${JSON.stringify(live)}`);
     await F.rollback(R, v1);                         // the registry moved since v1 (delete, add, rename)
     await checkAfter(R, 'legit-rollback');
     assert.strictEqual(after.length, 7, `the monitor judged every transition: ${after.join(' ')}`);
