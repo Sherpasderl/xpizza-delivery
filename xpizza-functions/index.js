@@ -1020,7 +1020,7 @@ createOrderApp.all('*', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
         message: 'Las pizzas de 18" solo están disponibles viernes, sábado y domingo.' });
     }
-  }
+  } const dqAdmit = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); { const early = await DW.refusalGate(dqAdmit, async () => {}, orderId); if (early) return res.status(early.refuse.status).json(early.refuse.body); }   // envío limit (Codex build r1 P1): the delivery admission (limit + bands) BEFORE the content stamp, prune, rate tokens and reserve — same refusal bytes, nothing written
 
   // Layer 2 — content-aware phone rate limit: a same-phone same-content re-tap within the window does NOT
   // consume a phone token, so frantic re-taps of ONE cart can't exhaust the abuse quota meant for DISTINCT
@@ -1147,7 +1147,7 @@ createOrderApp.all('*', async (req, res) => {
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
-  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = dqAdmit; const priceBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : orderBreakdownCents(total, restaurantId));  // platform → ISV 15% incl.; non-platform → no split

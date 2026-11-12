@@ -7,6 +7,16 @@ const BASE = '729f6a29';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
+  "now": "  } const dqAdmit = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); { const early = await DW.refusalGate(dqAdmit, async () => {}, orderId); if (early) return res.status(early.refuse.status).json(early.refuse.body); }   // envío limit (Codex build r1 P1): the delivery admission (limit + bands) BEFORE the content stamp, prune, rate tokens and reserve — same refusal bytes, nothing written\n",
+  "was": "  }\n"
+ },
+ {
+  "file": "index.js",
+  "now": "  const dq = dqAdmit; const priceBreakdown = DW.withDelivery(dq, redemptionPriced\n",
+  "was": "  const dq = await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }); const priceBreakdown = DW.withDelivery(dq, redemptionPriced\n"
+ },
+ {
+  "file": "index.js",
   "now": "    if (boundAcq) { const zr = await DW.deliveryResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n",
   "was": "    if (boundAcq) { const zr = await DW.zoneResumeRefusal(db, boundAcq.order, dpP); if (zr) return res.status(zr.httpStatus).json({ error: zr.refusal, ...(zr.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId });   // envío step 2 (F1): a stored app delivery in a zone is not resumed\n"
  },
