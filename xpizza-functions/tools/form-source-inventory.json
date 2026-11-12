@@ -2533,6 +2533,7 @@
   "pay-rate.js",
   "payer-email.js",
   "payments/sdk/coordinator.js",
+  "payments/sdk/decline-buckets.js",
   "payments/sdk/deps.js",
   "payments/sdk/fake-adapter.js",
   "payments/sdk/flow.js",
@@ -2543,7 +2544,10 @@
   "payments/sdk/record.js",
   "payments/sdk/release.js",
   "payments/sdk/rules-clauses.js",
+  "payments/sdk/sdk-pay-flag.js",
   "payments/sdk/secrets.js",
+  "payments/sdk/status.js",
+  "payments/sdk/subject.js",
   "payments/sdk/sweeper.js",
   "payments/sdk/void-eligibility.js",
   "phone-countries.js",
@@ -6029,6 +6033,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/decline-buckets.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/deps.js": {
    "pins": [],
    "lifts": []
@@ -6069,7 +6077,19 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/sdk-pay-flag.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/secrets.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/status.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/subject.js": {
    "pins": [],
    "lifts": []
   },
