@@ -194,7 +194,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual((await DW.refusalGate({ grandfathered: true }, async () => {}, 'o1')).refuse.body.reason, 'checkout_expired');
     assert.strictEqual(DW.withDelivery(kept, { total_cents: 29900, subtotal_cents: 26000, tax_cents: 3900 }).total_cents, 29900 + 7000, 'the reuse fingerprint is computed from the STORED economics');
     // codex S3a r3 / advisor ruling: order_context_changed touches NO reward hold (chargeContext takes no release hook at all)
-    assert.strictEqual(DW.chargeContext.length, 5, 'chargeContext(db, orderId, dq, body, now) — no hold-release parameter');
+    assert.strictEqual(DW.chargeContext.length, 6, 'chargeContext(db, orderId, dq, body, now, pricingP) — no hold-release parameter (zones c9f2f195: the request\'s one pricing read)');
     assert.ok(!/releaseRedemption|releaseStaleHold|reserv/.test(require('fs').readFileSync(require('path').join(__dirname, 'delivery-wire.js'), 'utf8').replace(/\/\/[^\n]*/g, '')), 'delivery-wire.js has no reward-hold code');
     assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'pickup' }, now), { refusal: 'order_context_changed', httpStatus: 409 }, '🔴 delivery stored → a pickup retry is refused (never charged food-only)');
     assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'delivery', lat: north(1).lat, lng: north(1).lng }, now), { refusal: 'order_context_changed', httpStatus: 409 }, 'another pin → refused');
