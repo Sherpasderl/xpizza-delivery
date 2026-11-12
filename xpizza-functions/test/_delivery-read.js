@@ -14,7 +14,7 @@
  * pre-bookkeeping check reads `orders/<oid>` ONCE on the null-dq route (a request the app pricing does not classify), as the op right
  * before the bookkeeping opens (the content-stamp read, or a rate-limit op without a phone). without() sets it aside too, validating:
  *   · at most ONE such op, a plain rtdb `get` of orders/<id>, whose NEXT op opens the bookkeeping (recent_order_content/ | rate_limits/);
- *   · it precedes every write. Any other orders read is left in place (compared to the frozen golden like everything else).
+ *   · it precedes every RTDB write (the catalog's Firestore read transaction is not one). Any other orders read is left in place (compared to the frozen golden like everything else).
  */
 const assert = require('assert');
 
@@ -27,7 +27,7 @@ function withoutPrecheck(ops, label, ignore) {
   const at = []; ops.forEach((e, i) => { if (isPrecheck(e, ops[i + 1])) at.push(i); });
   if (!at.length) return ops;
   assert.strictEqual(at.length, 1, `🔴 ${label}: the envío limit pre-check read must occur at most ONCE (${JSON.stringify(at.map((i) => ops[i]))})`);
-  assert.ok(!ops.slice(0, at[0]).some((e) => !ignore(e) && isWrite(e)), `🔴 ${label}: the envío limit pre-check read must precede every write`);
+  assert.ok(!ops.slice(0, at[0]).some((e) => !ignore(e) && e.db === 'rtdb' && isWrite(e)), `🔴 ${label}: the envío limit pre-check read must precede every RTDB write`);   // a Firestore read transaction (the catalog) is not a write
   PRE_POS.push(at[0]);
   return ops.filter((_, i) => i !== at[0]);
 }
