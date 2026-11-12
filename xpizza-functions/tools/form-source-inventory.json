@@ -2532,23 +2532,30 @@
   "otp-lib.js",
   "pay-rate.js",
   "payer-email.js",
+  "payments/sdk/cards.js",
   "payments/sdk/coordinator.js",
   "payments/sdk/decline-buckets.js",
   "payments/sdk/deps.js",
+  "payments/sdk/display.js",
   "payments/sdk/fake-adapter.js",
+  "payments/sdk/fixtures/redact-pixelpay.js",
   "payments/sdk/flow.js",
   "payments/sdk/functions.js",
   "payments/sdk/materialize-sdk.js",
+  "payments/sdk/order-auth.js",
   "payments/sdk/pixelpay-adapter.js",
   "payments/sdk/psp-adapter.js",
   "payments/sdk/record.js",
+  "payments/sdk/recovery.js",
   "payments/sdk/release.js",
   "payments/sdk/rules-clauses.js",
   "payments/sdk/sdk-pay-flag.js",
   "payments/sdk/secrets.js",
+  "payments/sdk/status-endpoint.js",
   "payments/sdk/status.js",
   "payments/sdk/subject.js",
   "payments/sdk/sweeper.js",
+  "payments/sdk/switch-endpoint.js",
   "payments/sdk/void-eligibility.js",
   "phone-countries.js",
   "phone/flag.js",
@@ -6029,6 +6036,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/cards.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/coordinator.js": {
    "pins": [],
    "lifts": []
@@ -6041,7 +6052,15 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/display.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/fake-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/fixtures/redact-pixelpay.js": {
    "pins": [],
    "lifts": []
   },
@@ -6057,6 +6076,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/order-auth.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/pixelpay-adapter.js": {
    "pins": [],
    "lifts": []
@@ -6066,6 +6089,10 @@
    "lifts": []
   },
   "payments/sdk/record.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/recovery.js": {
    "pins": [],
    "lifts": []
   },
@@ -6085,6 +6112,10 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/status-endpoint.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/status.js": {
    "pins": [],
    "lifts": []
@@ -6094,6 +6125,10 @@
    "lifts": []
   },
   "payments/sdk/sweeper.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/switch-endpoint.js": {
    "pins": [],
    "lifts": []
   },
