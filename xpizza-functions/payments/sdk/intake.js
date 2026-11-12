@@ -37,7 +37,7 @@ async function authorize(req, deps) {
     h['x-firebase-id-token'] = bearer;                                         // the unchanged downstream re-verification
     out = { ok: true, kind: 'member', uid };
   } else {                                                                     // B1.4: the guest ticket, validated HERE
-    if (tHdr != null && tBody != null && tHdr !== tBody) return refuse(401, 'guest_ticket_invalid');
+    if (tHdr != null && tBody != null && tHdr !== tBody) return refuse(401, 'guest_auth_required');   // CONTRACT-Δ C2
     const ticket = tHdr != null ? tHdr : tBody;
     if (typeof ticket !== 'string' || !TICKET_RE.test(ticket)) return refuse(401, 'guest_ticket_invalid');
     const { restaurantId } = deps.ridOf(body);
