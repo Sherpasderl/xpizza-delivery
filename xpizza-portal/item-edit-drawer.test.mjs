@@ -1836,3 +1836,45 @@ test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s pri
     assert.ok(!(ae2 && ae2.matches && ae2.matches('#xdetail .price input')), 'an unmapped ref is dropped, nothing mis-keyed (no focus guessed onto a row)');
   } finally { S2_SERVER.on = false; }
 });
+
+// ── STRUCTURE S2 §3.5 — the remaining leave paths consult localDirty() first: the review, the tenant switch, the reload ──────────────
+async function dirtyRow(p) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);   // started, not complete
+}
+test('S2 §3.5 — «Revisar y publicar» with a DIRTY inline row asks «¿Descartar los cambios?» first: «Seguir editando» sends nothing and keeps it; «Descartar» drops it, then reviews; a COMPLETE row commits first', async () => {
+  const p = await page({ read: XON, on: { editCatalog: (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source }) } });
+  await dirtyRow(p);
+  p.d.getElementById('review').click(); await settle(20);
+  let cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm first');
+  [...cf.querySelectorAll('.mf button')][1].click(); await settle(10);
+  assert.equal(p.n('editCatalog').length, 0, '«Seguir editando»: nothing sent');
+  assert.equal(newRow(p).querySelector('input[aria-label="Nombre del extra"]').value, 'Maní', 'the row kept');
+  p.d.getElementById('review').click(); await settle(20);
+  [...p.d.querySelector('#xscrim.show .modal').querySelectorAll('.mf button')][0].click(); await settle(80);
+  assert.equal(p.n('editCatalog').length, 1, '«Descartar»: then the review');
+  assert.ok(!p.n('editCatalog')[0].body.source.extras.some((e) => e.display.name === 'Maní'), 'the dropped row is not in the save');
+  const q = await page({ read: XON, on: { editCatalog: (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source }) } });
+  await dirtyRow(q);
+  const pr = newRow(q).querySelector('.price input'); pr.focus(); q.type(pr, '15'); await settle(5);
+  q.d.getElementById('review').click(); await settle(80);
+  assert.equal(q.d.querySelector('#xscrim.show .modal'), null, 'a COMPLETE row asks nothing');
+  assert.ok(q.n('editCatalog')[0].body.source.extras.some((e) => e.display.name === 'Maní'), 'it was committed first, then saved');
+});
+test('S2 §3.5 — the branch switch and the self-update (shell.js / SherpaClient: editorCanLeave) and the reload (beforeunload) hold while a local edit or a pending change exists, never when clean', async () => {
+  const p = await page({ read: XON });
+  await dirtyRow(p);
+  p.d.activeElement && p.d.activeElement.blur && p.d.activeElement.blur();   // focus alone also holds the self-update: take it away, so the DIRTY ROW is what holds
+  assert.equal(p.mods.app.editorCanLeave(), false, 'a dirty inline row holds the branch switch / the self-update (the shell\u2019s own gate)');
+  const unload = () => { const e = new p.w.Event('beforeunload', { cancelable: true }); p.w.dispatchEvent(e); return e.defaultPrevented; };
+  assert.equal(unload(), true, 'a dirty inline row holds the reload');
+  key(p, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Escape'); await settle(10);
+  assert.equal(unload(), false, 'clean: the reload is free');
+  p.d.activeElement && p.d.activeElement.blur && p.d.activeElement.blur();
+  assert.equal(p.mods.app.editorCanLeave(), true, 'clean: the switch is free');
+  const x0 = xrows(p)[0].querySelector('.price input'); x0.focus(); p.type(x0, '99'); await settle(10);
+  assert.equal(unload(), true, 'a pending (unsaved) change holds the reload too');
+});

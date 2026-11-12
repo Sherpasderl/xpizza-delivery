@@ -106,6 +106,10 @@ export const S2_FOLD = {
    "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n"
   ],
   [
+   "$('review').addEventListener('click', () => leaveExtras(openReviewFlow));   // S2 §3.5: the Extras page's local editors first (a complete row commits; a dirty one asks)\n",
+   "$('review').addEventListener('click', openReviewFlow);\n"
+  ],
+  [
    "    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));\n",
    "    showOutcome(outcomeFor(e, 'publish'));\n"
   ],
@@ -131,6 +135,14 @@ export const S2_FOLD = {
   ],
   [
    "      return;\n    }\n    if (id === PUBLISH_ACTIONS.FIX_EXTRA) {\n      // STRUCTURE S2 §5.2 — an EXTRA needs a correction: the «Extras» tab, that extra's group, its row with the server's line under it\n      // (focus: a new row's name, a published row's price); extras_group_empty → the group the server named, its «Agregar extra» row open\n      $('scrim').classList.remove('show');\n      clearReview();\n      const ctx = extrasOutcomeCtx(state.draft);\n      const named = outcome.target && ctx.isExtra(outcome.target) ? outcome.target : null;\n      const g = outcome.group || (named ? ctx.groupOf(named) : null);\n      if (g) extrasGroup = g;\n      extraAdd = null; extraAddK = null;\n      extrasRowError = named ? { id: outcome.targetIs === 'ref' ? { ref: named } : { key: named }, text: outcome.detail } : null;\n      prodTab = 'xpage';\n      paint(); syncUi();\n      if (outcome.code === 'extras_group_empty' && outcome.group) { addOpen(); return; }\n      if (extrasRowError) {\n        const k = JSON.stringify(extrasRowError.id);\n        const all = [...$('xdetail').querySelectorAll('[data-k]')];\n        const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);\n        if (ctl) ctl.focus();\n      }\n",
+   ""
+  ],
+  [
+   "    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0) + (localDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note) · S2 §3.5: the Extras page's local editors\n",
+   "    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note)\n"
+  ],
+  [
+   "// STRUCTURE S2 §3.5 — the reload / close (beforeunload): the browser's own prompt while unsaved work exists (a pending change, an open\n// copy, the Extras page's local editors) or a write is in flight. Not on focus alone (that rule is the self-update's, not a close).\nif (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('beforeunload', (e) => {   // a host without it (a test shell): no prompt, never a crash\n  const f = portalReloadFacts();\n  if (!(f.pendingWrite || f.publishing || f.pendingCount > 0)) return;\n  e.preventDefault();\n  e.returnValue = '';\n});\n",
    ""
   ],
   [

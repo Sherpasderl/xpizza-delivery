@@ -1304,6 +1304,7 @@ const LISTENERS = {
   "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
   "$('tabmenu')::click":          ['view', ['setProdTab'], 'S2 — «Menú»: which page shows (view state), never a write'],
   "$('xattach')::click":         ['view', ['bClose'], 'S2 B — the backdrop cancels the «Agregar grupo de extras» sheet (an explicit picker cancel): it closes, nothing is recorded'],
+  "window::beforeunload":         ['singleton', [], 'S2 §3.5 — the reload / close: reads the reload facts (portalReloadFacts) and asks the browser for its own prompt while unsaved work or a write exists; writes nothing'],
   "$('tabextras')::click":        ['view', ['setProdTab'], 'S2 — «Extras»: which page shows (view state), never a write'],
   "$('tabmenu')::keydown":        ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
   "$('tabextras')::keydown":      ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],

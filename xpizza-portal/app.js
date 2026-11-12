@@ -2906,7 +2906,7 @@ function closeReview() {
   // "writes nothing at all", and the second is harder to notice.
   if (state.draft) repaintFromDraft();
 }
-$('review').addEventListener('click', openReviewFlow);
+$('review').addEventListener('click', () => leaveExtras(openReviewFlow));   // S2 §3.5: the Extras page's local editors first (a complete row commits; a dirty one asks)
 
 $('pubback').addEventListener('click', closeReview);
 
@@ -3394,7 +3394,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite || uploader.busy(), publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note)
+    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0) + (localDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note) · S2 §3.5: the Extras page's local editors
 }
 try {
   const S = window.SherpaClient;
@@ -3415,6 +3415,14 @@ export function openEditor(rid, { name = rid, sales } = {}) {
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());
+// STRUCTURE S2 §3.5 — the reload / close (beforeunload): the browser's own prompt while unsaved work exists (a pending change, an open
+// copy, the Extras page's local editors) or a write is in flight. Not on focus alone (that rule is the self-update's, not a close).
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('beforeunload', (e) => {   // a host without it (a test shell): no prompt, never a crash
+  const f = portalReloadFacts();
+  if (!(f.pendingWrite || f.publishing || f.pendingCount > 0)) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
 // the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).
