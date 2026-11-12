@@ -647,6 +647,8 @@
   #xcreate .fld .mopt{margin-top:2px}
   #xcreate .mopt .moname{min-height:38px}   /* MOCKUP frame X: the trash is a plain icon button (the UA border reset) */
   /* B «Agregar grupo de extras» (MOCKUP frame B): the dish action, the sheet's rows, the quiet «Crealo en Extras» line */
+  /* X2b REVIEW-DELETIONS (MOCKUP x2): the deletion list — the review's .brow rows, the group at the end */
+  .mk-dels .brow .bsec{margin-left:auto;font-size:12px;white-space:nowrap}
   .mk-bscrim{cursor:pointer;z-index:30}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
   #xattach .optrow .ogname{display:flex;flex-direction:column;gap:2px}
   #xattach .optrow .ogname .ogsub{font-weight:400}

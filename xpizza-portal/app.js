@@ -78,8 +78,8 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, enProductos } from './extras-view.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows } from './extras-logic.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
 function renderSwitcher() {
@@ -1203,6 +1203,9 @@ let prodTab = 'menu';
 // editor.js mergeDeletionClaim)
 const baseFor = (src) => (mergeDeletionClaim(src, null) && state.deletionBase ? { version: state.deletionBase.version, generation: state.deletionBase.generation } : null);
 let extrasGroup = null;
+// STRUCTURE S2 §5.2 REVIEW-DELETIONS — «Confirmar y seguir» arms ONE acknowledged resend; the next save consumes it
+let reviewAck = false;
+const takeReviewAck = () => { const r = reviewAck; reviewAck = false; return r; };
 // STRUCTURE S2 §5.2 — the server's line FIX-EXTRA brought to an extra's row ({ id, text }); editing that row clears it
 let extrasRowError = null;
 // ── X3 «Crear grupo» (plan §2 items 5 / 5b, §3.5): the form is LOCAL state until «Crear grupo» sends ONE group.create op ───────
@@ -2732,6 +2735,7 @@ $('discard').addEventListener('click', () => {
 // The screen never re-derives the diff from the local draft. A client-side diff would be a second
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
+// S2 §5.2: `reviewed` — the merchant re-confirmed the full deletion list (REVIEW-DELETIONS); takeReviewAck consumes it, ONE resend
 async function openReviewFlow() {
   if (copyDirty()) return;   // unsaved edits: never review around an open, dirty copy (the bar is inert; this is the admission)
   if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
@@ -2772,6 +2776,7 @@ async function openReviewFlow() {
       baseSourceUpdateTime: state.sourceUpdateTime,
       token,
       loadedBase: baseFor(submitted),   // S2 §3.4
+      reviewed: takeReviewAck(),
     });
     if (gen !== opGeneration) return;        // auth changed, tenant switched, or a newer review began
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
@@ -3107,7 +3112,7 @@ async function sendToOwnerFlow() {
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
     writeId = beginWrite(lock);
     const rid = state.draftRid;
-    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token, loadedBase: baseFor(submitted) });   // S2 §3.4
+    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token, loadedBase: baseFor(submitted), reviewed: takeReviewAck() });   // S2 §3.4 · §5.2
     if (gen !== opGeneration) return;
     if (res && res.source) {
       adopt(state.draft, res.source);
@@ -3151,6 +3156,32 @@ function productRefusal(outcome) {
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir' }, productLine: line };
 }
 // C-1: the sections the order page shows, read again — ONLY renderedCategories is taken; the merchant's draft is never replaced
+// STRUCTURE S2 §5.2 REVIEW-DELETIONS (frame X2b): the published menu moved under a removal claim. (1) re-read getEditableCatalog's
+// deletionBase / deletionClaim ONLY (generation + rid checked; the draft kept); (2) show the FULL list from that read; (3) «Confirmar y seguir»
+// resends the SAME request (the owner's save, or the manager's send) acknowledged, with the fresh base; (4) the review from the server's
+// fresh diff. «Cancelar» keeps the draft. A second refusal lands here again — never a loop of silent resends.
+async function reviewDeletions(outcome) {
+  releaseEditLock(state.reviewLock);
+  state.reviewLock = null;
+  $('scrim').classList.remove('show');
+  clearReview();
+  reviewAck = false;
+  const rid = state.draftRid, gen = opGeneration;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (gen !== opGeneration || rid !== state.draftRid) return;   // another world now
+  const base = fresh && fresh.deletionBase;
+  const read = !!(base && typeof base.version === 'string' && base.version && Number.isInteger(base.generation));
+  if (read) state.deletionBase = { version: base.version, generation: base.generation };
+  const served = read && fresh.deletionClaim && Array.isArray(fresh.deletionClaim.ids) ? fresh.deletionClaim.ids : [];
+  const ids = [...served, ...(Array.isArray(outcome.existingIds) ? outcome.existingIds : []), ...mergeDeletionClaim(draftSource(state.draft), 'ids')];
+  openDeletionsReview({
+    rows: deletionRows(state.draft, ids),
+    line: read ? null : 'No pudimos leer el menú publicado. Recargá la página.',
+    onCancel: () => { reviewAck = false; },
+    onGo: bound(() => { reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
+  });
+}
 async function rereadSections() {
   const rid = state.draftRid, gen = opGeneration;
   let fresh = null;
@@ -3160,6 +3191,7 @@ async function rereadSections() {
 }
 function showOutcome(outcome) {
   outcome = productRefusal(outcome);
+  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return; }
   // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
   // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
   releaseEditLock(state.reviewLock);

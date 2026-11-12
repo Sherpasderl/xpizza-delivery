@@ -1029,6 +1029,8 @@ export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, 
 // ∪ the newly removed identities (5f contract §4b). A never-published extra claims nothing.
 // `results === null` asks only whether `src` carries a claim (no write) — the one place that reads it, so the save can send the baseline.
 export function mergeDeletionClaim(src, results) {
+  // 'ids' (S2 §5.2 REVIEW-DELETIONS): the claim's ids, both stored shapes, sorted — the ONE place the claim is read (Ruling A)
+  if (results === 'ids') { const c = src && src.deleted_ids; return [...new Set((Array.isArray(c) ? c : (c && typeof c === 'object' && Array.isArray(c.ids) ? c.ids : [])).map(String))].sort(); }
   if (results === null) { const c = src && src.deleted_ids; return Array.isArray(c) ? c.length > 0 : !!(c && typeof c === 'object' && Array.isArray(c.ids) && c.ids.length); }
   const add = [];
   for (const r of results) for (const id of (r && Array.isArray(r.deletedIds) ? r.deletedIds : [])) add.push(String(id));

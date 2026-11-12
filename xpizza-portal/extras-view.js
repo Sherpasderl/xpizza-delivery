@@ -383,3 +383,41 @@ export function renderAttachSheet(modal, v, on) {
   modal.replaceChildren(mh, mb, mf);
   return { first: first || crear };
 }
+
+// X2b — REVIEW-DELETIONS (frame X2b; plan §5.2): «El menú publicado cambió» · «Antes de seguir, confirmá lo que se quita:» · one .brow per id
+// («Quitado» · the extra · its group; an id no row carries: «Un extra que ya no está en el menú») · «Cancelar» / «Confirmar y seguir» (focused).
+// `line`: a line under the list (the re-read failed: «Confirmar y seguir» stays off). The small modal of X2 (#xscrim).
+export function openDeletionsReview({ rows, line = null, onGo, onCancel, returnTo = null }) {
+  const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal');
+  const mh = el('div', 'mh'); const t = el('div', 'mt', 'El menú publicado cambió'); t.id = 'xcf-t'; mh.append(t);
+  const mb = el('div', 'mb'); const p = el('p', 'eqbody', 'Antes de seguir, confirmá lo que se quita:'); p.id = 'xcf-d';
+  const list = el('div', 'mk-dels');
+  for (const r of rows) {
+    const row = el('div', `brow rem${r.gone ? ' gone' : ''}`);
+    row.append(el('span', 'bchip rem', 'Quitado'), el('span', 'bnm', r.name));
+    if (r.group) row.append(el('span', 'bsec', r.group));
+    list.append(row);
+  }
+  mb.append(p, list);
+  if (line) mb.append(fieldLine('xcf-line', line));
+  const mf = el('div', 'mf');
+  const cancelBtn = el('button', 'btn', 'Cancelar'); cancelBtn.type = 'button'; cancelBtn.classList.add('ghost');
+  const goBtn = el('button', 'btn', 'Confirmar y seguir'); goBtn.type = 'button'; goBtn.classList.add('accent'); goBtn.disabled = !!line;
+  mf.append(cancelBtn, goBtn);
+  modal.replaceChildren(mh, mb, mf);
+  const focusables = () => [cancelBtn, goBtn].filter((b) => !b.disabled);
+  const close = () => { scrim.classList.remove('show'); modal.replaceChildren(); document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim); };
+  const cancel = () => { close(); if (returnTo && returnTo.isConnected) returnTo.focus(); onCancel(); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+    if (e.key !== 'Tab') return;
+    const f = focusables(); const i = f.indexOf(document.activeElement);
+    e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1) + f.length) % f.length].focus();
+  };
+  const onScrim = (e) => { if (e.target === scrim) cancel(); };
+  cancelBtn.addEventListener('click', cancel);
+  goBtn.addEventListener('click', () => { close(); onGo(); });
+  document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
+  scrim.classList.add('show');
+  (goBtn.disabled ? cancelBtn : goBtn).focus();
+}

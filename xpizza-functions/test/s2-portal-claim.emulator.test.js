@@ -88,6 +88,7 @@ async function seed() {
   for (const f of ['extras-eligibility.js', 'exposure-transitions.js']) vm.runInThisContext(fs.readFileSync(path.join(PORTAL, f), 'utf8'));
   const E = await import(pathToFileURL(path.join(PORTAL, 'editor.js')).href);
   const API = await import(pathToFileURL(path.join(PORTAL, 'api.js')).href);
+  const XL = await import(pathToFileURL(path.join(PORTAL, 'extras-logic.js')).href);
   const token = async () => 'tok';
   await seed();
   // the portal's baseFor (app.js): the SERVED baseline rides the save whenever the draft carries a claim — mergeDeletionClaim names it
@@ -119,6 +120,12 @@ async function seed() {
   const saved2 = r;
   E.adopt(d, r.source);
   ok('C2 remove B on the adopted draft → save → 200; BOTH claimed');
+
+  // C5 — REVIEW-DELETIONS names the served claim from CERTIFIED rows (display.identity_id): the portal's deletionRows over the real ids
+  const rows = XL.deletionRows(d, ed.deletionClaim.ids);
+  assert.deepStrictEqual(rows.map((x) => [x.name, x.group, x.gone]).sort(), [[A.display.name, 'Acompañamientos', false], [B.display.name, 'Acompañamientos', false]].sort(),
+    `the full list by name (${JSON.stringify(rows)})`);
+  ok('C5 REVIEW-DELETIONS: the served claim\u2019s identity ids are named from the certified rows (extra · group)');
 
   // C3 — a removal WITHOUT the base is refused, nothing written
   const before = JSON.stringify(await storedDraft());

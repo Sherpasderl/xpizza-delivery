@@ -214,3 +214,14 @@ export function extrasOutcomeCtx(draft) {
   }
   return { isExtra: (t) => groupById.has(t), groupOf: (t) => (groupById.has(t) ? groupById.get(t) : null) };
 }
+
+// STRUCTURE S2 §5.2 REVIEW-DELETIONS (frame X2b): the FULL deletion list, by name. `ids` = the claim's identity ids (the fresh read's
+// deletionClaim ∪ the refusal's existing_ids ∪ the draft's own claim); each is named from the extra row that carried it (display.identity_id —
+// the published row, or a row still in the draft) with its group; an id no row carries is «Un extra que ya no está en el menú». Pure.
+export function deletionRows(draft, ids) {
+  const byId = new Map();
+  for (const src of [draft && draft.orig, draftSource(draft)]) {
+    for (const e of extrasOf(src)) { const id = e.display.identity_id; if (typeof id === 'string' && id && !byId.has(id)) byId.set(id, { name: e.display.name, group: String(e.display.cat) }); }
+  }
+  return [...new Set((Array.isArray(ids) ? ids : []).map(String))].sort().map((id) => (byId.has(id) ? { id, ...byId.get(id), gone: false } : { id, name: 'Un extra que ya no está en el menú', group: null, gone: true }));
+}

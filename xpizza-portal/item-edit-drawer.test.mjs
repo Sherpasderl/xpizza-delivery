@@ -1721,3 +1721,57 @@ test('S2 §5.2 — FIX-EXTRA «Agregar un extra» (extras_group_empty): with the
   assert.ok(!xpage(q).classList.contains('hidden'), '(b) the Extras tab');
   assert.equal(newRow(q), null, '(b) no row opened (the server named no group)');
 });
+
+// ── STRUCTURE S2 §5.2 — REVIEW-DELETIONS (frame X2b): the recovery sheet when the published menu moved under a removal claim ─────────
+// The served draft carries a STORED claim in the server's stored shape ({ ids, base_version, base_generation }); the identity ids are
+// named from certified rows only on the emulator (s2-portal-claim) — here an id no row carries is «Un extra que ya no está en el menú».
+const CLAIMED = () => { const r = XON(); r.source.deleted_ids = { ids: ['xid_gone'], base_version: 'v-live', base_generation: 1 }; r.deletionBase = { version: 'v-live', generation: 1 }; return r; };
+const okSave = (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source });
+const x2b = (p) => p.d.querySelector('#xscrim.show .modal');
+test('S2 §5.2 — REVIEW-DELETIONS: a deletion refusal → the re-read (the FRESH base) → «El menú publicado cambió» with the FULL list → «Confirmar y seguir» resends ONCE acknowledged with the fresh base', async () => {
+  let edits = 0, reread = 0;
+  const p = await page({ read: CLAIMED, on: {
+    editCatalog: (call) => (++edits === 1 ? errJson(409, { error: 'deleted_ids_base_moved' }) : okSave(call)),
+    getEditableCatalog: () => (reread++ ? okJson({ ...CLAIMED(), deletionBase: { version: 'v-new', generation: 2 }, deletionClaim: { ids: ['xid_other'] } }) : null),   // the fresh claim WITHOUT the draft's own id: the list must merge both
+  } });
+  await p.signIn();
+  p.d.getElementById('review').click(); await settle(80);
+  const m = x2b(p);
+  assert.ok(m, 'the recovery sheet');
+  assert.deepEqual([m.querySelector('.mt').textContent, m.querySelector('.eqbody').textContent], ['El menú publicado cambió', 'Antes de seguir, confirmá lo que se quita:']);
+  const rows = [...m.querySelectorAll('.mk-dels .brow')];
+  assert.deepEqual(rows.map((r) => [r.querySelector('.bchip').textContent, r.querySelector('.bnm').textContent]),
+    [['Quitado', 'Un extra que ya no está en el menú'], ['Quitado', 'Un extra que ya no está en el menú']], 'the FULL list: the fresh claim ∪ the draft’s');
+  const [cancel, go] = [...m.querySelectorAll('.mf button')];
+  assert.deepEqual([cancel.textContent, go.textContent], ['Cancelar', 'Confirmar y seguir']);
+  assert.equal(p.d.activeElement, go, 'focus on «Confirmar y seguir»');
+  go.click(); await settle(80);
+  const sent = p.n('editCatalog');
+  assert.equal(sent.length, 2, 'ONE resend');
+  assert.equal(sent[1].body.deleted_ids_reviewed, true, 'acknowledged');
+  assert.deepEqual(sent[1].body.deleted_ids_loaded_base, { version: 'v-new', generation: 2 }, 'with the FRESH base');
+  assert.equal(sent[0].body.deleted_ids_reviewed, undefined, 'the first save carried no acknowledgement');
+  assert.ok(p.d.getElementById('scrim').classList.contains('show'), 'back to the review, from the server’s fresh diff');
+  p.d.getElementById('pubback').click(); await settle(20);
+  p.d.getElementById('review').click(); await settle(80);
+  assert.equal(p.n('editCatalog')[2].body.deleted_ids_reviewed, undefined, 'the acknowledgement was ONE resend, never sticky');
+});
+test('S2 §5.2 — REVIEW-DELETIONS: «Cancelar» keeps the draft and sends nothing; a SECOND refusal shows the sheet again (no silent resend); an unreadable re-read holds «Confirmar y seguir»', async () => {
+  const p = await page({ read: CLAIMED, on: { editCatalog: () => errJson(409, { error: 'deleted_ids_unbound' }) } });
+  await p.signIn();
+  const before = JSON.stringify(p.src && p.src());
+  p.d.getElementById('review').click(); await settle(80);
+  [...x2b(p).querySelectorAll('.mf button')][0].click(); await settle(20);
+  assert.equal(x2b(p), null, 'closed');
+  assert.equal(p.n('editCatalog').length, 1, 'nothing resent');
+  assert.equal(JSON.stringify(p.src && p.src()), before, 'the draft kept');
+  p.d.getElementById('review').click(); await settle(80);
+  [...x2b(p).querySelectorAll('.mf button')][1].click(); await settle(80);
+  assert.equal(p.n('editCatalog').length, 3, 'the confirmed resend went out once');
+  assert.ok(x2b(p), 'refused again → the SAME sheet again, never a loop');
+  const q = await page({ read: CLAIMED, on: { editCatalog: () => errJson(409, { error: 'deleted_ids_base_moved' }), getEditableCatalog: (() => { let n = 0; return () => (n++ ? errJson(503, { error: 'source_unavailable' }) : null); })() } });
+  await q.signIn();
+  q.d.getElementById('review').click(); await settle(80);
+  assert.ok(x2b(q).textContent.includes('No pudimos leer el menú publicado. Recargá la página.'), 'the re-read failed: said');
+  assert.equal([...x2b(q).querySelectorAll('.mf button')][1].disabled, true, '«Confirmar y seguir» held');
+});

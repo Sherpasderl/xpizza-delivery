@@ -1003,7 +1003,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.draft':               [4, 'canEdit', '[1D add-product A: + the post-publish RELOAD, behind the generation + tenant guard, with the lock still held] created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
     'state.review':              [2, 'guarded', '🔴 DOWN FROM 9, THEN FROM 5. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains is ONE mint and ONE clear: every path that drops a review goes through clearReview(), which also retires it as the live one — so a retained record cannot be reinstalled and replayed. 🔴 RESIDUAL #4 IS CLOSED: whole-record replacement — including restoring a genuine prior minted record — is refused at publish admission, so no fiscal path leans on the analyzer.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
-    'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
+    'state.reviewLock':          [9, 'guarded', 'the 9th is reviewDeletions releasing a settled refusal’s ticket exactly as showOutcome does (S2 §5.2); ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [4, 'ender',   '[PORTAL-UI 1a: + openEditor — the ONE selection of a page load (shell.js), made once at boot before any request; a different selection is a full page reload] the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
@@ -1038,7 +1038,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
-    'state.deletionBase':        [2, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
+    'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
@@ -1151,7 +1151,7 @@ const spanFrom = (masked, open) => {
 // Named entry points that write. Matched as BARE REFERENCES, not just calls: a callback handed over as
 // `onPrice` writes exactly as much as one that calls it, and passing the identifier is precisely how
 // the inline price cells stayed unbound while every call-shaped check looked clean.
-const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'onPrice',
+const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletions', 'discard', 'commit', 'commitTo', 'onPrice',
                  'loadMenu', 'loadRestaurants', 'openEditor', 'openReviewFlow', 'runPublish', 'closeReview',
                  'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
                  'openDrawer', 'closeDrawer', 'toggle',
@@ -1568,6 +1568,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.detachRefusal',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
+  // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
+  'deletionRows',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
