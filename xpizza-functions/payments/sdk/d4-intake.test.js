@@ -28,7 +28,8 @@ const RID = 'tb_rest';
 const PHONE = '+504 9999-0000';
 const ATT = 'att_intake_cell_0001';
 const baseBody = (o = {}) => ({ order_id: OID, restaurant_id: RID, customer_phone: PHONE, customer_name: 'Ana Pérez', order_type: 'pickup', payment_method: 'online',
-  items: [{ id: 'tb_pizza', name: 'Pizza', qty: 1, price: 100 }], items_text: '1x Pizza', ...o });
+  items: [{ id: 'tb_pizza', name: 'Pizza', qty: 1, price: 100 }], items_text: '1x Pizza',
+  attempt_id: 'att_intake_default_0001', card: { kind: 'new', sdk_token: 'tok_d', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } }, ...o });
 
 async function world({ hang = false, tomb = false, nonCustomer = false, extra = {} } = {}) {
   let t = T0;
@@ -137,6 +138,40 @@ const AUTH = (w, r) => I().authorize(r, w.deps);
     }
     assert.ok(!reads.some((p) => p.startsWith('user_rewards')), `${L}: zero user_rewards reads (${JSON.stringify(reads)})`);
     assert.ok((await AUTH(w, req({ authorization: 'Bearer idt_A' }, baseBody({ redeem: null })))).ok, `${L}: redeem null ≡ absent`);
+  });
+
+  await cell('SDK-D4-ENVELOPE-EXACT', async (L) => {
+    // CONTRACT-Δ C1: the SDK envelope (attempt_id, replaces_order_id, card + its display) is exact-keyed; the priced body is not
+    const w = await world();
+    const NEW = { kind: 'new', sdk_token: 'tok_1', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } };
+    const ok = (o) => req({ authorization: 'Bearer idt_A' }, baseBody({ attempt_id: 'att_envelope_00000001', card: NEW, ...o }));
+    assert.ok((await AUTH(w, ok({}))).ok, `${L}: a well-formed new card`);
+    assert.ok((await AUTH(w, ok({ card: { kind: 'saved', card_id: 'c'.repeat(20) }, replaces_order_id: null, some_order_field: 1 }))).ok, `${L}: a saved card (member), replaces null, an unknown ORDER key ignored`);
+    const BAD = { status: 400, body: { error: 'bad_request' } };
+    for (const [label, o] of [
+      ['no attempt_id', { attempt_id: undefined }], ['a short attempt_id', { attempt_id: 'short' }], ['a bad attempt_id char', { attempt_id: 'att envelope 00000001' }],
+      ['no card', { card: undefined }], ['an unknown card kind', { card: { kind: 'other' } }], ['an extra card key', { card: { ...NEW, cvv: '123' } }],
+      ['an extra display key', { card: { ...NEW, display: { ...NEW.display, bin: '411111' } } }], ['a bad last4', { card: { ...NEW, display: { ...NEW.display, last4: '42' } } }],
+      ['an expired display year', { card: { ...NEW, display: { ...NEW.display, exp_year: 1969 } } }], ['save not boolean', { card: { ...NEW, save: 'yes' } }],
+      ['an empty sdk_token', { card: { ...NEW, sdk_token: '' } }], ['a bad identifier', { card: { ...NEW, authentication_identifier: 5 } }],
+      ['a saved card with an extra key', { card: { kind: 'saved', card_id: 'c'.repeat(20), token: 'x' } }], ['a malformed replaces_order_id', { replaces_order_id: 'bad id!' }],
+    ]) assert.deepStrictEqual((await AUTH(w, ok(o))).refuse, BAD, `${L}: ${label} ⇒ 400 bad_request`);
+    // a GUEST may not name a saved card (members only)
+    const body = baseBody({ attempt_id: 'att_envelope_00000001', card: { kind: 'saved', card_id: 'c'.repeat(20) } }); const ticket = await mintTicket(w, body);
+    assert.deepStrictEqual((await AUTH(w, req({ 'x-sherpa-order-ticket': ticket }, body))).refuse, BAD, `${L}: a guest with a saved card ⇒ 400 bad_request`);
+  });
+  await cell('SDK-D4-ADMIT-BEFORE-WRITES', async (L) => {
+    // B2's pre-write gates, after the replay lookup falls through: scheduled ⇒ not_allowed; the availability flag ⇒ unavailable
+    const w = await world();
+    const writes = []; const db0 = w.db; w.deps.db = { ...db0, ref: (p) => { const r = db0.ref(p); return { ...r, set: async (v) => { writes.push(p); return r.set(v); }, update: async (v) => { writes.push(p); return r.update(v); }, transaction: async (f) => { writes.push(p); return r.transaction(f); } }; } };
+    const sch = await I().admit(w.deps, { restaurantId: RID, scheduledFor: T0 + 3600e3 });
+    assert.deepStrictEqual(sch, { status: 200, body: { outcome: 'not_allowed', reason: 'scheduled' } }, `${L}: a scheduled order ⇒ not_allowed / scheduled`);
+    const off = await I().admit(w.deps, { restaurantId: RID, scheduledFor: null });
+    assert.deepStrictEqual(off, { status: 200, body: { outcome: 'unavailable', retry_after_s: 300 } }, `${L}: the flag absent ⇒ unavailable (fail-closed)`);
+    db0.setAt('platform_config/sdk_pay', { available: true, restaurants: { [RID]: true } });
+    assert.strictEqual(await I().admit(w.deps, { restaurantId: RID, scheduledFor: null }), null, `${L}: available for this restaurant ⇒ admitted`);
+    assert.deepStrictEqual((await I().admit(w.deps, { restaurantId: 'tb_other', scheduledFor: null })).body.outcome, 'unavailable', `${L}: another restaurant ⇒ unavailable`);
+    assert.deepStrictEqual(writes, [], `${L}: zero writes`);
   });
 
   // ── B2: the authenticated replay lookup ──
