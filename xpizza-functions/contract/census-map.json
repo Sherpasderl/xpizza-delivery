@@ -377,6 +377,7 @@
   "catalog/catalog-context.js#kindComplete": "catalog",
   "catalog/catalog-edit.js#gateFlagsOf": "catalog",
   "catalog/catalog-edit.js#removalDiffOptions": "catalog",
+  "catalog/catalog-edit.js#fiscalAckWaived": "catalog",
   "catalog/catalog-edit.js#pendingRemovalRows": "catalog",
   "catalog/catalog-edit.js#itemsByKey": "catalog",
   "catalog/catalog-firestore.js#readPointerSnap": "catalog",

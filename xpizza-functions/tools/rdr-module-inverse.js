@@ -42,7 +42,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !require('./catalog-edit').onlyRemovedPhotosLeave(photoMap, stored.photos || null, require('./catalog-edit').removalDiffOptions(live, candidate))) {   // B-5 (RULED): a declared removal's own photo entry leaving is cleanup, not an upload\n",
+  "now": "    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !(await require('./catalog-edit').removalPhotoChangesOk({ map: photoMap, stored: stored.photos || null, opts: require('./catalog-edit').removalDiffOptions(live, candidate), storedItems: stored.items, candidateItems: candidate.items, readActive: () => photos.readActive(rid, baseActiveVersionId) }))) {   // B-5 / A-4 (RULED): a declared removal's own photo leaving, or a withdrawn removal's ACTIVE photo returning, is not an upload\n",
   "was": "    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {\n"
  },
  {
@@ -57,7 +57,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/edit-catalog-handler.js",
-  "now": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived(live, next, diff) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today\n",
+  "now": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived({ live, draftBuilt, draft: next, diff, liveExtraRecords: liveRes.extraRecords, draftExtraRecords, activePhotos, draftPhotos: photoMap }) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today\n",
   "was": "  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });\n"
  },
  {
@@ -72,13 +72,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/publish-edited-handler.js",
-  "now": "  { const g = fiscalPublishGate(rid, auth, body, !require('./catalog-edit').fiscalAckWaived(live, draft, diff)); if (g) return g; }   // B-1 (advisor RULED): a removal-only publish changes no factura price — the owner rule stands, the ack is not asked\n",
+  "now": "  { const g = fiscalPublishGate(rid, auth, body, !require('./catalog-edit').fiscalAckWaived({ live, draftBuilt, draft, diff, liveExtraRecords, draftExtraRecords, activePhotos, draftPhotos })); if (g) return g; }   // B-1 (advisor RULED): a removal-only publish changes no factura price — the owner rule stands, the ack is not asked\n",
   "was": "  { const g = fiscalPublishGate(rid, auth, body); if (g) return g; }\n"
  },
  {
   "file": "catalog/publish-edited-handler.js",
   "now": "      items: draftBuilt.items, structure: AP.clearedMapsFor(draftBuilt.structure, live.structure, require('./platform-removal').removalCapabilities().productRemoval), extras: inputs.extras,\n",
   "was": "      items: draftBuilt.items, structure: draftBuilt.structure, extras: inputs.extras,\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "      from: baseActiveVersionId, fiscal_ack_by: usesPlatformFactura(rid) && body && body.fiscalAck === true ? (auth.actor || auth.uid) : undefined,   /* A-5: only an ack actually given (the publisher is `actor`) */\n",
+  "was": "      from: baseActiveVersionId, fiscal_ack_by: usesPlatformFactura(rid) ? (auth.actor || auth.uid) : undefined,\n"
  },
  {
   "file": "catalog/publish-edited-handler.js",

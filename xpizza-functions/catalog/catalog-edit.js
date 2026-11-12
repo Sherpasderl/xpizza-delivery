@@ -113,15 +113,42 @@ function removalOnlyDiff(diff, opts) {
   return none(diff.added) && none(diff.renamed) && none(diff.changed) && none(diff.largeChangeSet) && none(diff.consequences)
     && Array.isArray(diff.removed) && diff.removed.length > 0 && diff.removed.every((r) => r && r.surface === 'item' && declared.has(r.key));
 }
-// Q-12 (advisor RULED): THE one answer to «does this publish waive the fiscal acknowledgement?» — the switch ON (removalDiffOptions is
-// null when OFF) and a removal-only diff. The owner publish's gate and the save's `fiscalAckRequired: false` both read it.
-function fiscalAckWaived(liveBuilt, draft, diff) { return removalOnlyDiff(diff, removalDiffOptions(liveBuilt, draft)); }
-// B-5 (advisor RULED): with photo uploads off, the draft map may differ from the stored one ONLY by the declared removals' own entries leaving
-function onlyRemovedPhotosLeave(map, stored, opts) {
-  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
-  if (!declared) return false;
-  const rest = Object.fromEntries(Object.entries(stored || {}).filter(([k]) => !declared.has(k)));
-  return PS.sameStates(map, Object.keys(rest).length ? rest : null);
+// Q-12 + A-3 (advisor RULED): THE one answer to «does this publish waive the fiscal acknowledgement?» — the switch ON (removalDiffOptions is
+// null when OFF), a removal-only diff, AND the whole draft document equals the ACTIVE one minus ONLY the declared removals and their
+// permitted cleanup (their item_overrides / extras_by_item / reward entries, item_order positions and photo) — compared canonically over
+// the items, the extras (prices + records), the whole structure and the photo map. Anything else (a deny_extras, a badge order…) ⇒ not
+// waived. The owner publish's gate and the save's `fiscalAckRequired: false` both read it.
+function fiscalAckWaived({ live, draftBuilt, draft, diff, liveExtraRecords = null, draftExtraRecords = null, activePhotos = null, draftPhotos = null }) {
+  const opts = removalDiffOptions(live, draft);
+  if (!opts || !removalOnlyDiff(diff, opts) || !draftBuilt || !live) return false;
+  const d = opts.declared;
+  const st = JSON.parse(JSON.stringify(live.structure || {}));
+  st.item_order = (st.item_order || []).filter((k) => !d.has(k));
+  if (st.exposure && st.exposure.item_overrides && typeof st.exposure.item_overrides === 'object') for (const k of d) delete st.exposure.item_overrides[k];
+  if (st.extras_by_item && typeof st.extras_by_item === 'object') for (const k of d) delete st.extras_by_item[k];   // emptied ⇒ {} (the sticky clear)
+  if (Array.isArray(st.redeem_eligible_items)) st.redeem_eligible_items = st.redeem_eligible_items.filter((k) => !d.has(k));
+  const photosOf = (m) => { const e = Object.entries(m || {}).filter(([k]) => !d.has(k)); return e.length ? Object.fromEntries(e) : null; };
+  const both = liveExtraRecords != null && draftExtraRecords != null;
+  const want = { items: (live.items || []).filter((it) => !d.has(it && it.key)), extras: live.extras || null, structure: st, ...(both ? { records: liveExtraRecords } : {}), photos: photosOf(PS.resetMapFromActive(activePhotos)) };
+  const got = { items: draftBuilt.items || [], extras: draftBuilt.extras || null, structure: require('./add-product').clearedMapsFor(draftBuilt.structure || {}, live.structure, true), ...(both ? { records: draftExtraRecords } : {}), photos: photosOf(draftPhotos) };
+  return JSON.stringify(canonicalize(want)) === JSON.stringify(canonicalize(got));
+}
+// B-5 / A-4 (advisor RULED): with photo uploads off, the draft map may differ from the stored one ONLY by (a) a declared removal's OWN entry
+// leaving, or (b) a WITHDRAWN removal's dish (absent from the stored draft, present again) getting back exactly its ACTIVE entry. Switch ON only.
+async function removalPhotoChangesOk({ map, stored, opts, storedItems, candidateItems, readActive }) {
+  if (!require('./platform-removal').removalCapabilities().productRemoval) return false;
+  const declared = opts && opts.declared instanceof Set ? opts.declared : new Set();
+  const keysOf = (items) => new Set((Array.isArray(items) ? items : []).map((it) => it && it.key));
+  const was = keysOf(storedItems), now = keysOf(candidateItems);
+  const changed = PS.photoDiffLines(stored, map).map((l) => l.key);
+  let active;
+  for (const k of changed) {
+    if (declared.has(k) && !(map && Object.prototype.hasOwnProperty.call(map, k))) continue;   // (a)
+    if (was.has(k) || !now.has(k)) return false;
+    if (active === undefined) { try { active = PS.resetMapFromActive(await readActive()) || {}; } catch (_) { return false; } }
+    if (!PS.sameStates({ [k]: map && map[k] }, active[k] ? { [k]: active[k] } : null)) return false;   // (b) exactly the active entry
+  }
+  return true;
 }
 // Pair removals with additions ONLY when the pairing is unambiguous: exactly one of each at that price.
 // Guessing is worse than not pairing. A deletion mislabelled as a "rename" is a deletion nobody reviewed,
@@ -267,4 +294,4 @@ function verifyEditToken(token, state) {
   return { ok: true, reason: null };
 }
 
-module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, onlyRemovedPhotosLeave, fiscalAckWaived };
+module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, removalPhotoChangesOk, fiscalAckWaived };

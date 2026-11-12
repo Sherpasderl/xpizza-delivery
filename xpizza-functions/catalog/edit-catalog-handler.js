@@ -160,7 +160,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     }
     let enabled;
     try { enabled = (await photos.enabled()) === true; } catch (_) { enabled = false; }
-    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !require('./catalog-edit').onlyRemovedPhotosLeave(photoMap, stored.photos || null, require('./catalog-edit').removalDiffOptions(live, candidate))) {   // B-5 (RULED): a declared removal's own photo entry leaving is cleanup, not an upload
+    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !(await require('./catalog-edit').removalPhotoChangesOk({ map: photoMap, stored: stored.photos || null, opts: require('./catalog-edit').removalDiffOptions(live, candidate), storedItems: stored.items, candidateItems: candidate.items, readActive: () => photos.readActive(rid, baseActiveVersionId) }))) {   // B-5 / A-4 (RULED): a declared removal's own photo leaving, or a withdrawn removal's ACTIVE photo returning, is not an upload
       return reply(409, { error: 'photo_change_disabled', detail: 'photo changes are switched off; the photos already in the draft are kept' });
     }
   }
@@ -446,7 +446,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }));
   // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
   // keys and ids, canonical order) before it builds the review.
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived(live, next, diff) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(require('./catalog-edit').fiscalAckWaived({ live, draftBuilt, draft: next, diff, liveExtraRecords: liveRes.extraRecords, draftExtraRecords, activePhotos, draftPhotos: photoMap }) ? { fiscalAckRequired: false } : {}) });   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };
