@@ -2993,7 +2993,9 @@
   },
   "catalog/candidate-validate.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2bext-wiring.guard.test.js"
+   ]
   },
   "catalog/canonical-binding.js": {
    "pins": [],
@@ -3212,7 +3214,9 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s2bext-wiring.guard.test.js"
+   ]
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -3320,9 +3324,7 @@
   },
   "catalog/platform-structure.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/portal-reads.js": {
    "pins": [],
@@ -3411,12 +3413,17 @@
       "tools/s2core-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s3choice-wiring.guard.test.js",
+     "inverses": [
+      "tools/s3choice-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
-    "xpizza-functions/s2-wiring.guard.test.js",
-    "xpizza-functions/s3choice-wiring.guard.test.js"
+    "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
@@ -3500,6 +3507,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3511,6 +3519,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3520,6 +3529,7 @@
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3530,18 +3540,21 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "catalog/structure-budget.js": {
@@ -3549,9 +3562,17 @@
    "lifts": []
   },
   "catalog/structure-gate.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/s3choice-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2bext-module-inverse.js",
+      "tools/s3choice-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js"
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "catalog/text-version.js": {

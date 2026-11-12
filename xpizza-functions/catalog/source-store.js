@@ -272,8 +272,7 @@ function validateSource(source, rid) {
     // stably — and price nothing, because no cart line would ever match. Fail closed on it.
     if (ex.display) {
       const derived = extrasKeyOf(rid, ex.display, keyMode);
-      const recorded = frozenX.get(String(ex.display.id)) === ex.key && (!source.frozen_extra_keys[ex.key].minted || require('./mint-opaque').OPAQUE_SYNTAX.test(ex.key));   // S2b §3: a server-recorded entry (a minted reuse / a rename)
-      if (derived !== ex.key && !recorded) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
+      const recorded = frozenX.get(String(ex.display.id)) === ex.key && (!source.frozen_extra_keys[ex.key].minted || require('./mint-opaque').OPAQUE_SYNTAX.test(ex.key));   /* S2b §3: a server-recorded entry (a minted reuse / a rename) */ if (derived !== ex.key && !recorded) fail(`${rid}/extra ${ex.key} — key does not match its display record (derived ${String(derived)}; x_pizza extras key by NAME, la_musa by id)`);
     }
   }
   // (The old conditional display-price checks lived here. They only compared when the field happened

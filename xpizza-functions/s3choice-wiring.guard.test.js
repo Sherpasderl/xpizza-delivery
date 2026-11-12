@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyS3choiceModule } = require('./tools/s3choice-
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/catalog-edit.js', 'catalog/catalog-publish.js', 'catalog/draft-assess.js', 'catalog/edit-catalog-handler.js', 'catalog/platform-structure.js', 'catalog/publish-edited-handler.js', 'catalog/structure-gate.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
+  const src = require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // the NEWEST layer: the file on disk
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyS3choiceModule(f, src), b, `🔴 ${f} minus the s3choice hunks is not ${BASE}:${f}`);
