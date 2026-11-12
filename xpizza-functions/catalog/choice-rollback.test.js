@@ -133,11 +133,13 @@ const pointerOf = async (db) => { const s = await db.collection('restaurants').d
     const o2 = LM2.structure.variant_items[PAD].variantIds.map((id) => LM2.items.find((i) => String(i.display.id) === String(id)).key);
     const D3b = CT.apply(LM2, { op: 'choice.remove', launcher: PAD, price_from: o2[1] }).source;
     assert.ok(D3b.structure.variant_items && Object.keys(D3b.structure.variant_items).length === 0, 'premise: the D3 version keeps variant_items: {}');
-    const db = makeDb();
-    const b1 = (await publishVersion(db, RID, inputOf(LM2, 'b1'), { expected: { activeVersionId: null } })).versionId;
-    const b2 = (await publishVersion(db, RID, inputOf(D3b, 'b2'), { expected: { activeVersionId: b1 } })).versionId;
-    const b3 = (await publishVersion(db, RID, inputOf(LM2, 'b3'), { expected: { activeVersionId: b2 } })).versionId;
-    await rollbackVersion(db, RID, b2, { expected: { activeVersionId: b3 } });
+    const db = makeDb(); let b2;
+    try {
+      const b1 = (await publishVersion(db, RID, inputOf(LM2, 'b1'), { expected: { activeVersionId: null } })).versionId;
+      b2 = (await publishVersion(db, RID, inputOf(D3b, 'b2'), { expected: { activeVersionId: b1 } })).versionId;
+      const b3 = (await publishVersion(db, RID, inputOf(LM2, 'b3'), { expected: { activeVersionId: b2 } })).versionId;
+      await rollbackVersion(db, RID, b2, { expected: { activeVersionId: b3 } });
+    } catch (e) { assert.fail(`S3RB-SHAPE-B: a kept {} must never be refused (${e && e.code}: ${String(e && e.message).slice(0, 100)})`); }
     assert.strictEqual(await pointerOf(db), b2, 'S3RB-SHAPE-B: rollback to the {} version is allowed');
     ok('OFF (b): a version keeping variant_items: {} is published over a grouped one and rolled back to, never refused');
   }
