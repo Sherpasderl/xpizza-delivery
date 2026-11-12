@@ -909,7 +909,8 @@
   "payments/sdk/switch-endpoint.js#cancelSdkPendingCore": "payment",
   "rewards-reserve.js#sweepSdkHold": "rewards",
   "payments/sdk/pixelpay-adapter.js#keysAre": "payment",
-  "payments/sdk/fixtures/redact-pixelpay.js#<top>": "infra"
+  "payments/sdk/fixtures/redact-pixelpay.js#<top>": "infra",
+  "payments/sdk/intake.js#authorize": "intake"
  },
  "pageFunctionExemptions": {
   "xpizza-portal/api.js#rawCall": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: the raw getDeliveryPricing / setDeliveryPricing call reads the HTTP response status only (to tell SAVED from UNKNOWN); no persisted order, no money",

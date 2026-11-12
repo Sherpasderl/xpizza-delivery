@@ -19,9 +19,14 @@ async function placeSdkStatusCore(deps, { headers = {}, query = {} } = {}) {
   let order = await C.readOrder(deps.db, orderId);
   if (!F.isSdkOrder(order)) return { status: 404, body: { error: 'not_found' } };
   if (order.status === 'pending_payment' && !order.payment_placed) await deps.db.ref(`payment_sdk_due/${orderId}`).set(deps.clock());   // W1
+  return answerOrder(deps, orderId, order);
+}
+// The §4 answer for an SDK order: ONE read of the record per resolution; an approved-but-unplaced original is decided
+// (decidePlacement), then resolved again. Shared with the intake's replay lookup (B2), which passes the replayed attempt_id.
+async function answerOrder(deps, orderId, order, { attempt_id } = {}) {
   for (let pass = 0; pass < 2; pass += 1) {
     const rec = await C.readRecord(deps.db, orderId);   // ONE read per resolution
-    const r = resolveStatus(orderId, order, rec, { now: deps.clock() });
+    const r = resolveStatus(orderId, order, rec, { now: deps.clock(), attempt_id });
     if (r.kind === 'outcome') return { status: 200, body: r.body };
     if (r.kind === 'no_attempt') {
       const anyOp = rec && Object.values(R.opsOf(rec)).some((o) => R.MONEY_ACTIONS.includes(o.action));
@@ -33,4 +38,4 @@ async function placeSdkStatusCore(deps, { headers = {}, query = {} } = {}) {
   }
   return { status: 200, body: { outcome: 'under_review', order_id: orderId } };
 }
-module.exports = { placeSdkStatusCore };
+module.exports = { placeSdkStatusCore, answerOrder };
