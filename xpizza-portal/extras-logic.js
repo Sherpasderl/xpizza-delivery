@@ -6,7 +6,7 @@
 //   detail  the selected group's rows — a published extra by { key }, a new (keyless) one by { ref } with «Nuevo», a changed price
 //           marked, an extra removed in this draft still listed (greyed, «Se quita al publicar») — its count, reach and shared warning
 // Names are TEXT in S2-core (renames come with S2b).
-import { draftSource } from './editor.js';
+import { draftSource, attachRefusal } from './editor.js';
 
 const groupsOf = (src) => (src && src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : []);
 const extrasOf = (src) => (src && Array.isArray(src.extras) ? src.extras.filter((e) => e && e.display) : []);
@@ -50,4 +50,111 @@ export function extrasPageModel(draft, { group = null } = {}) {
     detail = { group: selected, rows, count: rows.filter((r) => !r.removed).length, reach: n, shared: n !== null && n > 1 };
   }
   return { rail, selected, detail };
+}
+
+// ── X3 «Crear grupo» + X3b «A productos que elija» (MOCKUP x4b; plan r3 §2 items 5 / 5b, §3.5) ───────────────────────────────────
+// The form is LOCAL state (never the draft) until «Crear grupo» builds ONE group.create op for the writer. Each mode keeps its own
+// inputs; the op reads only the selected one. Eligibility is the WRITER's own dry run (editor.js attachRefusal), never a parallel rule.
+export const GROUP_NAME_MAX = 40;
+const REASON = { none: 'Tiene «Sin extras»', deny_all: 'No ofrece extras', option_override: 'Sus opciones tienen reglas propias', unsaved: 'Guardá el producto primero' };
+const chars = (x) => [...String(x)].length;
+const newRef = () => {
+  const c = globalThis.crypto;
+  const id = c && typeof c.randomUUID === 'function' ? c.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`.padEnd(12, '0');
+  return `tmp:${id}`;
+};
+const priceOf = (raw) => { const t = String(raw ?? '').trim(); return /^\d+$/.test(t) ? Number(t) : null; };
+
+export function createGroupForm() {
+  return { name: '', rows: [{ ref: newRef(), name: '', raw: '' }], mode: 'none', cat: null, marked: [] };
+}
+// one change → a NEW form (the caller keeps it); unknown fields change nothing
+export function setCreateField(f, field, v) {
+  const n = { ...f, rows: f.rows.map((r) => ({ ...r })), marked: f.marked.slice() };
+  if (field === 'name') n.name = typeof v === 'string' ? v : '';
+  else if (field === 'row' && v && n.rows[v.i]) { if ('name' in v) n.rows[v.i].name = String(v.name ?? ''); if ('raw' in v) n.rows[v.i].raw = String(v.raw ?? ''); }
+  else if (field === 'addRow') n.rows.push({ ref: newRef(), name: '', raw: '' });
+  else if (field === 'removeRow' && n.rows.length > 1) n.rows.splice(v, 1);
+  else if (field === 'mode' && ['none', 'cat', 'items'].includes(v)) n.mode = v;
+  else if (field === 'cat') n.cat = v == null ? null : String(v);
+  else if (field === 'mark' && v && typeof v.key === 'string') n.marked = v.on ? [...new Set([...n.marked, v.key])] : n.marked.filter((k) => k !== v.key);
+  else if (field === 'markAll' || field === 'markNone') n.__sectionOp = { field, cat: v && v.cat };
+  return n;
+}
+function launchersOf(src) {
+  const items = Array.isArray(src.items) ? src.items : [];
+  return items.filter((r) => r && r.display && r.display.variantOf == null && r.display.choice == null);
+}
+function sectionsOf(src, f) {
+  const cats = (src.structure && Array.isArray(src.structure.categories)) ? src.structure.categories : [];
+  const rows = launchersOf(src).map((r) => {
+    const key = typeof r.key === 'string' ? r.key : r.ref;
+    const refused = attachRefusal(src, { mode: 'items', items: [key] });
+    return { key, name: r.display.name, sub: r.display.subcat || null, cat: String(r.display.cat), disabled: !!refused, reason: refused ? (REASON[refused.reason] || null) : null };
+  });
+  let marked = new Set(f.marked);
+  if (f.__sectionOp) {   // «Marcar todos» / «Ninguno» on one section: its ELIGIBLE rows only
+    const inSec = rows.filter((r) => r.cat === String(f.__sectionOp.cat) && !r.disabled).map((r) => r.key);
+    if (f.__sectionOp.field === 'markAll') inSec.forEach((k) => marked.add(k)); else inSec.forEach((k) => marked.delete(k));
+  }
+  marked = new Set([...marked].filter((k) => rows.some((r) => r.key === k && !r.disabled)));   // a disabled row is never marked
+  const out = [];
+  for (const c of cats) {
+    const rs = rows.filter((r) => r.cat === String(c.id)).map((r) => ({ ...r, checked: marked.has(r.key) }));
+    if (!rs.length) continue;
+    const el = rs.filter((r) => !r.disabled), m = el.filter((r) => r.checked).length;
+    out.push({ cat: String(c.id), name: c.name || String(c.id), rows: rs, count: `${m} de ${el.length}`, link: el.length === 0 ? null : (m === el.length ? 'Ninguno' : 'Marcar todos') });
+  }
+  return { sections: out, marked: [...marked] };
+}
+// a form with its section op applied (the caller stores this as the new form)
+export function settleForm(src, f) {
+  if (!f.__sectionOp) return f;
+  const { marked } = sectionsOf(src, f);
+  const n = { ...f, marked }; delete n.__sectionOp; return n;
+}
+export function createGroupView(draft, f0) {
+  const src = draftSource(draft);
+  const f = settleForm(src, f0);
+  const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
+  const nm = f.name.replace(/\s+/g, ' ').trim();
+  const nameError = nm && groups.includes(nm) ? 'Ya hay un grupo con ese nombre.' : null;
+  const rows = f.rows.map((r) => {
+    const started = r.name.trim() !== '' || r.raw.trim() !== '';
+    const p = priceOf(r.raw);
+    return { ref: r.ref, name: r.name, raw: r.raw, started,
+      nameError: started && !r.name.trim() ? 'Escribí el nombre.' : null,
+      priceError: started && (p === null || p < 1) ? 'El precio debe ser al menos L 1.' : null };
+  });
+  const complete = rows.filter((r) => r.started && !r.nameError && !r.priceError);
+  const pick = sectionsOf(src, f);
+  const cats = (src.structure && Array.isArray(src.structure.categories)) ? src.structure.categories : [];
+  const categories = cats.map((c) => {
+    const refused = attachRefusal(src, { mode: 'cat', cat: String(c.id) });
+    const label = !refused ? (c.name || String(c.id))
+      : `${c.name || String(c.id)} · ${refused.code === 'exposure_option_override' ? 'un producto tiene opciones con reglas propias' : 'sin productos'}`;
+    return { cat: String(c.id), label, disabled: !!refused };
+  });
+  let catNote = null;
+  if (f.mode === 'cat' && f.cat) {
+    const n = launchersOf(src).filter((r) => String(r.display.cat) === f.cat && attachRefusal(src, { mode: 'items', items: [r.key] })).length;
+    if (n) catNote = n === 1 ? '1 producto de esta categoría no muestra extras.' : `${n} productos de esta categoría no muestran extras.`;
+  }
+  const markedN = pick.marked.length;
+  const attachOk = f.mode === 'none' || (f.mode === 'cat' && f.cat && !(categories.find((o) => o.cat === f.cat) || {}).disabled) || (f.mode === 'items' && markedN > 0);
+  return {
+    name: f.name, counter: `${chars(f.name)}/${GROUP_NAME_MAX}`, nameError, rows, mode: f.mode,
+    modeSub: f.mode === 'items' ? `· ${markedN} ${markedN === 1 ? 'producto' : 'productos'}` : null,
+    sections: pick.sections, categories, cat: f.cat, catNote,
+    canCreate: !!nm && !nameError && chars(f.name) <= GROUP_NAME_MAX && complete.length > 0 && rows.every((r) => !r.started || (!r.nameError && !r.priceError)) && attachOk,
+  };
+}
+// the ONE op «Crear grupo» sends to the writer — the selected mode only; complete rows only; new extras by tmp ref (no key / id / stamp)
+export function createGroupOp(draft, f0) {
+  const src = draftSource(draft);
+  const f = settleForm(src, f0);
+  const extras = f.rows.filter((r) => r.name.trim() && priceOf(r.raw) !== null && priceOf(r.raw) >= 1)
+    .map((r) => ({ ref: r.ref, name: r.name.replace(/\s+/g, ' ').trim(), price: priceOf(r.raw) }));
+  const attach = f.mode === 'cat' ? { mode: 'cat', cat: f.cat } : f.mode === 'items' ? { mode: 'items', items: sectionsOf(src, f).marked } : { mode: 'none' };
+  return { op: 'group.create', group: f.name.replace(/\s+/g, ' ').trim(), extras, attach };
 }
