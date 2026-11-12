@@ -56,6 +56,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/evidence-encoding.js',           // 1D D4-c2a: the identity-evidence encoder (pure), reached via catalog-publish.js
   'catalog/exposure-source.js',
   'catalog/exposure-transitions.js',       // S2-core: the Extras-page writer's effectiveGroups + group order (pure), via extras-projection.js
+  'catalog/extra-key-intake.js',           // S2b P2-5: the one resolved extra identity, loaded with extra-labels (pure)
   'catalog/extra-labels.js',               // S2b §4: the affected extras' labels + markers, loaded with catalog-firestore (pure)
   'catalog/extras-eligibility-store.js',    // per-product extras: the per-version eligibility doc, written by catalog-publish.js
   'catalog/extras-eligibility.js',          // per-product extras: the ONE pure evaluator, via the eligibility store

@@ -100,7 +100,9 @@ async function tablesOf(rid, src) {
     const { pricedLineItems } = require('../factura/pricing');
     const { s, renamedKey } = recorded('x_pizza'); const T = await tablesOf('x_pizza', s); const L = MP.labelsOfTables(T);
     const dish = Object.keys(T.menu).find((k) => !/^i_/.test(k));
-    const r = pricedLineItems([{ name: dish, qty: 1, extras: [{ name: renamedKey, extra_key: renamedKey }, { name: 'whatever', extra_key: MK }] }], T.menu, T.extras, L, undefined);
+    const body = { items: [{ name: dish, qty: 1, extras: [{ name: renamedKey, extra_key: renamedKey }, { name: 'whatever', extra_key: MK }] }] };
+    assert.deepStrictEqual(RL.resolveLines('x_pizza', body, T), { ok: true }, 'S2BLB-FACTURA: premise — resolved first (the intake order)');
+    const r = pricedLineItems(body.items, T.menu, T.extras, L, undefined);
     assert.ok(!r.error, `S2BLB-FACTURA: priced (${r.error})`);
     assert.ok(/\(\+Renombrado S2b, Reusado S2b\)$/.test(r.items[0].description), `S2BLB-FACTURA: described by labels (${r.items[0].description})`);
     ok('factura: affected extras are priced by their key and described by their label');

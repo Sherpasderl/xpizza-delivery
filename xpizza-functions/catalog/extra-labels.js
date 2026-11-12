@@ -5,6 +5,7 @@
 // `x?:<key>` → '1' (required). Both are written from the version's OWN frozen_extra_keys (authoritative server metadata, never «key ≠
 // derived»); a version with no affected extra adds nothing, so its tables are today's bytes. Refusal (resolveLines, every intake, every
 // brand): a cart / reward extra whose key is REQUIRED (marked) and has no label → labels_unavailable. Pure.
+const XK = require('./extra-key-intake');   // loaded with the module (the ops / portal closures pin runtime = static)
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const LABEL = (k) => `x:${k}`;
 const REQUIRED = (k) => `x?:${k}`;
@@ -37,7 +38,7 @@ function extraLabelRefusal(rid, body, tables) {
   const gap = (k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(xt, k) && extraLabelRequired(labels, k) && !extraLabelOf(labels, k);
   for (let i = 0; i < items.length; i++) {
     const exs = isObj(items[i]) && Array.isArray(items[i].extras) ? items[i].extras : [];
-    for (let j = 0; j < exs.length; j++) if (isObj(exs[j]) && gap(MP.extraPricingKey(exs[j], rid, km))) return { ok: false, code: 'labels_unavailable', at: 'extras', index: i, extra: j };
+    for (let j = 0; j < exs.length; j++) if (isObj(exs[j]) && gap(XK.resolvedExtraKey(exs[j], rid, km))) return { ok: false, code: 'labels_unavailable', at: 'extras', index: i, extra: j };
   }
   const r = isObj(body) && isObj(body.redeem) ? body.redeem : {};
   const ids = Array.isArray(r.items) ? r.items.map((it) => (isObj(it) ? it.id : undefined)) : [];

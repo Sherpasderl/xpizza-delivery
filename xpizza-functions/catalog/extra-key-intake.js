@@ -27,4 +27,12 @@ function extraKeyRefusal(rid, body, tables) {
   return null;
 }
 
-module.exports = { extraKeyRefusal };
+// THE one server identity of a cart extra (Codex S2b r1 P2-5): its validated extra_key (extraKeyRefusal ran first), else the legacy field
+// of the tables' key mode. resolveLines STAMPS it (PRICING_KEY_STAMP); every consumer reads the stamp through menu-pricing extraPricingKey.
+function resolvedExtraKey(ex, rid, keyMode) {
+  if (!isObj(ex)) return undefined;
+  if (own(ex, 'extra_key') && typeof ex.extra_key === 'string' && ex.extra_key) return ex.extra_key;
+  return require('../menu-pricing').effectiveKeyMode(rid, keyMode) === 'id' ? ex.id : ex.name;
+}
+
+module.exports = { extraKeyRefusal, resolvedExtraKey };

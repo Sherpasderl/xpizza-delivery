@@ -43,7 +43,7 @@ function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionI
     const extras = Array.isArray(it.extras) ? it.extras : [];
     const extraNames = [];
     for (const ex of extras) {
-      const ename = ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : ex && ex.name;   // S2b §2: the key it is priced by
+      const ename = ex && typeof ex[Symbol.for('xpizza.d4.pricingKeyStamp')] === 'string' && ex[Symbol.for('xpizza.d4.pricingKeyStamp')] ? ex[Symbol.for('xpizza.d4.pricingKeyStamp')] : ex && ex.name;   // S2b P2-5: the stamped server identity (menu-pricing PRICING_KEY_STAMP), as pricing reads it
       if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
         return { items: null, error: `unknown extra: ${String(ename).slice(0, 40)}` };
       }

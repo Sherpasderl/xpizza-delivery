@@ -116,8 +116,9 @@ test('PT-WIRING: both order intakes judge the paid text on the resolution line (
   const hits = src.filter((l) => l.includes('{ const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); }'));
   assert.equal(hits.length, 2, 'createOrder + chargeOnlineOrder');
   const rl = readFileSync(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'), 'utf8');
-  const top = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('const items = body.items;'));
-  assert.ok(top.includes("require('./paid-text').paidTextRefusal(rid, body, tables)"), 'resolveLines judges the paid text before the lines are read');
+  const fn = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('function labelGap('));
+  const stamp = fn.indexOf('for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;'); const pt = fn.indexOf("require('./paid-text').paidTextRefusal(rid, body, tables)");
+  assert.ok(stamp > 0 && pt > stamp && pt < fn.indexOf('return { ok: true };', stamp), 'resolveLines judges the paid text AFTER stamping the server identities (Codex S2b r1 P1-3), before it answers ok');
 });
 // PT-REPRESENT (Codex S2b r1 P1-3): the text is built from the RESOLVED identities and quantities — a body the app's serializer cannot
 // represent faithfully is refused: a line quantity other than 1, extras the app could not have keyed (no id / extra_id), a line price

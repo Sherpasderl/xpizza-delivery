@@ -142,8 +142,18 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "catalog/resolve-lines.js",
-  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; } { const xl = require('./extra-labels').extraLabelRefusal(rid, body, tables); if (xl) return xl; } { const pt = require('./paid-text').paidTextRefusal(rid, body, tables); if (pt) return pt; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
+  "now": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; } { const xk = require('./extra-key-intake').extraKeyRefusal(rid, body, tables); if (xk) return xk; } { const xl = require('./extra-labels').extraLabelRefusal(rid, body, tables); if (xl) return xl; }   // S2b §2.1: a cart extra's extra_key, before any money step\n",
   "was": "  { const rk = keyedRewardRefusal(rid, body.redeem, tables); if (rk) return rk; }\n"
+ },
+ {
+  "file": "catalog/resolve-lines.js",
+  "now": "        const k = isObj(exs[j]) ? require('./extra-key-intake').resolvedExtraKey(exs[j], rid, km) : undefined; if (typeof k === 'string' && k) stamps.push([exs[j], k]);   // S2b P2-5: ONE stamped server identity per extra\n",
+  "was": "        const k = isObj(exs[j]) ? extraPricingKey(exs[j], rid, km) : undefined;\n"
+ },
+ {
+  "file": "catalog/resolve-lines.js",
+  "now": "  for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key; { const pt = require('./paid-text').paidTextRefusal(rid, body, tables); if (pt) return pt; }   // S2b §2.6 (Codex r1 P1-3): judged on the STAMPED identities\n",
+  "was": "  for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;\n"
  },
  {
   "file": "catalog/resolve-lines.js",
@@ -182,7 +192,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "factura/pricing.js",
-  "now": "      const ename = ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : ex && ex.name;   // S2b §2: the key it is priced by\n",
+  "now": "      const ename = ex && typeof ex[Symbol.for('xpizza.d4.pricingKeyStamp')] === 'string' && ex[Symbol.for('xpizza.d4.pricingKeyStamp')] ? ex[Symbol.for('xpizza.d4.pricingKeyStamp')] : ex && ex.name;   // S2b P2-5: the stamped server identity (menu-pricing PRICING_KEY_STAMP), as pricing reads it\n",
   "was": "      const ename = ex && ex.name;\n"
  },
  {
@@ -212,7 +222,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "menu-pricing.js",
-  "now": "  return ex && typeof ex.extra_key === 'string' && ex.extra_key ? ex.extra_key : (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name));   // S2b §2: a validated extra_key (resolveLines) decides first\n",
+  "now": "  return ex && typeof ex === 'object' && typeof ex[PRICING_KEY_STAMP] === 'string' && ex[PRICING_KEY_STAMP] ? ex[PRICING_KEY_STAMP] : (effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name));   // S2b P2-5: the key resolveLines STAMPED decides first (never the wire extra_key)\n",
   "was": "  return effectiveKeyMode(restaurantId, keyMode) === 'id' ? (ex && ex.id) : (ex && ex.name);\n"
  },
  {

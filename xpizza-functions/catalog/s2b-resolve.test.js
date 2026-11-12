@@ -57,8 +57,8 @@ cell('RESOLVE-BAD: an inactive extra_key is menu_changed; a malformed one, or on
   assert.strictEqual(resolveLines('la_musa', { items: [line([{ id: T.other, qty: 1, extra_key: 7 }])] }, T.tables).code, 'invalid_line');
   assert.strictEqual(resolveLines('la_musa', { items: [line([{ id: T.other, qty: 1, extra_key: MK }])] }, T.tables).code, 'invalid_line');
 });
-cell('BIND: the quote fingerprint keys an extra by extra_key — same price, different key → a different fingerprint', () => {
-  const f = (ek) => QT.cartFingerprint(QT.normalizeCartForFingerprint([line([{ id: 'x', qty: 1, extra_key: ek }])], 'la_musa', 'id'), null);
+cell('BIND: the quote fingerprint keys an extra by its RESOLVED (stamped) key — same price, different key → a different fingerprint', () => {
+  const f = (ek) => { const body = { items: [line([{ id: ek === MK ? 'x' : ek, qty: 1, extra_key: ek }])] }; assert.deepStrictEqual(resolveLines('la_musa', body, T.tables), { ok: true }, 'premise: resolved (the intake order)'); return QT.cartFingerprint(QT.normalizeCartForFingerprint(body.items, 'la_musa', 'id'), null); };
   assert.notStrictEqual(f(MK), f(T.other));
 });
 
