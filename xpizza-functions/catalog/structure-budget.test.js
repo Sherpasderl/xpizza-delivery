@@ -94,6 +94,30 @@ const SCALE = { x_pizza: scaledSource('x_pizza'), la_musa: scaledSource('la_musa
     const one = Buffer.byteLength(JSON.stringify({ x: { card: SB.publicUrlBound('la_musa', '0'.repeat(32), 'card'), hero: SB.publicUrlBound('la_musa', '0'.repeat(32), 'hero') } }));
     assert.ok(withP - without >= 50 * (one - 10), `${L}: ${withP - without} ≥ 50 entries × ${one - 10}`);
   });
+  // Codex build r3 #8: the item_keys map is the ENDPOINT's — servedKeyMap(menu), keyed by display id to the pricing key — so a menu whose
+  // frozen (long) keys were renamed to short labels serves those long keys; the bound measures them
+  await cell('SERVED-FROZEN-KEYS x_pizza: renamed frozen long keys are measured as served (servedKeyMap), not as their short labels', (L) => {
+    const s = clone(SCALE.x_pizza); s.frozen_keys = s.frozen_keys || {};
+    let n0 = 0;
+    for (const it of s.items) {
+      if (it.display.variantOf != null || n0 >= 276) continue;
+      const longKey = `${it.key} ${'x'.repeat(200)}`.slice(0, 220);
+      s.structure.item_order = s.structure.item_order.map((k) => (k === it.key ? longKey : k));
+      it.key = longKey; s.frozen_keys[String(it.display.id)] = longKey; it.display.name = `P${n0}`; n0 += 1;
+    }
+    const d = records('x_pizza', s);
+    assert.ok(d.items.filter((i) => i.key.length > 200).length >= 276, `${L}: premise — the built records keep the long frozen keys`);
+    const elig = require('./extras-eligibility-store').buildEligibilityDoc(d);
+    const IO = require('./identity-overlay');
+    const body = require('./public-menu').composeServedMenu('x_pizza', { ...d, keyMode: s.key_mode });
+    body.extras_eligibility = { version: elig.version, deny: elig.public_deny };
+    body.avail_identity = { field: require('../menu-pricing').availIdentityField('x_pizza', s.key_mode) };
+    const served = IO.withServedItemKeys('x_pizza', body, IO.servedKeyMap({ items: d.items }));   // the endpoint's own call (public-menu.js)
+    const parts = SB.servedParts({ rid: 'x_pizza', draft: d, elig, keyMode: s.key_mode });
+    assert.strictEqual(parts.core, Buffer.byteLength(JSON.stringify(served)), `${L}: the core is the served body with the endpoint's key map`);
+    const longIds = Object.values(served.item_keys).filter((k) => k.length > 200).length;
+    assert.ok(longIds >= 276, `${L}: premise — the served item_keys carry the long keys (${longIds})`);
+  });
   await cell('CAPS-GROUPS: a 21st group is structure_caps (extra_categories)', () => {
     const s = allocate(XT.apply(SCALE.la_musa, { op: 'group.create', group: 'Grupo 20', extras: [{ ref: 'tmp:grp20-ex0-xx', name: 'Uno', price: 10 }], attach: { mode: 'none' } }).source);
     refused(() => judge('la_musa', s), 'structure_caps', 'extra_categories');

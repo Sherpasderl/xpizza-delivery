@@ -46,7 +46,10 @@ function servedParts({ rid, draft, elig, keyMode, photos = null }) {
   // what buildPublicMenu attaches after composing (catalog/public-menu.js:228): the version's public eligibility and avail_identity
   body.extras_eligibility = { version: elig.version, deny: elig.public_deny };
   body.avail_identity = { field: require('../menu-pricing').availIdentityField(rid, keyMode) };
-  const withKeys = require('./identity-overlay').withServedItemKeys(rid, body, null);
+  // the endpoint's OWN key map (public-menu.js: servedKeyMap(menu) → withServedItemKeys and the identity overlay) — display id → pricing
+  // key, so a renamed dish's frozen (possibly long) key is what is served and measured (Codex build r3 #8)
+  const IO = require('./identity-overlay'); const keyById = IO.servedKeyMap({ items: draft.items || [] });
+  const withKeys = IO.withServedItemKeys(rid, body, keyById);
   const PP = require('./public-photos');
   const base = PP.assetBaseFor(rid, require('../platform-manifest').PLATFORM.sites);
   const legacy = base ? PP.buildPhotos({ items: draft.items || [] }, base) : {};
@@ -57,7 +60,7 @@ function servedParts({ rid, draft, elig, keyMode, photos = null }) {
     photoBytes += bytes({ [idOf.get(key) || key]: { card: publicUrlBound(rid, e.pid, 'card'), hero: publicUrlBound(rid, e.pid, 'hero') } });
   }
   let identityBytes = 0;
-  for (const r of Array.isArray(body.dishes) ? body.dishes : []) identityBytes += 13 + Math.max(MINTED_ID_MAX, bytes(String(r && (r.key !== undefined ? r.key : r.id))));
+  for (const r of Array.isArray(body.dishes) ? body.dishes : []) identityBytes += 13 + Math.max(MINTED_ID_MAX, bytes(String(IO.keyOfServed(rid, r, keyById) || (r && r.id))));   // a grandfathered id IS the served key
   for (const r of Array.isArray(body.extras) ? body.extras : []) identityBytes += 14 + Math.max(MINTED_ID_MAX, bytes(String(r && (r.key !== undefined ? r.key : r.id))));
   return { core: bytes(withKeys), photos: photoBytes, identity: identityBytes, header: HEADER_ALLOWANCE };
 }
