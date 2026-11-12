@@ -424,6 +424,7 @@
   "catalog/choice-activation.js#choiceActivation": "catalog",
   "catalog/choice-activation.js#specOf": "catalog",
   "catalog/choice-compare.js#compareToActive": "catalog",
+  "catalog/choice-compare.js#prepareExistingGroups": "catalog",
   "catalog/extras-projection.js#projectExtrasMaps": "catalog",
   "catalog/extras-allocate.js#allocateExtras": "catalog",
   "catalog/extras-allocate.js#forSave": "catalog",

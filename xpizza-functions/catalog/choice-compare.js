@@ -73,4 +73,44 @@ function compareToActive(rid, args) {
   return { additions: [...r.additions, ...[...setAside].filter((k) => !r.additions.includes(k))], removals: r.removals };
 }
 
-module.exports = { compareToActive };
+/* The save's allocation of options NEW under an EXISTING dish (option.add, D2): add-product's group preparation owns only whole NEW
+   groups, so these rows are prepared here, IN PLACE on the allocator's working copy, BEFORE allocation (an option's key derives from
+   its full name) — the same derived fields and the same text rules: the choice (tidied, required, the validator's sinks), the full
+   name «{dish} - {choice}», the dish's section / subsection / extras setting, and a group label that is required and safe. Returns the
+   Set of their refs; add-product's group preparation skips exactly those. Called only with choiceEdit ON. */
+function prepareExistingGroups(source, { fieldProblem = () => null } = {}) {
+  const out = new Set();
+  const st = isObj(source.structure) ? source.structure : {};
+  const vi = isObj(st.variant_items) ? st.variant_items : {};
+  const items = Array.isArray(source.items) ? source.items : [];
+  const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+  for (const [lid, spec] of Object.entries(vi)) {
+    const l = items.find((it) => isObj(it) && !has(it, 'ref') && isObj(it.display) && String(it.display.id) === String(lid));
+    if (!l || !isObj(spec) || !Array.isArray(spec.variantIds)) continue;   // a whole NEW group (tmp launcher) is add-product's
+    const fresh = spec.variantIds.filter((v) => typeof v === 'string' && AP.TMP_RE.test(v));
+    if (!fresh.length) continue;
+    const label = typeof spec.label === 'string' ? AP.tidyName(spec.label) : '';
+    if (!label) refuse('label_required', 'a choice group needs a name (e.g. "Tamaño")', l.key, 'label');
+    const lWhy = fieldProblem('label', label);
+    if (lWhy) refuse('text_unsafe', `the group name ${lWhy}`, l.key, 'label');
+    spec.label = label;
+    const policy = has(l.display, 'extras_policy') ? l.display.extras_policy : undefined;
+    for (const ref of fresh) {
+      const v = items.find((it) => isObj(it) && it.ref === ref);
+      if (!v || !isObj(v.display) || String(v.display.variantOf) !== String(lid)) refuse('addition_malformed', `option ${JSON.stringify(ref)} is not a new option of this group`, l.key);
+      const choice = typeof v.display.choice === 'string' ? AP.tidyName(v.display.choice) : '';
+      if (!choice) refuse('choice_label_required', 'every option needs a name', ref, 'choice');
+      const cWhy = fieldProblem('choice', choice);
+      if (cWhy) refuse('text_unsafe', `the option ${cWhy}`, ref, 'choice');
+      const name = AP.optionName(AP.tidyName(l.display.name), choice);
+      const nWhy = fieldProblem('name', name);
+      if (nWhy) refuse('text_unsafe', `the option's full name "${name}" ${nWhy}`, ref, 'choice');
+      const rest = { ...v.display }; for (const f of ['name', 'cat', 'subcat', 'extras_policy', 'choice']) delete rest[f];
+      v.display = { ...rest, name, cat: l.display.cat, ...(has(l.display, 'subcat') ? { subcat: l.display.subcat } : {}), ...(policy !== undefined ? { extras_policy: policy } : {}), choice };
+      out.add(ref);
+    }
+  }
+  return out;
+}
+
+module.exports = { compareToActive, prepareExistingGroups };
