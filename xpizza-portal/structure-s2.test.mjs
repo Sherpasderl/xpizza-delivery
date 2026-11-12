@@ -420,6 +420,31 @@ test('P1-3 — the rendered seal is frame F’s: header, the drawn sentence, «{
   } finally { globalThis.document = saved; }
 });
 
+// advisor ruling 11-12 (a): frame F's sentence COMPOSED from the approved F + E fragments («composed from F + E») — 1, 2 and 3 fragments,
+// number words consistent («un precio» / «N precios»); the real save (5f's handler) on la_musa, the seal rendered as the portal does
+for (const [label, reprices, rename, want] of [
+  ['1 fragment', 0, false, 'Como propietario, autorizás esta publicación. Agrega opciones con precio: aparecen en la factura.'],
+  ['2 fragments (N precios)', 2, false, 'Como propietario, autorizás esta publicación. Agrega opciones con precio y cambia 2 precios: aparecen en la factura.'],
+  ['3 fragments', 1, true, 'Como propietario, autorizás esta publicación. Agrega opciones con precio, cambia un precio y cambia el nombre de un producto: aparecen en la factura.'],
+]) {
+  test(`P1-3 ruling (a) — the composed seal sentence, ${label}`, async () => {
+    const { JSDOM } = req('../xpizza-functions/node_modules/jsdom');
+    const w = new JSDOM('<!doctype html><div id="r"></div>').window;
+    const saved = globalThis.document; globalThis.document = w.document;
+    try {
+      const live = seed('la_musa'); const d = createDraft(clone(live));
+      assert.equal(applyExposureOps(d, [{ op: 'group.create', group: 'Toppings', extras: [{ ref: 'tmp:compose-new-1', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['dimsum_01'] } }], ON).ok, true);
+      const xs = draftSource(d).extras.filter((e) => e.display.cat === 'Acompañamientos').slice(0, reprices).map(clone);
+      for (const x of xs) setExtraPrice(d, x.key, String(x.price + 5));
+      if (rename) { const s = IE.open(d, 'dimsum_02', null, { extrasAuthoring: true, extrasCatalog: true, textEditEnabled: true }); IE.set(s, 'name', 'Dim sum renombrado'); assert.deepEqual(IE.save(d, s), { ok: true }, 'premise: the rename saved (the drawer writer)'); }
+      const diff = await realSaveDiff('la_musa', live, draftSource(d));
+      const root = w.document.getElementById('r');
+      renderAttestation(root, attestationModel(diff, { usesPlatformFactura: true }), () => {}, {});
+      assert.equal(root.querySelector('.sealbody p').textContent, want, `the composed sentence (${label})`);
+    } finally { globalThis.document = saved; }
+  });
+}
+
 // ── B «Agregar grupo de extras» (plan r3 §2 item 6; MOCKUP frame B): the sheet's MODEL over the drawer copy's ONE prospect ─────
 test('B — the sheet: every EXISTING group in the ONE order, its extras joined «·», «en N productos» = the Extras page’s reach; a group already on the dish (in the copy) is «have»', () => {
   const d = createDraft(seed('la_musa'));
