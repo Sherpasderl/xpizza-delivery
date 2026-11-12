@@ -116,6 +116,26 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     }
   });
 
+  // «Quitar del menú» Codex r1 P2-2 (advisor RULED 11-12): the manager's request runs the SAME structural assessment as the owner's publish
+  // (compareToActive), before the request is written — a token-bound draft the owner publish refuses is refused at the request too.
+  await cell('PRS-STRUCTURE', async (L) => {
+    SWITCH.enabled = true;
+    const w = world(); await w.ready;
+    const { source } = await PR.readDraftFrom(w.fs, FISCAL);
+    const draft = JSON.parse(JSON.stringify(source)); draft.structure.exposure.category_allow.ny = ['Salsas & Queso', 'Carnes'];   // an unrelated exposure change
+    await w.meta('source').set(draft);
+    const { source: stored, updateTime } = await PR.readDraftFrom(w.fs, FISCAL);
+    const live = buildSourceCandidate(FISCAL, w.live); const d = buildSourceCandidate(FISCAL, stored);
+    const { withConsequences } = require('./extras-consequences');
+    const diff = withConsequences(catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras }), { live: { ...live.built, extras: live.inputs.extras }, liveExtraRecords: live.built.extras, draftBuilt: { ...d.built, extras: d.inputs.extras }, draftExtraRecords: d.built.extras });
+    const token = issueEditToken({ rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored), diff });
+    const p = await w.ownerPublish(token);
+    assert.deepStrictEqual([p.status, p.body.error], [400, 'structure_changed'], `${L}: premise — the owner publish refuses it (${JSON.stringify(p.body).slice(0, 200)})`);
+    const r = await w.request(token);
+    assert.deepStrictEqual([r.status, r.body.error], [400, 'structure_changed'], `${L}: the manager's request refuses it the same way (got ${JSON.stringify(r)})`);
+    assert.strictEqual(await w.slot(), null, `${L}: no request is written`);
+  });
+
   await cell('MRC-HELPER-PURE', (L) => {
     const { withConsequences } = require('./extras-consequences');
     const live = buildSourceFromCode(FISCAL); live.structure.exposure.category_allow.ny = ['Salsas & Queso'];
