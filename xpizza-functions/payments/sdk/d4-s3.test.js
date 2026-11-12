@@ -156,8 +156,8 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
   const { makeFakePsp } = require('./fake-adapter');
   const C = require('./coordinator');
   const OID = 'tb_vault_1';
-  const vworld = (script = {}) => {
-    const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', pay_deadline_at: T0 + 900000 } } });
+  const vworld = (script = {}, hooks = {}) => {
+    const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', pay_deadline_at: T0 + 900000 } } }, { now: () => T0, ...hooks });
     const fake = makeFakePsp(script);
     return { db, fake, deps: { db, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, verifyIdToken: async () => ({ uid: 'uid_A' }) } };
   };
@@ -196,6 +196,30 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     assert.ok(p.outcome === 'placed' && w.fake.calls.find((c) => c.action === 'authorize').token === 'T-saved', `${L}: the admitted attempt charges its BOUND token`);
     await K().completeVaultForOrder(w.deps, OID);
     assert.deepStrictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}), [], `${L}: the card stays removed (a saved-card attempt never re-vaults)`);
+  });
+
+  await cell('SDK-D4-DISPLAY-SCHEMA-VAULT', async (L) => {
+    const db = makeHonestDb({});
+    const d = deps(db);
+    const r = await K().completeVault(d, { uid: 'uid_A', token: 'T-bad', token_hash: H('T-bad'), display: { brand: 'visa', last4: '4111111111111111', exp_month: 12, exp_year: 2030 }, vault_gen: 0 });
+    assert.ok(r.outcome === 'invalid_display' && db.getAt('customer_cards/uid_A') == null, `${L}: a PAN in last4 is never stored (got ${JSON.stringify(r)})`);
+    // a row planted with bad / extra fields (never written by this code) is never LISTED with them
+    db.setAt('customer_cards/uid_A/cards/AAAAAAAAAAAAAAAAAAAA', { token: 'T', token_hash: 'h', brand: { name: 'Ana', cvv: '123' }, last4: '4242', exp_month: 12, exp_year: 2030, email: 'a@b.hn', last_used_at: T0 });
+    const list = await K().listCardsCore(d, { headers: { authorization: 'Bearer idt_A' } });
+    assert.ok(!JSON.stringify(list.body).includes('123') && !JSON.stringify(list.body).includes('a@b.hn') && !JSON.stringify(list.body).includes('Ana'), `${L}: a CVV / name / email never comes back in the list (${JSON.stringify(list.body)})`);
+  });
+  await cell('SDK-D4-VAULT-POST-COMMIT-PAUSE', async (L) => {
+    // Codex S3 r4 P2: the removal lands AFTER the completion's transaction commits and BEFORE any later write of the flow
+    let removed = false; let w;
+    const hooks = {
+      beforeTx: async (p) => { if (!removed && p.startsWith('payment_sdk/') && w.db.getAt('customer_cards/uid_A/cards')) { removed = true; await K().removeCard(w.deps, 'uid_A', Object.keys(w.db.getAt('customer_cards/uid_A/cards'))[0]); } },
+      beforeWrite: async (p) => { if (!removed && p.startsWith('customer_cards/uid_A/cards/') && w.db.getAt('customer_cards/uid_A/by_hash')) { removed = true; await K().removeCard(w.deps, 'uid_A', Object.values(w.db.getAt('customer_cards/uid_A/by_hash'))[0]); } },
+    };
+    w = vworld({}, hooks);
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_pause_00001', token: 'T-p', amount_cents: 100, card: card(true) });
+    await K().completeVaultForOrder(w.deps, OID);
+    assert.ok(removed, `${L}: premise — the removal ran in the window`);
+    assert.deepStrictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}), [], `${L}: the card removed after the completion commit stays removed (no later write resurrects it)`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s3: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);

@@ -1177,6 +1177,31 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const got = [['authorize', a.outcome], ['status', sAuth.state], ['capture', c.outcome], ['status', sCap.state], ['void', v.outcome], ['status', sVoid.state]];
     for (const [op, o] of got) assert.ok(PRODUCIBLE[op].includes(o), `${L}: the fake's default ${op} answer «${o}» is one the real adapter can produce (status after a void is 412 ⇒ inconclusive in production)`);
   });
+
+  await cell('SDK-D4-DISPLAY-SCHEMA-CLAIM', async (L) => {
+    // Codex S3 r4 P1: a strict SERVER-side display schema BEFORE the first persistence (the journal included)
+    const bad = [{ brand: 'visa', last4: '4111111111111111', exp_month: 12, exp_year: 2030 }, { brand: { name: 'Ana', cvv: '123' }, last4: '4242', exp_month: 12, exp_year: 2030 }, { brand: 'visa', last4: '4242', exp_month: 13, exp_year: 2030 }, { brand: 'visa', last4: 4242, exp_month: 12, exp_year: 2030 }, null];
+    for (const display of bad) {
+      const w = deadlineWorld();
+      const r = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000, card: { card_ref: 'new', display, save: true, vault_gen: 0 } });
+      assert.ok(r.outcome === 'refused' && r.reason === 'bad_display' && w.rec() == null && w.fake.callCount('authorize') === 0, `${L}: ${JSON.stringify(display)} ⇒ refused bad_display BEFORE any record / journal / PSP call (got ${JSON.stringify(r)})`);
+    }
+    const w = deadlineWorld();
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000, card: { card_ref: 'new', display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030, email: 'x@y.hn', cvv: '999' }, save: true, vault_gen: 0 } });
+    assert.deepStrictEqual(w.rec().attempts[A1].display, { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, `${L}: extra keys (an email, a CVV) are DROPPED — the journal stores exactly the 4 display fields`);
+  });
+  await cell('SDK-D4-FAKE-BINDING-PARITY', async (L) => {
+    // Codex S3 r4 P2: the fake's DEFAULT status binds exactly as the REAL recorded status does — for a verified leg AND a legacy one
+    const { boundStatus } = require('./psp-adapter');
+    const fake = makeFakePsp({});
+    const ad = makeAdapter(fake.impl);
+    const a = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o1', ref: 'sdkx' });
+    const fakeEv = await ad.pspStatus({ uuid: a.uuid });
+    const realEv = { state: 'authorized', uuid: a.uuid };   // the recorded shape (fixtures/pixelpay/status-authorized.json): NO amount
+    const verified = { pp_uuid: a.uuid, amount_cents: 100, uuid_verified: true };
+    const legacy = { pp_uuid: a.uuid, amount_cents: 100 };
+    assert.deepStrictEqual([boundStatus(fakeEv, verified), boundStatus(fakeEv, legacy)], [boundStatus(realEv, verified), boundStatus(realEv, legacy)], `${L}: the fake default binds like production (verified ⇒ bound, legacy ⇒ unbound); fake ${JSON.stringify(fakeEv)}`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
