@@ -319,7 +319,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     textEditEnabled,
     ...(productRemoval ? { productRemoval: true } : {}),   // P-R5
     ...(pendingRemovals ? { pendingRemovals } : {}),   // P-R1
-    ...(pendingRemovals ? { liveOrder: { items: [...((liveRead.built.structure && liveRead.built.structure.item_order) || [])], rewards: [...((liveRead.built.structure && liveRead.built.structure.redeem_eligible_items) || [])] } } : {}),   // B-4/B-6 (RULED): the ORIGINAL live orders, once — the client restores relative to them
+    ...(productRemoval && liveRead && liveRead.built ? { liveOrder: { items: [...((liveRead.built.structure && liveRead.built.structure.item_order) || [])], rewards: [...((liveRead.built.structure && liveRead.built.structure.redeem_eligible_items) || [])] } } : {}),   // B-4/B-6 + Q-13 (RULED): the ORIGINAL live orders, once per read whenever the switch is ON — the client restores relative to them
     ...(rewardKeys ? { rewardKeys } : {}),   // P-R2
     ...(reservedNames ? { reservedNames } : {}),
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
