@@ -21,7 +21,7 @@
 </head>
 <body>
 <h1>🍕 PixelPay Sandbox Test Harness</h1>
-<p style="color:#b00"><b>DEAD TOOL (2026-11-12):</b> the <code>confirmOnlinePayment</code> HTTP endpoint was RETIRED (NOTE-security-confirm-tracking-token) — the SDK direct-charge flow this page drives no longer exists. Kept for history; step 3 refuses to run.</p>
+<p style="color:#b00"><b>DEAD TOOL (2026-11-12):</b> the <code>confirmOnlinePayment</code> HTTP endpoint was RETIRED (NOTE-security-confirm-tracking-token) — the SDK direct-charge flow this page drives no longer exists. Kept for history; the payment button is disabled and runTest() refuses before any network call.</p>
 <p class="dim">Runs the REAL backend flow: <code>chargeOnlineOrder</code> → SDK 3DS auth → <code>confirmOnlinePayment</code>.
 No real money (sandbox). Orders write to the live RTDB (pre-launch) — clean up test orders after.</p>
 
@@ -51,7 +51,7 @@ No real money (sandbox). Orders write to the live RTDB (pre-launch) — clean up
   <div><label>Venc. (MM/AA)</label><input id="exp" value="12/27"/></div>
 </div>
 
-<button id="paybtn" onclick="runTest()">Pagar (sandbox · L1)</button>
+<button id="paybtn" onclick="runTest()" disabled>Pagar (sandbox · L1) — RETIRED</button>
 <div id="log">Listo. Llená el secret, elegí una tarjeta y pagá.\n</div>
 
 <script>
@@ -88,6 +88,7 @@ function testOrder(){
 }
 
 async function runTest(){
+  log('✗ DEAD TOOL: confirmOnlinePayment was RETIRED 2026-11-12 — this page no longer calls chargeOnlineOrder or the SDK.','err'); return; // refuse before ANY network call
   const base=$('base').value.replace(/\/+$/,''); const secret=$('secret').value.trim();
   if(!secret){ log('✗ Pegá el ORDER_SECRET primero.','err'); return; }
   if(typeof Models==='undefined'){ log('✗ SDK no cargó (revisá la conexión).','err'); return; }
