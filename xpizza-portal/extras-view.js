@@ -24,6 +24,12 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     b.addEventListener('click', () => on.select(r.group));
     railHost.append(b);
   }
+  if (on.create) {   // X3: «Crear grupo» at the rail's foot (frame X)
+    const add = el('button', 'railadd'); add.type = 'button'; add.disabled = !canEdit;
+    add.append(svg(['M12 5v14M5 12h14']), document.createTextNode('Crear grupo'));
+    add.addEventListener('click', () => on.create(add));
+    railHost.append(add);
+  }
   detailHost.replaceChildren();
   const d = model.detail;
   if (!d) return;   // no group yet: nothing drawn (no unapproved copy)
@@ -60,33 +66,141 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   }
 }
 
-// X2 — the remove confirm (frame X2: .modal.sm, «Cancelar» focused / «Quitar» quiet red). Tab stays inside; Escape, «Cancelar» and the
-// scrim cancel; focus returns to the trash on cancel. `onConfirm()` writes (the caller's guarded mutator) and closes.
-export function openRemoveConfirm({ title, sub, body, onConfirm, returnTo }) {
+// A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?» and the discard confirm. Tab stays inside; Escape and the backdrop take the
+// cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, cls, act: 'cancel' | 'go', focus }] in DOM order.
+function openSmallConfirm(o) {
+  const { title, sub = null, body = null, buttons, returnTo = null } = o;
   const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal');
-  const mh = el('div', 'mh'); const t = el('div', 'mt', title); t.id = 'xcf-t'; mh.append(t, el('div', 'ms', sub));
-  const mb = el('div', 'mb'); const p = el('p', 'eqbody', body); p.id = 'xcf-d'; mb.append(p);
+  const mh = el('div', 'mh'); const t = el('div', 'mt', title); t.id = 'xcf-t'; mh.append(t); if (sub) mh.append(el('div', 'ms', sub));
+  const parts = [mh];
+  if (body) { const mb = el('div', 'mb'); const p = el('p', 'eqbody', body); p.id = 'xcf-d'; mb.append(p); parts.push(mb); }
   const mf = el('div', 'mf');
-  const cancel = el('button', 'btn ghost', 'Cancelar'); cancel.type = 'button';
-  const go = el('button', 'btn ghost mk-quiet-danger', 'Quitar'); go.type = 'button';
-  mf.append(cancel, go);
-  modal.replaceChildren(mh, mb, mf);
+  parts.push(mf);
+  const focusables = [];
+  let first = null;
   const close = (refocus) => {
     scrim.classList.remove('show'); modal.replaceChildren();
     document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim);
     if (refocus && returnTo && returnTo.isConnected) returnTo.focus();
   };
+  const cancel = () => { close(true); if (o.onCancel) o.onCancel(); };
   const onKey = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(true); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
     if (e.key !== 'Tab') return;
-    const f = [cancel, go]; const i = f.indexOf(document.activeElement);
+    const i = focusables.indexOf(document.activeElement);
     e.preventDefault();
-    f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
+    focusables[(i + (e.shiftKey ? focusables.length - 1 : 1)) % focusables.length].focus();
   };
-  const onScrim = (e) => { if (e.target === scrim) close(true); };
-  cancel.addEventListener('click', () => close(true));
-  go.addEventListener('click', () => { close(false); onConfirm(); });
+  const onScrim = (e) => { if (e.target === scrim) cancel(); };
+  for (const spec of buttons) {
+    const btnEl = el('button', 'btn', spec.label); btnEl.type = 'button'; btnEl.classList.add(...spec.mods);
+    btnEl.addEventListener('click', () => { if (spec.act === 'go') { close(false); o.onGo(); } else cancel(); });
+    mf.append(btnEl); focusables.push(btnEl);
+    if (spec.focus && !first) first = btnEl;
+  }
+  modal.replaceChildren(...parts);
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
   scrim.classList.add('show');
-  cancel.focus();
+  (first || focusables[0]).focus();
+}
+// X2 — the remove confirm (frame X2: «Cancelar» focused / «Quitar» quiet red); focus returns to the trash on cancel
+export function openRemoveConfirm({ title, sub, body, onConfirm, returnTo }) {
+  openSmallConfirm({ title, sub, body, returnTo, onGo: onConfirm,
+    buttons: [{ label: 'Cancelar', mods: ['ghost'], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }] });
+}
+// the portal's discard confirm, reused (the drawer's title, buttons and order; its product sentence does not apply to a new group)
+export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
+  openSmallConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,
+    buttons: [{ label: 'Descartar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }, { label: 'Seguir editando', mods: ['accent'], act: 'cancel', focus: true }] });
+}
+
+// ── X3 «Crear grupo» + X3b (MOCKUP x4b) — the sheet's DOM, from extras-logic.js createGroupView. `on`: { name(v), row(i, patch),
+// addRow(), removeRow(i), mode(m), cat(c), mark(key, on), markAll(cat), markNone(cat), cancel(), create() }. The caller re-renders
+// on every change and restores focus by data-k.
+const PLUS = ['M12 5v14M5 12h14'];
+const fieldLine = (id, text) => { const p = el('div', 'ferr mk-ferr', text); p.id = id; p.setAttribute('role', 'alert'); return p; };
+export function renderCreateGroup(modal, v, on) {
+  const mh = el('div', 'mh'); const t = el('div', 'mt', 'Crear grupo'); t.id = 'xcg-t';
+  mh.append(t, el('div', 'ms', 'Un grupo de extras · después podés agregarlo a los productos que quieras'));
+  const mb = el('div', 'mb mk-form');
+  const ex = el('div', 'gexplain'); ex.append(el('b', null, 'Extras · opcionales.'), document.createTextNode(' El cliente marca los que quiera, cada uno una vez. Se cobra el precio de cada extra.'));
+  mb.append(ex);
+  // the name
+  const fN = el('div', 'fld'); const lr = el('div', 'mk-lrow');
+  const lab = el('label', null, 'Nombre del grupo'); lab.htmlFor = 'xcg-name';
+  const cnt = el('span', 'mk-cnt', v.counter); cnt.setAttribute('aria-live', 'polite');
+  lr.append(lab, cnt);
+  const nm = el('input', 'mgname-in'); nm.id = 'xcg-name'; nm.type = 'text'; nm.value = v.name; nm.placeholder = 'Ej. Salsas, Ingredientes extra'; nm.dataset.k = 'xcg:name';
+  nm.addEventListener('input', () => on.name(nm.value));
+  fN.append(lr, nm);
+  if (v.nameError) { fN.append(fieldLine('xcg-name-e', v.nameError)); nm.setAttribute('aria-describedby', 'xcg-name-e'); }
+  mb.append(fN);
+  // the extras
+  const fX = el('div', 'fld'); const lx = el('div', 'mk-lrow'); lx.append(el('label', null, 'Extras'), el('span', 'mk-cnt', 'nombre y precio'));
+  const grp = el('div', 'mk-mgroup');
+  v.rows.forEach((r, i) => {
+    const row = el('div', 'mopt');
+    const n = el('input', 'moname'); n.type = 'text'; n.value = r.name; n.placeholder = 'Nombre del extra'; n.setAttribute('aria-label', 'Nombre del extra'); n.dataset.k = `xcg:n:${r.ref}`;
+    n.addEventListener('input', () => on.row(i, { name: n.value }));
+    const pr = el('span', 'mopr'); const pi = el('input'); pi.type = 'text'; pi.inputMode = 'numeric'; pi.value = r.raw; pi.setAttribute('aria-label', 'Precio'); pi.dataset.k = `xcg:p:${r.ref}`;
+    pi.addEventListener('input', () => on.row(i, { raw: pi.value }));
+    pr.append(el('span', 'mc', 'L'), pi);
+    const rm = el('button', 'model'); rm.type = 'button'; rm.setAttribute('aria-label', `Quitar ${r.name || 'extra'}`); rm.append(svg(TRASH)); rm.disabled = v.rows.length === 1;
+    rm.addEventListener('click', () => on.removeRow(i));
+    row.append(n, pr, rm);
+    grp.append(row);
+    if (r.nameError) { const id = `xcg-ne-${i}`; grp.append(fieldLine(id, r.nameError)); n.setAttribute('aria-describedby', id); }
+    if (r.priceError) { const id = `xcg-pe-${i}`; grp.append(fieldLine(id, r.priceError)); pi.setAttribute('aria-describedby', id); }
+  });
+  const add = el('button', 'mgadd'); add.type = 'button'; add.append(svg(PLUS), document.createTextNode('Agregar extra'));
+  add.addEventListener('click', () => on.addRow());
+  fX.append(lx, grp, add); mb.append(fX);
+  // «Agregarlo a»
+  const fA = el('div', 'fld'); fA.append(el('label', null, 'Agregarlo a'));
+  const radios = el('div', 'mk-radio'); radios.setAttribute('role', 'radiogroup'); radios.setAttribute('aria-label', 'Agregarlo a');
+  const radio = (mode, text, sub) => {
+    const l = el('label'); const i = el('input'); i.type = 'radio'; i.name = 'xcg-to'; i.checked = v.mode === mode; i.dataset.k = `xcg:m:${mode}`;
+    i.addEventListener('change', () => { if (i.checked) on.mode(mode); });
+    l.append(i, document.createTextNode(text)); if (sub) l.append(el('span', null, sub));
+    return l;
+  };
+  radios.append(radio('none', 'Todavía a ninguno', '· lo agregás desde cada producto'), radio('cat', 'A toda una categoría'));
+  if (v.mode === 'cat') {
+    const sel = el('select', 'mk-sel'); sel.setAttribute('aria-label', 'Categoría'); sel.dataset.k = 'xcg:cat';
+    for (const o of v.categories) { const op = el('option', null, o.label); op.value = o.cat; op.disabled = o.disabled; op.selected = v.cat === o.cat; sel.append(op); }
+    sel.addEventListener('change', () => on.cat(sel.value));
+    radios.append(sel);
+    if (v.catNote) radios.append(el('div', 'mk-catnote', v.catNote));
+  }
+  radios.append(radio('items', 'A productos que elija', v.mode === 'items' ? v.modeSub : '· marcás cuáles'));
+  if (v.mode === 'items') {
+    const pick = el('div', 'mk-pick'); pick.setAttribute('role', 'group'); pick.setAttribute('aria-label', 'Productos');
+    for (const sec of v.sections) {
+      const h = el('div', 'mk-subh'); h.append(el('span', 'mk-sn', sec.name), el('span', 'mk-n', sec.count));
+      if (sec.link) {
+        const ln = el('button', 'mk-lnk', sec.link); ln.type = 'button'; ln.setAttribute('aria-label', `${sec.link} en ${sec.name}`); ln.dataset.k = `xcg:lnk:${sec.cat}`;
+        ln.addEventListener('click', () => (sec.link === 'Ninguno' ? on.markNone(sec.cat) : on.markAll(sec.cat)));
+        h.append(ln);
+      }
+      pick.append(h);
+      sec.rows.forEach((r, i) => {
+        const l = el('label', `modopt${r.disabled ? ' mk-dis' : ''}`);
+        const cb = el('input'); cb.type = 'checkbox'; cb.checked = r.checked; cb.disabled = r.disabled; cb.dataset.k = `xcg:p:${r.key}`;
+        const nmS = el('span', 'mognm', r.name);
+        if (r.sub) nmS.append(el('span', 'mogsub', r.sub));
+        if (r.disabled && r.reason) { const id = `xcg-why-${sec.cat}-${i}`; const w = el('span', 'mk-why', r.reason); w.id = id; nmS.append(w); cb.setAttribute('aria-describedby', id); }
+        cb.addEventListener('change', () => on.mark(r.key, cb.checked));
+        l.append(cb, nmS); pick.append(l);
+      });
+    }
+    radios.append(pick);
+  }
+  fA.append(radios); mb.append(fA);
+  if (v.formError) mb.append(fieldLine('xcg-err', v.formError));   // a writer refusal the form could not foresee (plan §5.2)
+  const mf = el('div', 'mf');
+  const cancel = el('button', 'btn ghost', 'Cancelar'); cancel.type = 'button'; cancel.addEventListener('click', () => on.cancel());
+  const go = el('button', 'btn accent', 'Crear grupo'); go.type = 'button'; go.disabled = !v.canCreate; go.addEventListener('click', () => on.create());
+  mf.append(cancel, go);
+  modal.replaceChildren(mh, mb, mf);
+  return { first: nm, cancel, go };
 }

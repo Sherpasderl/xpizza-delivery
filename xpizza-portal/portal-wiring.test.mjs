@@ -1550,6 +1550,8 @@ const ALLOWED_CONSUMERS = new Set([
   // STRUCTURE S2 — the Extras page's model is a pure READER of the draft; applyExposureOps is the ONE Extras writer (canEditContent-
   // guarded, all or nothing, the server switch) — the draft is passed in, never kept
   'extrasPageModel', 'applyExposureOps',
+  // X3: the «Crear grupo» form's view and its ONE op are pure READERS of the draft (the op is applied by applyExposureOps)
+  'createGroupView', 'createGroupOp',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.

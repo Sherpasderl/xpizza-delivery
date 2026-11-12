@@ -77,7 +77,7 @@ test('X3 — the empty form: the name counter 0/40, one empty extra row, «Todav
   assert.equal(v.counter, '0/40');
   assert.equal(v.rows.length, 1);
   assert.equal(v.mode, 'none');
-  assert.equal(v.canCreate, false);
+  assert.equal(v.canCreate, false, 'the empty form holds «Crear grupo»');
 });
 test('X3 — a started row must be complete: «Escribí el nombre.» / «El precio debe ser al menos L 1.»; an empty row is ignored', () => {
   const d = createDraft(seed('la_musa'));
@@ -94,12 +94,12 @@ test('X3 — a started row must be complete: «Escribí el nombre.» / «El prec
   f = setCreateField(f, 'row', { i: 1, name: '', raw: '10' });
   v = createGroupView(d, f);
   assert.equal(v.rows[1].nameError, 'Escribí el nombre.');
-  assert.equal(v.canCreate, false);
+  assert.equal(v.canCreate, false, 'a started row with no name holds «Crear grupo»');
 });
 test('X3 — a group name already used: «Ya hay un grupo con ese nombre.»; over 40 characters is refused', () => {
   const d = createDraft(seed('la_musa'));
   let f = setCreateField(createGroupForm(), 'name', 'Salsas');
-  assert.equal(createGroupView(d, f).nameError, 'Ya hay un grupo con ese nombre.');
+  assert.equal(createGroupView(d, f).nameError, 'Ya hay un grupo con ese nombre.', 'a taken name is refused in words');
   f = setCreateField(f, 'name', 'x'.repeat(41));
   assert.equal(createGroupView(d, f).counter, '41/40');
   assert.equal(createGroupView(d, f).canCreate, false);
@@ -147,8 +147,20 @@ test('X3b — category mode: a section the writer refuses is a disabled option w
     const refused = editorM.attachRefusal(draftSource(xp), { mode: 'cat', cat: o.cat });
     assert.equal(o.disabled, !!refused, `${o.cat}: disabled exactly when the writer refuses it`);
   }
+  assert.equal(v.cat, v.categories.find((o) => !o.disabled).cat, 'category mode preselects the first section the writer accepts (no placeholder)');
+  for (const o of v.categories.filter((x) => !x.disabled)) assert.match(o.label, /^.+ · \d+ productos?$/, 'an enabled option reads «{categoría} · N productos»');
   const ind = v.categories.find((o) => o.cat === 'individual');
   const f2 = setCreateField(f, 'cat', 'individual');
   assert.match(createGroupView(xp, f2).catNote || '', /^\d+ productos? de esta categoría no muestran? extras\.$/, 'the quiet note (Nutella shows none)');
   assert.ok(ind && !ind.disabled);
+});
+test('X3b — category mode, a REFUSED category (5f\u2019s XT-REFUSALS fixture: a legacy option-level rule on noodle_01_pollo): a disabled option «{categoría} · un producto tiene opciones con reglas propias»', () => {
+  const s0 = buildSourceFromCode('la_musa');
+  s0.structure.exposure.item_overrides.noodle_01_pollo = { deny: ['Salsas'] };   // exactly catalog/exposure-transitions.test.js XT-REFUSALS
+  const d = createDraft(canonicalize(s0));
+  const refused = editorM.attachRefusal(draftSource(d), { mode: 'cat', cat: 'noodles' });
+  assert.equal(refused && refused.code, 'exposure_option_override', 'non-vacuity: the writer refuses the category');
+  const o = createGroupView(d, setCreateField(createGroupForm(), 'mode', 'cat')).categories.find((x) => x.cat === 'noodles');
+  assert.equal(o && o.disabled, true, 'a refused category is never offered');
+  assert.match(o.label, / · un producto tiene opciones con reglas propias$/);
 });

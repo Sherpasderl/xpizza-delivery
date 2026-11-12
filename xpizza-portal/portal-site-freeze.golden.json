@@ -134,8 +134,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "ac4b2484b5c6114d939805026d6da82641aaa733cbf8ed3e821d49d44ae4149e",
-   "bytes": 13697
+   "sha256": "98c7998df56c1f045910007bd655a5473491cfa6f90eb4b8092cfae4843c7295",
+   "bytes": 13902
   },
   "netlify.toml": {
    "sha256": "6398e8dec6883e51292f9754d59d4eb97a378ac957b9deaffd5a1970fc79b520",
@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "032bdbe6fc24f6190b1d9597407a0be2e95fd8a9782391ba427e6e85483ecc86",
-   "bytes": 122133
+   "sha256": "c58d67c90a4de65ee7bd09a17999e65fa250ec13af04c198385914481e2f43db",
+   "bytes": 123812
   }
  },
  "diff_aid": {
@@ -1627,6 +1627,12 @@
    ],
    [
     "",
+    ".mk-catnote",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-cdot",
     "background",
     "var(--mute2)"
@@ -1855,6 +1861,30 @@
    ],
    [
     "",
+    ".mk-pick .mk-why",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pick .modopt.mk-dis .mognm",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-pick",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk-radio label span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-rbhint",
     "color",
     "var(--mute)"
@@ -1874,6 +1904,18 @@
    [
     "",
     ".mk-sub",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-subh",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk-subh",
     "color",
     "var(--mute2)"
    ],

@@ -78,8 +78,8 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
-import { extrasPageModel } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, enProductos } from './extras-view.js';
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp } from './extras-logic.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, enProductos } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 
 function renderSwitcher() {
@@ -1199,6 +1199,65 @@ let prodTab = 'menu';
 // editor.js mergeDeletionClaim)
 const baseFor = (src) => (mergeDeletionClaim(src, null) && state.deletionBase ? { version: state.deletionBase.version, generation: state.deletionBase.generation } : null);
 let extrasGroup = null;
+// ── X3 «Crear grupo» (plan §2 items 5 / 5b, §3.5): the form is LOCAL state until «Crear grupo» sends ONE group.create op ───────
+let createForm = null;
+let createError = null;
+const X3_CODES = { group_name_taken: 'Ya hay un grupo con ese nombre.', extras_group_empty: 'Agregá al menos un extra.' };
+const x3Dirty = (f) => !!f && (f.name.trim() !== '' || f.rows.some((r) => r.name.trim() || r.raw.trim()) || f.mode !== 'none' || f.marked.length > 0);
+function x3Focusables() { return [...$('xcreate').querySelectorAll('input, select, button')].filter((x) => !x.disabled); }
+function x3Key(e) {
+  if (!createForm || $('xscrim').classList.contains('show')) return;   // the discard confirm, if open, owns the keys
+  if (e.key === 'Escape') { e.preventDefault(); x3Dismiss(); return; }
+  if (e.key !== 'Tab') return;
+  const f = x3Focusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function openCreateGroup() {
+  createForm = createGroupForm(); createError = null;
+  $('xcreate').classList.add('show');
+  document.addEventListener('keydown', x3Key, true);
+  paintCreateGroup(true);
+}
+function closeCreateGroup(refocus) {
+  createForm = null; createError = null;
+  $('xcreate').classList.remove('show'); $('xcreate').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', x3Key, true);
+  if (refocus) { const a = $('xrail') && $('xrail').querySelector('.railadd'); if (a) a.focus(); }
+}
+function x3Dismiss() {
+  if (!createForm) return;
+  if (!x3Dirty(createForm)) { closeCreateGroup(true); return; }
+  const back = document.activeElement;
+  openDiscardConfirm({ onDiscard: () => closeCreateGroup(true), onKeep: () => { if (back && back.isConnected) back.focus(); } });
+}
+function x3Set(field, v) { createForm = setCreateField(createForm, field, v); createError = null; paintCreateGroup(false); }
+function x3Create() {
+  const op = createGroupOp(state.draft, createForm);
+  const r = applyExposureOps(state.draft, [op], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { createError = X3_CODES[r.code] || 'No pudimos aplicar el cambio. Recargá la página.'; paintCreateGroup(false); return; }
+  extrasGroup = op.group;
+  closeCreateGroup(false);
+  paint(); refreshBar();
+  const on = $('xrail').querySelector('.railitem.on'); if (on) on.focus();
+}
+function paintCreateGroup(first) {
+  if (!createForm) return;
+  const modal = $('xcreate').querySelector('.modal');
+  const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
+  const at = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
+  createForm = settleForm(draftSource(state.draft), createForm);
+  const v = { ...createGroupView(state.draft, createForm), formError: createError };
+  const r = renderCreateGroup(modal, v, {
+    name: bound((x) => x3Set('name', x)), row: bound((i, patch) => x3Set('row', { i, ...patch })), addRow: bound(() => x3Set('addRow')),
+    removeRow: bound((i) => x3Set('removeRow', i)), mode: bound((m) => x3Set('mode', m)), cat: bound((c) => x3Set('cat', c)),
+    mark: bound((key, on) => x3Set('mark', { key, on })), markAll: bound((cat) => x3Set('markAll', { cat })), markNone: bound((cat) => x3Set('markNone', { cat })),
+    cancel: x3Dismiss, create: bound(x3Create),
+  });
+  if (first) { r.first.focus(); return; }
+  const back = k ? [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === k) : null;
+  if (back) { back.focus(); if (at !== null) { try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } } }
+}
+
 function setProdTab(t) { prodTab = t === 'xpage' ? 'xpage' : 'menu'; paint(); }
 function paintProductTabs() {
   if (!$('prodtabs') || !$('xsplit')) return;   // a page without the S2 markup (and today's tests' trimmed shells): Productos as today
@@ -1217,6 +1276,7 @@ function paintProductTabs() {
   extrasGroup = model.selected;
   renderExtrasPage($('xrail'), $('xdetail'), model, {
     select: bound((g) => { extrasGroup = g; paint(); }),
+    create: bound(() => openCreateGroup()),
     // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
     price: bound((id, raw, input) => {
       const at = input.selectionStart; const k = input.dataset.k;

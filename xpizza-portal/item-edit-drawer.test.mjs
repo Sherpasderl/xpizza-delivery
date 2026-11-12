@@ -1207,3 +1207,62 @@ test('S2 §3.4 — a draft carrying a removal claim (stored by 5f’s REAL persi
     assert.deepEqual(save.body.deleted_ids_loaded_base, want, want ? 'a claim ⇒ the served baseline rides the save' : 'no claim ⇒ no baseline field');
   }
 });
+
+// ── STRUCTURE S2 — X3 «Crear grupo» on the page (MOCKUP x4b; plan §2 items 5 / 5b, §3.5) ──────────────────────────────────────
+const x3 = (p) => p.d.querySelector('#xcreate.show .modal');
+const openX3 = async (p) => { xpage(p).querySelector('.rail .railadd').click(); await settle(5); return x3(p); };
+test('S2 X3 — «Crear grupo» at the rail’s foot opens the sheet: focus in «Nombre del grupo»; «Crear grupo» off until a name + one complete extra', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const m = await openX3(p);
+  assert.ok(m, 'the sheet is open');
+  assert.equal(m.querySelector('.mt').textContent, 'Crear grupo');
+  assert.equal(p.d.activeElement && p.d.activeElement.id, 'xcg-name', 'focus in the name');
+  const go = () => [...x3(p).querySelectorAll('.mf button')].find((b) => b.textContent === 'Crear grupo');
+  assert.equal(go().disabled, true);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .moname'), 'Maní'); await settle(5);
+  const priceIn = x3(p).querySelector('.mopt .mopr input'); priceIn.focus();   // a user types into a focused field
+  p.type(priceIn, '15'); await settle(5);
+  assert.equal(go().disabled, false, 'a name and one complete extra');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Precio', 'focus stays in the field being typed (re-render keeps it)');
+});
+test('S2 X3 — «Crear grupo» creates the group through the ONE mutator: it is selected in the rail; its extra is «Nuevo»; the bar counts it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .moname'), 'Maní'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .mopr input'), '15'); await settle(5);
+  [...x3(p).querySelectorAll('.mf button')].find((b) => b.textContent === 'Crear grupo').click(); await settle(10);
+  assert.equal(x3(p), null, 'the sheet closed');
+  assert.ok(p.src().structure.extra_categories.includes('Toppings'), 'the group is in the draft');
+  const on = railRows(p).find((r) => r.classList.contains('on'));
+  assert.equal(on && on.querySelector('.rtext b').textContent, 'Toppings', 'the new group is selected');
+  assert.ok(xrows(p)[0].querySelector('.tag.new'), 'its extra is «Nuevo»');
+});
+test('S2 X3 — dismissing a DIRTY sheet asks «¿Descartar los cambios?»: «Seguir editando» keeps every input; «Descartar» closes it; a clean sheet just closes', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(x3(p), null, 'a clean sheet closes at once');
+  assert.ok(p.d.activeElement && p.d.activeElement.classList.contains('railadd'), 'focus returns to «Crear grupo»');
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  const cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm');
+  const [drop, keep] = [...cf.querySelectorAll('.mf button')];
+  assert.deepEqual([drop.textContent, keep.textContent], ['Descartar', 'Seguir editando'], 'the drawer confirm\u2019s order');
+  assert.equal(p.d.activeElement, keep, 'focus on «Seguir editando»');
+  keep.click(); await settle(5);
+  assert.equal(x3(p).querySelector('#xcg-name').value, 'Toppings', '«Seguir editando» keeps the input exactly');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  [...p.d.querySelector('#xscrim.show .modal').querySelectorAll('.mf button')][0].click(); await settle(5);
+  assert.equal(x3(p), null, '«Descartar» closes the sheet');
+  assert.ok(!p.src().structure.extra_categories.includes('Toppings'), 'nothing was written');
+});

@@ -109,9 +109,15 @@ function sectionsOf(src, f) {
 }
 // a form with its section op applied (the caller stores this as the new form)
 export function settleForm(src, f) {
-  if (!f.__sectionOp) return f;
-  const { marked } = sectionsOf(src, f);
-  const n = { ...f, marked }; delete n.__sectionOp; return n;
+  let n = f;
+  if (n.__sectionOp) { const { marked } = sectionsOf(src, n); n = { ...n, marked }; delete n.__sectionOp; }
+  // category mode starts on the first section the writer accepts (the mockup preselects; there is no placeholder)
+  if (n.mode === 'cat' && !n.cat) {
+    const cats = (src.structure && Array.isArray(src.structure.categories)) ? src.structure.categories : [];
+    const first = cats.find((c) => !attachRefusal(src, { mode: 'cat', cat: String(c.id) }));
+    if (first) n = { ...n, cat: String(first.id) };
+  }
+  return n;
 }
 export function createGroupView(draft, f0) {
   const src = draftSource(draft);
@@ -131,7 +137,8 @@ export function createGroupView(draft, f0) {
   const cats = (src.structure && Array.isArray(src.structure.categories)) ? src.structure.categories : [];
   const categories = cats.map((c) => {
     const refused = attachRefusal(src, { mode: 'cat', cat: String(c.id) });
-    const label = !refused ? (c.name || String(c.id))
+    const nDish = launchersOf(src).filter((r) => String(r.display.cat) === String(c.id)).length;
+    const label = !refused ? `${c.name || String(c.id)} · ${nDish} ${nDish === 1 ? 'producto' : 'productos'}`
       : `${c.name || String(c.id)} · ${refused.code === 'exposure_option_override' ? 'un producto tiene opciones con reglas propias' : 'sin productos'}`;
     return { cat: String(c.id), label, disabled: !!refused };
   });
