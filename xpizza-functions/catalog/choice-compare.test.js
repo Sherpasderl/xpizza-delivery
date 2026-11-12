@@ -128,5 +128,19 @@ cell('CC-ON-PRICE-ONLY: an option price edit is today\'s judgment (no mark neede
   assert.deepStrictEqual(ON(() => outcome(() => judge('la_musa', LM, d))), off);
 });
 
+cell('CC-PREPARE: new options under an EXISTING dish (option.add, D2) get their derived fields — «{dish} - {choice}», the dish\'s section and extras setting — and are returned by ref; a blank choice / an unsafe one / a blank D2 label refuse', () => {
+  const src = apply(apply(XP, D2(XP_PLAIN)), { op: 'option.rename', key: 'tmp:cc-a-xxxxxxx', choice: '  Personal  ' });
+  const dish = src.items.find((i) => i.key === XP_PLAIN);
+  const refs = CC.prepareExistingGroups(src, { fieldProblem: () => null });
+  assert.deepStrictEqual([...refs].sort(), ['tmp:cc-a-xxxxxxx', 'tmp:cc-b-xxxxxxx']);
+  const a = src.items.find((i) => i.ref === 'tmp:cc-a-xxxxxxx');
+  assert.deepStrictEqual([a.display.choice, a.display.name, a.display.cat], ['Personal', `${dish.display.name} - Personal`, dish.display.cat]);
+  const blank = apply(XP, { ...D2(XP_PLAIN), options: [{ ref: 'tmp:bl-a-xxxxxxx', choice: '' }, { ref: 'tmp:bl-b-xxxxxxx', choice: 'B' }] });
+  refusedWith(() => CC.prepareExistingGroups(blank, { fieldProblem: () => null }), 'choice_label_required');
+  refusedWith(() => CC.prepareExistingGroups(apply(XP, D2(XP_PLAIN)), { fieldProblem: (f) => (f === 'choice' ? 'has unsafe characters' : null) }), 'text_unsafe');
+  refusedWith(() => CC.prepareExistingGroups(apply(XP, { ...D2(XP_PLAIN), label: ' ' }), { fieldProblem: () => null }), 'label_required');
+  assert.strictEqual(CC.prepareExistingGroups(clone(LM), { fieldProblem: () => null }).size, 0, 'no new option → nothing');
+});
+
 if (fails.length) { console.error(`choice-compare FAILED ${fails.length} cell(s): ${fails.join(' | ')}`); process.exit(1); }
 console.log(`choice-compare: OK (${n})`);
