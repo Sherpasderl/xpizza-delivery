@@ -155,11 +155,11 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
   });
 
   await cell('SDK-D4-PP-AMOUNT-MISMATCH', async (L) => {
-    for (const amt of ['1.49', '1.5', '1', '01.50', 1.5, '1.500']) {
+    for (const amt of ['1.49', 1.49, '1', 1, '01.50', '1.500', 1.505, '1,50', -1.5, null]) {
       const srv = await server(() => ({ status: 200, body: approvedBody(amt) }));
       try {
         const out = await makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } })).pspAuthorize(AUTH_IN);
-        assert.strictEqual(out.outcome, 'unknown', `${L}: an approved amount ${JSON.stringify(amt)} ≠ the strict 2-decimal 1.50 ⇒ unknown`);
+        assert.strictEqual(out.outcome, 'unknown', `${L}: an approved amount ${JSON.stringify(amt)} that is not exactly 150 cents (≤ 2 decimals) ⇒ unknown`);
       } finally { await srv.close(); }
     }
   });
@@ -278,6 +278,61 @@ const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓
       assert.deepStrictEqual(Object.keys(JSON.parse(m[1])).sort(), ['call', 'code', 'http_status', 'op_id', 'outcome'], `${L}: the diagnostic keys exactly`);
     }
     assert.ok(logged.length === replies.length, `${L}: one diagnostic per call (got ${logged.length})`);
+  });
+
+  await cell('SDK-D4-PP-AMOUNT-NUMERIC', async (L) => {
+    // the recorded sandbox envelopes carry transaction_approved_amount as a NUMBER (fixtures/pixelpay/auth-approved.json)
+    for (const [amt, cents] of [[1.5, 150], ['1.50', 150], ['1.5', 150], [1, 100], [0.07, 7], [1234.56, 123456], [0.1 + 0.2, null]]) {
+      const P = A().parseLempiras(amt);
+      assert.strictEqual(P, cents, `${L}: ${JSON.stringify(amt)} ⇒ ${cents} cents, integer, no float drift (got ${P})`);
+    }
+    for (const bad of [1.505, '1.505', '01.50', '1,50', -1, NaN, Infinity, '', ' 1.50', 4111111111111111, 1e7]) assert.strictEqual(A().parseLempiras(bad), null, `${L}: ${JSON.stringify(bad)} is refused`);
+    const srv = await server(() => ({ status: 200, body: approvedBody(1.5) }));
+    try {
+      const out = await makeAdapter(A().makePixelPayImpl(cfgOf(srv.url), { log: { info: () => {} } })).pspAuthorize(AUTH_IN);
+      assert.deepStrictEqual([out.outcome, out.amount_cents], ['approved', 150], `${L}: a NUMERIC approved amount equal to the request ⇒ approved`);
+    } finally { await srv.close(); }
+  });
+
+  await cell('SDK-D4-PP-PROD-VOID-WRITER', async (L) => {
+    // Codex r1 P1-1 through the REAL writers: coordinator (place, then cancel the same day) → wrapper → the production-mode impl
+    const { makeHonestDb } = require('../../_honest-rtdb-model');
+    const C = require('./coordinator');
+    const srv = await server((r) => (r.url.endsWith('/auth') ? { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1', transaction_approved_amount: 100, response_approved: true } } } : { status: 200, body: { success: true, data: { payment_uuid: 'P-prod-1' } } }));
+    try {
+      let t = 1_000_000;
+      const OID = 'tb_prod_void';
+      const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tb_rest', customer_name: 'Ana Pérez', pay_deadline_at: t + 900000 } } }, { now: () => t });
+      const cfg = cfgOf(srv.url, { mode: 'production', namespace: 'prod', merchant_email: 'Owner@Example.HN' });
+      const deps = { db, clock: () => t, psp: makeAdapter(A().makePixelPayImpl(cfg, { log: { info: () => {} } })), ppNamespace: 'prod', voidEligible: () => false, cancelVoidEligible: () => true, releaseResources: async () => {}, goLive: async () => {} };
+      const p = await C.placeOriginal(deps, { orderId: OID, attempt_id: 'att_prod_void_00001', token: 'T-prod', amount_cents: 100 });
+      assert.strictEqual(p.outcome, 'placed', `${L}: premise — placed (got ${JSON.stringify(p)})`);
+      await C.cancelSdkOrder(deps, { orderId: OID });
+      const voids = srv.seen.filter((r) => r.url.endsWith('/void'));
+      const ref = db.getAt(`payment_sdk/${OID}/legs/L1/pp_ref`);
+      assert.strictEqual(voids.length, 1, `${L}: ONE production void reaches the wire (got ${voids.length})`);
+      assert.strictEqual(voids[0].body.void_signature, crypto.createHash('sha512').update(['Owner@Example.HN', ref, SECRET].join('|')).digest('hex'), `${L}: signed over the leg's stored pp_ref`);
+      assert.strictEqual(db.getAt(`payment_sdk/${OID}/legs/L1/state`), 'voided', `${L}: the hold is voided, the record not locked`);
+    } finally { await srv.close(); }
+  });
+
+  await cell('SDK-D4-PP-REDACT-SCHEMA', async (L) => {
+    // Codex r1 P1-2: an ALLOWLIST schema — only listed fields survive, each type / format checked; messages only from a catalogue
+    const { redact } = require('./fixtures/redact-pixelpay');
+    const planted = { success: true, message: `Pago de ${SENTINEL.name} con tarjeta ${SENTINEL.pan}`, data: {
+      transaction_type: 'auth', transaction_approved_amount: 4111111111111111, transaction_amount: 1, response_code: '300', response_approved: true,
+      response_reason: `Titular ${SENTINEL.name}`, payment_uuid: SENTINEL.token, payment_hash: 'abcdef', attemps: 4111111111111111, status: 'Sentinela Nombre',
+      card_holder: SENTINEL.name, card_cvv: 777, history: { d: [{ label: SENTINEL.name }] }, extra_field: 'x' } };
+    const out = redact(planted);
+    const all = JSON.stringify(out);
+    for (const [k, v] of Object.entries(SENTINEL)) assert.ok(!all.includes(v), `${L}: the planted ${k} never survives (${all.slice(0, 200)})`);
+    assert.ok(!all.includes('4111111111111111') && !all.includes('777') && !all.includes('"300"'), `${L}: PAN / CVV / code-shaped numbers in ANY field never survive`);
+    assert.strictEqual(out.message, '<message>', `${L}: a message outside the catalogue is replaced`);
+    assert.strictEqual(out.data.transaction_type, 'auth', `${L}: an allowlisted enum value is kept`);
+    assert.strictEqual(out.data.transaction_amount, 1, `${L}: an in-range amount is kept`);
+    assert.strictEqual(out.data.payment_uuid, '<payment_uuid>', `${L}: identifiers are always placeholders`);
+    const ok = redact({ success: true, message: 'Transacción anulada exitosamente', data: { transaction_type: 'void', response_code: '00', response_reason: 'Transacción completada exitosamente' } });
+    assert.deepStrictEqual([ok.message, ok.data.response_code, ok.data.response_reason], ['Transacción anulada exitosamente', '00', 'Transacción completada exitosamente'], `${L}: catalogue messages and a 2-digit code are kept`);
   });
 
   // RED until the sandbox evidence exists (STOP 11-11: Cloudflare challenged the sandbox transaction API) — never satisfied by

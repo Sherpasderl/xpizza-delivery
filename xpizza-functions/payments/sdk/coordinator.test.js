@@ -1008,6 +1008,22 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     const staleDb = { ref: (p) => { const r = w.db.ref(p); if (p !== `payment_sdk/${OID}`) return r; return { ...r, transaction: (...a) => r.transaction(...a), once: async (...a) => { if (staleOnce) { staleOnce = false; return { val: () => null }; } return r.once(...a); } }; } };
     const again = await C().placeOriginal({ ...w.deps, db: staleDb }, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.deepStrictEqual([again.outcome, w.fake.callCount('authorize')], ['replay', 1], `${L}: the claim CAS recognises the known attempt — still ONE authorize (got ${JSON.stringify(again)})`);
+    // Codex r1 P2: the SUCCESS case — the first try PLACED the order; a stale retransmission must still be a replay, never order_state
+    const w2 = deadlineWorld();
+    const ok = await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(ok.outcome, 'placed', `${L}: premise — the first try placed the order`);
+    let stale2 = true;
+    const staleDb2 = { ref: (p) => { const r = w2.db.ref(p); if (p !== `payment_sdk/${OID}`) return r; return { ...r, transaction: (...a) => r.transaction(...a), once: async (...a) => { if (stale2) { stale2 = false; return { val: () => null }; } return r.once(...a); } }; } };
+    const again2 = await C().placeOriginal({ ...w2.deps, db: staleDb2 }, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([again2.outcome, again2.leg_id, w2.fake.callCount('authorize')], ['replay', 'L1', 1], `${L}: a stale retransmission of the PLACED attempt is a replay, never order_state (got ${JSON.stringify(again2)})`);
+  });
+  await cell('SDK-D4-VOID-CARRIES-REF', async (L) => {
+    // Codex r1 P1-1: the cancel void must carry the leg's provider reference (a production void is signed over it)
+    const w = deadlineWorld({ cancelEligible: () => true });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w.deps, { orderId: OID });
+    const v = w.fake.calls.filter((c) => c.action === 'void');
+    assert.ok(v.length === 1 && v[0].ref === w.rec().legs.L1.pp_ref && w.rec().legs.L1.state === 'voided', `${L}: ONE void, carrying the leg's pp_ref, and the leg voided (calls ${JSON.stringify(v)}, leg ${JSON.stringify(w.rec().legs.L1)})`);
   });
   await cell('SDK-D4-RETRY-AFTER-DECLINE', async (L) => {
     const w = deadlineWorld({ script: { authorize: [{ outcome: 'definitive_decline', code: 'X' }] } });
@@ -1079,6 +1095,70 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.strictEqual(f('prod', 'ord_1', A1), a, `${L}: deterministic`);
     assert.ok(new Set([a, f('staging', 'ord_1', A1), f('prod', 'ord_2', A1), f('prod', 'ord_1', A2)]).size === 4, `${L}: namespace / order / attempt each change it`);
     assert.notStrictEqual(f('prod', 'a', 'b-abcdefghijklmnop'), f('prod', 'a-b', 'abcdefghijklmnop'), `${L}: the hyphen-ambiguous pair is distinct (NUL separators)`);
+  });
+
+  // ── D4 row 19 (5f's narrowed boundStatus, advisor 11-12): an AMOUNT-LESS status binds only a uuid journaled from an APPROVED outcome ──
+  const amountless = (state) => (a) => ({ state, uuid: a.uuid, amount_cents: undefined });   // the recorded sandbox status carries NO amount (the fake's default would add one)
+  await cell('SDK-D4-AMOUNTLESS-BINDS-VERIFIED', async (L) => {
+    // capture: a lost capture answer, then an amount-less «captured»
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [amountless('captured')] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(w.rec().legs.L1.uuid_verified, true, `${L}: an APPROVED auth journals uuid_verified`);
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.strictEqual(w.rec().legs.L1.state, 'captured', `${L}: capture: an amount-less status binds a VERIFIED uuid (leg ${JSON.stringify(w.rec().legs.L1)})`);
+    // void: a lost void answer, then an amount-less «voided»
+    const w2 = deadlineWorld({ cancelEligible: () => true, script: { void: [{ lost: true }], status: [amountless('voided')] } });
+    await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w2.deps, { orderId: OID });
+    w2.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w2.deps, { orderId: OID });
+    assert.strictEqual(w2.rec().legs.L1.state, 'voided', `${L}: void: an amount-less status binds a VERIFIED uuid`);
+    // expiry: a surplus hold past its expiry, then an amount-less «expired» (trackExpiry)
+    const w3 = deadlineWorld({ script: { status: [amountless('expired')] } });
+    await C().placeOriginal(w3.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w3.deps, { orderId: OID });
+    w3.tick(R.HOLD_MS + 1);
+    await C().trackExpiry(w3.deps, OID);
+    assert.strictEqual(w3.rec().legs.L1.state, 'expired', `${L}: expiry: an amount-less status binds a VERIFIED uuid`);
+  });
+  await cell('SDK-D4-AMOUNTLESS-UNBOUND-UNVERIFIED', async (L) => {
+    // a uuid from a NON-approved outcome (an approval whose amount did not match ⇒ unknown + uuid) never binds amount-less evidence
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'approved', uuid: 'P-mm-1', amount_cents: 9999 }], status: [amountless('authorized')] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(w.rec().legs.L1.pp_uuid === 'P-mm-1' && w.rec().legs.L1.uuid_verified !== true, `${L}: premise — an unverified uuid journaled`);
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state === 'unknown' && w.rec().lock && !w.ord().payment_placed, `${L}: an amount-less «authorized» on an UNVERIFIED uuid stays unbound — locked for a person (leg ${JSON.stringify(w.rec().legs.L1)})`);
+    // a challenged original (requires_action) carries an unverified uuid too
+    const w2 = deadlineWorld({ script: { authorize: [{ outcome: 'requires_action', uuid: 'P-ra-2' }] } });
+    await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(w2.rec().legs.L1.uuid_verified !== true, `${L}: a requires_action uuid is NOT verified`);
+  });
+  await cell('SDK-D4-PRESENT-AMOUNT-DIFFERS-UNBOUND', async (L) => {
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [(a) => ({ state: 'captured', uuid: a.uuid, amount_cents: 999 })] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state !== 'captured' && w.rec().lock, `${L}: a PRESENT differing amount stays unbound even for a verified uuid`);
+  });
+  await cell('SDK-D4-LEGACY-LEG-NEEDS-AMOUNT', async (L) => {
+    // a leg journaled before row 19 has no uuid_verified: it stays on today's amount-required binding
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [amountless('captured'), (a) => ({ state: 'captured', uuid: a.uuid, amount_cents: 10000 })] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.db.setAt(`payment_sdk/${OID}/legs/L1/uuid_verified`, null);   // as journaled before this row
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state !== 'captured', `${L}: amount-less evidence does not bind a pre-row leg`);
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.strictEqual(w.rec().legs.L1.state, 'captured', `${L}: amount-bearing evidence still binds it (today's rule)`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
