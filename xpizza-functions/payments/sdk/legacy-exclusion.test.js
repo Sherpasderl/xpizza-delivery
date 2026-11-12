@@ -75,9 +75,12 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.ok(db.getAt(`dispatcher_alerts/sdkpay_hosted_callback_${OID}`), `${L}: a person is told (a hosted payment on an SDK order is a money anomaly)`);
   });
   await cell('LX-REWARD-SWEEP-NEVER-RELEASES-SDK', async (L) => {
+    // D4 row 24 (PLAN-sdk-d4-r11 §A0000): an ADOPTED hold (order.redemption structurally equal to rec.canonical) stays the
+    // coordinator's; a NON-adopted hold on a terminal SDK order is released by row 24 (d4-row24.test.js owns those cells)
+    const CANON = { reward_id: 'rw_x', cost: 8 };
     for (const [label, rec, order] of [
-      ['cancelled order', { state: 'reserved', created_at: 0 }, sdkOrder({ status: 'cancelled' })],
-      ['hosted-expiry branch', { state: 'reserved', created_at: 0, hosted_expires_at: 1 }, sdkOrder({ status: 'cancelled', payment_status: 'failed' })],
+      ['cancelled order', { state: 'reserved', created_at: 0, canonical: CANON }, sdkOrder({ status: 'cancelled', redemption: { ...CANON } })],
+      ['hosted-expiry branch', { state: 'reserved', created_at: 0, hosted_expires_at: 1, canonical: CANON }, sdkOrder({ status: 'cancelled', payment_status: 'failed', redemption: { ...CANON } })],
     ]) {
       const db = makeHonestDb({ orders: { [OID]: order }, user_rewards: { tb_uid: { tb_rest: { reservations: { [OID]: rec } } } } });
       const out = await require('../../rewards-reserve').sweepStaleReservations(db, { now: 10 * 24 * 3600 * 1000 });

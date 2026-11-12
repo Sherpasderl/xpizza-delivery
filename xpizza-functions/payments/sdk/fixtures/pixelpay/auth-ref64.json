@@ -1,0 +1,49 @@
+{
+ "provenance": {
+  "recorded": "2026-11-12",
+  "host": "pixelpay.dev (public sandbox)",
+  "sdk": "@pixelpay/sdk-core 2.5.2",
+  "run": "owner, with the gateway token (value never recorded)",
+  "redaction": "payments/sdk/fixtures/redact-pixelpay.js (schema allowlist)",
+  "source_case": "auth-ref64"
+ },
+ "http_status": 200,
+ "request_body_keys": [
+  "card_token",
+  "customer_email",
+  "customer_name",
+  "env",
+  "order_amount",
+  "order_currency",
+  "order_id"
+ ],
+ "response": {
+  "success": true,
+  "message": "La transacción ha sido autorizada con éxito por la cantidad de L 1.00",
+  "data": {
+   "transaction_type": "auth",
+   "transaction_redeemed_points": 0,
+   "transaction_approved_amount": 1,
+   "transaction_amount": 1,
+   "response_cvn": "<response_cvn>",
+   "response_avs": "<response_avs>",
+   "response_cavv": "<response_cavv>",
+   "transaction_id": "<transaction_id>",
+   "transaction_time": "<transaction_time>",
+   "transaction_date": "<transaction_date>",
+   "response_approved": true,
+   "response_incomplete": false,
+   "response_code": "00",
+   "response_time": "<response_time>",
+   "transaction_auth": "<transaction_auth>",
+   "transaction_reference": "<transaction_reference>",
+   "transaction_terminal": "<transaction_terminal>",
+   "transaction_merchant": "<transaction_merchant>",
+   "installment_type": null,
+   "installment_months": null,
+   "response_reason": "Transacción completada exitosamente",
+   "payment_uuid": "<payment_uuid>",
+   "payment_hash": "<payment_hash>"
+  }
+ }
+}

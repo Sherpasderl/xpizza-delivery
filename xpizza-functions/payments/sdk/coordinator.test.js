@@ -16,10 +16,10 @@ const order = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v
 const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
 // the REAL go-live: confirmAndMaterialize through its explicit SDK admission (no refund wiring → a closed kitchen parks)
 const realGoLive = (db, clock, extra = {}) => (dp, id) => require('../../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../../materialize').buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' }, ...extra }, { orderId: id, attemptId: null, now: clock(), trackingToken: 'TT-tb', sdkGoLive: true });
-function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, cancelEligible, t0 = 100000, goLiveDeps = {} } = {}) {
+function world({ seed = {}, script = {}, hooks = {}, eligible = () => false, cancelEligible, t0 = 100000, goLiveDeps = {}, contractOnlyStatus = false } = {}) {
   let t = t0;
   const db = makeHonestDb({ orders: { [OID]: order() }, ...seed }, { now: () => t, ...hooks });
-  const fake = makeFakePsp(script);
+  const fake = makeFakePsp(script, { contractOnlyStatus });
   const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: eligible, releaseResources: async () => { deps.released = (deps.released || 0) + 1; }, goLive: realGoLive(db, () => t, goLiveDeps) };
   if (cancelEligible) deps.cancelVoidEligible = cancelEligible;
   return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`), tick: (ms) => { t += ms; }, at: () => t };
@@ -34,7 +34,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   // ── placement ──
   await cell('SDK-PLACE-APPROVED', async (L) => {
     const w = world();
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00001', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.strictEqual(r.outcome, 'placed', `${L}: placed (got ${JSON.stringify(r)})`);
     assert.deepStrictEqual(w.fake.calls.map((c) => [c.action, c.token, c.amount_cents]), [['authorize', TOKEN, 10000]], `${L}: ONE authorize with the token + the SERVER amount`);
     assert.ok(/^tb_sdk_1:L1:auth:/.test(w.fake.calls[0].op_id), `${L}: the call carries the journaled op_id`);
@@ -47,21 +47,21 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-PLACE-DECLINED', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline', code: '05' }] } });
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00002', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.strictEqual(r.outcome, 'declined', `${L}: declined (got ${JSON.stringify(r)})`);
     assert.ok(legs(w.rec())[0].state === 'declined' && !w.rec().lock && !w.ord().payment_placed, `${L}: leg declined, no lock, not placed`);
   });
   await cell('SDK-PLACE-LOST-RESPONSE-LOCKS', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00003', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.strictEqual(r.outcome, 'unknown', `${L}: unknown (got ${JSON.stringify(r)})`);
     assert.ok(w.rec().lock && legs(w.rec())[0].state === 'unknown' && !w.ord().payment_placed, `${L}: locked, leg unknown, NOT placed`);
-    const again = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const again = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00004', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(again.outcome === 'refused' && w.fake.callCount('authorize') === 1, `${L}: a second placement is refused — still ONE authorize (got ${JSON.stringify(again)})`);
   });
   await cell('SDK-RECONCILE-NO-UUID-MANUAL', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00005', orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(3 * 60 * 1000);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.strictEqual(w.rec().lock.reason, 'manual_reconciliation', `${L}: an unknown auth with NO uuid → manual_reconciliation (got ${JSON.stringify(w.rec().lock)})`);
@@ -69,8 +69,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-RECONCILE-BOUND-STATUS-RESOLVES', async (L) => {
     // approved with a mismatched amount → adapter says unknown WITH a uuid; status (bound, authorized) resolves it
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-77', amount_cents: 9999, effect: (st) => { st['P-77'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-77', amount_cents: 9999, effect: (st) => { st['P-77'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00006', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(w.rec().lock, `${L}: PREMISE — locked on the mismatched answer`);
     w.tick(3 * 60 * 1000);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
@@ -80,14 +80,14 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-RECONCILE-MISMATCHED-STATUS-KEEPS-LOCK', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-78', amount_cents: 9999, effect: (st) => { st['P-78'] = { state: 'authorized', amount_cents: 9999 }; } }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00007', orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(3 * 60 * 1000);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.ok(w.rec().lock && legs(w.rec())[0].state === 'unknown', `${L}: evidence with another amount is NOT bound → lock kept (got ${JSON.stringify(w.rec().lock)})`);
   });
 
   // ── terminal settlement ──
-  const placed = async (opts = {}) => { const w = world(opts); await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }); return w; };
+  const placed = async (opts = {}) => { const w = world(opts); await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00008', orderId: OID, token: TOKEN, amount_cents: 10000 }); return w; };
   await cell('SDK-TERMINAL-CAPTURES-ONCE-FULL', async (L) => {
     const w = await placed();
     await w.db.ref(`orders/${OID}/status`).set('delivered');
@@ -188,7 +188,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   // test-only injected eligibility: reach the replacement-B path (production stays fail-closed)
   const ELIGIBLE = () => true;
   await cell('SDK-B-REPLACES-WHOLE-SET-NEVER-REVERTS', async (L) => {
-    const w = await placed({ eligible: ELIGIBLE, script: { void: [{ lost: true }] } }); await live(w);
+    const w = await placed({ eligible: ELIGIBLE, script: { void: [{ lost: true }] }, contractOnlyStatus: true }); await live(w);   // CONTRACT-ONLY: a 'voided' status production cannot produce (it answers 412)
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 9000, revision: REV(9000) });
     assert.strictEqual(r.outcome, 'replaced', `${L}: replaced (got ${JSON.stringify(r)})`);
     const lastAuth = w.fake.calls.filter((c) => c.action === 'authorize').pop();
@@ -202,13 +202,13 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.deepStrictEqual(w.fake.calls.filter((c) => c.action === 'capture').map((c) => c.amount_cents), [9000], `${L}: only B is captured; surplus never`);
   });
   await cell('SDK-UNKNOWN-B-LIVE-BECOMES-SURPLUS', async (L) => {
-    const w = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
+    const w = await placed({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, eligible: ELIGIBLE, script: { authorize: [{}, { lost: true, outcome: 'approved', uuid: 'P-B', amount_cents: 8000, effect: (st) => { st['P-B'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w);
     const r = await C().requestDecrease(w.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) });
     assert.strictEqual(r.outcome, 'unknown', `${L}: B unknown (got ${JSON.stringify(r)})`);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
     assert.ok(w.rec().lock && w.rec().lock.reason === 'manual_reconciliation', `${L}: no uuid for a lost B → manual (the lost-UUID lookup is §7.V)`);
     // the same with a uuid known (an amount-mismatched answer): status says live → B surplus, S committed
-    const w2 = await placed({ eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
+    const w2 = await placed({ contractOnlyStatus: true /* CONTRACT-ONLY: the unverified B2 uuid binds only an amount-bearing status */, eligible: ELIGIBLE, script: { authorize: [{}, { outcome: 'approved', uuid: 'P-B2', amount_cents: 1, effect: (st) => { st['P-B2'] = { state: 'authorized', amount_cents: 8000 }; } }] } }); await live(w2);
     await C().requestDecrease(w2.deps, { orderId: OID, new_total_cents: 8000, revision: REV(8000) });
     w2.tick(3 * 60 * 1000); await C().reconcileSdkOps(w2.deps, { orderId: OID });
     assert.deepStrictEqual([committedIds(w2.rec()).join(), w2.rec().legs.L2.role, w2.rec().legs.L2.state, w2.rec().fulfillment_total_cents], ['L1', 'surplus', 'approved', 10000], `${L}: B found live → SURPLUS; S stays committed; the total unchanged (got ${JSON.stringify(w2.rec().legs.L2)})`);
@@ -286,7 +286,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-EXPIRE-RESPECTS-TTL-AND-PLACEMENT', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00009', orderId: OID, token: TOKEN, amount_cents: 10000 });
     const early = await C().expirePending(w.deps, { orderId: OID });
     assert.ok(early.outcome === 'refused' && w.ord().status === 'pending_payment', `${L}: not before the TTL (got ${JSON.stringify(early)})`);
     w.tick(R.TTL_MS + 1);
@@ -300,7 +300,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-EXPIRE-LATE-APPROVAL-SURPLUS', async (L) => {
     let release; const gate = new Promise((r) => { release = r; });
     const w = world({ script: { authorize: [{ pause: gate }] } });
-    const placing = C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const placing = C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00010', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await new Promise((r) => setTimeout(r, 20));
     w.tick(R.TTL_MS + 1);
     const ex = await C().expirePending(w.deps, { orderId: OID });   // expiry while the auth is in flight
@@ -311,7 +311,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-EXPIRE-NO-UUID-UNKNOWN-STILL-RELEASES', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00011', orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(R.TTL_MS + 1);
     const r = await C().expirePending(w.deps, { orderId: OID });
     assert.ok(r.outcome === 'cancelled' && w.deps.released === 1, `${L}: cleanup proceeds (got ${JSON.stringify(r)})`);
@@ -319,7 +319,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-TWO-EXPIRY-WORKERS-RELEASE-ONCE', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00012', orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(R.TTL_MS + 1);
     await Promise.all([C().expirePending(w.deps, { orderId: OID }), C().expirePending(w.deps, { orderId: OID })]);
     assert.strictEqual(w.deps.released, 1, `${L}: released exactly once (got ${w.deps.released})`);
@@ -406,7 +406,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     }
   });
   await cell('SDK-CANCEL-VOID-UNKNOWN-LOCKS-THEN-STATUS', async (L) => {
-    const w = await placedAt({ script: { void: [{ lost: true }] } });
+    const w = await placedAt({ script: { void: [{ lost: true }] }, contractOnlyStatus: true });   // CONTRACT-ONLY: a 'voided' status production cannot produce (it answers 412)
     w.tick(3600 * 1000);
     await cancel(w);
     assert.ok(w.rec().lock && w.rec().lock.reason === 'unknown_op' && w.rec().legs.L1.state === 'approved', `${L}: an unknown void answer LOCKS, the leg not guessed (got ${JSON.stringify(w.rec().lock)})`);
@@ -492,9 +492,9 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-SWEEP-NO-STARVATION-60-UNKNOWNS', async (L) => {
     const ids = Array.from({ length: 60 }, (_, i) => `tb_lock_${String(i).padStart(2, '0')}`);
-    const orders = Object.fromEntries(ids.map((id) => [id, order()]));
+    const orders = Object.fromEntries(ids.map((id) => [id, order({ total_cents: 1000 })]));   // row 20: the stored total is what is placed
     const w = world({ seed: { orders }, script: { authorize: ids.map(() => ({ lost: true })) } });
-    for (const id of ids) await C().placeOriginal(w.deps, { orderId: id, token: TOKEN, amount_cents: 1000 });
+    for (const id of ids) await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00013', orderId: id, token: TOKEN, amount_cents: 1000 });
     w.tick(3 * 60 * 1000);
     const t = w.at();
     await SW().sweepSdkPayments(w.deps);
@@ -514,13 +514,13 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-SWEEP-EXPIRES-PENDING-TTL', async (L) => {
     const w = world({ script: { authorize: [{ outcome: 'definitive_decline' }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00014', orderId: OID, token: TOKEN, amount_cents: 10000 });
     w.tick(R.TTL_MS + 1);
     await SW().sweepSdkPayments(w.deps);
     assert.ok(w.ord().status === 'cancelled' && w.ord().payment_cancel.kind === 'expire' && w.deps.released === 1, `${L}: expired by the sweeper, released once`);
   });
   await cell('SDK-SWEEP-SURPLUS-EXPIRY-CONFIRMED', async (L) => {
-    const w = await placed(); await live(w);
+    const w = await placed({ contractOnlyStatus: true }); await live(w);   // CONTRACT-ONLY: an 'expired' status production cannot produce from the recorded evidence
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     const uuid = w.rec().legs.L1.pp_uuid;
     w.tick(R.HOLD_MS + 1);
@@ -538,7 +538,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-CLOSURE-EMPTY-SET-UNKNOWN-STAYS', async (L) => {
     const w = world({ script: { authorize: [{ lost: true }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00015', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     await C().settleTerminal(w.deps, { orderId: OID });
     assert.deepStrictEqual(w.rec().frozen && w.rec().frozen.capture_set, undefined, `${L}: PREMISE — an empty capture set`);
@@ -548,7 +548,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-ENROL-FAILURE-REFUSES', async (L) => {
     const w = world({ hooks: { beforeWrite: async (p) => { if (p === `payment_sdk_due/${OID}`) throw new Error('enrol write failed'); } } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }).catch(() => {});
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00016', orderId: OID, token: TOKEN, amount_cents: 10000 }).catch(() => {});
     assert.ok(w.fake.callCount('authorize') === 0 && !(w.rec() && w.rec().ops), `${L}: no enrol → nothing journaled, no PSP call`);
   });
   // ── Codex r1 → r2 cells ──
@@ -586,7 +586,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-GOLIVE-CRASH-SWEEPER-REDRIVES', async (L) => {
     const w = world();
     const real = w.deps.goLive; let n = 0; w.deps.goLive = async (dp, id) => { n += 1; if (n === 1) throw new Error('crash before going live'); return real(dp, id); };
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00017', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(r.outcome === 'placed' && w.ord().status === 'pending_payment' && w.ord().payment_placed, `${L}: PREMISE — placed, not yet live (got ${JSON.stringify(r)})`);
     w.tick(60 * 1000);
     await SW().sweepSdkPayments(w.deps);
@@ -606,13 +606,13 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-SCHEDULED-REFUSED-AT-PLACEMENT', async (L) => {
     const w = world({ seed: { orders: { [OID]: order({ scheduled_for: 999999999 }) } } });
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00018', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(r.outcome === 'refused' && r.reason === 'scheduled_unsupported' && w.fake.calls.length === 0, `${L}: a scheduled SDK order is refused before any PSP call (got ${JSON.stringify(r)})`);
   });
   await cell('SDK-CANCEL-WAITS-FOR-AN-IN-FLIGHT-GO-LIVE', async (L) => {
     const w = world();
     w.deps.goLive = async () => { throw new Error('crash after the confirm claim'); };
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00019', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await w.db.ref(`orders/${OID}/payment_status`).set('confirmed');   // the shared claim committed; materialization did not run yet
     const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(r.outcome === 'refused' && r.reason === 'going_live' && !w.ord().payment_cancel, `${L}: a cancel never lands between the go-live claim and its materialization (got ${JSON.stringify(r)})`);
@@ -709,8 +709,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   // #6 a late approval is classified against cancellation and the frozen set
   await cell('SDK-LATE-ORIGINAL-OUTSIDE-FROZEN-SET-SURPLUS', async (L) => {
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-90', amount_cents: 9999, effect: (st) => { st['P-90'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-90', amount_cents: 9999, effect: (st) => { st['P-90'] = { state: 'authorized', amount_cents: 10000 }; } }] } });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00020', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     await C().settleTerminal(w.deps, { orderId: OID });
     assert.ok(w.rec().frozen && !(w.rec().frozen.capture_set || []).length, `${L}: PREMISE — frozen with an empty capture set`);
@@ -720,8 +720,8 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   });
   await cell('SDK-LATE-ORIGINAL-AFTER-CANCEL-SURPLUS', async (L) => {
     // the status is still inconclusive while the cancel runs, so only the LATER reconciliation classifies the approval
-    const w = world({ script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }], status: [{ state: 'inconclusive' }] } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const w = world({ contractOnlyStatus: true /* CONTRACT-ONLY: an amount-bearing status binding an UNVERIFIED uuid — production's recorded status has no amount (manual) */, script: { authorize: [{ outcome: 'approved', uuid: 'P-91', amount_cents: 9999, effect: (st) => { st['P-91'] = { state: 'authorized', amount_cents: 10000 }; } }], status: [{ state: 'inconclusive' }] } });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00021', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     w.tick(3 * 60 * 1000);
     await C().reconcileSdkOps(w.deps, { orderId: OID });
@@ -771,7 +771,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-OP-JOURNALED-BEFORE-CALL', async (L) => {
     let seen; let wRef = null;
     const w = world({ script: { authorize: [(args) => { seen = wRef.db.getAt(`payment_sdk/${OID}/ops/${args.op_id}`); return {}; }] } }); wRef = w;
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00022', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(seen && seen.action === 'auth' && seen.result === undefined && seen.amount_cents === 10000, `${L}: the op is journaled (unanswered) BEFORE the PSP call (got ${JSON.stringify(seen)})`);
   });
   await cell('SDK-CANCEL-TXN-REFUSES-TERMINAL-RACE', async (L) => {
@@ -785,7 +785,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-PLACE-TXN-REFUSES-CANCEL-RACE', async (L) => {
     let armed = true;
     const w = world({ hooks: { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/status`, 'cancelled'); api.setAt(`orders/${OID}/payment_cancel`, { kind: 'cancel', at: 1 }); } } } });
-    const r = await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const r = await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00023', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(r.outcome === 'late_surplus' && !w.ord().payment_placed && w.rec().legs.L1.role === 'surplus', `${L}: a cancel landing during the authorization wins the placement transaction (got ${JSON.stringify(r)})`);
   });
   await cell('SDK-GOLIVE-TXN-REFUSES-CANCEL-RACE', async (L) => {
@@ -799,7 +799,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     let armed = false;
     const w = world({ hooks: { beforeTx: async (p, api) => { if (armed && p === `orders/${OID}`) { armed = false; api.setAt(`orders/${OID}/payment_status`, 'confirmed'); } } } });
     w.deps.goLive = async () => { throw new Error('go-live not yet run'); };
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00024', orderId: OID, token: TOKEN, amount_cents: 10000 });
     armed = true;
     const r = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
     assert.ok(!w.ord().payment_cancel && r.outcome === 'refused', `${L}: a go-live claim landing after the cancel pre-read wins inside the cancel transaction (got ${JSON.stringify(r)})`);
@@ -829,7 +829,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       seed: { orders: { [OID]: order({ customer_uid: 'tb_uid', redemption: { cost: 5, item: 'tb_item' } }) }, user_rewards: { tb_uid: { tb_rest: { balance: 10, reserved: 5, reservations: { [OID]: { state: 'reserved', cost: 5, created_at: 1 } } } } } },
       hooks: { beforeTx: async (p) => { if (failOnce && p.startsWith(RW)) { failOnce = false; throw new Error('consume transaction failed'); } } },
     });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00025', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(w.ord().materialized_at && !failOnce && w.db.getAt(`${RW}/reservations/${OID}/state`) === 'reserved', `${L}: PREMISE — live, but the consume failed (state ${w.db.getAt(`${RW}/reservations/${OID}/state`)})`);
     w.tick(60 * 1000);
     await SW().sweepSdkPayments(w.deps);
@@ -844,7 +844,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   const failRewardTx = (n) => { let left = n; return { beforeTx: async (p) => { if (left > 0 && p.startsWith(RWP)) { left -= 1; throw new Error('consume transaction failed'); } } }; };
   await cell('SDK-TERMINAL-SETTLE-CONSUMES-RESERVED-REDEMPTION', async (L) => {
     const w = world({ seed: rewardSeed('reserved'), hooks: failRewardTx(1) });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00026', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'reserved', `${L}: PREMISE — the go-live consume failed`);
     await deliver(w);
     assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: settlement of the fulfilled order consumed the redemption`);
@@ -854,7 +854,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-TERMINAL-SWEEP-CONSUMES-RESERVED-REDEMPTION', async (L) => {
     // the go-live consume AND settlement's consume fail; the sweeper's own terminal step consumes in the SAME visit
     const w = world({ seed: rewardSeed('reserved'), hooks: failRewardTx(2) });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00027', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await w.db.ref(`orders/${OID}/status`).set('delivered');
     w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
     assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: the sweeper's terminal visit consumed it (one visit)`);
@@ -862,7 +862,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     assert.strictEqual(w.db.getAt(`${RWP}/balance`), 5, `${L}: consumed ONCE`);
   });
   await cell('SDK-TERMINAL-REDEMPTION-NOT-RESERVED-NOOP', async (L) => {
-    const w = await (async () => { const x = world({ seed: rewardSeed('reserved') }); await C().placeOriginal(x.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 }); return x; })();
+    const w = await (async () => { const x = world({ seed: rewardSeed('reserved') }); await C().placeOriginal(x.deps, { attempt_id: 'att_fixed_c00028', orderId: OID, token: TOKEN, amount_cents: 10000 }); return x; })();
     assert.strictEqual(w.db.getAt(`${RWP}/reservations/${OID}/state`), 'consumed', `${L}: PREMISE — consumed at go-live`);
     const ledger0 = JSON.stringify(w.db.getAt(`${RWP}/ledger`));
     await deliver(w); w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps); w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
@@ -897,7 +897,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
     // Codex repro 2: two overlapping go-lives; the slower one resumes after the order was delivered and completed
     let release; const gate = new Promise((r) => { release = r; });
     const w = world(); w.deps.goLive = async () => { throw new Error('not yet'); };
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00029', orderId: OID, token: TOKEN, amount_cents: 10000 });
     const slow = CMcall(CMd(w.db, { getIdentity: async () => { await gate; return { active: true, hours: OPEN_ALL }; }, getGraceMinutes: async () => 15 }), 7);
     await new Promise((r) => setTimeout(r, 20));
     const fast = await CMcall(CMd(w.db), 8);
@@ -910,7 +910,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-GOLIVE-CRASH-AFTER-ORDER-TXN-REPLAYED', async (L) => {
     let n = 0; let crashed = false;
     const w = world({ hooks: { beforeTx: async (p) => { if (p.startsWith('tasks/') && ++n === 2) { crashed = true; throw new Error('crash after the first task'); } } } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00030', orderId: OID, token: TOKEN, amount_cents: 10000 });
     assert.ok(crashed && w.ord().materialized_at && w.db.getAt(`tasks/${OID}_pickup`) && !w.db.getAt(`tasks/${OID}_delivery`) && w.ord().sdk_live_pending, `${L}: PREMISE — live, the pickup task written, the delivery task not, the pending list recorded`);
     await w.db.ref(`tasks/${OID}_pickup/status`).set('assigned');   // a driver took the pickup meanwhile
     const c = await C().cancelSdkOrder(w.deps, { orderId: OID, kind: 'cancel' });
@@ -931,7 +931,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-LIVE-REPLAY-FILLS-TRACKING-PER-LEAF', async (L) => {
     let crash = true;
     const w = world({ hooks: { beforeTx: async (p) => { if (crash && p.startsWith('order_tracking/')) { crash = false; throw new Error('crash before the tracking record'); } } } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00031', orderId: OID, token: TOKEN, amount_cents: 10000 });
     const tok = w.ord().tracking_token;
     assert.ok(!crash && tok && !w.db.getAt(`order_tracking/${tok}`) && w.ord().sdk_live_pending, `${L}: PREMISE — live, tracking not written, list pending`);
     // the triggers write their leaves first
@@ -945,7 +945,7 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
   await cell('SDK-REWARD-CONSUME-FAILURE-KEEPS-DUE', async (L) => {
     let left = 6;   // go-live 1, settle 2, then two sweeper visits × (settle + sweeper) = 6 failed consumes
     const w = world({ seed: rewardSeed('reserved'), hooks: { beforeTx: async (p) => { if (left > 0 && p === RWP) { left -= 1; throw new Error('consume transaction failed'); } } } });
-    await C().placeOriginal(w.deps, { orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().placeOriginal(w.deps, { attempt_id: 'att_fixed_c00032', orderId: OID, token: TOKEN, amount_cents: 10000 });
     await deliver(w);
     for (let i = 1; i <= 2; i++) {
       w.tick(SW().REVISIT_MS + 1); await SW().sweepSdkPayments(w.deps);
@@ -965,6 +965,254 @@ async function cell(name, fn) { try { await fn(name); console.log(`  ✓ ${name}
       w.tick(60 * 1000); await SW().sweepSdkPayments(w.deps);
       assert.ok(w.db.getAt(`orders/${OID}/sdk_live_pending`) == null && alerts(w.db).some((a) => a.type === 'payment_sdk_malformed_live_pending'), `${L}: ${JSON.stringify(bad)}: a falsy malformed list is alerted and dropped (got ${JSON.stringify(w.db.getAt(`orders/${OID}/sdk_live_pending`))})`);
     }
+  });
+
+  // ── D4 S1 (PLAN-sdk-d4-r4): attempts, replay, the deadline, SAME-WINNER, the per-attempt reference, Q3 ──
+  const A1 = 'att_d4_first_00000001', A2 = 'att_d4_second_0000002';
+  const deadlineWorld = (opts = {}) => world({ ...opts, seed: { orders: { [OID]: order({ pay_deadline_at: 100000 + 15 * 60 * 1000, customer_name: 'Ana Pérez', customer_email: 'ana@example.hn' }) } } });
+  await cell('SDK-D4-ATTEMPT-CLAIM-ATOMIC', async (L) => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = deadlineWorld({ script: { authorize: [{ pause: gate }] } });
+    const placing = C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    const r = w.rec();
+    const leg = r && r.legs && r.legs.L1;
+    const ops = Object.values((r && r.ops) || {});
+    assert.ok(r && r.attempts && r.attempts[A1] && r.attempts[A1].leg_id === 'L1', `${L}: the attempt is claimed before the provider answers`);
+    assert.ok(leg && leg.attempt_id === A1 && /^sdk[a-z2-7]{26}$/.test(leg.pp_ref), `${L}: the leg carries the attempt and its provider reference`);
+    assert.ok(ops.length === 1 && ops[0].leg_id === 'L1' && ops[0].action === 'auth' && ops[0].result == null,   /* RTDB drops a null leaf */ `${L}: the op is journaled in the SAME record state (one CAS)`);
+    assert.ok(r.attempts[A1].token_hash && r.attempts[A1].token_hash !== TOKEN && !JSON.stringify(r.attempts).includes(TOKEN), `${L}: the attempt stores a token HASH, never the token`);
+    release(); await placing;
+  });
+  await cell('SDK-D4-ATTEMPT-REPLAY', async (L) => {
+    const w = deadlineWorld();
+    const p1 = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(p1.outcome, 'placed', `${L}: premise — placed`);
+    const p2 = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: 'T-other', amount_cents: 99999 });
+    assert.deepStrictEqual([p2.outcome, p2.leg_id, w.fake.callCount('authorize')], ['replay', 'L1', 1], `${L}: the same attempt_id is a replay — zero new PSP calls, the body ignored (got ${JSON.stringify(p2)})`);
+    let release; const gate = new Promise((r) => { release = r; });
+    const w2 = deadlineWorld({ script: { authorize: [{ pause: gate }] } });
+    const first = C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    const mid = await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    release(); await first;
+    assert.deepStrictEqual([mid.outcome, w2.fake.callCount('authorize')], ['replay', 1], `${L}: a retransmission while the first is in flight is a replay — zero new PSP calls`);
+  });
+  await cell('SDK-D4-REPLAY-STALE-READ', async (L) => {
+    // a retransmission whose first record read is STALE (the first try completes, declined, between that read and the claim):
+    // the claim CAS itself must recognise the known attempt — never a second authorization for one attempt
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'definitive_decline', code: 'X' }] } });
+    const first = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(first.outcome, 'declined', `${L}: premise — the first try declined`);
+    let staleOnce = true;
+    const staleDb = { ref: (p) => { const r = w.db.ref(p); if (p !== `payment_sdk/${OID}`) return r; return { ...r, transaction: (...a) => r.transaction(...a), once: async (...a) => { if (staleOnce) { staleOnce = false; return { val: () => null }; } return r.once(...a); } }; } };
+    const again = await C().placeOriginal({ ...w.deps, db: staleDb }, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([again.outcome, w.fake.callCount('authorize')], ['replay', 1], `${L}: the claim CAS recognises the known attempt — still ONE authorize (got ${JSON.stringify(again)})`);
+    // Codex r1 P2: the SUCCESS case — the first try PLACED the order; a stale retransmission must still be a replay, never order_state
+    const w2 = deadlineWorld();
+    const ok = await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(ok.outcome, 'placed', `${L}: premise — the first try placed the order`);
+    let stale2 = true;
+    const staleDb2 = { ref: (p) => { const r = w2.db.ref(p); if (p !== `payment_sdk/${OID}`) return r; return { ...r, transaction: (...a) => r.transaction(...a), once: async (...a) => { if (stale2) { stale2 = false; return { val: () => null }; } return r.once(...a); } }; } };
+    const again2 = await C().placeOriginal({ ...w2.deps, db: staleDb2 }, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([again2.outcome, again2.leg_id, w2.fake.callCount('authorize')], ['replay', 'L1', 1], `${L}: a stale retransmission of the PLACED attempt is a replay, never order_state (got ${JSON.stringify(again2)})`);
+  });
+  await cell('SDK-D4-VOID-CARRIES-REF', async (L) => {
+    // Codex r1 P1-1: the cancel void must carry the leg's provider reference (a production void is signed over it)
+    const w = deadlineWorld({ cancelEligible: () => true });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w.deps, { orderId: OID });
+    const v = w.fake.calls.filter((c) => c.action === 'void');
+    assert.ok(v.length === 1 && v[0].ref === w.rec().legs.L1.pp_ref && w.rec().legs.L1.state === 'voided', `${L}: ONE void, carrying the leg's pp_ref, and the leg voided (calls ${JSON.stringify(v)}, leg ${JSON.stringify(w.rec().legs.L1)})`);
+  });
+  await cell('SDK-D4-RETRY-AFTER-DECLINE', async (L) => {
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'definitive_decline', code: 'X' }] } });
+    const d1 = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(d1.outcome, 'declined', `${L}: premise — the first attempt declined`);
+    const d2 = await C().placeOriginal(w.deps, { attempt_id: A2, orderId: OID, token: 'T-second', amount_cents: 10000 });
+    const refs = w.fake.calls.filter((c) => c.action === 'authorize').map((c) => c.ref);
+    assert.ok(d2.outcome === 'placed' && refs.length === 2 && refs[0] !== refs[1], `${L}: a new attempt after a decline is admitted with a NEW leg — ref ≠ the first ref (got ${JSON.stringify(d2)}, refs ${JSON.stringify(refs)})`);
+    const w2 = deadlineWorld({ script: { authorize: [{ lost: true }] } });
+    await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    const u2 = await C().placeOriginal(w2.deps, { attempt_id: A2, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(u2.outcome === 'refused' && w2.fake.callCount('authorize') === 1, `${L}: a new attempt while the first is unknown is refused — still ONE authorize (got ${JSON.stringify(u2)})`);
+  });
+  await cell('SDK-D4-DEADLINE-AT-CLAIM', async (L) => {
+    const w = deadlineWorld();
+    w.tick(15 * 60 * 1000);   // exactly the deadline
+    const r = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([r.outcome, r.reason, w.fake.callCount('authorize')], ['refused', 'past_deadline', 0], `${L}: the claim at exactly the deadline is refused — zero PSP calls (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-D4-DEADLINE-AT-PLACE', async (L) => {
+    const steps = [];
+    const w = deadlineWorld({ script: { authorize: steps } });
+    steps.push(() => { w.tick(15 * 60 * 1000); return {}; });   // the bank answers AT the deadline
+    const r = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(r.outcome === 'late_surplus' && !w.ord().payment_placed && w.rec().legs.L1.role === 'surplus', `${L}: an approval at the deadline is surplus, never placed (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-D4-SAME-WINNER', async (L) => {
+    const steps = [];
+    const w = deadlineWorld({ script: { authorize: steps } });
+    steps.push(() => { w.db.setAt(`orders/${OID}/payment_placed`, { leg_id: 'L1', at: w.at() }); return {}; });   // a racing sweep placed THIS leg
+    const r = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([r.outcome, w.rec().legs.L1.role], ['placed', 'committed'], `${L}: the same winner resolves as placed — role kept (got ${JSON.stringify(r)})`);
+    const steps2 = [];
+    const w2 = deadlineWorld({ script: { authorize: steps2 } });
+    steps2.push(() => { w2.db.setAt(`orders/${OID}/payment_cancel`, { kind: 'cancel', at: w2.at() }); w2.db.setAt(`orders/${OID}/status`, 'cancelled'); return {}; });
+    const r2 = await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.deepStrictEqual([r2.outcome, w2.rec().legs.L1.role, !!w2.ord().payment_placed], ['late_surplus', 'surplus', false], `${L}: a loss to a cancel makes the leg surplus (got ${JSON.stringify(r2)})`);
+  });
+  await cell('SDK-D4-DECIDE-REFUSES-CHALLENGE', async (L) => {
+    const w = deadlineWorld();
+    const p = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(p.outcome, 'placed', `${L}: premise`);
+    const w2 = deadlineWorld();
+    await R.createRecord(w2.db, OID, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: 10000, created_at: w2.at(), ttl_at: w2.at() + 1e6 });
+    await R.casRecord(w2.db, OID, (r) => { r.legs = { L1: { kind: 'original', amount_cents: 10000, role: 'surplus', state: 'approved', from_challenge: true, pp_uuid: 'P-1', created_at: w2.at(), hold_expires_at: w2.at() + R.HOLD_MS } }; return r; });
+    const d = await C().decidePlacement(w2.deps, OID, 'L1');
+    assert.ok(d.outcome === 'refused' && !w2.ord().payment_placed, `${L}: a from_challenge leg is never placed — the direct decidePlacement is refused (got ${JSON.stringify(d)})`);
+  });
+  await cell('SDK-D4-AUTH-ID-PASSED', async (L) => {
+    const w = deadlineWorld();
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000, authentication_identifier: 'auth-3ds-1' });
+    const c = w.fake.calls.find((x) => x.action === 'authorize');
+    assert.strictEqual(c.authentication_identifier, 'auth-3ds-1', `${L}: the identifier reaches pspAuthorize`);
+    assert.deepStrictEqual(c.payer, { name: 'Ana Pérez', email: 'ana@example.hn' }, `${L}: the payer comes from the ORDER`);
+    assert.strictEqual(c.ref, w.rec().legs.L1.pp_ref, `${L}: the provider reference is the leg's stored pp_ref`);
+  });
+  await cell('SDK-D4-3DS-NO-LOCK', async (L) => {
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'requires_action', uuid: 'P-ra-1' }] } });
+    const r1 = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(r1.outcome, 'requires_action', `${L}: premise — the bank challenged the saved token`);
+    assert.ok(!w.rec().lock && !w.ord().payment_placed && w.rec().legs.L1.role === 'none', `${L}: no record lock, not placed`);
+    const r2 = await C().placeOriginal(w.deps, { attempt_id: A2, orderId: OID, token: 'T-other-card', amount_cents: 10000 });
+    assert.ok(r2.outcome === 'placed' && w.ord().payment_placed.leg_id === 'L2', `${L}: another card is admitted at once and placed (got ${JSON.stringify(r2)})`);
+  });
+  await cell('SDK-D4-PP-REF', async (L) => {
+    const f = C().ppRef;
+    const a = f('prod', 'ord_1', A1);
+    assert.ok(/^sdk[a-z2-7]{26}$/.test(a) && !a.includes('-'), `${L}: 29 chars, letters + digits, no '-' (${a})`);
+    assert.strictEqual(f('prod', 'ord_1', A1), a, `${L}: deterministic`);
+    assert.ok(new Set([a, f('staging', 'ord_1', A1), f('prod', 'ord_2', A1), f('prod', 'ord_1', A2)]).size === 4, `${L}: namespace / order / attempt each change it`);
+    assert.notStrictEqual(f('prod', 'a', 'b-abcdefghijklmnop'), f('prod', 'a-b', 'abcdefghijklmnop'), `${L}: the hyphen-ambiguous pair is distinct (NUL separators)`);
+  });
+
+  // ── D4 row 19 (5f's narrowed boundStatus, advisor 11-12): an AMOUNT-LESS status binds only a uuid journaled from an APPROVED outcome ──
+  const amountless = (state) => (a) => ({ state, uuid: a.uuid, amount_cents: undefined });   // the recorded sandbox status carries NO amount (the fake's default would add one)
+  await cell('SDK-D4-AMOUNTLESS-BINDS-VERIFIED', async (L) => {
+    // capture: a lost capture answer, then an amount-less «captured»
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [amountless('captured')] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.strictEqual(w.rec().legs.L1.uuid_verified, true, `${L}: an APPROVED auth journals uuid_verified`);
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.strictEqual(w.rec().legs.L1.state, 'captured', `${L}: capture: an amount-less status binds a VERIFIED uuid (leg ${JSON.stringify(w.rec().legs.L1)})`);
+    // void: a lost void answer, then an amount-less «voided»
+    const w2 = deadlineWorld({ cancelEligible: () => true, script: { void: [{ lost: true }], status: [amountless('voided')] } });
+    await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w2.deps, { orderId: OID });
+    w2.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w2.deps, { orderId: OID });
+    assert.strictEqual(w2.rec().legs.L1.state, 'voided', `${L}: void: an amount-less status binds a VERIFIED uuid`);
+    // expiry: a surplus hold past its expiry, then an amount-less «expired» (trackExpiry)
+    const w3 = deadlineWorld({ script: { status: [amountless('expired')] } });
+    await C().placeOriginal(w3.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    await C().cancelSdkOrder(w3.deps, { orderId: OID });
+    w3.tick(R.HOLD_MS + 1);
+    await C().trackExpiry(w3.deps, OID);
+    assert.strictEqual(w3.rec().legs.L1.state, 'expired', `${L}: expiry: an amount-less status binds a VERIFIED uuid`);
+  });
+  await cell('SDK-D4-AMOUNTLESS-UNBOUND-UNVERIFIED', async (L) => {
+    // a uuid from a NON-approved outcome (an approval whose amount did not match ⇒ unknown + uuid) never binds amount-less evidence
+    const w = deadlineWorld({ script: { authorize: [{ outcome: 'approved', uuid: 'P-mm-1', amount_cents: 9999 }], status: [amountless('authorized')] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(w.rec().legs.L1.pp_uuid === 'P-mm-1' && w.rec().legs.L1.uuid_verified !== true, `${L}: premise — an unverified uuid journaled`);
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state === 'unknown' && w.rec().lock && !w.ord().payment_placed, `${L}: an amount-less «authorized» on an UNVERIFIED uuid stays unbound — locked for a person (leg ${JSON.stringify(w.rec().legs.L1)})`);
+    // a challenged original (requires_action) carries an unverified uuid too
+    const w2 = deadlineWorld({ script: { authorize: [{ outcome: 'requires_action', uuid: 'P-ra-2' }] } });
+    await C().placeOriginal(w2.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    assert.ok(w2.rec().legs.L1.uuid_verified !== true, `${L}: a requires_action uuid is NOT verified`);
+  });
+  await cell('SDK-D4-PRESENT-AMOUNT-DIFFERS-UNBOUND', async (L) => {
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [(a) => ({ state: 'captured', uuid: a.uuid, amount_cents: 999 })] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state !== 'captured' && w.rec().lock, `${L}: a PRESENT differing amount stays unbound even for a verified uuid`);
+  });
+  await cell('SDK-D4-LEGACY-LEG-NEEDS-AMOUNT', async (L) => {
+    // a leg journaled before row 19 has no uuid_verified: it stays on today's amount-required binding
+    const w = deadlineWorld({ script: { capture: [{ lost: true }], status: [amountless('captured'), (a) => ({ state: 'captured', uuid: a.uuid, amount_cents: 10000 })] } });
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000 });
+    w.db.setAt(`payment_sdk/${OID}/legs/L1/uuid_verified`, null);   // as journaled before this row
+    w.db.setAt(`orders/${OID}/status`, 'delivered');
+    await C().settleTerminal(w.deps, { orderId: OID });
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.ok(w.rec().legs.L1.state !== 'captured', `${L}: amount-less evidence does not bind a pre-row leg`);
+    w.tick(C().RECONCILE_AFTER_MS + 1);
+    await C().reconcileSdkOps(w.deps, { orderId: OID });
+    assert.strictEqual(w.rec().legs.L1.state, 'captured', `${L}: amount-bearing evidence still binds it (today's rule)`);
+  });
+
+  await cell('SDK-D4-FAKE-PARITY', async (L) => {
+    // Codex S0/S1 r2 P2: the fake's DEFAULT answers must be ones the REAL adapter can produce from the recorded evidence.
+    // Contract cells may still INJECT other states explicitly (they are marked contract-only).
+    const PRODUCIBLE = { authorize: ['approved', 'definitive_decline', 'requires_action', 'unknown'], capture: ['captured', 'declined', 'unknown'], void: ['voided', 'unknown'], status: ['authorized', 'captured', 'inconclusive'] };
+    const fake = makeFakePsp({});
+    const ad = makeAdapter(fake.impl);
+    const a = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o1', ref: 'sdkx' });
+    const sAuth = await ad.pspStatus({ uuid: a.uuid });
+    const c = await ad.pspCapture({ uuid: a.uuid, amount_cents: 100, op_id: 'o2' });
+    const sCap = await ad.pspStatus({ uuid: a.uuid });
+    const a2 = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o3', ref: 'sdky' });
+    const v = await ad.pspVoid({ uuid: a2.uuid, op_id: 'o4', ref: 'sdky' });
+    const sVoid = await ad.pspStatus({ uuid: a2.uuid });
+    const got = [['authorize', a.outcome], ['status', sAuth.state], ['capture', c.outcome], ['status', sCap.state], ['void', v.outcome], ['status', sVoid.state]];
+    for (const [op, o] of got) assert.ok(PRODUCIBLE[op].includes(o), `${L}: the fake's default ${op} answer «${o}» is one the real adapter can produce (status after a void is 412 ⇒ inconclusive in production)`);
+  });
+
+  await cell('SDK-D4-DISPLAY-SCHEMA-CLAIM', async (L) => {
+    // Codex S3 r4 P1: a strict SERVER-side display schema BEFORE the first persistence (the journal included)
+    const bad = [{ brand: 'visa', last4: '4111111111111111', exp_month: 12, exp_year: 2030 }, { brand: { name: 'Ana', cvv: '123' }, last4: '4242', exp_month: 12, exp_year: 2030 }, { brand: 'visa', last4: '4242', exp_month: 13, exp_year: 2030 }, { brand: 'visa', last4: 4242, exp_month: 12, exp_year: 2030 }, null];
+    for (const display of bad) {
+      const w = deadlineWorld();
+      const r = await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000, card: { card_ref: 'new', display, save: true, vault_gen: 0 } });
+      assert.ok(r.outcome === 'refused' && r.reason === 'bad_display' && w.rec() == null && w.fake.callCount('authorize') === 0, `${L}: ${JSON.stringify(display)} ⇒ refused bad_display BEFORE any record / journal / PSP call (got ${JSON.stringify(r)})`);
+    }
+    const w = deadlineWorld();
+    await C().placeOriginal(w.deps, { attempt_id: A1, orderId: OID, token: TOKEN, amount_cents: 10000, card: { card_ref: 'new', display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030, email: 'x@y.hn', cvv: '999' }, save: true, vault_gen: 0 } });
+    assert.deepStrictEqual(w.rec().attempts[A1].display, { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, `${L}: extra keys (an email, a CVV) are DROPPED — the journal stores exactly the 4 display fields`);
+  });
+  await cell('SDK-D4-FAKE-BINDING-PARITY', async (L) => {
+    // Codex S3 r4 P2: the fake's DEFAULT status binds exactly as the REAL recorded status does — for a verified leg AND a legacy one
+    const { boundStatus } = require('./psp-adapter');
+    const fake = makeFakePsp({});
+    const ad = makeAdapter(fake.impl);
+    const a = await ad.pspAuthorize({ token: 'T', amount_cents: 100, op_id: 'o1', ref: 'sdkx' });
+    const fakeEv = await ad.pspStatus({ uuid: a.uuid });
+    const realEv = { state: 'authorized', uuid: a.uuid };   // the recorded shape (fixtures/pixelpay/status-authorized.json): NO amount
+    const verified = { pp_uuid: a.uuid, amount_cents: 100, uuid_verified: true };
+    const legacy = { pp_uuid: a.uuid, amount_cents: 100 };
+    assert.deepStrictEqual([boundStatus(fakeEv, verified), boundStatus(fakeEv, legacy)], [boundStatus(realEv, verified), boundStatus(realEv, legacy)], `${L}: the fake default binds like production (verified ⇒ bound, legacy ⇒ unbound); fake ${JSON.stringify(fakeEv)}`);
+  });
+  await cell('SDK-D4-STORED-TOTAL', async (L) => {
+    // CORE-Δ row 20 (PLAN-sdk-d4-r11 §A4): placeOriginal charges ONLY the stored order total — any other amount is refused before
+    // any record, journal or PSP call
+    for (const amt of [9999, 10001, 1]) {
+      const w = world({ seed: { orders: { [OID]: order({ total_cents: 10000 }) } } });
+      const r = await C().placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_stored_total_0001', token: 'T', amount_cents: amt });
+      assert.ok(r.outcome === 'refused' && r.reason === 'amount_mismatch' && w.fake.callCount('authorize') === 0 && w.rec() == null, `${L}: ${amt} ≠ the stored 10000 ⇒ refused amount_mismatch, zero PSP calls, no record (got ${JSON.stringify(r)})`);
+    }
+    const w = world({ seed: { orders: { [OID]: order({ total_cents: 10000 }) } } });
+    const ok = await C().placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_stored_total_0002', token: 'T', amount_cents: 10000 });
+    assert.ok(ok.outcome !== 'refused' && w.fake.callCount('authorize') === 1, `${L}: the stored total ⇒ dispatched (got ${JSON.stringify(ok)})`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nsdk coordinator: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);

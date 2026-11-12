@@ -27,6 +27,11 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
       tasks: { o_live_delivery: { assigned_driver_id: DRIVER, status: 'assigned' } },
       orders: { o_live: live(), o_done: done(), o_legacy: legacy(), o_legacy2: { ...legacy(), status: 'preparing' }, o_fresh: { order_id: 'x', restaurant_id: 'tb_norte', status: 'preparing', payment_flow: 'sdk_auth_v1', payment_total_cents: 10000 } },
       payment_sdk: { o_live: { version: 1 } }, payment_sdk_due: { o_live: 1 },
+      // D4 server nodes, seeded so a denied read is a RULE denial, not an empty node (the customer's OWN uid where keyed by uid)
+      sdk_recovery_queue: { q1: { order_id: 'o_live', at: 1 } }, recovery_phone_budget: { h1: { sends: [1] } }, order_recovery_otp: { o_live: { code_hash: 'h', expires_at: 9, attempts: 0, phone_hash: 'h1' } },
+      order_access_tickets: { t1: { order_id: 'o_live', phone_hash: 'h1', exp: 9 } }, customer_cards: { u_cust000000000000000000: { cards: { c1: { last4: '1111' } } } },
+      sdk_checkout_subject: { u_u_cust000000000000000000: { order_id: 'o_live', at: 1 } },
+      recovery_verify_pad: 1,
     });
   });
   await seed();
@@ -44,6 +49,12 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
     await no(`SPRE-SERVER-ONLY ${r} reads ${node}`, () => db.ref(node).once('value'));
     await no(`SPRE-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
   }
+  // D4 (advisor 11-12): the payment server's own nodes are server-only for EVERY client — the customer included on its own uid
+  for (const [r, db] of Object.entries(roles)) for (const node of ['sdk_recovery_queue', 'sdk_recovery_queue/q1', 'recovery_phone_budget/h1', 'order_recovery_otp/o_live', 'order_access_tickets/t1', 'customer_cards/u_cust000000000000000000', 'sdk_checkout_subject/u_u_cust000000000000000000', 'recovery_verify_pad']) {
+    await no(`SPRE-D4-SERVER-ONLY ${r} reads ${node}`, () => db.ref(node).once('value'));
+    await no(`SPRE-D4-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
+  }
+  await no('SPRE-D4-SERVER-ONLY a customer enqueues a recovery entry directly', () => cust.ref('sdk_recovery_queue/q2').set({ order_id: 'o_live', at: 1 }));
   // §3: no client creates / changes / removes a decision field — leaf, delete, extra child, whole-order, multipath, order delete
   for (const [r, db] of Object.entries(roles)) {
     await no(`SPRE-FIELD ${r} changes payment_flow`, () => db.ref('orders/o_live/payment_flow').set('legacy'));

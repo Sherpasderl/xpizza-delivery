@@ -1,0 +1,24 @@
+{
+ "provenance": {
+  "recorded": "2026-11-12",
+  "host": "pixelpay.dev (public sandbox)",
+  "sdk": "@pixelpay/sdk-core 2.5.2",
+  "run": "owner, with the gateway token (value never recorded)",
+  "redaction": "payments/sdk/fixtures/redact-pixelpay.js (schema allowlist)",
+  "source_case": "status-authorized"
+ },
+ "http_status": 200,
+ "request_body_keys": [
+  "env",
+  "payment_uuid"
+ ],
+ "response": {
+  "success": true,
+  "message": "Información obtenida con exito",
+  "data": {
+   "status": "authorized",
+   "attemps": 1,
+   "history": "<history>"
+  }
+ }
+}

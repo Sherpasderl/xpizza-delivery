@@ -12,7 +12,7 @@ assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-pricing.js', 'deli
 // files OLDER layers pin byte-for-byte take same-line edits only; the envío modules this slice owns (the writer, the resume guard) may grow
 const SAME_LINE = new Set(['delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'hosted-charge-flow.js', 'index.js', 'pixelpay-hosted-charge.js']);
 for (const f of FILES) {
-  const src = require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read
+  const src = require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read; D4 (5e63f584, newest) peeled first
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyEnvlimModule(f, src), b, `🔴 ${f} minus the envlim hunks is not ${BASE}:${f}`);

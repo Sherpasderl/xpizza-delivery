@@ -50,7 +50,7 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   await db.ref('/').set(null);
   await db.ref(`orders/${OID}`).set(sdkOrder({ created_at: Date.now() }));
   const w1 = depsWith();
-  const r1 = await C.placeOriginal(w1.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
+  const r1 = await C.placeOriginal(w1.deps, { attempt_id: 'att_fixed_e00001', orderId: OID, token: 'T-emu', amount_cents: 10000 });
   assert.strictEqual(r1.outcome, 'placed', `SPLE-PLACE: placed on the real transaction (got ${JSON.stringify(r1)})`);
   assert.ok((await val(`payment_sdk/${OID}/version`)) >= 2 && (await val(`orders/${OID}/payment_placed/leg_id`)) === 'L1', 'SPLE-PLACE: CAS on version + the order decision');
   ok('SPLE-PLACE real CAS + order transaction');
@@ -63,7 +63,7 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   await db.ref('/').set(null);
   await db.ref(`orders/${OID}`).set(sdkOrder({ created_at: Date.now() }));
   const w2 = depsWith();
-  await C.placeOriginal(w2.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
+  await C.placeOriginal(w2.deps, { attempt_id: 'att_fixed_e00002', orderId: OID, token: 'T-emu', amount_cents: 10000 });
   await db.ref(`orders/${OID}/status`).set('delivered');
   const adj = await C.requestDecrease(w2.deps, { orderId: OID, new_total_cents: 8000 });
   assert.ok(adj.outcome === 'refused' && !(await val(`orders/${OID}/payment_commit`)), `SPLE-ADJUST-AFTER-TERMINAL: refused, nothing committed (got ${JSON.stringify(adj)})`);
@@ -72,7 +72,7 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   await db.ref('/').set(null);
   await db.ref(`orders/${OID}`).set(sdkOrder({ created_at: Date.now() }));
   const w3 = depsWith();
-  await C.placeOriginal(w3.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
+  await C.placeOriginal(w3.deps, { attempt_id: 'att_fixed_e00003', orderId: OID, token: 'T-emu', amount_cents: 10000 });
   await db.ref(`orders/${OID}/status`).set('preparing');
   const c3 = await C.cancelSdkOrder(w3.deps, { orderId: OID, kind: 'cancel' });
   assert.ok(c3.outcome === 'cancelled' && (await val(`orders/${OID}/payment_cancel/kind`)) === 'cancel', `SPLE-CANCEL: decided on the real order (got ${JSON.stringify(c3)})`);
@@ -85,7 +85,7 @@ const depsWith = (script = {}) => { const fake = makeFakePsp(script); return { f
   await db.ref('/').set(null);
   await db.ref(`orders/${OID}`).set(sdkOrder({ created_at: Date.now(), items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, hub_lat: 14.1, hub_lng: -87.2, address_detected: 'tb calle 1', address_details: 'tb casa', customer_name: 'tb Cliente', customer_phone: '+50499990000', restaurant_name: 'tb R', restaurant_phone: '+50400000000' }));
   const w4 = depsWith(); w4.deps.goLive = require('../payments/sdk/deps').productionDeps(db).goLive;
-  const p4 = await C.placeOriginal(w4.deps, { orderId: OID, token: 'T-emu', amount_cents: 10000 });
+  const p4 = await C.placeOriginal(w4.deps, { attempt_id: 'att_fixed_e00004', orderId: OID, token: 'T-emu', amount_cents: 10000 });
   const o4 = await val(`orders/${OID}`);
   assert.ok(p4.outcome === 'placed' && ['confirmed', 'manual_reconciliation'].includes(o4.payment_status), `SPLE-GOLIVE: the registered go-live admitted and claimed the placed SDK order (got ${JSON.stringify({ p4, ps: o4.payment_status, st: o4.status })})`);
   assert.ok(!o4.refunding_at && o4.payment_status !== 'refunded' && w4.fake.callCount('capture') === 0 && w4.fake.callCount('void') === 0, 'SPLE-GOLIVE: never refunded, captured or voided by the go-live');

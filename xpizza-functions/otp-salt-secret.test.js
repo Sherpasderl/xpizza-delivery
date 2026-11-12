@@ -18,7 +18,7 @@ const { spawnSync } = require('child_process');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FN = __dirname;
-const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant', 'getMerchantRatingComments', 'publishRatingAggregates'];   // + S-B: the repeat-customer HMAC key (HKDF)   // + S-A(d): its cursor key is HKDF(OTP_SALT) — a NEW function, read lazily from process.env
+const BOUND = ['requestCheckoutCode', 'verifyCheckoutCode', 'redeemSignupGrant', 'getMerchantRatingComments', 'publishRatingAggregates', 'placeSdkOrder', 'recoverOrderAccess', 'processSdkRecovery', 'sweepSdkRecovery'];   // + D4 S7: the guest-recovery three (NEW functions; recovery hashes the phone with OTP_SALT)   // + D4 §A1: placeSdkOrder — a NEW function (the capp guest gate hashes the phone with OTP_SALT)   // + S-B: the repeat-customer HMAC key (HKDF)   // + S-A(d): its cursor key is HKDF(OTP_SALT) — a NEW function, read lazily from process.env
 const EXISTING_READERS = ['requestOtp', 'verifyOtp', 'chargeOnlineOrder', 'claimOrder'];
 const FAKE_SALT = 'tb-otp-salt-'.padEnd(40, 'x');
 

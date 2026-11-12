@@ -1,0 +1,19 @@
+{
+ "provenance": {
+  "recorded": "2026-11-12",
+  "host": "pixelpay.dev (public sandbox)",
+  "sdk": "@pixelpay/sdk-core 2.5.2",
+  "run": "owner status re-run, with the gateway token (value never recorded)",
+  "redaction": "payments/sdk/fixtures/redact-pixelpay.js (schema allowlist)",
+  "source_case": "status-by-order-id"
+ },
+ "http_status": 412,
+ "request_body_keys": [
+  "env",
+  "order_id"
+ ],
+ "response": {
+  "success": false,
+  "message": "Error al encontrar el cobro"
+ }
+}

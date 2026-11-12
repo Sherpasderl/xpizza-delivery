@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyZonesModule } = require('./tools/zones-module
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js'], 'the owned files');
 for (const f of FILES) {
-  const src = require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read
+  const src = require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read; D4 (5e63f584, newest) peeled first
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyZonesModule(f, src), b, `🔴 ${f} minus the zones hunks is not ${BASE}:${f}`);
