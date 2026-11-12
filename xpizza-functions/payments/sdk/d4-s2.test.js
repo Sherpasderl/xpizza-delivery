@@ -134,6 +134,27 @@ const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 *
     assert.deepStrictEqual(R(order(), rec()), { kind: 'no_attempt' }, `${L}: no attempt ⇒ the handler decides (never a guessed outcome)`);
   });
 
+
+  await cell('SDK-D4-ORDER-AUTH', async (L) => {
+    const crypto = require('crypto');
+    const tk = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const db = makeHonestDb({
+      orders: { [OID]: order({ customer_uid: 'uid_A' }), ord_guest: order({ guest_verified: { phone: '50499990000', phone_hash: 'ph_1' } }) },
+      checkout_tickets: { [tk('ct_good')]: { order_id: 'ord_guest', phone_hash: 'ph_1', exp: T0 + 60000 }, [tk('ct_old')]: { order_id: 'ord_guest', phone_hash: 'ph_1', exp: T0 - 1 }, [tk('ct_other')]: { order_id: OID, phone_hash: 'ph_1', exp: T0 + 60000 }, [tk('ct_phone')]: { order_id: 'ord_guest', phone_hash: 'ph_2', exp: T0 + 60000 } },
+    });
+    const deps = { db, clock: () => T0, verifyIdToken: async (t) => { if (t === 'idt_A') return { uid: 'uid_A' }; if (t === 'idt_B') return { uid: 'uid_B' }; throw new Error('bad token'); } };
+    const A = (h, id) => require('./order-auth').authorizeExistingOrder(deps, h, id);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer idt_A' }, OID), { ok: true, uid: 'uid_A' }, `${L}: the owner's token`);
+    const notFound = await A({ authorization: 'Bearer idt_B' }, OID);
+    const absent = await A({ authorization: 'Bearer idt_B' }, 'no_such_order');
+    assert.deepStrictEqual([notFound, absent], [{ ok: false, status: 404 }, { ok: false, status: 404 }], `${L}: a foreign order and an absent one answer the SAME 404 (no existence leak)`);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer junk' }, OID), { ok: false, status: 401, error: 'auth_invalid' }, `${L}: an invalid token ⇒ 401, never a guest fallback`);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer junk', ticket: 'ct_good' }, 'ord_guest'), { ok: false, status: 401, error: 'auth_invalid' }, `${L}: a bad token with a ticket is still refused (no fallback)`);
+    assert.deepStrictEqual(await A({ ticket: 'ct_good' }, 'ord_guest'), { ok: true, guest: true }, `${L}: a valid guest ticket`);
+    for (const t of ['ct_old', 'ct_other', 'ct_phone', 'ct_none']) assert.deepStrictEqual(await A({ ticket: t }, 'ord_guest'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: ${t} ⇒ 401 guest_auth_required (expired / other order / other phone / unknown)`);
+    assert.deepStrictEqual(await A({}, 'ord_guest'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: no credential ⇒ 401`);
+    assert.deepStrictEqual(await A({ ticket: 'ct_good' }, 'no_such_order'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: a ticket for an absent order ⇒ the same 401`);
+  });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s2: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
 })().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });
