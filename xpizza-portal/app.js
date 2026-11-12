@@ -2118,6 +2118,16 @@ function renderEditDrawer(d, it, keepScroll) {
         sum.append(ref.sum, ieAllExtras);
         gb.append(sum);
         for (const r of c.rows) {
+          if (r.isNew) {   // S2 §3.3 (Codex S2 UI r1 P2-6): a NEW extra — checked, inert, the approved line; nothing it could write
+            const row = mk('div', 'mopt mk-xopt mk-xoptnew');
+            const lab = mk('label', 'mk-xchk');
+            const cbNew = document.createElement('input'); cbNew.type = 'checkbox'; cbNew.checked = true; lockControl(cbNew, true);
+            const nmCol = mk('span', 'mk-xnmcol'); nmCol.append(mk('span', 'mk-xnm', r.name), mk('span', 'mk-xnewl', 'Nuevo · se elige por producto al publicarlo'));
+            lab.append(cbNew, nmCol);
+            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));
+            gb.append(row);
+            continue;
+          }
           const row = mk('div', 'mopt mk-xopt');
           const lab = mk('label', 'mk-xchk');
           const ieExtraOn = document.createElement('input'); ieExtraOn.type = 'checkbox'; ieExtraOn.checked = r.on; lockControl(ieExtraOn, c.disabled);

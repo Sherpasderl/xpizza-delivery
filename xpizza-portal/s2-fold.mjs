@@ -78,6 +78,10 @@ export const S2_FOLD = {
    "      const h = header(id, c.cat, opcExtSub(c, open), 'mk-gts', open);\n"
   ],
   [
+   "          if (r.isNew) {   // S2 §3.3 (Codex S2 UI r1 P2-6): a NEW extra — checked, inert, the approved line; nothing it could write\n            const row = mk('div', 'mopt mk-xopt mk-xoptnew');\n            const lab = mk('label', 'mk-xchk');\n            const cbNew = document.createElement('input'); cbNew.type = 'checkbox'; cbNew.checked = true; lockControl(cbNew, true);\n            const nmCol = mk('span', 'mk-xnmcol'); nmCol.append(mk('span', 'mk-xnm', r.name), mk('span', 'mk-xnewl', 'Nuevo · se elige por producto al publicarlo'));\n            lab.append(cbNew, nmCol);\n            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));\n            gb.append(row);\n            continue;\n          }\n",
+   ""
+  ],
+  [
    "          if (s2) {   // S2: the group's price, read-only here (repriced on the Extras page)\n            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));\n            gb.append(row);\n            ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: null });\n            continue;\n          }\n",
    ""
   ],
@@ -230,8 +234,20 @@ export const S2_FOLD = {
    "const prospectBaseline = (s) => extrasBaseline(prospectSource(s.draft, s), s.key, null);\n"
   ],
   [
-   "  try { const p = prospectSource(draft, s); if (!p) throw new Error('no prospect'); used = extrasGroupReach(p); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }\n",
-   "  try { used = extrasGroupReach(prospectSource(draft, s)); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }\n"
+   "  let used, prospect;\n  try { prospect = prospectSource(draft, s); if (!prospect) throw new Error('no prospect'); used = extrasGroupReach(prospect); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }\n",
+   "  let used;\n  try { used = extrasGroupReach(prospectSource(draft, s)); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }\n"
+  ],
+  [
+   "  // STRUCTURE S2 §3.3 (Codex S2 UI r1 P2-6) — REF-AWARE: the eligibility projection sees keyed extras only, so a NEW (keyless) extra of\n  // an offered group joins its card, and a NEW group the dish is offered (the shared writer's effectiveGroups, from the structure) gets\n  // its own card — CHECKED and inert («Nuevo · se elige por producto al publicarlo»; deny_extras is key-only), counted in «N de M»\n  const keyless = (g) => (prospect.extras || []).filter((x) => x && typeof x.key !== 'string' && x.display && String(x.display.cat) === g)\n    .map((x) => ({ key: null, ref: x.ref, name: x.display.name, price: x.price, on: true, isNew: true }));\n  const X = globalThis.ExposureTransitions, E = globalThis.ExtrasEligibility;\n  let offered = [];\n  if (s.extrasCatalog === true && X && E) { try { offered = X.effectiveGroups(E.projectEligibility(prospect))[s.key] || []; } catch (_) { offered = []; } }\n  const known = new Set(b.groups.map((g) => g.cat));\n  const groups = [...b.groups, ...offered.filter((g) => !known.has(g)).map((g) => ({ cat: g, keys: [] }))];\n  const cards = groups.map((g) => {\n",
+   "  const cards = b.groups.map((g) => {\n"
+  ],
+  [
+   "    if (s.extrasCatalog === true) rows.push(...keyless(g.cat));\n",
+   ""
+  ],
+  [
+   "  }).filter((c) => c.rows.length > 0);\n",
+   "  });\n"
   ],
   [
    "  if (!after) return null;\n",

@@ -189,15 +189,26 @@ function extrasCards(draft, s) {
   const b = prospectBaseline(s);
   // Codex build r1 #8: the evaluator missing is SAID (the block stays, «No pudimos cargar los extras.»), never a silent absence
   if (!b) return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true };
-  let used;
-  try { const p = prospectSource(draft, s); if (!p) throw new Error('no prospect'); used = extrasGroupReach(p); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }
+  let used, prospect;
+  try { prospect = prospectSource(draft, s); if (!prospect) throw new Error('no prospect'); used = extrasGroupReach(prospect); } catch (_) { return { authoring: s.extrasAuthoring, none: w.extrasNone, cards: [], gap: true, show: true }; }
   const deny = new Set(w.denyExtras);
   const byKey = new Map((draftSource(draft).extras || []).map((x) => [x && x.key, x]));
-  const cards = b.groups.map((g) => {
+  // STRUCTURE S2 §3.3 (Codex S2 UI r1 P2-6) — REF-AWARE: the eligibility projection sees keyed extras only, so a NEW (keyless) extra of
+  // an offered group joins its card, and a NEW group the dish is offered (the shared writer's effectiveGroups, from the structure) gets
+  // its own card — CHECKED and inert («Nuevo · se elige por producto al publicarlo»; deny_extras is key-only), counted in «N de M»
+  const keyless = (g) => (prospect.extras || []).filter((x) => x && typeof x.key !== 'string' && x.display && String(x.display.cat) === g)
+    .map((x) => ({ key: null, ref: x.ref, name: x.display.name, price: x.price, on: true, isNew: true }));
+  const X = globalThis.ExposureTransitions, E = globalThis.ExtrasEligibility;
+  let offered = [];
+  if (s.extrasCatalog === true && X && E) { try { offered = X.effectiveGroups(E.projectEligibility(prospect))[s.key] || []; } catch (_) { offered = []; } }
+  const known = new Set(b.groups.map((g) => g.cat));
+  const groups = [...b.groups, ...offered.filter((g) => !known.has(g)).map((g) => ({ cat: g, keys: [] }))];
+  const cards = groups.map((g) => {
     const rows = g.keys.map((k) => { const x = byKey.get(k); const nm = x && x.display && typeof x.display.name === 'string' && x.display.name.trim() ? x.display.name : k;
       return { key: k, name: nm, price: w.extraPrices[k], on: !deny.has(k) }; });
+    if (s.extrasCatalog === true) rows.push(...keyless(g.cat));
     return { cat: g.cat, rows, size: rows.length, active: rows.filter((r) => r.on).length, usedBy: used.get(g.cat) || 0, disabled: w.extrasNone || !s.extrasAuthoring };
-  });
+  }).filter((c) => c.rows.length > 0);
   // R6: «Sin extras» is offered when the dish has something to switch off, or is already off
   return { authoring: s.extrasAuthoring, none: w.extrasNone, cards, gap: false, show: cards.length > 0 || w.extrasNone };
 }

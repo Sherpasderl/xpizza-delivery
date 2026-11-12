@@ -626,6 +626,9 @@
   .mk-gsub{padding:7px 14px 11px;font-size:12px;color:var(--mute2);line-height:1.45}
   .mk-ferr{display:flex;align-items:flex-start;gap:6px}
   .tag.mk-ftag{font-weight:650;letter-spacing:0;white-space:nowrap}
+  /* S2 §3.3: a NEW extra in the drawer's card — its name over the approved grey line (rule 16b: the line wraps under the name, never beside it) */
+  .mk-xnmcol{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .mk-xnewl{font-size:11.5px;font-weight:400;line-height:1.35;color:var(--mute)}
   .tag.mk-sky{color:var(--sky-text);background:var(--sky-soft);border-color:var(--sky-line)}   /* «Cambios sin publicar» — pending (MOCKUP-pastel-chips) */
   .tag.mk-sand{color:var(--sand-text);background:var(--sand-soft);border-color:var(--sand-line)}   /* «Se quita al publicar» — caution (MOCKUP-portal-remove-product R3) */
   .nm:has(.mk-ftag){flex-wrap:wrap;row-gap:3px}

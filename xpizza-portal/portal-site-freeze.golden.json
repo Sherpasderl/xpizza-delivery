@@ -162,8 +162,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "83540f965b5a8a9935940d1464b656eb6853115a2f123b2d2def74cc69f08ca8",
-   "bytes": 130905
+   "sha256": "31efcc21d80f95129eead960a48757df92304c5e63d70ae9f61197a8df4c7907",
+   "bytes": 131206
   }
  },
  "diff_aid": {
@@ -2038,6 +2038,12 @@
     ".mk-xnew .mk-xname:focus",
     "border-color",
     "var(--accent)"
+   ],
+   [
+    "",
+    ".mk-xnewl",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

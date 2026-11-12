@@ -2154,3 +2154,32 @@ for (const who of ['owner', 'manager']) {
     });
   }
 }
+
+test('S2 Codex r1 P2-6 — the drawer is ref-aware: a NEW extra in an offered group and a NEW group attached to the dish show CHECKED and inert with «Nuevo · se elige por producto al publicarlo», counted in their cards', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  const E = await import('./editor.js');
+  const d = p.mods.app.state.draft;
+  assert.equal(E.applyExposureOps(d, [{ op: 'extra.add', group: 'Salsas', ref: 'tmp:p26-new-0001', name: 'Salsa nueva', price: 12 },
+    { op: 'group.create', group: 'Toppings', extras: [{ ref: 'tmp:p26-new-0002', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['dimsum_01'] } }], { extrasCatalog: true }).ok, true, 'premise: the page’s writer');
+  await p.open('dimsum_01');
+  const rowOf = (card, name) => rowsOfCard(card).find((r) => r.querySelector('.mk-xnm').textContent === name);
+  const LINE = 'Nuevo · se elige por producto al publicarlo';
+  for (const [g, name] of [['Salsas', 'Salsa nueva'], ['Toppings', 'Miel']]) {
+    const card = cardOf(p, g);
+    assert.ok(card, `${g}: its card is drawn`);
+    const r = rowOf(card, name);
+    assert.ok(r, `${g}: the new extra «${name}» is in its card`);
+    const cb = r.querySelector('input[type=checkbox]');
+    assert.equal(cb.checked, true, `${name}: checked`);
+    assert.equal(cb.disabled, true, `${name}: inert (deny_extras is key-only)`);
+    assert.ok(r.textContent.includes(LINE), `${name}: the approved line`);
+  }
+  const salsas = cardOf(p, 'Salsas');
+  const n = rowsOfCard(salsas).length;
+  assert.ok(salsas.textContent.includes(`${n} opciones`) || salsas.textContent.includes(`de ${n} activos`) || salsas.textContent.includes('Todos activos'), 'the new extra counts in its card');
+  // the copy untouched by the inert rows: «Guardar» composes nothing for them
+  p.btn('Guardar').click(); await settle(10);
+  const io = (p.src().structure.exposure.item_overrides || {}).dimsum_01 || {};
+  assert.ok(!(io.deny_extras || []).some((k) => typeof k !== 'string'), 'nothing keyless is written into the checklist');
+});
