@@ -40,7 +40,7 @@ async function authorize(req, deps) {
     if (tHdr != null && tBody != null && tHdr !== tBody) return refuse(401, 'guest_auth_required');   // CONTRACT-Δ C2
     const ticket = tHdr != null ? tHdr : tBody;
     if (typeof ticket !== 'string' || !TICKET_RE.test(ticket)) return refuse(401, 'guest_ticket_invalid');
-    const { restaurantId } = deps.ridOf(body);
+    const { restaurantId } = await deps.ridOf(body);
     const orderId = typeof body.order_id === 'string' ? body.order_id : null;
     const digits = typeof body.customer_phone === 'string' ? deps.normalizePhone(body.customer_phone) : null;
     const phoneHash = digits ? deps.phoneHash(digits) : null;

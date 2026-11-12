@@ -110,7 +110,7 @@ ok('(iii) sensitivity: missing / duplicated / shared-line / renamed markers refu
 {
   const CI = require('./tools/checkout-charge-inputs-inverse'), PX = require('./tools/checkout-pixelpay-inverse');
   for (const [M, fn, label] of [[CI, CI.unapplyCheckoutChargeInputs, 'checkout_ticket entry'], [PX, PX.unapplyCheckoutPixelpay, 'guestForeign blocks']]) {
-    const src = fs.readFileSync(path.join(__dirname, M.FILE), 'utf8');
+    const src = require('./tools/d4-intake-inverse').unapplyD4Module(M.FILE, fs.readFileSync(path.join(__dirname, M.FILE), 'utf8'));   // D4: the newer layer innermost
     const out = fn(src);
     const blocks = M.BLOCKS || [M.LINE];
     assert.strictEqual(src.split('\n').length - out.split('\n').length, blocks.reduce((k, b) => k + b.split('\n').length - 1, 0), `${M.FILE}: exactly the ${label} lines removed`);

@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyD4Module } = require('./tools/d4-intake-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, '53edc481', 'D4-WIRING: the base is the D4 branch point');
-assert.deepStrictEqual([...FILES].sort(), ['pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['index.js', 'pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
 for (const f of FILES) {
   const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
@@ -26,6 +26,12 @@ for (const f of FILES) {
 }
 assert.strictEqual(unapplyD4Module('tb-unowned.js', 'x\n'), 'x\n', 'D4-WIRING: an unowned file passes through');
 ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
+// the portal fold of index.js carries every D4 index.js hunk exactly once (the guards that read the fold peel this layer)
+{
+  const fold = require('./tools/portal-split').foldPortalSplit();
+  for (const h of HUNKS.filter((x) => x.file === 'index.js')) assert.strictEqual(fold.split(h.now).length - 1, 1, `D4-WIRING: an index.js hunk survives the portal fold exactly once (${h.now.slice(0, 80)})`);
+  ok('the portal fold carries each D4 index.js hunk exactly once');
+}
 // registration: every raw-read site that composes the previous innermost layer (dpao) composes D4 INSIDE it, at the same site
 {
   const files = execFileSync('git', ['ls-files', '*.js'], { cwd: __dirname, encoding: 'utf8' }).split('\n').filter(Boolean);
@@ -41,4 +47,10 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
   assert.ok(sites >= 70, `D4-WIRING: premise — the registration covers the chains (${sites} sites)`);
   ok(`the D4 layer sits innermost at all ${sites} raw-read sites that compose the older layers`);
 }
+// §A7 NEVER composed: the CURRENT-code checks must SEE the SDK code — none of them may read through the D4 layer
+for (const f of ['order-creators.guard.test.js', 'contract/census.js', 'contract/census-build.js', 'sdk-intake-branch.guard.test.js', 'tools/egress-guard.js', 'catalog/no-code-authority.guard.test.js']) {
+  const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  assert.ok(!/d4-intake-inverse|unapplyD4Module/.test(s), `D4-WIRING: ${f} must read index.js RAW (a current-code check never composes the D4 inverse)`);
+}
+ok('the current-code checks read the raw files (never through the D4 layer)');
 console.log(`\nd4-wiring.guard: OK (${n})`);

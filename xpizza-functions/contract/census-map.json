@@ -913,7 +913,9 @@
   "payments/sdk/intake.js#authorize": "intake",
   "payments/sdk/intake.js#exactKeys": "intake",
   "payments/sdk/finish.js#bindingRefusal": "intake",
-  "payments/sdk/finish.js#finishSdk": "intake"
+  "payments/sdk/finish.js#finishSdk": "intake",
+  "index.js#acquireRefusal>anon": "intake",
+  "index.js#ridOf": "intake"
  },
  "pageFunctionExemptions": {
   "xpizza-portal/api.js#rawCall": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: the raw getDeliveryPricing / setDeliveryPricing call reads the HTTP response status only (to tell SAVED from UNKNOWN); no persisted order, no money",

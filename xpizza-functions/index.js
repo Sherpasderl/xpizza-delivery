@@ -1492,18 +1492,30 @@ chargeOnlineApp.all('*', async (req, res) => {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Same public bearer secret as createOrder (it's by-design public in the
-  // browser; the rate limiter + server-recomputed total are the real defense).
-  const SECRET = process.env.MAKE_SECRET;
-  if (!SECRET) {
-    console.error('chargeOnlineOrder: MAKE_SECRET not set — refusing all requests');
-    return unauthorized(res, 'server misconfigured');
-  }
-  const authHeader = req.get('authorization') || '';
-  const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  if (!presented || !constantTimeEqual(presented, SECRET)) {
-    console.warn('chargeOnlineOrder: bad/missing bearer token');
-    return unauthorized(res, 'invalid bearer token');
+  // D4 §A1: the mode comes ONLY from which export was invoked (placeSdkApp's middleware sets it; nothing in the request can)
+  const SDK_MODE = res.locals.sdkMode === true;
+  if (SDK_MODE) {   // D4 §A2 B1: exactly ONE credential kind (member ID token | guest ticket), validated HERE, no fail-open; app semantics
+    const b1 = await require('./payments/sdk/intake').authorize(req, {
+      db: getDatabase(), clock: () => Date.now(), deadlineMs: 1500, attributionUid,
+      verifyIdToken: (t) => getAuth().verifyIdToken(t), isTombstoned: async (uid) => (await getDatabase().ref('deleted_uids/' + uid).get()).exists(),
+      normalizePhone: require('./whatsapp').normalizePhone, phoneHash: (d) => require('./otp-lib').phoneHash(d), cartFpFromBody: require('./checkout-guest-lib').cartFpFromBody,
+      ridOf: async (b) => { await restaurantRegistry().ready(); return resolveRestaurantId(b.restaurant_id, restaurantRegistry().known()); },
+    });
+    if (b1.refuse) return res.status(b1.refuse.status).json(b1.refuse.body);
+  } else {
+    // Same public bearer secret as createOrder (it's by-design public in the
+    // browser; the rate limiter + server-recomputed total are the real defense).
+    const SECRET = process.env.MAKE_SECRET;
+    if (!SECRET) {
+      console.error('chargeOnlineOrder: MAKE_SECRET not set — refusing all requests');
+      return unauthorized(res, 'server misconfigured');
+    }
+    const authHeader = req.get('authorization') || '';
+    const presented = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!presented || !constantTimeEqual(presented, SECRET)) {
+      console.warn('chargeOnlineOrder: bad/missing bearer token');
+      return unauthorized(res, 'invalid bearer token');
+    }
   }
 
   /* P-SELFUPDATE §5 — client identity log line + the EARLY floor admission. Floor OFF → nothing below changes. A
@@ -1640,6 +1652,12 @@ chargeOnlineApp.all('*', async (req, res) => {
      customer, a live URL by the existing classifier, the hold still this order's) — never re-priced, re-gated or re-checked
      against today's catalog. Read-only; any doubt or error → null → the current path below (fresh issuance and rotation
      always meet current enforcement). Answered exactly as acquire's reuse is (the same hosted-flow reuse branch). */
+  if (SDK_MODE) {   // D4 §A2 B2: the bound-reuse probe is never an SDK path (B1 refused redeem); a KNOWN attempt of THIS caller answers and returns, before any gate, reserve or claim; then the pre-write admit (scheduled / the card flag)
+    const sdkDeps = require('./payments/sdk/deps').productionDeps(db); const SDKI = require('./payments/sdk/intake'); const sf = SCHED.normalizeScheduledFor(body.scheduled_for);
+    const b2 = (await SDKI.replay(sdkDeps, { orderId, attemptId: body.attempt_id, uid: customer_uid, guestPhoneHash: cappGuest && cappGuest.guest ? cappGuest.guest.phone_hash : null }))
+      || (await SDKI.admit(sdkDeps, { restaurantId, scheduledFor: Number.isFinite(sf) ? sf : null }));
+    if (b2) return res.status(b2.status).json(b2.body);
+  }
   if (body.redeem != null && customer_uid && groupCapabilities().render) {
     const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
     if (boundAcq) {
@@ -2079,24 +2097,27 @@ chargeOnlineApp.all('*', async (req, res) => {
   // acquire. Fail fast (500) if production creds / the return URL are missing, so we NEVER open an attempt
   // (reserve/acquire) we can't sign — while a $0 (free) order already returned above and never reaches this.
   // FAIL-CLOSED for la_musa if the return base is unconfigured (never fall back to the x_pizza origin).
-  let pp;
-  try {
-    pp = resolvePixelPayConfig();
-  } catch (e) {
-    console.error('chargeOnlineOrder: PixelPay config error', e.message);
-    return res.status(500).json({ error: 'Payment not configured', detail: e.message });
-  }
-  const returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
-  if (returnBase.error) {
-    console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
-    return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
-  }
+  let pp; let returnBase = null; let redemptionOwnsHold = false;
+  if (SDK_MODE) {   // D4 §A2 B3: hosted-provider facts only — its config, its return site, its payer email; the SDK's provider is S0's adapter (dark behind SDK_PP_CONFIG)
+  } else {
+    try {
+      pp = resolvePixelPayConfig();
+    } catch (e) {
+      console.error('chargeOnlineOrder: PixelPay config error', e.message);
+      return res.status(500).json({ error: 'Payment not configured', detail: e.message });
+    }
+    returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });
+    if (returnBase.error) {
+      console.error(`chargeOnlineOrder: ${returnBase.error} for ${orderId} (${restaurantId})`);
+      return res.status(500).json({ error: 'Payment not configured', detail: 'return URL not configured for restaurant' });
+    }
 
+    if (await PE.refusesFresh(clsForMenu, body, process.env, () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
+  }
   // ── Rewards Phase B1 (online): RESERVE the hold NOW — after ALL placeability (slot/closed/active/zone),
   // so the only post-reserve failures are the acquire outcomes + hosted-create, each released below. Bound to
   // the SAME payment fingerprint the attempt uses → hold ↔ order ↔ charge are one identity. Idempotent: a
   // retry/reuse returns 'reused' (a prior attempt's hold → we do NOT own the debit).
-  let redemptionOwnsHold = false; if (await PE.refusesFresh(clsForMenu, body, process.env, () => classifyHostedAttempt(db, orderId, fingerprint, nowTs, canonicalChargeFp, () => a8FingerprintC, TIP.ofBody(body)))) return PE.refuse(res, orderId);   // S2 P-C: a FRESH checkout with no payer email → refused before the reserve and the acquire (recovery is never refused)
   if (redemptionCanonical) {
     // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
@@ -2150,7 +2171,66 @@ chargeOnlineApp.all('*', async (req, res) => {
   // reuse PRESERVE the hold (a creating/live checkout is backed by it — releasing would strand a payable URL).
   const releaseHoldIfOwned = async () => {
     if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
-  }; const pickupGate = () => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHoldIfOwned);   // S2-8: the pickup-only backstop in the card path's fresh-only gate chain
+  }; const pickupGate = (releaseHold = releaseHoldIfOwned) => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHold);   // S2-8: the pickup-only backstop in the card path's fresh-only gate chain
+  // D4 §A2 B4 (r7): the fresh-issuance gate, HOISTED with the release as a parameter — hosted passes releaseHoldIfOwned, the SDK finish a no-op (no hold: §A00)
+  const runGate = async (recordedTotalCents, releaseHold) => (await DW.refusalGate(dq, releaseHold, orderId)) || (await pickupGate(releaseHold)) || applyConfirmedNetGate({
+    gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
+      tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
+    recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
+    releaseHold,
+    orderId, ...DW.gateExtra(dq),
+  });
+
+  /* D4 §A3: hosted's answer for a refused / closed acquire — ONE mapping (hosted after its own release; the SDK finish for its
+     deferred refusals and create-once conflicts). Returns a responder (res) => …, byte-identical to the inline answers it replaced. */
+  const acquireRefusal = (acq) => (res) => {
+    if (acq.outcome === 'item_unavailable') {
+      console.warn(`chargeOnlineOrder: rejecting ${orderId} at the CAS — unavailable item(s): ${(acq.blocked || []).join(', ')}`);
+      return res.status(400).json({ error: 'item_unavailable', blocked: acq.blocked || [] });
+    }
+    if (acq.outcome === 'already_paid') {
+      return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
+    }
+    if (acq.outcome === 'conflict') {
+      if (acq.reason === 'order_control') {   // D4-c4 §0.2: the race guard refused a drift to a fresh URL — this request's kind
+        console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[controlArmed].status} (order control race guard: ${controlArmed})`);
+        return OC.respond(res, controlArmed);
+      }
+      if (acq.reason === 'menu_updating') {   // 1D add-product A §0b.1: a drift to a fresh issuance with a key the gate cannot classify
+        console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (menu guard)`);
+        res.set('Retry-After', '2');
+        return res.status(503).json({ ...MENU_UPDATING });
+      }
+      if (acq.reason === 'choice_required') {   // 1D add-product B: a drift to a fresh issuance carrying a bare launcher
+        console.warn(`chargeOnlineOrder: ${orderId} — 409 choice_required (group guard)`);
+        return res.status(409).json({ ...GI.CHOICE_REQUIRED, order_id: orderId });
+      }
+      /* extras:begin card-map */
+      if (acq.reason === 'extra_not_allowed' || acq.reason === 'eligibility_unavailable') {   // per-product extras: a drift to a fresh issuance
+        console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason} (extras guard)`);
+        const xr = { outcome: acq.reason === 'extra_not_allowed' ? 'denied' : 'unavailable', denied: acq.reason === 'extra_not_allowed' ? extrasArmedDenied : [] };
+        if (xr.outcome === 'unavailable') res.set('Retry-After', '2');
+        return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId });
+      }
+      /* extras:end card-map */
+      // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
+      console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason === 'payer_email_unconfigured' ? '503 payer_email_unconfigured' : '409 order_exists'} (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);   // S2 P-C: the log names the status actually sent
+      return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
+    }
+    console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire closed: ${acq.reason})`);   // the order's state: log only, never the body
+    return res.status(409).json(OE.orderExistsBody('closed', orderId));
+  };
+  if (SDK_MODE) {   // D4 §A2 B4: the SDK finish (hosted's order: refusal → create-once → gate), then RETURN — hosted's acquire and checkout never run in SDK mode
+    const fin = await require('./payments/sdk/finish').finishSdk(require('./payments/sdk/deps').productionDeps(db), {
+      orderId, kind: customer_uid ? 'member' : 'guest', uid: customer_uid, guestPhoneHash: cappGuest && cappGuest.guest ? cappGuest.guest.phone_hash : null,
+      attemptId: body.attempt_id, card: body.card, replacesOrderId: body.replaces_order_id == null ? null : body.replaces_order_id,
+      pendingOrderRecord, fingerprint, tipCents: TIP.ofBody(body), nowTs,
+      flags: { controlRefuseFresh: controlArmed !== null, menuRefuseFresh: menuArmed, choiceRefuseFresh: choiceArmed, extrasRefuseFresh: extrasArmed, cartBlocked, refuseFresh: floorBelow, payerRefuseFresh: false },
+      runGate: (recordedTotalCents) => runGate(recordedTotalCents, async () => {}),   // no hold to release (§A00)
+      answerRefusal: (r) => ({ respond: acquireRefusal(r) }),
+    });
+    return fin.respond ? fin.respond(res) : res.status(fin.status).json(fin.body);
+  }
 
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
@@ -2177,46 +2257,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* checkout:end gate-bind */
   // Authoritative intake gate (Slice-4): a fresh/rotated payable URL was about to be minted for a 86'd
   // cart → the CAS aborted BEFORE any write. Respond 400 with the blocked labels; nothing was persisted.
-  if (acq.outcome === 'item_unavailable') {
-    console.warn(`chargeOnlineOrder: rejecting ${orderId} at the CAS — unavailable item(s): ${(acq.blocked || []).join(', ')}`);
-    await releaseHoldIfOwned();   // abandoned: CAS aborted before any write → release our hold
-    return res.status(400).json({ error: 'item_unavailable', blocked: acq.blocked || [] });
-  }
-  if (acq.outcome === 'already_paid') {
-    await releaseHoldIfOwned();   // abandoned for THIS call (order already paid via another attempt)
-    return res.status(409).json({ error: 'Already paid', detail: 'This order is already confirmed paid', order_id: orderId });
-  }
-  if (acq.outcome === 'conflict') {
-    await releaseHoldIfOwned();   // abandoned: order_id used for a different cart/total
-    if (acq.reason === 'order_control') {   // D4-c4 §0.2: the race guard refused a drift to a fresh URL — this request's kind
-      console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[controlArmed].status} (order control race guard: ${controlArmed})`);
-      return OC.respond(res, controlArmed);
-    }
-    if (acq.reason === 'menu_updating') {   // 1D add-product A §0b.1: a drift to a fresh issuance with a key the gate cannot classify
-      console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (menu guard)`);
-      res.set('Retry-After', '2');
-      return res.status(503).json({ ...MENU_UPDATING });
-    }
-    if (acq.reason === 'choice_required') {   // 1D add-product B: a drift to a fresh issuance carrying a bare launcher
-      console.warn(`chargeOnlineOrder: ${orderId} — 409 choice_required (group guard)`);
-      return res.status(409).json({ ...GI.CHOICE_REQUIRED, order_id: orderId });
-    }
-    /* extras:begin card-map */
-    if (acq.reason === 'extra_not_allowed' || acq.reason === 'eligibility_unavailable') {   // per-product extras: a drift to a fresh issuance
-      console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason} (extras guard)`);
-      const xr = { outcome: acq.reason === 'extra_not_allowed' ? 'denied' : 'unavailable', denied: acq.reason === 'extra_not_allowed' ? extrasArmedDenied : [] };
-      if (xr.outcome === 'unavailable') res.set('Retry-After', '2');
-      return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId });
-    }
-    /* extras:end card-map */
-    // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
-    console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason === 'payer_email_unconfigured' ? '503 payer_email_unconfigured' : '409 order_exists'} (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);   // S2 P-C: the log names the status actually sent
-    return acq.reason === 'payer_email_unconfigured' ? PE.refuse(res, orderId) : res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));   // S2 P-C: the acquire's fresh-issuance payer check (no attempt written; the hold was released above)
-  }
-  if (acq.outcome === 'closed') {
-    await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
-    console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire closed: ${acq.reason})`);   // the order's state: log only, never the body
-    return res.status(409).json(OE.orderExistsBody('closed', orderId));
+  // item_unavailable / already_paid / conflict / closed: abandoned for THIS call → release our hold, then hosted's answer (D4 §A3: the
+  // ONE mapping, acquireRefusal, which the SDK finish answers its refusals with too)
+  if (['item_unavailable', 'already_paid', 'conflict', 'closed'].includes(acq.outcome)) {
+    await releaseHoldIfOwned();
+    return acquireRefusal(acq)(res);
   }
   /* ── 1C TASK 5 — THE CARD-PATH MONEY DECISION, AS ONE RUNNABLE UNIT ─────────────────────────
      resolveAndIssueHostedCheckout owns: what to do about the acquire outcome, the confirmed-net gate,
@@ -2237,13 +2282,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     retireAttempt: (aid, reason) => retireUnissuedAttempt(db, aid, reason, Date.now()),
     // 🔴 ONE number. The module passes back the very total it will charge, so the gate cannot be
     // checking a different figure from the one that travels to PixelPay.
-    runGate: async (recordedTotalCents) => (await DW.refusalGate(dq, releaseHoldIfOwned, orderId)) || (await pickupGate()) || applyConfirmedNetGate({
-      gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
-        tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
-      recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
-      releaseHold: releaseHoldIfOwned,
-      orderId, ...DW.gateExtra(dq),
-    }),
+    runGate: (recordedTotalCents) => runGate(recordedTotalCents, releaseHoldIfOwned),
     // Stamped on the pending order, which already exists by now — the same two facts the cash path
     // records. Best-effort: an audit write must not cost the customer a checkout they are entitled to.
     stampProvenance: (prov) => db.ref(`orders/${orderId}/quote`).set(prov).catch(() => {}),
@@ -2402,6 +2441,22 @@ exports.chargeOnlineOrder = onRequest(
     maxInstances: 10
   },
   chargeOnlineApp
+);
+// D4 §A1 (PLAN-sdk-d4-r11): the in-app card payment intake is the SAME handler — a second export whose ONLY middleware marks the
+// mode server-side (nothing in the request can set it); every gate, price and check is chargeOnlineOrder's own (B1–B4 branch it)
+const placeSdkApp = express();
+placeSdkApp.use((req, res, next) => { res.locals.sdkMode = true; next(); });
+placeSdkApp.use(chargeOnlineApp);
+exports.placeSdkOrder = onRequest(
+  {
+    region: 'us-central1',
+    cors: true,
+    secrets: [SIGNUP_GRANT_SECRET, OTP_SALT_SECRET, require('./payments/sdk/secrets').SDK_PP_CONFIG],
+    timeoutSeconds: 30,
+    memory: '512MiB',
+    maxInstances: 10
+  },
+  placeSdkApp
 );
 
 // ============================================================
