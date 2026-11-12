@@ -40,6 +40,7 @@ function removed(src, key) {
   s.items = s.items.filter((i) => i.key !== key);
   s.structure.item_order = s.structure.item_order.filter((k) => k !== key);
   const ov = s.structure.exposure && s.structure.exposure.item_overrides; if (ov && ov[key]) delete ov[key];   // the map itself stays (the schema requires it)
+  if (s.structure.extras_by_item && s.structure.extras_by_item[key]) delete s.structure.extras_by_item[key];   // its derived per-dish exposure map entry
   if (Array.isArray(s.structure.redeem_eligible_items)) s.structure.redeem_eligible_items = s.structure.redeem_eligible_items.filter((k) => k !== key);
   return s;
 }
@@ -52,6 +53,7 @@ const stamp = (rid, key) => base(rid).items.find((i) => i.key === key).display.i
     const saved = db.state.source.data;
     assert.ok(!saved.items.some((i) => i.key === key), `RDR-${key}: the dish left the draft`);
     assert.ok(!((saved.structure.exposure || {}).item_overrides || {})[key] && !(saved.structure.redeem_eligible_items || []).includes(key), `RDR-${key}: its own entries left with it`);
+    assert.ok(!(saved.structure.extras_by_item || {})[key], `RDR-${key}: its extras_by_item entry left with it`);
     ok(`${rid}: removing «${key}» (${what}) with its declared claim saves; its own entries leave with it`);
   }
   {   // nothing ELSE may change: dropping ANOTHER dish's override / reward entry beside the removal is still refused

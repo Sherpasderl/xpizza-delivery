@@ -498,7 +498,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   }
 
   // Structure: item_order is the active order with the new keys appended; everything else is frozen.
-  const removed = new Set(removals);
+  const removed = new Set(removals); const AS = removed.size ? (() => { const st = JSON.parse(JSON.stringify(activeBuilt.structure)); const ov = st.exposure && st.exposure.item_overrides; if (isObj(ov)) for (const k of removed) delete ov[k]; if (isObj(st.extras_by_item)) { for (const k of removed) delete st.extras_by_item[k]; if (!Object.keys(st.extras_by_item).length) delete st.extras_by_item; } if (Array.isArray(st.redeem_eligible_items)) st.redeem_eligible_items = st.redeem_eligible_items.filter((k) => !removed.has(k)); return st; })() : activeBuilt.structure;   // «Quitar del menú»: a DECLARED removal takes its OWN explicit entries (item_overrides[key], extras_by_item[key], redeem_eligible_items) with it — nothing else
   const ao = (activeBuilt.structure.item_order || []).filter((k) => !removed.has(k));
   const dorder = draftBuilt.structure.item_order || [];
   const addKeys = new Set(additions.map((it) => it.key));
@@ -507,7 +507,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
   for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items' && x !== 'categories'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, categories, exposure: their own rules
-    if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
+    if (!sameJson(draftBuilt.structure[f], AS[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
   }
   // categories (PLAN-public-menu-display r2 T1): frozen except each category's display `name` — same count, the same id
   // at every index, every other field equal. A draft that renames must change NOTHING else (rename_not_alone), so the
@@ -521,7 +521,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
   // exposure (§8): EVERYTHING is frozen except the typed, key-only deny_extras lists — compared after removing only those
   // and normalizing an override left empty by that removal (an existing `add` is never deleted by the normalization)
   if (authored.has('exposure')) {
-    const de = draftBuilt.structure.exposure; const ae = activeBuilt.structure.exposure;
+    const de = draftBuilt.structure.exposure; const ae = AS.exposure;
     if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
     if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
   }
