@@ -72,7 +72,7 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     assert.deepStrictEqual([r.status, r.body.error], [400, 'structure_changed'], `${L}: ${show(r)}`);
     const e = await editor('la_musa', canonicalize(base('la_musa')));
     assert.strictEqual(e.status, 200, show(e));
-    for (const k of ['productRemoval', 'pendingRemovals', 'rewardKeys']) assert.ok(!(k in e.body), `${L}: no ${k}`);
+    for (const k of ['productRemoval', 'pendingRemovals', 'rewardKeys', 'liveOrder']) assert.ok(!(k in e.body), `${L}: no ${k}`);
   });
   await cell('PR5-ON: switch ON — the same removal saves; the editor read states productRemoval: true', () => ON(async () => {
     const { r } = await save('x_pizza', removed(base('x_pizza'), 'Nutella'), [stamp('x_pizza', 'Nutella')]);
@@ -206,13 +206,13 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     const { r: r3 } = await save(rid, other, null, { photos, stored });
     assert.deepStrictEqual([r3.status, r3.body.error], [409, 'photo_change_disabled'], 'an unrelated photo change stays refused');
   }));
-  await cell('LIVE-ORDER: with pendingRemovals the editor read serves the live item_order and reward order ONCE (liveOrder); absent without removals', () => ON(async () => {
+  await cell('LIVE-ORDER: switch ON — the editor read serves the live item_order and reward order ONCE (liveOrder), with or without pendingRemovals (Q-13)', () => ON(async () => {
     const rid = 'la_musa'; const live = activeOf(rid).built;
     const { saved } = await save(rid, removed(removed(base(rid), 'soft_01'), 'dimsum_01'), [stamp(rid, 'soft_01'), stamp(rid, 'dimsum_01')]);
     const e = await editor(rid, saved);
     assert.deepStrictEqual(e.body.liveOrder, { items: live.structure.item_order, rewards: live.structure.redeem_eligible_items });
     const e0 = await editor(rid, canonicalize(base(rid)));
-    assert.ok(!('liveOrder' in e0.body), 'no removals → absent');
+    assert.deepStrictEqual(e0.body.liveOrder, { items: live.structure.item_order, rewards: live.structure.redeem_eligible_items }, 'Q-13: ON with no removal yet → served too (the first in-session removal has it)');
   }));
   await cell('A1+B2: pendingRemovals carries the ACTIVE photo entry (draft shape) and the dish\'s own refs (override, extras_by_item, reward position)', () => ON(async () => {
     const rid = 'la_musa'; const live = activeOf(rid).built;
