@@ -6,6 +6,21 @@
 const BASE = 'e97f70f2';
 const HUNKS = Object.freeze([
  {
+  "file": "catalog/add-product.js",
+  "now": "function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, extrasCatalog = false, extraRenames = false }) {\n",
+  "was": "function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, extrasCatalog = false }) {\n"
+ },
+ {
+  "file": "catalog/add-product.js",
+  "now": "    if (!sameJson(without(de.get(k).display, extraRenames ? ['price', 'name'] : ['price']), without(a.display, extraRenames ? ['price', 'name'] : ['price']))) refuse('extras_changed', `the option ${JSON.stringify(k)} can only have its price changed here`, { key: k });\n",
+  "was": "    if (!sameJson(without(de.get(k).display, ['price']), without(a.display, ['price']))) refuse('extras_changed', `the option ${JSON.stringify(k)} can only have its price changed here`, { key: k });\n"
+ },
+ {
+  "file": "catalog/add-product.js",
+  "now": "const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos', 'frozen_extra_keys']);   // frozen_keys / photos: their own rules\n",
+  "was": "const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos']);   // frozen_keys / photos: their own rules\n"
+ },
+ {
   "file": "catalog/candidate-validate.js",
   "now": "function candidateSource(restaurantId, { items, extras, structure, key_mode, frozen_keys, frozen_extra_keys }) {\n  return { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }), ...(frozen_extra_keys == null ? {} : { frozen_extra_keys }), items, extras, structure };\n",
   "was": "function candidateSource(restaurantId, { items, extras, structure, key_mode, frozen_keys }) {\n  return { restaurant_id: restaurantId, schema_version: SCHEMA_VERSION, ...(key_mode == null ? {} : { key_mode }), ...(frozen_keys == null ? {} : { frozen_keys }), items, extras, structure };\n"
@@ -46,6 +61,16 @@ const HUNKS = Object.freeze([
   "was": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n"
  },
  {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled; const choiceOn = require('./platform-structure').structureCapabilities().choiceEdit; const FXK = require('./frozen-extra-keys'); const fxOwn = FXK.serverOwnedFrozenExtraKeys(source, stored); if (!fxOwn.ok) return reply(409, { error: fxOwn.error }); const mintExtras = require('./extra-identity').extraIdentityCapabilities().mintExtras;   // S1a: the rename map is server-owned too · S3: the choice switch   · S2b §3: the extras map is server-owned too\n",
+  "was": "  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled; const choiceOn = require('./platform-structure').structureCapabilities().choiceEdit;   // S1a: the rename map is server-owned too · S3: the choice switch\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit || choiceOn) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit: textEdit || choiceOn }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); } candidate = canonicalize(FXK.withFrozenExtraKeys(candidate, fxOwn.frozen_extra_keys)); if (mintExtras) { const xr = FXK.recordExtraRenames({ draft: candidate, live: { extras: liveRes.extraRecords }, stored }); if (!xr.ok) return reply(409, { error: xr.error, key: xr.key }); const np = FXK.renameNameProblems(candidate, liveRes.extraRecords)[0]; if (np) return reply(400, np); candidate = canonicalize(FXK.withFrozenExtraKeys(candidate, xr.frozen_extra_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key   · S2b §0/§1.3: a rename recorded under its kept key\n",
+  "was": "  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit || choiceOn) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit: textEdit || choiceOn }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key\n"
+ },
+ {
   "file": "catalog/form-menu-source.js",
   "now": "    const key = fd && fd.frozen_extra_keys && display && display.id != null && Object.prototype.hasOwnProperty.call(fd.frozen_extra_keys, String(display.id)) ? fd.frozen_extra_keys[String(display.id)] : extrasKeyOf(restaurantId, display, opts.keyMode);   // S2b §3: a recorded extra keeps its key\n",
   "was": "    const key = extrasKeyOf(restaurantId, display, opts.keyMode);\n"
@@ -59,6 +84,16 @@ const HUNKS = Object.freeze([
   "file": "catalog/publish-edited-handler.js",
   "now": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }), ...(draftBuilt.frozen_extra_keys == null ? {} : { frozen_extra_keys: draftBuilt.frozen_extra_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n",
   "was": "      source_sha: sourceSha || 'portal-edit', ...(draftBuilt.key_mode == null ? {} : { key_mode: draftBuilt.key_mode }), ...(draftBuilt.frozen_keys == null ? {} : { frozen_keys: draftBuilt.frozen_keys }),   // S0 + S1a: the draft's server-owned mode, snapshotted into the version\n"
+ },
+ {
+  "file": "catalog/reset-draft.js",
+  "now": "  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys, frozen_extra_keys: preview.record && preview.record.frozen_extra_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });\n",
+  "was": "  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });\n"
+ },
+ {
+  "file": "catalog/source-accounting.js",
+  "now": "const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids', 'frozen_extra_keys']);\n",
+  "was": "const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids']);\n"
  },
  {
   "file": "catalog/source-store.js",

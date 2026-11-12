@@ -75,4 +75,21 @@ function recordExtraRenames({ draft, live, stored }) {
   return { ok: true, frozen_extra_keys: Object.keys(out).length || kept ? out : undefined };
 }
 
-module.exports = { frozenExtraKeysProblem, activeFrozenExtraKeys, serverOwnedFrozenExtraKeys, withFrozenExtraKeys, recordExtraRenames };
+// The name rules of a RENAMED extra (§1.3, switch ON): its new name is unique among the candidate's extras (normalized) and is not ANOTHER
+// extra's key; a label the capp can serialize. Returns [{ error, key, field }] (the first one is answered); [] = none.
+function renameNameProblems(draft, liveExtras) {
+  const { normalizeName } = require('./add-product'); const { EXTRA_LABEL_UNSAFE } = require('./extras-validate');
+  const liveByKey = new Map((liveExtras || []).filter((e) => isPlain(e) && isPlain(e.display)).map((e) => [e.key, e]));
+  const rows = ((draft && draft.extras) || []).filter((e) => isPlain(e) && isPlain(e.display) && typeof e.key === 'string');
+  const out = [];
+  for (const e of rows) {
+    const l = liveByKey.get(e.key);
+    if (!l || l.display.name === e.display.name) continue;
+    const name = String(e.display.name || ''); const n = normalizeName(name);
+    if (EXTRA_LABEL_UNSAFE.test(name)) { out.push({ error: 'extra_name_unsafe', key: e.key, field: 'name' }); continue; }
+    if (rows.some((o) => o !== e && (normalizeName(o.display.name) === n || normalizeName(o.key) === n))) out.push({ error: 'name_taken', key: e.key, field: 'name' });
+  }
+  return out;
+}
+
+module.exports = { frozenExtraKeysProblem, activeFrozenExtraKeys, serverOwnedFrozenExtraKeys, withFrozenExtraKeys, recordExtraRenames, renameNameProblems };

@@ -9,7 +9,7 @@
 // Throws AddProductError.
 const { AddProductError } = require('./add-product');
 
-const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids']);
+const TOP = new Set(['restaurant_id', 'schema_version', 'key_mode', 'items', 'extras', 'structure', 'frozen_keys', 'photos', 'deleted_ids', 'frozen_extra_keys']);
 const ROW = { items: new Set(['key', 'ref', 'price', 'display', 'has_photo']), extras: new Set(['key', 'ref', 'price', 'display']) };
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const canon = (v) => JSON.stringify(require('./source-store').canonicalize(v === undefined ? null : v));

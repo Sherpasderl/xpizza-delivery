@@ -21,7 +21,8 @@ const refuse = (code, detail, key = null, field = 'choices') => { throw new AP.A
 const withoutMark = (tags) => (Array.isArray(tags) ? tags.filter((t) => t !== TAG) : []);
 const chars = (s) => [...String(s)].length;
 
-function compareToActive(rid, args) {
+function compareToActive(rid, args0) {
+  const args = { ...args0, extraRenames: require('./extra-identity').extraIdentityCapabilities().mintExtras };   // S2b §0: an extra rename (the dark switch) at every judgment site
   if (!require('./platform-structure').structureCapabilities().choiceEdit) return AP.compareToActive(args);
   const A = args.activeBuilt; const D = args.draftBuilt;
   const ia = groupIndexFrom(A); const id = groupIndexFrom(D);

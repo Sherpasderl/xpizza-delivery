@@ -44,7 +44,18 @@ const inputOf = (rid, src, sha) => { const { inputs, built } = buildSourceCandid
     assert.ok(served.extras.some((e) => e.key === mintedKey && e.price === mintedPrice), `S2BL-READ ${rid}: the minted extra at its own price`);
     await quiet(() => rollbackVersion(db, rid, v1, { expected: { activeVersionId: v2 } }));
     try { await quiet(() => rollbackVersion(db, rid, v2, { expected: { activeVersionId: v1 } })); } catch (e) { assert.fail(`S2BL-ROLLBACK ${rid}: a rollback TO the recorded version flips (pre-flip check) (${String(e.message).slice(0, 160)})`); }
-    ok(`${rid}: published with its recorded extras (record + reader + pre-publish), rolled back away and back (pre-flip)`);
+    // RESET takes the ACTIVE version's map (the draft goes back to live; an unpublished draft-only entry goes with it)
+    {
+      const { resetDraftToLiveCore } = require('./reset-draft'); const { previewVersion } = require('./catalog-publish');
+      const { sourceRefOf, encodeUpdateTime } = require('./source-store');
+      const ref = sourceRefOf(db, rid); const draft = clone(s); draft.frozen_extra_keys = { ...draft.frozen_extra_keys, draft_only: { display_id: 'zz', field: 'name' } };
+      await ref.set(draft); const snap = await ref.get();
+      const r = await quiet(() => resetDraftToLiveCore({ db, authorize: async () => ({ ok: true, uid: 'u', role: 'owner', actor: 'o@x.hn' }), readActiveVersionId: async () => v2, previewVersion, toPrecondition: () => snap.updateTime },
+        { restaurantId: rid, expectedRevision: encodeUpdateTime(snap.updateTime) }, {}));
+      assert.strictEqual(r.status, 200, `S2BL-RESET ${rid}: ${JSON.stringify(r.body).slice(0, 200)}`);
+      assert.deepStrictEqual((await ref.get()).data().frozen_extra_keys, s.frozen_extra_keys, `S2BL-RESET ${rid}: the draft takes the active version's map`);
+    }
+    ok(`${rid}: published with its recorded extras (record + reader + pre-publish), rolled back away and back (pre-flip), reset takes the active map`);
   }
   FINISHED = true;
   console.log(`s2b-lifecycle: OK (${n})`);

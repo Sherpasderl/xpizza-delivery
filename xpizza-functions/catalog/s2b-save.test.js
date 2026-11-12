@@ -22,7 +22,8 @@ const T0 = '2026-10-24T10:00:00.000000Z'; const T1 = '2026-10-24T11:00:00.000000
 const owner = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const builtOf = (src, rid) => { const i = sourceToBuildInputs(src); return { ...buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }), extras: i.extras }; };
-const liveRead = (rid, live) => async () => { const i = sourceToBuildInputs(live); return { built: builtOf(live, rid), versionId: ACTIVE, extraRecords: buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }).extras }; };
+// the live version as the publisher builds it — with the source's OWN extras table (a retired extra is gone from it)
+const liveRead = (rid, live) => async () => { const { inputs, built } = require('./candidate-validate').buildSourceCandidate(rid, live); return { built: { ...built, extras: inputs.extras }, versionId: ACTIVE, extraRecords: built.extras }; };
 function saveDb(rid, stored) {
   const state = { source: { data: clone(stored), updateTime: T0 } };
   const doc = (path) => ({
