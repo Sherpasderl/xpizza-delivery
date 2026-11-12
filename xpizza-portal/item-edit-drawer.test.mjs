@@ -1968,3 +1968,21 @@ test('S2 Codex r1 P2-12 — X3 backdrop: a clean «Crear grupo» closes on a bac
   assert.ok(p.d.querySelector('#xscrim.show'), 'dirty: the backdrop asks the discard confirm');
   assert.equal(p.d.querySelector('#xscrim .mt').textContent, '¿Descartar los cambios?');
 });
+
+test('S2 Codex r1 P2-5 — a dish left with ZERO groups keeps «Agregar grupo de extras» (in the copy, after «Guardar», on reopen); off without the Extras page', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  for (const g of ['Acompañamientos', 'Salsas']) { quitar(cardOf(p, g)).click(); await settle(10); }
+  assert.equal(p.drawer().querySelectorAll('.mk-grp.mk-ext').length, 0, 'premise: no extras card left');
+  assert.ok(bAction(p), 'in the copy: the action stays');
+  p.btn('Guardar').click(); await settle(10);
+  await p.open('dimsum_01');
+  assert.ok(bAction(p) && !bAction(p).disabled, 'reopened with zero groups: the action is there and live');
+  bAction(p).click(); await settle(5);
+  assert.ok(bSheet(p), 'it opens the sheet');
+  const q = await page({ read: ON });
+  await q.signIn();
+  await q.open('dimsum_01');
+  assert.equal(bAction(q), null, 'without the Extras page: no action (today)');
+});

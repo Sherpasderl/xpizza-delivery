@@ -58,6 +58,10 @@ export const S2_FOLD = {
    "    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true });\n"
   ],
   [
+   "  // S2 (Codex S2 UI r1 P2-5): with the server's Extras page the field stays for a dish with ZERO groups — its «Agregar grupo de extras»\n  // is the only way to attach one\n  if (v0.options || ex.show || state.extrasCatalog === true) {\n",
+   "  if (v0.options || ex.show) {\n"
+  ],
+  [
    "    const header = (id, name, sub, subCls, open, lead = null) => {\n",
    "    const header = (id, name, sub, subCls, open) => {\n"
   ],
@@ -82,7 +86,7 @@ export const S2_FOLD = {
    ""
   ],
   [
-   "    }\n    // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;\n    // off with the writer's line when the COPY refuses an attach (the X3b predicate)\n    if (state.extrasCatalog === true && ex.show) {\n      const adds = mk('div', 'mk-adds');\n      const sheet = IE.attachSheet(state.draft, s);\n      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';\n      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));\n      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);\n      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));\n      focusKey(ieAddGroup, 'ie-badd');\n      adds.append(ieAddGroup);\n      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));\n      box.append(adds);\n",
+   "    }\n    // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;\n    // off with the writer's line when the COPY refuses an attach (the X3b predicate)\n    if (state.extrasCatalog === true) {\n      const adds = mk('div', 'mk-adds');\n      const sheet = IE.attachSheet(state.draft, s);\n      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';\n      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));\n      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);\n      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));\n      focusKey(ieAddGroup, 'ie-badd');\n      adds.append(ieAddGroup);\n      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));\n      box.append(adds);\n",
    ""
   ],
   [

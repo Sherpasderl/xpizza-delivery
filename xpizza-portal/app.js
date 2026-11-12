@@ -1984,7 +1984,9 @@ function renderEditDrawer(d, it, keepScroll) {
   // (R4: today's editable prices until S2). Each card folds on its own (view-only). No grip (R2); no pencil, «Editar en Extras»,
   // «Quitar de este producto» or dish actions until S2 / S3 — no dead control.
   const ex = v0.extras;
-  if (v0.options || ex.show) {
+  // S2 (Codex S2 UI r1 P2-5): with the server's Extras page the field stays for a dish with ZERO groups — its «Agregar grupo de extras»
+  // is the only way to attach one
+  if (v0.options || ex.show || state.extrasCatalog === true) {
     const fOpc = mk('div', 'fld');
     const lrO = mk('div', 'mk-lrow');
     lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', state.extrasCatalog === true ? 'El orden de los grupos se define en Extras' : 'en el orden que las ve el cliente'));   // mockup v3 (owner 11-11): the order is set on the Extras page — once that page exists
@@ -2148,7 +2150,7 @@ function renderEditDrawer(d, it, keepScroll) {
     }
     // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;
     // off with the writer's line when the COPY refuses an attach (the X3b predicate)
-    if (state.extrasCatalog === true && ex.show) {
+    if (state.extrasCatalog === true) {
       const adds = mk('div', 'mk-adds');
       const sheet = IE.attachSheet(state.draft, s);
       const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
