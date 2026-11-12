@@ -419,3 +419,20 @@ test('Estructura — an extra removed and one added: the «Quitado» / «Nuevo»
   assert.equal(m.added.filter((r) => r && r.key === newKey).length, 0, 'the new extra is its «Nuevo» row, not ALSO a «Se agregan» line');
   assert.equal(m.total, 2, 'it counts each fact once');
 });
+
+// ── a «Nuevo» row's name (advisor 11-12): the inline row's field on a KEYLESS row only — keyed rows stay text (the S2b rename stays dark) ──
+test('X — setExtraName renames a NEW (keyless) extra by its ref; never a keyed one; no key / id / stamp appears', async () => {
+  const E = await import('./editor.js');
+  const d = createDraft(seed('la_musa'));
+  assert.equal(applyExposureOps(d, [{ op: 'extra.add', group: 'Salsas', ref: 'tmp:rename-0001', name: 'Salsa de mango', price: 25 }], ON).ok, true);
+  E.setExtraName(d, { ref: 'tmp:rename-0001' }, 'Salsa  de maracuyá');
+  const row = draftSource(d).extras.find((x) => x.ref === 'tmp:rename-0001');
+  assert.equal(row.display.name, 'Salsa de maracuyá', 'the keyless rename is in the draft (runs of spaces collapsed)');
+  assert.ok(!('key' in row) && !('id' in row.display) && !('stamp' in row), 'no key, id or stamp: it is still a NEW extra');
+  const keyed = draftSource(d).extras.find((x) => typeof x.key === 'string');
+  const before = JSON.stringify(draftSource(d));
+  E.setExtraName(d, { key: keyed.key }, 'Otro');
+  E.setExtraName(d, keyed.key, 'Otro');
+  E.setExtraName(d, { ref: keyed.key }, 'Otro');
+  assert.equal(JSON.stringify(draftSource(d)), before, 'a keyed (published) extra is never renamed here');
+});

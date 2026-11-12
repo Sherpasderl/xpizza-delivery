@@ -1066,6 +1066,8 @@ const xpage = (p) => p.d.getElementById('xsplit');
 const railRows = (p) => [...xpage(p).querySelectorAll('.rail .railitem')];
 const xrows = (p) => [...xpage(p).querySelectorAll('.detail .irow.mk-xrow')];
 const extrasIn = (src, g) => src.extras.filter((e) => e.display.cat === g);
+// a row's name: a «Nuevo» row carries it in its field (advisor 11-12), a published row as text
+const rowName = (r) => { const i = r.querySelector('.nm input[aria-label="Nombre del extra"]'); return i ? i.value : r.querySelector('.nm').textContent; };
 
 test('S2 X — switch OFF (extrasCatalog absent): no «Menú / Extras» tabs, no Extras page; today\'s Productos', async () => {
   const p = await page({ read: ON });
@@ -1169,13 +1171,13 @@ test('S2 X2 — «Quitar» on a NEW (unsaved) extra removes it through the one m
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
   await newExtraOnPage(p, 'Arroz frito', 40);
-  const row = xrows(p).find((r) => r.querySelector('.nm').textContent.startsWith('Arroz frito'));
+  const row = xrows(p).find((r) => rowName(r).startsWith('Arroz frito'));
   assert.ok(row.querySelector('.tag.new'), 'premise: «Nuevo»');
   row.querySelector('button.del').click(); await settle(5);
   [...x2(p).querySelectorAll('.mf button')][1].click(); await settle(10);
   assert.equal(x2(p), null, 'the confirm closed');
   assert.ok(!p.src().extras.some((e) => e.ref === 'tmp:x2-new-0001'), 'the new extra is gone from the draft');
-  assert.ok(!xrows(p).some((r) => r.querySelector('.nm').textContent.startsWith('Arroz frito')), 'and from the page');
+  assert.ok(!xrows(p).some((r) => rowName(r).startsWith('Arroz frito')), 'and from the page');
   assert.equal(p.src().deleted_ids, undefined, 'a never-published extra claims nothing');
 });
 test('S2 X2 — the LAST extra of a group cannot be removed: its trash is disabled with «Un grupo necesita al menos un extra»', async () => {
@@ -1310,7 +1312,7 @@ test('S2 X+ — Enter in a COMPLETE row commits ONE extra.add: the extra is «Nu
   assert.equal(added.length, n0 + 1, 'the extra is in the draft');
   assert.deepEqual([added[added.length - 1].display.name, added[added.length - 1].price, typeof added[added.length - 1].key], ['Arroz frito', 40, 'undefined'], 'a keyless new extra');
   const last = xrows(p)[xrows(p).length - 1];
-  assert.ok(last.querySelector('.tag.new') && last.textContent.includes('Arroz frito'), 'the row is «Nuevo»');
+  assert.ok(last.querySelector('.tag.new') && rowName(last) === 'Arroz frito', 'the row is «Nuevo»');
   assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar', 'the bar counts it');
   assert.equal(p.d.activeElement, addBtn(p), 'focus on «Agregar extra», ready for the next one');
 });
@@ -1652,4 +1654,19 @@ test('S2 A — «Editar en Extras»: a clean copy → the drawer closes, the Ext
   const cf = q.drawer().querySelector('.mk-cf');
   assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
   assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
+});
+test('S2 X — a «Nuevo» row’s name is the inline row’s field (typing renames it in the draft); a published row’s name stays text', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Arroz frito'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '40'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const added = xrows(p)[xrows(p).length - 1];
+  const nm = added.querySelector('input[aria-label="Nombre del extra"]');
+  assert.ok(nm && nm.value === 'Arroz frito', 'the «Nuevo» row carries the name field');
+  nm.focus(); p.type(nm, 'Arroz con huevo'); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  assert.ok(extrasIn(p.src(), g).some((x) => typeof x.key !== 'string' && x.display.name === 'Arroz con huevo'), 'the rename is in the draft');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra', 'focus stays in the field while typing');
+  assert.equal(xrows(p)[0].querySelector('input[aria-label="Nombre del extra"]'), null, 'a published row’s name is text');
 });

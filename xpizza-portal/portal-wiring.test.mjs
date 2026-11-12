@@ -405,7 +405,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
-    'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
+    'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName',
   ], 'the edit state exports exactly these');
   const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
@@ -1151,7 +1151,7 @@ const spanFrom = (masked, open) => {
 // Named entry points that write. Matched as BARE REFERENCES, not just calls: a callback handed over as
 // `onPrice` writes exactly as much as one that calls it, and passing the identifier is precisely how
 // the inline price cells stayed unbound while every call-shaped check looked clean.
-const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo', 'onPrice',
+const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'onPrice',
                  'loadMenu', 'loadRestaurants', 'openEditor', 'openReviewFlow', 'runPublish', 'closeReview',
                  'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
                  'openDrawer', 'closeDrawer', 'toggle',
@@ -1535,6 +1535,8 @@ function blockAround(m, i) {
 // editor's guarded setters, which enforce the canEdit boundary themselves.
 const ALLOWED_CONSUMERS = new Set([
   'setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo',      // guarded setters (canEdit)
+  'setExtraName',   // S2 (advisor 11-12): a NEW (keyless) extra's name — guarded (canEditContent), keyless-only
+
   'draftSource', 'pendingChanges', 'pendingCount', 'isPublishable',      // pure readers of the draft
   'optionGroups', 'groupUsage', 'canEditDraft', 'createDraft',
   'reviewModel', 'attestationModel', 'publisher.run', 'pickRid', 'canPublish',   // pure readers of the review
@@ -1872,7 +1874,8 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
 // output, bound to the served baseline); (3) once it exists, every save carries the baseline: api.js editCatalog sends
 // deleted_ids_loaded_base and every app.js editCatalog( call passes loadedBase. The request fields the server defines
 // (deleted_ids_loaded_base / deleted_ids_reviewed) are not the claim.
-const CLAIM = /deleted_ids(?!_loaded_base|_reviewed)|deletedIds/i;
+// the server's deletion REFUSAL CODES (review.js panels key on them, S2 §5.2) name a refusal, not the claim field
+const CLAIM = /deleted_ids(?!_loaded_base|_reviewed|_base_moved|_unbound|_stale_baseline|_malformed|_no_baseline)|deletedIds/i;
 const CLAIM_FN = 'export function mergeDeletionClaim(';
 const WRITER_COPY = 'exposure-transitions.js';
 const outsideClaimFn = (f, code) => {
@@ -1903,5 +1906,7 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
   assert.equal(saveCarriesBase((g) => (g === 'api.js' ? codeOf(g).replace(/deleted_ids_loaded_base/g, 'nothing') : codeOf(g))), false, 'non-vacuity: a merged claim without the baseline on the save');
   assert.equal(saveCarriesBase((g) => (g === 'app.js' ? codeOf(g).replace(/\bloadedBase\b/g, 'x') : codeOf(g))), false, 'non-vacuity: a save call site without the baseline');
   assert.equal(CLAIM.test('body.deleted_ids_loaded_base'), false, 'the baseline field is not the claim');
+  for (const c of ['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline']) assert.equal(CLAIM.test(c), false, `${c} is a refusal code, not the claim`);
+  for (const c of ['s.deleted_ids = []', 'src.deleted_ids', 'r.deletedIds', "x['deleted_ids']"]) assert.equal(CLAIM.test(c), true, `non-vacuity: ${c} is still the claim`);
   assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
 });

@@ -86,7 +86,13 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
   for (const r of d.rows) {
     const row = el('div', `irow mk-xrow${r.isNew ? ' mk-added' : ''}${r.removed ? ' mk-xgone' : ''}`);
     const info = el('div', 'iinfo'); const nm = el('div', 'nm');
-    nm.append(el('span', null, r.name));
+    if (r.isNew && !r.removed && on.name) {   // a «Nuevo» (keyless) row: the inline row's own name field (advisor 11-12); keyed rows stay text
+      const ni = el('input', 'mk-xname'); ni.type = 'text'; ni.value = r.name; ni.placeholder = 'Nombre del extra'; ni.setAttribute('aria-label', 'Nombre del extra');
+      ni.disabled = !canEdit; ni.dataset.k = `xnm:${JSON.stringify(r.id)}`;
+      ni.addEventListener('input', () => on.name(r.id, ni.value, ni));
+      ni.addEventListener('blur', () => { if (ni.value !== ni.value.trim()) on.name(r.id, ni.value.trim(), ni); });
+      nm.append(ni);
+    } else nm.append(el('span', null, r.name));
     if (r.isNew) nm.append(el('span', 'tag new mk-ftag', 'Nuevo'));
     else if (r.removed) nm.append(el('span', 'tag mk-ftag', 'Se quita al publicar'));
     else if (r.priceChanged) nm.append(el('span', 'tag mk-ftag', 'Cambios sin publicar'));
@@ -103,6 +109,10 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
     del.addEventListener('click', () => on.remove(r, del));
     row.append(price, del);
     detailHost.append(row);
+    // a line under the row: a «Nuevo» row left without a name (the inline row's own line), or the server's line FIX-EXTRA brought here
+    const line = model.rowError && JSON.stringify(model.rowError.id) === JSON.stringify(r.id) ? model.rowError.text
+      : (r.isNew && !r.removed && !String(r.name).trim() ? 'Escribí el nombre.' : null);
+    if (line) { const lid = `xrow-e-${detailHost.children.length}`; const ln = fieldLine(lid, line); ln.classList.add('mk-xrowline'); detailHost.append(ln); }
   }
   if (model.adding) renderAddRow(detailHost, model.adding, on);
 }

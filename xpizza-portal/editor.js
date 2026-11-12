@@ -165,6 +165,17 @@ function setPrice(draft, surface, key, raw) {
 }
 
 export const setItemPrice = (draft, key, raw) => setPrice(draft, 'item', key, raw);
+// STRUCTURE S2 (advisor 2026-11-12): a NEW extra's name — ONLY a keyless row, by its { ref } (it has no identity yet: renaming it is the
+// inline row's own field, not the S2b rename). A key, a string id or a ref that names a keyed row is a NO-OP. Runs of spaces collapse
+// (the caller trims on blur, so typing a space between words survives).
+export function setExtraName(draft, id, raw) {
+  if (!canEditContent(draft)) return draft;
+  if (!id || typeof id !== 'object' || typeof id.ref !== 'string' || typeof id.key === 'string') return draft;
+  const row = rowsOf(draft.state, 'extra').find((r) => r && typeof r.key !== 'string' && r.ref === id.ref);
+  if (!row || !row.display || typeof row.display !== 'object') return draft;
+  row.display.name = String(raw ?? '').replace(/\s+/g, ' ');
+  return draft;
+}
 // STRUCTURE S2 (PLAN-portal-structure-S2-ui r3 §3.3): an extra by its key (a string, S1's callers, or { key }) OR — a new one the
 // server has not allocated yet — by { ref }, which matches ONLY a keyless row (the writer's own predicate, exposure-transitions.js
 // extra.remove); a new row never gets a key, id or stamp here

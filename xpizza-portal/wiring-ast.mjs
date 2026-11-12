@@ -102,7 +102,7 @@ export function analyse(src) {
 // Calls that may RECEIVE a state reference, in any argument position. Each is a pure reader or one of
 // the editor's guarded setters, which enforce the canEdit boundary themselves.
 export const ALLOWED_CONSUMERS = new Set([
-  'setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo',
+  'setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo',
   'draftSource', 'pendingChanges', 'pendingCount', 'isPublishable', 'canEditDraft', 'createDraft',
   'optionGroups', 'groupUsage', 'reviewModel', 'attestationModel', 'canPublish', 'pickRid',
   'releaseEditLock', 'loadMenu', 'publisher.run',
@@ -458,7 +458,7 @@ export function stateViolations(src, label = 'app.js') {
 // This computes the writer set instead. Seeds are the imported mutators and any function containing a
 // direct state write; the set then closes under "calls a writer", resolved through real scopes so a
 // local shadowing a module function does not count as calling it.
-const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo']);
+const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo']);
 
 export function writerFunctions(src) {
   const { ast, parents, scopeOf, fnOf, root, children } = analyse(src);

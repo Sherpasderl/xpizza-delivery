@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
+import { setExtraName, createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
 import { pendingTexts, loadedName } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar); a product's loaded name
@@ -1203,6 +1203,8 @@ let prodTab = 'menu';
 // editor.js mergeDeletionClaim)
 const baseFor = (src) => (mergeDeletionClaim(src, null) && state.deletionBase ? { version: state.deletionBase.version, generation: state.deletionBase.generation } : null);
 let extrasGroup = null;
+// STRUCTURE S2 §5.2 — the server's line FIX-EXTRA brought to an extra's row ({ id, text }); editing that row clears it
+let extrasRowError = null;
 // ── X3 «Crear grupo» (plan §2 items 5 / 5b, §3.5): the form is LOCAL state until «Crear grupo» sends ONE group.create op ───────
 let createForm = null;
 let createError = null;
@@ -1406,6 +1408,7 @@ function paintProductTabs() {
   if (extraAdd && extraAdd.group !== extrasGroup) extraAdd = null;
   model.open = railOpen && model.rail.some((r) => r.group === railOpen) ? railOpen : null;
   model.railError = railError;
+  model.rowError = extrasRowError;
   model.adding = extraAdd ? { name: extraAdd.name, raw: extraAdd.raw, check: { ...extraRowCheck(extraAdd), error: extraAddError } } : null;
   // a repaint keeps the focused field (a typed price, the inline row) or the focused rail group
   const ae = document.activeElement;
@@ -1419,8 +1422,18 @@ function paintProductTabs() {
     move: bound(x4Move), drop: bound(x4Drop), gripToggle: bound(x4Toggle), gripClose: bound(x4Close),
     addOpen: bound(addOpen), addInput, addCommit: bound(() => addCommit(true)), addCancel: bound(addCancel), addLeave: bound(addLeave),
     // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
+    // a «Nuevo» (keyless) row's name (advisor 11-12): the guarded keyless-only setter; repainted, the caret kept in its field
+    name: bound((id, raw, input) => {
+      const at = input.selectionStart; const k = input.dataset.k;
+      setExtraName(state.draft, id, raw);
+      if (extrasRowError && JSON.stringify(extrasRowError.id) === JSON.stringify(id)) extrasRowError = null;
+      paint(); refreshBar();
+      const back = [...$('xdetail').querySelectorAll('input[aria-label="Nombre del extra"]')].find((x) => x.dataset.k === k);
+      if (back) { back.focus(); try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } }
+    }),
     price: bound((id, raw, input) => {
       const at = input.selectionStart; const k = input.dataset.k;
+      if (extrasRowError && JSON.stringify(extrasRowError.id) === JSON.stringify(id)) extrasRowError = null;
       setExtraPrice(state.draft, id, raw);
       paint(); refreshBar();
       const back = [...$('xdetail').querySelectorAll('.price input')].find((x) => x.dataset.k === k);

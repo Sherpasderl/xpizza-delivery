@@ -692,7 +692,8 @@
   .mk-xnew .nm{flex-wrap:nowrap}
   .mk-xnew .mk-xname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}
   .mk-xnew .mk-xname:focus{outline:none;border-color:var(--accent)}
-  .mk-xnewlines{display:flex;flex-direction:column;gap:2px;padding:0 20px 10px}   /* aligned to the row's own padding (SBS 11-12) */
+  .mk-xnewlines{display:flex;flex-direction:column;gap:2px;padding:0 20px 10px}
+  .mk-xrowline{padding:0 20px 10px}   /* a row's own line (a «Nuevo» row's empty name, or the server's line FIX-EXTRA brought) */   /* aligned to the row's own padding (SBS 11-12) */
   /* rule 16b (SBS 11-12, 390 px): the Extras detail's head — the group name on its own line, then its count and «Agregar extra»;
      the button never breaks its label */
   #xdetail .dhead .dright .btn{white-space:nowrap}

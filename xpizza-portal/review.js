@@ -911,7 +911,12 @@ export const PUBLISH_ACTIONS = {
   RETRY: 'retry',         // nothing about the edit was wrong — send the same payload again
   FIX: 'fix',             // 1D add-product A: a NEW product needs a correction — back to editing, its drawer open at the field
   RESET: 'reset',         // 1D add-product A: the saved draft cannot publish — "Volver al menú publicado"
+  FIX_EXTRA: 'fix_extra', // STRUCTURE S2 §5.2: an EXTRA needs a correction — the «Extras» tab, its group, its row (FIX keeps its product-only meaning)
+  REVIEW_DELETIONS: 'review_deletions',   // S2 §5.2: the published menu moved under a removal claim — re-read, re-show the list, resend acknowledged
 };
+// STRUCTURE S2 — the Extras page's caps, said in the panels (owner 2026-11-12: the numbers ARE the copy). ONE constant; review.test pins
+// it equal to the server's catalog/structure-budget.js LIMITS, so the copy can never promise a number the server does not enforce.
+export const STRUCTURE_CAPS = Object.freeze({ groups: 20, perGroup: 30, extras: 600 });
 
 // The six first-class states, each with its own explanation and its own way forward. The copy says
 // what happened, what it means for the merchant's data, and what to do — in that order, because the
@@ -1038,6 +1043,35 @@ const PANELS = {
   flip_evidence_exists: { icon: 'info', title: 'No se publicó',
     detail: 'El menú en vivo no cambió. Revisá de nuevo los cambios y volvé a confirmar.',
     action: { id: PUBLISH_ACTIONS.REREVIEW, label: 'Revisar de nuevo' } },
+  // ── STRUCTURE S2 §5.2 — the Extras page (PLAN-portal-structure-S2-ui r3 §5.2; frame H) ──
+  extra_name_unsafe: { icon: 'warn', title: 'Ese nombre no se puede usar',
+    detail: 'El nombre no puede llevar , | + [ ]. Cambialo, por favor.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' } },
+  name_needs_new_id: { icon: 'warn', title: 'Ese nombre ya lo usó un extra que quitaste',
+    detail: 'Usá otro nombre.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' } },
+  extras_group_empty: { icon: 'warn', title: 'Un grupo necesita al menos un extra',
+    detail: 'Agregá un extra o no lo crees.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Agregar un extra' } },
+  existing_extra_removed: { icon: 'warn', title: 'Volvé a quitar el extra desde la página de Extras',
+    detail: 'Tu borrador no coincide con el menú publicado.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  extras_catalog_not_supported_yet: { icon: 'info', title: 'Agregar extras todavía no está disponible',
+    detail: 'Tus otros cambios siguen acá.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  structure_caps: { icon: 'warn', title: 'Son demasiados cambios a la vez',
+    detail: 'Publicá parte de los cambios primero.',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Entendido' } },
+  structure_bytes: { icon: 'warn', title: 'El menú quedó demasiado grande',
+    detail: 'Quitá algunos extras o reglas.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  // the three deletion refusals are ONE recovery sheet (r2 #8), the owner's save and the manager's request alike
+  deleted_ids_base_moved: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
+  deleted_ids_unbound: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
+  deleted_ids_stale_baseline: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
   store_unavailable: {
     icon: 'warn',
     title: 'No se pudo publicar',
@@ -1078,7 +1112,9 @@ const GENERIC = {
 // them to distrust the one panel that will someday be telling the truth.
 const serverAnswered = (err) => !!(err && typeof err.status === 'number' && err.status > 0);
 
-export function outcomeFor(err, op = 'publish') {
+// `ctx` (STRUCTURE S2 §5.2, optional): { isExtra(target) → whether the named ref / key is an EXTRA row of the draft; counts() → { maxPerGroup }
+// of the draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart
+export function outcomeFor(err, op = 'publish', ctx = {}) {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
   const base = { code, op, generic: !panel, ...(panel || GENERIC) };
@@ -1089,6 +1125,23 @@ export function outcomeFor(err, op = 'publish') {
     if (target) base.target = target;
     if (typeof b.field === 'string') base.field = b.field;
     if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal
+  }
+  // ── STRUCTURE S2 §5.2 — an EXTRA's refusal (the draft says the target is an extra row): the extra's copy, FIX-EXTRA to its row ──
+  const isExtra = !!(base.target && ctx && typeof ctx.isExtra === 'function' && ctx.isExtra(base.target));
+  if (isExtra && code === 'name_taken') {
+    base.title = 'Ese nombre ya está en tu menú'; base.detail = 'Elegí otro nombre para el extra nuevo.';
+    base.action = { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' };
+  }
+  if (code === 'extras_group_empty' && b && typeof b.group === 'string' && b.group) base.group = b.group;   // (a): the group, once the server names it
+  if (code === 'deleted_ids_stale_baseline' && b && Array.isArray(b.existing_ids)) base.existingIds = b.existing_ids.map(String);
+  if (code === 'structure_caps' && b && (b.field === 'extra_categories' || b.field === 'extras')) {
+    // the server reports a group's cap and the menu's cap alike (field 'extras'): the draft's own counts tell which was crossed
+    const c = ctx && typeof ctx.counts === 'function' ? ctx.counts() : null;
+    const perGroup = b.field === 'extras' && !!c && c.maxPerGroup > STRUCTURE_CAPS.perGroup;
+    if (b.field === 'extra_categories') { base.title = 'Llegaste al máximo de grupos'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.groups} grupos de extras.`; }
+    else if (perGroup) { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }
+    else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }
+    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {
@@ -1132,6 +1185,10 @@ export function outcomeFor(err, op = 'publish') {
     if (code === 'rename_not_alone') return base;
     // F-2 (mockup N2) — likewise: «No se guardó ni se publicó nada» is the literal truth of a refused reset, in the approved words
     if (code === 'platform_changes_pending') return base;
+    // STRUCTURE S2 §5.2 — likewise: «El menú publicado cambió» / «… no coincide con el menú publicado» state a fact about the PUBLISHED menu,
+    // as true of the save that was refused as of a publish (the approved recovery sheet / RESET copy)
+    // (and «Publicá parte de los cambios primero.» is an instruction, as true of a refused save)
+    if (['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline', 'existing_extra_removed', 'structure_caps'].includes(code)) return base;
     if (base.generic || /public/i.test(base.title)) base.title = 'No se pudo guardar el borrador';
     if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
       base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';
