@@ -33,13 +33,13 @@ function handler(app) {
   return h;
 }
 const norm = (x) => SRC.slice(x.start, x.end).replace(/\s+/g, ' ').replace(/ \/\/.*$/, '').trim();
-const firstOf = (h, re) => { const m = re.exec(SRC.slice(h.start, h.end)); return m ? h.start + m.index : Infinity; };
+const firstOf = (h, re, from = h.start) => { const m = re.exec(SRC.slice(from, h.end)); return m ? from + m.index : Infinity; };
 
 // B. createOrder: the first statement after the bearer check
 {
   const h = handler('createOrderApp');
   const st = h.body.body;
-  const i = st.findIndex((x) => x.type === 'IfStatement' && /constantTimeEqual\(presented, SECRET\)/.test(SRC.slice(x.start, x.end)));
+  const i = st.findIndex((x) => x.type === 'IfStatement' && /!presented \|\| (presented !== SECRET|!constantTimeEqual\(presented, SECRET\))/.test(SRC.slice(x.start, x.end)));
   assert.ok(i !== -1, 'NS-B: the bearer check');
   assert.strictEqual(norm(st[i + 1]).replace(/ \/\/.*/, ''), REFUSAL, `NS-B: createOrder's FIRST statement after the bearer check is the namespace refusal (got ${norm(st[i + 1]).slice(0, 120)})`);
   const at = st[i + 1].start;
@@ -53,7 +53,7 @@ const firstOf = (h, re) => { const m = re.exec(SRC.slice(h.start, h.end)); retur
   assert.ok(b1 && b1.alternate && b1.alternate.type === 'BlockStatement', 'NS-C: B1 has the hosted (else) branch');
   const alt = b1.alternate.body;
   assert.strictEqual(norm(alt[alt.length - 1]).replace(/ \/\/.*/, ''), REFUSAL, 'NS-C: the hosted branch ends with the namespace refusal (after the intake-key compare)');
-  for (const re of [/CF\.liveCheckoutProbe\(/, /resolveRestaurantId\(/, /reserveRedemption\(/, /checkRateLimit\(/, /acquireHostedAttempt\(db,/]) assert.ok(alt[alt.length - 1].start < firstOf(h, re), `NS-C: the refusal precedes ${re}`);
+  for (const re of [/CF\.liveCheckoutProbe\(/, /resolveRestaurantId\(/, /reserveRedemption\(/, /checkRateLimit\(/, /acquireHostedAttempt\(db,/]) assert.ok(alt[alt.length - 1].start < firstOf(h, re, b1.end), `NS-C: on the hosted path the refusal precedes ${re}`);
   ok('C: hosted chargeOnlineOrder refuses a namespaced id before any read or write; the SDK branch admits only the namespace');
 }
 // D. one definition

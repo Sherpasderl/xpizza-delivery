@@ -74,7 +74,9 @@ const orderBody = (rid, extra = {}) => ({ restaurant_id: rid, order_id: `sdkin_$
   customer_email: 'ana.perez@gmail.com', items_text: `1x ${LINE[rid].name}`, order_type: 'pickup', payment_method: 'online', items: [LINE[rid]], ...extra });
 const NEW_CARD = { kind: 'new', sdk_token: 'tok_emu', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031 } };
 let ATT = 0;
-const sdkBody = (rid, extra = {}) => orderBody(rid, { attempt_id: `att_emu_${String(ATT += 1).padStart(12, '0')}`, card: NEW_CARD, ...extra });
+// an SDK placement mints in the reserved namespace (sdk_ + the app's grammar); every other creator refuses it
+let NSN = 0; const sdkId = () => `sdk_261112-${String(101500 + (NSN += 1)).padStart(6, '0')}-ABCDEFGH`;
+const sdkBody = (rid, extra = {}) => orderBody(rid, { order_id: sdkId(), attempt_id: `att_emu_${String(ATT += 1).padStart(12, '0')}`, card: NEW_CARD, ...extra });
 const MEMBER = { Authorization: 'Bearer idt_member' };
 const fresh = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); HOSTED.length = 0; };
 const SDK = async (b, h = MEMBER, q = '') => { await fresh(); return post(app.placeSdkOrder, b, h, q); };
@@ -127,8 +129,17 @@ async function mintTicket(b) {
   const h1 = await HOSTED_CALL(hb, { 'x-firebase-id-token': 'idt_member' });
   assert.strictEqual(h1.status, 200, `premise — the hosted checkout exists (${h1.text.slice(0, 120)})`);
   const s3 = await SDK({ ...sdkBody('x_pizza'), ...hb, attempt_id: 'att_emu_hostedbetween01', card: NEW_CARD });
-  assert.ok(s3.status === 409 && !/pay\.test|poll_token|checkout_url/.test(s3.text), `HOSTED-BETWEEN: 409, no hosted artifact (${s3.text.slice(0, 200)})`);
-  ok('a hosted checkout under the same id ⇒ 409; the SDK never echoes a hosted URL or poll token');
+  assert.ok(s3.status === 400 && s3.json.error === 'order_id_namespace' && !/pay\.test|poll_token|checkout_url/.test(s3.text), `HOSTED-BETWEEN: a hosted order's id is outside the SDK namespace ⇒ 400, no hosted artifact (${s3.text.slice(0, 200)})`);
+  ok('a hosted checkout\'s id can never reach the SDK (namespace): 400, never a hosted URL or poll token');
+
+  // 4b. the NAMESPACE through the real exports: every other creator refuses an sdk_ id BEFORE any read or write
+  const nsId = sdkId();
+  await fresh();
+  const cashNs = await post(app.createOrder, { ...orderBody('x_pizza', { payment_method: 'cash', order_id: nsId }) }, { Authorization: `Bearer ${process.env.MAKE_SECRET}` });
+  assert.ok(cashNs.status === 400 && /order_id_namespace/.test(cashNs.text) && (await val(`orders/${nsId}`)) === null && (await val('rate_limits')) === null && (await val('recent_order_content')) === null, `NAMESPACE: createOrder (cash) refuses an sdk_ id, nothing written (${cashNs.text.slice(0, 120)})`);
+  const hostedNs = await HOSTED_CALL(orderBody('x_pizza', { order_id: nsId }));
+  assert.ok(hostedNs.status === 400 && /order_id_namespace/.test(hostedNs.text) && (await val(`orders/${nsId}`)) === null && (await val('rate_limits')) === null && (await val('recent_order_content')) === null, `NAMESPACE: hosted chargeOnlineOrder refuses an sdk_ id, nothing written (${hostedNs.text.slice(0, 120)})`);
+  ok('createOrder (cash) and hosted chargeOnlineOrder refuse an SDK-namespaced id before any write');
 
   // 5. SDK-D4-AUTH-MIXED / GUEST-FORGED / VERIFY-TIMEOUT / NO-REDEEM / APP-SEMANTICS through the export
   const st = async (b, h) => { const r = await SDK(b, h); return [r.status, r.json && r.json.error]; };

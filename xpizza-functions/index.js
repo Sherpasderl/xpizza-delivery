@@ -766,6 +766,7 @@ createOrderApp.all('*', async (req, res) => {
     console.warn('createOrder: bad/missing bearer token');
     return unauthorized(res, 'invalid bearer token');
   }
+  if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');   // D4: an SDK order id belongs to placeSdkOrder ONLY (a cash / hosted request never writes over an SDK order)
 
   /* P-SELFUPDATE §5 — client identity log line + the EARLY, side-effect-free floor admission (before pricing, the rate
      limiter, the reserve and any write). Floor OFF (absent) → nothing below changes. A below-floor request is admitted
@@ -1516,6 +1517,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.warn('chargeOnlineOrder: bad/missing bearer token');
       return unauthorized(res, 'invalid bearer token');
     }
+    if (require('./payments/sdk/order-id').inSdkNamespace((req.body || {}).order_id)) return badRequest(res, 'order_id_namespace');   // D4: an SDK order id belongs to placeSdkOrder ONLY (a cash / hosted request never writes over an SDK order)
   }
 
   /* P-SELFUPDATE §5 — client identity log line + the EARLY floor admission. Floor OFF → nothing below changes. A

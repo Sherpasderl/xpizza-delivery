@@ -58,6 +58,7 @@ async function authorize(req, deps) {
   else if (body.entry_mode !== 'app') return refuse(400, 'entry_mode');
   if (body.redeem != null) return refuse(400, 'redeem_not_available');          // B1.7: SDK card orders never redeem (§A00)
   if (!envelopeOk(body, out.kind, deps.clock())) return refuse(400, 'bad_request');   // CONTRACT-Δ C1
+  if (!require('./order-id').isSdkOrderId(body.order_id)) return refuse(400, 'order_id_namespace');   // the SDK namespace (gate 0 replaced)
   return out;
 }
 
