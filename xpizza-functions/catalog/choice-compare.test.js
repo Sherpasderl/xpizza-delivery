@@ -93,7 +93,7 @@ cell('CC-ON-RENAME-CAPS: a composed name over 60 is option_name_too_long; two op
   refusedWith(() => judge('la_musa', LM, marked(apply(LM, { op: 'option.rename', key: padOpts(LM)[1], choice: first.toUpperCase() }))), 'choice_duplicate');
 }));
 cell('CC-ON-ADD: an option added under an EXISTING dish passes (marked) and is returned as an addition', () => ON(() => {
-  const d = settle(marked(apply(LM, { op: 'option.add', launcher: PAD, ref: 'tmp:cc-tofu-xxxxx', choice: 'Tofu', price: 330 })));
+  const d = marked(settle(apply(LM, { op: 'option.add', launcher: PAD, ref: 'tmp:cc-tofu-xxxxx', choice: 'Tofu', price: 330 })));
   const r = judge('la_musa', LM, d);
   assert.ok(r.additions.includes('s3c_cc_tofu_xxxxx'), JSON.stringify(r));
 }));

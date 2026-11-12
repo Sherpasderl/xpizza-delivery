@@ -6,7 +6,8 @@
 //   choiceEdit    — the required choice on an existing dish (S3)
 //   sections      — categories / subcategories, moves, reorders (S4)
 const EXTRAS_CATALOG = false;
+const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): OFF at ship; flipped in its own commit after the portal's choice editor ships
 function structureCapabilities() {
-  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: false, sections: false };
+  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: false };
 }
 module.exports = { structureCapabilities };

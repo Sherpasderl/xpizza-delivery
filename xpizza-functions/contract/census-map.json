@@ -423,6 +423,7 @@
   "catalog/choice-transitions.js#rowOf": "catalog",
   "catalog/choice-activation.js#choiceActivation": "catalog",
   "catalog/choice-activation.js#specOf": "catalog",
+  "catalog/choice-compare.js#compareToActive": "catalog",
   "catalog/extras-projection.js#projectExtrasMaps": "catalog",
   "catalog/extras-allocate.js#allocateExtras": "catalog",
   "catalog/extras-allocate.js#forSave": "catalog",

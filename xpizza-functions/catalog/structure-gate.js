@@ -16,7 +16,7 @@ async function judge({ rid, draft, draftRecords, live, liveExtraRecords, addProd
     throw new AP.AddProductError('extras_catalog_not_supported_yet', 'the Extras page is not available yet', { field: 'extras', status: 409 });
   }
   if (compare) {
-    AP.compareToActive({
+    require('./choice-compare').compareToActive(rid, {
       draftBuilt: { ...draftRecords, ...(photos ? { photos: photos.draft } : {}) }, activeBuilt: { ...active, ...(photos ? { photos: photos.active } : {}) },
       draftAuthored: Object.keys(draft.structure || {}), renderedCategories: require('./source-store').rendererContract(rid).renderedCategories,
       deletedIds: draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? draft.deleted_ids.ids : [],

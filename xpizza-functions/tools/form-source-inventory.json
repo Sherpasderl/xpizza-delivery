@@ -102,6 +102,7 @@
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-compare.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -477,6 +478,7 @@
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-compare.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -867,6 +869,7 @@
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-compare.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -1237,6 +1240,7 @@
     "xpizza-functions/catalog/category-rename.test.js",
     "xpizza-functions/catalog/choice-activation.test.js",
     "xpizza-functions/catalog/choice-badges-noop.test.js",
+    "xpizza-functions/catalog/choice-compare.test.js",
     "xpizza-functions/catalog/choice-transitions.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/context-hardening.test.js",
@@ -1989,6 +1993,7 @@
   "xpizza-functions/catalog/catalog-menu.js",
   "xpizza-functions/catalog/catalog-publish.js",
   "xpizza-functions/catalog/choice-activation.js",
+  "xpizza-functions/catalog/choice-compare.js",
   "xpizza-functions/catalog/context-source.js",
   "xpizza-functions/catalog/context-writer.js",
   "xpizza-functions/catalog/display-safety.js",
@@ -2501,6 +2506,7 @@
   "catalog/catalog.js",
   "catalog/charge-inputs.js",
   "catalog/choice-activation.js",
+  "catalog/choice-compare.js",
   "catalog/choice-transitions.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
@@ -3073,6 +3079,10 @@
    ]
   },
   "catalog/choice-activation.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/choice-compare.js": {
    "pins": [],
    "lifts": []
   },

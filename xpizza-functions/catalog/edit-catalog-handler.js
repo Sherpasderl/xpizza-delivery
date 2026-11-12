@@ -360,7 +360,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }
   try {
     require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first
-    AP.compareToActive({
+    require('./choice-compare').compareToActive(rid, {
       draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure, ...(photos ? { photos: photoMap } : {}) },
       activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) },
       draftAuthored: Object.keys(next.structure || {}),
