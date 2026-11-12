@@ -326,7 +326,7 @@ function foldNewGroups(draft, entries, saved) {
 // STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
-  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.fields.length, 0);
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0);
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -909,7 +909,9 @@ export function pendingDishExtras(draft) {
     const fields = [];
     if (a.size !== b.size || [...a].some((k) => !b.has(k))) fields.push('denyExtras');
     if ((was.display.extras_policy === 'none') !== (row.display.extras_policy === 'none')) fields.push('extrasPolicy');
-    if (fields.length) out.push({ key: row.key, fields });
+    // the bar counts what the review will SAY (Codex S1 follow-up r1 P2): an untick and a re-tick in one list are two sentences
+    const sentences = (b.size > 0 && [...b].some((k) => !a.has(k)) ? 1 : 0) + (a.size > 0 && [...a].some((k) => !b.has(k)) ? 1 : 0) + (fields.includes('extrasPolicy') ? 1 : 0);
+    if (fields.length) out.push({ key: row.key, fields, sentences });
   }
   return out;
 }

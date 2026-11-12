@@ -63,7 +63,8 @@ function productsOf(lines, optionParent, optionIndex, extraName) {
   const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
   const byKey = new Map();
   const productOf = (key) => {
-    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [] });
+    // `count` = the change SENTENCES this product renders (Codex S1 follow-up r1 P2: every count is the rendered, folded list)
+    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 });
     return byKey.get(key);
   };
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -75,26 +76,31 @@ function productsOf(lines, optionParent, optionIndex, extraName) {
     if (parent) {
       let o = p.options.find((x) => x.key === c.key);
       if (!o) { o = { key: c.key, was: null, now: null, extra: [] }; p.options.push(o); }
-      if (c.field === 'name') { o.was = c.old; o.now = c.new; continue; }
-      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }
+      if (c.field === 'name') { o.was = c.old; o.now = c.new; p.count += 1; continue; }   // the option's derived name: one sentence
+      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }   // folded: no sentence
       o.extra.push(c.field === 'cat' || c.field === 'subcat' ? { kind: 'cat', field: c.field, was: c.old, now: c.new } : { kind: c.field, was: c.old, now: c.new });
+      p.count += 1;
       continue;
     }
-    if (c.field === 'name' || c.field === 'desc') p.lines.push({ kind: c.field, was: c.old, now: c.new });
+    if (c.field === 'name' || c.field === 'desc') { p.lines.push({ kind: c.field, was: c.old, now: c.new }); p.count += 1; }
     else if (c.field === 'cat' || c.field === 'subcat') {
       let l = p.lines.find((x) => x.kind === 'cat');
-      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }
+      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); p.count += 1; }   // section + subsection: ONE sentence
       l[c.field] = { was: c.old, now: c.new };
-    } else if (DISH_EXTRAS.includes(c.field)) p.consequences.push(...dishExtrasLines(c, extraName));
+    } else if (DISH_EXTRAS.includes(c.field)) { const ss = dishExtrasLines(c, extraName); p.consequences.push(...ss); p.count += ss.length; }
     else {
       const g = GATES.find(([f]) => f === c.field);
       p.consequences.push(c.new ? g[1] : g[2]);
+      p.gates = (p.gates || 0) + 1;   // counted below: a gate EXPLAINING the product's own section move is not a change of its own
     }
   }
   const order = ['name', 'desc', 'cat'];
   // the options in their product's own choice order (the caller's draft), never the diff's key order
   const idx = typeof optionIndex === 'function' ? optionIndex : () => 0;
   for (const p of byKey.values()) {
+    // approved frame E: «Productos 3» for name + description + section, its gate sentences under the section line uncounted
+    if (!p.lines.some((l) => l.kind === 'cat')) p.count += p.gates || 0;
+    delete p.gates;
     p.options.sort((a, b) => idx(a.key) - idx(b.key));
     p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     // the gates in their order; the dish's extras sentences after them (their own order kept)
@@ -113,7 +119,7 @@ export function reviewModel(diff, ctx = {}) {
   const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);
   for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
     let p = products.find((x) => x.key === c.key);
-    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
+    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
   }
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
@@ -156,7 +162,9 @@ export function reviewModel(diff, ctx = {}) {
     renamed,
     photos,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
+    // every product sentence once, as rendered (an option's identical line folded, a checklist swap = two sentences); a move's
+    // «Acepta / Deja de aceptar» explanations (diff.consequences) describe a counted change, they are not changes of their own
+    total: rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -226,7 +234,7 @@ export function renderReview(root, model, opts = {}) {
     const textOrDash = (v) => (typeof v === 'string' && v.trim() ? v : '\u2014');
     const place = (cat, sub) => [cat == null ? null : catName(cat), typeof sub === 'string' && sub ? sub : null].filter(Boolean).join(' \u00b7 ') || '\u2014';
     const g = el('div', 'mgroup');
-    g.append(groupHead('Productos', products.reduce((n, p) => n + p.lines.length, 0)));
+    g.append(groupHead('Productos', products.reduce((n, p) => n + (p.count || 0), 0)));
     const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
     for (const p of products) {
       const now = sectionOf(p.key) || {};

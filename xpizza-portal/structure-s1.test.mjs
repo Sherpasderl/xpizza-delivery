@@ -239,12 +239,12 @@ for (const rid of ['x_pizza', 'la_musa']) {
     const k = IE.view(d, s).extras.cards[0].rows[0].key;
     IE.set(s, 'extraOn', { key: k, on: false });
     assert.ok(IE.save(d, s).ok); assert.equal(IE.isDirty(s), false, 'the copy is closed');
-    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['denyExtras'] }]);
+    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['denyExtras'], sentences: 1 }]);
     assert.equal(pendingCount(d), 1);
     const s2 = openOn(d, key); IE.set(s2, 'extraOn', { key: k, on: true }); assert.ok(IE.save(d, s2).ok);
     assert.equal(pendingCount(d), 0, 'reverted → clean');
     const s3 = openOn(d, key); IE.set(s3, 'extrasNone', true); assert.ok(IE.save(d, s3).ok);
-    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['extrasPolicy'] }]);
+    assert.deepEqual(pendingDishExtras(d), [{ key, fields: ['extrasPolicy'], sentences: 1 }]);
     assert.equal(pendingCount(d), 1);
   });
 }
@@ -286,6 +286,24 @@ test('review — «Sin extras» on a product WITH options is ONE line (the optio
   const parent = (k) => (VARIANTS.includes(k) ? LAUNCHER : null);
   const p = reviewModel(diff, { optionParent: parent }).products.find((x) => x.key === LAUNCHER);
   assert.deepEqual(p.consequences, ['Sin extras'], 'one line for the product');
+  // Codex S1 follow-up r1 P2: every count is the RENDERED, folded sentence list — one sentence shown, one counted
+  const mo = reviewModel(diff, { optionParent: parent });
+  assert.equal(mo.total, 1, 'the review counts the one sentence it shows (not the launcher + options\u2019 raw lines)');
+  assert.equal(mo.products.find((x) => x.key === LAUNCHER).count, 1, 'the product\u2019s own count is its sentences');
+});
+test('review — swapping one unticked extra for another: TWO sentences shown, TWO counted (one server line)', () => {
+  const rid = 'la_musa', key = PLAIN[rid];
+  const d = draftOf(rid); const s0 = openOn(d, key);
+  const [a, b] = IE.view(d, s0).extras.cards[0].rows.map((r) => r.key);
+  IE.set(s0, 'extraOn', { key: a, on: false }); assert.ok(IE.save(d, s0).ok);
+  const live = clone(draftSource(d)); const d2 = createDraft(clone(live)); const s2 = openOn(d2, key);
+  IE.set(s2, 'extraOn', { key: a, on: true }); IE.set(s2, 'extraOn', { key: b, on: false }); assert.ok(IE.save(d2, s2).ok);
+  const diff = serverDiff(rid, live, clone(draftSource(d2)));
+  assert.equal(diff.changed.filter((c) => c.field === 'deny_extras').length, 1, 'premise: ONE server line');
+  const m = reviewModel(diff, { extraName: extraNameIn(draftSource(d2)) });
+  assert.equal(m.products.find((p) => p.key === key).consequences.length, 2, 'premise: it reads as two sentences');
+  assert.equal(m.total, 2, 'the review counts the two sentences it shows');
+  assert.equal(pendingCount(d2), 2, 'the bar counts what the review will say: two sentences');
 });
 test('review — NO client-only line: lines the server did not send are never shown or counted', () => {
   const EMPTY = { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] };

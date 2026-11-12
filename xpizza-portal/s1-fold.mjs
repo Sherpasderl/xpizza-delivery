@@ -56,7 +56,7 @@ export const S1_FOLD = {
    ""
   ],
   [
-   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.fields.length, 0);\n",
+   "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0);\n",
    "  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0);\n"
   ],
   [
@@ -72,7 +72,7 @@ export const S1_FOLD = {
    ""
   ],
   [
-   "}\n\n// ── STRUCTURE S1 — A DISH'S EXTRAS (PLAN-portal-structure-S1-ui r3; PLAN-per-product-extras rev 2.2 §2 / §3 / §12.3) ─────────\n// The dish's typed exclusions: item_overrides[key].deny_extras (keys only), [] when absent.\nfunction denyExtrasOf(src, key) {\n  const io = src && src.structure && src.structure.exposure && src.structure.exposure.item_overrides;\n  const o = io && typeof io === 'object' ? io[key] : null;\n  return o && Array.isArray(o.deny_extras) ? o.deny_extras.slice() : [];\n}\nexport const dishDenyExtras = (draft, key) => denyExtrasOf(draft && draft.state, key);\n// The checklist's universe (§12.3): what the dish would offer WITHOUT its own exclusions and «Sin extras» — its section's\n// extras ∪ its `add`, legacy rules still applied — grouped by extra-category in THE ONE rule's order (the page's\n// ExtrasEligibility, the server's byte copy). `move` = the section this edit moves it to (the prospective dish). null when the\n// evaluator is absent (nothing about extras is ever guessed).\nexport function extrasBaseline(src, key, move = null) {\n  const E = globalThis.ExtrasEligibility;\n  if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleExtras !== 'function') return null;\n  const s = clone(src);\n  const r = rowsOf(s, 'item').find((x) => x && x.key === key);\n  if (!r || !r.display || isOptionRow(r)) return { groups: [] };\n  const g = groupOfRow(s, r);\n  const members = [r, ...(g ? g.options : [])];\n  for (const m of members) {\n    if (move) { m.display.cat = move.cat; if (move.subcat == null) delete m.display.subcat; else m.display.subcat = move.subcat; }\n    delete m.display.extras_policy;\n  }\n  const io = s.structure && s.structure.exposure && s.structure.exposure.item_overrides;\n  if (io && io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }\n  let keys;\n  try { const proj = E.projectEligibility(s); keys = E.eligibleExtras(proj, key).map((k) => [k, proj.extraCat[k]]); } catch (_) { return null; }\n  const groups = [];\n  for (const [k, c] of keys) { const last = groups[groups.length - 1]; if (last && last.cat === c) last.keys.push(k); else groups.push({ cat: c, keys: [k] }); }\n  return { groups };\n}\n// Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],\n// in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.\nexport function pendingDishExtras(draft) {\n  const out = [];\n  for (const row of rowsOf(draft.state, 'item')) {\n    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;\n    const was = existingRow(draft.orig, row.key);\n    if (!was || !was.display || !row.display) continue;\n    const a = new Set(denyExtrasOf(draft.orig, row.key)), b = new Set(denyExtrasOf(draft.state, row.key));\n    const fields = [];\n    if (a.size !== b.size || [...a].some((k) => !b.has(k))) fields.push('denyExtras');\n    if ((was.display.extras_policy === 'none') !== (row.display.extras_policy === 'none')) fields.push('extrasPolicy');\n    if (fields.length) out.push({ key: row.key, fields });\n  }\n  return out;\n",
+   "}\n\n// ── STRUCTURE S1 — A DISH'S EXTRAS (PLAN-portal-structure-S1-ui r3; PLAN-per-product-extras rev 2.2 §2 / §3 / §12.3) ─────────\n// The dish's typed exclusions: item_overrides[key].deny_extras (keys only), [] when absent.\nfunction denyExtrasOf(src, key) {\n  const io = src && src.structure && src.structure.exposure && src.structure.exposure.item_overrides;\n  const o = io && typeof io === 'object' ? io[key] : null;\n  return o && Array.isArray(o.deny_extras) ? o.deny_extras.slice() : [];\n}\nexport const dishDenyExtras = (draft, key) => denyExtrasOf(draft && draft.state, key);\n// The checklist's universe (§12.3): what the dish would offer WITHOUT its own exclusions and «Sin extras» — its section's\n// extras ∪ its `add`, legacy rules still applied — grouped by extra-category in THE ONE rule's order (the page's\n// ExtrasEligibility, the server's byte copy). `move` = the section this edit moves it to (the prospective dish). null when the\n// evaluator is absent (nothing about extras is ever guessed).\nexport function extrasBaseline(src, key, move = null) {\n  const E = globalThis.ExtrasEligibility;\n  if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleExtras !== 'function') return null;\n  const s = clone(src);\n  const r = rowsOf(s, 'item').find((x) => x && x.key === key);\n  if (!r || !r.display || isOptionRow(r)) return { groups: [] };\n  const g = groupOfRow(s, r);\n  const members = [r, ...(g ? g.options : [])];\n  for (const m of members) {\n    if (move) { m.display.cat = move.cat; if (move.subcat == null) delete m.display.subcat; else m.display.subcat = move.subcat; }\n    delete m.display.extras_policy;\n  }\n  const io = s.structure && s.structure.exposure && s.structure.exposure.item_overrides;\n  if (io && io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }\n  let keys;\n  try { const proj = E.projectEligibility(s); keys = E.eligibleExtras(proj, key).map((k) => [k, proj.extraCat[k]]); } catch (_) { return null; }\n  const groups = [];\n  for (const [k, c] of keys) { const last = groups[groups.length - 1]; if (last && last.cat === c) last.keys.push(k); else groups.push({ cat: c, keys: [k] }); }\n  return { groups };\n}\n// Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],\n// in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.\nexport function pendingDishExtras(draft) {\n  const out = [];\n  for (const row of rowsOf(draft.state, 'item')) {\n    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;\n    const was = existingRow(draft.orig, row.key);\n    if (!was || !was.display || !row.display) continue;\n    const a = new Set(denyExtrasOf(draft.orig, row.key)), b = new Set(denyExtrasOf(draft.state, row.key));\n    const fields = [];\n    if (a.size !== b.size || [...a].some((k) => !b.has(k))) fields.push('denyExtras');\n    if ((was.display.extras_policy === 'none') !== (row.display.extras_policy === 'none')) fields.push('extrasPolicy');\n    // the bar counts what the review will SAY (Codex S1 follow-up r1 P2): an untick and a re-tick in one list are two sentences\n    const sentences = (b.size > 0 && [...b].some((k) => !a.has(k)) ? 1 : 0) + (a.size > 0 && [...a].some((k) => !b.has(k)) ? 1 : 0) + (fields.includes('extrasPolicy') ? 1 : 0);\n    if (fields.length) out.push({ key: row.key, fields, sentences });\n  }\n  return out;\n",
    ""
   ]
  ],
@@ -140,8 +140,36 @@ export const S1_FOLD = {
    "const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));\nfunction productsOf(lines, optionParent, optionIndex) {\n"
   ],
   [
-   "    } else if (DISH_EXTRAS.includes(c.field)) p.consequences.push(...dishExtrasLines(c, extraName));\n    else {\n",
+   "    // `count` = the change SENTENCES this product renders (Codex S1 follow-up r1 P2: every count is the rendered, folded list)\n    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 });\n",
+   "    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [] });\n"
+  ],
+  [
+   "      if (c.field === 'name') { o.was = c.old; o.now = c.new; p.count += 1; continue; }   // the option's derived name: one sentence\n      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }   // folded: no sentence\n",
+   "      if (c.field === 'name') { o.was = c.old; o.now = c.new; continue; }\n      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }\n"
+  ],
+  [
+   "      p.count += 1;\n",
+   ""
+  ],
+  [
+   "    if (c.field === 'name' || c.field === 'desc') { p.lines.push({ kind: c.field, was: c.old, now: c.new }); p.count += 1; }\n",
+   "    if (c.field === 'name' || c.field === 'desc') p.lines.push({ kind: c.field, was: c.old, now: c.new });\n"
+  ],
+  [
+   "      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); p.count += 1; }   // section + subsection: ONE sentence\n",
+   "      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }\n"
+  ],
+  [
+   "    } else if (DISH_EXTRAS.includes(c.field)) { const ss = dishExtrasLines(c, extraName); p.consequences.push(...ss); p.count += ss.length; }\n    else {\n",
    "    } else {\n"
+  ],
+  [
+   "      p.gates = (p.gates || 0) + 1;   // counted below: a gate EXPLAINING the product's own section move is not a change of its own\n",
+   ""
+  ],
+  [
+   "    // approved frame E: «Productos 3» for name + description + section, its gate sentences under the section line uncounted\n    if (!p.lines.some((l) => l.kind === 'cat')) p.count += p.gates || 0;\n    delete p.gates;\n",
+   ""
   ],
   [
    "    // the gates in their order; the dish's extras sentences after them (their own order kept)\n    const rank = (x) => { const i = GATES.findIndex((g) => g.includes(x)); return i < 0 ? GATES.length : i; };\n    p.consequences.sort((a, b) => rank(a) - rank(b));\n",
@@ -150,6 +178,18 @@ export const S1_FOLD = {
   [
    "  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);\n",
    "  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex);\n"
+  ],
+  [
+   "    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }\n",
+   "    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }\n"
+  ],
+  [
+   "    // every product sentence once, as rendered (an option's identical line folded, a checklist swap = two sentences); a move's\n    // «Acepta / Deja de aceptar» explanations (diff.consequences) describe a counted change, they are not changes of their own\n    total: rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,\n",
+   "    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,\n"
+  ],
+  [
+   "    g.append(groupHead('Productos', products.reduce((n, p) => n + (p.count || 0), 0)));\n",
+   "    g.append(groupHead('Productos', products.reduce((n, p) => n + p.lines.length, 0)));\n"
   ],
   [
    "  const hasNothing = reviewModel(diff, ctx).total === 0;\n",

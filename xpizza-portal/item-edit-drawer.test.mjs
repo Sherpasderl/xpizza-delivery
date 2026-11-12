@@ -996,6 +996,9 @@ test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown
   assert.ok(body.includes(`Sin ${salsaName(1)} (solo en la app Sherpa)`), `the review says what changes (${body.slice(0, 160)})`);
   assert.ok(!body.includes('No hay cambios sin publicar'));
   assert.equal(p.d.getElementById('pubbtn').disabled, false, 'it counts: «Publicar» is enabled');
+  // Codex S1 follow-up r1 P2: the «Productos» badge counts the rendered sentences — an extras-only change is «1», never «0»
+  const prodGroup = [...p.d.querySelectorAll('#mbody .mgroup')].find((g) => g.querySelector('.mglabel span').textContent === 'Productos');
+  assert.equal(prodGroup.querySelector('.mgn').textContent, '1', 'the Productos badge counts the checklist sentence');
 });
 
 test('S1 r1 #2 — a FOLDED required-choice card: no error, Guardar off while clean, the name rule still holds, save and reopen work', async () => {

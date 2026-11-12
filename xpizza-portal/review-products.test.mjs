@@ -86,11 +86,12 @@ test('«Productos» — without the caller\'s optionParent an option line is a p
   assert.strictEqual(m.products.length, 4);
 });
 
-test('«Productos» — total counts every line that will publish, so the header never understates it', () => {
-  const diff = FRAME_E();
-  assert.strictEqual(reviewModel(diff).total, diff.changed.length);
-  const g = GROUP();
-  assert.strictEqual(reviewModel(g, { optionParent: parentOf }).total, g.changed.length);
+// Codex S1 follow-up r1 P2 (advisor 11-12): every count is the RENDERED, folded sentence list — one source for the total and the
+// «Productos» badge (was: the raw server lines, which over-counted folded option lines and under-counted a two-sentence change)
+test('«Productos» — the total counts the sentences the review SHOWS: frame E = 1 price + name + description + section (its gates explain the move)', () => {
+  assert.strictEqual(reviewModel(FRAME_E()).total, 4, 'frame E: «Precios 1» + «Productos 3»');
+  // a group: the product's name + section, and each option's derived name; the options' identical section lines fold (no sentence)
+  assert.strictEqual(reviewModel(GROUP(), { optionParent: parentOf }).total, 5, 'name + section + 3 option names');
 });
 
 test('«Productos» renders frame E: the group with its count, «Nombre» / «Descripción» / «Categoría» was → now, the consequences, before «Precios»', () => {
@@ -128,7 +129,7 @@ test('«Productos» — S2 §1.3: the server\'s extras consequence reads «Deja 
   const p = reviewModel(diff).products[0];
   assert.deepStrictEqual(p.consequences, ['Deja de aceptar el extra Orilla rellena', 'Acepta el extra Pan de ajo',
     'Queda solo para recoger', 'Pasa a venderse solo los fines de semana', 'Deja de canjearse con puntos'], 'the drawer\'s frame D order: extras lost, gained, then the gates');
-  assert.strictEqual(reviewModel(diff).total, diff.changed.length, 'a consequence is not a line that publishes: the total is unchanged');
+  assert.strictEqual(reviewModel(diff).total, reviewModel(FRAME_E()).total, 'a consequence is not a line that publishes: the total is unchanged');
   const root = fakeDom();
   renderReview(root, reviewModel(diff), { products: { nameOf: (k) => k, categoryName: (id) => id, sectionOf: () => ({ cat: 'pa', subcat: null }) } });
   const ul = byClass(root, 'mk-cons')[0];
