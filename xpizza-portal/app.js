@@ -1709,9 +1709,8 @@ function renderEditDrawer(d, it, keepScroll) {
         const block = mk('div', 'mk-gb');
         for (const o of v0.options) {
           const row = mk('div', 'mk-dopt');
-          const dn = mk('span', 'mk-dn');
-          const base = document.createTextNode('');
-          dn.append(base, mk('span', null, ` - ${o.choice}`));
+          // advisor 11-12 (S1 SBS, mockup v3): the row names the CHOICE; the full name lives in the helper line (and the counter)
+          const dn = mk('span', 'mk-dn', o.choice);
           const opRow = g && g.options.find((x) => x.key === o.key);
           if (opRow && opRow.display && Array.isArray(opRow.display.tags) && opRow.display.tags.includes('recommended')) dn.append(mk('span', 'mk-rec', 'Recomendada'));
           const cnt = mk('span', 'mk-cnt');
@@ -1726,7 +1725,7 @@ function renderEditDrawer(d, it, keepScroll) {
           dp.append(pr);
           row.append(dn, cnt, dp);
           block.append(row);
-          R.opts.push({ key: o.key, row, base, cnt, pi: ieOptPrice });
+          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice });
         }
         const lab = mk('label', 'mgflag mgflag-same mk-gsame');
         const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
@@ -1862,8 +1861,8 @@ function syncEdit() {
     v.options.forEach((o) => {
       const r = R.opts.find((x) => x.key === o.key);
       if (!r) return;
-      r.base.textContent = o.fullName.slice(0, o.fullName.length - ` - ${o.choice}`.length);
       r.cnt.textContent = o.counter;
+      r.cnt.hidden = !(o.nearLimit || o.tooLong);   // an inline warning only near / past the limit
       r.cnt.classList.toggle('over', o.tooLong);
       r.row.classList.toggle('over', o.tooLong);
       if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;

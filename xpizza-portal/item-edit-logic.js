@@ -38,6 +38,9 @@ export const COPY = {
 };
 
 const chars = (s) => [...String(s)].length;
+// an option's full derived name «{producto} - {opción}» shows its counter from here on (10 short of the limit) — a warning only;
+// the limit itself (ITEM_NAME_MAX, the server's) is unchanged
+export const OPTION_NAME_NEAR = ITEM_NAME_MAX - 10;
 const cats = (draft) => { const st = draftSource(draft).structure; return st && Array.isArray(st.categories) ? st.categories : []; };
 const catOf = (draft, id) => cats(draft).find((c) => c && String(c.id) === String(id)) || null;
 const subcatsOf = (draft, id) => { const c = catOf(draft, id); return c && Array.isArray(c.subcats) && c.subcats.length ? c.subcats.map(String) : null; };
@@ -267,7 +270,8 @@ export function view(draft, s) {
   if (se && !errors[se.field]) errors[se.field] = se.message;
   const g = s.group ? choiceGroup(draft, s.key) : null;
   const tidy = tidyItemName(w.name);
-  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, price: w.optionPrices[o.key] }; }) : null;
+  // advisor 11-12 (S1 SBS): the row names the choice; its full name's counter is an inline warning from OPTION_NAME_NEAR on
+  const options = g ? g.options.map((o) => { const fullName = `${tidy} - ${o.display.choice}`; return { key: o.key, choice: o.display.choice, fullName, counter: `${chars(fullName)}/${ITEM_NAME_MAX}`, tooLong: chars(fullName) > ITEM_NAME_MAX, nearLimit: chars(fullName) >= OPTION_NAME_NEAR, price: w.optionPrices[o.key] }; }) : null;
   const same = s.group ? (s.same === null ? new Set(Object.values(w.optionPrices).map((v) => v.trim())).size <= 1 : s.same) : null;
   const uploading = !!(s.upload && s.upload.state === 'busy');
   const seTitle = se ? ({ name: COPY.save.fixName, options: COPY.save.shortName, desc: COPY.save.fixDesc, cat: COPY.save.otherCat, subcat: COPY.save.pickSubcat }[se.field] || COPY.save.fixName) : null;

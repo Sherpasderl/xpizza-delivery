@@ -253,18 +253,28 @@ test('F — a product with a required choice: its «Opciones» card (v2 frame A)
   assert.equal(card.querySelector('.mk-gtn').textContent, 'Proteína');
   assert.equal(card.querySelector('.mk-gts').textContent, 'Elección requerida · el cliente elige 1');
   const rows = () => [...f.querySelectorAll('.mk-dopt')];
-  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Pad Thai - Sin Proteína', 'Pad Thai - Pollo', 'Pad Thai - Camarones']);
+  // advisor ruling 11-12 (S1 SBS): built EXACT to v3 — the row names the CHOICE; the full derived name's counter shows only when
+  // that name nears (≥ ITEM_NAME_MAX − 10) or passes the limit, as an inline warning; the length rule itself is unchanged
+  const shown = (r) => { const c = r.querySelector('.mk-cnt'); return c && !c.hidden ? c.textContent : null; };
+  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Sin Proteína', 'Pollo', 'Camarones'], 'the row shows the choice');
+  assert.deepEqual(rows().map(shown), [null, null, null], 'a short full name shows no counter');
   assert.ok(rows().every((r) => r.querySelector('.dp .mopr input')), 'advisor Q1: each option keeps its price box');
   assert.equal(p.fld('Precio'), undefined, 'a group\'s price lives on its options');
   const nm = p.fld('Nombre').querySelector('input');
+  p.type(nm, 'Pad Thai de la casa con salsa tamarindo y');
+  assert.deepEqual(rows().map(shown), ['56/60', null, '53/60'], 'a full name near the limit shows its counter (≥ 50 of 60)');
+  assert.ok(rows().every((r) => !r.classList.contains('over')), 'near is a warning, not an error');
   p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
   assert.equal(lineOf(f), 'El nombre completo de la opción supera 60 letras', 'F2: the line under the Opciones block');
   assert.equal(lineOf(p.fld('Nombre')), null, 'F2: Nombre itself is not marked');
   assert.ok(card.classList.contains('mk-inv'), 'F2: the required-choice card is marked');
   assert.ok(rows().some((r) => r.classList.contains('over')));
+  assert.ok(rows().every((r) => shown(r) !== null), 'past the limit every option shows its counter');
+  assert.ok(rows().some((r) => r.querySelector('.mk-cnt').classList.contains('over')), 'past the limit the counter is red');
   assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar');
   p.type(nm, 'Pad Thai Especial');
-  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Pad Thai Especial - Sin Proteína', 'Pad Thai Especial - Pollo', 'Pad Thai Especial - Camarones']);
+  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Sin Proteína', 'Pollo', 'Camarones'], 'the row still names the choice');
+  assert.deepEqual(rows().map(shown), [null, null, null], 'back under the limit: no counter');
   p.type(rows()[1].querySelector('.dp input'), '350');
   p.btn('Guardar').click();
   await settle(10);
