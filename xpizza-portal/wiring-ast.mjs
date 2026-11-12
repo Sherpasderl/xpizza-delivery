@@ -462,7 +462,8 @@ export function stateViolations(src, label = 'app.js') {
 // This computes the writer set instead. Seeds are the imported mutators and any function containing a
 // direct state write; the set then closes under "calls a writer", resolved through real scopes so a
 // local shadowing a module function does not count as calling it.
-const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo']);
+// S2 Codex r1 P2-10: applyExposureOps (editor.js — the Extras page's ONE structural mutator: x3Create, addCommit, x4Write, the X2 remove)
+const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'applyExposureOps']);
 
 export function writerFunctions(src) {
   const { ast, parents, scopeOf, fnOf, root, children } = analyse(src);

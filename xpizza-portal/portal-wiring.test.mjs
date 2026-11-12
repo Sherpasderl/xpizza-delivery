@@ -1186,6 +1186,11 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
                  // move the view state (state.renameEdit); every one is reached only through bound()
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
+                 // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
+                 // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
+                 // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
+                 // setProdTab). Each is reached only through bound() or a listener ruled below
+                 'x3Create', 'addCommit', 'addLeave', 'x4Write', 'x4Move', 'x4Drop', 'leaveExtras', 'setProdTab',
                  // DISH PHOTOS B — the photo surfaces' repaint (photoChanged: the open drawer / rows / bar, from the draft) and the
                  // preview renewal (refreshPreviews, onPhotoImgError: merge PREVIEWS only behind the tenant-world check, then
                  // repaint; the draft itself is written only through setPhoto, canEdit-guarded)
@@ -1252,7 +1257,7 @@ const LISTENERS = {
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
   "document::portal:abandon":     ['ender', [], 'PLAN-portal-shell-no-shift (Codex r2 + r3): before its recovery box shell.js cancels the editor\u2019s abandoned catalog READ (readGeneration) — writes always settle'],
   "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
-  "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
+  "$('review')::click":           ['singleton', ['openReviewFlow', 'leaveExtras'], 'admission-controlled: it acquires the edit lock or returns. S2 §3.5 (ruled again, Codex S2 UI r1 P2-10): leaveExtras first — a COMPLETE inline row commits through applyExposureOps (canEditContent-guarded) before the review is admitted; a dirty one asks the discard confirm and nothing is written'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
   "document::portal:auth":        ['ender', ['invalidateReview', 'repaintFromDraft', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
@@ -1919,4 +1924,42 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
   for (const c of ['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline']) assert.equal(CLAIM.test(c), false, `${c} is a refusal code, not the claim`);
   for (const c of ['s.deleted_ids = []', 'src.deleted_ids', 'r.deletedIds', "x['deleted_ids']"]) assert.equal(CLAIM.test(c), true, `non-vacuity: ${c} is still the claim`);
   assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
+});
+
+// 🔴 S2 Codex r1 P2-10 — a writer handed out as a CALLBACK: the render functions take their handlers as an object ({ create, add, move,
+// … }) and call them later, so the listener census never sees them. Every such handler that writes (the tree's writer set) must be
+// bound() — generation-checked like a listener — or a stale page's control writes into the next world. A mutant unbinding
+// `create: bound(x3Create)` survived all 37 wiring tests before this.
+test('🔴 a writer passed as a handler-object callback (a render call’s `on`) is bound()', async () => {
+  const acorn = await import('acorn');
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  const writers = new Set(writerFunctions(src).names);
+  // ruled exceptions, by handler key + writer (never by line): NOT a merchant's control on a page that can go stale
+  const CALLBACK_ALLOW = {
+    'changed:photoChanged': 'DISH PHOTOS B — the uploader\u2019s own progress / landing callback (not a control): repaints from the draft; an ended world aborts its uploads (endPhotoWorld)',
+    'onImgError:onPhotoImgError': 'DISH PHOTOS B — an <img> error repaint; previews merge only behind the tenant-world check (refreshPreviews)',
+    'onOpen:openDrawer': 'opening a product\u2019s drawer is view state (state.drawerKey); openDrawer asks before leaving unsaved edits and writes no draft',
+  };
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
+  const callsWriter = (n) => { let hit = null; const go = (x) => { if (!x || typeof x.type !== 'string' || hit) return;
+    if (x.type === 'CallExpression' && x.callee.type === 'Identifier' && writers.has(x.callee.name)) { hit = x.callee.name; return; }
+    for (const k of Object.keys(x)) { const v = x[k]; if (Array.isArray(v)) v.forEach(go); else if (v && typeof v.type === 'string' && k !== 'loc') go(v); } }; go(n); return hit; };
+  const bad = []; let seen = 0; const used = new Set();
+  const walk = (n, inBound) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'CallExpression' && n.callee.type === 'Identifier' && n.callee.name === 'bound') { n.arguments.forEach((a) => walk(a, true)); return; }
+    if (n.type === 'Property' && !n.computed && !inBound) {
+      const v = n.value;
+      const w = v.type === 'Identifier' && writers.has(v.name) ? v.name
+        : (v.type === 'ArrowFunctionExpression' || v.type === 'FunctionExpression') ? callsWriter(v.body) : null;
+      if (w && Object.prototype.hasOwnProperty.call(CALLBACK_ALLOW, `${n.key.name || n.key.value}:${w}`)) { seen++; used.add(`${n.key.name || n.key.value}:${w}`); }
+      else if (w) { seen++; bad.push(`app.js:${n.loc.start.line} — \`${n.key.name || n.key.value}\` hands out ${w} unbound`); }
+      else if (v.type === 'Identifier' || v.type === 'ArrowFunctionExpression') seen++;
+    }
+    for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => walk(x, inBound)); else if (v && typeof v.type === 'string') walk(v, inBound); }
+  };
+  walk(ast, false);
+  assert.ok(seen > 20, `non-vacuity: the scan must see the handler objects (${seen})`);
+  assert.deepStrictEqual(bad, [], `writers handed out as callbacks without bound():\n  ${bad.join('\n  ')}`);
+  assert.deepStrictEqual([...used].sort(), Object.keys(CALLBACK_ALLOW).sort(), 'every ruled exception is still in use (no stale ruling)');
 });
