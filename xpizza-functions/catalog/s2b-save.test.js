@@ -70,6 +70,31 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
       const { r: r2, db } = await save(rid, liveR, stored, omit);
       assert.strictEqual(r2.status, 200, `S2BS-OWNED ${rid}: an omitted map is restored (${show(r2)})`);
       assert.deepStrictEqual(db.state.source.data.frozen_extra_keys, stored.frozen_extra_keys, `S2BS-OWNED ${rid}: restored`); }
+    { // Codex S2b r1 P1-1 / P1-4: ON, an i_… name (new or renamed) is extra_name_opaque; a NEW extra named like another extra's ACTIVE key is name_taken
+      XI.mintExtras = true;
+      const g = live.extras[0].display.cat;
+      const opq = XT.apply(live, { op: 'extra.add', group: g, ref: 'tmp:opaque-name-01', name: 'i_abcdefghijkl', price: 10 }).source;
+      const { r } = await save(rid, live, live, opq);
+      assert.deepStrictEqual([r.status, r.body.error], [400, 'extra_name_opaque'], `S2BS-OPAQUE-NEW ${rid}: ${show(r)}`);
+      const opr = XT.apply(live, { op: 'extra.rename', key: x.key, name: 'i_abcdefghijk2' }).source;
+      const { r: r2 } = await save(rid, live, live, opr);
+      assert.deepStrictEqual([r2.status, r2.body.error], [400, 'extra_name_opaque'], `S2BS-OPAQUE-RENAME ${rid}: ${show(r2)}`);
+      const both = XT.apply(XT.apply(live, { op: 'extra.rename', key: x.key, name: 'Otro Nombre S2b' }).source, { op: 'extra.add', group: g, ref: 'tmp:onkey-0001', name: x.key, price: 11 }).source;
+      const { r: r3 } = await save(rid, live, live, both);
+      assert.deepStrictEqual([r3.status, r3.body.error], [400, 'name_taken'], `S2BS-NEW-ON-KEY ${rid}: a new extra named like the renamed extra's kept key (${show(r3)})`);
+      XI.mintExtras = false;
+      const { r: r4 } = await save(rid, live, live, opq);
+      assert.strictEqual(r4.status, 200, `S2BS-OPAQUE-OFF ${rid}: OFF accepts an i_… extra name (today) (${show(r4)})`);
+    }
+    { // P1-4: the owner publish / manager request gate (structure-gate.judge) runs the name rules on the FULL candidate even when every key exists
+      XI.mintExtras = true;
+      const opr = XT.apply(live, { op: 'extra.rename', key: x.key, name: 'i_abcdefghijk3' }).source;
+      const L = await liveRead(rid, live)();
+      let err = null;
+      try { await require('./structure-gate').judge({ rid, draft: opr, draftRecords: { items: L.built.items, extras: L.extraRecords.map((e) => (e.key === x.key ? { ...e, display: { ...e.display, name: 'i_abcdefghijk3' } } : e)), structure: L.built.structure }, live: L.built, liveExtraRecords: L.extraRecords, addProduct: addProductOf(rid) }); } catch (e) { err = e; }
+      assert.strictEqual(err && err.code, 'extra_name_opaque', `S2BS-GATE-NAMES ${rid}: the gate refuses (${err && err.code})`);
+      XI.mintExtras = false;
+    }
     ok(`${rid}: rename OFF refused / ON saved + recorded; a taken name or key is name_taken; the map is server-owned (client entry refused, omission restored)`);
   }
   { // a RETIRED name re-added through the real save mints (switch ON) — name_needs_new_id OFF
