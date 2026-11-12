@@ -119,6 +119,23 @@ test('PT-WIRING: both order intakes judge the paid text on the resolution line (
   const top = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('const items = body.items;'));
   assert.ok(top.includes("require('./paid-text').paidTextRefusal(rid, body, tables)"), 'resolveLines judges the paid text before the lines are read');
 });
+// PT-REPRESENT (Codex S2b r1 P1-3): the text is built from the RESOLVED identities and quantities — a body the app's serializer cannot
+// represent faithfully is refused: a line quantity other than 1, extras the app could not have keyed (no id / extra_id), a line price
+// that is not the server's
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`PT-REPRESENT ${rid}: qty 5 under a «1x» text, two distinct extras with no app key, a client price — each items_text_mismatch`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    assert.equal(judge(rid, body, tables), null, 'premise: the honest body is accepted');
+    const q5 = clone(body); q5.items[0].qty = 5;
+    assert.deepStrictEqual(judge(rid, q5, tables), MISMATCH, 'qty 5');
+    const nokey = clone(body); for (const e of nokey.items[0].extras) { delete e.id; delete e.extra_id; }
+    assert.deepStrictEqual(judge(rid, nokey, tables), MISMATCH, 'extras with no app key');
+    const price = clone(body); const old = price.items[0].price; price.items[0].price = old + 1; price.items_text = price.items_text.replace(`(L${old})`, `(L${old + 1})`);
+    assert.deepStrictEqual(judge(rid, price, tables), MISMATCH, 'a line price that is not the server\'s');
+  });
+}
 // SERVED-ID (§2.5): the identity overlay decorates an affected extra by its ACTUAL key — the renamed (x_pizza: its name is no longer
 // its key) and the minted extra carry their extra_id on the served body
 for (const rid of ['x_pizza', 'la_musa']) {

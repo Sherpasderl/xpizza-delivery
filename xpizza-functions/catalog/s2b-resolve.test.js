@@ -34,6 +34,19 @@ cell('RESOLVE-KEY: a cart extra naming the minted key by extra_key resolves and 
   const t = MP.computeServerTotal(body.items, 'la_musa', T.tables);
   assert.ok(!t.error && t.total === T.dish.price + 61, `priced by the key (${JSON.stringify(t)})`);
 });
+cell('STAMP (Codex S2b r1 P2-5): resolveLines stamps ONE server identity on every cart extra; pricing reads the stamp — a wire extra_key changed AFTER resolution never re-prices', () => {
+  const body = { items: [line([{ id: 'whatever_legacy', name: 'Algo', qty: 1, extra_key: MK }])] };
+  assert.deepStrictEqual(resolveLines('la_musa', body, T.tables), { ok: true });
+  const ex = body.items[0].extras[0];
+  assert.strictEqual(ex[MP.PRICING_KEY_STAMP], MK, 'the extra carries the resolved key as its stamp');
+  ex.extra_key = T.other;   // mutated after the judgment
+  assert.strictEqual(MP.extraPricingKey(ex, 'la_musa', 'id'), MK, 'pricing reads the stamp, not the wire extra_key');
+  const t = MP.computeServerTotal(body.items, 'la_musa', T.tables);
+  assert.ok(!t.error && t.total === T.dish.price + 61, `still priced by the resolved key (${JSON.stringify(t)})`);
+  const legacy = { items: [line([{ id: T.other, name: 'X', qty: 1 }])] };
+  resolveLines('la_musa', legacy, T.tables);
+  assert.strictEqual(legacy.items[0].extras[0][MP.PRICING_KEY_STAMP], T.other, 'a legacy extra is stamped with its legacy key (the same price as today)');
+});
 cell('RESOLVE-NO-KEY: without extra_key the legacy field decides (today)', () => {
   const body = { items: [line([{ id: T.other, name: 'X', qty: 1 }])] };
   assert.deepStrictEqual(resolveLines('la_musa', body, T.tables), { ok: true });
