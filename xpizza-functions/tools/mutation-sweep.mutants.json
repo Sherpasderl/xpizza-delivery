@@ -35971,5 +35971,107 @@
   "kills_with": [
    "P3"
   ]
+ },
+ {
+  "id": "ga-01",
+  "slice": "ga",
+  "label": "a stale cart quote shows a guessed Total (the subtotal) instead of «—»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span>",
+  "to": "<span>${T.ready ? moneyC(T.total - T.tip) : money(total)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: a stale quote"
+  ]
+ },
+ {
+  "id": "ga-02",
+  "slice": "ga",
+  "label": "no debounce: every cart edit asks a quote at once",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (addr && !T.ready) cartQuoteSoon();",
+  "to": "if (addr && !T.ready) requote(true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: debounced"
+  ]
+ },
+ {
+  "id": "ga-03",
+  "slice": "ga",
+  "label": "a landed cart quote is never painted (no in-place refresh)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "else { S.askedKey = null; S.cartQErr = key; if (r.kind === 'out_of_zone') S.outZone = true; }   // the checkout may still ask (loud)\n        cartRefresh(); return;",
+  "to": "else { S.askedKey = null; S.cartQErr = key; if (r.kind === 'out_of_zone') S.outZone = true; }   // the checkout may still ask (loud)\n        return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: the matching quote lands"
+  ]
+ },
+ {
+  "id": "ga-04",
+  "slice": "ga",
+  "label": "the cart Total carries the tip (v6 draws no Propina row in the cart)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span>",
+  "to": "<span>${T.ready ? moneyC(T.total) : addr ? '—' : money(total)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A6: the cart Total leaves the tip out"
+  ]
+ },
+ {
+  "id": "ga-05",
+  "slice": "ga",
+  "label": "rule 10: the guest free-delivery line shown before a priced quote (a claim before the price)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "guest && addr ? '<span class=\"feelnk\" aria-hidden=\"true\" style=\"visibility:hidden\">Creá tu cuenta y tu envío es gratis</span>' : '';",
+  "to": "guest && addr ? `<button class=\"feelnk\" data-act=\"signin\" data-ctx=\"${ctx}\">Creá tu cuenta y tu envío es gratis</button>` : '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A5: pending"
+  ]
+ },
+ {
+  "id": "ga-06",
+  "slice": "ga",
+  "label": "rule 10: the guest free-delivery line without the store's promo",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const guest = cfg.promoFree === true && authOf() === 'guest';",
+  "to": "const guest = authOf() === 'guest';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A5: no promo"
+  ]
  }
 ]

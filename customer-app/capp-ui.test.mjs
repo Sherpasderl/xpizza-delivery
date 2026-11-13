@@ -3819,3 +3819,78 @@ test('S3 Codex r1 P1-1: menu_changed / extra_not_allowed / pickup_only_item rele
     }
   }
 });
+
+// ── G-A (NOTE-capp-3-gaps-vs-frames; advisor 11-13 option (b)): the cart carries v6's fee rows (cartInner → feeRows, V6:1736-1745) —
+// Subtotal · Envío · Total — from the SAME quote as the checkout (the same requote(), debounced, only once an address exists); a
+// stale or pending quote reads «—» in the reserved amount slots: never a guessed number ──
+const cartRows = (b) => b.qa('#layer .ctot .sumrow').map((r) => b.text(r));
+// the device back from the checkout (the phone draws no back control there), then the cart sheet if the back did not land on it
+const backToCart = async (b) => { b.w.history.back(); await popped(); assert.equal(b.ui.state.screen, 'store', 'premise: back on the store'); if (!b.q('#layer .ctot')) await b.click('#cart-bar'); };
+const revIn = (b, i, d) => b.click(b.qa('#layer .cline')[i].querySelector(`[data-rev="${d}"]`));
+test('G-A1 v6 before an address: delivery ⇒ Subtotal · «Envío · según tu dirección» · Total = the subtotal; pickup ⇒ Subtotal · Total; nothing quoted', async () => {
+  const b = bootCo(); b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
+  const food = b.plain.price * 100;
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, 'Envío · según tu dirección', `Total ${L_(food)}`], '🔴 G-A1: v6 feeRows before an address');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, '🔴 G-A1: no address ⇒ no quote');
+  await b.click('#layer [data-act="cartclose"]'); await b.click('[data-act="mode"][data-val="pickup"]'); await b.click('#cart-bar');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Total ${L_(food)}`], '🔴 G-A1: pickup ⇒ no Envío row');
+});
+test('G-A2 the cart after the checkout priced it: Envío = the quote\'s, Total = the CHECKOUT\'s Total (one quote, one number)', async () => {
+  const b = bootCo(); await toCheckout(b); await settle();
+  const coTot = b.text('.ostot .sumrow.tot'), food = b.plain.price * 100;
+  assert.equal(coTot, `Total ${L_(food + FEE + 7)}`, 'premise: the checkout is priced by the quote');
+  await backToCart(b);
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, coTot], '🔴 G-A2: the cart shows the checkout\'s Total');
+});
+test('G-A3 a cart edit makes the quote stale ⇒ «—» at once (no guess), rapid edits collapse to ONE quote, the amounts land in the same slots', async () => {
+  const b = bootCo(); await toCheckout(b); await settle(); await backToCart(b);
+  const food = b.plain.price * 100, n0 = b.srv.of('quoteOrder').length, shape0 = b.qa('#layer .ctot > *').length;
+  await revIn(b, 0, 1); await revIn(b, 0, 1);
+  assert.equal(b.srv.of('quoteOrder').length, n0, '🔴 G-A3: debounced — nothing asked while the customer is still tapping');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, 'Envío —', 'Total —'], '🔴 G-A3: a stale quote ⇒ «—», never the old amount');
+  assert.equal(b.qa('#layer .ctot > *').length, shape0, '🔴 G-A3: the pending rows hold the same slots (no reflow)');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, n0 + 1, '🔴 G-A3: two edits ⇒ ONE quote');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], '🔴 G-A3: the matching quote lands in place');
+  assert.equal(b.qa('#layer .ctot > *').length, shape0, '🔴 G-A3: the landed rows keep the slots (no reflow)');
+});
+test('G-A4 newer wins: an older cart quote answering AFTER a newer one never paints its numbers', async () => {
+  let release = null, n = 0;
+  const late = (body) => { n++; return n === 2 ? new Promise((r) => { release = () => r(QUOTE(body)); }) : QUOTE(body); };
+  const b = bootCo({ script: { quoteOrder: [late] } }); await toCheckout(b); await settle(); await backToCart(b);
+  const food = b.plain.price * 100;
+  await revIn(b, 0, 1); b.timers.flush(); await settle();
+  assert.ok(release, 'premise: the 2-dish quote is held');
+  await revIn(b, 0, 1); b.timers.flush(); await settle();
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], 'premise: the 3-dish quote landed');
+  release(); await settle();
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], '🔴 G-A4: the older answer never paints');
+});
+test('G-A5 (rule 10) the guest line «Creá tu cuenta y tu envío es gratis»: ONLY with the store\'s free-delivery promo AND a priced quote for this address — cart and checkout alike; its slot reserved while pending', async () => {
+  const LINE = 'Creá tu cuenta y tu envío es gratis';
+  const b = bootCo({ config: { promoFree: true }, mountOpts: { authState: () => 'guest' } }); await toCheckout(b); await settle();
+  const co = b.q('.ostot .feelnk');
+  assert.ok(co && b.text(co) === LINE && co.dataset.act === 'signin' && co.dataset.ctx === 'checkout' && !co.hasAttribute('aria-hidden'), '🔴 G-A5: the checkout line (v6 ctx checkout)');
+  await backToCart(b);
+  const ca = b.q('#layer .ctot .feelnk');
+  assert.ok(ca && b.text(ca) === LINE && ca.dataset.ctx === 'cart' && !ca.hasAttribute('aria-hidden'), '🔴 G-A5: the cart line (v6 ctx cart)');
+  await revIn(b, 0, 1);
+  const pend = b.q('#layer .ctot .feelnk');
+  assert.ok(pend && pend.getAttribute('aria-hidden') === 'true' && /visibility:hidden/.test(pend.getAttribute('style') || ''), '🔴 G-A5: pending ⇒ the slot reserved, not shown (no pop-in, no claim before the price)');
+  await b.click(pend); assert.ok(!b.events.some(([nm, d]) => nm === 'signin' && d && d.ctx === 'cart'), '🔴 G-A5: a hidden line is not a control');
+  for (const [config, auth, why] of [[{ promoFree: false }, 'guest', 'no promo'], [{ promoFree: true }, 'unresolved', 'not a guest']]) {
+    const c = bootCo({ config, mountOpts: { authState: () => auth } }); await toCheckout(c); await settle();
+    assert.equal(c.qa('.feelnk').length, 0, `🔴 G-A5: ${why} ⇒ no line in the checkout`);
+    await backToCart(c);
+    assert.equal(c.qa('.feelnk').length, 0, `🔴 G-A5: ${why} ⇒ no line in the cart`);
+  }
+});
+test('G-A6 a chosen tip stays out of the cart (v6 draws no Propina row there): the cart Total = the quote\'s net MINUS its tip', async () => {
+  const b = bootCo(); await filled(b, 'online'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="40"]');
+  await b.click('[data-act="back"]');
+  const food = b.plain.price * 100;
+  assert.equal(b.text('.ostot .sumrow.tot'), `Total ${L_(food + FEE + 4000 + 7)}`, 'premise: the checkout Total carries the tip');
+  await backToCart(b);
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A6: the cart Total leaves the tip out');
+});
