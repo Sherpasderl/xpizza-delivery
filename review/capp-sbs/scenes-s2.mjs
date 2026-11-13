@@ -92,9 +92,10 @@ export const S2_SCENES = [
     { until: 'document.querySelector(\'.tabbar [data-tab="orders"] .badge.dot\')', ms: 10000 }, { wait: 400 }]), mock: null, note: 'real-only: the dot (10 px, the v6 rule) on «Pedidos»' }),
   // ── D4 held-sheet copy (owner 11-13): ANOTHER account's SDK card hold on this phone. The real placement (under review ⇒ the SDK
   // record stays) is made by u_ana; the scene then re-binds that REAL record's owner to another member and reloads — u_ana's phone now
-  // holds a foreign SDK payment ⇒ the sheet. Real-only (copy on the approved sheet): text fit at 390, light + dark ──
+  // holds a foreign SDK payment ⇒ placing shows the sheet (the place-time refusal; an «under review» attempt is settled, so the mount path does not fire). Real-only (copy on the approved sheet): text fit at 390, light + dark ──
   s2('D4-heldsheet-sdk-390', { geo: GEO, s2: { place: 'under_review' }, steps: [...toCheckout, ...place, { wait: 3000 },
     { run: `(() => { const k = Object.keys(localStorage).find((x) => /:pending_place$/.test(x)); if (!k) throw new Error('no placement record'); const r = JSON.parse(localStorage.getItem(k)); if (r.sdk !== true) throw new Error('not an SDK record'); r.owner = 'u_bea'; localStorage.setItem(k, JSON.stringify(r)); location.reload(); })()` },
+    { wait: 2500 }, ...toCheckout, ...place,   // the reloaded phone (u_ana) taps place over u_bea's SDK record ⇒ the place-time refusal
     { until: 'document.querySelector("#layer .errsheet h2")', ms: 20000 }, { wait: 500 }], mock: null,
     note: '«Hay un pago de otra cuenta pendiente en este teléfono» / «Entrá con esa cuenta para terminarlo o cancelarlo.» — text fit at 390' }),
 ];

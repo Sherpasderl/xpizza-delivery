@@ -159,7 +159,7 @@ async function diffPair(id, a, b, tag) {
 // ── the run ──
 const results = [];
 const SET = arg('--set', 'main');
-if (!['main', 's2', 'tip', 's3'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3`);
+if (!['main', 's2', 'tip', 's3', 'c1'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3 | c1`);
 const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SET === 'c1' ? C1_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
