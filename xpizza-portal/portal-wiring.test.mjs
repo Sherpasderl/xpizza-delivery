@@ -435,7 +435,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // each all or nothing, refused without the server's sections switch, then when the draft is not owned for editing. No key is written.
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addCategory', 'addChoice', 'addProduct', 'addSubcat', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'dropStagedCategory', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'dropStagedCategory', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'moveItem', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',

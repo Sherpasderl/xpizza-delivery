@@ -25,6 +25,7 @@ import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
 import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
 import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
 import { RGB_BASE, RGB_FOLD } from './rgb-fold.mjs';
+import { STR34_BASE, STR34_FOLD } from './str34-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -58,7 +59,17 @@ function withoutRGB(f, src) {
   }
   return out;
 }
-const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, diskFile(f)));
+// STRUCTURE S3 UI + S4 writer (non-drawing halves, advisor 11-13) is the NEWEST layer of all, above RGB: folded out at the very lowest
+// read, so RGB and every older pin judge exactly what they judged before; the STR34 test pins the layer itself on disk.
+function withoutSTR34(f, src) {
+  let out = src;
+  for (const [now, was] of STR34_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `STR34 hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, withoutSTR34(f, diskFile(f))));
 function withoutRP(f, src) {
   let out = src;
   for (const [now, was] of RP_FOLD[f] || []) {
@@ -464,6 +475,19 @@ test('the «reward group» refusal: review.js gains exactly ONE hunk (the reward
   assert.equal(withoutRGB('review.js', diskFile('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
   assert.notEqual(withoutRGB('review.js', diskFile('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
   assert.throws(() => withoutRGB('review.js', diskFile('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+});
+
+test('STRUCTURE S3 UI + S4 writer: editor.js gains exactly the named hunks — folding them out gives STR34_BASE byte-for-byte', () => {
+  for (const f of Object.keys(STR34_FOLD)) {
+    const was = execFileSync('git', ['show', `${STR34_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutSTR34(f, diskFile(f)), diskFile(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutSTR34(f, diskFile(f)), was, `${f} minus the STR34 hunks ≠ ${STR34_BASE}`);
+    assert.notEqual(withoutSTR34(f, diskFile(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const hunks = STR34_FOLD['editor.js'].map(([now]) => now);
+  for (const fn of ['export function applyChoiceOps(', 'export function moveItem(']) assert.ok(hunks.some((t) => t.includes(fn)), `premise: ${fn} is in a hunk`);
+  const inside = hunks.find((t) => t.includes('export function applyChoiceOps('));
+  assert.throws(() => withoutSTR34('editor.js', diskFile('editor.js').replace(inside, inside.replace("'choice_edit_off'", "'choice_edit_offX'"))), 'an edit inside a hunk breaks it');
 });
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
