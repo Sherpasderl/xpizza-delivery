@@ -275,7 +275,7 @@ test('stamp format: the removal / undo results are the same with OPAQUE i_ stamp
   }
 });
 
-// ── R2 (T14, the view half): openConfirm — X2 and the discard confirm byte-identical to the base; the dish confirm as drawn ───────────
+// ── R2 (T14, the view half): openXConfirm — X2 and the discard confirm byte-identical to the base; the dish confirm as drawn ───────────
 const XSCRIM = '<!doctype html><button id="ret">Quitar del menú</button><div class="scrim" id="xscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="xcf-t" aria-describedby="xcf-d"></div></div>';
 async function withDom(fn, { sheet = false } = {}) {
   const { JSDOM } = req('../xpizza-functions/node_modules/jsdom');
@@ -286,7 +286,7 @@ async function withDom(fn, { sheet = false } = {}) {
   try { return await fn(w); } finally { globalThis.document = saved.document; globalThis.window = saved.window; }
 }
 const key = (w, k, opts = {}) => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
-test('T14 openConfirm: X2 and the discard confirm render byte-identical to the base (14a66e5a), focus included', async () => {
+test('T14 openXConfirm: X2 and the discard confirm render byte-identical to the base (14a66e5a), focus included', async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-xv-'));
   for (const f of ['extras-view.js', 'extras-logic.js', 'editor.js']) fs.writeFileSync(path.join(dir, f), execFileSync('git', ['show', `14a66e5a:xpizza-portal/${f}`], { cwd: here }));

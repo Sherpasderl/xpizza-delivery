@@ -232,7 +232,7 @@ export function closeXConfirm() { const c = xscrimClose; xscrimClose = null; if 
 // (classes on top of .btn), sheetMods (on the phone sheet), act: 'cancel' | 'go', focus }] in DOM order. «Quitar del menú» adds:
 // `title` as parts (strings / nodes), `titleClass`, `line` (a node under the body) and `sheet` (≤ 560 px: the bottom sheet, R2 phone —
 // the SAME element, its class swapped while open and restored on close) and `over` (above the open drawer). Without them the DOM is today's, byte for byte (T14).
-export function openConfirm(o) {
+export function openXConfirm(o) {
   const { title, titleClass = null, sub = null, body = null, line = null, buttons, sheet = false, over = false, returnTo = null } = o;
   const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal, .mk-sheet');
   const t = el('div', 'mt', Array.isArray(title) ? null : title); t.id = 'xcf-t';
@@ -286,12 +286,12 @@ export function openConfirm(o) {
 }
 // X2 — the remove confirm (frame X2: «Cancelar» focused / «Quitar» quiet red); focus returns to the trash on cancel
 export function openRemoveConfirm({ title, sub, body, onConfirm, returnTo }) {
-  openConfirm({ title, sub, body, returnTo, onGo: onConfirm,
+  openXConfirm({ title, sub, body, returnTo, onGo: onConfirm,
     buttons: [{ label: 'Cancelar', mods: ['ghost'], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }] });
 }
 // the portal's discard confirm, reused (the drawer's title, buttons and order; its product sentence does not apply to a new group)
 export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
-  openConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,
+  openXConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,
     buttons: [{ label: 'Descartar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }, { label: 'Seguir editando', mods: ['accent'], act: 'cancel', focus: true }] });
 }
 
@@ -305,7 +305,7 @@ export function openRemoveProductConfirm({ name, place, reward = false, onConfir
   const sheet = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:560px)').matches;
   let line = null;
   if (reward) { line = el('div', 'mk-sandline'); line.append(svg(STAR), el('span', null, R5_LINE)); }
-  openConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,
+  openXConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,
     onGo: onConfirm, onCancel,
     buttons: [{ label: 'Volver', mods: ['ghost'], sheetMods: [], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], sheetMods: ['danger'], act: 'go' }] });
 }
