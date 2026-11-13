@@ -2405,7 +2405,6 @@
   "xpizza-functions/catalog/reserved-keys-audit.js",
   "xpizza-functions/catalog/reset-draft.js",
   "xpizza-functions/catalog/review-diff.js",
-  "xpizza-functions/catalog/section-compare.js",
   "xpizza-functions/catalog/source-accounting.js",
   "xpizza-functions/catalog/source-store.js",
   "xpizza-functions/catalog/structure-budget.js",
