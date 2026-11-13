@@ -440,6 +440,39 @@ export function choiceOp(s, op) {
   s.choiceOps.push(op);
   return { ok: true };
 }
+// TYPING coalesces (the drawer's inputs fire per keystroke): the choice's label, one option's rename and the «Recomendada» mark each keep ONE
+// op — the latest value replaces the earlier one in place (its click position is kept); a new option's name / price edit its own add op.
+const slotOf = (op) => (op.op === 'choice.label' || op.op === 'choice.recommended' ? `${op.op}:${op.launcher}` : op.op === 'option.rename' ? `${op.op}:${op.key}` : null);
+function tryOps(s, ops) {
+  const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
+  return applyChoiceOps(scratch, ops, { choiceEdit: true });
+}
+export function choiceSet(s, op) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  const slot = slotOf(op);
+  const i = slot ? s.choiceOps.map(slotOf).lastIndexOf(slot) : -1;
+  if (i === -1) return choiceOp(s, op);
+  const next = s.choiceOps.slice(); next[i] = op;
+  const r = tryOps(s, next);
+  if (!r.ok) return r;
+  s.choiceOps = next;
+  return { ok: true };
+}
+export function choiceUpdateNew(s, ref, patch = {}) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  const next = s.choiceOps.map((op) => {
+    if (op.op === 'option.add' && op.ref === ref) return { ...op, ...pick(patch) };
+    if (op.op === 'choice.add' && Array.isArray(op.options) && op.options.some((o) => o.ref === ref)) return { ...op, options: op.options.map((o) => (o.ref === ref ? { ...o, ...pick(patch) } : o)) };
+    return op;
+  });
+  const r = tryOps(s, next);
+  if (!r.ok) return r;
+  s.choiceOps = next;
+  return { ok: true };
+}
+const pick = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => k === 'choice' || k === 'price'));
 // the copy's choice as it would save: { label, options: [{ id, choice, price, marked, isNew }], touched, hold, removed } | null (OFF).
 // TOUCHED is the server's rule against the loaded baseline (S3-r4 §2): a new / removed group, its label, its membership, any member's
 // choice text or mark — a price alone is not. HOLD: a touched group with no mark — 'recommended_removed' when the baseline's marked
