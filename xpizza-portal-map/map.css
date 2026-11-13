@@ -18,3 +18,19 @@ html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
 .rings .pin{fill:#0A0A0B}
 .rings .pindot{fill:#FFFFFF}
 .rings .pl{font-family:var(--disp);font-size:calc(11.5px * var(--u));font-weight:800;fill:#0A0A0B;letter-spacing:-.02em}
+/* ENVÍO v3 A2 / A4 (MOCKUP-portal-envio-v3-limit .map .ring.rlim / .beyond / .rl.lim / .rl.beyond; PLAN-portal-envio-v3-ui r5 §2): the
+   restaurant's own limit (ink, SOLID) vs the shared fee rings (green, dashed); bands beyond it greyed. «Satélite» (hybrid; map.js sets
+   data-maptype on #map): the limit ring white, the fee rings luminous green, the outside mask darker, the labels haloed. */
+.rings .ring.rlim{fill:rgba(14,159,91,.05);stroke:#0A0A0B;stroke-width:calc(2.2px * var(--u));stroke-dasharray:none}
+.rings .ring.beyond{fill:none;stroke:#9A9A9E;stroke-width:calc(1.3px * var(--u));stroke-dasharray:calc(3px * var(--u)) calc(4px * var(--u))}
+.rings .rl.lim rect{stroke:#0A0A0B}
+.rings .rl.lim text{fill:#0A0A0B}
+.rings .rl.beyond rect{stroke:#D6D6D0}
+.rings .rl.beyond text{fill:#8A8A8E}
+#map[data-maptype="hybrid"] .rings .ring{stroke:#5BE3A0;fill:rgba(91,227,160,.10)}
+#map[data-maptype="hybrid"] .rings .ring.rlim{stroke:#FFFFFF;fill:rgba(255,255,255,.06)}
+#map[data-maptype="hybrid"] .rings .ring.beyond{stroke:#CFCFCF;fill:none}
+#map[data-maptype="hybrid"] .rings .outside{fill:rgba(0,0,0,.42)}
+#map[data-maptype="hybrid"] .rings .opin{fill:#FFFFFF;stroke:#333333}
+#map[data-maptype="hybrid"] .rings .pin{fill:#0A0A0B;stroke:#FFFFFF;stroke-width:1.5}
+#map[data-maptype="hybrid"] .rings .pl{fill:#FFFFFF;paint-order:stroke;stroke:rgba(0,0,0,.8);stroke-width:3px}

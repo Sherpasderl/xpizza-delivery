@@ -1564,8 +1564,8 @@
      tokens (owner 11-12: never amber — the mockup's amber note is drawn in sand) */
   .envio .maxfld{display:flex;flex-direction:column;gap:8px;padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--board-2)}
   .envio .step{display:flex;align-items:center;gap:8px}
-  .envio .step .inp{flex:1;background:var(--card);min-width:0}
-  .envio .step .inp input{text-align:center;font-size:18px}
+  .envio .sinp{flex:1;background:var(--card);min-width:0}
+  .envio .sinp input{text-align:center;font-size:18px}
   .envio .stepcap{font-size:12px;color:var(--mute);white-space:nowrap;flex:none}
   .envio .stepcap b{font-family:var(--disp);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
   .envio .sb{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);flex:none;padding:0}
@@ -1573,7 +1573,6 @@
   .envio .sb:disabled{opacity:.42;cursor:not-allowed}
   .envio .capnote{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.45;padding:9px 11px;border-radius:9px}
   .envio .capnote.sand{color:var(--sand-text);background:var(--sand-soft);border:1px solid var(--sand-line)}
-  .envio .capnote i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;margin-top:5px}
   .envio .inp.bad{border-color:var(--red);background:var(--red-soft)}
   .envio .inp.bad:focus-within{border-color:var(--red);box-shadow:0 0 0 3px var(--red-line)}
   .envio .inp.bad input{color:var(--red-text)}
@@ -1627,6 +1626,14 @@
   .envio .legend .lg-out{background:var(--env-out)}
   .envio .legend .lg-bad{border:1.5px dashed #D23425}
   .envio .legend .lg-other{background:var(--env-other);border:1.6px solid #9A9A9E}
+  /* ENVÍO v3 A2 (MOCKUP-portal-envio-v3-limit): the restaurant's limit (ink, solid) and a band beyond it (grey dashes) in the legend */
+  .envio .legend .lg-rlim{background:var(--env-limit);border:2px solid #0A0A0B}
+  .envio .legend .lg-beyond{border:1.3px dashed #9A9A9E}
+  /* the style control «Simple · Mapa · Satélite» (top-left over the map frame, Sherpa's own look; ≥ 40 px per option on a phone) */
+  .envio .emap .mstyle{position:absolute;left:10px;top:10px;z-index:2;display:flex;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px;box-shadow:0 1px 2px rgba(10,10,11,.08)}
+  .envio .emap .mstyle button{border:none;background:none;font:inherit;font-size:11.5px;font-weight:650;color:var(--mute);padding:4px 9px;border-radius:6px;cursor:pointer;min-height:24px;line-height:1}
+  .envio .emap .mstyle button.mson{background:var(--tint2);color:var(--accent)}
+  .envio .emap .mstyle button:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
   .envio .ebdot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
   .envio .ebdot.ered{background:var(--red)}
   .envio .rb-sp{gap:9px}
@@ -1659,6 +1666,8 @@
     .envio .esec h3 .ehint{display:none}
     .envio .limit .efnote{display:none}
     .envio .stepcap{display:none}
+    .envio .emap .mstyle{left:8px;top:8px}
+    .envio .emap .mstyle button{min-height:40px;padding:4px 12px}
     .envio .rb-t{font-size:13px}
     .envio .scrim{align-items:flex-end;padding:0}
     .envio .modal{border-radius:18px 18px 0 0;max-width:none}

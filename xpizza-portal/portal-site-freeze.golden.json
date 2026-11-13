@@ -179,8 +179,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "1acc83ff8bfb862ed791da240c43eac63f9e5a8fce3fba455a66afce489d3cb7",
-   "bytes": 149096
+   "sha256": "ebd1e323c372b4b41f3dc504b353a1c21e1a82fac54ded007c6ae7546470afb5",
+   "bytes": 150090
   }
  },
  "diff_aid": {
@@ -1223,12 +1223,6 @@
    ],
    [
     "",
-    ".envio .capnote i",
-    "background",
-    "currentColor"
-   ],
-   [
-    "",
     ".envio .capnote.sand",
     "background",
     "var(--sand-soft)"
@@ -1391,6 +1385,36 @@
    ],
    [
     "",
+    ".envio .emap .mstyle button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button.mson",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle button.mson",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".envio .emap .mstyle",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
     ".envio .emap",
     "background",
     "var(--env-map)"
@@ -1514,6 +1538,12 @@
     ".envio .legend .lg-out",
     "background",
     "var(--env-out)"
+   ],
+   [
+    "",
+    ".envio .legend .lg-rlim",
+    "background",
+    "var(--env-limit)"
    ],
    [
     "",
@@ -1667,7 +1697,7 @@
    ],
    [
     "",
-    ".envio .step .inp",
+    ".envio .sinp",
     "background",
     "var(--card)"
    ],

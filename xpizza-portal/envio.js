@@ -51,8 +51,10 @@ const COPY = Object.freeze({
   mapNotePh: 'Los anillos se mueven mientras editás. Distancias en línea recta.',
   mapCap: (name, km) => (km === null || km === undefined ? `Anillos desde el pin de ${name}. Línea recta, no calles.` : `Anillos desde el pin de ${name}. Entrega hasta ${km} km.`),   // the mockup's own fallback (no reach known)
   mapFail: 'No se pudo cargar el mapa.', noPin: 'Esta sucursal no tiene ubicación todavía.', noBranches: 'No pudimos cargar las sucursales.',
-  legend: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Fuera del límite', 'out'], ['Otras sucursales', 'other']],
-  legendBad: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Tramo rechazado', 'bad']],
+  // ENVÍO v3 A2 (Changed): «Límite del restaurante» + «Tramo fuera de su alcance» replace «Límite de entrega»; «Tramo rechazado» kept
+  legend: [['Tramo de tarifa', 'band'], ['Límite del restaurante', 'rlim'], ['Tramo fuera de su alcance', 'beyond'], ['Fuera del límite', 'out'], ['Otras sucursales', 'other']],
+  legendBad: [['Tramo de tarifa', 'band'], ['Límite del restaurante', 'rlim'], ['Tramo rechazado', 'bad']],
+  styleAria: 'Estilo del mapa', styles: [['simple', 'Simple'], ['roadmap', 'Mapa'], ['hybrid', 'Satélite']],
   discard: 'Descartar', save: 'Guardar',
   cTitle: 'Confirmar cambios de envío',
   cLede: 'Así queda el envío. Aplica a los pedidos nuevos de la app desde que guardés; los pedidos ya cotizados mantienen su tarifa.',
@@ -76,6 +78,7 @@ const S = {
   rows: null, note: null,  // the draft rows [{ km, fee }] (typed text), and the last «Dejá al menos un tramo.» note
   entries: [], branchesUnavailable: false, pick: null,
   restaurants: [], branchesRaw: [],   // ENVÍO v3: restaurantsOf(the GET's branches) as LOADED, and the raw rows (the picker follows the edits)
+  mapType: 'roadmap',      // ENVÍO v3 A2: the viewer's map style (localStorage only — never the draft, the dirty state or a request)
   limitEdits: {},          // ENVÍO v3: { restaurantKey → typed text } (the per-branch pending set derives from it: EL.pendingLimits)
   status: 'idle',          // idle | loading | ready | offline | forbidden
   banner: null,            // null | 'conflict' | 'error'
@@ -324,11 +327,40 @@ function pickedReach() {
   if (b.limit_invalid === true) return null;
   return EL.effectiveKm(Number.isFinite(b.max_km) ? b.max_km : null, curTop());
 }
+// ENVÍO v3 A2 / A4 (protocol v2): the limit the map draws = the picked branch's effective reach, capped when its stored value sits
+// above the table (and no edit is pending); each band says whether it lies beyond that reach
+function pickedLimit() {
+  const reach = pickedReach(), r = pickedRestaurant();
+  if (reach === null || !r) return null;
+  const b = S.branchesRaw.find((x) => x && x.rid === S.pick), top = curTop();
+  const capped = !Object.prototype.hasOwnProperty.call(pendingNow(), S.pick) && !!b && Number.isFinite(b.max_km) && top !== null && b.max_km > top;
+  return { km: reach, capped, name: r.name.slice(0, MP.LIMITS.name) };
+}
 function renderMessage(view) {
   const p = pickedEntry();
   const others = S.entries.filter((e) => e.rid !== S.pick && e.hub).slice(0, MP.LIMITS.others).map((e) => ({ lat: e.hub.lat, lng: e.hub.lng }));
+  const limit = pickedLimit();
+  const bands = EL.mapBands(S.rows || []).map((b) => ({ km: b.km, fee: b.fee, ok: b.ok, out: !!(limit && b.ok && b.km > limit.km) }));
   return MP.renderMessage({ mount: S.map.mount, view, theme: themeNow(), hub: p && p.hub ? { lat: p.hub.lat, lng: p.hub.lng } : null,
-    name: p ? p.label.slice(0, MP.LIMITS.name) : '', others, bands: EL.mapBands(S.rows || []) });
+    name: p ? p.label.slice(0, MP.LIMITS.name) : '', others, bands, mapType: S.mapType, limit });
+}
+// ENVÍO v3 A2: the viewer's map style — read once per mount from localStorage (a throwing / unknown value → «Mapa»), written on a pick
+const STYLE_KEY = 'sherpa.envio.mapView';
+const STYLE_OK = new Set(COPY.styles.map(([t]) => t));
+function readStyle() { try { const v = window.localStorage.getItem(STYLE_KEY); return STYLE_OK.has(v) ? v : 'roadmap'; } catch (_) { return 'roadmap'; } }
+function pickStyle(t, focus) {
+  if (!STYLE_OK.has(t)) return;
+  if (t !== S.mapType) {
+    S.mapType = t;
+    try { window.localStorage.setItem(STYLE_KEY, t); } catch (_) { /* the choice just isn't remembered */ }
+    postRender('keep');
+  }
+  paintStyle();
+  if (focus && S.refs) { const b = S.refs.mstyleBtns.find((x) => x.dataset.st === t); if (b) b.focus(); }
+}
+function paintStyle() {
+  const r = S.refs; if (!r) return;
+  for (const b of r.mstyleBtns) { const on = b.dataset.st === S.mapType; b.setAttribute('aria-checked', String(on)); b.classList.toggle('mson', on); b.tabIndex = on ? 0 : -1; }
 }
 function postRender(view) {
   const m = S.map;
@@ -444,6 +476,7 @@ function render() {
 }
 
 function buildPage() {
+  S.mapType = readStyle();   // ENVÍO v3 A2: the viewer's map style, read once per mount
   const R = S.root;
   const refs = {};
   refs.banner = el('div');
@@ -491,7 +524,7 @@ function buildPage() {
   refs.maxStep = el('div', 'step');
   refs.maxDec = button('sb', '', () => stepMax(-0.5)); refs.maxDec.setAttribute('aria-label', COPY.maxLess); refs.maxDec.append(ic('minus'));
   refs.maxInc = button('sb', '', () => stepMax(0.5)); refs.maxInc.setAttribute('aria-label', COPY.maxMore); refs.maxInc.append(ic('plus'));
-  const mi = el('label', 'inp');
+  const mi = el('label', 'inp sinp');   // the stepper's cell: its own class (the portal's .inp under another chain is a colour crossing)
   refs.maxIn = el('input'); refs.maxIn.setAttribute('inputmode', 'decimal'); refs.maxIn.setAttribute('aria-label', COPY.maxAria);
   refs.maxIn.addEventListener('input', () => { const r0 = pickedRestaurant(); if (!r0) return; S.limitEdits = { ...S.limitEdits, [r0.key]: refs.maxIn.value }; afterEdit(); });
   mi.append(refs.maxIn, el('span', null, 'km'));
@@ -499,13 +532,26 @@ function buildPage() {
   refs.maxStep.append(refs.maxDec, mi, refs.maxInc, refs.maxCap);
   refs.maxHelp = el('p', 'efnote');
   refs.maxLine = el('p', 'ferr hidden'); refs.maxLine.setAttribute('role', 'status');
-  refs.maxNote = el('div', 'capnote sand hidden'); refs.maxNoteT = el('span'); refs.maxNote.append(el('i'), refs.maxNoteT);
+  refs.maxNote = el('div', 'capnote sand hidden'); refs.maxNoteT = el('span'); refs.maxNote.append(refs.maxNoteT);   // plan r5 §0 A4: no icon
   refs.max.append(refs.maxLab, refs.maxStep, refs.maxHelp, refs.maxLine, refs.maxNote);
   refs.map = el('div', 'emap');
   refs.mapLine = el('p', 'mapline hidden'); refs.mapLine.setAttribute('role', 'status');
   // the mockup's in-map caption (.mz); above Google's logo row, which Maps terms keep visible (advisor ruling (a), 11-11)
   refs.mapCap = el('span', 'emz hidden');
-  refs.map.append(refs.mapLine, refs.mapCap);
+  // ENVÍO v3 A2: the style control «Simple · Mapa · Satélite» (top-left over the map; a real radiogroup, roving tabindex, ← / →)
+  refs.mstyle = el('div', 'mstyle'); refs.mstyle.setAttribute('role', 'radiogroup'); refs.mstyle.setAttribute('aria-label', COPY.styleAria);
+  refs.mstyleBtns = COPY.styles.map(([t, label], i) => {
+    const b = button('', label, () => pickStyle(t, false)); b.setAttribute('role', 'radio'); b.dataset.st = t;
+    b.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const n = COPY.styles.length, j = (i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? n - 1 : 1)) % n;
+      pickStyle(COPY.styles[j][0], true);
+    });
+    return b;
+  });
+  refs.mstyle.append(...refs.mstyleBtns);
+  refs.map.append(refs.mstyle, refs.mapLine, refs.mapCap);
   refs.legend = el('div', 'legend');
   refs.mapNote = el('p', 'efnote');
   sm.append(mh, fld, refs.max, refs.map, refs.legend, refs.mapNote);
@@ -688,6 +734,8 @@ function paintMapBox() {
   r.mapLine.textContent = line || '';
   r.mapLine.classList.toggle('hidden', !line);
   r.map.classList.toggle('nomap', !!line);
+  r.mstyle.classList.toggle('hidden', !!line);   // no map, no style control
+  paintStyle();
   r.mapCap.textContent = !line && p && p.hub ? COPY.mapCap(p.label, pickedReach()) : '';
   r.mapCap.classList.toggle('hidden', !!line || !(p && p.hub));
   if (p && p.hub && S.status === 'ready' && !S.map) { setTimeout(() => { if (S.root && !S.map) startMap(r.map); }, 0); }

@@ -60,7 +60,11 @@ function flat(W) {
   const ppk = G.pixelsPerKm(W);
   return (p) => ({ x: 1000 + (p.lng - HUB.lng) * 111.32 * Math.cos(HUB.lat * Math.PI / 180) * ppk, y: 1000 - (p.lat - HUB.lat) * 110.574 * ppk });
 }
-const render = (bands, extra = {}) => MP.renderMessage({ mount: 'a'.repeat(32), view: 'reset', theme: 'light', hub: HUB, name: 'La Musa', others: [{ lat: 15.5075, lng: -88.0398 }], bands, ...extra });
+// v2 (what the portal sends): each band's `out`, the map type, the limit (defaults: nothing beyond, «Mapa», no limit)
+const render = (bands, extra = {}) => MP.renderMessage({ mount: 'a'.repeat(32), view: 'reset', theme: 'light', hub: HUB, name: 'La Musa', others: [{ lat: 15.5075, lng: -88.0398 }],
+  bands: bands.map((b) => ({ out: false, ...b })), mapType: 'roadmap', limit: null, ...extra });
+// v1 (an older portal): step 1's exact shape
+const renderV1 = (bands) => ({ v: 1, mount: 'a'.repeat(32), kind: 'render', view: 'reset', theme: 'light', hub: HUB, name: 'La Musa', others: [], bands });
 
 test('overlayModel: rings inner→outer with the last VALID one outer, the outside hole, the mockup\'s pills, pins, the name — scaled by u', () => {
   const u = 540 / 640;
@@ -90,7 +94,7 @@ function fakeEnv({ hash = `#m=${'a'.repeat(32)}`, direct = false, load = 'ok', w
   const win = { location: { hash }, addEventListener(t, f) { order.push(`listen:${t}`); (listeners[t] = listeners[t] || []).push(f); },
     ResizeObserver: class { constructor(cb) { win.__ro = cb; } observe() {} } };
   win.parent = direct ? win : parent;
-  const box = { clientWidth: width };
+  const box = { clientWidth: width, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); } };
   const doc = { getElementById: () => box, createElementNS: () => ({ setAttribute() {}, style: { setProperty() {} }, replaceChildren() {}, remove() {} }) };
   const maps = {
     made: [],
@@ -102,6 +106,8 @@ function fakeEnv({ hash = `#m=${'a'.repeat(32)}`, direct = false, load = 'ok', w
       fire(t) { for (const f of [...(this.ls[t] || [])]) f(); }
       setCenter(c) { this.calls.push(['center', c]); }
       setZoom(z) { this.calls.push(['zoom', z]); this.fire('zoom_changed'); }
+      setOptions(o) { this.calls.push(['options', o]); }
+      setMapTypeId(t) { this.calls.push(['type', t]); }
     },
   };
   const loadMaps = () => (load === 'ok' ? Promise.resolve(maps) : Promise.reject(new Error(load === 'load' ? 'The Google Maps JavaScript API could not load.' : 'nope')));
@@ -190,4 +196,60 @@ test('view: `reset` re-centres and re-zooms; `keep` doesn\'t; a resize re-fits o
   const n = map.calls.length;
   E.box.clientWidth = 390; E.win.__ro();
   assert.equal(map.calls.length, n, 'after the owner moved the map, a resize doesn\'t snap it back');
+});
+
+
+// ── ENVÍO v3 A2 / A4 (PLAN-portal-envio-v3-ui r5 §2; MOCKUP-portal-envio-v3-limit): the restaurant's limit, bands beyond it, the styles ──
+test('A2 overlayModel: the limit is the SOLID ink ring at its km with «Límite de {restaurante} · {km} km»; bands beyond it greyed «· fuera de su alcance»; the shade starts at the limit', () => {
+  const u = 540 / 640;
+  const bands = [{ km: 3, fee: 4000, ok: true }, { km: 6, fee: 5000, ok: true }, { km: 10, fee: 8000, ok: true, out: true }];
+  const m = overlayModel(render(bands, { limit: { km: 7, capped: false, name: 'La Musa' } }), flat(540), u);
+  assert.deepEqual(m.rings.map((r) => r.cls), ['ring beyond', 'ring', 'ring', 'ring rlim'], 'fee rings outer→inner (no «outer» once a limit is drawn), the band beyond greyed, the limit ring last (on top)');
+  const ring7 = (() => { const p = flat(540); const pts = G.ringPath(HUB, 7).map(p); return `M${pts.map((q) => `${Math.round(q.x * 100) / 100} ${Math.round(q.y * 100) / 100}`).join('L')}Z`; })();
+  assert.equal(m.rings[3].d, ring7, 'the limit ring is the overlay’s own path at limit.km');
+  assert.ok(m.outside.endsWith(ring7), 'the outside shade starts at the limit, not at the table’s top');
+  assert.deepEqual(m.labels.map((l) => [l.cls, l.text, Math.round(l.w)]),
+    [['rl', '3 km · L 40', Math.round(90 * u)], ['rl', '6 km · L 50', Math.round(90 * u)], ['rl beyond', '10 km · L 80 · fuera de su alcance', Math.round(190 * u)], ['rl lim', 'Límite de La Musa · 7 km', Math.round(170 * u)]]);
+  const p = flat(540), east = p(G.destination(HUB, 90, 7000)), lim = m.labels[3];
+  assert.ok(Math.abs(lim.x - east.x) < 1e-9 && Math.abs(lim.y - east.y) < 1e-9, 'the limit label sits on the limit ring, due east (clear of the NE band labels)');
+});
+test('A4 overlayModel: a capped limit says «· tope de la tabla» (the wider pill); no limit keeps step 1’s «· límite» outer ring', () => {
+  const u = 1;
+  const capped = overlayModel(render([{ km: 3, fee: 4000, ok: true }, { km: 8, fee: 6000, ok: true }], { limit: { km: 8, capped: true, name: 'La Musa' } }), flat(640), u);
+  assert.deepEqual(capped.labels.slice(-1).map((l) => [l.cls, l.text, Math.round(l.w)]), [['rl lim', 'Límite de La Musa · 8 km · tope de la tabla', 250]]);
+  assert.deepEqual(capped.rings.map((r) => r.cls), ['ring', 'ring', 'ring rlim']);
+  const none = overlayModel(render([{ km: 3, fee: 4000, ok: true }, { km: 6, fee: 5000, ok: true }]), flat(640), u);
+  assert.deepEqual(none.rings.map((r) => r.cls), ['ring outer', 'ring'], 'no limit: step 1’s drawing, unchanged');
+  assert.deepEqual(none.labels.map((l) => l.text), ['3 km · L 40', '6 km · L 50 · límite']);
+});
+test('A2 styles: «Mapa» = roadmap, no styles; «Simple» = today’s LIGHT styles on roadmap; «Satélite» = hybrid; a switch re-styles the SAME map (no new Map, no camera move); data-maptype on the root; v1 is drawn «Simple»', async () => {
+  const E = fakeEnv();
+  boot({ win: E.win, doc: E.doc, loadMaps: E.loadMaps }); await tick();
+  E.fromParent(render(B)); await tick();
+  const map = E.maps.made[0];
+  assert.equal(map.opts.mapTypeId, 'roadmap', '«Mapa»: roadmap');
+  assert.equal(map.opts.styles, null, '«Mapa»: no styles');
+  assert.equal(map.opts.clickableIcons, false); assert.equal(map.opts.mapTypeControl, undefined, 'Google’s own type control stays off (disableDefaultUI)');
+  assert.equal(map.opts.disableDefaultUI, true);
+  assert.equal(E.box.attrs['data-maptype'], 'roadmap');
+  map.calls.length = 0;
+  E.fromParent({ ...render(B), view: 'keep', mapType: 'hybrid' }); await tick();
+  assert.deepEqual(map.calls, [['options', { styles: null }], ['type', 'hybrid']], '«Satélite»: hybrid on the same map, camera kept');
+  assert.equal(E.box.attrs['data-maptype'], 'hybrid');
+  map.calls.length = 0;
+  E.fromParent({ ...render(B), view: 'keep', mapType: 'simple' }); await tick();
+  assert.equal(map.calls[0][0], 'options'); assert.ok(Array.isArray(map.calls[0][1].styles) && map.calls[0][1].styles.length > 0, '«Simple»: the LIGHT styles array');
+  assert.deepEqual(map.calls[1], ['type', 'roadmap']);
+  map.calls.length = 0;
+  E.fromParent({ ...render(B), view: 'keep', mapType: 'simple' }); await tick();
+  assert.deepEqual(map.calls, [], 'the same type again: nothing re-styled');
+  assert.equal(E.maps.made.length, 1, 'one Map across every switch');
+  const E1 = fakeEnv();
+  boot({ win: E1.win, doc: E1.doc, loadMaps: E1.loadMaps }); await tick();
+  E1.fromParent(renderV1(B)); await tick();
+  assert.equal(E1.maps.made.length, 1, 'a v1 render is drawn');
+  assert.equal(E1.maps.made[0].opts.mapTypeId, 'roadmap'); assert.ok(Array.isArray(E1.maps.made[0].opts.styles) && E1.maps.made[0].opts.styles.length > 0, 'v1 → «Simple»');
+});
+test('the loader asks Google for Spanish labels', () => {
+  assert.match(readFileSync(join(MAP, 'map.js'), 'utf8'), /language: "es"/, 'language es on the bootstrap loader');
 });

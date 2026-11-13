@@ -243,7 +243,7 @@ test('frame 2: a 12 km band is refused inline; the limit shows the last VALID ba
   assert.ok(P.bar().querySelector('.ebdot').classList.contains('ered'));
   assert.ok(P.btn('Guardar', P.bar()).disabled);
   assert.ok(!P.btn('Descartar', P.bar()).disabled, 'Descartar always works');
-  assert.deepEqual([...P.host().querySelectorAll('.legend span')].map((s) => s.textContent), ['Tramo de tarifa', 'Límite de entrega', 'Tramo rechazado']);
+  assert.deepEqual([...P.host().querySelectorAll('.legend span')].map((s) => s.textContent), ['Tramo de tarifa', 'Límite del restaurante', 'Tramo rechazado'], 'v3 (Changed): the legend');
   assert.ok(P.text().includes('El tramo de 12 km no se dibuja como entrega: queda fuera del máximo de 10 km.'));
   P.btn('Descartar', P.bar()).click(); await settle();
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']]);
@@ -537,9 +537,9 @@ test('C2 handshake: listening → the latest render (exact origin, this mount); 
   assert.equal(out[0][0].kind, 'render');
   assert.equal(out[0][0].mount, P.mount());
   assert.deepEqual(out[0][0].hub, { lat: 15.5041, lng: -88.0385 });
-  assert.deepEqual(out[0][0].bands, [{ km: 3, fee: 4000, ok: true }, { km: 6, fee: 5000, ok: true }]);
+  assert.deepEqual(out[0][0].bands, [{ km: 3, fee: 4000, ok: true, out: false }, { km: 6, fee: 5000, ok: true, out: false }]);
   P.type(1, 'km', '12'); await settle();
-  assert.deepEqual(out[out.length - 1][0].bands, [{ km: 3, fee: 4000, ok: true }, { km: 12, fee: 5000, ok: false }], 'input re-renders the rings (view keep)');
+  assert.deepEqual(out[out.length - 1][0].bands, [{ km: 3, fee: 4000, ok: true, out: false }, { km: 12, fee: 5000, ok: false, out: false }], 'input re-renders the rings (view keep)');
   assert.equal(out[out.length - 1][0].view, 'keep');
 });
 
@@ -990,4 +990,87 @@ test('V4 — A4 capped: the STORED value kept above a cut table, the quiet SAND 
   assert.equal(stepBtn(P, '0.5 km menos').disabled, false, '«−» works');
   assert.ok(!P.bar().classList.contains('show'), 'untouched: no change, not an error');
   assert.match(P.host().querySelector('.pick').textContent, /hasta 6 km/, 'the picker shows the effective reach');
+});
+
+// ── ENVÍO v3 A2 (PLAN-portal-envio-v3-ui r5 §2 / §3; MOCKUP-portal-envio-v3-limit): protocol v2 — the map type and the limit facts — and the
+// style control «Simple · Mapa · Satélite» (a real radiogroup; the viewer's choice in localStorage, never the draft, never dirty) ──
+const styleCtl = (P) => P.host().querySelector('.emap .mstyle');
+const radios = (P) => [...styleCtl(P).querySelectorAll('button[role="radio"]')];
+async function listening(P) { const out = posted(P); P.fromMap(childMessage('listening', P.mount())); await settle(); return out; }
+test('A2 v2 render: the map type, the restaurant’s limit (its name, km, capped) and each band’s `out` (beyond the limit)', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: [{ max_km: 3, cents: 4000 }, { max_km: 6, cents: 5000 }, { max_km: 10, cents: 8000 }], limits: [{ rid: 'r_lm', km: 7 }] }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  const out = await listening(P);
+  const m = out[out.length - 1][0];
+  assert.equal(m.v, 2); assert.equal(m.mapType, 'roadmap', 'default «Mapa»');
+  assert.deepEqual(m.limit, { km: 7, capped: false, name: 'La Musa' });
+  assert.deepEqual(m.bands.map((b) => [b.km, b.out]), [[3, false], [6, false], [10, true]], 'the 10 km band lies beyond the 7 km limit');
+  setMax(P, '4'); await settle(5);
+  const m2 = out[out.length - 1][0];
+  assert.deepEqual([m2.limit, m2.view], [{ km: 4, capped: false, name: 'La Musa' }, 'keep'], 'an edit moves the ring (view keep)');
+  assert.deepEqual(m2.bands.map((b) => b.out), [false, true, true]);
+});
+test('A4 v2 render: a stored value above a cut table → the limit at the table top, capped', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: [...B3, { max_km: 8, cents: 6000 }], limits: [{ rid: 'r_lm', km: 7 }] }, { bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  const m = (await listening(P)).slice(-1)[0][0];
+  assert.deepEqual(m.limit, { km: 6, capped: true, name: 'La Musa' }, 'drawn at the effective reach, «· tope de la tabla»');
+});
+test('A2 style control: «Simple · Mapa · Satélite» radiogroup «Estilo del mapa» in the map box, default «Mapa»; a click / ← → switches it, one v2 render with view keep; stored for the viewer; never dirty', async () => {
+  const P = await page(); await P.signIn(); await P.open(); await settle(5);
+  const g = styleCtl(P);
+  assert.ok(g, 'the control over the map');
+  assert.equal(g.getAttribute('role'), 'radiogroup'); assert.equal(g.getAttribute('aria-label'), 'Estilo del mapa');
+  assert.deepEqual(radios(P).map((b) => [b.textContent, b.getAttribute('aria-checked'), b.tabIndex]), [['Simple', 'false', -1], ['Mapa', 'true', 0], ['Satélite', 'false', -1]], 'default «Mapa»; roving tabindex');
+  const out = await listening(P);
+  const n0 = out.length;
+  radios(P)[2].click(); await settle(5);
+  assert.deepEqual(radios(P).map((b) => b.getAttribute('aria-checked')), ['false', 'false', 'true']);
+  assert.ok(radios(P)[2].classList.contains('mson') && !radios(P)[1].classList.contains('mson'), 'the selected look follows the check');
+  assert.equal(out.length, n0 + 1, 'ONE render per switch');
+  assert.deepEqual([out[out.length - 1][0].mapType, out[out.length - 1][0].view], ['hybrid', 'keep'], 'the map keeps its camera');
+  assert.equal(P.w.localStorage.getItem('sherpa.envio.mapView'), 'hybrid', 'the viewer’s choice, in localStorage');
+  assert.ok(!P.bar().classList.contains('show'), 'a style is never a change to save');
+  radios(P)[2].focus();
+  radios(P)[2].dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })); await settle(5);
+  assert.equal(P.d.activeElement, radios(P)[1], '← moves focus');
+  assert.equal(radios(P)[1].getAttribute('aria-checked'), 'true', '← selects');
+  assert.equal(out[out.length - 1][0].mapType, 'roadmap');
+  radios(P)[1].dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  radios(P)[2].dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await settle(5);
+  assert.equal(radios(P)[0].getAttribute('aria-checked'), 'true', '→ wraps around to «Simple»');
+  assert.equal(out[out.length - 1][0].mapType, 'simple');
+  assert.equal(P.frame(), P.host().querySelector('iframe'), 'the same frame');
+  assert.equal(P.host().querySelectorAll('iframe').length, 1, 'no reload');
+});
+test('A2 style control: a stored choice is read back; an unknown one or a throwing storage → «Mapa»; hidden with the no-map line', async () => {
+  for (const [seed, want] of [['simple', 'Simple'], ['terrain', 'Mapa'], ['throw', 'Mapa']]) {
+    const P = await page();
+    if (seed === 'throw') Object.defineProperty(globalThis, 'localStorage', { value: { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } }, configurable: true, writable: true });
+    else P.w.localStorage.setItem('sherpa.envio.mapView', seed);
+    await P.signIn(); await P.open(); await settle(5);
+    const on = radios(P).find((b) => b.getAttribute('aria-checked') === 'true');
+    assert.equal(on && on.textContent, want, `stored «${seed}» → ${want}`);
+    if (seed === 'throw') { radios(P)[0].click(); await settle(5); assert.equal(radios(P)[0].getAttribute('aria-checked'), 'true', 'a throwing storage never breaks the switch'); }
+  }
+  const P = await page(); await P.signIn(); await P.open(); await settle(5);   // WORLD's «Sin Pin» has no pin
+  P.host().querySelector('.pick').click(); await settle();
+  const sIn = P.host().querySelector('.psearch input'); sIn.value = 'sin'; sIn.dispatchEvent(new P.w.Event('input'));
+  sIn.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Enter' })); await settle();
+  assert.equal(P.host().querySelector('.mapline').textContent, 'Esta sucursal no tiene ubicación todavía.');
+  assert.ok(styleCtl(P).classList.contains('hidden'), 'no map, no style control');
+});
+test('A2 legend: «Tramo de tarifa · Límite del restaurante · Tramo fuera de su alcance · Fuera del límite · Otras sucursales»; a refused band keeps «Tramo rechazado»', async () => {
+  const P = await page(); await P.signIn(); await P.open(); await settle(5);
+  const legend = () => [...P.host().querySelectorAll('.legend span')].map((x) => [x.textContent, x.querySelector('i').className]);
+  assert.deepEqual(legend(), [['Tramo de tarifa', 'lg-band'], ['Límite del restaurante', 'lg-rlim'], ['Tramo fuera de su alcance', 'lg-beyond'], ['Fuera del límite', 'lg-out'], ['Otras sucursales', 'lg-other']]);
+  P.type(1, 'km', '12'); await settle();
+  assert.deepEqual(legend(), [['Tramo de tarifa', 'lg-band'], ['Límite del restaurante', 'lg-rlim'], ['Tramo rechazado', 'lg-bad']]);
+});
+test('the caption with no reach known (no fee table yet): the mockup’s own fallback «… Línea recta, no calles.» — never a shortened line', async () => {
+  const P = await page({ srv: server({ policy: null }) });
+  await P.signIn(); await P.open(); await settle(5);
+  assert.equal(P.host().querySelector('.emap .emz').textContent, 'Anillos desde el pin de La Musa. Línea recta, no calles.');
 });
