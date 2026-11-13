@@ -426,9 +426,12 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // undoRemoveProduct («Deshacer»); both ask the ONE predicate canRemoveProduct / canEditContent first; rebuildOrders is the ONE order
   // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed. The read side app.js paints from
   // (pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows) is pure and hands back copies.
+  // STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, APPROVED 11-13) — the required choice on an EXISTING dish writes ONLY through 5f's
+  // choice writer (the byte copy choice-transitions.js): applyChoiceOps (an ordered op list, all or nothing, with the server's choiceEdit
+  // switch; its removals' stamps through mergeDeletionClaim) and the pure choiceRefusalLine (the owner-approved reward line). No new key.
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
@@ -450,6 +453,8 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // STRUCTURE S2: both S2 writers ask the same boundary first (the composition's strict mode is the one «Guardar» uses)
   const aeoBody = editor.slice(editor.indexOf('export function applyExposureOps('), editor.indexOf('export function applyExposureOps(') + 400);
   assert.ok(/if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(aeoBody), 'applyExposureOps refuses when the draft is not owned for editing');
+  const acoBody = editor.slice(editor.indexOf('export function applyChoiceOps('), editor.indexOf('export function applyChoiceOps(') + 400);
+  assert.ok(/if \(choiceEdit !== true\) return \{ ok: false, code: 'choice_edit_off' \};\n  if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(acoBody), 'applyChoiceOps refuses without the switch, then when the draft is not owned for editing');
   const cdBody = editor.slice(editor.indexOf('export function composeDish('), editor.indexOf('export function composeDish(') + 400);
   assert.ok(/if \(strict && !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(cdBody), 'the strict composition refuses when the draft is not owned for editing');
   assert.ok(/export function commitDish\([^)]*\) \{\n  const r = composeDish\(draft, key, edit, ops, \{ \.\.\.opts, strict: true \}\);/.test(editor), 'commitDish is the STRICT composition');
@@ -1937,13 +1942,14 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
 // the server's deletion REFUSAL CODES (review.js panels key on them, S2 §5.2) name a refusal, not the claim field
 const CLAIM = /deleted_ids(?!_loaded_base|_reviewed|_base_moved|_unbound|_stale_baseline|_malformed|_no_baseline)|deletedIds/i;
 const CLAIM_FN = 'export function mergeDeletionClaim(';
-const WRITER_COPY = 'exposure-transitions.js';
+// the server writers' byte copies (tools/sync-client): S2's Extras writer and S3's choice writer — each proven byte-identical below
+const WRITER_COPIES = ['exposure-transitions.js', 'choice-transitions.js'];
 const outsideClaimFn = (f, code) => {
   if (f !== 'editor.js' || !code.includes(CLAIM_FN)) return code;
   const i = code.indexOf(CLAIM_FN), j = code.indexOf('\n}\n', i);
   return code.slice(0, i) + code.slice(j < 0 ? code.length : j + 3);
 };
-const claimHits = (read) => JS.filter((f) => f !== WRITER_COPY && CLAIM.test(outsideClaimFn(f, read(f))));
+const claimHits = (read) => JS.filter((f) => !WRITER_COPIES.includes(f) && CLAIM.test(outsideClaimFn(f, read(f))));
 const saveCarriesBase = (read) => {
   if (!read('editor.js').includes(CLAIM_FN)) return true;
   const api = read('api.js'); const i = api.indexOf('export async function editCatalog(');
@@ -1956,7 +1962,7 @@ test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the remov
   assert.ok(codeOf('editor.js').split(CLAIM_FN).length <= 2, 'mergeDeletionClaim is defined at most once');
   assert.ok(saveCarriesBase(codeOf), 'a claim is merged, so every save carries deleted_ids_loaded_base');
   // the exemption is for a VERIFIED copy: byte-identical to the server's writer (the sync guard's rule, restated here)
-  assert.equal(readFileSync(join(DIR, WRITER_COPY), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', WRITER_COPY), 'utf8'), 'the exempt copy is the server writer, byte for byte');
+  for (const c of WRITER_COPIES) assert.equal(readFileSync(join(DIR, c), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', c), 'utf8'), `the exempt copy ${c} is the server writer, byte for byte`);
   // non-vacuity — each planted defect turns the rule red
   const planted = (f, extra) => (g) => (g === f ? codeOf(g) + extra : codeOf(g));
   assert.deepStrictEqual(claimHits(planted('app.js', '\nfunction sneaky(s) { s.deleted_ids = []; }\n')), ['app.js'], 'non-vacuity: a claim named in app.js');

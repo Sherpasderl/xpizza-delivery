@@ -3556,7 +3556,9 @@
   },
   "catalog/choice-transitions.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-portal/structure-s3.test.mjs"
+   ]
   },
   "catalog/client-retired.js": {
    "pins": [],

@@ -1149,6 +1149,25 @@ export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
   draft.state = mergeDeletionClaim(cur, results);
   return { ok: true };
 }
+// STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, approved 2026-11-13) — the required choice on an EXISTING dish. The one mutator: an
+// ORDERED op list folded through 5f's choice writer (the portal's byte copy, choice-transitions.js) on ONE copy; any refusal leaves the
+// draft untouched; the removed rows' identity stamps join the deletion claim. Only with the server's switch (choiceEdit). The portal
+// never writes variant_items or a «Recomendada» tag itself while the switch is on: the server re-judges the resulting draft anyway.
+const choiceWriter = () => globalThis.ChoiceTransitions;
+export function applyChoiceOps(draft, ops, { choiceEdit = false } = {}) {
+  if (choiceEdit !== true) return { ok: false, code: 'choice_edit_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!choiceWriter() || typeof choiceWriter().apply !== 'function') return { ok: false, code: 'writer_unavailable' };
+  if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };
+  let cur = draft.state; const results = [];
+  try { for (const op of ops) { const r = choiceWriter().apply(cur, op); results.push(r); cur = r.source; } }
+  catch (err) { return refusedBy(err); }
+  draft.state = mergeDeletionClaim(cur, results);
+  return { ok: true };
+}
+// the S3 refusals' lines: ONLY the owner-approved one (11-12) exists; every other code waits for the Fable addendum's approved copy
+const CHOICE_REWARD_LINE = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
+export const choiceRefusalLine = (code) => (code === 'choice_on_reward_dish' ? CHOICE_REWARD_LINE : null);
 // §3.2 — the drawer's ONE composition, for the preview (strict: false — what the copy WOULD save, a move not yet valid included)
 // and the commit (strict: true — every field judged by the editor's rules). Never writes `draft`:
 //   1. «Sin extras» OFF first (an attach needs a dish that offers extras);
