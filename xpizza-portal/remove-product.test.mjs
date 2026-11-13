@@ -563,7 +563,7 @@ test('T21g / §2 row 6: a read WITHOUT liveOrder, or without a readable baseline
     const act = p.rmAct();
     assert.ok(act, `${drop} missing: the action is still drawn`);
     assert.equal(act.querySelector('button').disabled, true, `${drop} missing: an unreadable baseline: disabled with the reused line`);
-    assert.equal(act.querySelector('.mk-ferr').textContent, U2, `${drop} missing: the U2 line under it`);
+    assert.equal((act.querySelector('.mk-ferr') || {}).textContent, U2, `${drop} missing: the U2 line under it`);
     const before = JSON.stringify(p.src());
     act.querySelector('button').click(); await settle(5);
     assert.equal(JSON.stringify(p.src()), before, `${drop} missing: no liveOrder, no guessed order — nothing written`);
@@ -598,6 +598,11 @@ test('T15 R3 (real read): the pending row — greyed, the sand chip, no opener, 
   assert.equal(p.d.activeElement, undo, '«Quitar» focuses the row\'s «Deshacer»');
   assert.equal(p.railCount('Dim Sum'), rail0, 'the rail count stays until publish');
   assert.equal(p.bar(), '1 cambio sin publicar · 1 producto', 'an edited and removed dish counts once');
+  // the text edit SAVED first (a reload serves it as pendingTexts), then the removal: still ONE product
+  await p.undo('dimsum_02');
+  await p.review(); await p.back(); await p.reload();
+  await p.remove('dimsum_02');
+  assert.match(p.bar(), / · 1 producto$/, 'an edited and removed dish counts once (the edit saved)');
 });
 
 test('T16 R5 (real read): the reward line follows the SERVED rewardKeys — a reward dish carries the sand line, a plain one does not; never derived on the client', async () => {
@@ -663,6 +668,8 @@ test('T4 + T5 chain (la_musa, REAL stamps): remove → the owner\'s save → R4 
   assert.equal([].concat((await B.claim()) || []).length, 0, 'the claim is consumed');
   const menu = await B.publicMenu();
   assert.ok(!JSON.stringify(menu).includes(name), 'buildPublicMenu lacks it');
+  await until(() => p.mods.app.state.removalStash.size === 0);
+  assert.equal(p.mods.app.state.removalStash.size, 0, 'the stash ends with the publish');
 });
 
 test('T19 chain (x_pizza, fiscal): a removal alone — the REAL save says fiscalAckRequired:false → no seal, no fiscalAck, publish 200; a reprice too → today\'s seal', async () => {
@@ -711,6 +718,12 @@ test('T8 + T11 chain (REAL stamps, condition 2): remove rice_03 (extras_by_item 
   await p.reload();
   await p.section('Rice');
   assert.ok(p.rowOf('rice_03') && p.rowOf('rice_03').classList.contains('mk-pend'), 'after a reload the pending row is drawn');
+  const riceName = nameIn(before, 'rice_03');
+  await p.review();
+  const named = [...prodGroup(p).querySelectorAll('.prow.mk-srow .pname')].map((x) => x.textContent);
+  assert.ok(named.includes(riceName) && !named.includes('rice_03'), `the removed dish is named after a reload (${named.join(', ')})`);
+  await p.back();
+  await p.section('Rice');
   await p.undo('rice_03');
   await p.section('Bebidas');
   assert.ok(p.rowOf('soft_01').classList.contains('mk-pend'));
