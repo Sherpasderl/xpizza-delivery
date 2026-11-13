@@ -333,8 +333,23 @@ test('E2 — the menu is never clipped: it opens in a layer outside the list (no
   assert.equal(menu(p), null, 'another section (a repaint) closes it');
 });
 
+test('S4-G — the bar counts S4 changes after «· N productos»: «· N categorías» (E, approved), the subsections and «orden» (proposed)', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  const bar = () => p.d.getElementById('rbtxt');
+  await create(p, 'Postres');
+  assert.equal(bar().textContent, '1 cambio sin publicar · 1 categoría', '🔴 the approved suffix');
+  await create(p, 'Helados');
+  assert.equal(bar().textContent, '2 cambios sin publicar · 2 categorías');
+  await pick(p, 'Dim Sum');
+  subBtn(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Al vapor'); await settle(2);
+  sBtn(p, P('createSub')).click(); await settle(10);
+  assert.ok(bar().textContent.endsWith(` · 2 categorías${P('barSub')}`), `the subsection's suffix: ${bar().textContent}`);
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'menuNote', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unpromoteLine']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['barOrder', 'barSub', 'barSubs', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'menuNote', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unpromoteLine']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

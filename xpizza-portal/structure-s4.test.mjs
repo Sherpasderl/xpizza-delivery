@@ -360,3 +360,13 @@ test('3(a) — moving the LAST dish out of a section promoted in this draft is a
   for (const k of crudo.slice(0, -1)) assert.equal(moveItem(d, k, { cat: 'starters' }, ON).ok, true);
   assert.equal(moveItem(d, crudo[crudo.length - 1], { cat: 'starters' }, ON).code, 'section_empty', 'a LIVE section never empties');
 });
+
+test('pendingSections is a PURE reader (the wiring guards rule it so): a deep-frozen draft, byte-identical after', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  addCategory(d, 'Postres', {}, ON);
+  const freeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+  const before = JSON.stringify([d.state, d.orig]);
+  freeze(d.state); freeze(d.orig);
+  assert.equal(pendingSections(d).filter((x) => x.kind === 'category').length, 1, 'premise: it read the draft');
+  assert.equal(JSON.stringify([d.state, d.orig]), before);
+});

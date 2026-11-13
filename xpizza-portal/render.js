@@ -85,7 +85,7 @@ const el = (tag, cls, text) => {
 export const S4_COPY = Object.freeze({
   emptyTitle: null, emptyBody: null, subcatNeedsDish: null, dropCat: null, dropTitle: null, dropSub: null, dropBody: null, nameTaken: null,
   sheetSubFirst: null, sheetSub: null, subName: null, subPh: null, products: null, firstLine: null, moveLine: null, needOne: null, createSub: null,
-  subNameTaken: null, subCaps: null, menuNote: null, toastBack: null, unpromoteLine: null,
+  subNameTaken: null, subCaps: null, menuNote: null, toastBack: null, unpromoteLine: null, barSub: null, barSubs: null, barOrder: null,
 });
 export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
 

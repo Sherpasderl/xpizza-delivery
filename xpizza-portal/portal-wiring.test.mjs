@@ -1684,6 +1684,7 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.choiceNameProblems',
   // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
   'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem',
+  'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

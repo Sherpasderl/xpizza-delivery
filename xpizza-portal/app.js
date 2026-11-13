@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -1174,6 +1174,14 @@ function refreshBar() {
   // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
   const nTexts = n > 0 ? new Set([...textEditedKeys().keys(), ...pendingRemovalMap().keys()]).size : 0;   // «Quitar del menú»: a dish edited AND removed counts once
   if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
+  // STRUCTURE S4 (S4-G) — after «· N productos»: «· N categorías» (E, approved), the subsections and «orden» (the addendum's, proposed):
+  // the draft's own counts (pendingSections), the server's diff decides at «Revisar y publicar»
+  const secs = n > 0 && state.sections === true && state.draft ? pendingSections(state.draft) : [];
+  const nCats = secs.filter((x) => x.kind === 'category').length, nSubs = secs.filter((x) => x.kind === 'subcat').length;
+  const sfx4 = (t) => { const sp = document.createElement('span'); sp.textContent = t; $('rbtxt').append(sp); };
+  if (nCats) sfx4(` · ${nCats} ${nCats === 1 ? 'categoría' : 'categorías'}`);
+  if (nSubs) sfx4(s4Copy(nSubs === 1 ? 'barSub' : 'barSubs', { n: nSubs }));
+  if (secs.some((x) => x.kind === 'order')) sfx4(s4Copy('barOrder'));
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
   // Nothing typed, nothing to throw away. The review is the way forward here; discard would be a
