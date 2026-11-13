@@ -569,6 +569,8 @@ function applyAddProductFacts(data) {
   state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
   // advisor Q8 (11-11): whether the server serves the Extras page (getEditableCatalog extrasCatalog); absent ⇒ OFF — S1's «Opciones» line
   state.extrasCatalog = !!(data && data.extrasCatalog === true);
+  // STRUCTURE S3 (UI-r0 :45): the server's required-choice switch (getEditableCatalog choiceEdit); absent / not true ⇒ OFF — S1's card
+  state.choiceEdit = !!(data && data.choiceEdit === true);
   // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
   const db0 = data && data.deletionBase;
   state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
@@ -1917,6 +1919,7 @@ function resetEditFacts() {
   state.textEditEnabled = false;
   state.extrasAuthoring = false;
   state.extrasCatalog = false;
+  state.choiceEdit = false;
   state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
@@ -1961,6 +1964,121 @@ function opcNameLine(options, g) {
   return `En el menú cada opción se llama «${a.fullName}»${b ? `, «… - ${b.choice}»` : ''}: el nombre se arma solo.`;
 }
 const opcFolded = new Set();
+// STRUCTURE S3 — VIEW state, per drawer session: the required choice's editor is open (the pencil … «Listo»); «Guardar» held by B2
+const choiceEditing = new Set();
+let choiceHeld = null;
+const tmpRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+// panel D (MOCKUP-portal-structure-edit :1797, owner-approved: its strings are literal) + the addendum's B2 line (⟦s3.key⟧ until approved):
+// the choice's name, one row per option (name · L price · «Recomendada» · trash; a new one «Solo en la app Sherpa»), «Agregar opción»,
+// «Mismo precio para todas», the naming line; the foot «Quitar elección» · «Listo». TYPING edits the copy in place (choiceSet /
+// choiceUpdateNew: one op per slot, the same input node); a structural press (add, trash, pill) rebuilds and returns the caret by key.
+function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
+  const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+  const card = mk('div', 'mk-grp mk-req mk-open chg');
+  card.append(header('req', label, OPC_COPY.req, 'mk-gts mk-greq', true).gh);
+  const ge = mk('div', 'mk-ge');
+  const gnId = `ie-cg-${s.id}`;
+  const lab = mk('label', 'mgname-lbl', 'Nombre de la elección'); lab.htmlFor = gnId;
+  const ieChoiceName = document.createElement('input');
+  ieChoiceName.className = 'mgname-in'; ieChoiceName.id = gnId; ieChoiceName.type = 'text'; ieChoiceName.value = cm.label || ''; ieChoiceName.placeholder = 'Ej. Tamaño, Término, Porción';
+  ieChoiceName.addEventListener('input', bound(() => { IE.choiceSet(s, { op: 'choice.label', launcher: key, label: ieChoiceName.value }); syncEdit(); }));
+  focusKey(ieChoiceName, 'ie-cg-name');
+  ge.append(lab, ieChoiceName);
+  const v = IE.view(state.draft, s);
+  const work = new Map((v.options || []).map((o) => [o.key, o.price]));
+  const few = cm.options.length <= 2;
+  R.opts = []; R.optCnt = mk('span', 'mk-cnt');
+  let last = null;
+  for (const o of cm.options) {
+    const row = mk('div', `mopt${o.isNew ? ' chg' : ''}`);
+    const ieOptName = document.createElement('input');
+    ieOptName.className = 'moname'; if (o.isNew) ieOptName.classList.add('mk-chgname'); ieOptName.type = 'text'; ieOptName.value = o.choice || '';
+    ieOptName.setAttribute('aria-label', 'Nombre de la opción'); ieOptName.placeholder = 'Nombre de la opción';
+    ieOptName.addEventListener('input', bound(() => {
+      if (o.isNew) IE.choiceUpdateNew(s, o.id, { choice: ieOptName.value });
+      else IE.choiceSet(s, { op: 'option.rename', key: o.id, choice: ieOptName.value });
+      syncEdit();
+    }));
+    focusKey(ieOptName, `ie-cg-opt::${o.id}`);
+    const pr = mk('span', 'mopr');
+    const ieOptPrice = document.createElement('input');
+    ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.setAttribute('aria-label', 'Precio'); if (o.isNew) ieOptPrice.classList.add('mk-chgpr');
+    ieOptPrice.value = o.isNew ? (Number.isInteger(o.price) ? String(o.price) : '') : (work.has(o.id) ? work.get(o.id) : String(o.price ?? ''));
+    ieOptPrice.addEventListener('input', bound(() => {
+      if (o.isNew) IE.choiceUpdateNew(s, o.id, { price: parsePrice(ieOptPrice.value) });
+      else IE.set(s, 'optionPrice', { key: o.id, raw: ieOptPrice.value });   // a price alone is not an S3 edit (S3-r4 :127): today's field
+      syncEdit();
+    }));
+    focusKey(ieOptPrice, `ie-cg-pr::${o.id}`);
+    pr.append(mk('span', 'mc', 'L'), ieOptPrice);
+    const ieRecPill = document.createElement('button'); ieRecPill.type = 'button'; ieRecPill.className = 'recpill'; ieRecPill.classList.toggle('recpill-on', o.marked);
+    ieRecPill.textContent = 'Recomendada'; ieRecPill.setAttribute('aria-pressed', String(o.marked));
+    // exactly one: a tap marks this option (the marked one stays marked — a group never goes back to zero)
+    ieRecPill.addEventListener('click', bound(() => { if (!o.marked) IE.choiceSet(s, { op: 'choice.recommended', launcher: key, option: o.id }); relayout(); refocus([`ie-cg-rec::${o.id}`]); }));
+    focusKey(ieRecPill, `ie-cg-rec::${o.id}`);
+    const ieOptTrash = document.createElement('button'); ieOptTrash.type = 'button'; ieOptTrash.className = 'model';
+    ieOptTrash.setAttribute('aria-label', `Quitar ${o.choice || 'opción'}`); ieOptTrash.append(svgTrashIcon());
+    if (few) { lockControl(ieOptTrash, true); ieOptTrash.title = IE.s3Copy('tooFew'); }   // locked: the inert pass keeps it off
+    ieOptTrash.addEventListener('click', bound(() => {
+      if (o.isNew) IE.choiceDropNew(s, o.id); else IE.choiceOp(s, { op: 'option.remove', key: o.id });
+      relayout(); refocus(['ie-cg-add']);
+    }));
+    row.append(ieOptName, pr, ieRecPill, ieOptTrash);
+    if (o.isNew) row.append(mk('span', 'mk-apponly', 'Solo en la app Sherpa'));
+    ge.append(row);
+    if (!o.isNew) R.opts.push({ key: o.id, row, cnt: mk('span', 'mk-cnt'), pi: ieOptPrice });
+    last = row;
+  }
+  const ieAddOption = document.createElement('button'); ieAddOption.type = 'button'; ieAddOption.className = 'mgadd';
+  ieAddOption.append(svgPlusIcon(), document.createTextNode('Agregar opción'));
+  ieAddOption.addEventListener('click', bound(() => {
+    const ref = tmpRef();
+    if (IE.choiceOp(s, { op: 'option.add', launcher: key, ref, choice: '', price: null }).ok) { relayout(); refocus([`ie-cg-opt::${ref}`]); }
+  }));
+  focusKey(ieAddOption, 'ie-cg-add');
+  const flag = mk('label', 'mgflag');
+  const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
+  ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
+  focusKey(ieSame, 'ie-same');
+  flag.append(ieSame, document.createTextNode('Mismo precio para todas'));
+  R.same = ieSame;
+  const sub = mk('div', 'mk-sub');
+  ge.append(ieAddOption, flag, sub);
+  R.choice = { s, key, ge, after: last, add: ieAddOption, sub, card, line: null };
+  const gf = mk('div', 'mk-gf');
+  const ieQuitChoice = document.createElement('button'); ieQuitChoice.type = 'button'; ieQuitChoice.className = 'btn ghost mk-quiet-danger sm'; ieQuitChoice.textContent = 'Quitar elección';
+  focusKey(ieQuitChoice, 'ie-cg-quit');
+  const ieChoiceDone = document.createElement('button'); ieChoiceDone.type = 'button'; ieChoiceDone.className = 'btn sm'; ieChoiceDone.textContent = 'Listo';
+  ieChoiceDone.addEventListener('click', bound(() => { choiceEditing.delete(s.id); relayout(); refocus(['ie-cg-pen']); }));
+  gf.append(ieQuitChoice, mk('span', 'mk-sp'), ieChoiceDone);
+  card.append(ge, gf);
+  syncChoice(R);
+  return card;
+}
+// the editor's live parts, after every keystroke: the naming line (the dish's typed name), and B2's line — quiet while the merchant
+// edits, the refusal style once «Guardar» held; gone the moment a pill is on
+function syncChoice(R) {
+  const c = R && R.choice;
+  if (!c) return;
+  const cm = IE.choiceModel(state.draft, c.s);
+  if (!cm || cm.removed) return;
+  c.card.classList.add('chg');   // the editing ring (syncEdit's field pass toggles .chg by today's fields only)
+  const v = IE.view(state.draft, c.s);
+  const o = cm.options.find((x) => x.marked) || cm.options[0];
+  c.sub.textContent = o ? `En el menú cada opción se llama «${v.fields.name} - ${o.choice}»: el nombre se arma solo y cambia con el producto.` : '';
+  if (!cm.hold) { if (choiceHeld === c.s.id) choiceHeld = null; if (c.line) { c.line.remove(); c.line = null; } return; }
+  const text = IE.s3Copy(cm.hold.reason === 'recommended_removed' ? 'recRemoved' : 'recRequired');
+  if (!c.line) {
+    c.line = document.createElement('div'); c.line.setAttribute('role', 'status');
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', 'M6 3h12v18l-6-4-6 4z'); svg.append(pth);
+    c.line.append(svg, document.createElement('span'));
+    c.ge.insertBefore(c.line, c.add);
+  }
+  c.line.className = `mk-recline${choiceHeld === c.s.id ? ' ferr' : ''}`;
+  c.line.lastChild.textContent = text;
+}
 const opcN = (n) => `${n} ${n === 1 ? 'opción' : 'opciones'}`;
 const opcProducts = (n) => `en ${n} ${n === 1 ? 'producto' : 'productos'}`;
 // an extras card's header line: open → the group's reach; folded (A3) → also how many are active here, or how many there are
@@ -1974,7 +2092,7 @@ function renderEditDrawer(d, it, keepScroll) {
     endEditSession();
     // the copy carries BOTH server switches: extrasCatalog turns on its group ops (B's attach, «Quitar de este producto») — without it
     // setGroupAttached stays dark by design, so an app that forgot to pass it would record nothing
-    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true });
+    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true, choiceEdit: state.choiceEdit === true });
   }
   const s = editSess;
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
@@ -2112,7 +2230,44 @@ function renderEditDrawer(d, it, keepScroll) {
       sw.append(lbl, ieNoExtras);
       box.append(sw);
     }
-    if (v0.options) {
+    // STRUCTURE S3 (MOCKUP panel D + the S3 addendum B2): with the server's choiceEdit switch the card reads the copy's choice (its
+    // pending ops applied) and carries the pencil; the pencil opens the editor IN the card. Without it, S1's card exactly.
+    const cm = s.choiceEdit ? IE.choiceModel(state.draft, s) : null;
+    if (cm && !cm.removed && choiceEditing.has(s.id)) {
+      const card = choiceEditorCard(s, key, cm, { mk, header, relayout, R });
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    } else if (cm && !cm.removed && v0.options) {
+      const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+      const open = !folded('req');
+      const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
+      const iePencil = document.createElement('button'); iePencil.type = 'button'; iePencil.className = 'mk-ib';
+      iePencil.title = 'Editar grupo'; iePencil.setAttribute('aria-label', `Editar grupo ${label}`);
+      iePencil.append(pencilIcon());
+      iePencil.addEventListener('click', bound(() => { choiceEditing.add(s.id); relayout(); refocus(['ie-cg-name']); }));
+      focusKey(iePencil, 'ie-cg-pen');
+      const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(cm.options.length)}`}`, 'mk-gts mk-greq', open, iePencil);
+      card.append(h.gh);
+      // R1 ends with S3: the prices are edited in the editor; the read card names each option, its mark, its price (frame A)
+      if (open) {
+        const block = mk('div', 'mk-gb');
+        const work = new Map(v0.options.map((o) => [o.key, o.price]));
+        for (const o of cm.options) {
+          const row = mk('div', 'mk-dopt');
+          const dn = mk('span', 'mk-dn', o.choice);
+          if (o.marked) dn.append(mk('span', 'mk-rec', 'Recomendada'));
+          if (o.isNew) dn.append(mk('span', 'mk-apponly', 'Solo en la app Sherpa'));
+          const pr = o.isNew ? o.price : parsePrice(work.has(o.id) ? work.get(o.id) : o.price);
+          row.append(dn, mk('span', 'dp', Number.isInteger(pr) && pr > 0 ? `L ${pr}` : ''));
+          block.append(row);
+        }
+        card.append(block);
+      }
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    } else if (v0.options) {
       const g = choiceGroup(state.draft, key);
       const label = (g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección';
       const open = !folded('req');
@@ -2380,12 +2535,15 @@ function syncEdit() {
   // the bar waits while the copy is dirty — repainted by syncUi (the one derivation) only when that changes: syncUi → setDrawerInert →
   // syncEdit would otherwise loop
   if (R.lastDirty !== dirty) { R.lastDirty = dirty; syncUi(); }
+  syncChoice(R);
 }
 // «Guardar»: the whole edit into the shared draft, once; the drawer closes onto the list (the row shows its tag, the bar counts it).
 function saveEdit() {
   const s = editSess;
   if (!s || s.closed) return;
   const r = IE.save(state.draft, s);
+  // B2: a touched choice with no «Recomendada» is held HERE (never sent to a sure refusal) — the editor opens on its line, refusal style
+  if (!r.ok && r.error === 'choice_hold') { choiceHeld = s.id; choiceEditing.add(s.id); renderDrawer(); holdDrawerForRename(); return; }
   if (!r.ok) { syncEdit(); return; }
   editSess = null; editUpload = null; editRefs = null;
   closeDrawer();

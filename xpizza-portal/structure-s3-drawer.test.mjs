@@ -139,3 +139,26 @@ test('typing coalesces: the label / a rename / the mark stay ONE op each (the la
   const m = IE.choiceModel(d, s);
   assert.deepEqual(m.options.find((o) => o.id === ref('q')), { id: ref('q'), choice: 'Tofu', price: 330, marked: false, isNew: true });
 });
+
+test('a NEW option\'s trash drops its add op and every op that names it (its mark included); a live option\'s trash is option.remove', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('t'), choice: 'Tofu', price: 330 });
+  IE.choiceSet(s, { op: 'choice.recommended', launcher: PAD, option: ref('t') });
+  assert.equal(IE.choiceDropNew(s, ref('t')).ok, true);
+  assert.deepEqual(s.choiceOps, [], '🔴 nothing left of the new option');
+  assert.equal(IE.choiceModel(d, s).touched, false, 'the group is as loaded again: no line');
+  assert.equal(IE.choiceDropNew(s, ref('t')).ok, false, 'an unknown ref is refused');
+});
+
+test('choiceModel is a PURE reader (the wiring guards rule it so): a deep-frozen draft source and copy ops, byte-identical after', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('f'), choice: 'Tofu', price: 330 });
+  const freeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+  const before = JSON.stringify([draftSource(d), d.orig, s.choiceOps]);
+  freeze(draftSource(d)); freeze(d.orig); freeze(s.choiceOps);
+  const m = IE.choiceModel(d, s);
+  assert.equal(m.options.length, 4, 'premise: the model read the ops');
+  assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
+});

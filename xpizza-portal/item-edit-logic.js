@@ -444,6 +444,7 @@ export function choiceOp(s, op) {
 // op — the latest value replaces the earlier one in place (its click position is kept); a new option's name / price edit its own add op.
 const slotOf = (op) => (op.op === 'choice.label' || op.op === 'choice.recommended' ? `${op.op}:${op.launcher}` : op.op === 'option.rename' ? `${op.op}:${op.key}` : null);
 function tryOps(s, ops) {
+  if (!ops.length) return { ok: true };   // nothing to dry-run (the writer refuses an empty list)
   const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
   return applyChoiceOps(scratch, ops, { choiceEdit: true });
 }
@@ -467,6 +468,21 @@ export function choiceUpdateNew(s, ref, patch = {}) {
     if (op.op === 'choice.add' && Array.isArray(op.options) && op.options.some((o) => o.ref === ref)) return { ...op, options: op.options.map((o) => (o.ref === ref ? { ...o, ...pick(patch) } : o)) };
     return op;
   });
+  const r = tryOps(s, next);
+  if (!r.ok) return r;
+  s.choiceOps = next;
+  return { ok: true };
+}
+// ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
+// the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null });
+export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
+// a NEW option's trash: it was never saved, so its add op goes — with every op that names it (its rename, its mark)
+export function choiceDropNew(s, ref) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  if (!s.choiceOps.some((op) => op.op === 'option.add' && op.ref === ref)) return { ok: false, code: 'choice_option_missing' };
+  const next = s.choiceOps.filter((op) => !(op.op === 'option.add' && op.ref === ref) && !(op.op === 'choice.recommended' && op.option === ref) && !(op.op === 'option.rename' && op.key === ref));
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;

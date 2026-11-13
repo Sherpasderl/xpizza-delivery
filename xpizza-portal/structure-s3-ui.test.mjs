@@ -1,0 +1,137 @@
+// STRUCTURE S3 (UI) — the DRAWING half, step 2: the required choice's editor in the drawer, built EXACT to MOCKUP-portal-structure-edit
+// panel D (owner-approved 11-11: its strings are literal) and the S3 addendum's B2 zero-mark line (visually checked, copy PENDING the
+// owner: every string it proposes is a ⟦s3.key⟧ placeholder and the SHIP GATE below stays red until it is approved). The REAL app.js in
+// jsdom over index.html (drawer-harness.mjs), the REAL la_musa seed, the server's choiceEdit switch in getEditableCatalog's shape.
+// Run: node --test --test-force-exit structure-s3-ui.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { editable, settle, page } from './drawer-harness.mjs';
+
+const { S3_COPY } = await import('./item-edit-logic.js');
+const P = (k) => `⟦s3.${k}⟧`;
+const ON = () => editable({ extrasAuthoring: true, choiceEdit: true });
+const PAD = 'noodle_01';
+const reqCard = (p) => p.drawer().querySelector('.mk-grp.mk-req');
+const pencil = (p) => reqCard(p).querySelector('.mk-gh .mk-gact button[title="Editar grupo"]');
+const ge = (p) => reqCard(p).querySelector('.mk-ge');
+const rows = (p) => [...ge(p).querySelectorAll(':scope > .mopt')];
+const nameOf = (r) => r.querySelector('input.moname').value;
+const pill = (r) => r.querySelector('button.recpill');
+const trash = (r) => r.querySelector('button.model');
+const recline = (p) => ge(p).querySelector('.mk-recline');
+const gf = (p, t) => [...reqCard(p).querySelectorAll('.mk-gf button')].find((b) => b.textContent === t);
+async function editing(p) { await p.signIn(); await p.open(PAD); pencil(p).click(); await settle(5); }
+const groupOf = (src) => { const l = src.items.find((i) => i.key === PAD); const sp = src.structure.variant_items[String(l.display.id)]; return { label: sp.label, members: sp.variantIds.map((v) => src.items.find((i) => String(i.display.id) === String(v) || i.ref === v)) }; };
+
+test('OFF (choiceEdit absent / not true): the required choice\'s card is S1\'s — no pencil, no editor', async () => {
+  for (const over of [{ extrasAuthoring: true }, { extrasAuthoring: true, choiceEdit: 'true' }, { extrasAuthoring: true, choiceEdit: false }]) {
+    const p = await page({ read: () => editable(over) });
+    await p.signIn(); await p.open(PAD);
+    assert.ok(reqCard(p), 'premise: the S1 card');
+    assert.equal(reqCard(p).querySelector('button[title="Editar grupo"]'), null, `no pencil for ${JSON.stringify(over)}`);
+    assert.equal(reqCard(p).querySelector('.mk-ge'), null);
+  }
+});
+
+test('D — the pencil opens the editor EXACT to panel D: name box, one row per option (name · L price · «Recomendada» · trash), «Agregar opción», the flag, the naming line, «Quitar elección» · «Listo»', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PAD);
+  const pen = pencil(p);
+  assert.equal(pen.getAttribute('aria-label'), 'Editar grupo Proteína');
+  pen.click(); await settle(5);
+  const card = reqCard(p);
+  assert.ok(card.classList.contains('chg') && card.classList.contains('mk-open'), 'the editing card: open, the change ring');
+  assert.equal(card.querySelector('.mk-gh button[title="Editar grupo"]'), null, 'panel D\'s header: the chevron only');
+  const g = ge(p);
+  const lbl = g.querySelector(':scope > label.mgname-lbl'); const nm = g.querySelector(':scope > input.mgname-in');
+  assert.equal(lbl.textContent, 'Nombre de la elección'); assert.equal(lbl.htmlFor, nm.id);
+  assert.equal(nm.value, 'Proteína'); assert.equal(nm.placeholder, 'Ej. Tamaño, Término, Porción');
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo', 'Camarones']);
+  const r0 = rows(p)[0];
+  assert.equal(r0.querySelector('input.moname').getAttribute('aria-label'), 'Nombre de la opción');
+  assert.equal(r0.querySelector('input.moname').placeholder, 'Nombre de la opción');
+  assert.equal(r0.querySelector('.mopr .mc').textContent, 'L');
+  const pr = r0.querySelector('.mopr input'); assert.equal(pr.value, '307'); assert.equal(pr.getAttribute('aria-label'), 'Precio'); assert.equal(pr.inputMode, 'numeric');
+  assert.equal(pill(r0).textContent, 'Recomendada'); assert.equal(pill(r0).getAttribute('aria-pressed'), 'false', 'live data: zero marks');
+  assert.equal(trash(r0).getAttribute('aria-label'), 'Quitar Sin Proteína');
+  assert.equal(r0.querySelector('.mk-apponly'), null, 'a live option is sold everywhere');
+  assert.deepEqual([...g.children].map((c) => c.className).filter((c) => c !== 'mopt'), ['mgname-lbl', 'mgname-in', 'mgadd', 'mgflag', 'mk-sub'], 'D\'s order; no line while untouched');
+  assert.equal(g.querySelector('.mgadd').textContent, 'Agregar opción');
+  assert.equal(g.querySelector('.mgflag').textContent, 'Mismo precio para todas');
+  assert.equal(g.querySelector('.mk-sub').textContent, 'En el menú cada opción se llama «Pad Thai - Sin Proteína»: el nombre se arma solo y cambia con el producto.');
+  assert.ok(gf(p, 'Quitar elección').classList.contains('mk-quiet-danger'));
+  assert.ok(gf(p, 'Listo'));
+});
+
+test('B2 — «Agregar opción» adds a new row (app-only mark, focused name); the touched group shows the quiet line; «Guardar» HOLDS it in the refusal style; one pill tap ends it and «Guardar» saves', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const before = JSON.stringify(p.src());
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  const nw = rows(p)[3];
+  assert.ok(nw.classList.contains('chg')); assert.equal(nw.querySelector('.mk-apponly').textContent, 'Solo en la app Sherpa');
+  assert.equal(p.d.activeElement, nw.querySelector('input.moname'), 'the caret lands in the new name');
+  p.type(nw.querySelector('input.moname'), 'Tofu'); p.type(nw.querySelector('.mopr input'), '330'); await settle(5);
+  const line = recline(p);
+  assert.ok(line, '🔴 the zero-mark line'); assert.equal(line.getAttribute('role'), 'status');
+  assert.equal(line.textContent, P('recRequired')); assert.ok(!line.classList.contains('ferr'));
+  assert.equal(line.previousElementSibling, rows(p)[3], 'directly under the rows'); assert.ok(line.nextElementSibling.classList.contains('mgadd'));
+  p.btn('Guardar').click(); await settle(5);
+  assert.ok(p.drawer().classList.contains('show'), '🔴 held: the drawer stays');
+  assert.ok(recline(p).classList.contains('ferr'), 'the same words in the refusal style');
+  assert.equal(JSON.stringify(p.src()), before, 'nothing written');
+  pill(rows(p)[1]).click(); await settle(5);
+  assert.equal(pill(rows(p)[1]).getAttribute('aria-pressed'), 'true'); assert.ok(pill(rows(p)[1]).classList.contains('recpill-on'));
+  assert.equal(recline(p), null, 'one tap ends it');
+  p.btn('Guardar').click(); await settle(10);
+  const g = groupOf(p.src());
+  assert.deepEqual(g.members.map((m) => m.display.choice), ['Sin Proteína', 'Pollo', 'Camarones', 'Tofu']);
+  assert.equal(g.members[3].price, 330);
+  assert.deepEqual(g.members.filter((m) => (m.display.tags || []).includes('recommended')).map((m) => m.key), ['noodle_01_pollo']);
+});
+
+test('typing the name / an option\'s name keeps the SAME input (no rebuild under the caret) and saves the last value', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const nm = ge(p).querySelector('input.mgname-in');
+  for (const v of ['Pro', 'Proteína a elegir']) p.type(nm, v);
+  const on = rows(p)[1].querySelector('input.moname');
+  p.type(on, 'Pollo al wok'); await settle(5);
+  assert.equal(ge(p).querySelector('input.mgname-in'), nm, 'the same node'); assert.equal(rows(p)[1].querySelector('input.moname'), on);
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const g = groupOf(p.src());
+  assert.equal(g.label, 'Proteína a elegir'); assert.equal(g.members[1].display.choice, 'Pollo al wok');
+});
+
+test('the trash: a live option is removed (two left ⇒ the trash turns off with the line as its title); a NEW option\'s trash drops it', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  trash(rows(p)[3]).click(); await settle(5);
+  assert.equal(rows(p).length, 3); assert.equal(recline(p), null, 'the group is as loaded: no line');
+  trash(rows(p)[2]).click(); await settle(5);
+  assert.deepEqual(rows(p).map(nameOf), ['Sin Proteína', 'Pollo']);
+  for (const r of rows(p)) { assert.equal(trash(r).disabled, true, '🔴 two options: no trash'); assert.equal(trash(r).title, P('tooFew')); }
+});
+
+test('«Listo» folds the editor back to the read card; the edits stay in the drawer\'s copy', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína elegida'); await settle(5);
+  gf(p, 'Listo').click(); await settle(5);
+  assert.equal(reqCard(p).querySelector('.mk-ge'), null);
+  assert.equal(reqCard(p).querySelector('.mk-gtn').textContent, 'Proteína elegida', 'the read card names the edited choice');
+  assert.ok(pencil(p));
+  assert.equal(p.btn('Guardar').disabled, false, 'still unsaved');
+});
+
+test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['recRemoved', 'recRequired', 'tooFew']);
+});
+
+// THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy
+test('SHIP GATE: no placeholder ships — every S3 string is owner-approved text', () => {
+  const pending = Object.entries(S3_COPY).filter(([, v]) => typeof v !== 'string').map(([k]) => k);
+  assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
+});

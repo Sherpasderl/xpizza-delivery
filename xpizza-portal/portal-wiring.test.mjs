@@ -1086,6 +1086,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
+    'state.choiceEdit':          [2, 'guarded', 'STRUCTURE S3 (UI-r0 :45) \u2014 the server\u2019s required-choice switch (getEditableCatalog choiceEdit); fail closed (S1\u2019s card, no pencil) until a load sets it; the server re-judges every op'],
     'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
     // «Quitar del menú» (PLAN-portal-remove-product r3 §9) — per-load server facts, set ONLY in applyAddProductFacts on the generation-checked
     // settle paths and reset with the edit facts (resetEditFacts); the server re-judges every save (the claim, the orders, the refs)
@@ -1375,6 +1376,15 @@ const LISTENERS = {
   "ieDetach::click":              ['bound', [], 'S2 A — «Quitar de este producto»: detach.item into the drawer COPY (IE.setGroupAttached false), never the draft'],
   "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
   "ieRemove::click":              ['bound', [], '«Quitar del menú» R1 — opens the R2 confirm; the press writes nothing (the confirm\u2019s «Quitar» is confirmRemoveProduct, built with bound())'],
+  // STRUCTURE S3 — the required choice's editor (panel D): every handler writes only the WORKING COPY's choice ops (IE.choiceOp /
+  // choiceSet / choiceUpdateNew / choiceDropNew, each dry-run through the server's writer) or view state; the draft only by «Guardar»
+  "iePencil::click":              ['bound', [], 'S3 D \u2014 the pencil opens the editor: view state (choiceEditing, per drawer session) and a drawer re-render'],
+  "ieChoiceName::input":          ['bound', [], 'S3 D \u2014 «Nombre de la elección», into the working copy (IE.choiceSet choice.label: one op, the last value)'],
+  "ieOptName::input":             ['bound', [], 'S3 D \u2014 an option\u2019s name, into the working copy (a live one: option.rename via choiceSet; a new one: its own add op)'],
+  "ieRecPill::click":             ['bound', [], 'S3 D \u2014 «Recomendada», into the working copy (IE.choiceSet choice.recommended: exactly one mark); the drawer re-lays out'],
+  "ieOptTrash::click":            ['bound', [], 'S3 D \u2014 an option\u2019s trash, into the working copy (option.remove, or a new option\u2019s add op dropped); the drawer re-lays out'],
+  "ieAddOption::click":           ['bound', [], 'S3 D \u2014 «Agregar opción», into the working copy (option.add with a fresh tmp: ref); the drawer re-lays out'],
+  "ieChoiceDone::click":          ['bound', [], 'S3 D \u2014 «Listo»: closes the editor (view state); the copy keeps its ops'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
@@ -1631,6 +1641,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.attachSheet',
   // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
   'IE.detachRefusal',
+  // S3: the required choice's model over the copy's ops (the writer applied to a scratch draft) — a pure reader (cell «choiceModel is a PURE reader»)
+  'IE.choiceModel',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
