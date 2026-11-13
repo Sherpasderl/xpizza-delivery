@@ -107,7 +107,7 @@ test('S4-E (REAL diff) — a subsection renamed AND reordered in one save (5f 29
   assert.deepEqual(rowsOf(m), [
     ['Bebidas', P('rowSubcat'), 'Cambio', 'Sodas → Refrescos', false],
     ['Cervezas', P('rowCatSubcat'), 'Orden', 'pasa al 1.º lugar', false],
-  ]);
+  ], '🔴 the reorder survives a same-save rename');
 });
 
 test('S4-E (documented shape) — the published staged entry: drop / rename / anchor move / two promotions from one anchor (the second names the first); app_only marks', () => {
