@@ -39,13 +39,15 @@ const WORLD = {
 function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry, world = WORLD } = {}) {
   const db = fakeRtdb({ platform_admins: admins, ...(policy ? { platform_config: { delivery_pricing: policy } } : {}), restaurants: world.restaurants, brands: world.brands }, { strict: true });
   const srv = {
-    db, uid: null, at: 0, commits: 0, posts: [], gets: 0, now: Date.UTC(2026, 10, 11, 18, 0),
+    db, uid: null, at: 0, commits: 0, posts: [], gets: 0, now: Date.UTC(2026, 10, 11, 18, 0), forgetIdentities: () => forgetIdentities(),
     fault: { post: null, get: null },   // post: 'before503' | 'after503' | 'afterDrop' | 'afterMalformed' | 'drop' ; get: 'fail' | 'hold'
     hold: { get: null, post: null, getAfter: null },
   };
   // envío step 2: the zones lock's deps, exactly production's (delivery/pricing-admin-functions.js:19-27) — the REAL getIdentity (its warm
   // cache cleared per world) and the REAL strict grace read; `srv.now` is the clock the lock judges hours at (a Wednesday, noon local)
   RC._cache.clear();
+  // a cell that changes a restaurant's identity (its hours) mid-session drops getIdentity's warm cache, as a new instance would
+  const forgetIdentities = () => RC._cache.clear();
   const deps = () => ({ db, verifyIdToken: async (t) => { if (t !== 'TK-test' || !srv.uid) throw new Error('bad'); return { uid: srv.uid }; },
     timestamp: () => ++srv.at, readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: world.ids })),
     getIdentity: RC.getIdentity, readGrace: ZL.readGraceMinutesStrict, now: () => srv.now });

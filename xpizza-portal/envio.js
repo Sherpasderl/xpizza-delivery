@@ -94,6 +94,10 @@ const S = {
   inerted: [],             // Codex r1 F1: the background nodes the open confirm made inert (released on EVERY exit)
   map: null,               // { frame, mount, deadline, listening, ready, failed, onMsg }
   zones: null,             // ENVÍO step 2: envio-logic zonesFromBody(the read) — { zones | null, editable, lock, caps }; fail closed
+  zonesDraft: null,        // Z1b: the zones as edited (a copy of the read's list), compared with the server's sameZones
+  zoneEdit: null,          // Z1b: { id, value, line } — the row being renamed in place
+  zoneRemove: null,        // Z1b: the zone id whose «Quitar zona» confirm is open
+  zonesFail: null,         // Z1b: a save outcome about the zones — { kind: 'locked' | 'hours' | 'refused', branches, key, zoneId }
   refs: null,
 };
 function snap() {
@@ -148,6 +152,8 @@ const raiseFloor = (v) => { if (Number.isSafeInteger(v) && v > S.floor) S.floor 
 function adoptBody(b) {
   S.loaded = EL.loadedState(b);
   S.zones = EL.zonesFromBody(b);
+  S.zonesDraft = S.zones.zones === null ? null : S.zones.zones.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ lat: pt.lat, lng: pt.lng })) }));
+  S.zoneEdit = null; S.zoneRemove = null; S.zonesFail = null;
   raiseFloor(bodyVersion(b));
   S.branchesUnavailable = !Array.isArray(b.branches);
   S.branchesRaw = Array.isArray(b.branches) ? b.branches : [];
@@ -163,6 +169,8 @@ function adoptBody(b) {
 function curTop() { const ok = EL.mapBands(S.rows || []).filter((b) => b.ok); return ok.length ? ok[ok.length - 1].km : null; }
 const pendingNow = () => EL.pendingLimits(S.restaurants, S.limitEdits, curTop());
 const limitDirty = () => Object.keys(pendingNow()).length > 0;
+// ENVÍO step 2, Z1b: the zones draft differs from the read (the server's own logical equality)
+const zonesDirty = () => !!(S.zonesDraft && S.zones && S.zones.zones && !EL.sameZones(S.zonesDraft, S.zones.zones));
 // an edited field with a line holds Guardar (the field shows the line; no other text)
 const limitInvalid = () => S.restaurants.some((r) => Object.prototype.hasOwnProperty.call(S.limitEdits, r.key) && !!EL.limitProblem(S.limitEdits[r.key], curTop()));
 function refreshEntries() {
@@ -185,7 +193,7 @@ async function load({ fresh } = {}) {
   const rv = bodyVersion(res.body);
   if (rv !== null && rv < S.floor) { if (S.status !== 'ready') { S.status = 'ready'; render(); } return; }
   store.set(CACHE(S.uid), cacheable(res.body));
-  const keepDraft = !fresh && (S.attempt || limitDirty() || limitInvalid() || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
+  const keepDraft = !fresh && (S.attempt || limitDirty() || limitInvalid() || zonesDirty() || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
   if (keepDraft) {
     // the draft wins on screen; the CAS catches a newer server version at save. The directory still refreshes.
     S.branchesUnavailable = !Array.isArray(res.body.branches);
@@ -207,19 +215,22 @@ function openEnvioConfirm() {
   const bar = barState();
   if (!bar.canSave && !(S.loaded.kind === 'malformed' && EL.validate(S.rows).valid && !limitInvalid())) return;
   const pending = pendingNow();
-  const body = EL.toBody(S.rows, S.loaded.version, EL.limitsFor(pending));
+  const body = EL.toBody(S.rows, S.loaded.version, EL.limitsFor(pending), zonesDirty() ? S.zonesDraft : undefined);   // zones only when changed
   const was = S.loaded.kind === 'policy' ? S.loaded.bands.map((b) => ({ ...b })) : [];
   const loadedTop = was.length ? was[was.length - 1].max_km : null;
   const changes = EL.limitChanges(S.restaurants, pending, loadedTop);
   S.confirm = Object.freeze({ body: Object.freeze({ expected_policy_version: body.expected_policy_version, bands: Object.freeze(body.bands.map((b) => Object.freeze({ ...b }))),
-    ...(body.limits ? { limits: Object.freeze(body.limits.map((e) => Object.freeze({ ...e }))) } : {}) }), was: Object.freeze(was),
+    ...(body.limits ? { limits: Object.freeze(body.limits.map((e) => Object.freeze({ ...e }))) } : {}),
+    ...(body.no_delivery_zones ? { no_delivery_zones: Object.freeze(body.no_delivery_zones.map((z) => Object.freeze({ ...z, points: Object.freeze(z.points.map((pt) => Object.freeze({ ...pt }))) }))) } : {}) }), was: Object.freeze(was),
   limitRows: Object.freeze(changes.rows.map((r) => Object.freeze({ ...r }))), limitCallouts: Object.freeze([...changes.callouts]) });
   render();
 }
 function startSave() {
   const c = S.confirm;
   if (S.attempt || !c) return;
-  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: c.body.expected_policy_version, bands: c.body.bands, limits: c.body.limits || [] });
+  S.zonesFail = null;
+  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: c.body.expected_policy_version, bands: c.body.bands, limits: c.body.limits || [],
+    zones: c.body.no_delivery_zones });
   send(S.attempt);
 }
 async function send(attempt) {
@@ -227,7 +238,8 @@ async function send(attempt) {
   S.phase = 'sending'; S.banner = null; render();
   let res;
   try {
-    res = await setDeliveryPricingRaw({ token, assertLive: g.assertLive, body: { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands, ...(attempt.sentLimits.length ? { limits: attempt.sentLimits } : {}) } });
+    res = await setDeliveryPricingRaw({ token, assertLive: g.assertLive, body: { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands, ...(attempt.sentLimits.length ? { limits: attempt.sentLimits } : {}),
+      ...(attempt.sentZones ? { no_delivery_zones: attempt.sentZones } : {}) } });   // ENVÍO step 2: the zones only when the reviewed body had them
   } catch (err) {
     if (!g.alive() || S.attempt !== attempt) return;
     // withheld before sending (no token / obsolete): nothing landed
@@ -237,11 +249,11 @@ async function send(attempt) {
   if (!g.alive() || S.attempt !== attempt) return;
   // Codex r1 F2: only the clean success contract is final; anything else is resolved by a fresh GET (the claim is kept as a hint)
   if (EL.classifyPost(attempt, res) === 'saved') { outcome(attempt, 'saved'); return; }
-  lastClaim = { attempt, claim: EL.postClaim(res) };
+  lastClaim = { attempt, claim: EL.postClaim(res), body: res && res.body && typeof res.body === 'object' ? res.body : null, key: EL.zonesRefusalKey(res) };
   recover(attempt);
 }
 // the POST's claim stays with ITS attempt, so a «Reintentar» after a failed recovery GET still reads it
-let lastClaim = { attempt: null, claim: null };
+let lastClaim = { attempt: null, claim: null, body: null, key: null };
 async function recover(attempt) {
   const g = snap();
   S.phase = 'recovering'; render();
@@ -278,11 +290,13 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
         S.attempt = null; S.phase = null; S.banner = null;
         store.set(CACHE(S.uid), cacheable(rb));
         render();
-        toast(COPY.saved);
+        toast(attempt.sentZones ? EL.zonesCopy('savedBoth') : COPY.saved);
         return;
       }
       const version = attempt.expectedVersion + 1;
       raiseFloor(version);
+      // ENVÍO step 2: the sent zones ARE the stored ones now (the same transaction); unsent ⇒ the stored list is untouched
+      if (attempt.sentZones && S.zones) { S.zones = { ...S.zones, zones: attempt.sentZones.map((z) => ({ id: z.id, name: z.name, points: z.points.map((pt) => ({ ...pt })) })) }; S.zonesDraft = S.zones.zones.map((z) => ({ ...z, points: z.points.map((pt) => ({ ...pt })) })); }
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
       S.rows = EL.rowsFromBands(S.loaded.bands);
       // ENVÍO v3: the sent limits ARE the stored ones now (the same transaction): fold them into the loaded rows, nothing left pending
@@ -297,9 +311,14 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       store.set(CACHE(S.uid), { ...c, current_malformed: undefined, policy_version_raw: undefined, policy_version: version, bands: S.loaded.bands,
         ...(Array.isArray(c.branches) ? { branches: landed(c.branches) } : {}) });
       render();
-      toast(COPY.saved);
+      toast(attempt.sentZones ? EL.zonesCopy('savedBoth') : COPY.saved);
       return;
     }
+    // ENVÍO step 2 (addendum D): a restaurant is open — nothing landed; the draft stays; the panel names who
+    case 'zones_locked':
+      S.attempt = null; S.phase = null; S.banner = null;
+      S.zonesFail = { kind: 'locked', branches: lastClaim.attempt === attempt && lastClaim.body && Array.isArray(lastClaim.body.branches) ? lastClaim.body.branches : [] };
+      render(); return;
     case 'superseded': case 'conflict':
       S.attempt = null; S.phase = null; S.banner = 'conflict';
       S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
@@ -310,8 +329,17 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
     case 'forbidden': revoke(); return;
     case 'refused': case 'unauthenticated':
       if (o === 'refused') console.warn('envio save: refused');
+      // ENVÍO step 2 (addendum F): the server refused the zones list — its own panel, the draft kept
+      if (o === 'refused' && lastClaim.attempt === attempt && lastClaim.claim === 'zones_refused') {
+        S.attempt = null; S.phase = null; S.banner = null;
+        S.zonesFail = { kind: 'refused', key: lastClaim.key, zoneId: lastClaim.body && typeof lastClaim.body.zone_id === 'string' ? lastClaim.body.zone_id : null };
+        render(); return;
+      }
       S.attempt = null; S.phase = null; S.banner = 'error'; render(); return;
-    case 'not_landed': S.phase = 'not_landed'; S.banner = 'error'; render(); return;
+    case 'not_landed':
+      // ENVÍO step 2 (addendum E): the hours could not be read — nothing landed; «Reintentar» resends the same attempt
+      if (lastClaim.attempt === attempt && lastClaim.claim === 'hours_unavailable') { S.phase = 'not_landed'; S.banner = null; S.zonesFail = { kind: 'hours' }; render(); return; }
+      S.phase = 'not_landed'; S.banner = 'error'; render(); return;
     case 'unknown': S.phase = 'unknown'; S.banner = 'error'; render(); return;
     default: S.phase = 'unknown'; S.banner = 'error'; render();
   }
@@ -319,6 +347,7 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
 function retry() {
   const a = S.attempt;
   if (!a) { S.banner = null; render(); return; }
+  S.zonesFail = null;
   if (S.phase === 'not_landed') send(a);
   else if (S.phase === 'unknown') recover(a);
 }
@@ -330,8 +359,21 @@ function discard() {
   S.attempt = null; S.phase = null; S.banner = null; S.confirm = null; S.note = null;
   S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
   S.limitEdits = {};   // Codex HIGH r1 P2: the limit edits go too — the field, the picker and the map follow the loaded limits again
+  // ENVÍO step 2: the zones draft goes back to the read too
+  S.zonesDraft = S.zones && S.zones.zones ? S.zones.zones.map((z) => ({ ...z, points: z.points.map((pt) => ({ ...pt })) })) : null;
+  S.zoneEdit = null; S.zoneRemove = null; S.zonesFail = null;
   refreshEntries();
   render();
+}
+// ENVÍO step 2 (addendum D): «Guardar solo las tarifas» — the same reviewed fees WITHOUT the zones (envio-logic feesOnlyBody: the server
+// keeps the stored zones and never reads hours for it), as a NEW attempt; the zones draft stays
+function saveFeesOnly() {
+  const v = S.loaded && S.loaded.kind === 'policy' ? S.loaded.version : null;
+  if (S.attempt || v === null || !EL.validate(S.rows).valid || limitInvalid()) return;
+  const body = EL.toBody(S.rows, v, EL.limitsFor(pendingNow()));
+  S.zonesFail = null;
+  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: body.expected_policy_version, bands: body.bands, limits: body.limits || [] });
+  send(S.attempt);
 }
 
 // ── map frame (C2) ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -616,6 +658,8 @@ function paintBanner() {
     const r = button('btn', COPY.reload, () => { S.banner = null; load({ fresh: true }); });
     r.prepend(ic('reload'));
     box = errbox(COPY.conflictT, COPY.conflictP, r);
+  } else if (S.zonesFail) {
+    box = zonesFailBox();
   } else if (S.banner === 'error') {
     box = errbox(COPY.errT, COPY.errP, button('btn', COPY.retry, retry));
   } else if (L0 && L0.kind === 'malformed') {
@@ -627,6 +671,42 @@ function paintBanner() {
   b.replaceChildren(...(box ? [box] : []));
 }
 
+// ENVÍO step 2 — the zones save outcomes (addendum D–F): D a restaurant open (who and why; «Entendido», and «Guardar solo las tarifas»
+// when the fees changed too), E the hours unreadable («Reintentar», approved), F the server refused the list («Revisar zona»)
+function zonesFailBox() {
+  const f = S.zonesFail;
+  const box = el('div', 'eerr envzfail'); box.setAttribute('role', 'alert');
+  const t = el('div');
+  const acts = el('div', 'ebtns');
+  if (f.kind === 'locked') {
+    t.append(el('b', null, EL.zonesCopy('lockedSaveTitle')), el('p', null, EL.zonesCopy('lockedSaveBody')));
+    // the blocking branches (addendum D .blist): one line each — the name, then the status as a dot + word; > 3 ⇒ «y N más»
+    const list = el('div', 'blist');
+    for (const b of f.branches.slice(0, 3)) {
+      const row = el('div', 'zbrow');   // the mockup's .brow look, its own class (.brow is S2's review row: no colour crossing)
+      const st = el('span', `st ${b.reason === 'open' ? 'open' : 'unk'}`); st.append(el('i'), document.createTextNode(EL.zonesCopy(b.reason === 'open' ? 'branchOpen' : 'branchHours')));
+      row.append(el('span', 'k', `${b.location_name || b.name || b.rid}`), st);
+      list.append(row);
+    }
+    if (f.branches.length > 3) list.append(el('div', 'bmore', EL.zonesCopy('branchesMore')));
+    t.append(list);
+    acts.append(button('btn ghost', EL.zonesCopy('understood'), () => { S.zonesFail = null; render(); }));
+    const feesChanged = !!(S.loaded && S.loaded.kind === 'policy' && (EL.isDirty(S.rows, S.loaded.bands) || limitDirty()));
+    if (feesChanged) acts.append(button('btn accent', EL.zonesCopy('feesOnly'), saveFeesOnly));
+  } else if (f.kind === 'hours') {
+    t.append(el('b', null, EL.zonesCopy('hoursSaveTitle')), el('p', null, EL.zonesCopy('hoursSaveBody')));
+    acts.append(button('btn', COPY.retry, retry));
+  } else {
+    t.append(el('b', null, EL.zonesCopy(f.key === 'zones.caps' ? 'capsTitle' : 'refusedTitle')), el('p', null, EL.zonesCopy(f.key === 'zones.caps' ? 'capsBody' : 'refusedBody')));
+    acts.append(button('btn', EL.zonesCopy('reviewZone'), () => {
+      S.zonesFail = null; render();
+      const row = f.zoneId && S.refs ? [...S.refs.zonesList.querySelectorAll('.zrow')].find((r) => r.dataset.zone === f.zoneId) : null;
+      const b = row && row.querySelector('button.ib'); if (b) b.focus();
+    }));
+  }
+  box.append(ic('info'), t, acts);
+  return box;
+}
 const frozen = () => S.status !== 'ready' || !!S.attempt || S.banner === 'conflict' || !S.loaded || S.loaded.kind === 'unreadable'
   || (S.loaded.kind === 'malformed' && !S.loaded.canSave);
 function paintBands({ rebuild } = {}) {
@@ -707,6 +787,7 @@ function paintZones() {
   if (!r || !r.zonesList) return;
   const z = S.zones || { zones: null, editable: false, lock: { reason: 'unavailable', branches: [] } };
   const hub = (S.entries.find((e) => e.rid === S.pick) || {}).hub || null;
+  const canEdit = z.editable && !frozen();
   r.zonesLock.replaceChildren();
   if (z.zones !== null && !z.editable && z.lock) {
     const open = z.lock.reason === 'open';
@@ -717,15 +798,31 @@ function paintZones() {
     r.zonesLock.append(co);
   }
   r.zonesList.replaceChildren();
-  for (const zone of z.zones || []) {
-    const row = el('div', 'zrow');
+  for (const zone of S.zonesDraft || []) {
+    const editing = S.zoneEdit && S.zoneEdit.id === zone.id;
+    const row = el('div', `zrow${editing ? ' editing' : ''}`); row.dataset.zone = zone.id;
+    const sw = el('span', 'zsw'); sw.append(ic('hatch'));
+    if (editing) {
+      // rename in place (v2 «.zrow.editing»): Enter keeps it in the draft, Esc cancels; empty / too long / a taken name stay here
+      const zoneName = el('input'); zoneName.type = 'text'; zoneName.value = S.zoneEdit.value; zoneName.setAttribute('aria-label', `Nombre de ${zone.name}`);
+      zoneName.addEventListener('input', () => { S.zoneEdit = { ...S.zoneEdit, value: zoneName.value }; });
+      zoneName.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); S.zoneEdit = null; paintZones(); focusZone(zone.id, 'Renombrar'); }
+        else if (e.key === 'Enter') { e.preventDefault(); zoneRenameSave(zone.id); }
+      });
+      row.append(sw, zoneName);
+      r.zonesList.append(row);
+      if (S.zoneEdit.line) { const l = el('p', 'ferr', S.zoneEdit.line); l.setAttribute('role', 'alert'); r.zonesList.append(l); }
+      continue;
+    }
     const km = EL.zoneReachKm(zone, hub);
     const k = el('span', 'k', zone.name);
     k.append(el('span', 's', `${zone.points.length} puntos${km === null ? '' : ` \u00b7 dentro de ${km} km`}`));
-    const ren = button('ib', '', () => {}); ren.title = 'Renombrar'; ren.setAttribute('aria-label', `Renombrar ${zone.name}`); ren.append(ic('pencil'));
-    const rem = button('ib', '', () => {}); rem.title = 'Quitar'; rem.setAttribute('aria-label', `Quitar ${zone.name}`); rem.append(ic('x'));
-    ren.disabled = !z.editable; rem.disabled = !z.editable;
-    const sw = el('span', 'zsw'); sw.append(ic('hatch'));
+    const ren = button('ib', '', () => { S.zoneEdit = { id: zone.id, value: zone.name, line: null }; paintZones(); const i0 = r.zonesList.querySelector('.zrow.editing input'); if (i0) { i0.focus(); i0.select(); } });
+    ren.title = 'Renombrar'; ren.setAttribute('aria-label', `Renombrar ${zone.name}`); ren.append(ic('pencil'));
+    const rem = button('ib', '', () => { S.zoneRemove = zone.id; paintZoneRemove(); });
+    rem.title = 'Quitar'; rem.setAttribute('aria-label', `Quitar ${zone.name}`); rem.append(ic('x'));
+    ren.disabled = !canEdit; rem.disabled = !canEdit;
     row.append(sw, k, ren, rem);
     r.zonesList.append(row);
   }
@@ -734,6 +831,45 @@ function paintZones() {
   const note = (t) => r.zonesNotes.append(el('p', 'efnote', t));
   if (z.zones === null) note(EL.zonesCopy('unreadable'));
   else { if (z.editable) note(EL.zonesCopy('editableNote')); note(EL.zonesCopy('mapUpdating')); }
+}
+const focusZone = (id, title) => { const row = S.refs && [...S.refs.zonesList.querySelectorAll('.zrow')].find((x) => x.dataset.zone === id); const b = row && row.querySelector(`button.ib[title="${title}"]`); if (b) b.focus(); };
+// the server's name rules, before the save (zones.js normalizeInput): trimmed, 1..name_max, unique case-folded
+function zoneRenameSave(id) {
+  const e = S.zoneEdit;
+  if (!e || e.id !== id) return;
+  const name = String(e.value).replace(/\s+/g, ' ').trim();
+  const max = S.zones && S.zones.caps ? S.zones.caps.name_max : 30;
+  const fold = (v) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  let line = null;
+  if (!name) line = EL.zonesCopy('nameEmpty');
+  else if ([...name].length > max) line = EL.zonesCopy('nameLong');
+  else if ((S.zonesDraft || []).some((z) => z.id !== id && fold(z.name) === fold(name))) line = EL.zonesCopy('nameTaken');
+  if (line) { S.zoneEdit = { ...e, line }; paintZones(); const i0 = S.refs.zonesList.querySelector('.zrow.editing input'); if (i0) i0.focus(); return; }
+  S.zonesDraft = S.zonesDraft.map((z) => (z.id === id ? { ...z, name } : z));
+  S.zoneEdit = null;
+  afterEdit();
+  focusZone(id, 'Renombrar');
+}
+// «Quitar zona» (v2 note 11: the portal's small modal) — «Cancelar» focused; «Quitar» drops the zone from the draft
+function paintZoneRemove() {
+  const id = S.zoneRemove;
+  const host = S.refs && S.refs.layer;
+  if (!host) return;
+  const close = (refocus) => { S.zoneRemove = null; host.replaceChildren(); releaseInert(); if (refocus) focusZone(id, 'Quitar'); };
+  const scrim = el('div', 'scrim show');
+  const m = el('div', 'modal sm envzrm'); m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'envzrmt');
+  const h = el('h2', null, EL.zonesCopy('removeTitle')); h.id = 'envzrmt';
+  const head = el('div', 'mhead'); head.append(h, el('p', null, EL.zonesCopy('removeBody')));
+  const foot = el('div', 'mfoot');
+  const zoneRmCancel = button('btn ghost', 'Cancelar', () => close(true));
+  const zoneRmGo = button('btn ghost danger', 'Quitar', () => { S.zonesDraft = (S.zonesDraft || []).filter((z) => z.id !== id); close(false); afterEdit(); });
+  foot.append(zoneRmCancel, zoneRmGo);
+  m.append(head, foot);
+  m.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(true); } });
+  scrim.append(m);
+  host.replaceChildren(scrim);
+  inertEnvioBackground(host);
+  zoneRmCancel.focus();
 }
 // ENVÍO v3 A1 / A4 — the field for the picked branch's restaurant: the edit text, else its stored value (none → the table top; a flagged
 // restaurant: empty, «—»); «+» off at the cap; the line for an edited text; the sand note when the STORED value stays above the top
@@ -887,6 +1023,7 @@ function paintBar() {
   r.bar.classList.toggle('show', show);
   r.barDot.classList.toggle('ered', bar.state === 'invalid');
   r.barText.textContent = bar.state === 'invalid' ? bar.text : EL.COPY.dirty;
+  if (bar.state !== 'invalid' && zonesDirty()) r.barText.append(el('span', null, ` \u00b7 ${EL.zonesCopy('barSuffix')}`));   // ENVÍO step 2: the zones' share
   r.save.disabled = !!S.attempt || !(bar.canSave || malformedValid);
   r.discard.disabled = attemptUnresolved();
 }
@@ -899,6 +1036,7 @@ function barState() {
   if (bar.state === 'invalid') return bar;
   if (limitInvalid()) return { state: 'dirty', text: EL.COPY.dirty, canSave: false };
   if (bar.state === 'clean' && limitDirty()) return { state: 'dirty', text: EL.COPY.dirty, canSave: true };
+  if (bar.state === 'clean' && zonesDirty()) return { state: 'dirty', text: EL.COPY.dirty, canSave: true };   // ENVÍO step 2
   return bar;
 }
 function paintConfirm() {

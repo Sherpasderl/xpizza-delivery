@@ -413,6 +413,9 @@ export function feesOnlyBody(attempt) {
 // null here ⇒ «⟦zones.key⟧» on screen until the owner approves it (envio-zones-view's SHIP GATE stays red until then)
 export const ZONES_COPY = Object.freeze({
   editableNote: null, mapUpdating: null, lockedTitle: null, lockedBody: null, hoursTitle: null, hoursBody: null, recheck: null, unreadable: null,
+  nameEmpty: null, nameLong: null, nameTaken: null, removeTitle: null, removeBody: null, barSuffix: null, savedBoth: null,
+  lockedSaveTitle: null, lockedSaveBody: null, branchOpen: null, branchHours: null, branchesMore: null, understood: null, feesOnly: null,
+  hoursSaveTitle: null, hoursSaveBody: null, refusedTitle: null, refusedBody: null, capsTitle: null, capsBody: null, reviewZone: null,
 });
 export const zonesCopy = (k) => (typeof ZONES_COPY[k] === 'string' ? ZONES_COPY[k] : `⟦zones.${k}⟧`);
 // a zone's row line «N puntos · dentro de X km» (approved v2): X = the farthest vertex from the restaurant's pin, rounded UP to a km;

@@ -2040,6 +2040,16 @@
   .envio .zrow .ib svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .envio .ecallout.sand{border-color:var(--sand-line);background:var(--sand-soft);color:var(--sand-text)}
   .envio .envzones .railadd:disabled{opacity:.5;cursor:default}
+  /* ENVÍO step 2, Z1b — the zones save outcomes (addendum D–F: the blocking-branch list, dot + word) and the «Quitar zona» confirm */
+  .envio .envzfail .ebtns{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;align-self:center}
+  .envio .blist{display:flex;flex-direction:column;gap:6px;margin-top:11px}
+  .envio .zbrow{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--red-line);border-radius:10px;background:var(--card);font-size:13px}
+  .envio .zbrow .k{flex:1;min-width:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .envio .zbrow .st{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mute);white-space:nowrap;flex:none}
+  .envio .zbrow .st i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--sand-text)}
+  .envio .zbrow .st.open i{background:var(--green)}
+  .envio .blist .bmore{font-size:12px;color:var(--mute);padding:2px 2px 0}
+  .envio .envzrm .mfoot{display:flex;gap:9px;justify-content:flex-end}
   .envio .elab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute)}
   .envio .ecallout{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13px;line-height:1.5;color:var(--ink);margin-top:0}
   .envio .ecallout svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;flex:none;margin-top:2px}
