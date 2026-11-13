@@ -334,7 +334,7 @@ test('B6 — the reward refusal: the panel says the owner\'s line; «Corregir» 
 });
 
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'revLauncher', 'revPlain', 'revRecChanged', 'revRecNew', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

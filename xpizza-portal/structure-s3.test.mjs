@@ -277,3 +277,81 @@ test('x_pizza (name keys): «Agregar elección» on a plain dish and its first o
   assert.equal(first.price, dish.price); assert.deepEqual(first.display.tags, ['recommended']);
   assert.deepEqual(out, SERVER_CT.apply(src, { op: 'choice.add', key: dish.key, label: 'Tamaño', options: [{ ref: ref('m'), choice: 'Mediana' }, { ref: ref('g'), choice: 'Grande', price: dish.price + 100 }] }).source);
 });
+
+// ── B3 (S3 addendum): the review's «Estructura» rows from the REAL save's `choices` (choice-activation choiceRows), every server fact
+// shown ONCE — an option's add / remove, the mark's tag line and a plain dish's reprice are its choice row, never ALSO a generic line ──
+const { reviewModel } = await import('./review.js');
+const P3 = (k) => `⟦s3.${k}⟧`;
+function reviewCtxOf(adopted, loaded) {
+  const items = adopted.items.filter((r) => r && r.display && typeof r.key === 'string');
+  const gone = loaded.items.filter((r) => r && r.display && typeof r.key === 'string');
+  const rowOf = (k) => items.find((x) => x.key === k) || gone.find((x) => x.key === k);
+  const labelOf = (k) => { const r = items.find((x) => x.key === k); const vi = adopted.structure.variant_items || {}; return r && vi[String(r.display.id)] ? vi[String(r.display.id)].label : null; };
+  return { structure: { nameOf: (k) => (rowOf(k) || { display: { name: k } }).display.name, categoryName: (id) => `cat:${id}`,
+    sectionOf: (k) => { const r = rowOf(k); return r ? { cat: r.display.cat, subcat: r.display.subcat || null } : { cat: null, subcat: null }; },
+    choiceOf: (k) => { const r = rowOf(k); return r && typeof r.display.choice === 'string' ? r.display.choice : String(k); }, choiceLabel: labelOf } };
+}
+test('B3 — every choice facet is ONE «Estructura» row from the real save; the option adds / removes, the tag line and the reprice are not shown again', async () => {
+  CE.on = true;
+  try {
+    const B = await backend('la_musa');
+    const d = createDraft(clone(B.read.source));
+    const src = draftSource(d);
+    const pm = groupMembers(src, 'noodle_01');
+    const BEER = src.items.find((i) => /^beer_/.test(i.key) && i.display.variantOf == null).key;   // not redeemable (rewards-redeem-config)
+    assert.equal(applyChoiceOps(d, [
+      { op: 'choice.label', launcher: 'noodle_01', label: 'Proteína a elegir' },
+      { op: 'option.add', launcher: 'noodle_01', ref: ref('n'), choice: 'Tofu', price: 330 },
+      { op: 'option.remove', key: pm[2].key },
+      { op: 'choice.recommended', launcher: 'noodle_01', option: pm[1].key },
+      { op: 'choice.add', key: BEER, label: 'Tamaño', options: [{ ref: ref('a'), choice: 'Botella' }, { ref: ref('b'), choice: 'Cubeta', price: 480 }] },
+    ], ON).ok, true);
+    globalThis.fetch = B.fetch;
+    const res = await editCatalog({ rid: 'la_musa', source: draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
+    assert.ok(Array.isArray(res.diff.choices) && res.diff.choices.length === 2, 'premise: the server sent its choice rows');
+    const m = reviewModel(res.diff, reviewCtxOf(res.source, B.read.source));
+    const rows = m.structure.map((r) => [r.name, r.sub, r.kind, r.parts.join(' '), !!r.appOnly]);
+    const beerName = src.items.find((i) => i.key === BEER).display.name;
+    assert.deepEqual(rows, [
+      [beerName, [`cat:${src.items.find((i) => i.key === BEER).display.cat}`, src.items.find((i) => i.key === BEER).display.subcat].filter(Boolean).join(' \u00b7 '), 'Nuevo', P3('revLauncher'), true],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Cambio', 'Proteína → Proteína a elegir', false],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', 'Tofu · L 330', true],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Quitado', 'Camarones', false],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', P3('revRecNew'), false],
+    ], '🔴 one row per facet');
+    assert.deepEqual(m.added, [], '🔴 the new options are their «Nuevo» rows, not ALSO «Se agregan»');
+    assert.deepEqual(m.removed, [], 'the removed option is its «Quitado» row');
+    assert.equal(m.rows.filter((r) => r.field === 'tags').length, 0, 'the mark is its row, not a tag line');
+    const B2 = await backend('la_musa');
+    const d2 = createDraft(clone(B2.read.source));
+    assert.equal(applyChoiceOps(d2, [{ op: 'choice.remove', launcher: 'noodle_01', price_from: pm[1].key }], ON).ok, true);
+    globalThis.fetch = B2.fetch;
+    const res2 = await editCatalog({ rid: 'la_musa', source: draftSource(d2), baseSourceUpdateTime: B2.read.sourceUpdateTime, token: async () => 't', loadedBase: B2.read.deletionBase });
+    const m2 = reviewModel(res2.diff, reviewCtxOf(res2.source, B2.read.source));
+    assert.deepEqual(m2.structure.map((r) => [r.name, r.kind, r.parts.join(' ')]), [['Pad Thai', 'Quitado', P3('revPlain')]], '🔴 the dish that lost its choice: one row');
+    assert.deepEqual(m2.removed, [], 'its options are that row');
+    assert.equal(m2.rows.filter((r) => r.key === 'noodle_01' && r.field === 'price').length, 0, 'its reprice is that row (and the seal)');
+    assert.equal(m2.products.filter((p) => p.key === 'noodle_01').length, 0);
+  } finally { CE.on = false; }
+});
+
+test('B3 render — a renamed choice draws was → now as separate spans; a new option carries «Solo en la app Sherpa»', async () => {
+  const { renderReview } = await import('./review.js');
+  const { JSDOM } = freq('jsdom');
+  const w = new JSDOM('<!doctype html><div id="r"></div>').window;
+  const prev = globalThis.document; globalThis.document = w.document;
+  try {
+    const diff = { added: [{ key: 'i_new', surface: 'item', price: 330 }], removed: [], renamed: [], changed: [], choices: [
+      { launcher: 'noodle_01', name: 'Pad Thai', label: { old: 'Proteína', new: 'Proteína a elegir' }, members: { added: ['i_new'], removed: [] } }] };
+    const m = reviewModel(diff, { structure: { choiceOf: (k) => (k === 'i_new' ? 'Tofu' : k), choiceLabel: () => 'Proteína a elegir' } });
+    const root = w.document.getElementById('r');
+    renderReview(root, m);
+    const rs = [...root.querySelectorAll('.mgroup .prow.mk-srow')];
+    assert.equal(root.querySelector('.mglabel span').textContent, 'Estructura');
+    assert.deepEqual([...rs[0].querySelectorAll('.pval > span')].map((x) => [x.className, x.textContent]),
+      [['bchip chg', 'Cambio'], ['was', 'Proteína'], ['arr', '→'], ['now', 'Proteína a elegir']], '🔴 F\'s was → now');
+    assert.deepEqual([...rs[1].querySelectorAll('.pval > span')].map((x) => [x.className, x.textContent]),
+      [['bchip add', 'Nuevo'], ['now plain', 'Tofu · L 330'], ['mk-apponly', 'Solo en la app Sherpa']]);
+    assert.equal(rs[0].querySelector('.pname').textContent, 'Pad Thai · Proteína');
+  } finally { globalThis.document = prev; }
+});

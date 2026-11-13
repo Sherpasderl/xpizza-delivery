@@ -479,8 +479,10 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
 export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, optNameRequired: null, dupName: null,
-  recMany: null, priceFromInvalid: null, indexInvalid: null, nameNeedsNewId: null });
-export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
+  recMany: null, priceFromInvalid: null, indexInvalid: null, nameNeedsNewId: null,
+  revLauncher: null, revPlain: null, revRecChanged: null, revRecNew: null });
+// an approved line may name its data as {token}s (the review rows: {nombre}, {n}, {min}, {precio}, {old}, {new}); a placeholder shows none
+export const s3Copy = (k, vars = null) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s3.${k}⟧`);
 // The server's NAME rules for the copy's choice, judged before «Guardar» (choice-compare.js / add-product.js): the choice's own name is
 // required (label_required), every option needs a name (choice_label_required), and no two options of the group share a name under
 // the ONE fold (choice_duplicate: add-product normalizeName ≡ section-transitions nameFold, the synced byte copy) — the LATER twin is

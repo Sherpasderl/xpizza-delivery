@@ -15,7 +15,7 @@
 // decided, because that is what the token is bound to and what publishEdited will re-check.
 
 import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
-import { COPY as IE_COPY } from './item-edit-logic.js';   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
+import { COPY as IE_COPY, s3Copy } from './item-edit-logic.js';   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
 
 // The acknowledgement set: the server's OWN objects, untouched.
 //
@@ -159,6 +159,64 @@ function structureRowsOf(d, names = {}) {
   return rows;
 }
 
+// STRUCTURE S3 (addendum B3) — the server's `choices` rows (choice-activation choiceRows, token-bound) in «Estructura»: a dish that
+// gained its choice (ONE «Nuevo» row) or lost it (ONE «Quitado» row); otherwise one row per facet under «{dish} · {choice}» — the label
+// (was → now), each option added («Nuevo», app-only) or removed («Quitado»), the «Recomendada» change. Names from the draft (the server
+// names rows by key); the addendum's proposed lines are ⟦s3.key⟧ until approved.
+function choiceRowsOf(d, names = {}) {
+  const cs = Array.isArray(d.choices) ? d.choices : [];
+  const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);
+  const catName = typeof names.categoryName === 'function' ? names.categoryName : (id) => String(id);
+  const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });
+  const choiceOf = typeof names.choiceOf === 'function' ? names.choiceOf : (k) => String(k);
+  const labelOf = typeof names.choiceLabel === 'function' ? names.choiceLabel : () => null;
+  const addedPrice = new Map((Array.isArray(d.added) ? d.added : []).filter((x) => x && x.surface === 'item').map((x) => [x.key, x.price]));
+  const newPrice = new Map((Array.isArray(d.changed) ? d.changed : []).filter((c) => c && c.surface === 'item' && c.field === 'price').map((c) => [c.key, c.new]));
+  const rows = [];
+  const row = (name, sub, kind, parts, src, appOnly) => rows.push({ name, sub, kind, chip: S2_CHIP[kind], parts, src, ...(appOnly ? { appOnly: true } : {}) });
+  for (const c of cs) {
+    if (!c || typeof c.launcher !== 'string') continue;
+    const dish = typeof c.name === 'string' && c.name.trim() ? c.name : nameOf(c.launcher);
+    const sec = sectionOf(c.launcher) || {};
+    const place = [sec.cat == null ? null : catName(sec.cat), sec.subcat || null].filter(Boolean).join(' \u00b7 ') || '\u2014';
+    const lb = c.label && typeof c.label === 'object' ? c.label : null;
+    const added = c.members && Array.isArray(c.members.added) ? c.members.added : [];
+    const removed = c.members && Array.isArray(c.members.removed) ? c.members.removed : [];
+    if (c.became === 'launcher') {
+      const ps = added.map((k) => addedPrice.get(k)).filter((x) => Number.isInteger(x));
+      row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c, true);
+      continue;
+    }
+    if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.get(c.launcher) })], c); continue; }
+    const head = `${dish} \u00b7 ${lb && lb.old != null ? lb.old : labelOf(c.launcher) || ''}`;
+    const REQ = 'Elección requerida';
+    if (lb) row(head, REQ, 'Cambio', [lb.old, '\u2192', lb.new], c);
+    for (const k of added) row(head, REQ, 'Nuevo', [`${choiceOf(k)} \u00b7 L ${addedPrice.get(k)}`], c, true);
+    for (const k of removed) row(head, REQ, 'Quitado', [choiceOf(k)], c);
+    if (c.recommended && typeof c.recommended === 'object') {
+      const was = (c.recommended.old || []).map(choiceOf).join(', '); const now = (c.recommended.new || []).map(choiceOf).join(', ');
+      if (was) row(head, REQ, 'Cambio', [s3Copy('revRecChanged', { old: was, new: now })], c);
+      else row(head, REQ, 'Nuevo', [s3Copy('revRecNew', { new: now })], c);
+    }
+  }
+  return rows;
+}
+// the facts a choice row already says — never ALSO a generic line (every server fact shown once): the option rows added / removed,
+// the mark's tag line, and a dish that lost its choice's reprice (that row and the seal)
+function choiceFacts(d) {
+  const cs = Array.isArray(d.choices) ? d.choices : [];
+  const added = new Set(), removed = new Set(), tags = new Set(), plain = new Set();
+  for (const c of cs) {
+    if (!c || typeof c.launcher !== 'string') continue;
+    for (const k of (c.members && c.members.added) || []) added.add(k);
+    for (const k of (c.members && c.members.removed) || []) removed.add(k);
+    for (const k of [...((c.recommended && c.recommended.old) || []), ...((c.recommended && c.recommended.new) || [])]) tags.add(k);
+    if (c.became === 'plain') plain.add(c.launcher);
+  }
+  const said = (x) => !!x && x.surface === 'item' && ((x.field === 'tags' && tags.has(x.key)) || (x.field === 'price' && plain.has(x.key)));
+  return { added, removed, said };
+}
+
 // Codex S2 UI r1 P1-4 — a checklist key a dish stops denying BECAUSE of a structural change is that change's cleanup, already its
 // «Estructura» row: the extra is removed (diff.extras), or its group leaves the dish (an authored detach of the dish or its section, the
 // group gone from extra_categories, or the server's consequence: the dish no longer takes the group). It is never ALSO «Vuelve a ofrecer
@@ -195,7 +253,13 @@ function foldChecklistCleanup(lines, d, ctx) {
 }
 
 export function reviewModel(diff, ctx = {}) {
-  const d = diff || {};
+  const d0 = diff || {};
+  // STRUCTURE S3 (B3): a fact a choice row says is dropped from the generic lists before anything else reads them
+  const cf = choiceFacts(d0);
+  const d = Array.isArray(d0.choices) && d0.choices.length ? { ...d0,
+    changed: (Array.isArray(d0.changed) ? d0.changed : []).filter((c) => !cf.said(c)),
+    added: (Array.isArray(d0.added) ? d0.added : []).filter((x) => !(x && x.surface === 'item' && cf.added.has(x.key))),
+    removed: (Array.isArray(d0.removed) ? d0.removed : []).filter((x) => !(x && x.surface === 'item' && cf.removed.has(x.key))) } : d0;
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
@@ -210,7 +274,7 @@ export function reviewModel(diff, ctx = {}) {
     if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
   }
-  const structure = structureRowsOf(d, ctx && ctx.structure);
+  const structure = [...choiceRowsOf(d0, ctx && ctx.structure), ...structureRowsOf(d, ctx && ctx.structure)];
   // a repriced extra is its «Estructura» row; its price line is not ALSO a «Precios» row (every server fact shown once)
   const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));
@@ -321,7 +385,10 @@ export function renderReview(root, model, opts = {}) {
       v.append(el('span', `bchip ${r.chip}`, r.kind));
       // [what] or [what, '·', was, '→', now]: the was / arrow / now spans of the approved price rows
       if (r.parts.length === 5) v.append(el('span', 'now plain', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'was', r.parts[2]), el('span', 'arr', r.parts[3]), el('span', 'now', r.parts[4]));
+      // S3 B3: [was, '→', now] (a renamed choice — F's was → now pattern)
+      else if (r.parts.length === 3 && r.parts[1] === '\u2192') v.append(el('span', 'was', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'now', r.parts[2]));
       else v.append(el('span', 'now plain', r.parts.join(' ')));
+      if (r.appOnly) v.append(el('span', 'mk-apponly', 'Solo en la app Sherpa'));   // B3 / F: sold in the Sherpa app only until the old forms retire
       row.append(main, v);
       g.append(row);
     }
