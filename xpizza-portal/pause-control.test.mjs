@@ -1,12 +1,12 @@
-// «Pausar pedidos» moves inside «Sucursales» (PLAN-portal-pausar-in-sucursales-r0 §2.1 + §2.4, approved 2026-11-13). This step changes
-// NO screen: the pause control (the card's action, the #pausemodal confirm, send → setBranchPause) is extracted VERBATIM into
-// pause-control.js, and the «Pausar pedidos» view keeps using it — so every cell below is a PARITY cell on today's behaviour, through
-// the REAL app.js / ventas.js / shell.js (shell.test.mjs's harness). §2.4: pauseLanding — where an old «pausas» entry lands once the
-// nav entry goes (§2.3, after the owner-approved frames): the single branch's page, or the list for «Todas».
+// «Pausar pedidos» moves inside «Sucursales» (PLAN-portal-pausar-in-sucursales-r0 §2.1–§2.4; MOCKUP-portal-pausar-in-sucursales F1–F5,
+// advisor 11-13: build to the visually-checked delta). The pause control (pause-control.js: the action, the #pausemodal confirm,
+// send → setBranchPause) now lives on each branch's page; every behaviour cell is a PARITY cell on today's pausing, through the REAL
+// app.js / ventas.js / shell.js (shell.test.mjs's harness). The «Pausar pedidos» nav entry and view are gone; an old «pausas» entry lands
+// per pauseLanding (the branch's page, or the list for «Todas»).
 // Run: node --test pause-control.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { installDom, installFetch, loadModules, okJson, errJson, settle, textOf } from './ventas-harness.mjs';
 import { OFFLINE } from './ops-dom.js';
 import { pauseLanding } from './pause-control.js';
@@ -41,19 +41,24 @@ async function open(branches, setBranchPause) {
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uOwnerPC' } }));
   document.dispatchEvent(new CustomEvent('portal:signed-in'));
   await settle(20);
-  mods.shell.goto('pausas'); await settle(5);
-  return { byId, calls, mods, view: byId.get('viewpausas'), modal: byId.get('pausemodal'), pauses: () => calls.filter((c) => c.fn === 'setBranchPause').map((c) => c.body) };
+  mods.shell.goto('suc', { rid: branches[0].rid }); await settle(5);
+  return { byId, calls, mods, view: byId.get('viewsuc'), modal: byId.get('pausemodal'), pauses: () => calls.filter((c) => c.fn === 'setBranchPause').map((c) => c.body) };
 }
 const PAUSED = (until = Date.now() + 1800e3) => ({ state: 'paused', paused_until: until, pause_reason: 'Falta personal', pause_since: Date.now() });
 
-test('ONE control: pause-control.js holds the action, the confirm and the request; pausas.js only lays out the cards through it', () => {
+test('ONE control on the branch page: pausas.js and its view are gone; shell.js no longer imports it; pause-control.js holds the request', () => {
+  assert.equal(existsSync(new URL('./pausas.js', import.meta.url)), false, '🔴 the «Pausar pedidos» view module is gone');
   const pc = readFileSync(new URL('./pause-control.js', import.meta.url), 'utf8');
-  const pv = readFileSync(new URL('./pausas.js', import.meta.url), 'utf8');
-  assert.match(pc, /export function pauseControl\(/);
-  assert.ok(pc.includes('setBranchPause(') && pc.includes("$('pausemodal')"), 'the request and the confirm live in the control');
-  assert.ok(!pv.includes('setBranchPause') && !pv.includes('pausemodal') && !pv.includes('pausescrim'), '🔴 pausas.js no longer carries its own copy');
-  assert.match(pv, /from '\.\/pause-control\.js'/);
+  assert.match(pc, /export function pauseControl\(/); assert.ok(pc.includes('setBranchPause(') && pc.includes("$('pausemodal')"));
+  const shell = readFileSync(new URL('./shell.js', import.meta.url), 'utf8');
+  assert.ok(!shell.includes('pausas.js') && !shell.includes('navpausas') && !shell.includes('viewpausas'), 'no Pausar nav / view in the shell');
+  const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  assert.ok(!/id="(navpausas|mnpausas|viewpausas)"/.test(html), '🔴 the menu entry, its chip and its view are gone (F5)');
+  assert.ok(/id="pausescrim"/.test(html) && /id="pausemodal"/.test(html), 'the confirm stays');
+  const bv = readFileSync(new URL('./branches-view.js', import.meta.url), 'utf8');
+  assert.ok(!bv.includes("ctx.goto('pausas')"), 'the branch page no longer navigates away to pause');
 });
+
 
 test('parity: «Pausar sucursal» → the confirm (title, Motivo, Hasta) → «Pausar» sends today\'s body; the answer repaints the card paused', async () => {
   const P = await open([branch('r_a')], () => okJson({ ok: true, noop: false, control: PAUSED() }));
@@ -88,14 +93,34 @@ test('parity: the three failure boxes — 409, unavailable, anything else — an
   }
 });
 
-test('parity: who sees a control — a branch without location.pause has no card; an inactive one says «Para activarla, escribinos.»', async () => {
-  const noCap = branch('r_b', { caps: OWNER_CAPS.filter((c) => c !== 'location.pause') });
-  const inactive = branch('r_c', { control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } });
-  const P = await open([branch('r_a'), noCap, inactive], () => okJson({ ok: true }));
-  const t = textOf(P.view);
-  assert.ok(t.includes('R_A') && !t.includes('R_B'), 'no card without the capability');
-  assert.ok(t.includes('Para activarla, escribinos.'), 'the inactive note');
+test('who sees it, per branch page (F1/F4): no capability ⇒ no action and no status; CLOSED ⇒ status only, no note (D2); INACTIVE (1a) ⇒ status + «Para activarla, escribinos.»', async () => {
+  const noCap = await open([branch('r_b', { caps: OWNER_CAPS.filter((c) => c !== 'location.pause') })], () => okJson({ ok: true }));
+  assert.equal(btn(noCap.view, 'Pausar sucursal'), undefined); assert.equal(all(noCap.view).some((n) => (n._class || '').includes('hstatus')), false, 'no status block');
+  const closed = await open([branch('r_c', { control: { state: 'closed', paused_until: null, pause_reason: null, pause_since: null } })], () => okJson({ ok: true }));
+  assert.ok(all(closed.view).some((n) => (n._class || '').includes('hstatus')), 'the status block'); assert.equal(btn(closed.view, 'Pausar sucursal'), undefined);
+  assert.ok(!textOf(closed.view).includes('Abre según su horario.'), '🔴 D2: no closed note');
+  const inactive = await open([branch('r_d', { control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } })], () => okJson({ ok: true }));
+  assert.ok(textOf(inactive.view).includes('Para activarla, escribinos.'), 'the inactive note (no Activar section on a 1a page)');
 });
+
+test('the open page: the action in the header\'s actions row and the status lines under the title (F1); «Equipos · N» keeps its place', async () => {
+  const P = await open([branch('r_a', { caps: [...OWNER_CAPS, 'device.list'] })], () => okJson({ ok: true }));
+  const top = all(P.view).find((n) => n.tag === 'div' && (n._class || '').split(' ').includes('top'));
+  const acts = all(top).find((n) => (n._class || '') === 'topact');
+  assert.deepEqual(acts.children.map((c) => textOf(c)), ['Pausar sucursal', 'Equipos · 0'], '🔴 the action replaces the old navigation button, Equipos stays');
+  const st = all(top).find((n) => (n._class || '').includes('hstatus'));
+  assert.ok((st._class || '').includes('stopen')); assert.ok(textOf(st).length > 0);
+});
+
+test('old entry points (§2.4, F5 :19): goto(\'pausas\') on ONE branch lands on its page; under «Todas» on the list; with a rid on that page', async () => {
+  const one = await open([branch('r_a')], () => okJson({ ok: true }));
+  one.mods.shell.goto('pausas'); await settle(5);
+  assert.ok(btn(one.view, 'Pausar sucursal'), 'the branch page');
+  const two = await open([branch('r_a'), branch('r_b')], () => okJson({ ok: true }));
+  two.mods.shell.goto('pausas', { rid: 'r_b' }); await settle(5);
+  assert.ok(textOf(two.view).includes('R_B') && btn(two.view, 'Pausar sucursal'), 'an explicit rid opens that branch');
+});
+
 
 test('§2.4 pauseLanding: one branch in scope → its page; «Todas» → the list; an explicit rid wins; nothing → the list', () => {
   const sel = (scope, rids = ['r_a', 'r_b']) => ({ scope, brand: { branches: rids.map((rid) => ({ rid })) } });

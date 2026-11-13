@@ -1,5 +1,5 @@
 // «Pausar pedidos» moves inside «Sucursales» (PLAN-portal-pausar-in-sucursales-r0 §2.1): THE pause control, extracted VERBATIM from
-// pausas.js (PORTAL-UI 1a S3) — a branch's action («Pausar sucursal» / «Reanudar pedidos», or its closed / inactive note), the
+// pausas.js (PORTAL-UI 1a S3), now on each branch's page (§2.2) — a branch's action («Pausar sucursal» / «Reanudar pedidos»), the
 // #pausemodal confirm (Motivo + Hasta) and send → setBranchPause → the handheld/CLI pause writer, unmodified. The page that shows it
 // passes three hooks: the branches it may act on (candidates), a repaint, and where a failure box goes (showError).
 import { setBranchPause } from './api.js';
@@ -14,33 +14,20 @@ export function pauseLanding(sel, opts = {}) {
   return { view: 'suc', rid: inScope.length === 1 ? inScope[0].rid : null };
 }
 
-export function pauseControl(ctx, { candidates, repaint, showError }) {
+export function pauseControl(ctx, hooks) {
+  const { candidates, repaint, showError } = hooks;
+  const clearError = typeof hooks.clearError === 'function' ? hooks.clearError : () => {};
   const V = { modal: null, busy: new Set() };
   const scrim = $('pausescrim');
   const modal = $('pausemodal');
 
-  // the action under a branch's status, by its state (st = L.stateModel(b, now))
-  function actionsFor(b, st) {
-    const out = [];
+  // the branch page's action (PLAN §2.2, MOCKUP-portal-pausar-in-sucursales F1/F2): «Pausar sucursal» on an OPEN branch, «Reanudar
+  // pedidos» on a PAUSED one — today's card buttons; disabled while this branch's call is in flight. Closed / inactive: none.
+  function actionFor(b, st) {
     const busy = V.busy.has(b.rid);
-    if (st.state === 'open') {
-      const a = el('div', 'topact cact');
-      const p = button('btn danger', 'Pausar sucursal', () => openModal(b), { iconName: 'pause' });
-      p.disabled = busy;
-      a.append(p);
-      out.push(a);
-    } else if (st.state === 'paused') {
-      const a = el('div', 'topact cact');
-      const r = button('btn accent', 'Reanudar pedidos', () => send(b, { op: 'resume' }, `${b.name} recibe pedidos otra vez`), { iconName: 'play' });
-      r.disabled = busy;
-      a.append(r);
-      out.push(a);
-    } else if (st.state === 'closed') {
-      out.push(el('p', 'fnote cnote', 'Abre según su horario.'));
-    } else if (st.state === 'inactive') {
-      out.push(el('p', 'fnote cnote', 'Para activarla, escribinos.'));
-    }
-    return out;
+    if (st.state === 'open') { const p = button('btn danger', 'Pausar sucursal', () => openModal(b), { iconName: 'pause' }); p.disabled = busy; return p; }
+    if (st.state === 'paused') { const r = button('btn accent', 'Reanudar pedidos', () => send(b, { op: 'resume' }, `${b.name} recibe pedidos otra vez`), { iconName: 'play' }); r.disabled = busy; return r; }
+    return null;
   }
 
   // ── the modal ──
@@ -96,6 +83,7 @@ export function pauseControl(ctx, { candidates, repaint, showError }) {
     const gen = ctx.gen();
     V.busy.add(b.rid);
     ctx.setBusy(`pause-${b.rid}`, true);
+    clearError();
     repaint();
     // codex 1a r1 P1-1: released on EVERY settlement; an obsolete one (auth generation bumped) only skips the UI updates
     try {
@@ -117,5 +105,5 @@ export function pauseControl(ctx, { candidates, repaint, showError }) {
     }
   }
 
-  return { actionsFor };
+  return { actionFor };
 }

@@ -276,8 +276,8 @@ test('codex r1 P1-1: a pause request that FAILS after an auth change releases it
   const P = page({ e1: E1([branch('r_a', { control: paused })]), extra: (fn) => (fn === 'setBranchPause' ? h.p : undefined) });
   const mods = await loadModules();
   await signIn('uOwner0103');
-  mods.shell.goto('pausas');
-  byText(P.byId.get('viewpausas'), 'Reanudar pedidos').click();
+  mods.shell.goto('suc', { rid: 'r_a' });   // «Pausar pedidos» lives on the branch page (PLAN-portal-pausar §2.2)
+  byText(P.byId.get('viewsuc'), 'Reanudar pedidos').click();
   await settle(5);
   assert.equal(mods.shell._shellState.busy.size, 1, 'in flight');
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uOwner0103' } }));

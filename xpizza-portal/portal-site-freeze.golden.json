@@ -71,7 +71,6 @@
   "ops-dom.js",
   "package-lock.json",
   "package.json",
-  "pausas.js",
   "pause-control.js",
   "pause-control.test.mjs",
   "perf/portal.origins.json",
@@ -162,8 +161,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "4e0b451b53e7e62456a16f8ca9ce27095554af83a5d9f8ec89a816d195b4bc2e",
-   "bytes": 14965
+   "sha256": "7f23149d76ce6e9c750c4ac6fa1e1d88cbe91459871b4b2a5dae88d78dba35d5",
+   "bytes": 14615
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -190,8 +189,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "9d38835db4c695802d5c2801b4e5a1dfbcf399cc53527ab68add0e70a6185ffe",
-   "bytes": 159482
+   "sha256": "a91d323fe7f1cc0cb71476358c3d9b976d17fb757ea1c5cef062f8cbf6ed7fc0",
+   "bytes": 159862
   }
  },
  "diff_aid": {

@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { installDom, installFetch, loadModules, okJson, errJson, settle, textOf, findAll } from './ventas-harness.mjs';
 import { E6_KEYS } from './api.js';
 
@@ -277,7 +278,7 @@ test('§3.4 lifecycle-only shell: zero branches → nav «Sucursales» only + th
     await boot(P);
     await settle(5);
     if (!w) { assert.ok(textOf(P.byId.get('detail')).includes('Tu cuenta no administra ningún local todavía')); continue; }
-    for (const id of ['navprod', 'mnprod', 'navpausas', 'navequipos', 'navventas', 'navopslabel', 'navmenulabel', 'scopewrap']) assert.ok(P.byId.get(id).classList.contains('hidden'), `${id} hidden`);
+    for (const id of ['navprod', 'mnprod', 'navequipos', 'navventas', 'navopslabel', 'navmenulabel', 'scopewrap'])   // «Pausar pedidos» has no nav entry any more (F5) assert.ok(P.byId.get(id).classList.contains('hidden'), `${id} hidden`);
     assert.ok(!P.byId.get('navsuc').classList.contains('hidden') && !P.byId.get('viewsuc').classList.contains('hidden'), 'Sucursales shown');
     assert.equal(P.count('getEditableCatalog'), 0, 'no editor on a lifecycle-only brand');
     const t = textOf(P.view());
@@ -339,7 +340,7 @@ test('§3.4 case 5 (P3): draft → materialized STAGED → the refresh after a w
   const mods2 = await boot(P2);
   assert.equal(!!mods2.shell._shellState.sel.lifecycleOnly, false, 'a staged identity is operational');
   assert.ok(!P2.byId.get('navequipos').classList.contains('hidden'), 'Equipos is reachable before activation (STAGED_CAPS ∋ device.list)');
-  assert.ok(P2.byId.get('navpausas').classList.contains('hidden'), 'no Pausar (STAGED_CAPS has no location.pause)');
+  assert.ok(!/id="navpausas"/.test(readFileSync(new URL('./index.html', import.meta.url), 'utf8')), 'no Pausar nav entry at all (it moved into each branch page, F5)');
   mods2.shell.goto('suc', { rid: 'r_d' }); await settle(5);
   assert.ok(textOf(P2.view()).includes('Por activar') && textOf(P2.view()).includes('Antes de activar'));
 });

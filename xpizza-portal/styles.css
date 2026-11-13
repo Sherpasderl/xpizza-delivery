@@ -1226,6 +1226,10 @@
   .ops .status .sub{color:var(--mute);font-size:12.5px;display:block;margin-top:1px}
   .ops .status.stpaused{background:var(--red-soft);border-color:var(--red-line)}
   .ops .status.stopen{background:var(--green-soft);border-color:var(--green-line)}
+  /* «Pausar pedidos» on the branch page (MOCKUP-portal-pausar-in-sucursales F1): the card's status block under the lede, auto width */
+  .ops .status.hstatus{display:inline-flex;margin-top:14px;max-width:100%}
+  .ops .status.hstatus b{display:block}
+  .ops .top .cnote{display:block}   /* the card's own .fnote.cnote (type, colour, 12 px above), as a block under the status */
   .ops .cact{margin-top:14px}
   .ops .cnote{margin-top:12px}
   .btn.danger{color:var(--red-text);border-color:var(--red-line)}

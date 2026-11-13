@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,7 +81,7 @@ test('W on, owner: the v2 detail renders the editors + the approved truths (§2f
   assert.equal(byIdIn(v, 'f1b-tel').value, '+504 9795-2893');
   assert.ok(byIdIn(v, 'h1b-mon-start'), 'the hour inputs');
   for (const s of ['WhatsApp de la sucursal', 'Para cambiar el nombre, escribinos.', 'Calle 1, local 2', 'Frente al parque', 'Definida por Sherpa.', 'Para cambiar la ubicación, escribinos.',
-    'definidas por Sherpa', 'Mismo día · sin pasar la medianoche', 'Copiar horario de', 'Lun–Dom 11:00–22:00', 'Bulevar', 'Pausar pedidos',
+    'definidas por Sherpa', 'Mismo día · sin pasar la medianoche', 'Copiar horario de', 'Lun–Dom 11:00–22:00', 'Bulevar', 'Pausar sucursal',
     'Es la base del «listo en N min» que confirma el equipo al aceptar. Obligatorio para vincular un equipo.', 'Entre 5 y 120 min. El equipo ajusta pedido por pedido.',
     'Último pedido de hoy', 'La numeración la lleva Sherpa.', 'Fuera de horario la sucursal no recibe pedidos para ahora.',
     'Desde este número el equipo llama o escribe al cliente mientras el pedido está activo. Lo pueden cambiar el dueño y el gerente.']) assert.ok(t.includes(s), `missing «${s}»`);
@@ -117,7 +117,9 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
   const differs = (f) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8') !== gitShow(f);
   const dir = dirname(fileURLToPath(import.meta.url));
   const tag = `${process.pid}.${Date.now()}`;
-  const swapAvail = differs('availability.js'), swapOps = differs('ops-dom.js'), swapPausas = differs('pausas.js');
+  // «Pausar» §2.2/§2.3 (MOCKUP-portal-pausar-in-sucursales): pausas.js is GONE (its control lives on the branch page) — the base shell still
+  // imports it, so the oracle side always loads its base copy
+  const swapAvail = differs('availability.js'), swapOps = differs('ops-dom.js'), swapPausas = !existsSync(new URL('./pausas.js', import.meta.url)) || differs('pausas.js');
   const OPS = /from '\.\/ops-dom\.js'/g;
   const baseOf = (f) => `./__base-${f.replace(/\.js$/, '')}.${tag}.mjs`;
   const viaBaseOps = (f, src) => {
@@ -140,14 +142,21 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
   ...(differs('app.js') ? { app: () => gitShow('app.js') } : {}), ...(differs('ventas.js') ? { ventas: () => gitShow('ventas.js') } : {}) };
   const e1 = E1([row('r_a'), row('r_b', { lifecycle: 'inactive', control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } })], { w: false,
     brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [{ rid: 'r_d', brand_id: 'marca_s', lifecycle: 'draft', profile: { location_name: 'Borrador', phone: '+50433905521', hours: WEEK, prep_default_min: 20 }, location: null, pending_location: true, version: 'd.x.1.1' }] }] });
-  const ids = ['viewsuc', 'navsuc', 'navsuccount', 'navpausas', 'navequipos', 'mnsuc', 'shopname', 'shopsub', 'scopewrap', 'switchmenu', 'sucbar', 'sucbartxt'];
+  const ids = ['viewsuc', 'navsuc', 'navsuccount', 'navequipos', 'mnsuc', 'shopname', 'shopsub', 'scopewrap', 'switchmenu', 'sucbar', 'sucbartxt'];
+  const pauseSeen = [];
   const snap = async (transforms, rid) => {
     installStorage();
     const P = page([e1]);
     const mods = await openWith(P, transforms);
     mods.shell.goto('suc', rid ? { rid } : {});
     await settle(5);
-    return JSON.stringify(ids.map((id) => [id, P.byId.get(id)._class, all(P.byId.get(id)).map((n) => [n.tag, n._class, n.textContent, n.attrs, n.disabled, n.id])]));
+    // THE ONE INTENDED DELTA (§2.2): the base's «Pausar pedidos» navigation button ⇄ today's pause action + status block (+ the inactive
+    // note) in the branch header — cut out of BOTH sides and pinned on its own below; everything else must stay byte-identical
+    const pauseUnit = (n) => (n.tag === 'button' && /^(Pausar pedidos|Pausar sucursal|Reanudar pedidos)$/.test(textOf(n)))
+      || /\bhstatus\b/.test(n._class || '') || (/\bcnote\b/.test(n._class || '') && textOf(n) === 'Para activarla, escribinos.');
+    const kept = (n) => (n && n.children ? n.children : []).flatMap((c) => (c && typeof c === 'object' && !pauseUnit(c) ? [c, ...kept(c)] : []));
+    pauseSeen.push(all(P.byId.get('viewsuc')).filter(pauseUnit).map((n) => textOf(n)));
+    return JSON.stringify(ids.map((id) => [id, P.byId.get(id)._class, kept(P.byId.get(id)).map((n) => [n.tag, n._class, n.textContent, n.attrs, n.disabled, n.id])]));
   };
   try {
     for (const rid of [null, 'r_a', 'r_b']) {
@@ -156,6 +165,13 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
       assert.equal(now, base, `W off, ${rid || 'list'}: identical to 1a`);
       assert.ok(rid ? base.includes('Solo lectura') : base.includes('Radio'), 'non-vacuity: the 1a screen rendered');
     }
+    // the delta itself, pinned: [list, r_a, r_b] × [base, now] — base: the navigation button; now: the action + status (+ the inactive note)
+    const [lb, ln, ab, an, bb, bn] = pauseSeen;
+    assert.deepEqual([lb, ln], [[], []], 'the list: no pause unit on either side');
+    assert.deepEqual(ab, ['Pausar pedidos'], 'premise: the base detail navigates to the old view');
+    assert.equal(an.length, 2, '🔴 the open branch: its status block + the action'); assert.equal(an[1], 'Pausar sucursal'); assert.ok(an[0].length > 0, 'the status lines');
+    assert.deepEqual(bb, ['Pausar pedidos']);
+    assert.equal(bn.length, 2); assert.equal(bn[1], 'Para activarla, escribinos.', 'the inactive branch: its status + the note (1a: no Activar section)');
     // availability.js's own screen: a manager (no catalog.read_editor → its READ-ONLY menu) over a published menu with NO photo
     // data — the rows availability.js paints must be 1a's exactly (the suc view above never paints them)
     const mgr = E1([row('r_a', { role: 'manager', caps: MANAGER })], { w: false, brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: [], activation: 'on' }] });
