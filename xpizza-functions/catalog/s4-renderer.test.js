@@ -27,6 +27,7 @@ cell('RC-DETECT: all three conditions are required, and any literal filter makes
   assert.strictEqual(G.categoriesGenericOf(`${live}\n${walk}`), false, `${L}: no boot`);
   assert.strictEqual(G.categoriesGenericOf(`${boot}\n${walk}`), false, `${L}: not live-applied`);
   assert.strictEqual(G.categoriesGenericOf(`${boot}\n${live}\nfunction renderMenu() { MENU.filter(p => p.cat === 'ny'); }`), false, `${L}: no walk`);
+  assert.strictEqual(G.categoriesGenericOf(`${boot}\n${live}\nfunction renderMenu() { MENU.forEach((p) => draw(p)); }`), false, `${L}: no walk and no literal (a flat list draws no section)`);
   assert.strictEqual(G.categoriesGenericOf(`${boot}\n${live}\n${walk.replace('}); }', "}); MENU.filter(p => p.cat === 'ny'); }")}`), false, `${L}: a literal filter beside the walk`);
 });
 const built = (rid, src) => buildSourceCandidate(rid, src).built;
