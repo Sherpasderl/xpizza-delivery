@@ -2,12 +2,13 @@
 // strings pending). The REAL getMerchantRatingComments core over the real writers (calificaciones-harness.mjs), the portal's real api.js,
 // the view in jsdom. Every string the mockup PROPOSES is a placeholder ⟦cal.key⟧ until the owner approves it; the SHIP GATE cell below is
 // RED until then, by design. The figures follow the approved contract (advisor 11-13): the first page's `stats` — {rating_avg,
-// rating_count} ⇒ the two figures; null ⇒ the under-10 sentence; ABSENT ⇒ no box (3a adds the field; until then, the real-read cell is
-// KNOWN_RED). Run: node --test calificaciones-view.test.mjs
+// rating_count} ⇒ the two figures; null ⇒ the under-10 sentence; ABSENT ⇒ no box (3a's 06a236c2, read-only from its
+// ref). Run: node --test calificaciones-view.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SEED, fakeDb, order, server, tokenOf, JSDOM, fetchRatingComments } from './calificaciones-harness.mjs';
 
+const { V2, AG, ratingsOf } = await import('./calificaciones-harness.mjs');
 const { calificacionesTab, CAL_COPY, calCopy } = await import('./calificaciones.js');
 
 const settle = (n = 30) => new Promise((r) => { let i = 0; const go = () => (++i >= n ? r() : setTimeout(go, 0)); go(); });
@@ -64,7 +65,7 @@ test('the figures follow the contract: {avg, count} ⇒ two figures; null ⇒ th
   const b = page(db, { wrap: firstOnly(null) }); await settle();
   assert.equal(b.$('.kfigs.surface.say .ksay').textContent, P('under10'), '🔴 below 10: the honest sentence, never a 0');
   assert.equal(b.$('.kfigs.surface.say .kl').textContent, 'Calificación promedio');
-  const c = page(db); await settle();
+  const c = page(db, { wrap: async (res) => { const b = await res.json(); delete b.stats; return { ok: true, status: 200, json: async () => b }; } }); await settle();
   assert.equal(c.$('.kfigs'), null, '🔴 no stats key: no box at all (never a guess)');
   assert.equal(c.$$('.crow').length, 3, 'the list is drawn regardless');
 });
@@ -148,10 +149,32 @@ test('SHIP GATE: no placeholder ships — every Calificaciones string is owner-a
   assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
 });
 
-test('KNOWN_RED until 3a ships it: the REAL first page states `stats` (an object at ≥ 10 published ratings, else null)', { todo: 'KNOWN_RED: 3a adds stats to getMerchantRatingComments (advisor 11-13)' }, async () => {
-  const db = await rated(2);
-  globalThis.fetch = server(db).fetch;
-  const body = await fetchRatingComments({ rid: 'x_pizza', token: tokenOf('ownerX') });
-  assert.ok(Object.prototype.hasOwnProperty.call(body, 'stats'), 'the first page states stats');
-  assert.equal(body.stats, null, 'below 10 published ratings');
+// 3a's contract (06a236c2, loaded read-only from its ref by the harness): the REAL first page, end to end through the view
+const publishFor = async (db, rid, ids) => {   // public_stats/{rid} through the REAL chain (3a's own test): readCountable → the producer
+  const ratings = []; for (const id of ids) ratings.push(await V2.readCountable(db, id));
+  db.set(`public_stats/${rid}`, AG.publish({ rid, nowMs: 50000, buckets: {}, ratings, priceOf: () => null, firstServedAt: 1000 }));
+};
+test('the REAL first page: ≥ 10 published ⇒ the producer\'s figures; below 10 ⇒ the under-10 sentence; a later page has no key', async () => {
+  const db = await rated(22);
+  await publishFor(db, 'x_pizza', Array.from({ length: 22 }, (_, i) => `XPZ-v${i}`));
+  const want = ratingsOf(db.get('public_stats/x_pizza'));
+  assert.ok(want && want.rating_count === 22, 'premise: the producer published');
+  const v = page(db); await settle();
+  assert.deepEqual(v.$$('.kfigs.surface .kfig .kn').map((n) => n.firstChild.textContent), [String(want.rating_avg), '22'], '🔴 the published figures');
+  v.$('.pager button').click(); await settle();
+  assert.equal(v.$$('.crow').length, 22); assert.equal(v.$$('.kfigs').length, 1, 'a later page (no stats key) leaves the box as it is');
+  const few = page(await rated(9)); await settle();
+  assert.equal(few.$('.kfigs.surface.say .ksay').textContent, P('under10'), '🔴 stats: null ⇒ the honest sentence');
+});
+
+test('the REAL first page on a stats-read OUTAGE: the key is absent ⇒ no box; the comments still show', async () => {
+  const db = await rated(3);
+  const ref = db.ref;
+  db.ref = (p) => (String(p).startsWith('public_stats') ? { once: async () => { throw Object.assign(new Error('x'), { code: 'unavailable' }); } } : ref(p));
+  const err = console.error; console.error = () => {};
+  try {
+    const v = page(db); await settle();
+    assert.equal(v.$('.kfigs'), null, '🔴 an outage never draws a box (never a guess, never «fewer than 10»)');
+    assert.equal(v.$$('.crow').length, 3);
+  } finally { console.error = err; }
 });

@@ -2,7 +2,8 @@
 // calificaciones-view.test.mjs): the REAL getMerchantRatingComments core over the server test's query-faithful RTDB fake, orders from
 // the REAL writers (intake, fulfilment stamp, rateOrderCore), the portal's REAL api.js through a fetch that hands the request to it.
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { createRequire, Module } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchRatingComments, apiFetch, ApiError } from './api.js';
@@ -14,7 +15,20 @@ process.env.OTP_SALT = process.env.OTP_SALT || 'calificaciones-test-salt-'.padEn
 const V2 = require('./ratings/rating-v2.js');
 const { rateOrderCore } = require('./ratings/rate-order.js');
 const { stampRatingFulfilment } = require('./ratings/rating-fulfilment.js');
-const MC = require('./ratings/merchant-comments.js');
+// 3a's getMerchantRatingComments WITH the first-page stats (06a236c2 on feat/member-reads-3a, not merged yet): loaded READ-ONLY from its
+// ref — never taken by path into this branch. Its requires (rating-v2, access/membership, directory) are byte-equal here. When 3a's
+// commit merges, this falls back to the file on disk (the ref is then an ancestor and the bytes match).
+const MC_REF = '06a236c23';
+const MC = (() => {
+  const file = join(FN, 'ratings', 'merchant-comments.js');
+  let src;
+  try { src = execFileSync('git', ['show', `${MC_REF}:xpizza-functions/ratings/merchant-comments.js`], { cwd: DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch (_) { return require(file); }
+  const m = new Module(file, null); m.filename = file; m.paths = Module._nodeModulePaths(dirname(file));
+  m._compile(src, file);
+  return m.exports;
+})();
+const AG = require('./ratings/aggregate.js');
+const { ratingsOf } = require('./directory/directory.js');
 const { buildCreateOrderUpdates, attachCustomerAttribution } = require('./create-order-build.js');
 const { MENU_BY_RESTAURANT } = require('./menu-pricing.js');
 const { JSDOM } = require('jsdom');
@@ -122,4 +136,4 @@ function visit(srv, { rid = 'x_pizza', who = 'ownerX', extra } = {}) {
 const texts = (st) => st.rows.map((r) => r.comment);
 const dom = () => new JSDOM('<!doctype html><ul id="l"></ul>').window.document;
 
-export { V2, MC, SEED, A, PHONE, fakeDb, order, rate, server, tokenOf, visit, texts, dom, clone, ENDPOINT, JSDOM, fetchRatingComments, apiFetch, ApiError, createCommentList };
+export { V2, MC, MC_REF, AG, ratingsOf, SEED, A, PHONE, fakeDb, order, rate, server, tokenOf, visit, texts, dom, clone, ENDPOINT, JSDOM, fetchRatingComments, apiFetch, ApiError, createCommentList };
