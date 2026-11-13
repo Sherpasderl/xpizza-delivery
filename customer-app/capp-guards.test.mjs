@@ -34,7 +34,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '1d862e17';
-const CAPP_TIP = 'c068dc32';
+const CAPP_TIP = 'db677478';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -236,6 +236,9 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 const MERGE_ALLOW = {
   // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
   // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
+  // asm9 (advisor 11-13: ONE capp tip): heldcopy × C-1a both edit capp-ui.js from 579feee4 — a CLEAN 3-way auto-merge (git
+  // merge-file of 579feee4 / ^1 / ^2 reproduces the committed blob byte for byte; no hand edit): heldOther(heldSdk()) + the C-1a acts
+  'db677478 customer-app/capp-ui.js': 'asm9 heldcopy × C-1a: the clean auto-merge of both lines (merge-file-identical), no resolution edit',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
