@@ -5,7 +5,7 @@
 // Run: node --test --test-force-exit structure-s4-ui.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { editable, settle, page, SRC } from './drawer-harness.mjs';
+import { editable, settle, page, SRC, errJson } from './drawer-harness.mjs';
 
 const { S4_COPY } = await import('./render.js');
 const P = (k) => `⟦s4.${k}⟧`;
@@ -348,8 +348,46 @@ test('S4-G — the bar counts S4 changes after «· N productos»: «· N catego
   assert.ok(bar().textContent.endsWith(` · 2 categorías${P('barSub')}`), `the subsection's suffix: ${bar().textContent}`);
 });
 
+test('S4-F — subcat_partial at «Revisar y publicar»: the panel, «Ir a la sección» selects that section with the line under its header', async () => {
+  const p = await page({ read: ON, on: { editCatalog: () => errJson(409, { error: 'subcat_partial', key: 'dim_sum', field: 'subcats' }) } });
+  await p.signIn(); await pick(p, 'Starters');
+  await create(p, 'Postres');
+  p.d.getElementById('review').click(); await settle(60);
+  const b = p.d.querySelector('#mbody .conflict');
+  assert.ok(b, 'the panel'); assert.equal(b.querySelector('h3').textContent, P('partialTitle'));
+  const go = b.querySelector('button'); assert.equal(go.textContent, P('goSection'));
+  go.click(); await settle(20);
+  assert.ok(items(p).find((x) => x.querySelector('b').firstChild.textContent === 'Dim Sum').classList.contains('on'), '🔴 the section selected');
+  const line = detail(p).querySelector('.dhead + .ferr');
+  assert.ok(line, 'the line under the header'); assert.equal(line.textContent, P('partialLine')); assert.equal(line.getAttribute('role'), 'alert');
+  await pick(p, 'Starters');
+  assert.equal(detail(p).querySelector('.dhead + .ferr'), null, 'another section: gone');
+});
+
+test('S4-F — «Crear» at the 30-section cap, and with an unnamed section (the line + «Ponerles nombre» to the existing naming flow)', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  const n0 = items(p).length;
+  for (let k = n0; k < 30; k++) await create(p, `Sección ${k}`);
+  await create(p, 'Una más');
+  assert.equal(box(p).querySelector('.ferr').textContent, P('capsCats'), '🔴 the cap');
+  const q = await page({ read: () => { const r = editable({ sections: true }); r.source.structure.categories[1].name = ''; return r; } });
+  await q.signIn();
+  await create(q, 'Postres');
+  const l = box(q).querySelector('.ferr');
+  assert.ok(l, '🔴 refused in place'); assert.equal(l.firstChild.textContent, P('unnamedLine'));
+  const link = l.querySelector('button.mk-lnk'); assert.equal(link.textContent, P('nameAll'));
+  link.click(); await settle(10);
+  assert.ok(detail(q).querySelector('.dhead.secedit input'), 'one section unnamed: its own rename (T1) is open');
+  const all = await page({ read: () => { const r = editable({ sections: true }); for (const c of r.source.structure.categories) c.name = ''; return r; } });
+  await all.signIn();
+  await create(all, 'Postres');
+  box(all).querySelector('.ferr button.mk-lnk').click(); await settle(10);
+  assert.ok(all.d.querySelector('#namescrim.show'), 'every section unnamed: the existing «name all» flow');
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['barOrder', 'barSub', 'barSubs', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'menuNote', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unpromoteLine']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'notAttachBody', 'notAttachLine', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

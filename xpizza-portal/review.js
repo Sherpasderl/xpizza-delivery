@@ -15,7 +15,8 @@
 // decided, because that is what the token is bound to and what publishEdited will re-check.
 
 import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
-import { COPY as IE_COPY, s3Copy } from './item-edit-logic.js';   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
+import { COPY as IE_COPY, s3Copy } from './item-edit-logic.js';
+import { s4Copy } from './render.js';   // STRUCTURE S4-F: the addendum's panel lines (⟦s4.key⟧ until approved)   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
 
 // The acknowledgement set: the server's OWN objects, untouched.
 //
@@ -1083,7 +1084,8 @@ export const PUBLISH_ACTIONS = {
   FIX: 'fix',             // 1D add-product A: a NEW product needs a correction — back to editing, its drawer open at the field
   RESET: 'reset',         // 1D add-product A: the saved draft cannot publish — "Volver al menú publicado"
   FIX_EXTRA: 'fix_extra', // STRUCTURE S2 §5.2: an EXTRA needs a correction — the «Extras» tab, its group, its row (FIX keeps its product-only meaning)
-  REVIEW_DELETIONS: 'review_deletions',   // S2 §5.2: the published menu moved under a removal claim — re-read, re-show the list, resend acknowledged
+  REVIEW_DELETIONS: 'review_deletions',
+  FIX_SECTION: 'fix_section',   // STRUCTURE S4-F: a section needs the merchant's look — the rail selects it, the line under its header   // S2 §5.2: the published menu moved under a removal claim — re-read, re-show the list, resend acknowledged
 };
 // STRUCTURE S2 — the Extras page's caps, said in the panels (owner 2026-11-12: the numbers ARE the copy). ONE constant; review.test pins
 // it equal to the server's catalog/structure-budget.js LIMITS, so the copy can never promise a number the server does not enforce.
@@ -1321,6 +1323,18 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
     else if (b.field === 'extras_in_group') { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }
     else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }
     base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };
+  }
+  // STRUCTURE S4-F — the merchant cannot fix an id / anchor / position the portal and the server disagree on: the stale-draft panel's title
+  // and action (approved), the addendum's line; a section that needs a look goes «Ir a la sección», its line under that section's header
+  if (['staged_anchor_invalid', 'staged_promotion_mismatch', 'category_id_mismatch'].includes(code)) {
+    base.title = PANELS.stale_edit.title; base.detail = s4Copy('mismatchBody'); base.action = { ...PANELS.stale_edit.action }; base.generic = false;
+  }
+  if (code === 'subcat_partial' || code === 'section_not_attachable_yet') {
+    const sec = b && typeof b.key === 'string' ? b.key : (b && typeof b.cat === 'string' ? b.cat : null);
+    const partial = code === 'subcat_partial';
+    base.title = s4Copy(partial ? 'partialTitle' : 'notAttachTitle'); base.detail = s4Copy(partial ? 'partialBody' : 'notAttachBody');
+    base.action = { id: PUBLISH_ACTIONS.FIX_SECTION, label: s4Copy('goSection') }; base.generic = false;
+    base.section = sec; base.sectionLine = s4Copy(partial ? 'partialLine' : 'notAttachLine');
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {

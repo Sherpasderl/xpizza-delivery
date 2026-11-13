@@ -86,6 +86,8 @@ export const S4_COPY = Object.freeze({
   emptyTitle: null, emptyBody: null, subcatNeedsDish: null, dropCat: null, dropTitle: null, dropSub: null, dropBody: null, nameTaken: null,
   sheetSubFirst: null, sheetSub: null, subName: null, subPh: null, products: null, firstLine: null, moveLine: null, needOne: null, createSub: null,
   subNameTaken: null, subCaps: null, menuNote: null, toastBack: null, unpromoteLine: null, barSub: null, barSubs: null, barOrder: null,
+  mismatchBody: null, partialTitle: null, partialBody: null, partialLine: null, goSection: null, notAttachTitle: null, notAttachBody: null, notAttachLine: null,
+  capsCats: null, unnamedLine: null, nameAll: null,
 });
 export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
 
@@ -129,7 +131,14 @@ export function renderRail(railEl, groups, selectedId, onSelect, s4 = null) {
   box.append(lr, input);
   if (s4.box.line) {
     box.classList.add('mk-inv');
-    const l = el('div', 'ferr mk-ferr', s4.box.line); l.setAttribute('role', 'alert'); l.id = 'mk-newcat-e';
+    // the line, and — when it names a way out (S4-F categories_unnamed) — that way, as the base's quiet link
+    const text = typeof s4.box.line === 'string' ? s4.box.line : s4.box.line.text;
+    const l = el('div', 'ferr mk-ferr', text); l.setAttribute('role', 'alert'); l.id = 'mk-newcat-e';
+    if (typeof s4.box.line === 'object' && s4.box.line.link) {
+      const a = el('button', 'mk-lnk', s4.box.line.link.label); a.type = 'button';
+      a.addEventListener('click', () => s4.box.line.link.onClick());
+      l.append(a);
+    }
     input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', l.id);
     box.append(l);
   }
@@ -305,7 +314,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // STRUCTURE S4 (absent ⇒ today's header and empty state): { isNew (the F tag after the title), subcat: null | { disabled, title,
   // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page),
   // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count),
-  // onMore: null | (id, button) (frame E2: a row's «Más acciones», before its chevron — existing dishes only, moreFor(it)) }
+  // onMore: null | (id, button) (frame E2: a row's «Más acciones», before its chevron — existing dishes only, moreFor(it)),
+  // headLine: null | text (S4-F: a refusal that names this section, under its header — the base's refusal line) }
   const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
@@ -349,6 +359,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     head.append(right);
   }
   detailEl.append(head);
+  if (s4 && typeof s4.headLine === 'string' && s4.headLine) { const hl = el('div', 'ferr mk-ferr mk-headline', s4.headLine); hl.setAttribute('role', 'alert'); detailEl.append(hl); }
   if (editable && typeof opts.notice === 'string' && opts.notice) {
     const n = el('div', 'secnote');
     n.append(svgIcon(LOCK), el('span', null, opts.notice));

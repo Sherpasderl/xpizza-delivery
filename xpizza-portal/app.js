@@ -1637,6 +1637,8 @@ function paintProductTabs() {
 // section lives in structure.staged_categories until a dish is in it (then promoted, in the same draft); a section declared in THIS draft
 // is new as well (the F tag «Nueva»). Every write is editor.js's S4 writer, with the server's switch.
 let newCatBox = null;
+// S4-F «Ir a la sección»: the refusal's line under that section's header — until another section is selected
+let sectionLine = null;
 let newCatRefs = null;
 const S4ON = () => ({ sections: state.sections === true });
 const stagedNow = () => (state.draft && state.sections === true ? (((draftSource(state.draft) || {}).structure || {}).staged_categories || []) : []);
@@ -1661,9 +1663,21 @@ function createSection() {
   const v = newCatBox.value;
   const problem = categoryNameProblem(v);
   if (problem) { newCatBox.line = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  // S4-F categories_unnamed (the server's rule, pre-judged): every section needs a name first — the line, and the way to name them
+  // (the server: ANY live section without a name refuses a new one — section-compare.js; «name all» when every one is unnamed, else the
+  // first unnamed section's own rename, T1)
+  const unnamed = categoriesOf().find((c) => c && !(typeof c.name === 'string' && c.name));
+  if (unnamed) {
+    const all = categoriesUnnamed(state.draft);
+    newCatBox.line = { text: s4Copy('unnamedLine'), link: { label: s4Copy('nameAll'), onClick: bound(() => {
+      newCatBox = null;
+      if (all) { paint(); openNameAll(); } else { state.selectedCat = String(unnamed.id); paint(); renameStart(String(unnamed.id)); }
+    }) } };
+    paint(); if (newCatRefs) newCatRefs.input.focus(); return;
+  }
   const before = new Set(stagedNow().map((c) => String(c.id)));
   const r = addCategory(state.draft, v, {}, S4ON());
-  if (!r.ok) { newCatBox.line = r.code === 'category_name_taken' ? s4Copy('nameTaken') : UNDO_REFUSED; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  if (!r.ok) { newCatBox.line = r.code === 'category_name_taken' ? s4Copy('nameTaken') : r.code === 'structure_caps' ? s4Copy('capsCats') : UNDO_REFUSED; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
   const made = stagedNow().find((c) => !before.has(String(c.id)));
   newCatBox = null;
   if (made) state.selectedCat = made.id;
@@ -1681,7 +1695,8 @@ function detailS4(staged) {
   // a declared section: «Nueva subcategoría» (S4-A / S4-B) and its list under one head per subsection (frame E)
   return { isNew: isNewSection(cat.id), subcat: { disabled: false, onClick: bound((from) => subOpen(cat, from)) },
     subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null,
-    onMore: bound((id, from) => menuOpen(id, from)), moreFor: (it) => !isAddition(it) && !(state.drawerKey && state.drawerKey === rowId(it)) };
+    onMore: bound((id, from) => menuOpen(id, from)), moreFor: (it) => !isAddition(it) && !(state.drawerKey && state.drawerKey === rowId(it)),
+    headLine: sectionLine && String(sectionLine.cat) === String(cat.id) ? sectionLine.text : null };
 }
 // E2 — a row's menu (.mk-pop, role=menu): «Mover a» every section (each subsection its own entry, the current one inert «actual», a new one
 // «nueva»), S4-D's line when the dish is the last of a section declared in THIS draft, «Quitar del menú» (the approved R2 flow). Esc / a
@@ -1917,7 +1932,7 @@ function paint() {
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks
   $('drawer').classList.toggle('namehold', renamesPending());
-  newCatRefs = renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); }, railS4());
+  newCatRefs = renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; if (sectionLine && String(sectionLine.cat) !== String(id)) sectionLine = null; paint(); }, railS4());
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   const pend = pendingRemovalMap();
   paintNameCall();
@@ -4158,6 +4173,14 @@ function showOutcome(outcome) {
         const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);
         if (ctl) ctl.focus();
       }
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX_SECTION) {
+      // S4-F — back to editing on the section the server named, its line under the header
+      $('scrim').classList.remove('show');
+      clearReview();
+      if (outcome.section) { state.selectedCat = outcome.section; sectionLine = { cat: outcome.section, text: outcome.sectionLine }; }
+      paint(); syncUi();
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX && outcome.productLine) {

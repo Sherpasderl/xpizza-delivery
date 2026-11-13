@@ -673,6 +673,9 @@
   .mk-popnote{padding:6px 12px 7px;font-size:12px;color:var(--mute2);line-height:1.45}
   .mk-pop.mk-popup{box-shadow:var(--shadow-lg)}
   .mk-rowline{padding:0 20px 10px}
+  /* S4-F: a refusal that names a section, under its header (the base's refusal line); the box line's way out (a quiet link) */
+  .mk-headline{padding:10px 20px 0}
+  .mk-newcat .ferr .mk-lnk{font-size:12.5px}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */
   .mk-cf .mk-pf{display:flex;flex-direction:column;gap:6px;margin-top:14px}

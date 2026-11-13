@@ -370,3 +370,18 @@ test('pendingSections is a PURE reader (the wiring guards rule it so): a deep-fr
   assert.equal(pendingSections(d).filter((x) => x.kind === 'category').length, 1, 'premise: it read the draft');
   assert.equal(JSON.stringify([d.state, d.orig]), before);
 });
+
+// S4-F — the save's S4 refusals as the review's outcome panels (the server's codes; the copy the addendum proposes is ⟦s4.key⟧)
+test('S4-F: the three mismatch codes are the stale-draft panel; subcat_partial / section_not_attachable_yet go «Ir a la sección»', async () => {
+  const { outcomeFor, PUBLISH_ACTIONS } = await import('./review.js');
+  const P4 = (k) => `⟦s4.${k}⟧`;
+  for (const code of ['staged_anchor_invalid', 'staged_promotion_mismatch', 'category_id_mismatch']) {
+    const o = outcomeFor({ code, body: { error: code } }, 'edit');
+    assert.equal(o.title, 'Tu borrador cambió', `${code}: the approved title`); assert.equal(o.detail, P4('mismatchBody'));
+    assert.equal(o.action.id, PUBLISH_ACTIONS.RELOAD, code);
+  }
+  const sp = outcomeFor({ code: 'subcat_partial', body: { error: 'subcat_partial', key: 'dim_sum' } }, 'edit');
+  assert.deepEqual([sp.title, sp.detail, sp.action.id, sp.action.label, sp.section, sp.sectionLine], [P4('partialTitle'), P4('partialBody'), PUBLISH_ACTIONS.FIX_SECTION, P4('goSection'), 'dim_sum', P4('partialLine')]);
+  const na = outcomeFor({ code: 'section_not_attachable_yet', body: { error: 'section_not_attachable_yet', key: 'postres' } }, 'edit');
+  assert.deepEqual([na.title, na.detail, na.action.id, na.section], [P4('notAttachTitle'), P4('notAttachBody'), PUBLISH_ACTIONS.FIX_SECTION, 'postres']);
+});
