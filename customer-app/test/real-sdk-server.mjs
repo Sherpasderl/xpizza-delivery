@@ -10,7 +10,7 @@
 // 'extra_not_allowed' }); pauseGate() — the next finish waits at its gate (after the create-once order, BEFORE any attempt is claimed)
 // until release(); loseNext() — the next placeSdkOrder reaches the server but its response is lost (the client sees a network error —
 // once that request is parked at a paused gate, or at once); issueTicket() — a guest's REAL checkout ticket record bound to an order id.
-// THE FENCE — PLAN-sdk-fence-r1 as BUILT by 3a (ef889136, feat/sdk-fence-3a, payments/sdk/fence.js + finish.js + switch-endpoint.js),
+// THE FENCE — PLAN-sdk-fence-r1 as BUILT by 3a (ef889136 + its r1 P1 fix 10db81aa, feat/sdk-fence-3a: fence.js + finish.js + switch-endpoint.js),
 // MIRRORED line for line until the train merge. ⚠ MERGE OBLIGATION (advisor 11-13): at the merge this file imports the REAL fence
 // (payments/sdk/fence.js, the real finishSdk / cancelSdkPendingCore paths) and the mirror below is DELETED — a model can mask the real
 // thing. Mirrored: sdk_fence/{sha256(order_id + "\n" + owner)} = { order_id, owner, at }, owner = the C6 subject (u_<uid> | p_<phone_hash>),
@@ -73,22 +73,48 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     if (!rec || !Number.isFinite(rec.exp) || !(clock.t < rec.exp) || rec.order_id !== orderId || typeof rec.phone_hash !== 'string' || !rec.phone_hash) return null;
     return ownerOf({ phoneHash: rec.phone_hash });
   }
-  // switch-endpoint.js @ ef889136 (cancelSdkPendingCore): absent ≡ foreign ⇒ fence for (id, the caller) FIRST, THEN the re-read
+  // switch-endpoint.js @ 10db81aa (cancelSdkPendingCore, the fence + its r1 P1 fix), line for line: absent ≡ foreign ⇒ the fence for (id, the
+  // caller) FIRST, THEN the re-read by that VERIFIED owner key — never a re-authorization (a token / ticket expiring between the reads must
+  // not turn a late create into a safe answer); owned ⇒ the owned path; else NO_SDK_ORDER; a failed write / read ⇒ 503, never safe
+  const ownedByKey = (order, owner) => {
+    if (!order || typeof owner !== 'string') return false;
+    if (owner.startsWith('u_')) return order.customer_uid === owner.slice(2);
+    if (owner.startsWith('p_')) return !order.customer_uid && !!order.guest_verified && order.guest_verified.phone_hash === owner.slice(2);
+    return false;
+  };
+  const FENCE_UNAVAILABLE = Object.freeze({ status: 503, body: Object.freeze({ error: 'unavailable', retryable: true }) });
   async function cancelMirror(headers, body) {
     const orderId = body && body.order_id;
-    if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return cancelSdkPendingCore(deps, { headers, body });
+    if (typeof orderId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return { status: 400, body: { error: 'bad_request' } };
     const creds = { authorization: headers.authorization, ticket: headers['x-sherpa-order-ticket'] };
     let uid = null;
-    const auth = await authorizeExistingOrder({ ...deps, verifyIdToken: async (t) => { const d = await deps.verifyIdToken(t); uid = d && typeof d.uid === 'string' ? d.uid : null; return d; } }, creds, orderId);
+    let auth = await authorizeExistingOrder({ ...deps, verifyIdToken: async (t) => { const d = await deps.verifyIdToken(t); uid = d && typeof d.uid === 'string' ? d.uid : null; return d; } }, creds, orderId);
     if (!auth.ok) {
       const owner = auth.status === 404 ? ownerOf({ uid })
         : auth.error === 'guest_auth_required' && (await C.readOrder(db, orderId)) == null ? await guestOwnerForAbsent(creds.ticket, orderId) : null;
       if (!owner) return auth.status === 404 ? { status: 200, body: { ...NO_SDK_ORDER } } : { status: auth.status, body: { error: auth.error } };
-      try { await writeFence(orderId, owner); } catch (_) { return { status: 503, body: { error: 'unavailable', retryable: true } }; }
-      const again = await authorizeExistingOrder(deps, creds, orderId);
-      if (!again.ok) return { status: 200, body: { ...NO_SDK_ORDER } };
+      try { await writeFence(orderId, owner); } catch (_) { return { status: FENCE_UNAVAILABLE.status, body: { ...FENCE_UNAVAILABLE.body } }; }
+      let again;
+      try { again = await C.readOrder(db, orderId); } catch (_) { return { status: FENCE_UNAVAILABLE.status, body: { ...FENCE_UNAVAILABLE.body } }; }
+      if (!ownedByKey(again, owner)) return { status: 200, body: { ...NO_SDK_ORDER } };
+      auth = { ok: true };
     }
-    return cancelSdkPendingCore(deps, { headers, body });   // the owned path (today's core, which re-authorizes and cancels)
+    let order = await C.readOrder(db, orderId);
+    if (!F.isSdkOrder(order)) return { status: 200, body: { ...NO_SDK_ORDER } };
+    if (order.payment_placed && !order.payment_cancel) return { status: 409, body: { error: 'already_placed' } };
+    if (!order.payment_cancel) {
+      const r = await C.cancelSdkOrder(deps, { orderId, kind: 'cancel', pendingOnly: true });
+      order = await C.readOrder(db, orderId);
+      if (!order.payment_cancel) return order.payment_placed ? { status: 409, body: { error: 'already_placed' } } : { status: 409, body: { error: r.reason || 'not_cancellable' } };
+    } else {
+      await C.cancelSdkOrder(deps, { orderId, kind: order.payment_cancel.kind });
+    }
+    const safe = C.safeToSwitch(await C.readRecord(db, orderId), order);
+    if (safe) {
+      const subject = SUB.subjectKey({ uid: order.customer_uid, phoneHash: order.guest_verified && order.guest_verified.phone_hash });
+      if (subject) await SUB.releaseSubject(deps, subject, orderId);
+    }
+    return { status: 200, body: { cancelled: true, safe_to_switch: safe } };
   }
   const hdrs = (h) => Object.fromEntries(Object.entries(h || {}).map(([k, v]) => [k.toLowerCase(), v]));
 
