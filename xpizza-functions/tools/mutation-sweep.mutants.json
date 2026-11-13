@@ -198,7 +198,7 @@
   "slice": "task7",
   "label": "publishVersion stops validating the candidate pre-publish",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys, frozen_extra_keys: input && input.frozen_extra_keys }), `${rid} (pre-publish)`);",
   "to": "  void assertCandidateValid;"
  },
  {
@@ -206,7 +206,7 @@
   "slice": "task7",
   "label": "the pre-flip gate drops the validator and only re-reads",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys, frozen_extra_keys: served.frozenExtraKeys }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
   "to": "  void candidateSource;"
  },
  {
