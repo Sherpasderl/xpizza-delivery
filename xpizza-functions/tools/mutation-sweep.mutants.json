@@ -35874,5 +35874,70 @@
   "kills_with": [
    "WAKE-7"
   ]
+ },
+ {
+  "id": "sbs9-01",
+  "slice": "sbs9",
+  "label": "the C-2 comment hint back in the global bordered .opt box (D3)",
+  "file": "../customer-app/capp-rate.js",
+  "from": "Comentario <span class=\"opthint\">",
+  "to": "Comentario <span class=\"opt\">",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D3"
+  ]
+ },
+ {
+  "id": "sbs9-02",
+  "slice": "sbs9",
+  "label": "a failed logo keeps the broken-image glyph + alt text (no fallback) (D6)",
+  "file": "../customer-app/capp-home.js",
+  "from": "box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');",
+  "to": "void box;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D6"
+  ]
+ },
+ {
+  "id": "sbs9-03",
+  "slice": "sbs9",
+  "label": "the desk card meta carries the closing time again (3 lines, a dangling «·») (D1)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}",
+  "to": " · cierra ${esc(closesText(r.cfg, now))}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^D1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "D1"
+  ]
+ },
+ {
+  "id": "sbs9-04",
+  "slice": "sbs9",
+  "label": "«Envío desde L 45» may break in the desk cell (D2)",
+  "file": "../customer-app/capp.css",
+  "from": "font-weight:600;white-space:nowrap}   /* SBS asm9 D2",
+  "to": "font-weight:600}   /* SBS asm9 D2",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D2"
+  ]
  }
 ]

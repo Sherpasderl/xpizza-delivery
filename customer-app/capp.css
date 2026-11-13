@@ -1164,11 +1164,11 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .sinfo .tools{display:flex;flex-direction:column;gap:10px}
 .app.desk .sinfo .toolrow{display:flex;align-items:center;gap:10px}
 .app.desk .sinfo .seg{width:200px;flex:none}
-.app.desk .cells{flex:1;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.app.desk .cells{flex:1 0 auto;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .app.desk .cells.one{grid-template-columns:1fr}
 .app.desk .cells div{padding:10px 14px;text-align:center}
 .app.desk .cells div+div{border-left:1px solid var(--line)}
-.app.desk .cells b{display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+.app.desk .cells b{display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;white-space:nowrap}   /* SBS asm9 D2: f2a's one line */
 .app.desk .cells span{font-size:12px;color:var(--mute)}
 .app.desk .cells .free{color:var(--pop)}
 .app.desk .cells .infobtn{margin:-8px -8px -8px -2px}
@@ -1287,7 +1287,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .rate h2{font:700 24px/1.15 var(--rhd);letter-spacing:-.01em;margin:0;outline:none}
 .rate .sub{font-size:14.5px;color:var(--mute);line-height:1.45;margin:-8px 0 0}
 .rate .lbl{display:block;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
-.rate .lbl .opt{font-weight:500;letter-spacing:0;text-transform:none}
+.rate .lbl .opthint{font-weight:500;letter-spacing:0;text-transform:none}   /* NOT .opt — the global bordered option box (SBS asm9 D3) */
 .stars{display:flex;gap:6px}
 .stars button{width:44px;height:44px;border:0;background:transparent;color:var(--line2);padding:0;display:flex;align-items:center;justify-content:center}
 .stars button svg{width:32px;height:32px;fill:currentColor}

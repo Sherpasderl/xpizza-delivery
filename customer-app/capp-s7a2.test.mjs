@@ -4747,3 +4747,14 @@ test('WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ REA
   const E = bootShell({ dirScript: ['unavailable_503'] });
   try { await until(() => E.q('[data-act="dir-retry"]')); await flush(); assert.equal(readyOf(E), '1', '🔴 WAKE-6b: the error frame ⇒ READY'); } finally { E.w.close(); }
 });
+
+// SBS asm9 D1 (16b): the DESKTOP Inicio card's meta is the frame's ONE line «● Abierto · Envío desde L 45» (D-3 r3 f1a — no closing
+// time, which wrapped it onto three lines with a dangling «·»); the PHONE keeps v6's «Abierto · cierra … · Envío desde …»
+test('D1 (C-6b desk, 16b): the open card meta on the desk = «Abierto · Envío desde L 45» (no «cierra»); the phone unchanged', async () => {
+  const D = bootShell({ media: fakeMedia(true) });
+  try {
+    await until(() => D.q('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')); await flush();
+    assert.equal(txt(D.q('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')), 'Abierto · Envío desde L 45', '🔴 D1: the desk card meta, exact to f1a');
+  } finally { D.w.close(); }
+  const P = bootShell({}); try { await until(() => P.q('.rlist .rcard[data-rid="x_pizza"] .meta')); await flush(); assert.ok(/cierra/.test(txt(P.q('.rlist .rcard[data-rid="x_pizza"] .meta'))), 'the phone keeps its closing time (v6)'); } finally { P.w.close(); }
+});

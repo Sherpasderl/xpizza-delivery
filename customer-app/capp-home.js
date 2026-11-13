@@ -160,6 +160,17 @@
     if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return '<span class="pill new">Nuevo en Sherpa</span>';
     return '';
   }
+  // SBS asm9 D6: a logo that FAILS to load becomes the initials plate (the cards' and the store avatar's own no-logo look) — never the
+  // broken-image glyph with its alt text overflowing the circle. ONE capture listener (an img's error does not bubble), installed once
+  // by the shell; inline onerror is not allowed (CSP script-src 'self')
+  function logoFallback(doc) {
+    if (!doc || typeof doc.addEventListener !== 'function') return;
+    doc.addEventListener('error', (e) => {
+      const img = e.target; if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-initials')) return;
+      const box = img.parentElement; if (!box) return;
+      box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');
+    }, true);
+  }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
   // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
@@ -186,7 +197,7 @@
   // the platform's «moments» (P mealDishes): a store's sections carry a moment id (its presentation `meals`); the title is Sherpa's
   const mealDishes = (stores, meal) => stores.flatMap((r) => (r.sections || []).filter((s) => r.meals[s.id] === meal).flatMap((s) => s.items.filter((it) => it.img).map((it) => ({ r, it })))).slice(0, 10);
   const initials = (name) => esc(String(name).split(' ').map((x) => x[0]).join('').slice(0, 2));
-  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
+  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt="" data-initials="${initials(r.name)}"></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
   const heroImg = (r, lazy) => (r.hero ? `<img src="${esc(r.hero)}" alt=""${lazy ? ' loading="lazy"' : ''}>` : '');
   const city = (platform) => (platform && typeof platform.city_label === 'string' && platform.city_label ? platform.city_label : '');
   // a row's entry state (r3.3-F1): gone ⇒ disabled in place; held ⇒ the drawn pressed state while its verification is awaited
@@ -259,7 +270,7 @@
     return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b> · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}</span>`
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}</span>`   /* SBS asm9 D1: the desk = f1a's one line (no closing time) */
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -481,5 +492,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

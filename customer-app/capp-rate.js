@@ -81,7 +81,7 @@
     <div class="rate"><h2 id="rate-h" tabindex="-1">¿Cómo estuvo tu pedido?</h2>${sub ? `<p class="sub">${sub}</p>` : ''}
     <div><div class="lbl">El restaurante</div><div class="stars" role="radiogroup" aria-label="Calificación del restaurante">${stars}<span class="word">${s ? WORDS[s - 1] : ''}</span></div></div>
     ${dishes}${delivery}
-    <div><label class="lbl" for="rate-comment">Comentario <span class="opt">· opcional, lo lee el restaurante</span></label><textarea id="rate-comment" data-field="rate-comment" maxlength="${COMMENT_MAX}" placeholder="¿Algo que el restaurante deba saber?"${off}>${esc(v.comment || '')}</textarea></div>
+    <div><label class="lbl" for="rate-comment">Comentario <span class="opthint">· opcional, lo lee el restaurante</span></label><textarea id="rate-comment" data-field="rate-comment" maxlength="${COMMENT_MAX}" placeholder="¿Algo que el restaurante deba saber?"${off}>${esc(v.comment || '')}</textarea></div>
     ${vm.error ? `<p class="rate-err" role="alert">${esc(vm.error)}</p>` : ''}${vm.note ? `<p class="rate-note" role="status">${esc(vm.note)}</p>` : ''}
     <div class="acts">${ed ? `<button class="primary" data-act="rate-send"${sendable ? '' : ' disabled'}${vm.sending ? ' aria-busy="true"' : ''}>Enviar</button>` : ''}<button class="btn2 wide" data-act="rate-later">${ed ? 'Ahora no' : 'Cerrar'}</button></div>
     <p class="fine">Tu calificación es anónima para el restaurante.${ed ? ' Podés cambiarla durante 7 días desde Pedidos.' : ''}</p></div></div>`;

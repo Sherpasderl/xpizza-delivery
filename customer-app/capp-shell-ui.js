@@ -37,6 +37,7 @@
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
+    CappHome.logoFallback(doc);   // SBS asm9 D6: a failed logo ⇒ the initials plate (home cards + the store avatar)
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
     const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');   // S2: the total changes after the card hold (presenter)
