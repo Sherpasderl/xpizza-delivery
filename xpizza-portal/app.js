@@ -11,7 +11,8 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 // PLAN-public-menu-display T1 — a section's display NAME (owner-approved mockup «Cambiar nombre de sección», 2026-10-25)
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
-import { groupByCategory, renderRail, renderDetail } from './render.js';
+import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
+import { addCategory, dropStagedCategory, sectionIsNew } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -81,6 +82,7 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
+import { openXConfirm } from './extras-view.js';   // S4-D: the drop confirm is E3's small confirm
 import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm, openRemoveProductConfirm } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
 import { canRemoveProduct, removeProduct, undoRemoveProduct, pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows } from './editor.js';   // «Quitar del menú» (PLAN-portal-remove-product r3)
@@ -571,6 +573,8 @@ function applyAddProductFacts(data) {
   state.extrasCatalog = !!(data && data.extrasCatalog === true);
   // STRUCTURE S3 (UI-r0 :45): the server's required-choice switch (getEditableCatalog choiceEdit); absent / not true ⇒ OFF — S1's card
   state.choiceEdit = !!(data && data.choiceEdit === true);
+  // STRUCTURE S4 (PLAN-portal-structure-S4-writer r0 §0.3): the server's sections switch (getEditableCatalog sections); absent ⇒ OFF — today's rail
+  state.sections = !!(data && data.sections === true);
   // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
   const db0 = data && data.deletionBase;
   state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
@@ -813,7 +817,8 @@ const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWit
 function isAddition(it) {
   return isTmpRow(it) || !!(it && typeof it.key === 'string' && state.additionKeys && state.additionKeys.has(it.key));
 }
-const canAddTo = (catId) => state.renderedCategories.includes(catId);   // always an array: declared [] and set from data
+const canAddTo = (catId) => state.renderedCategories.includes(catId)   // always an array: declared [] and set from data
+  || (state.sections === true && !!state.draft && isNewSection(catId));   // S4-C: an addition promotes a new section (advisor 11-13)
 const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structure || {}; return Array.isArray(st.categories) ? st.categories : []; };
 // ── PLAN-public-menu-display T1 — A SECTION'S NAME ──────────────────────────────────────────────────────────────────────
 // A RENAME PUBLISHES ALONE (server: rename_not_alone). The two sides are kept apart HERE, where the merchant can still see
@@ -1037,7 +1042,7 @@ function onAddProduct(catId) {
   if (!state.draft || !canAddTo(catId) || renamesPending()) return;   // R3b: a name change travels alone
   const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
   const cat = categoriesOf().find((c) => c && String(c.id) === String(catId));
-  addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null });
+  addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null }, { sections: state.sections === true });
   if (!draftSource(state.draft).items.some((i) => i && i.ref === ref)) return;   // refused (the draft is owned)
   state.drawerError = null;
   repaintFromDraft();
@@ -1619,12 +1624,70 @@ function paintProductTabs() {
   else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
 }
 
+// ── STRUCTURE S4 — the drawing half (MOCKUP-portal-structure-edit frame E, owner-approved; the S4 addendum S4-C / S4-D, copy pending) ──
+// The rail's «Nueva categoría» box is VIEW state (newCatBox: { value, line }); typing updates its live nodes in place (newCatRefs). A new
+// section lives in structure.staged_categories until a dish is in it (then promoted, in the same draft); a section declared in THIS draft
+// is new as well (the F tag «Nueva»). Every write is editor.js's S4 writer, with the server's switch.
+let newCatBox = null;
+let newCatRefs = null;
+const S4ON = () => ({ sections: state.sections === true });
+const stagedNow = () => (state.draft && state.sections === true ? (((draftSource(state.draft) || {}).structure || {}).staged_categories || []) : []);
+function isNewSection(id) { return !!state.draft && sectionIsNew(state.draft, id); }
+function railS4() {
+  if (state.sections !== true || !state.draft || state.platformPending === true) return null;
+  return { staged: stagedNow().map((c) => ({ id: c.id, name: c.name })), isNew: isNewSection, box: newCatBox, max: SECTION_NAME_MAX,
+    onOpen: bound(() => { newCatBox = { value: '', line: null }; paint(); if (newCatRefs) newCatRefs.input.focus(); }),
+    onInput: bound((v) => {
+      newCatBox.value = v;
+      if (newCatBox.line) { newCatBox.line = null; paint(); if (newCatRefs) { newCatRefs.input.focus(); newCatRefs.input.setSelectionRange(v.length, v.length); } return; }
+      if (newCatRefs) { newCatRefs.cnt.textContent = `${[...v].length}/${SECTION_NAME_MAX}`; newCatRefs.create.disabled = !v.trim(); }
+    }),
+    onCreate: bound(createSection),
+    onCancel: bound(() => { newCatBox = null; paint(); const a = $('rail').querySelector('button.railadd'); if (a) a.focus(); }),
+  };
+}
+// «Crear» (frame E): the writer judges the name (T1's words for empty / long / markup; the addendum's for a taken one); the new section
+// is selected at once, its page waiting for a dish (S4-C)
+function createSection() {
+  if (!newCatBox) return;
+  const v = newCatBox.value;
+  const problem = categoryNameProblem(v);
+  if (problem) { newCatBox.line = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  const before = new Set(stagedNow().map((c) => String(c.id)));
+  const r = addCategory(state.draft, v, {}, S4ON());
+  if (!r.ok) { newCatBox.line = r.code === 'category_name_taken' ? s4Copy('nameTaken') : UNDO_REFUSED; paint(); if (newCatRefs) newCatRefs.input.focus(); return; }
+  const made = stagedNow().find((c) => !before.has(String(c.id)));
+  newCatBox = null;
+  if (made) state.selectedCat = made.id;
+  refreshBar(); paint();
+}
+// S4-C: a new section's header and page (the F tag; «Nueva subcategoría» off until a dish is in it; the empty state with «Quitar categoría»)
+function detailS4(staged) {
+  if (state.sections !== true || !state.draft) return null;
+  const id = staged ? staged.id : state.selectedCat;
+  if (!isNewSection(id)) return null;
+  return { isNew: true, subcat: staged ? { disabled: true, title: s4Copy('subcatNeedsDish') } : null,
+    empty: staged ? { title: s4Copy('emptyTitle'), body: s4Copy('emptyBody'), dropLabel: s4Copy('dropCat'), onDrop: bound((from) => dropSection(staged, from)) } : null };
+}
+// S4-D: dropping a new section asks first (E3's small confirm, «Cancelar» focused); it leaves the rail at once
+function dropSection(staged, from) {
+  openXConfirm({ title: s4Copy('dropTitle', { nombre: staged.name }), sub: s4Copy('dropSub'), body: s4Copy('dropBody'), returnTo: from,
+    onGo: bound(() => {
+      const r = dropStagedCategory(state.draft, staged.id, S4ON());
+      if (!r.ok) return;
+      const first = state.groups[0];
+      state.selectedCat = first ? first.category.id : null;
+      refreshBar(); paint();
+    }),
+    buttons: [{ label: 'Cancelar', mods: ['ghost'], act: 'cancel', focus: true }, { label: s4Copy('dropCat'), mods: ['ghost', 'mk-quiet-danger'], act: 'go' }] });
+}
+
 function paint() {
   paintProductTabs();
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks
   $('drawer').classList.toggle('namehold', renamesPending());
-  renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
+  newCatRefs = renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); }, railS4());
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   const pend = pendingRemovalMap();
   paintNameCall();
@@ -1643,7 +1706,9 @@ function paint() {
     onSave: bound((v) => renameSave(catId, v)),
     onCancel: bound(renameCancel),
   } : null;
-  renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+  const staged = stagedNow().find((c) => String(c.id) === String(state.selectedCat));
+  renderDetail($('detail'), staged ? { category: { id: staged.id, name: staged.name }, items: [] } : state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
+    s4: detailS4(staged),
     rename,
     locked: nameHold || state.platformPending === true,   // F-2: Sherpa is updating the menu — prices and «Agregar producto» read-only
     notice: nameHold ? RENAME_NOTICE.renames : (otherHold && (rename || categoriesUnnamed(state.draft)) ? RENAME_NOTICE.others : null),
@@ -2035,6 +2100,7 @@ function resetEditFacts() {
   state.extrasAuthoring = false;
   state.extrasCatalog = false;
   state.choiceEdit = false;
+  state.sections = false;
   state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
@@ -2919,7 +2985,7 @@ function renderAddDrawer(d, it, keepScroll) {
     o.value = catId; o.selected = catId === disp.cat;
     sec.append(o);
   }
-  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
+  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value, { sections: state.sections === true }); state.selectedCat = sec.value; after(); renderDrawer(); holdDrawerForRename(); }));
   row2.append(field('Sección', sec, 'cat'));
   const prf = mk('div', 'fld pr');
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
@@ -2987,7 +3053,7 @@ function renderAddDrawer(d, it, keepScroll) {
   quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
   quitar.addEventListener('click', bound(() => {
     uploader.cancel(id);                      // DISH PHOTOS B — an upload for a product being removed has nowhere to land
-    removeAddition(state.draft, id, state.additionKeys);
+    removeAddition(state.draft, id, state.additionKeys, { sections: state.sections === true });
     state.drawerError = null;
     closeDrawer(); repaintFromDraft();
   }));

@@ -80,18 +80,66 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-export function renderRail(railEl, groups, selectedId, onSelect) {
+// ── STRUCTURE S4 — the addendum's PROPOSED lines (MOCKUP-portal-structure-S4-addendum H3): null ⇒ «⟦s4.key⟧» on screen until the owner
+// approves them (structure-s4-ui's SHIP GATE stays red until then). Frame E's own strings are the approved base mockup's, literal.
+export const S4_COPY = Object.freeze({
+  emptyTitle: null, emptyBody: null, subcatNeedsDish: null, dropCat: null, dropTitle: null, dropSub: null, dropBody: null, nameTaken: null,
+});
+export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
+
+// `s4` (STRUCTURE S4, the server's `sections` switch; absent ⇒ today's rail exactly): { staged: [{id, name}] (the new sections, after
+// the declared ones), isNew(id) (a section new in this draft: the F tag «Nueva»), box: null | { value, line } (the inline «Nueva categoría»
+// box, frame E), max, onOpen(), onInput(v), onCreate(), onCancel() }. → { input, cnt, create } (the box's live nodes: the caller updates
+// them in place while the merchant types — a rebuild under the caret would break a dead-key accent)
+export function renderRail(railEl, groups, selectedId, onSelect, s4 = null) {
   railEl.replaceChildren();
-  for (const g of groups) {
-    const b = el('button', `railitem${g.category.id === selectedId ? ' on' : ''}`);
+  const isNew = s4 && typeof s4.isNew === 'function' ? s4.isNew : () => false;
+  const item = (id, name, n) => {
+    const b = el('button', `railitem${id === selectedId ? ' on' : ''}`);
     b.type = 'button';
     const t = el('div', 'rtext');
-    t.append(el('b', null, g.category.name));
-    const c = el('div', 'rcount', String(g.items.length));
+    const nm = el('b', null, name);
+    if (s4 && isNew(id)) nm.append(el('span', 'tag new', 'Nueva'));
+    t.append(nm);
+    const c = el('div', 'rcount', String(n));
     b.append(t, c);
-    b.addEventListener('click', () => onSelect(g.category.id));
+    b.addEventListener('click', () => onSelect(id));
     railEl.append(b);
+  };
+  for (const g of groups) item(g.category.id, g.category.name, g.items.length);
+  if (!s4) return null;
+  for (const c of Array.isArray(s4.staged) ? s4.staged : []) item(c.id, c.name, 0);
+  if (!s4.box) {
+    const a = el('button', 'railadd'); a.type = 'button';
+    a.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Nueva categoría'));
+    a.addEventListener('click', () => s4.onOpen());
+    railEl.append(a);
+    return null;
   }
+  const box = el('div', 'mk-newcat');
+  const lr = el('div', 'mk-lrow');
+  const lab = el('label', null, 'Nueva categoría'); lab.htmlFor = 'mk-newcat-in';
+  const cnt = el('span', 'mk-cnt', `${[...s4.box.value].length}/${s4.max}`); cnt.setAttribute('aria-live', 'polite');
+  lr.append(lab, cnt);
+  const input = el('input', 'mgname-in'); input.type = 'text'; input.id = 'mk-newcat-in'; input.value = s4.box.value; input.placeholder = 'Nombre de la categoría';
+  input.addEventListener('input', () => s4.onInput(input.value));
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); s4.onCreate(); } else if (e.key === 'Escape') { e.preventDefault(); s4.onCancel(); } });
+  box.append(lr, input);
+  if (s4.box.line) {
+    box.classList.add('mk-inv');
+    const l = el('div', 'ferr mk-ferr', s4.box.line); l.setAttribute('role', 'alert'); l.id = 'mk-newcat-e';
+    input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', l.id);
+    box.append(l);
+  }
+  const btns = el('div', 'mk-btns');
+  const cancel = el('button', 'btn ghost sm', 'Cancelar'); cancel.type = 'button';
+  cancel.addEventListener('click', () => s4.onCancel());
+  const create = el('button', 'btn accent sm', 'Crear'); create.type = 'button'; create.disabled = !s4.box.value.trim();
+  create.addEventListener('click', () => s4.onCreate());
+  btns.append(cancel, create);
+  box.append(btns);
+  railEl.append(box);
+  return { input, cnt, create };
 }
 
 // A price CELL. Read-only it is text; editable it is an input, and the two share the `.price` wrapper
@@ -177,6 +225,8 @@ const LOCK = 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 
 // Guardar are updated in place, so the caret stays where the merchant left it.
 const SECTION_NAME_MAX = 40;
 const NAME_PROBLEM = { empty: 'Escribí un nombre', long: `Hasta ${SECTION_NAME_MAX} letras`, markup: 'Quitá los signos < y >' };
+// STRUCTURE S4: «Nueva categoría» judges a name by the same rule and words as a rename (T1, approved) — ONE copy
+export { NAME_PROBLEM as SECTION_NAME_PROBLEM, SECTION_NAME_MAX };
 function sectionNameField(head, rename) {
   head.classList.add('secedit');
   const field = el('label', 'secfield');
@@ -250,6 +300,9 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   //   notice   the slim line under the header that says why a control is off (a rename travels alone), or null
   //   locked   prices and «Agregar producto» are off while a name change waits to be published
   const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;
+  // STRUCTURE S4 (absent ⇒ today's header and empty state): { isNew (the F tag after the title), subcat: null | { disabled, title,
+  // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page) }
+  const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
   detailEl.replaceChildren();
@@ -271,15 +324,24 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       else b.addEventListener('click', () => rename.onStart());
       head.append(b);
     }
+    if (s4 && s4.isNew) head.append(el('span', 'tag new mk-htag', 'Nueva'));
   }
-  if (onAdd && !(rename && rename.mode === 'edit')) {
+  if ((onAdd || (s4 && s4.subcat)) && !(rename && rename.mode === 'edit')) {
     const right = el('span', 'dright');
-    const add = el('button', 'btn', '');
-    add.type = 'button';
-    add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
-    if (locked) add.disabled = true;
-    else add.addEventListener('click', () => onAdd(group.category.id));
-    right.append(add);
+    if (s4 && s4.subcat) {
+      const sb = el('button', 'btn ghost', ''); sb.type = 'button';
+      sb.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Nueva subcategoría'));
+      if (s4.subcat.disabled) { sb.disabled = true; if (s4.subcat.title) sb.title = s4.subcat.title; } else sb.addEventListener('click', () => s4.subcat.onClick());
+      right.append(sb);
+    }
+    if (onAdd) {
+      const add = el('button', 'btn', '');
+      add.type = 'button';
+      add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
+      if (locked) add.disabled = true;
+      else add.addEventListener('click', () => onAdd(group.category.id));
+      right.append(add);
+    }
     head.append(right);
   }
   detailEl.append(head);
@@ -289,7 +351,17 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     detailEl.append(n);
   }
 
-  if (group.items.length === 0) {
+  if (group.items.length === 0 && s4 && s4.empty) {
+    // S4-C: a new section's page — what it is waiting for, and its quiet «Quitar categoría»
+    const e = el('div', 'empty mk-empty');
+    e.append(el('b', null, s4.empty.title), el('span', null, s4.empty.body));
+    const acts = el('div', 'mk-emptyacts');
+    const drop = el('button', 'btn ptext mk-quiet-danger', s4.empty.dropLabel); drop.type = 'button';
+    drop.addEventListener('click', () => s4.empty.onDrop(drop));
+    acts.append(drop);
+    e.append(acts);
+    detailEl.append(e);
+  } else if (group.items.length === 0) {
     const e = el('div', 'empty');
     e.append(el('b', null, 'Esta sección está vacía'), el('span', null, 'Todavía no hay productos en esta sección.'));
     detailEl.append(e);

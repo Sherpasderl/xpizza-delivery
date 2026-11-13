@@ -641,6 +641,17 @@
   .dwf > .ferr{flex-basis:100%;order:-1;margin:0 0 4px}
   /* B6: a stale press's line, inline under what was pressed */
   .mk-stale{margin-top:2px}
+  /* STRUCTURE S4 — frame E: the rail's inline «Nueva categoría» box; S4-C: a new section's page (the base's .empty, one quiet action) */
+  .mk-newcat{display:flex;flex-direction:column;gap:9px;padding:12px 13px;border:1px solid var(--accent);border-radius:11px;background:var(--card);box-shadow:0 0 0 3px var(--tint2);margin-top:6px}
+  .mk-newcat .mk-btns{display:flex;gap:8px;justify-content:flex-end}
+  .mk-newcat .mk-lrow label{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+  .mk-newcat.mk-inv{border-color:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
+  .mk-newcat .ferr{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}
+  .dhead .tag.mk-htag{margin-left:-2px;vertical-align:1px}
+  .mk-empty{padding:48px 24px 44px;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .mk-empty span{max-width:46ch;line-height:1.55;font-size:13px}
+  .mk-emptyacts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+  @media(max-width:560px){.mk-empty{padding:36px 16px 32px}}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */
   .mk-cf .mk-pf{display:flex;flex-direction:column;gap:6px;margin-top:14px}

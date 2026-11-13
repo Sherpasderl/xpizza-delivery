@@ -433,12 +433,13 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // categorySlug), renameCategory (a declared one through T1's setCategoryNames), dropStagedCategory, moveItem (a declared target through
   // editItem; a staged one promoted at 5f's promotedOrder), addSubcat / renameSubcat, reorderSections / reorderSubcats / reorderItems —
   // each all or nothing, refused without the server's sections switch, then when the draft is not owned for editing. No key is written.
+  // S4 drawing half: sectionIsNew, a pure reader (staged, or declared since load) — the F tag «Nueva».
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addCategory', 'addChoice', 'addProduct', 'addSubcat', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
     'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'dropStagedCategory', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'moveItem', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingSections', 'pendingStructure', 'pendingTexts',
-    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'sectionIsNew', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
@@ -1062,7 +1063,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.savedRenames':        [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — the SAVED draft\u2019s unpublished section names, from the server: set in applyAddProductFacts (load / post-publish settle, behind the generation check) and in sendToOwnerFlow\u2019s settle path from the server\u2019s own diff, behind its generation check. It only HOLDS edits (prices / names), it never writes the draft'],
     'state.savedOther':          [2, 'guarded', 'PLAN-public-menu-display T1 (Codex r1 #3) — whether the SAVED draft has anything unpublished besides a name, from the server: the same two settle paths as state.savedRenames, generation-checked; it only HOLDS a rename'],
     'state.renameEdit':          [5, 'view',    'PLAN-public-menu-display T1 — WHICH section title is being edited (an id, nothing else): reset by the load path, set by «Cambiar nombre», cleared by Guardar / Cancelar and by moving to another section. Presentational: the NAME itself reaches the draft only through setCategoryNames (canEdit), from bound() callbacks'],
-    'state.selectedCat':         [6, 'view',    '[S4: + the existing-product FIX action, presentational] [1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
+    'state.selectedCat':         [8, 'view',    '[STRUCTURE S4 drawing: + «Crear» selects the new section, + dropping one selects the first; both presentational] [S4: + the existing-product FIX action, presentational] [1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
     'state.drawerKey':           [7, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] [DISH PHOTOS B: + the crop step\u2019s Cerrar (bound), which closes the drawer and discards the picked file] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [2, 'guarded', '[PORTAL-UI 1a: + openEditor, once per page at boot — the page\u2019s single selected restaurant] the switcher list, written by loadRestaurants behind its generation check'],
@@ -1087,6 +1088,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
     'state.choiceEdit':          [2, 'guarded', 'STRUCTURE S3 (UI-r0 :45) \u2014 the server\u2019s required-choice switch (getEditableCatalog choiceEdit); fail closed (S1\u2019s card, no pencil) until a load sets it; the server re-judges every op'],
+    'state.sections':            [2, 'guarded', 'STRUCTURE S4 (§0.3) \u2014 the server\u2019s sections switch (getEditableCatalog sections); fail closed (today\u2019s rail, no «Nueva categoría») until a load sets it; the server re-judges every op'],
     'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
     // «Quitar del menú» (PLAN-portal-remove-product r3 §9) — per-load server facts, set ONLY in applyAddProductFacts on the generation-checked
     // settle paths and reset with the edit facts (resetEditFacts); the server re-judges every save (the claim, the orders, the refs)
@@ -1240,6 +1242,7 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
                  // move the view state (state.renameEdit); every one is reached only through bound()
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
+                 'createSection',   // STRUCTURE S4 (frame E): «Crear» — addCategory (sections switch), then the new section selected
                  // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
                  // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
                  // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
@@ -1664,6 +1667,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.choiceRemovePlan',
   // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
   'IE.choiceNameProblems',
+  // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
+  'addCategory', 'dropStagedCategory', 'sectionIsNew',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

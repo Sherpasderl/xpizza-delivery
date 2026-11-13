@@ -1107,6 +1107,12 @@ function lastOfSection(draft, row) {
   if (others.length) return null;
   return draftOnlySection(draft, cat) ? 'draft' : 'live';
 }
+// a section NEW in this draft — staged (no dish yet) or declared since the draft was loaded: the rail's / header's F tag «Nueva». A pure reader.
+export function sectionIsNew(draft, id) {
+  if (!draft || !draft.state) return false;
+  if (stagedOf(draft.state).some((c) => c && String(c.id) === String(id))) return true;
+  return catsOf(draft.state).some((c) => c && String(c.id) === String(id)) && draftOnlySection(draft, id);
+}
 // S4-C (advisor 11-13): an ADDITION is a promoting dish like a moved-in one — sections ON only. promoteFor → false when the switch is on,
 // the target is staged and the promotion is refused (nothing written); unpromoteIfEmptied returns a section declared in THIS draft to
 // staged once its last dish left (3(a)'s rule, as moveItem / removeProduct do)
