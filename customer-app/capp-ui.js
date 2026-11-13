@@ -53,6 +53,7 @@
   const IC = {
     close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
     menu: I('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
+    note: I('<path d="M5 4h10l4 4v12H5z"/><path d="M8 12h8M8 16h6"/>'),   // D-3 r3's own path (frame 2a, the aside's notes row)
     bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update (owner-approved): an arrow into a tray
@@ -731,6 +732,7 @@
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
       return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
+        + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
         + cnote + (desk || soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total))
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
@@ -2252,6 +2254,8 @@
       if (act === 'back') { emit('back'); return; }
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)
       if (act === 'checkout') { checkoutTap(); return; }
+      // G-B (advisor 11-13): the aside's notes row is «Ir al checkout» with the checkout's notes field already open, and focused
+      if (act === 'cartnotes') { const was = S.more; S.more = true; if (checkoutTap() && S.screen === 'checkout') focusTo($('f-notes')); else S.more = was; return; }
       if (act === 'closed-sched' && sched()) {
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();

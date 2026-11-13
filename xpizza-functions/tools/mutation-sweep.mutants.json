@@ -36073,5 +36073,56 @@
   "kills_with": [
    "G-A5: no promo"
   ]
+ },
+ {
+  "id": "gb-01",
+  "slice": "gb",
+  "label": "the desk aside lacks frame 2a's «Agregar notas al restaurante» row",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        + (desk && S.desk ? `<button class=\"cnotes\" data-act=\"cartnotes\"",
+  "to": "        + (false ? `<button class=\"cnotes\" data-act=\"cartnotes\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: the aside row"
+  ]
+ },
+ {
+  "id": "gb-02",
+  "slice": "gb",
+  "label": "the notes row reaches the checkout with its notes field CLOSED (one more tap)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (act === 'cartnotes') { const was = S.more; S.more = true;",
+  "to": "if (act === 'cartnotes') { const was = S.more;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: the checkout's notes field is OPEN"
+  ]
+ },
+ {
+  "id": "gb-03",
+  "slice": "gb",
+  "label": "the notes field is opened but not focused",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (checkoutTap() && S.screen === 'checkout') focusTo($('f-notes'));",
+  "to": "if (checkoutTap() && S.screen === 'checkout') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: and focused"
+  ]
  }
 ]

@@ -4758,3 +4758,25 @@ test('D1 (C-6b desk, 16b): the open card meta on the desk = «Abierto · Envío 
   } finally { D.w.close(); }
   const P = bootShell({}); try { await until(() => P.q('.rlist .rcard[data-rid="x_pizza"] .meta')); await flush(); assert.ok(/cierra/.test(txt(P.q('.rlist .rcard[data-rid="x_pizza"] .meta'))), 'the phone keeps its closing time (v6)'); } finally { P.w.close(); }
 });
+
+// ── G-B (NOTE-capp-3-gaps-vs-frames; advisor 11-13: the aside's notes → the checkout's notes field): D-3 r3 frame 2a draws, in the
+// desk cart aside between the lines and the card-only note, «Agregar notas al restaurante · Sin cebolla, bien cocida…» ──
+test('G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» after the lines; a tap opens the checkout with its notes field OPEN and focused; the phone sheet and an empty aside carry none', async () => {
+  const { S, ui } = await deskStore(true, 1);
+  try {
+    const row = S.q('.deskcart [data-act="cartnotes"]');
+    assert.ok(row, '🔴 G-B: the aside row');
+    assert.equal(txt(row), 'Agregar notas al restaurante Sin cebolla, bien cocida…', '🔴 G-B: frame 2a\'s copy');
+    const kids = [...S.q('.deskcart').children], at = kids.indexOf(row), lastLine = kids.map((k, i) => (k.classList.contains('cline') && k !== row ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+    assert.ok(at === lastLine + 1 && kids.slice(at + 1).some((k) => k.classList.contains('ctot')), '🔴 G-B: right after the lines, before the totals');
+    S.click('.deskcart [data-act="cartnotes"]'); await flush();
+    assert.equal(ui.state.screen, 'checkout', '🔴 G-B: the tap goes to the checkout');
+    const notes = S.q('#f-notes');
+    assert.ok(notes, '🔴 G-B: the checkout\'s notes field is OPEN (no extra «Agregar notas» tap)');
+    assert.equal(S.w.document.activeElement, notes, '🔴 G-B: and focused');
+  } finally { S.w.close(); }
+  const P = await deskStore(false, 1);
+  try { P.S.click('.cart-bar'); await flush(); assert.equal(P.S.qa('[data-act="cartnotes"]').length, 0, 'the phone sheet: no row (frame 2a is the desk)'); } finally { P.S.w.close(); }
+  const E = await deskStore(true, 0);
+  try { assert.equal(E.S.qa('.deskcart [data-act="cartnotes"]').length, 0, 'an empty aside: no row'); } finally { E.S.w.close(); }
+});
