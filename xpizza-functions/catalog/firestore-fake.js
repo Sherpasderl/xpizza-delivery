@@ -31,6 +31,37 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore');
    A fixture that cannot express a production constraint makes that constraint untestable; this one is
    written down rather than assumed away, because the alternative is a green run standing in for a
    guarantee nobody checked. */
+/* Codex rdclaim r1 P2-1 — WriteBatch.update's CALL-TIME checks, as the installed SDK makes them (@google-cloud/firestore, probed
+   11-13; its messages, abridged): at least one field; every key a valid field path (no empty segment, none of ~ * / [ ]); no
+   path given twice or as a prefix of another ('m' beside 'm.x': «Field "m" was specified multiple times»); no undefined value at
+   any depth; a precondition is { lastUpdateTime: Timestamp } or { exists: true } — { exists: false } and anything else are refused.
+   What the SDK accepts (NaN, arrays, a dotted key INSIDE a value, { exists: true }) is accepted. Throws; returns nothing. */
+const SDK = 'Update() requires either a single JavaScript object or an alternating list of field/value pairs that can be followed by an optional precondition.';
+function updateCallProblem(data, pre) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) throw new Error(`${SDK} At least one field must be updated.`);
+  const paths = [];
+  for (const k of Object.keys(data)) {
+    const segs = k.split('.');
+    if (segs.some((x) => x === '') || /[~*/[\]]/.test(k)) throw new Error(`${SDK} Value for argument "${k}" is not a valid field path. Paths can't be empty and must not contain "*~/[]".`);
+    paths.push(segs);
+  }
+  for (const a of paths) for (const b of paths) {
+    if (a !== b && a.length <= b.length && a.every((x, i) => x === b[i])) throw new Error(`Value for argument "dataOrField" is not a valid update map. Field "${a.join('.')}" was specified multiple times.`);
+  }
+  const hasUndefined = (v) => v === undefined || (Array.isArray(v) ? v.some(hasUndefined) : !!v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype && Object.values(v).some(hasUndefined));
+  if (Object.values(data).some(hasUndefined)) throw new Error(`${SDK} Value for argument "dataOrField" is not a valid Firestore value. Cannot use "undefined" as a Firestore value.`);
+  if (pre !== undefined) {
+    const ok = pre && typeof pre === 'object' && ((Object.keys(pre).length === 1 && pre.lastUpdateTime instanceof Timestamp) || (Object.keys(pre).length === 1 && pre.exists === true));
+    if (!ok) throw new Error(`${SDK} Value for argument "preconditionOrValues" is not a valid precondition.`);
+  }
+}
+// A STRUCTURAL copy: plain maps and arrays copied, a Timestamp re-made (so no stored value is ever shared with a caller or a
+// backup), every other value — NaN, ±Infinity, a FieldValue sentinel, any non-plain object — kept exactly.
+const clonePlain = (v) => (Array.isArray(v) ? v.map(clonePlain)
+  : v instanceof Timestamp ? new Timestamp(v.seconds, v.nanoseconds)
+    : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clonePlain(x)]))
+      : v);
+
 function makeDb() {
   const docs = new Map();            // path -> { data, updateTime }
   let clock = 1757000000000;
@@ -116,7 +147,7 @@ function makeDb() {
         for (const [k, v] of Object.entries(data)) {
           const segs = k.split('.');
           let o = next;
-          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Array.isArray(o[sgm])) o[sgm] = {}; o = o[sgm]; }
+          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Object.getPrototypeOf(o[sgm]) !== Object.prototype) o[sgm] = {}; o = o[sgm]; }   // a NON-MAP parent (a string, an array, a Timestamp) is replaced by a map, never written into (Codex rdclaim r1 P2-2)
           o[segs[segs.length - 1]] = v;
         }
         put(path, next);
@@ -200,15 +231,14 @@ function makeDb() {
         },
         update: (ref, data, ...rest) => {
           if (typeof data === 'string' || rest.length > 1) throw new TypeError('firestore-fake: batch.update(ref, field, value, …) — the field/value form is not modelled');
-          if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) throw new Error('firestore-fake: batch.update needs at least one field to update (as the SDK)');
-          const opts = rest[0];
-          if (opts && opts.lastUpdateTime !== undefined && !(opts.lastUpdateTime instanceof Timestamp)) throw new TypeError('firestore-fake: update() precondition lastUpdateTime must be a Timestamp');
-          ops.push(() => updateNow(ref.path, data, opts));
+          updateCallProblem(data, rest[0]);
+          const snap = clonePlain(data);   // the SDK serializes at the call: a later mutation of the caller's object is not the write
+          ops.push(() => updateNow(ref.path, snap, rest[0]));
           return self;
         },
         delete: (ref) => { ops.push(() => { docs.delete(ref.path); }); return self; },
         commit: async () => {
-          const before = new Map(docs);
+          const before = new Map([...docs].map(([k, v]) => [k, { data: clonePlain(v.data), updateTime: v.updateTime }]));   // a DEEP backup: nothing it holds is shared with a write
           pinned = tick();
           try {
             for (const op of ops) op();

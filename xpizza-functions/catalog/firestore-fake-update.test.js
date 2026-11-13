@@ -54,7 +54,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     await assert.rejects(bt.commit(), (e) => e.code === 6, 'BU-ROLLBACK: a create of an existing doc refuses with code 6');
     assert.deepStrictEqual([(await D.get()).data().a, (await D.get()).updateTime.isEqual(tD), (await H.get()).data()], [1, true, { value: 3 }], 'BU-ROLLBACK: atomic — the update BEFORE the failing create is rolled back');
     ok('BU-STALE / BU-ROLLBACK a stale precondition → 9, a create over an existing doc → 6; either way the whole batch is rolled back');
-    assert.throws(() => batchOf().update(D, { a: 2 }, { lastUpdateTime: `${tD.seconds}` }), TypeError, 'BU-TYPES: a string precondition is refused (the SDK takes a Timestamp)');
+    assert.throws(() => batchOf().update(D, { a: 2 }, { lastUpdateTime: `${tD.seconds}` }), /"preconditionOrValues" is not a valid/, 'BU-TYPES: a string precondition is refused (the SDK takes a Timestamp)');
     assert.throws(() => batchOf().update(D, {}), /at least one field/i, 'BU-TYPES: an empty update is refused, as the SDK refuses it');
     assert.throws(() => batchOf().update(D, 'a', 2), /field\/value form/, 'BU-TYPES: the field/value varargs form is not modelled — refused, never misread');
     ok('BU-TYPES a string precondition, an empty update and the unmodelled field/value form are refused at the call');
@@ -66,6 +66,43 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.ok(Array.isArray(res) && res.length === 2 && res[0].writeTime.isEqual(d1.updateTime) && res[1].writeTime.isEqual(h1.updateTime), 'BU-MERGE: commit returns one WriteResult per write, writeTime = the stored updateTime');
     assert.ok(d1.updateTime.isEqual(h1.updateTime) && !d1.updateTime.isEqual(tD), 'BU-MERGE: one commit time for the whole batch, new');
     ok('BU-MERGE a matching precondition commits: field-path merge, one WriteResult per write, one shared new commit time');
+  }
+  // ── Codex rdclaim r1 P2-1: batch.update refuses at the CALL exactly what the installed SDK refuses (probed against
+  // @google-cloud/firestore WriteBatch.update, 11-13), and accepts what it accepts ──
+  {
+    const b1 = makeDb(); const D = b1.collection('c').doc('sdk'); await D.set({ m: { x: 1, y: 2 }, a: 1 });
+    const refused = [
+      [{ m: { y: 9 }, 'm.x': 2 }, /Field "m" was specified multiple times/, 'overlapping paths (map, then dotted)'],
+      [{ 'm.x': 2, m: { y: 9 } }, /Field "m" was specified multiple times/, 'overlapping paths (dotted, then map)'],
+      [{ 'm..x': 1 }, /"m\.\.x" is not a valid field path/, 'an empty segment'],
+      [{ '.x': 1 }, /"\.x" is not a valid field path/, 'a leading dot'],
+      [{ 'x.': 1 }, /"x\." is not a valid field path/, 'a trailing dot'],
+      [{ 'a*b': 1 }, /"a\*b" is not a valid field path/, 'a reserved character'],
+      [{ a: undefined }, /"dataOrField" is not a valid Firestore value/, 'an undefined value'],
+      [{ a: { b: [1, { c: undefined }] } }, /"dataOrField" is not a valid Firestore value/, 'a nested undefined value'],
+    ];
+    for (const [data, re, what] of refused) assert.throws(() => b1.batch().update(D, data), re, `BU-SDK: ${what} is refused at the call`);
+    assert.throws(() => b1.batch().update(D, { a: 2 }, { exists: false }), /"preconditionOrValues" is not a valid/, 'BU-SDK: the precondition { exists: false } is refused');
+    const r = await b1.batch().update(D, { a: 2, n: NaN, arr: [1, [2]], 'm.k': { 'x.y': 1 } }, { exists: true }).commit();
+    const d = (await D.get()).data();
+    assert.ok(r.length === 1 && d.a === 2 && Number.isNaN(d.n) && d.m.k['x.y'] === 1 && d.m.x === 1, 'BU-SDK: { exists: true }, NaN, arrays and a dotted key INSIDE a value are accepted, as the SDK accepts them');
+    const data = { a: { deep: 1 } }; const bt = b1.batch().update(D, data); data.a.deep = 99;
+    await bt.commit();
+    assert.strictEqual((await D.get()).data().a.deep, 1, 'BU-SDK: the write is what was passed AT THE CALL (the SDK serializes then), not a later mutation');
+    ok('BU-SDK overlapping paths, bad field paths, undefined (any depth) and { exists: false } refused at the call; what the SDK accepts is accepted; the call snapshots its data');
+  }
+  // ── Codex rdclaim r1 P2-2: a rolled-back batch leaves every stored value exactly as it was — an update never writes INTO a stored
+  // non-map value (a dotted path through a Timestamp replaces it with a map, as through a string; the stored object is untouched) ──
+  {
+    const b2 = makeDb(); const D = b2.collection('c').doc('iso'); const ts = new Timestamp(1700000000, 5);
+    await D.set({ ts, keep: 1 });
+    const bt = b2.batch(); bt.update(D, { 'ts._seconds': 999 }); bt.create(D, {});
+    await assert.rejects(bt.commit(), (e) => e.code === 6, 'BU-ISOLATE: the batch refuses (the create)');
+    const after = (await D.get()).data();
+    assert.ok(after.ts instanceof Timestamp && after.ts.seconds === 1700000000 && ts.seconds === 1700000000, `BU-ISOLATE: the stored Timestamp is untouched by the rolled-back batch (${JSON.stringify(after.ts)})`);
+    await b2.batch().update(D, { 'ts.x': 1 }).commit();
+    assert.ok(ts.seconds === 1700000000 && JSON.stringify((await D.get()).data().ts) === '{"x":1}', 'BU-ISOLATE: a committed dotted path through a Timestamp replaces it with a map; the old object is never written into');
+    ok('BU-ISOLATE a rolled-back batch leaves a stored Timestamp exactly as it was; a dotted path never writes into a non-map value');
   }
   console.log(`\nfirestore-fake-update: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });
