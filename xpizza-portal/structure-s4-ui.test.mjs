@@ -121,8 +121,102 @@ test('S4-C — «Agregar producto» on the new category: the new dish lands in i
   assert.equal(it.querySelector('.tag.new').textContent, 'Nueva'); assert.equal(it.querySelector('.rcount').textContent, '1');
 });
 
+// ── step 2: subsection heads (frame E) and «Nueva subcategoría» (S4-A / S4-B) ──
+const pick = async (p, name) => { items(p).find((x) => x.querySelector('b').firstChild.textContent === name).click(); await settle(5); };
+const heads = (p) => [...detail(p).querySelectorAll('.mk-subh')].map((h) => [h.querySelector('.mk-sn').textContent, h.querySelector('.mk-n').textContent]);
+const subBtn = (p) => [...detail(p).querySelectorAll('.dhead .dright button')].find((x) => x.textContent === 'Nueva subcategoría');
+const sheet = (p) => p.d.querySelector('#xsubcat.show .modal');
+const sBtn = (p, t) => [...sheet(p).querySelectorAll('.mf button')].find((b) => b.textContent === t);
+const rowsIn = (p) => [...sheet(p).querySelectorAll('.mk-pick label.modopt')];
+
+test('E — a category with subcategories lists its products under one head each («{sub}» · its count); OFF: today\'s flat list', async () => {
+  const off = await page({ read: () => editable({}) });
+  await off.signIn(); await pick(off, 'Bebidas');
+  assert.deepEqual(heads(off), [], 'OFF: no heads');
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Bebidas');
+  const src = p.src();
+  const n = (sub) => src.items.filter((i) => i.display.cat === 'bebidas' && i.display.variantOf == null && i.display.subcat === sub).length;
+  assert.deepEqual(heads(p), [['Sodas', String(n('Sodas'))], ['Cervezas', String(n('Cervezas'))]], '🔴 one head per subsection, in its order');
+  const h = detail(p).querySelectorAll('.mk-subh')[1];
+  let k = 0; for (let x = h.nextElementSibling; x && x.classList.contains('irow'); x = x.nextElementSibling) k += 1;
+  assert.equal(k, n('Cervezas'), 'its rows follow its head');
+});
+
+test('S4-A — the FIRST subcategory: every product checked and locked, the line; «Crear subcategoría» groups them all', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Dim Sum');
+  const ids = p.src().items.filter((i) => i.display.cat === 'dim_sum' && i.display.variantOf == null).map((i) => i.key);
+  const b = subBtn(p); assert.ok(b, 'the header action'); assert.equal(b.disabled, false);
+  b.click(); await settle(5);
+  const m = sheet(p);
+  assert.equal(m.querySelector('.mh .mt').textContent, 'Nueva subcategoría');
+  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSubFirst'));
+  const inp = m.querySelector('input.mgname-in');
+  assert.equal(m.querySelector(`label[for="${inp.id}"]`).textContent, P('subName')); assert.equal(inp.placeholder, P('subPh'));
+  assert.equal(p.d.activeElement, inp);
+  const cnts = [...m.querySelectorAll('.fld .mk-lrow .mk-cnt')].map((x) => x.textContent);
+  assert.deepEqual(cnts, ['0/40', `${ids.length} de ${ids.length}`]);
+  assert.equal(m.querySelectorAll('.fld .mk-lrow label')[1].textContent, P('products'));
+  assert.deepEqual([m.querySelector('.mk-pick .mk-subh .mk-sn').textContent, m.querySelector('.mk-pick .mk-subh .mk-n').textContent], ['Dim Sum', `${ids.length} de ${ids.length}`]);
+  assert.equal(rowsIn(p).length, ids.length);
+  assert.ok(rowsIn(p).every((r) => r.classList.contains('mk-fixed') && r.querySelector('input').checked && r.querySelector('input').disabled), '🔴 checked and locked');
+  assert.equal(m.querySelector('p.mk-sub').textContent, P('firstLine'));
+  assert.deepEqual([...m.querySelectorAll('.mf button')].map((x) => x.textContent), ['Cancelar', P('createSub')]);
+  p.type(inp, 'Al vapor'); await settle(2);
+  assert.equal(m.querySelector('.fld .mk-lrow .mk-cnt').textContent, '8/40');
+  sBtn(p, P('createSub')).click(); await settle(10);
+  assert.equal(sheet(p), null, 'closed');
+  const src = p.src();
+  assert.deepEqual(src.structure.categories.find((c) => c.id === 'dim_sum').subcats, ['Al vapor']);
+  assert.ok(ids.every((k) => src.items.find((i) => i.key === k).display.subcat === 'Al vapor'), 'every product in it');
+  assert.deepEqual(heads(p), [['Al vapor', String(ids.length)]]);
+});
+
+test('S4-B — a FURTHER subcategory: the merchant marks members (current subsection under each name); none marked ⇒ the line in place, nothing written', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Bebidas');
+  subBtn(p).click(); await settle(5);
+  const m = sheet(p);
+  assert.equal(m.querySelector('.mh .ms').textContent, P('sheetSub'));
+  assert.ok(rowsIn(p).every((r) => !r.querySelector('input').checked && !r.querySelector('input').disabled), 'none marked, all free');
+  assert.ok(['Sodas', 'Cervezas'].includes(rowsIn(p)[0].querySelector('.mogsub').textContent), 'its current subsection');
+  assert.equal(m.querySelector('.mk-pick .mk-subh .mk-lnk').textContent, 'Marcar todos');
+  assert.equal(m.querySelector('p.mk-sub').textContent, P('moveLine'));
+  p.type(m.querySelector('input.mgname-in'), 'Jugos'); await settle(2);
+  const before = JSON.stringify(p.src());
+  sBtn(p, P('createSub')).click(); await settle(5);
+  assert.ok(sheet(p), 'stays open');
+  assert.ok(sheet(p).querySelector('.mk-pick').classList.contains('mk-inv'));
+  assert.equal(sheet(p).querySelector('.mk-pick + .ferr, .fld > .ferr').textContent, P('needOne'));
+  assert.equal(JSON.stringify(p.src()), before, 'nothing written');
+  const soda = rowsIn(p).find((r) => r.querySelector('.mogsub').textContent === 'Sodas');
+  soda.querySelector('input').click(); await settle(5);
+  assert.equal(sheet(p).querySelector('.fld .mk-lrow .mk-cnt:not([aria-live])').textContent.startsWith('1 de'), true);
+  sBtn(p, P('createSub')).click(); await settle(10);
+  const src = p.src();
+  assert.deepEqual(src.structure.categories.find((c) => c.id === 'bebidas').subcats.slice(-1), ['Jugos']);
+  assert.equal(src.items.filter((i) => i.display.cat === 'bebidas' && i.display.subcat === 'Jugos').length, 1);
+});
+
+test('S4-B — marking EVERY product of a subsection would empty it: the approved «sección vacía» line under the list, nothing written', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Bebidas');
+  subBtn(p).click(); await settle(5);
+  p.type(sheet(p).querySelector('input.mgname-in'), 'Jugos'); await settle(2);
+  const n = rowsIn(p).filter((x) => x.querySelector('.mogsub').textContent === 'Sodas').length;
+  assert.ok(n > 0, 'premise: Sodas has products');
+  for (let i = 0; i < n; i++) {   // a mark repaints the sheet: the rows are read again each time
+    rowsIn(p).filter((x) => x.querySelector('.mogsub').textContent === 'Sodas' && !x.querySelector('input').checked)[0].querySelector('input').click(); await settle(2);
+  }
+  const before = JSON.stringify(p.src());
+  sBtn(p, P('createSub')).click(); await settle(5);
+  assert.equal(sheet(p).querySelector('.fld > .ferr').textContent, 'No podés dejar la sección vacía. Agregá otro producto primero.', '🔴 the approved line');
+  assert.equal(JSON.stringify(p.src()), before);
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'nameTaken', 'subcatNeedsDish']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

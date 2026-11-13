@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -1664,10 +1664,115 @@ function createSection() {
 // S4-C: a new section's header and page (the F tag; «Nueva subcategoría» off until a dish is in it; the empty state with «Quitar categoría»)
 function detailS4(staged) {
   if (state.sections !== true || !state.draft) return null;
-  const id = staged ? staged.id : state.selectedCat;
-  if (!isNewSection(id)) return null;
-  return { isNew: true, subcat: staged ? { disabled: true, title: s4Copy('subcatNeedsDish') } : null,
-    empty: staged ? { title: s4Copy('emptyTitle'), body: s4Copy('emptyBody'), dropLabel: s4Copy('dropCat'), onDrop: bound((from) => dropSection(staged, from)) } : null };
+  if (staged) {
+    return { isNew: true, subcat: { disabled: true, title: s4Copy('subcatNeedsDish') },
+      empty: { title: s4Copy('emptyTitle'), body: s4Copy('emptyBody'), dropLabel: s4Copy('dropCat'), onDrop: bound((from) => dropSection(staged, from)) } };
+  }
+  const cat = categoriesOf().find((c) => c && String(c.id) === String(state.selectedCat));
+  if (!cat) return null;
+  // a declared section: «Nueva subcategoría» (S4-A / S4-B) and its list under one head per subsection (frame E)
+  return { isNew: isNewSection(cat.id), subcat: { disabled: false, onClick: bound((from) => subOpen(cat, from)) },
+    subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null };
+}
+// S4-A / S4-B — «Nueva subcategoría» (#xsubcat, X3's sheet pattern). The FIRST subsection of an ungrouped section takes every dish (rows
+// checked and locked: the portal can never send a partial first subsection); a further one takes the dishes the merchant marks. Typing
+// edits the sheet's state in place; a mark repaints by data-k. «Crear subcategoría» writes through addSubcat (sections switch).
+let subPick = null;
+function subKey(e) {
+  if (!subPick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); subClose(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = [...$('xsubcat').querySelectorAll('input, button')].filter((x) => !x.disabled); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function subScrim(e) { if (e.target === $('xsubcat')) subClose(true); }
+function subOpen(cat, from) {
+  const sec = groupByCategory(draftSource(state.draft)).find((g) => String(g.category.id) === String(cat.id));   // the list's order
+  const rows = ((sec && sec.items) || []).filter((it) => it && it.display && it.display.variantOf == null);
+  const first = !(Array.isArray(cat.subcats) && cat.subcats.length);
+  subPick = { cat, from, first, name: '', line: null, nameLine: null, marked: new Set(first ? rows.map(rowId) : []),
+    rows: rows.map((it) => ({ id: rowId(it), name: it.display.name || rowId(it), sub: typeof it.display.subcat === 'string' ? it.display.subcat : null })) };
+  $('xsubcat').classList.add('show');
+  document.addEventListener('keydown', subKey, true); $('xsubcat').addEventListener('click', subScrim);
+  subPaint('sub:name');
+}
+function subClose(refocus) {
+  const p = subPick; subPick = null;
+  $('xsubcat').classList.remove('show'); $('xsubcat').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', subKey, true); $('xsubcat').removeEventListener('click', subScrim);
+  if (refocus && p && p.from && p.from.isConnected) p.from.focus();
+}
+function subPaint(focusK) {
+  const p = subPick;
+  if (!p) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const modal = $('xsubcat').querySelector('.modal');
+  const mh = mk('div', 'mh'); const t = mk('div', 'mt', 'Nueva subcategoría'); t.id = 'xsc-t';
+  mh.append(t, mk('div', 'ms', p.first ? s4Copy('sheetSubFirst', { categoria: p.cat.name, n: p.rows.length }) : s4Copy('sheetSub', { categoria: p.cat.name, subs: (p.cat.subcats || []).join(' \u00b7 ') })));
+  const mb = mk('div', 'mb mk-form');
+  const fN = mk('div', 'fld'); const lr = mk('div', 'mk-lrow');
+  const lab = mk('label', null, s4Copy('subName')); lab.htmlFor = 'xsc-name';
+  const cnt = mk('span', 'mk-cnt', `${[...p.name].length}/${SECTION_NAME_MAX}`); cnt.setAttribute('aria-live', 'polite');
+  lr.append(lab, cnt);
+  const subName = document.createElement('input');
+  subName.className = 'mgname-in'; subName.id = 'xsc-name'; subName.type = 'text'; subName.value = p.name; subName.placeholder = s4Copy('subPh'); subName.dataset.k = 'sub:name';
+  subName.addEventListener('input', bound(() => {
+    p.name = subName.value; cnt.textContent = `${[...p.name].length}/${SECTION_NAME_MAX}`;
+    if (p.nameLine) { p.nameLine = null; subPaint('sub:name'); }
+  }));
+  fN.append(lr, subName);
+  if (p.nameLine) { const l = mk('div', 'ferr mk-ferr', p.nameLine); l.setAttribute('role', 'alert'); fN.append(l); subName.setAttribute('aria-invalid', 'true'); }
+  const fP = mk('div', 'fld'); const lr2 = mk('div', 'mk-lrow');
+  const tally = `${p.marked.size} de ${p.rows.length}`;
+  lr2.append(mk('label', null, s4Copy('products')), mk('span', 'mk-cnt', tally));
+  const box = mk('div', `mk-pick${p.line ? ' mk-inv' : ''}`); box.setAttribute('role', 'group'); box.setAttribute('aria-label', s4Copy('products'));
+  const hd = mk('div', 'mk-subh'); hd.append(mk('span', 'mk-sn', p.cat.name), mk('span', 'mk-n', tally));
+  if (!p.first) {
+    const subAll = document.createElement('button'); subAll.type = 'button'; subAll.className = 'mk-lnk'; subAll.textContent = 'Marcar todos'; subAll.dataset.k = 'sub:all';
+    subAll.setAttribute('aria-label', `Marcar todos en ${p.cat.name}`);
+    subAll.addEventListener('click', bound(() => { for (const r of p.rows) p.marked.add(r.id); p.line = null; subPaint('sub:all'); }));
+    hd.append(subAll);
+  }
+  box.append(hd);
+  for (const r of p.rows) {
+    const row = mk('label', `modopt${p.first ? ' mk-fixed' : ''}`);
+    const subMark = document.createElement('input'); subMark.type = 'checkbox'; subMark.checked = p.marked.has(r.id); subMark.disabled = p.first; subMark.dataset.k = `sub:${r.id}`;
+    subMark.addEventListener('change', bound(() => { if (subMark.checked) p.marked.add(r.id); else p.marked.delete(r.id); p.line = null; subPaint(`sub:${r.id}`); }));
+    const nm = mk('span', 'mognm', r.name);
+    if (!p.first && r.sub) nm.append(mk('span', 'mogsub', r.sub));
+    row.append(subMark, nm);
+    box.append(row);
+  }
+  fP.append(lr2, box);
+  if (p.line) { const l = mk('div', 'ferr mk-ferr', p.line); l.setAttribute('role', 'alert'); fP.append(l); }
+  fP.append(mk('p', 'mk-sub', p.first ? s4Copy('firstLine', { categoria: p.cat.name }) : s4Copy('moveLine', { nueva: p.name })));
+  mb.append(fN, fP);
+  const mf = mk('div', 'mf');
+  const subCancel = document.createElement('button'); subCancel.type = 'button'; subCancel.className = 'btn ghost'; subCancel.textContent = 'Cancelar'; subCancel.dataset.k = 'sub:cancel';
+  subCancel.addEventListener('click', bound(() => subClose(true)));
+  const subGo = document.createElement('button'); subGo.type = 'button'; subGo.className = 'btn accent'; subGo.textContent = s4Copy('createSub'); subGo.dataset.k = 'sub:go';
+  subGo.addEventListener('click', bound(subCreate));
+  mf.append(subCancel, subGo);
+  modal.replaceChildren(mh, mb, mf);
+  const back = [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === focusK);
+  if (back && !back.disabled) back.focus();
+}
+// «Crear subcategoría»: the name by T1's rule and words; no member ⇒ the line in place (subcat_empty, the writer's own refusal); a taken
+// name under the name; a subsection the move would empty ⇒ the approved «sección vacía» line; the 12-subsection cap its line; the rest: the stale-press line
+function subCreate() {
+  const p = subPick;
+  if (!p) return;
+  const problem = categoryNameProblem(p.name);
+  if (problem) { p.nameLine = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; subPaint('sub:name'); return; }
+  const r = addSubcat(state.draft, p.cat.id, p.name, [...p.marked], S4ON());
+  if (!r.ok) {
+    if (r.code === 'subcat_name_taken') { p.nameLine = s4Copy('subNameTaken', { categoria: p.cat.name }); subPaint('sub:name'); return; }
+    p.line = r.code === 'subcat_empty' ? s4Copy('needOne') : r.code === 'subsection_empty' ? IE.COPY.cat.section_empty   // the approved line, verbatim (S4-B note)
+      : r.code === 'structure_caps' ? s4Copy('subCaps', { categoria: p.cat.name }) : UNDO_REFUSED;
+    subPaint('sub:go'); return;
+  }
+  subClose(false);
+  repaintFromDraft();
 }
 // S4-D: dropping a new section asks first (E3's small confirm, «Cancelar» focused); it leaves the rail at once
 function dropSection(staged, from) {

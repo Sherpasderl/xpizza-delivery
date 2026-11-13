@@ -1243,6 +1243,7 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  // move the view state (state.renameEdit); every one is reached only through bound()
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
                  'createSection',   // STRUCTURE S4 (frame E): «Crear» — addCategory (sections switch), then the new section selected
+                 'subCreate',       // S4-A / S4-B: «Crear subcategoría» — addSubcat (sections switch)
                  // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
                  // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
                  // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
@@ -1404,6 +1405,14 @@ const LISTENERS = {
   "d2Same::change":               ['bound', [], 'S3 D2 \u2014 «Mismo precio para todas» in the sheet (the cheapest usable price)'],
   "d2Cancel::click":              ['bound', ['d2Close'], 'S3 D2 \u2014 «Cancelar»: the sheet closes; nothing is recorded'],
   "d2Go::click":                  ['bound', [], 'S3 D2 \u2014 «Agregar elección»: IE.choiceAdd records choice.add (+ the mark) in the WORKING COPY; the drawer re-lays out'],
+  // S4 — «Nueva categoría» (frame E) and «Nueva subcategoría» (S4-A / S4-B): the box and the sheet edit their OWN state; only «Crear» /
+  // «Crear subcategoría» write, through the S4 writer (sections switch); dropping a new section is the confirm's own press
+  "subName::input":               ['bound', [], 'S4-A \u2014 the subsection\u2019s name, into the sheet\u2019s state; the counter in place'],
+  "subAll::click":                ['bound', [], 'S4-B \u2014 «Marcar todos»: the sheet\u2019s marks; the sheet repaints'],
+  "subMark::change":              ['bound', [], 'S4-B \u2014 one product\u2019s mark, in the sheet\u2019s state; the sheet repaints'],
+  "subCancel::click":             ['bound', [], 'S4-A \u2014 «Cancelar»: the sheet closes; nothing written'],
+  "subGo::click":                 ['bound', ['subCreate'], 'S4-A \u2014 «Crear subcategoría»: addSubcat (sections switch, all or nothing); the list repaints'],
+  "$('xsubcat')::click":          ['view', ['subScrim'], 'S4-A \u2014 the backdrop cancels the sheet: it closes, nothing written'],
   "$('xchoice')::click":          ['view', ['d2Scrim'], 'S3 D2 \u2014 the backdrop cancels the sheet: it closes, nothing is recorded'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
@@ -1668,7 +1677,7 @@ const ALLOWED_CONSUMERS = new Set([
   // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
   'IE.choiceNameProblems',
   // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
-  'addCategory', 'dropStagedCategory', 'sectionIsNew',
+  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

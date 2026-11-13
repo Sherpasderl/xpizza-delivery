@@ -84,6 +84,8 @@ const el = (tag, cls, text) => {
 // approves them (structure-s4-ui's SHIP GATE stays red until then). Frame E's own strings are the approved base mockup's, literal.
 export const S4_COPY = Object.freeze({
   emptyTitle: null, emptyBody: null, subcatNeedsDish: null, dropCat: null, dropTitle: null, dropSub: null, dropBody: null, nameTaken: null,
+  sheetSubFirst: null, sheetSub: null, subName: null, subPh: null, products: null, firstLine: null, moveLine: null, needOne: null, createSub: null,
+  subNameTaken: null, subCaps: null,
 });
 export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
 
@@ -301,7 +303,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   //   locked   prices and «Agregar producto» are off while a name change waits to be published
   const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;
   // STRUCTURE S4 (absent ⇒ today's header and empty state): { isNew (the F tag after the title), subcat: null | { disabled, title,
-  // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page) }
+  // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page),
+  // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count) }
   const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
@@ -366,7 +369,18 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     e.append(el('b', null, 'Esta sección está vacía'), el('span', null, 'Todavía no hay productos en esta sección.'));
     detailEl.append(e);
   }
-  for (const it of group.items) {
+  const subheads = s4 && Array.isArray(s4.subheads) && s4.subheads.length ? s4.subheads : null;
+  const subOf = (it) => (it && it.display && typeof it.display.subcat === 'string' ? it.display.subcat : null);
+  const subRank = (it) => { const i = subheads ? subheads.indexOf(subOf(it)) : -1; return i === -1 ? -1 : i; };
+  const listed = subheads ? [...group.items].sort((a, b) => subRank(a) - subRank(b)) : group.items;
+  let curSub;
+  for (const it of listed) {
+    if (subheads && subOf(it) !== curSub && subRank(it) !== -1) {
+      curSub = subOf(it);
+      const h = el('div', 'mk-subh');
+      h.append(el('span', 'mk-sn', curSub), el('span', 'mk-n', String(group.items.filter((x) => subOf(x) === curSub).length)));
+      detailEl.append(h);
+    }
     const pend = editable ? pendingOf(it) : null;
     const row = el('div', pend ? 'irow mk-pend' : 'irow');
     const info = el('div', 'iinfo');
