@@ -31337,7 +31337,7 @@
   "slice": "s4",
   "label": "placeTap no longer refuses a non-owner (the guest reaches the code sheet)",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet",
+  "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther(heldSdk())); return; }   // Codex G7 r1 #1 (a): before the code sheet",
   "to": "      // (mutant) before the code sheet",
   "command": [
    "node",
@@ -31347,7 +31347,8 @@
   ],
   "kills_with": [
    "S4-held"
-  ]
+  ],
+  "repointed": "held-sheet copy (owner 11-13): the refusal passes which hold it is (heldSdk) to the sheet; the mutant still drops placeTap's refusal"
  },
  {
   "id": "s4-38",

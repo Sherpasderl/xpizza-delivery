@@ -837,6 +837,7 @@
       return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;
     }
     const heldByOther = () => { try { return !!((sched() || sdkOn()) && api && api.retainedByOther(sdkOn() ? sdkAuth() : undefined)); } catch (_) { return false; } };   // r3 P1: the guest's ticket names its principal   // D4 r2 P1: an SDK placement of another account too
+    const heldSdk = () => { try { return !!(sdkOn() && api && typeof api.heldBySdk === 'function' && api.heldBySdk(sdkAuth())); } catch (_) { return false; } };   // owner 11-13: which hold's copy
     // Codex G7 r3: the retained send's slot — null whenever the record has none (an owned ASAP send keeps its tender lock, never a slot
     // lock); hasSlotLock() is the ONE predicate every consumer reads
     function lockedSlot() { const b = lockedBody(); return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }
@@ -1261,7 +1262,7 @@
       // known-unavailable line never starts a countdown (Codex perf-core r1 #7); the button-level gates stay as well
       if (dead) return;
       if (soldBlock()) { openLayer('cart'); return; }   // never silently nothing: the cart shows which dish sold out (frame 14)
-      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet, the countdown or any request
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther(heldSdk())); return; }   // Codex G7 r1 #1 (a): before the code sheet, the countdown or any request
       if (guestCashBlocked()) return;   // §3.2: refused locally, frame 6
       if (guestNeedsCode()) { if (intakeOk() && S.flow && !need() && C.tipChosen(S.flow) && totalsNow().ready) openCode(); return; }   // §4: the WhatsApp code BEFORE anything is sent (frame 2)
       if (!intakeOk() || !S.flow || need() || !C.tipChosen(S.flow) || !totalsNow().ready) return;
@@ -1418,7 +1419,7 @@
       const f = S.flow, T = totalsNow(), rb = lockedSlot() !== null ? lockedBody() : null;   // rb: the retained replay's recorded body
       // Codex cash-chips r1 P1-2: a replay sends the RECORDED body — it never waits on a fresh pin / quote (geolocation denied included)
       if (dead || !intakeOk() || (!T.ready && !rb) || !mods()) return;
-      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
+      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther(heldSdk())); return; }   // Codex G7 r1 #1 (a): no request, the record untouched
       if (sched() && f && f.time === 'schedule' && !canSchedule()) { backTo('checkout'); scheduleGate(); return; }   // G=B: never sent
       // Codex S4 r1 #4: the NEWEST received schedule decides (a held P2 revalidation included; painting stays deferred until here)
       if (sched() && f && f.time === 'schedule' && !hasSlotLock() && !schedMod().offered(S.schedHeld || servedSched(), now().getTime(), f.mode, f.slot)) {
@@ -1588,7 +1589,9 @@
         acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
       storeUpdatePending: (store) => ({ title: 'Actualizá la app para seguir', body: 'Tu pedido en curso está a salvo y no hace falta pagar de nuevo. Cuando volvás con la app actualizada, revisamos cómo quedó.', note: 'Tu carrito también se guarda.', icon: 'calm', ic: 'clock',
         acts: [{ act: 'store-open', label: `Abrir ${store}`, primary: true }, { act: 'lclose', label: 'Ahora no' }] }),
-      heldOther: () => ({ title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
+      // owner 11-13: an SDK card hold is a payment the other account finishes or cancels (it never clears by waiting); the scheduled hold keeps today's copy
+      heldOther: (sdk) => (sdk ? { title: 'Hay un pago de otra cuenta pendiente en este teléfono', body: 'Entrá con esa cuenta para terminarlo o cancelarlo.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }
+        : { title: 'Hay un pedido de otra cuenta confirmándose en este teléfono', body: 'Entrá con esa cuenta o esperá unos minutos.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       paused: () => ({ title: `${cfg.name || ''} no está recibiendo pedidos en este momento`, body: 'Tu pedido no se envió ni se cobró nada; está intacto para que lo intentés en unos minutos.', icon: 'warn', ic: 'clock', acts: [{ act: 'lclose', label: 'Entendido', primary: true }] }),
       generic: (retry = 'err-retry') => ({ title: 'No pudimos enviar tu pedido', body: 'Intentá de nuevo en un momento; tu pedido está intacto.', acts: [{ act: retry, label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       pending: () => ({ title: 'Tu pago todavía está en verificación', body: 'Estamos confirmando tu pago con el banco. No hace falta pagar de nuevo; esperá un momento mientras termina.', icon: 'calm', ic: 'clock', acts: [{ act: 'lclose', label: 'Volver al pedido', primary: true }], held: true }),
@@ -1654,7 +1657,7 @@
       if (k === 'guest_cash_not_allowed') { if (S.flow && cardOnlyGuest()) S.flow.pay = 'online'; backTo('checkout'); showErr(ERR.guestCash()); return; }   // §3.3 server refusal ⇒ frame 6
       if (k === 'guest_ticket_invalid') { S.ticket = null; backTo(); openCode(); return; }   // §4: re-verify (expired / consumed / missing) — the code sheet over the screen of the tap
       if (k === 'guest_email_required') { S.emailRefused = true; backTo('checkout'); return; }   // §4b ⇒ frame 1b: the email field red, CTA «Revisá tu correo»
-      if (k === 'held_other_account') { backTo('checkout'); showErr(ERR.heldOther()); return; }   // capp-api's backstop: nothing was sent
+      if (k === 'held_other_account') { backTo('checkout'); showErr(ERR.heldOther(heldSdk())); return; }   // capp-api's backstop: nothing was sent
       if (k === 'schedule_needs_account') { backTo('checkout'); scheduleGate(); return; }   // capp-api's wire guard (G=B): nothing was sent
       if (k === 'offline') { backTo(sched() && S.flow && S.flow.time === 'schedule' ? 'checkout' : undefined); showErr(ERR.offline()); return; }   // S4 frame 10a: over «Entrega & Pago» (its picker becomes row 10b)
       if (k === 'closed') { S.closedRefused = true; backTo(); showErr(ERR.closed()); return; }   // over the screen of the tap (P placeTap :1975)
