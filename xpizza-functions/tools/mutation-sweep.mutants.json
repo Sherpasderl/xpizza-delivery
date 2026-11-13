@@ -36124,5 +36124,22 @@
   "kills_with": [
    "G-B: and focused"
   ]
+ },
+ {
+  "id": "r10-01",
+  "slice": "r10",
+  "label": "rule 10: the one claim predicate ignores the pricing marker (an unmarked directory promo claims «Envío gratis»)",
+  "file": "../customer-app/capp-shell.js",
+  "from": "&& !!(d.promo && d.promo.free_delivery === true && d.promo.basis === 'pricing'),",
+  "to": "&& !!(d.promo && d.promo.free_delivery === true),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^RULE 10: what",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RULE 10: the raw writer"
+  ]
  }
 ]

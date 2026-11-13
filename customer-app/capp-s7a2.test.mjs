@@ -39,7 +39,8 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
   const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
-  assert.equal(digest, '115f98189d64c572ba996d56c2bae0827f81e0a4de54fd65a88e6195f6381a14', '🔴 the fixture contents are the pinned generation');
+  // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
+  assert.equal(digest, '6b253dc87a2e732772755db37a5e8da12d681321e8da4ff983f117eef81c08a1', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -1681,10 +1682,10 @@ test('store promo r1 #2: an ADMITTED member arriving (a restored complete sessio
 
 // advisor ruling (promo r1 follow-up): HOME follows the same ADMITTED identity — no «Envío gratis» unless the checkout would send as
 // that member. Through the REAL Firebase callback path
-async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null } = {}) {
+async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null, dirScript = ['complete'] } = {}) {
   const fb = fakeFirebase({ persisted, failSignOut });
   const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
-  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, dirScript, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && (!persisted || fb.calls.out > 0 || S.ui.state.member)); await flush();
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'premise: Inicio with the x_pizza card');
   return { S, fb };
@@ -4779,4 +4780,43 @@ test('G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» af
   try { P.S.click('.cart-bar'); await flush(); assert.equal(P.S.qa('[data-act="cartnotes"]').length, 0, 'the phone sheet: no row (frame 2a is the desk)'); } finally { P.S.w.close(); }
   const E = await deskStore(true, 0);
   try { assert.equal(E.S.qa('.deskcart [data-act="cartnotes"]').length, 0, 'an empty aside: no row'); } finally { E.S.w.close(); }
+});
+
+// ── RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — the ONE predicate (CappShell.configFor
+// promoFree) requires 5f's `basis: 'pricing'` marker. complete_writer_raw is what the pinned 5f directory writer emits TODAY ──
+const RAWDIR = { status: SC.complete_writer_raw.status, body: SC.complete_writer_raw.body, etag: SC.complete_writer_raw.headers.ETag };
+const CLAIM = /Envío gratis|envío es gratis|Gratis/;
+test('RULE 10: what the pinned directory writer emits TODAY (a promo without the pricing marker) ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', async () => {
+  const rawX = SC.complete_writer_raw.body.restaurants.find((e) => e.restaurant_id === 'x_pizza'), markX = SC.complete.body.restaurants.find((e) => e.restaurant_id === 'x_pizza');
+  assert.ok(rawX.promo && rawX.promo.free_delivery === true && !('basis' in rawX.promo), 'premise: the writer\'s own promo — free_delivery, no marker');
+  assert.equal(CappShell.configFor(markX, RUNTIME).promoFree, true, 'premise: the marked promo is a claim (the cell is not vacuous)');
+  assert.equal(CappShell.configFor(rawX, RUNTIME).promoFree, false, '🔴 RULE 10: the raw writer promo is NOT a claim (the one predicate)');
+  for (const [dir, raw] of [[RAWDIR, true], ['complete', false]]) {
+    const G = bootShell({ auth: 'guest', dirScript: [dir] });
+    try {
+      await until(() => G.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+      const home = G.w.document.body.textContent;
+      G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.ok(G.q('.info'), 'premise: the store');
+      const store = G.w.document.body.textContent;
+      if (raw) assert.ok(!CLAIM.test(home) && !CLAIM.test(store), `🔴 RULE 10: the raw writer — no claim for a GUEST (Inicio + store, even hidden): ${(home + store).match(CLAIM)}`);
+      else assert.ok(/Envío gratis con tu cuenta/.test(store), 'premise: the marked promo shows the guest pill');
+    } finally { G.w.close(); }
+    const { S } = await realAuthHome({ persisted: 'u_ana', complete: 'u_ana', prof: ANA_PROF, dirScript: [dir] });
+    try {
+      assert.ok(S.ui.state.member, 'premise: an admitted member');
+      const home = S.w.document.body.textContent;
+      S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const store = S.w.document.body.textContent;
+      if (raw) assert.ok(!CLAIM.test(home) && !CLAIM.test(store), `🔴 RULE 10: the raw writer — no claim for a MEMBER (Inicio + store): ${(home + store).match(CLAIM)}`);
+      else assert.ok(/Envío gratis/.test(home), 'premise: the marked promo shows the member\'s «Envío gratis»');
+    } finally { S.w.close(); }
+  }
+});
+test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself', () => {
+  const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
+  if (!gen.includes('5f MARKER OVERLAY')) return;   // the bridge is gone: nothing left to expire
+  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
+  const rawPromos = SC.complete_writer_raw.body.restaurants.map((e) => e.promo).filter(Boolean);
+  assert.ok(rawPromos.length > 0, 'premise: the raw writer emits a promo');
+  assert.ok(rawPromos.every((p) => !('basis' in p)), '🔴 bridge EXPIRED: the pinned writer emits the marker itself — drop the overlay');
 });

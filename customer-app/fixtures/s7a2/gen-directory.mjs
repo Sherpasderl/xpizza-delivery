@@ -90,6 +90,12 @@ S.zero = await call(await world({ inactive: ['x_pizza', 'la_musa'] }));   // the
 S.unavailable_503 = await call(await world({ registryFails: true }));
 S.tombstone = await call(await world({ inactive: ['la_musa'] }));
 S.fee_none = await call(await world({ pricing: { ...PRICING, la_musa: { fee: { state: 'none' }, promo: null, coverage_km: 9.66 } } }));
+// RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — 5f's directory will derive promo from the SAME
+// pricing read and mark it `basis: 'pricing'`; this pinned writer's promoOf keeps only {free_delivery, label}. «5f MARKER OVERLAY —
+// drop when this generator moves to 5f's commit»: every promo here comes from the declared pricing view (the ONE fake), so it is
+// marked pricing-derived. complete_writer_raw keeps the writer's own output (no marker) — what this directory emits TODAY.
+S.complete_writer_raw = JSON.parse(JSON.stringify(S.complete));
+for (const sc of Object.values(S)) for (const e of (sc.body && sc.body.restaurants) || []) if (sc !== S.complete_writer_raw && e.promo && e.promo.free_delivery === true) e.promo = { ...e.promo, basis: 'pricing' };
 // the CONTENT pin (Codex s7a2 r1 #10): sha-256 over the canonical JSON (sorted keys) of every scenario — a hand edit fails the test
 const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 out.scenarios_sha256 = createHash('sha256').update(canon(out.scenarios)).digest('hex');
