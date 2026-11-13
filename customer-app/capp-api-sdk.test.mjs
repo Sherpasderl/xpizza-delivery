@@ -499,3 +499,42 @@ test('F2 / Q-B (advisor 11-12): a NEW card whose token is gone (reload) ⇒ the 
   const b = s.srv.of('placeSdkOrder')[1].body;
   assert.ok(b.order_id === a.order_id && b.attempt_id !== a.attempt_id, '🔴 F2-QB: the same sdk_ order, a NEW attempt_id');
 });
+
+// ── D4 F3: the cash switch — a NEW std id + replaces_order_id; the stored inputs never carry the SDK id; the server's replaces answers ──
+const switched = (cash) => rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: ['network', { status: 200, json: cancelPending(true, true) }], placeSdkStatus: [{ status: 404, json: {} }], createOrder: cash } });
+test('F3: after a switch (a reload mid-switch included) the cash order is a NEW std id replacing the sdk_ one; the stored switch inputs carry no order id', async () => {
+  const s = switched([OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.equal((await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX })).kind, 'sdk_pending', 'premise: the cancel reply was lost');
+  const sb = JSON.parse(rec(s.storage).switch_body);
+  assert.ok(!('order_id' in sb) && !('replaces_order_id' in sb), `🔴 F3-INPUTS: switch_body is inputs only (${Object.keys(sb).filter((k) => /order_id/.test(k))})`);
+  const sw = await s.reload().sdkResolve(old);
+  assert.deepEqual([sw.kind, sw.replaces], ['sdk_switched', old], 'premise: the switch completes after the reload');
+  const out = await s.reload().place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  const co = s.srv.of('createOrder')[0].body;
+  assert.ok(co.order_id !== old && !co.order_id.startsWith('sdk_') && co.replaces_order_id === old, `🔴 F3-NEW-ID: a NEW std id replacing the sdk_ order (${co.order_id} / ${co.replaces_order_id})`);
+  assert.equal(out.kind, 'placed');
+});
+test('F3: createOrder 409 previous_payment_unresolved ⇒ back to the SDK order\'s status (never an error sheet); the same cash id is sent again once it is safe', async () => {
+  const s = switched([{ status: 409, json: { error: 'previous_payment_unresolved' } }, OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX }); await s.api.sdkResolve(old);
+  const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  assert.deepEqual([out.kind, out.order_id], ['sdk_pending', old], '🔴 F3-UNRESOLVED: the SDK order\'s status again, never an error');
+  const first = s.srv.of('createOrder')[0].body.order_id;
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old })).kind, 'placed');
+  assert.equal(s.srv.of('createOrder')[1].body.order_id, first, '🔴 F3-UNRESOLVED: the SAME cash identity once safe (idempotent)');
+});
+test('F3: createOrder 503 replaces_unavailable (retryable) ⇒ the normal retry (offline), the same cash identity next', async () => {
+  const s = switched([{ status: 503, json: { error: 'replaces_unavailable', retryable: true } }, OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX }); await s.api.sdkResolve(old);
+  const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  assert.equal(out.kind, 'offline', '🔴 F3-503: the normal retry');
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old })).kind, 'placed');
+  const [a, b] = s.srv.of('createOrder').map((c) => c.body.order_id);
+  assert.equal(b, a, '🔴 F3-503: the same cash identity re-sent');
+});

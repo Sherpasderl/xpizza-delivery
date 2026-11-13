@@ -3211,6 +3211,21 @@ test('S2-checkout 5: «Pagar en efectivo» on the decline sheet switches (§5) �
   assert.equal(co.body.payment_method, 'cash', 'cash');
 });
 
+test('D4 F3 (UI): the cash order answered 409 previous_payment_unresolved ⇒ the OLD order\'s status; once «expired, safe» the SAME cash order goes — never an error sheet', async () => {
+  const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }],
+    createOrder: [{ status: 409, json: { error: 'previous_payment_unresolved' } }, (body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })],
+    placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })] });
+  await sdkCheckout(b); await sdkPlace(b);
+  const old = b.srv.of('placeSdkOrder')[0].body.order_id;
+  await b.click('#layer [data-act="decl-cash"]'); await settle(); b.timers.flush(); await settle();
+  b.timers.flush(); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.q('#layer .errsheet'), null, '🔴 SDKUI-F3: never an error sheet');
+  assert.ok(b.srv.of('placeSdkStatus').some((c) => new URL(c.url).searchParams.get('order_id') === old), '🔴 SDKUI-F3: the OLD order\'s status is polled');
+  const [c1, c2] = b.srv.of('createOrder').map((x) => x.body);
+  assert.ok(c2 && c2.order_id === c1.order_id && c2.replaces_order_id === old, '🔴 SDKUI-F3: once safe, the SAME cash order (replacing the old one) — no second tap');
+  assert.ok(b.events.some(([n]) => n === 'placed'), 'placed');
+});
+
 test('S2-checkout 5: «Pagar en efectivo» while the old order is not yet safe_to_switch ⇒ the processing sheet + polling; never cash', async () => {
   const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] });
   await sdkCheckout(b); await sdkPlace(b);

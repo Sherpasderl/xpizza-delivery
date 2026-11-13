@@ -2017,7 +2017,9 @@
         if (out.bucket === 'token_expired' || out.bucket === 'hard') SDK.sel = null;   // the declined card is unselected (frame 5)
         backTo(); openLayerNoPush('sdkdecl'); return;
       }
-      if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
+      // D4 F3: the order a cash switch is replacing became safe after the cash send was refused (previous_payment_unresolved) ⇒ the SAME
+      // transition completes — that cash order goes once the checkout can send (capp-api re-sends its kept identity)
+      if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); else if (SDK.replaces && SDK.replaces === out.order_id && S.flow && S.flow.pay === 'cash') { SDK.placeWhenReady = true; sdkPlaceIfReady(); } return; }
       if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
       if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
       // D4 F2 / Q-B (advisor 11-12): the card could not be re-sent (its token gone with a reload) — nothing was charged; the same order, a card again

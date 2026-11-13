@@ -664,6 +664,9 @@
         if (method === 'online') settle(id);                                              // a cash answer never settles a charge
         if (method === 'cash') {
           if (r.status === 200) { const ok = resolvePlace(id, 'placed'); return { ...grantOf(j), kind: 'placed', order_id: j.order_id || id, tracking_token: j.tracking_token || null, idempotent: !!j.idempotent, ...scheduledOf(j, body), ...settledOf(ok) }; }
+          // D4 F3 (payments/sdk/replaces.js): the replaced SDK order is not yet placed nor safe_to_switch — refused before any write; the
+          // switch is not safe yet ⇒ back to THAT order's status (the poll), never an error. This cash identity is kept and re-sent once safe
+          if (r.status === 409 && j.error === 'previous_payment_unresolved' && typeof body.replaces_order_id === 'string') return { kind: 'sdk_pending', order_id: body.replaces_order_id, switching: true };
           if (r.status === 409 && j.error === 'order_conflict') {
             if (replay) return { kind: 'replay_requote', order_id: id };   // Codex cash-chips r2 P1-1: a replay is never healed onto a rebuilt body
             if (healed) return { kind: 'error', order_id: id, error: 'order_conflict' };
@@ -918,7 +921,8 @@
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
       // BEFORE the request: a crash keeps the intent — and the cash order's inputs (Codex r2 P2: a reload completes the SAME transition)
-      let sb = null; try { sb = p && p.flow && p.ctx ? JSON.stringify(withReplaces(C.orderBody({ ...p.flow, pay: 'cash' }, { ...p.ctx, orderId: id }), { replacesOrderId: id })) : null; } catch (_) { sb = null; }
+      // D4 F3: INPUTS only — never the SDK order's id (nor a replaces): it restores the flow, and can never be sent as an order body
+      let sb = null; try { if (p && p.flow && p.ctx) { const b = C.orderBody({ ...p.flow, pay: 'cash' }, { ...p.ctx, orderId: id }); delete b.order_id; delete b.replaces_order_id; sb = JSON.stringify(b); } } catch (_) { sb = null; }
       try { patchPlace(id, { switch_intent: true, ...(sb ? { switch_body: sb } : {}) }); } catch (_) {}
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.status === 409 && r.json && r.json.error === 'already_placed') return sdkStatus(id, p);
