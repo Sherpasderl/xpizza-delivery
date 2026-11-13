@@ -230,7 +230,10 @@ function sectionRowsOf(d, names = {}) {
   }
   for (const o of Array.isArray(S.subcat_order) ? S.subcat_order : []) {
     if (!o || !Array.isArray(o.old) || !Array.isArray(o.new)) continue;
-    for (const sub of movedGroups(o.old.filter((x) => o.new.includes(x)), o.new.filter((x) => o.old.includes(x)))) row(sub, s4Copy('rowCatSubcat', { categoria: catName(o.cat) }), 'Orden', [place(o.new.indexOf(sub) + 1)], o, true);
+    // a subsection renamed in the same save is the SAME subsection: compare the old order under its new names (5f 290fa5baa)
+    const renamed = new Map((Array.isArray(S.subcats) ? S.subcats : []).filter((c) => c && c.change === 'renamed' && c.cat === o.cat).map((c) => [c.old, c.new]));
+    const was = o.old.map((x) => (renamed.has(x) ? renamed.get(x) : x));
+    for (const sub of movedGroups(was.filter((x) => o.new.includes(x)), o.new.filter((x) => was.includes(x)))) row(sub, s4Copy('rowCatSubcat', { categoria: catName(o.cat) }), 'Orden', [place(o.new.indexOf(sub) + 1)], o, true);
   }
   for (const it of Array.isArray(S.items) ? S.items : []) {
     if (!it || typeof it.key !== 'string' || !Number.isInteger(it.new_index)) continue;
