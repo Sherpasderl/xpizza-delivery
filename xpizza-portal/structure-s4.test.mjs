@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { removeProduct, undoRemoveProduct, canRemoveProduct, pendingRenames, pendingSections, pendingCount, commit, setItemPrice } from './editor.js';
+import { addProduct, removeAddition, setAddition } from './editor.js';
 import { createDraft, draftSource, editItem, itemCategoryProblem, addCategory, renameCategory, dropStagedCategory, moveItem, addSubcat,
   renameSubcat, reorderSections, reorderSubcats, reorderItems } from './editor.js';
 
@@ -319,4 +320,29 @@ test('name clashes use 5f\'s nameFold (accents stripped, inner spaces collapsed,
   assert.equal(renameSubcat(d, 'bebidas', 'Cervezas', ' SODAS ', ON).code, 'subcat_name_taken');
   assert.equal(bytes(d), before, 'nothing written');
   assert.equal(globalThis.SectionTransitions.nameFold('Dím  Sum'), globalThis.SectionTransitions.nameFold('dim sum'), 'premise: the module folds them equal');
+});
+
+// S4-C (advisor 11-13, pending 5f's word): an ADDITION may be the promoting dish — «Agregar producto» on a new (staged) category promotes
+// it in the same draft (sections ON only); removing that addition, or moving it out, returns the section to staged. OFF: today's.
+const stagedIds = (d) => ((draftSource(d).structure || {}).staged_categories || []).map((c) => c.id);
+const declaredIds = (d) => draftSource(d).structure.categories.map((c) => String(c.id));
+test('S4-C: «Agregar producto» on a new category promotes it; removing that addition (or moving it out) un-promotes; OFF unchanged', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  assert.equal(addCategory(d, 'Postres', {}, ON).ok, true);
+  const id = stagedIds(d)[0];
+  addProduct(d, { ref: 'tmp:aaaaaaaa', cat: id }, ON);
+  assert.ok(declaredIds(d).includes(id), '🔴 promoted by the addition'); assert.deepEqual(stagedIds(d), []);
+  assert.equal(draftSource(d).items.find((i) => i.ref === 'tmp:aaaaaaaa').display.cat, id);
+  removeAddition(d, 'tmp:aaaaaaaa', new Set(), ON);
+  assert.deepEqual(stagedIds(d), [id], '🔴 the last addition gone: staged again'); assert.ok(!declaredIds(d).includes(id));
+  addProduct(d, { ref: 'tmp:bbbbbbbb', cat: id }, ON);
+  setAddition(d, 'tmp:bbbbbbbb', 'cat', 'dim_sum', ON);
+  assert.deepEqual(stagedIds(d), [id], 'moved out: staged again');
+  setAddition(d, 'tmp:bbbbbbbb', 'cat', id, ON);
+  assert.ok(declaredIds(d).includes(id), 'moved in: promoted');
+  const off = createDraft(clone(seed('la_musa')));
+  addCategory(off, 'Postres', {}, ON);
+  const before = JSON.stringify(draftSource(off).structure);
+  addProduct(off, { ref: 'tmp:cccccccc', cat: stagedIds(off)[0] });
+  assert.equal(JSON.stringify(draftSource(off).structure.categories), JSON.stringify(JSON.parse(before).categories), 'OFF: no promotion (today\'s addProduct)');
 });

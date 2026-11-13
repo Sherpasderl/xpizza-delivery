@@ -185,12 +185,14 @@ export const setExtraPrice = (draft, id, raw) => setPrice(draft, 'extra', id, ra
 // A new row: the temporary reference the caller minted, the section it goes in, and nothing the server owns (no
 // key, no id, no identity stamp). Appended at the END of item_order — the server refuses anything else. The price
 // starts empty (the merchant types it) and is held unvalidated like any other price field.
-export function addProduct(draft, { ref, cat, subcat = null } = {}) {
+export function addProduct(draft, { ref, cat, subcat = null } = {}, opts = {}) {
   if (!canEditContent(draft)) return draft;
   if (typeof ref !== 'string' || !ref.startsWith('tmp:') || typeof cat !== 'string' || !cat) return draft;
+  if (Array.isArray(draft.state.items) && draft.state.items.some((r) => r && r.ref === ref)) return draft;
+  // S4-C (sections ON only): a NEW dish in a new (staged) section promotes it, as a moved-in dish does; refused ⇒ nothing added
+  if (!promoteFor(draft, cat, opts)) return draft;
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
-  if (st.items.some((r) => r && r.ref === ref)) return draft;
   const display = { cat, name: '', price: null };
   if (typeof subcat === 'string' && subcat) display.subcat = subcat;
   st.items.push({ ref, price: null, display });
@@ -204,7 +206,7 @@ export function addProduct(draft, { ref, cat, subcat = null } = {}) {
 // server allocated its key, the name IS the key for some brands, so it is no longer the merchant's to retype here
 // (they can still change its price, or remove it). Price goes through parsePrice like every price.
 // The branches below ARE the field whitelist: any other field (key, id, identity_id…) matches none and writes nothing.
-export function setAddition(draft, ref, field, raw) {
+export function setAddition(draft, ref, field, raw, opts = {}) {
   if (!canEditContent(draft)) return draft;
   const row = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref && isTmp(r));
   if (!row || isOptionRow(row)) return draft;   // an option is edited through the group mutators below
@@ -220,7 +222,15 @@ export function setAddition(draft, ref, field, raw) {
   const v = typeof raw === 'string' ? raw : '';
   if (field === 'name') row.display.name = v;
   else if (field === 'desc') { if (v.trim()) row.display.desc = v; else delete row.display.desc; }
-  else if (field === 'cat') { if (v) { row.display.cat = v; delete row.display.subcat; } }
+  else if (field === 'cat') {
+    if (v) {
+      const from = row.display.cat;
+      if (!promoteFor(draft, v, opts)) return draft;   // S4-C: into a new section promotes it (sections ON)
+      const moved = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref);
+      moved.display.cat = v; delete moved.display.subcat;
+      unpromoteIfEmptied(draft, from, opts);           // out of a section promoted in this draft: back to staged when it empties
+    }
+  }
   else if (field === 'subcat') { if (v) row.display.subcat = v; else delete row.display.subcat; }
   return draft;
 }
@@ -229,7 +239,7 @@ export function setAddition(draft, ref, field, raw) {
 // caller's set of saved additions holds its key). Never an existing published item: removing those is not an add-product capability.
 // 1D add-product B — a product with a required choice goes WITH its options and its variant_items entry (one unit, as the
 // server allocates and compares it); an option on its own is never removed here (removeChoice owns that, on an unsaved group).
-export function removeAddition(draft, id, savedAdditions = new Set()) {
+export function removeAddition(draft, id, savedAdditions = new Set(), opts = {}) {
   if (!canEditContent(draft)) return draft;
   const items = rowsOf(draft.state, 'item');
   const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
@@ -240,6 +250,7 @@ export function removeAddition(draft, id, savedAdditions = new Set()) {
   const row = items[i];
   if (g) dropGroup(draft.state, g);
   dropDishUnit(draft.state, row);
+  unpromoteIfEmptied(draft, row.display && row.display.cat, opts);   // S4-C: the promoting addition gone ⇒ staged again
   return draft;
 }
 // ONE dish unit leaves the source: its row, its item_order entry and its photos entry — shared by removeAddition and removeProduct
@@ -1095,6 +1106,20 @@ function lastOfSection(draft, row) {
   const others = rowsOf(draft.state, 'item').filter((r) => r && r !== row && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
   if (others.length) return null;
   return draftOnlySection(draft, cat) ? 'draft' : 'live';
+}
+// S4-C (advisor 11-13): an ADDITION is a promoting dish like a moved-in one — sections ON only. promoteFor → false when the switch is on,
+// the target is staged and the promotion is refused (nothing written); unpromoteIfEmptied returns a section declared in THIS draft to
+// staged once its last dish left (3(a)'s rule, as moveItem / removeProduct do)
+function promoteFor(draft, cat, opts) {
+  if (!sectionsOn(opts)) return true;
+  const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!staged) return true;
+  return sectionOp(draft, opts, (st) => promoteStaged(draft, st, staged)).ok;
+}
+function unpromoteIfEmptied(draft, cat, opts) {
+  if (!sectionsOn(opts) || cat == null) return;
+  const left = rowsOf(draft.state, 'item').some((r) => r && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+  if (!left && draftOnlySection(draft, cat)) unpromote(draft, draft.state, cat);
 }
 // a new subsection takes ≥ 1 member in the same op; the FIRST one of an ungrouped section takes every dish of it (5f R2.5)
 export function addSubcat(draft, cat, name, members, opts = {}) {
