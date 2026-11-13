@@ -2835,6 +2835,7 @@
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
   "my-favorites.js",
+  "my-last-tip.js",
   "my-orders.js",
   "order-exists.js",
   "otp-lib.js",
@@ -6989,6 +6990,10 @@
    "lifts": []
   },
   "my-favorites.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "my-last-tip.js": {
    "pins": [],
    "lifts": []
   },

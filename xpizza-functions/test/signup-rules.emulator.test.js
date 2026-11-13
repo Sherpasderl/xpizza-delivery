@@ -91,6 +91,10 @@ const ADDR = { label: 'Casa', detected: 'Col. Palmira', details: '', lat: 14.1, 
     await assertFails(owner.ref(`user_profiles/${U}/addresses/a_abcdef99`).set(ADDR));
     await assertFails(owner.ref(`user_profiles/${U}`).set(PROFILE('ph_a')));
     await assertSucceeds(other.ref(`user_profiles/${U2}/name`).set('Beto'));   // only THAT account is barred
+    // PLAN-3a-capp-member-reads R2.5: the deleted account's still-valid session can no longer READ its private node (a resurrected leaf
+    // such as last_tip would otherwise be readable client-direct); another account's own read is unaffected
+    await assertFails(owner.ref(`user_private/${U}`).once('value'));
+    await assertFails(owner.ref(`user_private/${U}/last_tip`).once('value'));
   }
   ok('BC1: in the window after the deletion core\'s tombstone and before its removals — deleteAccount (no cutoff) AND the inactivity sweep (cutoff) — the old session cannot write the profile (name, address, whole node); other accounts unaffected');
 
