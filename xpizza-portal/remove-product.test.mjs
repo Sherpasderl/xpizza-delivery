@@ -267,3 +267,107 @@ test('stamp format: the removal / undo results are the same with OPAQUE i_ stamp
     assert.equal(norm(back), norm(a), `${rid}: the results do not depend on the stamp format`);
   }
 });
+
+// ── R2 (T14, the view half): openConfirm — X2 and the discard confirm byte-identical to the base; the dish confirm as drawn ───────────
+const XSCRIM = '<!doctype html><button id="ret">Quitar del menú</button><div class="scrim" id="xscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="xcf-t" aria-describedby="xcf-d"></div></div>';
+async function withDom(fn, { sheet = false } = {}) {
+  const { JSDOM } = req('../xpizza-functions/node_modules/jsdom');
+  const w = new JSDOM(XSCRIM).window;
+  w.matchMedia = (q) => ({ matches: sheet && q === '(max-width:560px)', media: q });
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = w.document; globalThis.window = w;
+  try { return await fn(w); } finally { globalThis.document = saved.document; globalThis.window = saved.window; }
+}
+const key = (w, k, opts = {}) => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
+test('T14 openConfirm: X2 and the discard confirm render byte-identical to the base (14a66e5a), focus included', async () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-xv-'));
+  for (const f of ['extras-view.js', 'extras-logic.js', 'editor.js']) fs.writeFileSync(path.join(dir, f), execFileSync('git', ['show', `14a66e5a:xpizza-portal/${f}`], { cwd: here }));
+  try {
+    const BASE = await import(pathToFileURL(path.join(dir, 'extras-view.js')).href);
+    const NOW = await import('./extras-view.js');
+    const shot = (M, which) => withDom((w) => {
+      if (which === 'x2') M.openRemoveConfirm({ title: '¿Quitar Jamón de Ingredientes extra?', sub: 'Extras · en 4 productos', body: 'Desaparece del menú en los 4 productos que usan este grupo. Tus pedidos pasados no cambian.', onConfirm: () => {}, returnTo: w.document.getElementById('ret') });
+      else M.openDiscardConfirm({ onDiscard: () => {}, onKeep: () => {}, returnTo: w.document.getElementById('ret') });
+      const s = w.document.getElementById('xscrim');
+      const out = [s.outerHTML, w.document.activeElement.textContent];
+      M.closeXConfirm();
+      out.push(s.outerHTML);
+      return out;
+    });
+    for (const which of ['x2', 'discard']) assert.deepEqual(await shot(NOW, which), await shot(BASE, which), `${which === 'x2' ? 'X2' : 'the discard confirm'} is byte-identical`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+const R2 = { name: 'Pizza Margarita', place: 'Pizzas · Clásicas' };
+const R2_BODY = 'Desaparece del menú al publicar. Tus pedidos pasados no cambian. Para volver a venderlo, crealo como un producto nuevo.';
+const R5_LINE = 'Este producto se canjea con recompensas; al quitarlo deja de estar disponible como premio.';
+test('T14 R2 desktop: the title with «del menú?» unbroken, the place, the body; «Volver» holds focus; Tab stays in; Escape / the scrim / «Volver» write nothing', async () => {
+  const { openRemoveProductConfirm } = await import('./extras-view.js');
+  await withDom((w) => {
+    const ret = w.document.getElementById('ret'); const s = w.document.getElementById('xscrim'); const m = s.querySelector('.modal');
+    for (const how of ['volver', 'escape', 'scrim']) {
+      let went = 0, cancelled = 0;
+      openRemoveProductConfirm({ ...R2, reward: false, onConfirm: () => { went += 1; }, onCancel: () => { cancelled += 1; }, returnTo: ret });
+      assert.ok(s.classList.contains('show') && m.classList.contains('modal') && m.classList.contains('sm'), 'the small modal (.modal.sm) is up');
+      assert.ok(s.classList.contains('mk-over'), 'over the still-open drawer (.mk-over)');
+      const t = m.querySelector('.mt');
+      assert.equal(t.className, 'mt mk-cft', 'the title class');
+      assert.equal(t.textContent, '¿Quitar «Pizza Margarita» del menú?', 'the title text');
+      assert.equal((t.querySelector('.nw') || {}).textContent, 'del menú?', '«del menú?» never breaks off alone');
+      assert.equal(m.querySelector('.mh .ms').textContent, 'Pizzas · Clásicas', 'the place');
+      assert.equal(m.querySelector('.mb .eqbody').textContent, R2_BODY, 'the body');
+      assert.equal(m.querySelector('.mk-sandline'), null, 'no reward line on a non-reward dish');
+      const bs = [...m.querySelectorAll('.mf button')];
+      assert.deepEqual(bs.map((b) => [b.textContent, b.className]), [['Volver', 'btn ghost'], ['Quitar', 'btn ghost mk-quiet-danger']], 'the pair as drawn');
+      assert.equal(w.document.activeElement, bs[0], 'Volver holds focus');
+      key(w, 'Tab'); assert.equal(w.document.activeElement, bs[1], 'Tab moves to «Quitar»');
+      key(w, 'Tab'); assert.equal(w.document.activeElement, bs[0], 'Tab stays inside');
+      if (how === 'volver') bs[0].click();
+      else if (how === 'escape') key(w, 'Escape');
+      else s.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+      assert.equal(went, 0, `${how}: Escape writes nothing`);
+      assert.equal(cancelled, 1, `${how}: the cancel path ran once`);
+      assert.ok(!s.classList.contains('show') && !s.classList.contains('mk-over'), `${how}: closed (and no longer over the drawer)`);
+      assert.equal(w.document.activeElement, ret, `${how}: focus is back on «Quitar del menú»`);
+    }
+    let went = 0;
+    openRemoveProductConfirm({ ...R2, reward: false, onConfirm: () => { went += 1; }, returnTo: ret });
+    [...m.querySelectorAll('.mf button')][1].click();
+    assert.equal(went, 1, '«Quitar» confirms once');
+    assert.ok(!s.classList.contains('show'), '«Quitar» closes the confirm');
+  });
+});
+test('T16 R5: a reward dish’s confirm carries the sand line under the body (desktop and the phone sheet)', async () => {
+  const { openRemoveProductConfirm, closeXConfirm } = await import('./extras-view.js');
+  for (const sheet of [false, true]) {
+    await withDom((w) => {
+      openRemoveProductConfirm({ ...R2, reward: true, onConfirm: () => {}, returnTo: w.document.getElementById('ret') });
+      const line = w.document.querySelector('#xscrim .mk-sandline');
+      assert.ok(line, `${sheet ? 'sheet' : 'desktop'}: a reward dish's confirm carries the sand line`);
+      assert.equal(line.textContent, R5_LINE, 'the approved line');
+      assert.ok(line.querySelector('svg'), 'with its glyph');
+      assert.equal(line.previousElementSibling.className, 'eqbody', 'right under the body');
+      closeXConfirm();
+    }, { sheet });
+  }
+});
+test('T14 R2 phone (≤ 560 px): the bottom sheet — handle, title, place, body, two side-by-side buttons «Volver» first; closing restores the modal', async () => {
+  const { openRemoveProductConfirm, openRemoveConfirm, closeXConfirm } = await import('./extras-view.js');
+  await withDom((w) => {
+    const s = w.document.getElementById('xscrim'); const m = s.firstElementChild; const ret = w.document.getElementById('ret');
+    openRemoveProductConfirm({ ...R2, reward: false, onConfirm: () => {}, returnTo: ret });
+    assert.ok(s.classList.contains('mk-sheetscrim'), 'the scrim aligns the sheet to the bottom');
+    assert.equal(m.className, 'mk-sheet', 'the sheet');
+    assert.equal(m.getAttribute('role'), 'dialog'); assert.equal(m.getAttribute('aria-labelledby'), 'xcf-t');
+    assert.deepEqual([...m.children].map((c) => c.className), ['mk-handle', 'mt mk-cft', 'ms', 'eqbody', 'mk-sheeta'], 'the sheet as drawn');
+    const bs = [...m.querySelectorAll('.mk-sheeta button')];
+    assert.deepEqual(bs.map((b) => [b.textContent, b.className]), [['Volver', 'btn'], ['Quitar', 'btn danger']], 'the sheet’s pair as drawn');
+    assert.equal(w.document.activeElement, bs[0], 'Volver holds focus on the sheet');
+    key(w, 'Escape');
+    assert.ok(!s.classList.contains('show') && !s.classList.contains('mk-sheetscrim'), 'closed, the scrim back to itself');
+    assert.equal(m.className, 'modal sm', 'the modal element is restored');
+    openRemoveConfirm({ title: 'X', sub: 'Y', body: 'Z', onConfirm: () => {}, returnTo: ret });
+    assert.equal(m.className, 'modal sm', 'X2 on a phone is still the small modal (the sheet is the dish confirm’s only)');
+    closeXConfirm();
+  }, { sheet: true });
+});

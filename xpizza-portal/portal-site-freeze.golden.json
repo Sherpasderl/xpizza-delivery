@@ -181,8 +181,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "ebd1e323c372b4b41f3dc504b353a1c21e1a82fac54ded007c6ae7546470afb5",
-   "bytes": 150090
+   "sha256": "9930a911462b0fca5213a8e087032bf1b90487fe2351cca196e8e1cf9123ba49",
+   "bytes": 151397
   }
  },
  "diff_aid": {
@@ -2395,6 +2395,12 @@
    ],
    [
     "",
+    ".mk-handle",
+    "background",
+    "var(--line)"
+   ],
+   [
+    "",
     ".mk-ib",
     "background",
     "var(--board-2)"
@@ -2548,6 +2554,24 @@
     ".mk-rec",
     "color",
     "var(--gold)"
+   ],
+   [
+    "",
+    ".mk-sandline",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mk-sandline",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
+    ".mk-sheet",
+    "background",
+    "var(--card)"
    ],
    [
     "",

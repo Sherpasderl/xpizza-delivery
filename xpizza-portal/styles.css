@@ -667,7 +667,22 @@
   .mk-dels .brow .bsec{margin-left:auto;font-size:12px;white-space:nowrap}
   .mk-dels .brow.gone .bnm{text-decoration:none;font-weight:500}   /* .brow.rem .bnm already gives it --mute */   /* «Un extra que ya no está en el menú» is not struck (MOCKUP x2b) */
   #xcf-line{margin-top:12px}
-  .mk-bscrim{cursor:pointer;z-index:30}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
+  .mk-bscrim{cursor:pointer;z-index:30}
+  /* «Quitar del menú» (MOCKUP-portal-remove-product, owner-approved 11-12) — R2: the confirm, the review modal's small size over the
+     still-open drawer; the title one step smaller than the review's so a long name wraps cleanly and «del menú?» never breaks off */
+  .scrim.mk-over{z-index:30}
+  .mt.mk-cft{font-size:21px;line-height:1.2}
+  .nw{white-space:nowrap}
+  /* R2 phone: a bottom sheet on the modal's tokens */
+  .scrim.mk-sheetscrim{align-items:flex-end;padding:0}
+  .mk-sheet{width:100%;background:var(--card);border-top:1px solid var(--line);border-radius:18px 18px 0 0;box-shadow:var(--shadow-lg);padding:12px 20px 24px}
+  .mk-sheet .eqbody{margin-top:12px;line-height:1.55}
+  .mk-sheeta{display:flex;gap:10px;margin-top:20px}
+  .mk-sheeta .btn{flex:1;justify-content:center;min-height:46px}
+  .mk-handle{width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 16px}
+  /* R5: the reward edge line (a caution: sand) */
+  .mk-sandline{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:10px 12px;border:1px solid var(--sand-line);background:var(--sand-soft);color:var(--sand-text);border-radius:10px;font-size:12.5px;line-height:1.5}
+  .mk-sandline svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:2px}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
   #xattach .optrow .ogname{display:flex;flex-direction:column;gap:2px}
   #xattach .optrow .ogname .ogsub{font-weight:400}
   #xattach .mb .optrow:last-child{margin-bottom:0}

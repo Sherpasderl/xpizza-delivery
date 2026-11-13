@@ -21,5 +21,35 @@ export const RP_FOLD = {
    "  // { add: [ids] } («Quitar del menú»: a dish's identity stamp — the dish writer has no op results) is the same union as the op results;\n  // { withdraw: [ids] } («Deshacer»): drop exactly those ids, ONE sorted array; no claim ⇒ nothing written; [] stays []\n  if (results && typeof results === 'object' && !Array.isArray(results) && Array.isArray(results.add)) return mergeDeletionClaim(src, [{ deletedIds: results.add }]);\n  if (results && typeof results === 'object' && !Array.isArray(results)) {\n    const cur = src && src.deleted_ids;\n    if (cur === undefined || !Array.isArray(results.withdraw)) return src;\n    const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);\n    const drop = new Set(results.withdraw.map(String));\n    src.deleted_ids = [...new Set(have.map(String))].filter((x) => !drop.has(x)).sort();\n    return src;\n  }\n",
    ""
   ]
+ ],
+ "extras-view.js": [
+  [
+   "// A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?», the discard confirm and the dish confirm («Quitar del menú», R2 / R5). Tab\n// stays inside; Escape and the backdrop take the cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods\n// (classes on top of .btn), sheetMods (on the phone sheet), act: 'cancel' | 'go', focus }] in DOM order. «Quitar del menú» adds:\n// `title` as parts (strings / nodes), `titleClass`, `line` (a node under the body) and `sheet` (≤ 560 px: the bottom sheet, R2 phone —\n// the SAME element, its class swapped while open and restored on close) and `over` (above the open drawer). Without them the DOM is today's, byte for byte (T14).\nexport function openConfirm(o) {\n  const { title, titleClass = null, sub = null, body = null, line = null, buttons, sheet = false, over = false, returnTo = null } = o;\n  const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal, .mk-sheet');\n  const t = el('div', 'mt', Array.isArray(title) ? null : title); t.id = 'xcf-t';\n  if (Array.isArray(title)) t.append(...title);\n  if (titleClass) t.classList.add(titleClass);\n  const s = sub ? el('div', 'ms', sub) : null;\n  const p = body ? el('p', 'eqbody', body) : null; if (p) p.id = 'xcf-d';\n  const mf = el('div', sheet ? 'mk-sheeta' : 'mf');\n  let parts;\n  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [line] : []), mf];\n  else {\n    const mh = el('div', 'mh'); mh.append(t); if (s) mh.append(s);\n    parts = [mh];\n    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(line); parts.push(mb); }\n    parts.push(mf);\n  }\n  if (sheet) parts[0].setAttribute('aria-hidden', 'true');\n  const modalClass = modal.className;\n",
+   "// A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?» and the discard confirm. Tab stays inside; Escape and the backdrop take the\n// cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods (classes on top of .btn), act: 'cancel' | 'go', focus }] in DOM order.\nfunction openSmallConfirm(o) {\n  const { title, sub = null, body = null, buttons, returnTo = null } = o;\n  const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal');\n  const mh = el('div', 'mh'); const t = el('div', 'mt', title); t.id = 'xcf-t'; mh.append(t); if (sub) mh.append(el('div', 'ms', sub));\n  const parts = [mh];\n  if (body) { const mb = el('div', 'mb'); const p = el('p', 'eqbody', body); p.id = 'xcf-d'; mb.append(p); parts.push(mb); }\n  const mf = el('div', 'mf');\n  parts.push(mf);\n"
+  ],
+  [
+   "    if (sheet) { scrim.classList.remove('mk-sheetscrim'); modal.className = modalClass; }\n    if (over) scrim.classList.remove('mk-over');\n",
+   ""
+  ],
+  [
+   "    const btnEl = el('button', 'btn', spec.label); btnEl.type = 'button'; btnEl.classList.add(...((sheet ? spec.sheetMods : null) || spec.mods));\n",
+   "    const btnEl = el('button', 'btn', spec.label); btnEl.type = 'button'; btnEl.classList.add(...spec.mods);\n"
+  ],
+  [
+   "  if (sheet) { scrim.classList.add('mk-sheetscrim'); modal.className = 'mk-sheet'; }\n  if (over) scrim.classList.add('mk-over');   // over the still-open drawer (26): the mockup's .mk-over\n",
+   ""
+  ],
+  [
+   "  openConfirm({ title, sub, body, returnTo, onGo: onConfirm,\n",
+   "  openSmallConfirm({ title, sub, body, returnTo, onGo: onConfirm,\n"
+  ],
+  [
+   "  openConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,\n",
+   "  openSmallConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,\n"
+  ],
+  [
+   "}\n\n// R2 / R5 «¿Quitar «{producto}» del menú?» (MOCKUP-portal-remove-product frames R2, R5, phone 390): the place under the title, the\n// approved body, the reward line when the dish is a reward (the SERVED rewardKeys, never derived here), «Volver» (focus) · «Quitar»\n// (quiet red); the bottom sheet at ≤ 560 px. The press writes nothing: onConfirm is the caller's removal.\nconst R2_BODY = 'Desaparece del menú al publicar. Tus pedidos pasados no cambian. Para volver a venderlo, crealo como un producto nuevo.';\nconst R5_LINE = 'Este producto se canjea con recompensas; al quitarlo deja de estar disponible como premio.';\nconst STAR = ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'];\nexport function openRemoveProductConfirm({ name, place, reward = false, onConfirm, onCancel = null, returnTo = null }) {\n  const sheet = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:560px)').matches;\n  let line = null;\n  if (reward) { line = el('div', 'mk-sandline'); line.append(svg(STAR), el('span', null, R5_LINE)); }\n  openConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,\n    onGo: onConfirm, onCancel,\n    buttons: [{ label: 'Volver', mods: ['ghost'], sheetMods: [], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], sheetMods: ['danger'], act: 'go' }] });\n",
+   ""
+  ]
  ]
 };

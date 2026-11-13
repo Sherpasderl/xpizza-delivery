@@ -227,21 +227,37 @@ function renderAddRow(host, a, on) {
 // with NO continuation and no refocus
 let xscrimClose = null;
 export function closeXConfirm() { const c = xscrimClose; xscrimClose = null; if (c) c(); }
-// A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?» and the discard confirm. Tab stays inside; Escape and the backdrop take the
-// cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods (classes on top of .btn), act: 'cancel' | 'go', focus }] in DOM order.
-function openSmallConfirm(o) {
-  const { title, sub = null, body = null, buttons, returnTo = null } = o;
-  const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal');
-  const mh = el('div', 'mh'); const t = el('div', 'mt', title); t.id = 'xcf-t'; mh.append(t); if (sub) mh.append(el('div', 'ms', sub));
-  const parts = [mh];
-  if (body) { const mb = el('div', 'mb'); const p = el('p', 'eqbody', body); p.id = 'xcf-d'; mb.append(p); parts.push(mb); }
-  const mf = el('div', 'mf');
-  parts.push(mf);
+// A small confirm on #xscrim (.modal.sm): X2 «¿Quitar …?», the discard confirm and the dish confirm («Quitar del menú», R2 / R5). Tab
+// stays inside; Escape and the backdrop take the cancel path; the cancel path returns focus to `returnTo`. `buttons`: [{ label, mods
+// (classes on top of .btn), sheetMods (on the phone sheet), act: 'cancel' | 'go', focus }] in DOM order. «Quitar del menú» adds:
+// `title` as parts (strings / nodes), `titleClass`, `line` (a node under the body) and `sheet` (≤ 560 px: the bottom sheet, R2 phone —
+// the SAME element, its class swapped while open and restored on close) and `over` (above the open drawer). Without them the DOM is today's, byte for byte (T14).
+export function openConfirm(o) {
+  const { title, titleClass = null, sub = null, body = null, line = null, buttons, sheet = false, over = false, returnTo = null } = o;
+  const scrim = document.getElementById('xscrim'), modal = scrim.querySelector('.modal, .mk-sheet');
+  const t = el('div', 'mt', Array.isArray(title) ? null : title); t.id = 'xcf-t';
+  if (Array.isArray(title)) t.append(...title);
+  if (titleClass) t.classList.add(titleClass);
+  const s = sub ? el('div', 'ms', sub) : null;
+  const p = body ? el('p', 'eqbody', body) : null; if (p) p.id = 'xcf-d';
+  const mf = el('div', sheet ? 'mk-sheeta' : 'mf');
+  let parts;
+  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [line] : []), mf];
+  else {
+    const mh = el('div', 'mh'); mh.append(t); if (s) mh.append(s);
+    parts = [mh];
+    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(line); parts.push(mb); }
+    parts.push(mf);
+  }
+  if (sheet) parts[0].setAttribute('aria-hidden', 'true');
+  const modalClass = modal.className;
   const focusables = [];
   let first = null;
   const close = (refocus) => {
     xscrimClose = null;
     scrim.classList.remove('show'); modal.replaceChildren();
+    if (sheet) { scrim.classList.remove('mk-sheetscrim'); modal.className = modalClass; }
+    if (over) scrim.classList.remove('mk-over');
     document.removeEventListener('keydown', onKey, true); scrim.removeEventListener('click', onScrim);
     if (refocus && returnTo && returnTo.isConnected) returnTo.focus();
   };
@@ -255,11 +271,13 @@ function openSmallConfirm(o) {
   };
   const onScrim = (e) => { if (e.target === scrim) cancel(); };
   for (const spec of buttons) {
-    const btnEl = el('button', 'btn', spec.label); btnEl.type = 'button'; btnEl.classList.add(...spec.mods);
+    const btnEl = el('button', 'btn', spec.label); btnEl.type = 'button'; btnEl.classList.add(...((sheet ? spec.sheetMods : null) || spec.mods));
     btnEl.addEventListener('click', () => { if (spec.act === 'go') { close(false); o.onGo(); } else cancel(); });
     mf.append(btnEl); focusables.push(btnEl);
     if (spec.focus && !first) first = btnEl;
   }
+  if (sheet) { scrim.classList.add('mk-sheetscrim'); modal.className = 'mk-sheet'; }
+  if (over) scrim.classList.add('mk-over');   // over the still-open drawer (26): the mockup's .mk-over
   modal.replaceChildren(...parts);
   document.addEventListener('keydown', onKey, true); scrim.addEventListener('click', onScrim);
   xscrimClose = () => close(false);
@@ -268,13 +286,28 @@ function openSmallConfirm(o) {
 }
 // X2 — the remove confirm (frame X2: «Cancelar» focused / «Quitar» quiet red); focus returns to the trash on cancel
 export function openRemoveConfirm({ title, sub, body, onConfirm, returnTo }) {
-  openSmallConfirm({ title, sub, body, returnTo, onGo: onConfirm,
+  openConfirm({ title, sub, body, returnTo, onGo: onConfirm,
     buttons: [{ label: 'Cancelar', mods: ['ghost'], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }] });
 }
 // the portal's discard confirm, reused (the drawer's title, buttons and order; its product sentence does not apply to a new group)
 export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
-  openSmallConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,
+  openConfirm({ title: '¿Descartar los cambios?', returnTo, onGo: onDiscard, onCancel: onKeep,
     buttons: [{ label: 'Descartar', mods: ['ghost', 'mk-quiet-danger'], act: 'go' }, { label: 'Seguir editando', mods: ['accent'], act: 'cancel', focus: true }] });
+}
+
+// R2 / R5 «¿Quitar «{producto}» del menú?» (MOCKUP-portal-remove-product frames R2, R5, phone 390): the place under the title, the
+// approved body, the reward line when the dish is a reward (the SERVED rewardKeys, never derived here), «Volver» (focus) · «Quitar»
+// (quiet red); the bottom sheet at ≤ 560 px. The press writes nothing: onConfirm is the caller's removal.
+const R2_BODY = 'Desaparece del menú al publicar. Tus pedidos pasados no cambian. Para volver a venderlo, crealo como un producto nuevo.';
+const R5_LINE = 'Este producto se canjea con recompensas; al quitarlo deja de estar disponible como premio.';
+const STAR = ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'];
+export function openRemoveProductConfirm({ name, place, reward = false, onConfirm, onCancel = null, returnTo = null }) {
+  const sheet = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:560px)').matches;
+  let line = null;
+  if (reward) { line = el('div', 'mk-sandline'); line.append(svg(STAR), el('span', null, R5_LINE)); }
+  openConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,
+    onGo: onConfirm, onCancel,
+    buttons: [{ label: 'Volver', mods: ['ghost'], sheetMods: [], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], sheetMods: ['danger'], act: 'go' }] });
 }
 
 // ── X3 «Crear grupo» + X3b (MOCKUP x4b) — the sheet's DOM, from extras-logic.js createGroupView. `on`: { name(v), row(i, patch),
