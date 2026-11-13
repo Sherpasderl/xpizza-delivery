@@ -30,6 +30,7 @@ const I = Object.freeze({
   info: [{ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 8v5M12 16h.01'],
   x: ['M6 6l12 12M18 6L6 18'],
   plus: ['M12 5v14M5 12h14'],
+  minus: ['M5 12h14'],
   pin: ['M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z', { tag: 'circle', cx: 12, cy: 10, r: 2.5 }],
   search: [{ tag: 'circle', cx: 11, cy: 11, r: 7 }, 'M20 20l-3.5-3.5'],
   check: ['M5 12l5 5 9-10'],
@@ -38,25 +39,30 @@ const I = Object.freeze({
 const ic = (k) => svg(...I[k]);
 const COPY = Object.freeze({
   h1: 'Envío', pill: 'Área de Sherpa',
-  lede: 'Una sola tarifa por distancia para todos los restaurantes. La paga el cliente en la app de Sherpa; se mide en línea recta desde el pin de cada sucursal.',
-  ledePh: 'Una sola tarifa por distancia para todos los restaurantes. Se mide en línea recta desde el pin de cada sucursal.',
-  bandsH: 'Tarifa por distancia', bandsHint: 'Igual para todos los restaurantes', hasta: 'Hasta', tarifa: 'Tarifa', add: 'Agregar tramo',
-  limit: 'Límite de entrega', limitAll: '· el último tramo', limitValid: '· el último tramo válido',
-  help: 'Los tramos van de menor a mayor distancia, en lempiras enteros. Hasta 20 tramos, hasta 10 km y hasta L 150 por tramo. Más allá del último tramo no se entrega.',
+  lede: 'Una sola tarifa por distancia para todos los restaurantes; cada uno con su distancia máxima. La paga el cliente en la app de Sherpa y se mide en línea recta desde el pin de cada sucursal.',
+  ledePh: 'Una tarifa por distancia para todos; cada restaurante con su distancia máxima. Se mide en línea recta desde el pin de cada sucursal.',
+  bandsH: 'Tarifas de envío', bandsHint: 'Iguales para todos los restaurantes', bandsHintPh: 'Iguales para todos', hasta: 'Hasta', tarifa: 'Tarifa', add: 'Agregar tramo',
+  limit: 'Distancia máxima de la tabla', limitAll: '· el último tramo', limitValid: '· el último tramo válido',
+  help: 'Los tramos van de menor a mayor distancia, en lempiras enteros. Hasta 20 tramos, hasta 10 km y hasta L 150 por tramo. Ningún restaurante entrega más allá del último tramo.',
   helpPh: 'De menor a mayor distancia, lempiras enteros. Hasta 20 tramos, 10 km y L 150 por tramo.',
-  calloutB: 'Aplica a todos los restaurantes de Sherpa', calloutT: ', también a los que se sumen después. No hay nada que configurar por restaurante.',
-  mapH: 'Mapa', mapHint: 'Anillos desde el pin', pickLab: 'Ver anillos desde…', search: 'Buscar restaurante o sucursal',
-  mapNote: 'Los anillos se mueven mientras editás los tramos. Son distancias en línea recta: no siguen las calles.',
-  mapNotePh: 'Los anillos se mueven mientras editás los tramos. Distancias en línea recta.',
-  mapCap: (name) => `Anillos desde el pin de ${name}. Línea recta, no calles.`,
+  calloutB: 'Las tarifas aplican a todos los restaurantes de Sherpa', calloutT: ', también a los que se sumen después. Lo único por restaurante es su distancia máxima, en el mapa.',
+  mapH: 'Mapa', mapHint: 'Anillos desde el pin', pickLab: 'Restaurante o sucursal', search: 'Buscar restaurante o sucursal',
+  mapNote: 'Los anillos se mueven mientras editás los tramos o la distancia máxima. Son distancias en línea recta: no siguen las calles.',
+  mapNotePh: 'Los anillos se mueven mientras editás. Distancias en línea recta.',
+  mapCap: (name, km) => (km === null || km === undefined ? `Anillos desde el pin de ${name}. Línea recta, no calles.` : `Anillos desde el pin de ${name}. Entrega hasta ${km} km.`),   // the mockup's own fallback (no reach known)
   mapFail: 'No se pudo cargar el mapa.', noPin: 'Esta sucursal no tiene ubicación todavía.', noBranches: 'No pudimos cargar las sucursales.',
   legend: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Fuera del límite', 'out'], ['Otras sucursales', 'other']],
   legendBad: [['Tramo de tarifa', 'band'], ['Límite de entrega', 'limit'], ['Tramo rechazado', 'bad']],
   discard: 'Descartar', save: 'Guardar',
-  cTitle: 'Confirmar tarifas de envío',
-  cLede: 'Así queda el envío para todos los restaurantes. Aplica a los pedidos nuevos de la app desde que guardés; los pedidos ya cotizados mantienen su tarifa.',
+  cTitle: 'Confirmar cambios de envío',
+  cLede: 'Así queda el envío. Aplica a los pedidos nuevos de la app desde que guardés; los pedidos ya cotizados mantienen su tarifa.',
   cLedePh: 'Aplica a los pedidos nuevos de la app desde que guardés; los ya cotizados mantienen su tarifa.',
-  cTramos: 'Tramos', cBack: 'Volver', cSave: 'Guardar tarifas', saved: 'Tarifas guardadas',
+  cTramos: 'Tarifas · iguales para todos los restaurantes', cLimits: 'Distancia máxima por restaurante', cBack: 'Volver', cSave: 'Guardar cambios', saved: 'Envío guardado',
+  // ENVÍO v3 — the restaurant's maximum distance (A1 / A4; copy table «New»)
+  maxLab: 'Distancia máxima de ', maxHelp: 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos.',
+  maxMulti: (n) => ` Aplica a sus ${n} sucursales, desde el pin de cada una.`, maxCapPh: (top) => ` Máximo ${top} km.`,
+  maxCap: 'máximo ', maxLess: '0.5 km menos', maxMore: '0.5 km más', maxAria: 'Distancia máxima, en km',
+  capped: (top, km) => `Hoy entrega hasta ${top} km: la tabla no llega más lejos. Si la tabla vuelve a crecer, recupera sus ${km} km.`,
   conflictT: 'Alguien más cambió las tarifas, recargá', conflictP: 'Tus cambios no se guardaron. Recargá para ver la versión actual y volvé a editar sobre ella.', reload: 'Recargar',
   errT: 'No se pudieron guardar las tarifas', errP: 'Tus cambios siguen acá. Revisá tu internet y volvé a intentar; si sigue igual, escribinos.', retry: 'Reintentar',
   forbidden: 'No tenés acceso a esta sección.',
@@ -69,6 +75,8 @@ const S = {
   loaded: null,            // envio-logic loadedState: { kind: 'policy', version, bands } | { kind: 'malformed', … } | { kind: 'unreadable' }
   rows: null, note: null,  // the draft rows [{ km, fee }] (typed text), and the last «Dejá al menos un tramo.» note
   entries: [], branchesUnavailable: false, pick: null,
+  restaurants: [], branchesRaw: [],   // ENVÍO v3: restaurantsOf(the GET's branches) as LOADED, and the raw rows (the picker follows the edits)
+  limitEdits: {},          // ENVÍO v3: { restaurantKey → typed text } (the per-branch pending set derives from it: EL.pendingLimits)
   status: 'idle',          // idle | loading | ready | offline | forbidden
   banner: null,            // null | 'conflict' | 'error'
   attempt: null, phase: null,   // the frozen save attempt and where it stands: sending | recovering | unknown | not_landed
@@ -131,11 +139,26 @@ function adoptBody(b) {
   S.loaded = EL.loadedState(b);
   raiseFloor(bodyVersion(b));
   S.branchesUnavailable = !Array.isArray(b.branches);
-  S.entries = EL.pickerEntries(b.branches);
-  if (!S.pick || !S.entries.some((e) => e.rid === S.pick)) S.pick = EL.defaultPick(S.entries);
+  S.branchesRaw = Array.isArray(b.branches) ? b.branches : [];
+  S.restaurants = EL.restaurantsOf(S.branchesRaw);
+  S.limitEdits = {};
   S.rows = EL.rowsFromBands(S.loaded.kind === 'policy' ? S.loaded.bands : []);
+  refreshEntries();
+  if (!S.pick || !S.entries.some((e) => e.rid === S.pick)) S.pick = EL.defaultPick(S.entries);
   S.note = null;
 }
+// ── ENVÍO v3: the restaurant's maximum distance (PLAN r5 §1, §1d) ──
+// the table's top as EDITED (the last drawable band), the per-branch pending set, and the picker lines that follow both
+function curTop() { const ok = EL.mapBands(S.rows || []).filter((b) => b.ok); return ok.length ? ok[ok.length - 1].km : null; }
+const pendingNow = () => EL.pendingLimits(S.restaurants, S.limitEdits, curTop());
+const limitDirty = () => Object.keys(pendingNow()).length > 0;
+// an edited field with a line holds Guardar (the field shows the line; no other text)
+const limitInvalid = () => S.restaurants.some((r) => Object.prototype.hasOwnProperty.call(S.limitEdits, r.key) && !!EL.limitProblem(S.limitEdits[r.key], curTop()));
+function refreshEntries() {
+  const p = pendingNow();
+  S.entries = EL.pickerEntries(S.branchesRaw.map((b) => (Object.prototype.hasOwnProperty.call(p, b.rid) ? { ...b, max_km: p[b.rid], limit_invalid: false } : b)), curTop());
+}
+const pickedRestaurant = () => S.restaurants.find((r) => r.rids.includes(S.pick)) || null;
 async function load({ fresh } = {}) {
   const g = snap();
   let res;
@@ -151,11 +174,12 @@ async function load({ fresh } = {}) {
   const rv = bodyVersion(res.body);
   if (rv !== null && rv < S.floor) { if (S.status !== 'ready') { S.status = 'ready'; render(); } return; }
   store.set(CACHE(S.uid), cacheable(res.body));
-  const keepDraft = !fresh && (S.attempt || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
+  const keepDraft = !fresh && (S.attempt || limitDirty() || limitInvalid() || (S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)));
   if (keepDraft) {
     // the draft wins on screen; the CAS catches a newer server version at save. The directory still refreshes.
     S.branchesUnavailable = !Array.isArray(res.body.branches);
-    S.entries = EL.pickerEntries(res.body.branches);
+    S.branchesRaw = Array.isArray(res.body.branches) ? res.body.branches : S.branchesRaw;
+    refreshEntries();
   } else {
     adoptBody(res.body);
     if (fresh) S.banner = null;
@@ -168,17 +192,22 @@ async function load({ fresh } = {}) {
 // Codex r1 F1: «Guardar» captures the REVIEWED body (frozen) — the summary and the POST both come from it, never from the live rows
 function openEnvioConfirm() {
   if (S.attempt || S.confirm || !S.loaded || S.loaded.version === null || S.loaded.version === undefined) return;
-  const bar = EL.saveBar(S.rows, S.loaded.kind === 'policy' ? S.loaded.bands : []);
-  if (!bar.canSave && !(S.loaded.kind === 'malformed' && EL.validate(S.rows).valid)) return;
-  const body = EL.toBody(S.rows, S.loaded.version);
+  const bar = barState();
+  if (!bar.canSave && !(S.loaded.kind === 'malformed' && EL.validate(S.rows).valid && !limitInvalid())) return;
+  const pending = pendingNow();
+  const body = EL.toBody(S.rows, S.loaded.version, EL.limitsFor(pending));
   const was = S.loaded.kind === 'policy' ? S.loaded.bands.map((b) => ({ ...b })) : [];
-  S.confirm = Object.freeze({ body: Object.freeze({ expected_policy_version: body.expected_policy_version, bands: Object.freeze(body.bands.map((b) => Object.freeze({ ...b }))) }), was: Object.freeze(was) });
+  const loadedTop = was.length ? was[was.length - 1].max_km : null;
+  const changes = EL.limitChanges(S.restaurants, pending, loadedTop);
+  S.confirm = Object.freeze({ body: Object.freeze({ expected_policy_version: body.expected_policy_version, bands: Object.freeze(body.bands.map((b) => Object.freeze({ ...b }))),
+    ...(body.limits ? { limits: Object.freeze(body.limits.map((e) => Object.freeze({ ...e }))) } : {}) }), was: Object.freeze(was),
+  limitRows: Object.freeze(changes.rows.map((r) => Object.freeze({ ...r }))), limitCallouts: Object.freeze([...changes.callouts]) });
   render();
 }
 function startSave() {
   const c = S.confirm;
   if (S.attempt || !c) return;
-  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: c.body.expected_policy_version, bands: c.body.bands });
+  S.attempt = EL.startAttempt({ uid: S.uid, sessionGen: S.gen, expectedVersion: c.body.expected_policy_version, bands: c.body.bands, limits: c.body.limits || [] });
   send(S.attempt);
 }
 async function send(attempt) {
@@ -186,7 +215,7 @@ async function send(attempt) {
   S.phase = 'sending'; S.banner = null; render();
   let res;
   try {
-    res = await setDeliveryPricingRaw({ token, assertLive: g.assertLive, body: { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands } });
+    res = await setDeliveryPricingRaw({ token, assertLive: g.assertLive, body: { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands, ...(attempt.sentLimits.length ? { limits: attempt.sentLimits } : {}) } });
   } catch (err) {
     if (!g.alive() || S.attempt !== attempt) return;
     // withheld before sending (no token / obsolete): nothing landed
@@ -233,9 +262,17 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
       raiseFloor(version);
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
       S.rows = EL.rowsFromBands(S.loaded.bands);
+      // ENVÍO v3: the sent limits ARE the stored ones now (the same transaction): fold them into the loaded rows, nothing left pending
+      const sent = new Map(attempt.sentLimits.map((e) => [e.rid, e.km]));
+      const landed = (rows) => rows.map((b) => (sent.has(b.rid) ? { ...b, max_km: sent.get(b.rid), limit_invalid: false } : b));
+      S.branchesRaw = landed(S.branchesRaw);
+      S.restaurants = EL.restaurantsOf(S.branchesRaw);
+      S.limitEdits = {};
+      refreshEntries();
       S.attempt = null; S.phase = null; S.banner = null;
       const c = store.get(CACHE(S.uid)) || {};
-      store.set(CACHE(S.uid), { ...c, current_malformed: undefined, policy_version_raw: undefined, policy_version: version, bands: S.loaded.bands });
+      store.set(CACHE(S.uid), { ...c, current_malformed: undefined, policy_version_raw: undefined, policy_version: version, bands: S.loaded.bands,
+        ...(Array.isArray(c.branches) ? { branches: landed(c.branches) } : {}) });
       render();
       toast(COPY.saved);
       return;
@@ -279,6 +316,14 @@ function themeNow() {
   try { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (_) { return 'light'; }
 }
 const pickedEntry = () => S.entries.find((e) => e.rid === S.pick) || null;
+// the picked branch's effective reach (its pending edit, else its stored value, capped by the table top as edited); a flagged branch: null
+function pickedReach() {
+  const b = S.branchesRaw.find((x) => x && x.rid === S.pick); if (!b) return null;
+  const p = pendingNow();
+  if (Object.prototype.hasOwnProperty.call(p, b.rid)) return EL.effectiveKm(p[b.rid], curTop());
+  if (b.limit_invalid === true) return null;
+  return EL.effectiveKm(Number.isFinite(b.max_km) ? b.max_km : null, curTop());
+}
 function renderMessage(view) {
   const p = pickedEntry();
   const others = S.entries.filter((e) => e.rid !== S.pick && e.hub).slice(0, MP.LIMITS.others).map((e) => ({ lat: e.hub.lat, lng: e.hub.lng }));
@@ -394,7 +439,7 @@ function render() {
     return;
   }
   if (!S.refs) buildPage();
-  paintBanner(); paintBands(); paintPicker(); paintMapBox(); paintLegend(); paintBar(); paintConfirm();
+  paintBanner(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintBar(); paintConfirm();
   postRender('keep');   // Codex r1 F6: every adoption / restoration reaches the map
 }
 
@@ -406,7 +451,7 @@ function buildPage() {
   const left = el('div', 'dcol'), right = el('div', 'dcol');
   // bands
   const sb = el('section', 'esec envbands');
-  const h3 = el('h3', null, COPY.bandsH); h3.append(el('span', 'ehint', COPY.bandsHint));
+  const h3 = el('h3', null, COPY.bandsH); const hh = el('span', 'ehint'); hh.append(phText(COPY.bandsHint, COPY.bandsHintPh)); h3.append(hh);
   refs.bands = el('div', 'bands');
   refs.add = button('eadd', COPY.add, () => {
     const next = EL.addRow(S.rows); if (!next) return;
@@ -439,6 +484,23 @@ function buildPage() {
   refs.pick.addEventListener('click', () => (S.picker ? closeBranchPicker(true) : openBranchPicker()));
   refs.menu = el('div', 'pickmenu hidden');
   fld.append(refs.pick, refs.menu);
+  // ENVÍO v3 A1 / A4: the restaurant's maximum distance (MOCKUP .maxfld: label, the .5 stepper around the .inp cell, the «máximo» chip,
+  // the help, the quiet sand capped note, the field's line)
+  refs.max = el('div', 'maxfld');
+  refs.maxLab = el('span', 'elab');
+  refs.maxStep = el('div', 'step');
+  refs.maxDec = button('sb', '', () => stepMax(-0.5)); refs.maxDec.setAttribute('aria-label', COPY.maxLess); refs.maxDec.append(ic('minus'));
+  refs.maxInc = button('sb', '', () => stepMax(0.5)); refs.maxInc.setAttribute('aria-label', COPY.maxMore); refs.maxInc.append(ic('plus'));
+  const mi = el('label', 'inp');
+  refs.maxIn = el('input'); refs.maxIn.setAttribute('inputmode', 'decimal'); refs.maxIn.setAttribute('aria-label', COPY.maxAria);
+  refs.maxIn.addEventListener('input', () => { const r0 = pickedRestaurant(); if (!r0) return; S.limitEdits = { ...S.limitEdits, [r0.key]: refs.maxIn.value }; afterEdit(); });
+  mi.append(refs.maxIn, el('span', null, 'km'));
+  refs.maxCap = el('span', 'stepcap'); refs.maxCapB = el('b'); refs.maxCap.append(document.createTextNode(COPY.maxCap), refs.maxCapB);
+  refs.maxStep.append(refs.maxDec, mi, refs.maxInc, refs.maxCap);
+  refs.maxHelp = el('p', 'efnote');
+  refs.maxLine = el('p', 'ferr hidden'); refs.maxLine.setAttribute('role', 'status');
+  refs.maxNote = el('div', 'capnote sand hidden'); refs.maxNoteT = el('span'); refs.maxNote.append(el('i'), refs.maxNoteT);
+  refs.max.append(refs.maxLab, refs.maxStep, refs.maxHelp, refs.maxLine, refs.maxNote);
   refs.map = el('div', 'emap');
   refs.mapLine = el('p', 'mapline hidden'); refs.mapLine.setAttribute('role', 'status');
   // the mockup's in-map caption (.mz); above Google's logo row, which Maps terms keep visible (advisor ruling (a), 11-11)
@@ -446,7 +508,7 @@ function buildPage() {
   refs.map.append(refs.mapLine, refs.mapCap);
   refs.legend = el('div', 'legend');
   refs.mapNote = el('p', 'efnote');
-  sm.append(mh, fld, refs.map, refs.legend, refs.mapNote);
+  sm.append(mh, fld, refs.max, refs.map, refs.legend, refs.mapNote);
   right.append(sm);
   grid.append(left, right);
   // save bar + confirm layer (fixed / overlay: placement in the DOM doesn't move them)
@@ -560,7 +622,50 @@ function bandRow(i) {
   node.append(n, kmL, feeL, del);
   return node;
 }
-function afterEdit() { paintBands(); paintLegend(); paintBar(); postRender('keep'); }
+function afterEdit() { refreshEntries(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintBar(); postRender('keep'); }
+// ENVÍO v3 A1 / A4 — the field for the picked branch's restaurant: the edit text, else its stored value (none → the table top; a flagged
+// restaurant: empty, «—»); «+» off at the cap; the line for an edited text; the sand note when the STORED value stays above the top
+function shownMax(r, top) {
+  if (Object.prototype.hasOwnProperty.call(S.limitEdits, r.key)) return S.limitEdits[r.key];
+  if (r.invalid) return '';
+  const v = r.stored === null ? top : r.stored;
+  return v === null ? '' : String(v);
+}
+function stepMax(delta) {
+  const r = pickedRestaurant(); const top = curTop();
+  if (!r || !r.editable || top === null) return;
+  const cur = EL.snapHalf(shownMax(r, top));
+  const base = cur === null ? (delta > 0 ? 0 : top) : cur;
+  const next = Math.min(top, Math.max(0.5, base + delta));
+  S.limitEdits = { ...S.limitEdits, [r.key]: String(next) };
+  if (S.refs) S.refs.maxIn.value = String(next);
+  afterEdit();
+}
+function paintMax() {
+  const R0 = S.refs; if (!R0) return;
+  const r = pickedRestaurant(); const top = curTop();
+  R0.max.classList.toggle('hidden', !r);
+  if (!r) return;
+  R0.maxLab.textContent = `${COPY.maxLab}${r.name}`;
+  const text = shownMax(r, top);
+  if (document.activeElement !== R0.maxIn) R0.maxIn.value = text;
+  R0.maxIn.placeholder = r.invalid ? '—' : '';
+  R0.maxIn.readOnly = !r.editable;
+  const edited = Object.prototype.hasOwnProperty.call(S.limitEdits, r.key);
+  const line = edited ? EL.limitProblem(text, top) : null;
+  const num = EL.snapHalf(text);
+  R0.maxDec.disabled = !r.editable || top === null || (num !== null && num <= 0.5);
+  R0.maxInc.disabled = !r.editable || top === null || (num !== null && num >= top);
+  R0.maxCapB.textContent = top === null ? '—' : `${top} km`;
+  R0.maxHelp.replaceChildren();
+  const help = `${COPY.maxHelp}${r.n > 1 ? COPY.maxMulti(r.n) : ''}`;
+  R0.maxHelp.append(phText(help, `${help}${top === null ? '' : COPY.maxCapPh(top)}`));
+  R0.maxLine.textContent = line || ''; R0.maxLine.classList.toggle('hidden', !line);
+  R0.maxIn.setAttribute('aria-invalid', line ? 'true' : 'false');
+  const capped = !edited && !r.invalid && r.stored !== null && top !== null && r.stored > top;
+  R0.maxNoteT.textContent = capped ? COPY.capped(top, r.stored) : '';
+  R0.maxNote.classList.toggle('hidden', !capped);
+}
 
 function paintLegend() {
   const r = S.refs;
@@ -583,7 +688,7 @@ function paintMapBox() {
   r.mapLine.textContent = line || '';
   r.mapLine.classList.toggle('hidden', !line);
   r.map.classList.toggle('nomap', !!line);
-  r.mapCap.textContent = !line && p && p.hub ? COPY.mapCap(p.label) : '';
+  r.mapCap.textContent = !line && p && p.hub ? COPY.mapCap(p.label, pickedReach()) : '';
   r.mapCap.classList.toggle('hidden', !!line || !(p && p.hub));
   if (p && p.hub && S.status === 'ready' && !S.map) { setTimeout(() => { if (S.root && !S.map) startMap(r.map); }, 0); }
 }
@@ -658,8 +763,8 @@ function paintBar() {
   const r = S.refs;
   const L0 = S.loaded;
   if (!L0 || S.banner === 'conflict' || L0.kind === 'unreadable' || (L0.kind === 'malformed' && !L0.canSave)) { r.bar.classList.remove('show'); return; }
-  const bar = EL.saveBar(S.rows, L0.kind === 'policy' ? L0.bands : []);
-  const malformedValid = L0.kind === 'malformed' && EL.validate(S.rows).valid;
+  const bar = barState();
+  const malformedValid = L0.kind === 'malformed' && EL.validate(S.rows).valid && !limitInvalid();
   const show = bar.state !== 'clean' || malformedValid || !!S.attempt;
   r.bar.classList.toggle('show', show);
   r.barDot.classList.toggle('ered', bar.state === 'invalid');
@@ -668,6 +773,16 @@ function paintBar() {
   r.discard.disabled = attemptUnresolved();
 }
 
+// ENVÍO v3 (A5 note): the bar covers bands AND limits; an invalid band keeps step 1's «Corregí …»; an invalid field holds Guardar under
+// «Cambios sin guardar» (the field shows its own line — no new bar text)
+function barState() {
+  const L0 = S.loaded;
+  const bar = EL.saveBar(S.rows, L0 && L0.kind === 'policy' ? L0.bands : []);
+  if (bar.state === 'invalid') return bar;
+  if (limitInvalid()) return { state: 'dirty', text: EL.COPY.dirty, canSave: false };
+  if (bar.state === 'clean' && limitDirty()) return { state: 'dirty', text: EL.COPY.dirty, canSave: true };
+  return bar;
+}
 function paintConfirm() {
   const r = S.refs;
   if (!S.confirm) { closeEnvioLayer(); return; }
@@ -694,17 +809,25 @@ function paintConfirm() {
   }
   blk.append(list);
   body.append(blk);
-  if (d.limit) {
-    const c = el('div', 'ecallout');
-    const t = el('div');
-    const { from: a, to: b } = d.limit;
-    if (a === null) t.append(document.createTextNode('El límite de entrega queda en '), el('b', null, `${b} km`), document.createTextNode(' para todos los restaurantes.'));
-    else {
-      t.append(document.createTextNode('El límite de entrega pasa de '), el('b', null, `${a} km`), document.createTextNode(' a '), el('b', null, `${b} km`),
-        document.createTextNode(' para todos los restaurantes.'));
-      const lo = Math.min(a, b), hi = Math.max(a, b);
-      t.append(el('span', 'dk', ` Las direcciones entre ${lo} y ${hi} km ${b > a ? 'ya se pueden' : 'ya no se pueden'} pedir desde que guardés.`));
+  // ENVÍO v3 A3: «Distancia máxima por restaurante» — one row per branch whose maximum moved (was → now, «Cambia»)
+  if (S.confirm.limitRows.length) {
+    const lb = el('div'); lb.append(el('div', 'elab', COPY.cLimits));
+    const ll = el('div', 'edrows');
+    for (const row of S.confirm.limitRows) {
+      const dr = el('div', 'edrow');
+      const v = el('span', 'v');
+      if (row.was !== null) v.append(el('span', 'dwas', `${row.was} km`));
+      v.append(document.createTextNode(`${row.now} km`));
+      dr.append(el('span', 'k', row.label), v, el('span', 'echip echg', 'Cambia'));
+      ll.append(dr);
     }
+    lb.append(ll);
+    body.append(lb);
+  }
+  const lines = [...(EL.limitCallout(d.limit, S.restaurants) || []), ...S.confirm.limitCallouts];
+  for (const line of lines) {
+    const c = el('div', 'ecallout');
+    const t = el('div', null, line);
     c.append(ic('info'), t);
     body.append(c);
   }
@@ -760,7 +883,7 @@ registerView({
     if (S.host) S.host.replaceChildren();
     S.host = null; S.root = null; S.status = 'idle';
   },
-  canLeave: () => !S.attempt && !(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)),
+  canLeave: () => !S.attempt && !limitDirty() && !limitInvalid() && !(S.rows && S.loaded && S.loaded.kind === 'policy' && EL.isDirty(S.rows, S.loaded.bands)),
   // Codex r2 F3: an attempt kept while the view is unmounted holds the shell's reload guard (selection / self-update)
   pending: () => !!S.attempt,
 });

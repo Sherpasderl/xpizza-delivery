@@ -1559,6 +1559,21 @@
      :focus-visible ring is cancelled here; the box itself shows where focus is) */
   .envio .inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint2)}
   .envio .inp input:focus,.envio .inp input:focus-visible{outline:none;box-shadow:none}
+  /* ENVÍO v3 A1 / A4 (MOCKUP-portal-envio-v3-limit .maxfld): the restaurant's maximum distance — the .limit box idiom, a .5 km stepper
+     built from .inp + two square buttons, the «máximo» chip (desktop; phone: in the help line), the capped note in the pastel SAND
+     tokens (owner 11-12: never amber — the mockup's amber note is drawn in sand) */
+  .envio .maxfld{display:flex;flex-direction:column;gap:8px;padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--board-2)}
+  .envio .step{display:flex;align-items:center;gap:8px}
+  .envio .step .inp{flex:1;background:var(--card);min-width:0}
+  .envio .step .inp input{text-align:center;font-size:18px}
+  .envio .stepcap{font-size:12px;color:var(--mute);white-space:nowrap;flex:none}
+  .envio .stepcap b{font-family:var(--disp);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .envio .sb{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);flex:none;padding:0}
+  .envio .sb svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+  .envio .sb:disabled{opacity:.42;cursor:not-allowed}
+  .envio .capnote{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.45;padding:9px 11px;border-radius:9px}
+  .envio .capnote.sand{color:var(--sand-text);background:var(--sand-soft);border:1px solid var(--sand-line)}
+  .envio .capnote i{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;margin-top:5px}
   .envio .inp.bad{border-color:var(--red);background:var(--red-soft)}
   .envio .inp.bad:focus-within{border-color:var(--red);box-shadow:0 0 0 3px var(--red-line)}
   .envio .inp.bad input{color:var(--red-text)}
@@ -1643,6 +1658,7 @@
     .envio .envcallout{order:3}
     .envio .esec h3 .ehint{display:none}
     .envio .limit .efnote{display:none}
+    .envio .stepcap{display:none}
     .envio .rb-t{font-size:13px}
     .envio .scrim{align-items:flex-end;padding:0}
     .envio .modal{border-radius:18px 18px 0 0;max-width:none}

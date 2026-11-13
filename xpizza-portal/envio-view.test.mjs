@@ -221,7 +221,7 @@ test('no cache: the table area is reserved and quiet (no rule speaks) until the 
   release(); await settle(30);
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '50']]);
   assert.equal(P.host().querySelector('.pick b').textContent, 'La Musa', 'the first branch with a pin, es-sorted (no brand named in code)');
-  assert.equal(P.host().querySelector('.pick .pk span').textContent, '1 sucursal');
+  assert.equal(P.host().querySelector('.pick .pk span').textContent, '1 sucursal · hasta 6 km', 'v3 (Changed): the picker says the reach');
 });
 
 // ── editing / validation (frame 2) ──────────────────────────────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ test('frame 2: a 12 km band is refused inline; the limit shows the last VALID ba
   assert.ok(km.parentElement.classList.contains('bad'));
   assert.equal(km.getAttribute('aria-invalid'), 'true');
   assert.equal(km.getAttribute('aria-describedby'), row.querySelector('.berr').id);
-  assert.equal(P.host().querySelector('.limit').textContent.replace(/\s+/g, ' '), 'Límite de entrega · el último tramo válido10 km');
+  assert.equal(P.host().querySelector('.limit').textContent.replace(/\s+/g, ' '), 'Distancia máxima de la tabla · el último tramo válido10 km', 'v3 (Changed): the table box');
   assert.ok(P.bar().classList.contains('show'));
   assert.equal(P.bar().querySelector('.rb-t').textContent, 'Corregí 1 tramo para poder guardar');
   assert.ok(P.bar().querySelector('.ebdot').classList.contains('ered'));
@@ -277,18 +277,18 @@ test('frame 3: the confirm is a diff — Igual / Cambia / Nuevo, the limit callo
   P.btn('Guardar', P.bar()).click(); await settle();
   const m = P.host().querySelector('[role="dialog"]');
   assert.ok(m);
-  assert.equal(m.querySelector('h2').textContent, 'Confirmar tarifas de envío');
+  assert.equal(m.querySelector('h2').textContent, 'Confirmar cambios de envío', 'v3 (Changed): the sheet covers limits too');
   assert.deepEqual([...m.querySelectorAll('.edrow')].map((r) => r.textContent), ['Hasta 3 kmL 40Igual', 'Hasta 6 kmL 50L 60Cambia', 'Hasta 10 kmL 80Nuevo']);
   assert.equal(m.querySelector('.ecallout').textContent,
-    'El límite de entrega pasa de 6 km a 10 km para todos los restaurantes. Las direcciones entre 6 y 10 km ya se pueden pedir desde que guardés.');
+    'La distancia máxima de la tabla pasa de 6 km a 10 km.');
   assert.equal(P.d.activeElement.textContent, 'Volver');
-  P.btn('Guardar tarifas', m).click(); await settle(30);
+  P.btn('Guardar cambios', m).click(); await settle(30);
   assert.deepEqual(P.srv.posts, [{ expected_policy_version: 3, bands: [{ max_km: 3, cents: 4000 }, { max_km: 6, cents: 6000 }, { max_km: 10, cents: 8000 }] }]);
   const node = await P.srv.node();
   assert.equal(node.policy_version, 4);
   assert.deepEqual(node.bands, [{ max_km: 3, cents: 4000 }, { max_km: 6, cents: 6000 }, { max_km: 10, cents: 8000 }]);
   assert.equal(P.host().querySelector('[role="dialog"]'), null);
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
   assert.ok(!P.bar().classList.contains('show'));
   assert.equal(JSON.parse(P.w.sessionStorage.getItem('sherpa.portal.envio.uAdmin')).policy_version, 4);
 });
@@ -299,7 +299,7 @@ test('superseded: another writer moved the version → the conflict box (the own
   await editTo10(P);
   await P.srv.db.ref(CORE.PATH).set(POLICY(4, [{ max_km: 5, cents: 7000 }]));   // someone else saved meanwhile
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.ok(P.text().includes('Alguien más cambió las tarifas, recargá'));
   assert.ok(P.text().includes('Tus cambios no se guardaron. Recargá para ver la versión actual y volvé a editar sobre ella.'));
   assert.ok(!P.bar().classList.contains('show'), 'the save bar hides while the banner shows');
@@ -319,11 +319,11 @@ for (const [label, fault] of [['commit, then a 503', 'after503'], ['commit, then
     P.btn('Guardar', P.bar()).click(); await settle();
     const getsBefore = P.srv.gets;
     P.srv.fault.post = fault;
-    P.btn('Guardar tarifas').click(); await settle(40);
+    P.btn('Guardar cambios').click(); await settle(40);
     assert.equal(P.srv.commits, 1);
     assert.equal(P.srv.posts.length, 1, 'never a second POST');
     assert.equal(P.srv.gets, getsBefore + 1, 'one recovery GET');
-    assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+    assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
     assert.ok(!P.text().includes('No se pudieron guardar'));
     assert.equal((await P.srv.node()).policy_version, 4);
   });
@@ -335,7 +335,7 @@ test('not landed (a 503 before the commit): the error box keeps the draft; «Rei
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   P.srv.fault.post = 'before503';
-  P.btn('Guardar tarifas').click(); await settle(40);
+  P.btn('Guardar cambios').click(); await settle(40);
   assert.ok(P.text().includes('No se pudieron guardar las tarifas'));
   assert.ok(P.text().includes('Tus cambios siguen acá. Revisá tu internet y volvé a intentar; si sigue igual, escribinos.'));
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']], 'the draft is kept');
@@ -346,7 +346,7 @@ test('not landed (a 503 before the commit): the error box keeps the draft; «Rei
   assert.equal(P.srv.posts.length, 2);
   assert.deepEqual(P.srv.posts[1], P.srv.posts[0], 'the SAME attempt (same version, same bands)');
   assert.equal(P.srv.commits, 1);
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
 });
 
 test('a failed recovery GET stays UNKNOWN: the error box, the attempt kept; «Reintentar» re-reads first and never re-POSTs a landed write', async () => {
@@ -356,14 +356,14 @@ test('a failed recovery GET stays UNKNOWN: the error box, the attempt kept; «Re
   P.btn('Guardar', P.bar()).click(); await settle();
   P.srv.fault.post = 'afterDrop';
   P.srv.fault.get = 'fail';
-  P.btn('Guardar tarifas').click(); await settle(40);
+  P.btn('Guardar cambios').click(); await settle(40);
   assert.equal(P.srv.commits, 1);
   assert.ok(P.text().includes('No se pudieron guardar las tarifas'));
   assert.equal(P.mods.envio._envioState.phase, 'unknown');
   assert.ok(P.mods.envio._envioState.attempt, 'the attempt is kept');
   P.btn('Reintentar').click(); await settle(40);
   assert.equal(P.srv.posts.length, 1, 'no blind resend');
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
   assert.equal(P.srv.commits, 1);
 });
 
@@ -373,11 +373,11 @@ test('while an attempt is in flight editing is frozen, and a revalidation answer
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   let release; P.srv.hold.post = new Promise((r) => { release = r; });
-  P.btn('Guardar tarifas').click(); await settle(10);
+  P.btn('Guardar cambios').click(); await settle(10);
   const a = P.mods.envio._envioState.attempt;
   assert.ok(Object.isFrozen(a) && a.expectedVersion === 3);
   assert.ok(P.input(1, 'fee').disabled && P.btn('Agregar tramo').disabled);
-  assert.ok(P.btn('Guardar tarifas').disabled, 'no double submit');
+  assert.ok(P.btn('Guardar cambios').disabled, 'no double submit');
   P.reg().nav.click(); await settle(10);   // a second visit to the nav item is a no-op while mounted
   assert.equal(P.mods.envio._envioState.attempt, a);
   release(); await settle(30);
@@ -390,7 +390,7 @@ test('sign-out during the token wait: nothing is sent', async () => {
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   let release; globalThis.__tokenHold = new Promise((r) => { release = r; });
-  P.btn('Guardar tarifas').click(); await settle(5);
+  P.btn('Guardar cambios').click(); await settle(5);
   P.d.dispatchEvent(new P.w.CustomEvent('portal:auth', { detail: { uid: null } }));
   globalThis.__tokenHold = null; release(); await settle(30);
   assert.equal(P.srv.posts.length, 0);
@@ -403,7 +403,7 @@ test('no token at send time (still on the page): nothing is sent; the error box 
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   globalThis.__tokenValue = '';
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.equal(P.srv.posts.length, 0);
   assert.ok(P.text().includes('No se pudieron guardar las tarifas'));
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']]);
@@ -413,17 +413,17 @@ test('no token at send time (still on the page): nothing is sent; the error box 
   assert.equal(P.srv.commits, 1);
 });
 
-test('a save answer that lands AFTER sign-out never says «Tarifas guardadas» nor re-caches (C1)', async () => {
+test('a save answer that lands AFTER sign-out never says «Envío guardado» nor re-caches (C1)', async () => {
   const P = await page();
   await P.signIn(); await P.open();
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   let release; P.srv.hold.post = new Promise((r) => { release = r; });
-  P.btn('Guardar tarifas').click(); await settle(10);
+  P.btn('Guardar cambios').click(); await settle(10);
   P.d.dispatchEvent(new P.w.CustomEvent('portal:auth', { detail: { uid: null } })); await settle();
   release(); await settle(40);
   assert.equal(P.srv.commits, 1, 'premise: the write did land');
-  assert.notEqual(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.notEqual(P.d.getElementById('opstoast').textContent, 'Envío guardado');
   assert.equal(P.w.sessionStorage.getItem('sherpa.portal.envio.uAdmin'), null);
 });
 
@@ -446,7 +446,7 @@ test('no policy yet (version 0): one empty row with the hints, Guardar disabled 
   assert.ok(!P.btn('Guardar', P.bar()).disabled);
   P.btn('Guardar', P.bar()).click(); await settle();
   assert.equal(P.host().querySelector('[role="dialog"] .ecallout').textContent, 'El límite de entrega queda en 4 km para todos los restaurantes.');
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.equal((await P.srv.node()).policy_version, 1);
 });
 
@@ -457,7 +457,7 @@ test('malformed with a VALID version: the box + an empty table, and a save REPLA
   assert.deepEqual(P.rows(), [['', '']]);
   P.type(0, 'km', '5'); P.type(0, 'fee', '50'); await settle();
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   const node = await P.srv.node();
   assert.equal(node.policy_version, 6);
   assert.deepEqual(node.bands, [{ max_km: 5, cents: 5000 }]);
@@ -620,14 +620,14 @@ test('the map caption (mockup .mz; advisor ruling (a), Maps terms keep Google\'s
   await P.signIn(); await P.open(); await settle(5);
   const chip = () => P.host().querySelector('.emap .emz');
   assert.ok(chip(), 'the caption chip is in the map box');
-  assert.equal(chip().textContent, 'Anillos desde el pin de La Musa. Línea recta, no calles.');
+  assert.equal(chip().textContent, 'Anillos desde el pin de La Musa. Entrega hasta 6 km.', 'v3 (Changed): the caption says the reach');
   assert.ok(!chip().classList.contains('hidden'));
   P.host().querySelector('.pick').click(); await settle();
   const search = P.host().querySelector('.psearch input');
   search.value = 'pizza'; search.dispatchEvent(new P.w.Event('input'));
   search.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Enter' })); await settle();
   assert.equal(P.host().querySelector('.pick b').textContent, 'X. Pizza · Centro');
-  assert.equal(chip().textContent, 'Anillos desde el pin de X. Pizza · Centro. Línea recta, no calles.');
+  assert.equal(chip().textContent, 'Anillos desde el pin de X. Pizza · Centro. Entrega hasta 6 km.');
   P.host().querySelector('.pick').click(); await settle();
   const s2 = P.host().querySelector('.psearch input');
   s2.value = 'sin'; s2.dispatchEvent(new P.w.Event('input'));
@@ -661,7 +661,7 @@ test('Codex r1 F1: the confirm posts its IMMUTABLE reviewed body — an edit und
   assert.ok(!inertNodes(P).some((n) => n.contains(m)), 'the dialog itself is not');
   P.type(1, 'fee', '99'); await settle();   // an edit that bypasses inert (programmatic)
   assert.deepEqual([...m.querySelectorAll('.edrow')].map((r) => r.textContent), ['Hasta 3 kmL 40Igual', 'Hasta 6 kmL 50L 60Cambia', 'Hasta 10 kmL 80Nuevo']);
-  P.btn('Guardar tarifas', m).click(); await settle(30);
+  P.btn('Guardar cambios', m).click(); await settle(30);
   assert.deepEqual(P.srv.posts, [{ expected_policy_version: 3, bands: SAVED10 }], 'the POST is the reviewed body');
   assert.equal(inertNodes(P).length, 0, 'closing releases every inert');
 });
@@ -696,7 +696,7 @@ test('Codex r1 F2: a recognised 409 is NOT final — a FRESH GET resolves it bef
   await P.srv.db.ref(CORE.PATH).set(POLICY(4, [{ max_km: 5, cents: 7000 }]));   // someone else saved meanwhile
   P.btn('Guardar', P.bar()).click(); await settle();
   const gets = P.srv.gets;
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.equal(P.srv.gets, gets + 1, 'the 409 went through the recovery GET');
   assert.ok(P.text().includes('Alguien más cambió las tarifas, recargá'));
 });
@@ -708,7 +708,7 @@ test('Codex r1 F2: a 400 is resolved by a fresh GET too; only once the GET prove
   P.btn('Guardar', P.bar()).click(); await settle();
   const gets = P.srv.gets;
   P.srv.fault.post = 'refuse400';
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.equal(P.srv.gets, gets + 1, 'the 400 went through the recovery GET');
   assert.equal(P.mods.envio._envioState.attempt, null, 'proven not landed + refused → released');
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']], 'the draft is kept to fix');
@@ -722,7 +722,7 @@ test('Codex r1 F3: an UNRESOLVED attempt can\'t be discarded and survives leavin
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   P.srv.fault.post = 'afterDrop'; P.srv.fault.get = 'fail';
-  P.btn('Guardar tarifas').click(); await settle(40);
+  P.btn('Guardar cambios').click(); await settle(40);
   assert.equal(P.mods.envio._envioState.phase, 'unknown');
   assert.ok(P.btn('Descartar', P.bar()).disabled, 'an unresolved attempt can\'t be discarded');
   const a = P.mods.envio._envioState.attempt;
@@ -732,7 +732,7 @@ test('Codex r1 F3: an UNRESOLVED attempt can\'t be discarded and survives leavin
   await P.open(); await settle(40);
   assert.ok(P.srv.gets > gets, 'a fresh GET on return');
   assert.equal(P.mods.envio._envioState.attempt, null, 'reconciled');
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
   assert.equal(P.srv.posts.length, 1, 'never a blind resend');
   assert.equal(P.srv.commits, 1);
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']]);
@@ -744,14 +744,14 @@ test('Codex r1 F3: leaving while the POST is still in flight — the late answer
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   let release; P.srv.hold.post = new Promise((r) => { release = r; });
-  P.btn('Guardar tarifas').click(); await settle(10);
+  P.btn('Guardar cambios').click(); await settle(10);
   P.d.getElementById('navprod').click(); await settle(10);
   release(); await settle(30);
   assert.equal(P.srv.commits, 1, 'premise: it landed while away');
   assert.ok(P.mods.envio._envioState.attempt, 'still unresolved while away');
   await P.open(); await settle(40);
   assert.equal(P.mods.envio._envioState.attempt, null);
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
   assert.equal(P.srv.posts.length, 1);
 });
 
@@ -762,7 +762,7 @@ test('Codex r1 F4: a GET the server READ before a save, delivered after it, neve
   await P.signIn(); await P.open();   // painted from the cache; the revalidation has READ v3 and is held
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.equal((await P.srv.node()).policy_version, 4, 'premise: saved');
   release(); await settle(30);
   assert.deepEqual(P.rows(), [['3', '40'], ['6', '60'], ['10', '80']], 'the saved table stays');
@@ -837,14 +837,14 @@ test('Codex r2 F1: an OUTCOME closes the confirm with meaningful focus — saved
   await P.signIn(); await P.open();
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.btn('Guardar tarifas').click(); await settle(30);
-  assert.equal(P.d.getElementById('opstoast').textContent, 'Tarifas guardadas', 'premise: saved');
+  P.btn('Guardar cambios').click(); await settle(30);
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado', 'premise: saved');
   assert.notEqual(P.d.activeElement, P.d.body, 'focus is not dropped on <body>');
   assert.equal(P.d.activeElement, P.host().querySelector('h1'), 'saved → the page heading');
   P.type(1, 'fee', '70'); await settle();
   await P.srv.db.ref(CORE.PATH).set(POLICY(9, [{ max_km: 5, cents: 7000 }]));
   P.btn('Guardar', P.bar()).click(); await settle();
-  P.btn('Guardar tarifas').click(); await settle(30);
+  P.btn('Guardar cambios').click(); await settle(30);
   assert.ok(P.text().includes('Alguien más cambió las tarifas'), 'premise: conflict');
   assert.equal(P.d.activeElement, P.host().querySelector('.eerr'), 'conflict → the result box');
 });
@@ -855,7 +855,7 @@ test('Codex r2 F3: an attempt kept while «Envío» is unmounted still holds the
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   P.srv.fault.post = 'afterDrop'; P.srv.fault.get = 'fail';
-  P.btn('Guardar tarifas').click(); await settle(40);
+  P.btn('Guardar cambios').click(); await settle(40);
   assert.equal(P.mods.envio._envioState.phase, 'unknown', 'premise: UNKNOWN');
   P.d.getElementById('navprod').click(); await settle(20);
   assert.ok(!P.d.getElementById('viewmenu').classList.contains('hidden'), 'ordinary navigation is allowed');
@@ -900,7 +900,7 @@ test('Tab wrap (advisor 11-11, after the real-Chrome probe): Tab on the confirm\
   await editTo10(P);
   P.btn('Guardar', P.bar()).click(); await settle();
   const m = P.host().querySelector('[role="dialog"]');
-  const back = P.btn('Volver', m), save = P.btn('Guardar tarifas', m);
+  const back = P.btn('Volver', m), save = P.btn('Guardar cambios', m);
   const tab = (shiftKey) => { const e = new P.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }); P.d.activeElement.dispatchEvent(e); return e; };
   save.focus();
   const e1 = tab(false);
@@ -912,4 +912,82 @@ test('Tab wrap (advisor 11-11, after the real-Chrome probe): Tab on the confirm\
   back.focus();
   const e3 = tab(false);
   assert.ok(!e3.defaultPrevented, 'inside the list the browser moves focus itself');
+});
+
+// ── ENVÍO v3 stage 3b (PLAN-portal-envio-v3-ui r5 §0 A1 / A3 / A4; MOCKUP-portal-envio-v3-limit) — the restaurant's maximum distance ──
+// Every stored limit is written by 5f's REAL setDeliveryPricingCore before the page mounts (the server() above); a value above the top is
+// reached the real way (saved under a higher top, then the table cut).
+async function seedLimits(srv, steps) {   // steps: [{ bands, limits }] applied in order through the REAL writer
+  srv.uid = 'uAdmin';
+  for (const s of steps) { const v = await srv.version(); const r = await srv.handle('setDeliveryPricing', { expected_policy_version: v, bands: s.bands, ...(s.limits ? { limits: s.limits } : {}) }); assert.equal(r.status, 200, `premise: the real writer accepts the seed ${JSON.stringify(s)}`); }
+  srv.posts.length = 0;
+}
+const fld = (P) => P.host().querySelector('.maxfld');
+const maxIn = (P) => fld(P).querySelector('input[aria-label="Distancia máxima, en km"]');
+const stepBtn = (P, label) => fld(P).querySelector(`button[aria-label="${label}"]`);
+const setMax = (P, v) => { const n = maxIn(P); n.value = v; n.dispatchEvent(new P.w.Event('input')); };
+test('V1 — A1: «Distancia máxima de {restaurante}», the stored value (none = the table top), the «máximo {top} km» chip, the help; ± steps .5; the picker «1 sucursal · hasta {km} km»', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: B3, limits: [{ rid: 'r_lm', km: 4.5 }] }]);
+  const P = await page({ srv }); await P.signIn(); await P.open();
+  const f = fld(P);
+  assert.ok(f, 'the field under the picker');
+  assert.equal(f.querySelector('.elab').textContent, 'Distancia máxima de La Musa');
+  assert.equal(maxIn(P).value, '4.5', 'the stored value');
+  assert.equal(f.querySelector('.stepcap').textContent.replace(/\s+/g, ' ').trim(), 'máximo 6 km');
+  assert.equal(f.querySelector('.efnote .dk').textContent, 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos.');
+  assert.equal(f.querySelector('.efnote .ph').textContent, 'Este restaurante entrega hasta esta distancia. Las tarifas son las mismas para todos. Máximo 6 km.', 'phone: the top in the help line (the chip is desktop)');
+  assert.match(P.host().querySelector('.pick').textContent, /1 sucursal · hasta 4\.5 km/);
+  stepBtn(P, '0.5 km más').click(); await settle(5);
+  assert.equal(maxIn(P).value, '5');
+  stepBtn(P, '0.5 km menos').click(); stepBtn(P, '0.5 km menos').click(); await settle(5);
+  assert.equal(maxIn(P).value, '4');
+  assert.ok(P.bar().classList.contains('show') && P.bar().textContent.includes('Cambios sin guardar'), 'a limit edit is a change');
+  assert.match(P.host().querySelector('.pick').textContent, /hasta 4 km/, 'the sub-line follows the edit');
+});
+test('V2 — the field’s lines: above the top, empty, under 0.5, off-step — Guardar held; the bands untouched', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open();
+  assert.equal(maxIn(P).value, '6', 'none stored: the table top');
+  for (const [v, line] of [['7', 'Máximo 6 km: hasta donde llega la tabla.'], ['', 'Falta la distancia máxima.'], ['0.2', 'Mínimo 0.5 km.'], ['2.3', 'Usá medios kilómetros: 2, 2.5, 3…']]) {
+    setMax(P, v); await settle(5);
+    assert.ok(fld(P).textContent.includes(line), `«${v}» → ${line}`);
+    assert.equal(P.btn('Guardar').disabled, true, `«${v}»: Guardar held`);
+  }
+});
+test('V3 — a limit edit → «Guardar» → «Confirmar cambios de envío» with «Distancia máxima por restaurante» (6 → 4.5, «Cambia») + the lowering callout → «Guardar cambios» posts `limits` (the REAL writer stores it) → «Envío guardado»', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open();
+  setMax(P, '4.5'); await settle(5);
+  P.btn('Guardar').click(); await settle(10);
+  const m = P.host().querySelector('[role="dialog"]');
+  assert.equal(m.querySelector('h2').textContent, 'Confirmar cambios de envío');
+  const t = m.textContent.replace(/\s+/g, ' ');
+  assert.ok(t.includes('Tarifas · iguales para todos los restaurantes') && t.includes('Distancia máxima por restaurante'), 'the two sections');
+  assert.ok(/La Musa\s*6 km\s*4\.5 km\s*Cambia/.test(t), `the limit row (${t.slice(0, 400)})`);
+  assert.ok(t.includes('La Musa: distancia máxima 6 km → 4.5 km. Las direcciones entre 4.5 y 6 km ya no se pueden pedir desde que guardés.'));
+  P.btn('Guardar cambios', m).click(); await settle(60);
+  assert.deepEqual(srv.posts[srv.posts.length - 1].limits, [{ rid: 'r_lm', km: 4.5 }], 'the page’s body');
+  assert.equal((await srv.node()).restaurants.r_lm.max_km, 4.5, 'the REAL writer stored it');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado');
+  // the saved value is now the loaded one: the field keeps it, nothing pending, the picker follows
+  assert.equal(maxIn(P).value, '4.5', 'saved: the field shows the stored value');
+  assert.ok(!P.bar().classList.contains('show'), 'saved: nothing left pending (no «Cambios sin guardar»)');
+  assert.match(P.host().querySelector('.pick').textContent, /hasta 4\.5 km/, 'saved: the picker shows the saved reach');
+});
+test('V4 — A4 capped: the STORED value kept above a cut table, the quiet SAND note (never amber, never red), «+» off at the cap, «−» works; not an error', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: [...B3, { max_km: 8, cents: 6000 }], limits: [{ rid: 'r_lm', km: 7 }] }, { bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open();
+  assert.equal(maxIn(P).value, '7', 'the stored value, not the top');
+  const note = fld(P).querySelector('.capnote');
+  assert.ok(note && !note.classList.contains('hidden'));
+  assert.equal(note.textContent, 'Hoy entrega hasta 6 km: la tabla no llega más lejos. Si la tabla vuelve a crecer, recupera sus 7 km.');
+  assert.ok(note.classList.contains('sand') && !/amber|red/.test(note.className), 'the pastel sand class, nothing amber / red');
+  assert.equal(stepBtn(P, '0.5 km más').disabled, true, '«+» off at the cap');
+  assert.equal(stepBtn(P, '0.5 km menos').disabled, false, '«−» works');
+  assert.ok(!P.bar().classList.contains('show'), 'untouched: no change, not an error');
+  assert.match(P.host().querySelector('.pick').textContent, /hasta 6 km/, 'the picker shows the effective reach');
 });

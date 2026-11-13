@@ -179,8 +179,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "db0f8836188257aa3e221cf8c883285e2744643d3c866cdde5eca576249c1bbc",
-   "bytes": 147427
+   "sha256": "1acc83ff8bfb862ed791da240c43eac63f9e5a8fce3fba455a66afce489d3cb7",
+   "bytes": 149096
   }
  },
  "diff_aid": {
@@ -1223,6 +1223,24 @@
    ],
    [
     "",
+    ".envio .capnote i",
+    "background",
+    "currentColor"
+   ],
+   [
+    "",
+    ".envio .capnote.sand",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".envio .capnote.sand",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
     ".envio .eadd",
     "background",
     "none"
@@ -1511,6 +1529,12 @@
    ],
    [
     "",
+    ".envio .maxfld",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
     ".envio .mhead p",
     "color",
     "var(--mute)"
@@ -1628,6 +1652,36 @@
     ".envio .psearch input:focus,.envio .psearch input:focus-visible",
     "border-color",
     "var(--accent)"
+   ],
+   [
+    "",
+    ".envio .sb",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .sb",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .step .inp",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .stepcap b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".envio .stepcap",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
