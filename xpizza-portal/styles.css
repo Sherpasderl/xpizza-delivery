@@ -633,6 +633,8 @@
   .mk-recline{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--mute);line-height:1.45;padding:2px 2px 0}
   .mk-recline svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linejoin:round;flex:none;margin-top:1px}
   .mk-recline.ferr{color:var(--red-text);font-size:12.5px}
+  /* B6: a refusal line inside a choice card (the base's .ferr; the card takes the invalid border) */
+  .mk-grp > .ferr{padding:10px 14px 12px;border-top:1px solid var(--line2)}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */
   .mk-cf .mk-pf{display:flex;flex-direction:column;gap:6px;margin-top:14px}

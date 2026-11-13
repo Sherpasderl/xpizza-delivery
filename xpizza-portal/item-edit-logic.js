@@ -12,7 +12,7 @@
 import {
   draftSource, choiceGroup, editItem, itemNameProblem, itemDescProblem, itemCategoryProblem, tidyItemName, parsePrice,
   draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras, composeDish, commitDish, attachRefusal,
-  createDraft, applyChoiceOps,
+  createDraft, applyChoiceOps, choiceRefusalLine,
 } from './editor.js';
 import { extrasPageModel, refusalReason } from './extras-logic.js';
 
@@ -432,6 +432,8 @@ export function save(draft, s) {
 
 // ── STRUCTURE S3 (UI) — the required choice of a LIVE dish in this copy (MOCKUP structure-edit D / D2 / D3; S3 addendum B2 / B2b) ──────────
 // One S3 op for this copy: dry-run on a scratch draft with every op queued so far (5f's writer, all or nothing) — queued only if it applies.
+// the server's line on the choice card goes once the merchant changes the choice (set()'s rule for the other fields)
+const choiceTouched = (s) => { if (s.serverError && s.serverError.field === 'options') s.serverError = null; return { ok: true }; };
 export function choiceOp(s, op) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
@@ -439,7 +441,7 @@ export function choiceOp(s, op) {
   const r = applyChoiceOps(scratch, [...s.choiceOps, op], { choiceEdit: true });
   if (!r.ok) return r;
   s.choiceOps.push(op);
-  return { ok: true };
+  return choiceTouched(s);
 }
 // TYPING coalesces (the drawer's inputs fire per keystroke): the choice's label, one option's rename and the «Recomendada» mark each keep ONE
 // op — the latest value replaces the earlier one in place (its click position is kept); a new option's name / price edit its own add op.
@@ -459,7 +461,7 @@ export function choiceSet(s, op) {
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;
-  return { ok: true };
+  return choiceTouched(s);
 }
 export function choiceUpdateNew(s, ref, patch = {}) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
@@ -472,11 +474,12 @@ export function choiceUpdateNew(s, ref, patch = {}) {
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;
-  return { ok: true };
+  return choiceTouched(s);
 }
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
-export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, optNameRequired: null, dupName: null });
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, optNameRequired: null, dupName: null,
+  recMany: null, priceFromInvalid: null, indexInvalid: null, nameNeedsNewId: null });
 export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
 // The server's NAME rules for the copy's choice, judged before «Guardar» (choice-compare.js / add-product.js): the choice's own name is
 // required (label_required), every option needs a name (choice_label_required), and no two options of the group share a name under
@@ -532,7 +535,7 @@ export function choiceAdd(s, { label, options, marked = 0 } = {}) {
   if (!r.ok) return r;
   s.choiceOps = next;
   s.work.price = s.base.price;
-  return { ok: true };
+  return choiceTouched(s);
 }
 // a NEW option's trash: it was never saved, so its add op goes — with every op that names it (its rename, its mark)
 export function choiceDropNew(s, ref) {
@@ -546,7 +549,7 @@ export function choiceDropNew(s, ref) {
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;
-  return { ok: true };
+  return choiceTouched(s);
 }
 const pick = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => k === 'choice' || k === 'price'));
 // the copy's choice as it would save: { label, options: [{ id, choice, price, marked, isNew }], touched, hold, removed } | null (OFF).
@@ -639,6 +642,18 @@ export function refusalLine(body) {
     section_emptied: ['cat', COPY.cat.section_empty],
     subsection_emptied: [body.field === 'cat' ? 'cat' : 'subcat', COPY.cat.subsection_empty],
     category_not_renderable: ['cat', COPY.cat.not_renderable],
+    // STRUCTURE S3 (addendum B6): every S3 refusal lands on the choice's card — the reward line is the owner's (approved 11-12), the
+    // rest the addendum's proposed lines (⟦s3.key⟧ until approved). option_name_too_long keeps S4's approved line above.
+    choice_on_reward_dish: ['options', choiceRefusalLine('choice_on_reward_dish')],
+    choices_too_few: ['options', s3Copy('tooFew')],
+    choice_recommended_required: ['options', s3Copy('recRequired')],
+    choice_recommended_many: ['options', s3Copy('recMany')],
+    choice_duplicate: ['options', s3Copy('dupName')],
+    choice_label_required: ['options', s3Copy('optNameRequired')],
+    label_required: ['options', s3Copy('labelRequired')],
+    choice_price_from_invalid: ['options', s3Copy('priceFromInvalid')],
+    choice_index_invalid: ['options', s3Copy('indexInvalid')],
+    name_needs_new_id: ['options', s3Copy('nameNeedsNewId')],
   }[body.error];
   if (!T) return null;
   const field = opt && T[0] === 'name' ? 'options' : T[0];

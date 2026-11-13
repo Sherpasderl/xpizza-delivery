@@ -5,7 +5,7 @@
 // Run: node --test --test-force-exit structure-s3-ui.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { editable, settle, page } from './drawer-harness.mjs';
+import { editable, settle, page, errJson } from './drawer-harness.mjs';
 
 const { S3_COPY } = await import('./item-edit-logic.js');
 const P = (k) => `⟦s3.${k}⟧`;
@@ -311,8 +311,30 @@ test('names before saving — a duplicate (the server\'s fold) shows its line LI
   assert.ok(!p.drawer().classList.contains('show') || !reqCard(p), 'saved');
 });
 
+test('B6 — the reward refusal: the panel says the owner\'s line; «Corregir» reopens the dish with the line INSIDE the choice card (red border); a choice edit clears it', async () => {
+  const OWNER = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
+  const p = await page({ read: ON, on: { editCatalog: () => errJson(409, { error: 'choice_on_reward_dish', key: PAD, field: 'choices' }) } });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína a elegir');
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  const b = p.d.querySelector('#mbody .conflict');
+  assert.ok(b, 'the refusal panel');
+  assert.equal(b.querySelector('h3').textContent, OWNER, '🔴 the owner\'s line, verbatim');
+  b.querySelector('button').click(); await settle(20);
+  const card = reqCard(p);
+  assert.ok(card.classList.contains('invalid'), 'the invalid border');
+  const line = card.querySelector(':scope > .ferr');
+  assert.ok(line, '🔴 the line inside the card'); assert.equal(line.textContent.trim(), OWNER);
+  assert.equal(p.btn('Guardar').disabled, true, 'held until the choice changes');
+  pencil(p).click(); await settle(5);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína'); await settle(5);
+  assert.equal(reqCard(p).querySelector(':scope > .ferr'), null, 'a choice edit clears it');
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'labelRequired', 'optNameRequired', 'pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

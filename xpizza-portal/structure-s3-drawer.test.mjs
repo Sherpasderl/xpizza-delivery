@@ -252,3 +252,25 @@ test('choiceNameProblems is a PURE reader (the wiring guards rule it so): a deep
   assert.deepEqual(IE.choiceNameProblems(d, s).options, { [ref('p')]: 'duplicate' }, 'premise: the reader judged the ops');
   assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
 });
+
+test('B6 routing: every S3 refusal lands on the choice card (field options); the reward line is the owner\'s verbatim; the rest are ⟦s3.key⟧ until approved', () => {
+  const OWNER = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';
+  const at = (error) => IE.refusalLine({ error, key: PAD, field: 'choices' });
+  assert.deepEqual([at('choice_on_reward_dish').field, at('choice_on_reward_dish').message], ['options', OWNER]);
+  for (const [code, k] of [['choices_too_few', 'tooFew'], ['choice_recommended_required', 'recRequired'], ['choice_recommended_many', 'recMany'],
+    ['choice_duplicate', 'dupName'], ['choice_label_required', 'optNameRequired'], ['label_required', 'labelRequired'],
+    ['choice_price_from_invalid', 'priceFromInvalid'], ['choice_index_invalid', 'indexInvalid'], ['name_needs_new_id', 'nameNeedsNewId']]) {
+    const l = at(code);
+    assert.ok(l, `🔴 ${code} is routed`); assert.equal(l.field, 'options', code); assert.equal(l.message, `⟦s3.${k}⟧`, code);
+  }
+  assert.equal(IE.refusalLine({ error: 'option_name_too_long', key: PAD, field: 'name', option_key: 'x' }).message, IE.COPY.name.option_long, 'S4\'s approved line stays');
+});
+
+test('B6: a choice edit clears the server\'s line on the card (the merchant changed what it was about)', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  IE.setServerError(s, IE.refusalLine({ error: 'choice_on_reward_dish', key: PAD, field: 'choices' }));
+  assert.ok(s.serverError, 'premise');
+  IE.choiceSet(s, { op: 'choice.label', launcher: PAD, label: 'Proteína elegida' });
+  assert.equal(s.serverError, null, '🔴 cleared');
+});
