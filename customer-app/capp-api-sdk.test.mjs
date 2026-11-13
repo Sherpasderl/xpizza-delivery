@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { placeResp, cancelPending, noSdkOrder, namespaceRefusal, SDK_ORDER_ID_RE } from './test/fake-sdk-checkout.mjs';
+import { realSdkServer } from './test/real-sdk-server.mjs';
 const require = createRequire(import.meta.url);
 const C = require('./capp-checkout.js');
 const A = require('./capp-api.js');
@@ -45,7 +46,7 @@ function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = fal
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
 const CTX = { restaurantId: 'rid_a', items: ITEMS, itemsText: '1x Margherita (L250)', member: null };
 const flowOf = (pay = 'online') => { const f = C.freshFlow(null); C.setPin(f, 15.5, -88, true); Object.assign(f, { details: 'Portón', name: 'Ana', phone: '99990000', pay }); C.chooseTip(f, 20); return f; };
-const SAVED = { kind: 'saved', card_id: 'c_v' };
+const SAVED = { kind: 'saved', card_id: 'CV4242000000000000AB' };
 const NEW = { kind: 'new', sdk_token: 'SDK-TOKEN-SECRET', save: true, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028 } };
 const args = (card = SAVED, extra = {}) => ({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, card, ...extra });
 const rec = (s) => JSON.parse(s.getItem(KEY) || 'null');
@@ -74,7 +75,7 @@ test('placed: the order goes live; the record is cleared; the card label comes b
   assert.deepEqual([out.kind, out.tracking_token, out.card && out.card.last4], ['placed', 'tok_abcdefgh12', '4242'], '🔴 SDK-placed');
   assert.equal(rec(storage), null, '🔴 SDK-placed: the record is cleared');
   assert.match(srv.of('placeSdkOrder')[0].headers.Authorization || '', /^Bearer \S+/, '🔴 SDK-auth: member Bearer (contract §1.1)');
-  assert.deepEqual(srv.of('placeSdkOrder')[0].body.card, { kind: 'saved', card_id: 'c_v' }, 'the saved card by id');
+  assert.deepEqual(srv.of('placeSdkOrder')[0].body.card, { kind: 'saved', card_id: 'CV4242000000000000AB' }, 'the saved card by id');
 });
 
 test('declined: the sheet\'s bucket; the record stays, the attempt FINAL; «Probar otra tarjeta» = the SAME order_id, a NEW attempt_id — across a reload', async () => {
@@ -170,7 +171,7 @@ test('unavailable / not_allowed / a refusal before any attempt: nothing pending 
 });
 
 test('reads: listCards (members only, Bearer) and sdkPayStatus (no auth), validated', async () => {
-  const s = rig({ script: { listCards: [{ status: 200, json: { cards: [{ card_id: 'c_v', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }] } }], sdkPayStatus: [{ status: 200, json: { available: false, retry_after_s: 60 } }] } });
+  const s = rig({ script: { listCards: [{ status: 200, json: { cards: [{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }] } }], sdkPayStatus: [{ status: 200, json: { available: false, retry_after_s: 60 } }] } });
   assert.equal((await s.api.listCards()).cards.length, 1); assert.match(s.srv.of('listCards')[0].headers.Authorization || '', /^Bearer /, '🔴 SDK-cards: Bearer');
   assert.deepEqual(await s.api.sdkPayStatus(), { available: false, retry_after_s: 60 }, 'the availability');
   assert.equal(await rig({ member: null, script: {} }).api.listCards(), null, '🔴 SDK-cards: a guest has no saved cards (no call)');
@@ -464,14 +465,15 @@ test('F2: attempt_unknown (the real status core) ⇒ the SAME attempt re-sent ON
   assert.deepEqual(b, a, '🔴 F2-SAME-BODY: the re-sent body is the first one, byte for byte (saved card)');
   assert.equal(out.kind, 'placed');
 });
-test('F2: attempt_unknown forever ⇒ at most 3 re-sends, then the normal pending poll; a re-send without a fresh 409 sends nothing', async () => {
+test('F2 + Codex r1 P2-2: attempt_unknown forever ⇒ at most 3 re-sends, then Q-B (settled none, the SAME order, a card again) — never «pending with resends:3»; a re-send without a fresh 409 sends nothing', async () => {
   let st = null;
   const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, 'network'], placeSdkStatus: [(c) => st.answer(c)] } });
   st = realStatus(s.clock);
   let out = await s.api.placeSdk(args(SAVED));
   for (let i = 0; i < 6 && out.kind === 'sdk_resend'; i++) out = await s.api.sdkResend(args(SAVED));
   assert.equal(s.srv.of('placeSdkOrder').length, 4, '🔴 F2-BOUNDED: the first send + 3 re-sends, never more');
-  assert.equal(out.kind, 'sdk_pending', '🔴 F2-BOUNDED: then pending (the poll), never a decline');
+  assert.deepEqual([out.kind, out.order_id], ['sdk_reenter_card', s.srv.of('placeSdkOrder')[0].body.order_id], '🔴 F2-QB-BUDGET: the budget spent ⇒ Q-B on the same order, never a decline');
+  { const r = rec(s.storage); assert.ok(r && r.attempt_state === 'none' && r.unresolved === false && r.doubt === true, '🔴 F2-QB-BUDGET: settled none, the doubt kept (refusals stay held)'); }
   const n = s.srv.of('placeSdkOrder').length;
   await s.api.sdkResend(args(SAVED));
   assert.equal(s.srv.of('placeSdkOrder').length, n, '🔴 F2-ONLY-ON-409: no fresh attempt_unknown ⇒ nothing sent');
@@ -564,4 +566,101 @@ test('F5: a placement «unavailable» flips ONLY that restaurant\'s cache, until
   assert.deepEqual([a.api.sdkPayCached().available, b.api.sdkPayCached().available], [false, true], '🔴 F5-FLIP: only this restaurant');
   a.clock.t += 61e3;
   assert.equal(a.api.sdkPayCached(), null, '🔴 F5-FLIP: past retry_after_s the cached «false» no longer decides');
+});
+
+// ── Codex capp-d4-client r1 P2-7: placement through the REAL server — intake (exact envelope, a production 20-char card_id), replay,
+// admit, finishSdk + the coordinator, the status / cancel cores — with a fake PSP that COUNTS authorizations, and 3a's fence modelled ──
+const CARD20 = 'CV4242000000000000AB';
+const SAVED20 = { kind: 'saved', card_id: CARD20 };
+function realRig({ storage = memStorage() } = {}) {
+  const clock = { t: at(12) };
+  const real = realSdkServer({ clock, members: { [JWT]: 'u_ana' }, rids: ['rid_a'], cards: { u_ana: { [CARD20]: { token: 'tok_saved_1', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } } } });
+  const calls = [];
+  const sdkFetch = real.fetchFor(E, async (url) => { throw new Error(`unscripted ${url}`); });
+  const fetch = async (url, init) => { calls.push({ url, body: init && init.body ? JSON.parse(init.body) : null }); return sdkFetch(url, init); };
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true },
+    fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
+    setInterval: () => 0, clearInterval: () => {}, member: () => ANA });
+  const posted = () => calls.filter((c) => c.url.startsWith(E.placeSdkOrder)).map((c) => c.body);
+  return { api: make(), reload: make, real, clock, storage, posted };
+}
+test('P2-7: a saved card (a production 20-char card_id) places through the REAL intake + finish + coordinator — ONE authorization, at the stored total', async () => {
+  const s = realRig();
+  const out = await s.api.placeSdk(args(SAVED20));
+  assert.equal(out.kind, 'placed', `🔴 REAL-PLACED: the production intake admits the app's body (${JSON.stringify(out)})`);
+  assert.equal(s.real.authorizations(), 1, '🔴 REAL-PLACED: one authorization');
+  assert.equal(s.real.psp.calls.find((c) => c.action === 'authorize').amount_cents, 31500, 'at the stored total');
+  assert.equal(rec(s.storage), null, 'the record is cleared');
+});
+test('Codex r1 P1 (the two-hold sequence): A lost and parked before its claim; attempt_unknown; the re-send B refused (extra_not_allowed) ⇒ HELD — the customer\'s next tap never mints; A authorizes ⇒ exactly ONE authorization, ONE sdk_ id', async () => {
+  const s = realRig();
+  s.real.loseNext(); const releaseA = s.real.pauseGate();
+  const first = await s.api.placeSdk(args(SAVED20));
+  assert.equal(first.kind, 'sdk_resend', `premise: A's response lost, the order exists without an attempt ⇒ attempt_unknown (${JSON.stringify(first)})`);
+  s.real.arm({ extrasRefuseFresh: 'extra_not_allowed', extrasDenied: [{ item: 'Margherita', extra: 'Pepperoni' }] });
+  const b = await s.api.sdkResend(args(SAVED20));
+  const held = rec(s.storage);
+  await s.api.placeSdk(args(SAVED20));   // the customer taps again (the r1 defect: a NEW sdk_ id, a second hold)
+  releaseA(); await s.real.settled();
+  const fin = await s.api.sdkStatus(s.posted()[0].order_id);
+  // the money first: whatever else, ONE authorization and ONE sdk_ order
+  assert.equal(s.real.authorizations(), 1, `🔴 P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.equal(new Set(s.posted().map((x) => x.order_id)).size, 1, '🔴 P1-ONE-ID: never a second sdk_ id');
+  assert.deepEqual([b.kind, b.held], ['sdk_pending', true], `🔴 P1-HOLD: a re-send's refusal proves nothing about A — held (${JSON.stringify(b)})`);
+  assert.ok(held && held.sdk === true && held.attempt_state === 'sent' && held.doubt === true, '🔴 P1-HOLD: the attempt stays in flight, in doubt');
+  assert.equal(fin.kind, 'placed', 'A placed the order');
+});
+test('Codex r1 P2-4: a never-created order (status 404) is NOT released on a 404 — after 3 reads over 2 min the cancel; its safe answer fences the id ⇒ a NEW sdk_ id places; the old id stays dead', async () => {
+  const s = realRig();
+  s.real.arm({ extrasRefuseFresh: 'extra_not_allowed' }); s.real.loseNext();
+  const o1 = await s.api.placeSdk(args(SAVED20));
+  const old = s.posted()[0];
+  assert.equal(o1.kind, 'sdk_pending', '🔴 P2-4: refused before the create, the response lost ⇒ the 404 holds (never a release on one 404)');
+  assert.ok(rec(s.storage) && rec(s.storage).order_id === old.order_id, '🔴 P2-4: one 404 never releases');
+  s.clock.t += 61e3; assert.equal((await s.api.sdkStatus(old.order_id)).kind, 'sdk_pending', '🔴 P2-4: still held (2 reads)');
+  s.clock.t += 61e3; const o3 = await s.api.sdkStatus(old.order_id);
+  assert.deepEqual([o3.kind, o3.safe], ['sdk_expired', true], `🔴 P2-4: the window passed ⇒ the cancel's safe answer releases (${JSON.stringify(o3)})`);
+  assert.equal(rec(s.storage), null, 'released');
+  assert.equal((await s.api.placeSdk(args(SAVED20))).kind, 'placed');
+  const nu = s.posted()[1];
+  assert.ok(nu.order_id !== old.order_id && SDK_ORDER_ID_RE.test(nu.order_id), '🔴 P2-4-REMINT: a NEW sdk_ id after the release');
+  const late = await s.real.fetchFor(E, () => null)(E.placeSdkOrder, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${JWT}` }, body: JSON.stringify(old) });
+  assert.equal(late.status, 409, '🔴 P2-4-FENCE (model): a late original with the old id is refused');
+  assert.equal(s.real.authorizations(), 1, '🔴 P2-4: one authorization');
+});
+test('Q-B through the REAL server: the budget spent ⇒ a NEW attempt on the SAME order with the record\'s own inputs — ONE authorization', async () => {
+  const s = realRig();
+  s.real.loseNext(); const releaseA = s.real.pauseGate();
+  let out = await s.api.placeSdk(args(NEW));
+  for (let i = 0; i < 6 && out.kind === 'sdk_resend'; i++) { s.real.arm({ extrasRefuseFresh: 'extra_not_allowed' }); out = await s.api.sdkResend(args(NEW)); if (out.kind === 'sdk_pending') out = await s.api.sdkStatus(s.posted()[0].order_id); }
+  assert.equal(out.kind, 'sdk_reenter_card', `premise: Q-B (${JSON.stringify(out)})`);
+  const inputs = s.api.sdkInputs(s.posted()[0].order_id);
+  assert.ok(inputs && !('card' in inputs) && !JSON.stringify(inputs).includes('SDK-TOKEN-SECRET'), '🔴 P2-3: the stored inputs carry no card / token');
+  assert.deepEqual([inputs.lat, inputs.lng, inputs.tip_cents, inputs.expected_net_cents], [15.5, -88, 2000, 31500], '🔴 P2-3: the economics the order is bound to');
+  releaseA(); await s.real.settled();
+  const placed = await s.api.sdkStatus(s.posted()[0].order_id);
+  const again = placed.kind === 'placed' ? placed : await s.reload().placeSdk(args(NEW));
+  assert.equal(again.kind, 'placed', `the order is placed once (${JSON.stringify(again)})`);
+  assert.equal(new Set(s.posted().map((x) => x.order_id)).size, 1, '🔴 QB-REAL: one sdk_ order');
+  assert.equal(s.real.authorizations(), 1, '🔴 QB-REAL: exactly one authorization');
+});
+
+test('Codex r1 P2-5: the SDK order WINS after its cash replacement was refused previous_payment_unresolved ⇒ that never-created cash record is cleaned; not once the cash identity was re-dispatched', async () => {
+  const mk = (cash) => rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }],
+    createOrder: cash, placeSdkStatus: [(c) => PLACED(new URL(c.url).searchParams.get('order_id'))] } });
+  const s = mk([{ status: 409, json: { error: 'previous_payment_unresolved' } }]);
+  await s.api.placeSdk(args(SAVED)); const x = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(x, { flow: flowOf('cash'), ctx: CTX });
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x })).kind, 'sdk_pending', 'premise: refused, back to the SDK order');
+  assert.equal(rec(s.storage).replaced_unresolved, x, 'premise: the refused cash identity is marked');
+  assert.equal((await s.api.sdkStatus(x)).kind, 'placed', 'premise: the SDK order won');
+  assert.equal(rec(s.storage), null, '🔴 P2-5: the refused, never-created cash record is gone — the next order starts fresh');
+  const n = mk([{ status: 409, json: { error: 'previous_payment_unresolved' } }, 'network']);
+  await n.api.placeSdk(args(SAVED)); const x2 = n.srv.of('placeSdkOrder')[0].body.order_id;
+  await n.api.sdkSwitchToCash(x2, { flow: flowOf('cash'), ctx: CTX });
+  await n.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x2 });
+  await n.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x2 });   // re-dispatched: its answer lost
+  await n.api.sdkStatus(x2);
+  const kept = rec(n.storage);
+  assert.ok(kept && kept.order_id !== x2 && kept.replaced_unresolved == null, '🔴 P2-5-GUARD: a re-dispatched cash identity (fate unknown) is never dropped');
 });
