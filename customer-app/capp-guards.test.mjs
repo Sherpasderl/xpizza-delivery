@@ -240,6 +240,12 @@ const MERGE_ALLOW = {
   // cancelSdkPendingCore) and the mirror is deleted; RED-or-meaningless on either lane alone (the fence lives only on 3a's branch)
   '195147ff customer-app/test/real-sdk-server.mjs': 'capp D4 client × fence: the REAL fence imported, the line-for-line mirror deleted',
   '195147ff customer-app/capp-api-sdk.test.mjs': 'capp D4 client × fence: P2-4-FENCE names the REAL fence, not the model',
+  // asm9 (2e, advisor-accepted PLAN-asm9 r0.3): the capp tip 827373d6 forks at 579feee4, below asm8's s2b capp merge 78bc71cc —
+  // two CLEAN 3-way auto-merges (merge-file of 579feee4 / ^1 / ^2 reproduces each committed blob byte for byte) + the MERGE_ALLOW
+  // resolution itself (asm8's entries kept; the capp-lane db677478 entry dropped: that merge is under ^2 here, never first-parent)
+  '11273d0c customer-app/capp-s7a2.test.mjs': 'asm9 capp tip x asm8 s2b capp: clean auto-merge (merge-file-identical), no resolution edit',
+  '11273d0c customer-app/capp-shell-ui.js': 'asm9 capp tip x asm8 s2b capp: clean auto-merge (merge-file-identical), no resolution edit',
+  '11273d0c customer-app/capp-guards.test.mjs': 'asm9 MERGE_ALLOW resolution: asm8 195147ff entries kept, the capp-lane db677478 entry dropped',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
