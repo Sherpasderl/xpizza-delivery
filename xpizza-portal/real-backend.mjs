@@ -70,5 +70,12 @@ export async function makeBackend(freq, rid) {
     const r = await editCatalogCore({ db: fsdb, authorize, readActiveBuilt, toPrecondition, addProduct: addProductIo }, body, rq('POST', opts.headers && opts.headers.Authorization));
     return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => clone(r.body) };
   };
-  return { read: read.body, fetch, calls };
+  // the STORED draft published as the new live version, and a fresh editable read after it — for a cell whose
+  // diff needs a published staged entry (S4-E: staged drop / rename / promote)
+  // the merchant's REAL publish (publishEditedCore, as portal/functions.js wires it), bound to the save's edit token
+  const { publishEditedCore } = freq('./catalog/publish-edited-handler');
+  const publish = async (editToken, acknowledgedChanges = [], fiscalAck = false) => publishEditedCore({ db: fsdb, authorize, readActiveBuilt,
+    readDraft: () => PR.readDraftFrom(fsdb, rid), publishVersion, addProduct: addProductIo }, { restaurantId: rid, token: editToken, acknowledgedChanges, fiscalAck }, rq('POST', 'Bearer t'));
+  const reread = async () => (await getEditableCatalogCore({ db: rtdb, fsdb, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 7000 }, rq('GET', 'Bearer t'))).body;
+  return { read: read.body, fetch, calls, publish, reread };
 }

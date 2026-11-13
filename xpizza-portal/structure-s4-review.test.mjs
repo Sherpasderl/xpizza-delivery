@@ -67,6 +67,34 @@ test('S4-E (REAL diff) — a new section with its dish, the order, a subsection 
   assert.equal(m.products.flatMap((p) => p.lines || []).filter((l) => l.kind === 'cat' || l.kind === 'subcat').length, 0, 'nor in «Productos»');
 });
 
+test('S4-E (REAL diff) — a PUBLISHED staged entry: dropped, renamed, and one promoted by a dish moved in (drop / rename / promote rows)', async () => {
+  const B = await makeBackend(freq, 'la_musa');
+  const d1 = E.createDraft(clone(B.read.source));
+  for (const n of ['Combos', 'Antojitos', 'Postres']) assert.equal(E.addCategory(d1, n, {}, ON).ok, true, n);
+  globalThis.fetch = B.fetch;
+  const r1 = await editCatalog({ rid: 'la_musa', source: E.draftSource(d1), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
+  assert.ok(r1.updateTime, 'premise: the staged entries saved');
+  const pub = await B.publish(r1.token);
+  assert.equal(pub.status, 200, `premise: published (${JSON.stringify(pub.body).slice(0, 160)})`);
+  const read2 = await B.reread();
+  const staged = read2.source.structure.staged_categories || [];
+  assert.deepEqual(staged.map((c) => c.name), ['Combos', 'Antojitos', 'Postres'], 'premise: published as staged');
+  const id = (n) => staged.find((c) => c.name === n).id;
+  const d2 = E.createDraft(clone(read2.source));
+  assert.equal(E.dropStagedCategory(d2, id('Combos'), ON).ok, true);
+  assert.equal(E.renameCategory(d2, id('Antojitos'), 'Entradas', ON).ok, true);
+  assert.equal(E.moveItem(d2, 'dimsum_01', { cat: id('Postres') }, ON).ok, true);
+  const r2 = await editCatalog({ rid: 'la_musa', source: E.draftSource(d2), baseSourceUpdateTime: read2.sourceUpdateTime, token: async () => 't', loadedBase: read2.deletionBase });
+  const m = reviewModel(r2.diff, ctxOf(r2.source, read2.source));
+  const wonton = read2.source.items.find((i) => i.key === 'dimsum_01').display.name;
+  assert.deepEqual(rowsOf(m), [
+    ['Combos', P('rowCatEmpty'), 'Quitado', P('neverShown'), false],
+    ['Antojitos', P('rowCatEmpty'), 'Cambio', 'Antojitos → Entradas', false],
+    ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow'), false],
+    [wonton, 'Dim Sum', 'Cambio', 'Dim Sum → Postres', false],
+  ], '🔴 the published staged lines, one row each');
+});
+
 test('S4-E (documented shape) — the published staged entry: drop / rename / anchor move / two promotions from one anchor (the second names the first); app_only marks', () => {
   const sections = { added: [], subcats: [], subcat_order: [{ cat: 'pizzas', old: ['Clásicas', 'Especiales'], new: ['Especiales', 'Clásicas'] }], items: [],
     categories: { order: { old: ['a', 'b'], new: ['a', 'b', 'postres', 'helados'] }, app_only: true },
