@@ -203,5 +203,5 @@ for (const rid of ['x_pizza', 'la_musa']) {
 test('KDS-FREE wiring: prepareRedemption names each free line by freeLineLabel first, else today\'s name', () => {
   const src = readFileSync(join(ROOT, 'xpizza-functions/rewards-redeem-intake.js'), 'utf8');
   const fn = src.slice(src.indexOf('async function prepareRedemption('), src.indexOf('const appends = freeItems.map('));
-  assert.ok(fn.includes("name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),"), 'the free line reads the label');
+  assert.ok(fn.includes("name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (require('./catalog/mint-opaque').OPAQUE_SYNTAX.test(fi.item_id) && typeof (require('./menu-pricing').labelsOfTables(tables) || {})[fi.item_id] === 'string') ? sanitizeName(require('./menu-pricing').labelsOfTables(tables)[fi.item_id], 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),"), 'the free line reads the label');   // train (5f, 11-13): S2b's label FIRST, then main's MINT version label, else today's name — the merge bb8c79a9's composed line
 });
