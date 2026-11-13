@@ -12,6 +12,8 @@
 //                     of these (an unrendered category would hold a priced, invisible product). [] = none.
 //   categoriesGeneric — S4: the form draws ANY served category (a generic walk, booted from the bundle, live-applied, no literal filter);
 //                     false ⇒ a new category's dishes are «Solo en la app Sherpa». A review label only, never an authorization.
+//   choicesGeneric  — Q-B: the form draws ANY served required-choice group (the shared picker shipped, VARIANT_ITEMS booted from the bundle,
+//                     live-applied); false ⇒ a new option / a dish gaining or losing its group is «Solo en la app Sherpa». A review label only.
 //   choiceBadges    — the badges the shared group picker draws on a CHOICE row (a variant), present only when the form
 //                     ships the picker. A variant's tags may come from badges ∪ choiceBadges; any other item's from badges.
 module.exports = {
@@ -25,7 +27,8 @@ module.exports = {
     "choiceBadges": [
       "recommended"
     ],
-    "categoriesGeneric": false
+    "categoriesGeneric": false,
+    "choicesGeneric": true
   },
   "la_musa": {
     "categoriesNamed": true,
@@ -50,6 +53,7 @@ module.exports = {
     "choiceBadges": [
       "recommended"
     ],
-    "categoriesGeneric": true
+    "categoriesGeneric": true,
+    "choicesGeneric": true
   }
 };

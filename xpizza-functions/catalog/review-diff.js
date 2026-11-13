@@ -49,13 +49,23 @@ function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) 
 // An S4 op: the section order / set or a section's subcats changed (a NAME alone is T1's rename, today's diff), the relative order of the
 // dishes both versions carry changed, or the staged list changed. Without one the diff is today's, byte for byte.
 function reviewDiff(args) {
-  const out = reviewDiffS2S3(args);
+  const out = withChoiceAppOnly(reviewDiffS2S3(args), args.rid);
   const sections = has(args, 'sections') ? args.sections : require('./platform-structure').structureCapabilities().sections;
   if (!sections || !s4OpPresent(args.live, args.draftBuilt)) return out;
   return { ...out, sections: sectionLines(args.live, args.draftBuilt, appOnlyOf(args.rid)) };
 }
 
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+// Q-B (advisor 11-13): «Solo en la app Sherpa» on the S3 facets a form without generic choice rendering cannot draw — a NEW option under an
+// existing dish (members.added) and a dish gaining or losing its group (became). app_only = !choicesGeneric (renderer contract, generated
+// from the shipped forms); null when the caller names no restaurant. A label- / «Recomendada»-only row carries none. A label only.
+const contractOf = (rid) => { if (typeof rid !== 'string' || !rid) return null; try { const t = require('./renderer-contract.generated'); return Object.prototype.hasOwnProperty.call(t, rid) ? t[rid] : null; } catch (_) { return null; } };
+const choiceAppOnlyOf = (rid) => { const e = contractOf(rid); return e && typeof e.choicesGeneric === 'boolean' ? !e.choicesGeneric : null; };
+function withChoiceAppOnly(out, rid) {
+  if (!out || !Array.isArray(out.choices) || !out.choices.length) return out;
+  const appOnly = choiceAppOnlyOf(rid);
+  return { ...out, choices: out.choices.map((r) => (r.became || (r.members && r.members.added && r.members.added.length) ? { ...r, app_only: appOnly } : r)) };
+}
 // §1.6 / Q4: «Solo en la app Sherpa» — the form does NOT draw any served category (renderer contract categoriesGeneric, generated from the
 // shipped forms); null when the caller names no restaurant (never guessed). A label only.
 const appOnlyOf = (rid) => { if (typeof rid !== 'string' || !rid) return null; try { const t = require('./renderer-contract.generated'); const e = Object.prototype.hasOwnProperty.call(t, rid) ? t[rid] : null; return e && typeof e.categoriesGeneric === 'boolean' ? !e.categoriesGeneric : null; } catch (_) { return null; } };
@@ -190,4 +200,4 @@ function fiscalOf(diff, draftBuilt, dx) {
   return { added, repriced };
 }
 
-module.exports = { reviewDiff, s2OpPresent, s4OpPresent };
+module.exports = { reviewDiff, s2OpPresent, s4OpPresent, choiceAppOnlyOf };
