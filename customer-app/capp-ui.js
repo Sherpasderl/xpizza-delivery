@@ -1343,7 +1343,7 @@
       const o = S.otp; if (!o || o.busy || o.state === 'locked' || o.code.length !== 6) return;
       const my = ++o.seq; o.busy = true; renderLayer();
       // contract amendment 2026-10-27: the ticket is bound to the order id this placement will send (the same id on a retry)
-      const oid = api.orderIdForCode({ flow: S.flow, sig: S.q && S.q.sig });
+      const oid = api.orderIdForCode({ flow: S.flow, sig: S.q && S.q.sig, sdk: sdkOn() && !!S.flow && S.flow.pay === 'online' });   // D4 F1: bound in the namespace that dispatches
       const r = oid ? await bounded(api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code, orderId: oid })) : { kind: 'offline' };
       if (dead || S.otp !== o || o.seq !== my) return;   // the sheet was closed / a resend superseded it: a late success NEVER sends
       o.busy = false;

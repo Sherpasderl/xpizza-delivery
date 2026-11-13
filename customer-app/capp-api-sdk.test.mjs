@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { placeResp, cancelPending, noSdkOrder } from './test/fake-sdk-checkout.mjs';
+import { placeResp, cancelPending, noSdkOrder, namespaceRefusal, SDK_ORDER_ID_RE } from './test/fake-sdk-checkout.mjs';
 const require = createRequire(import.meta.url);
 const C = require('./capp-checkout.js');
 const A = require('./capp-api.js');
@@ -23,6 +23,7 @@ function server(script, storage) {
   const fetch = async (url, init) => {
     const ep = Object.keys(E).filter((k) => url.startsWith(E[k])).sort((a, b) => E[b].length - E[a].length)[0];
     calls.push({ ep, url, method: (init && init.method) || 'GET', body: init && init.body ? JSON.parse(init.body) : null, headers: (init && init.headers) || {}, placeAtCall: storage.getItem(KEY) });
+    { const nr = namespaceRefusal(ep, calls[calls.length - 1].body); if (nr) return { status: nr.status, ok: false, json: async () => nr.json }; }   // the server's namespace, before the script
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
@@ -149,7 +150,7 @@ test('guests (§1.2): the checkout ticket as X-Sherpa-Order-Ticket, bound to the
   const g = rig({ member: null, guestCardOnly: true, script: { placeSdkOrder: [(c) => ({ status: 200, json: placeResp('placed', { order_id: c.body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' }, adjust_grant: 'grant-1' }) })] } });
   const none = await g.api.placeSdk(args(NEW));
   assert.equal(none.kind, 'guest_ticket_invalid', '🔴 SDK-guest: no ticket ⇒ nothing sent'); assert.equal(g.srv.calls.length, 0);
-  const id = g.api.orderIdForCode({ flow: flowOf('online') });
+  const id = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });   // D4 F1: the SDK card's ticket is bound to an sdk_ id
   const tk = { ticket: 'tk_1', order_id: id, expires_at: at(12, 10) };
   assert.equal((await g.api.placeSdk(args(SAVED, { checkoutTicket: tk }))).kind, 'sdk_bad_card', '🔴 SDK-guest: a saved card is never a guest\'s');
   const out = await g.api.placeSdk(args(NEW, { checkoutTicket: tk }));
@@ -382,4 +383,57 @@ test('Codex r3 P1-2 regression: a settlement write that FAILS, a reload, a later
   const co = s.srv.of('createOrder')[0];
   assert.ok(co && co.body.order_id !== id && co.body.replaces_order_id === id, '🔴 SDK-r3-p12: a NEW replacement order');
   assert.equal(out.kind, 'placed');
+});
+
+// ── D4 client follow-ups F1 (PLAN-capp-d4-client-followups r0): the order-id NAMESPACE — the server's own regex, imported ──
+const CASH = (x = {}) => ({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, ...x });
+test('F1: an SDK placement POSTs an id in the server\'s sdk_ namespace; cash and the hosted card never send one', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)], createOrder: [OK_CASH_FN], chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  const o0 = await s.api.placeSdk(args(SAVED));
+  const posted = s.srv.of('placeSdkOrder').map((c) => c.body.order_id);
+  assert.ok(posted.length === 1 && SDK_ORDER_ID_RE.test(posted[0]), `🔴 F1-NS-SDK: ONE SDK POST, its id in the sdk_ namespace (the server regex) (${posted})`);
+  assert.equal(o0.kind, 'placed', 'the server admits it');
+  await s.api.place(CASH());
+  await s.reload().place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  const std = [...s.srv.of('createOrder'), ...s.srv.of('chargeOnlineOrder')].map((c) => c.body.order_id);
+  assert.equal(std.length, 2, 'premise: a cash send and a hosted card send');
+  assert.ok(std.every((id) => /^TA\d{6}-\d{6}-/.test(id)), `🔴 F1-NS-STD: cash / hosted send the restaurant prefix, never sdk_ (${std})`);
+});
+test('F1: a namespace MISMATCH on an UNDISPATCHED record re-mints in the tender\'s namespace (both directions); the old id is never sent', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)] } });
+  const std = s.api.orderIdForCode({ flow: flowOf('cash') });
+  assert.ok(std && !std.startsWith('sdk_') && rec(s.storage).dispatched === 0, 'premise: an undispatched std identity');
+  await s.api.placeSdk(args(SAVED));
+  const sent = s.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.ok(sent !== std && SDK_ORDER_ID_RE.test(sent), `🔴 F1-REMINT: std → sdk_ before the dispatch (${std} → ${sent})`);
+  const g = rig({ member: null, guestCardOnly: true, script: { chargeOnlineOrder: [(c) => ({ status: 200, json: { checkout_url: 'https://pay.test/x', poll_token: 'pt' } })] } });
+  const id0 = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });
+  assert.match(id0, SDK_ORDER_ID_RE, 'premise: an undispatched sdk_ identity');
+  const tk = { ticket: 'tk_1', order_id: id0, expires_at: at(12, 10) };
+  const out = await g.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, checkoutTicket: tk });
+  assert.equal(g.srv.of('chargeOnlineOrder').length, 0, '🔴 F1-REMINT: the sdk_ id is never sent to the hosted charge');
+  assert.equal(out.kind, 'guest_ticket_invalid', '🔴 F1-REMINT: the guest\'s ticket was bound to the old id ⇒ the existing re-ask (no new mechanism)');
+  assert.ok(!rec(g.storage).order_id.startsWith('sdk_'), '🔴 F1-REMINT: the record now holds a std id');
+});
+test('F1: a DISPATCHED record is never re-minted — its id is kept and it is resolved first', async () => {
+  const s = rig({ script: { chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await s.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  const id = rec(s.storage).order_id;
+  await s.api.placeSdk(args(SAVED));
+  assert.equal(rec(s.storage) && rec(s.storage).order_id, id, '🔴 F1-NEVER-REMINT: a dispatched std record keeps its id');
+  assert.equal(s.api.orderIdForCode({ flow: flowOf('online'), sdk: true }), id, '🔴 F1-NEVER-REMINT: the guest code binds to the dispatched order, never a re-mint over it');
+  assert.equal(rec(s.storage).order_id, id, '🔴 F1-NEVER-REMINT: the dispatched record is untouched');
+  const d = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id), (c) => PLACED(c.body.order_id)] } });
+  await d.api.placeSdk(args(SAVED));
+  const sid = rec(d.storage).order_id;
+  await d.api.placeSdk(args(NEW));
+  assert.deepEqual(d.srv.of('placeSdkOrder').map((c) => c.body.order_id), [sid, sid], '🔴 F1-NEVER-REMINT: «Probar otra tarjeta» stays on the dispatched sdk_ order');
+});
+test('F1: the guest\'s ticket id IS the dispatched id (orderIdForCode mints in the SDK namespace for the SDK card)', async () => {
+  const g = rig({ member: null, guestCardOnly: true, script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)] } });
+  const id = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });
+  const out = await g.api.placeSdk(args(NEW, { checkoutTicket: { ticket: 'tk_1', order_id: id, expires_at: at(12, 10) } }));
+  assert.equal(out.kind, 'placed', 'premise: placed');
+  assert.equal(g.srv.of('placeSdkOrder')[0].body.order_id, id, '🔴 F1-TICKET: the ticket-bound id is the one dispatched');
+  assert.match(id, SDK_ORDER_ID_RE, '🔴 F1-TICKET: in the sdk_ namespace');
 });

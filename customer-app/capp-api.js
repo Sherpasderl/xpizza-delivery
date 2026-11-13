@@ -101,6 +101,8 @@
   const POLL_DEADLINE_MS = 90000, POLL_EVERY_MS = 2500;  // the forms' return cadence
   const CANCEL_CHECK_MS = 5000;                          // the forms' single bounded check on a cancel return
   const ID_CHARS = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // the forms' genOrderId suffix charset
+  const SDK_NS = 'sdk_';                                 // D4 F1: the SDK order-id namespace prefix (the server's SDK_ORDER_ID_RE)
+  const nsOfId = (id) => (typeof id === 'string' && id.indexOf(SDK_NS) === 0 ? 'sdk' : 'std');
   const PAID_STATES = new Set(['paid', 'scheduled_paid']);
   const CONFIRMING_STATES = new Set(['verifying', 'pending', 'scheduled_review']);
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -153,10 +155,12 @@
     const newGen = () => { const b = randomBytes(8); let r = ''; for (const x of b) r += ID_CHARS[x % 32]; return r; };
 
     // ── the order id: the forms' genOrderId scheme (prefix + yymmdd-hhmmss + 8 CSPRNG chars), on the injected clock ──
-    function genOrderId() {
+    // D4 F1: an SDK card order lives in the server's `sdk_` NAMESPACE (payments/sdk/order-id.js: placeSdkOrder admits only it, every other
+    // creator refuses it) — ns 'sdk' swaps the restaurant prefix for SDK_NS; same clock, same CSPRNG, same charset
+    function genOrderId(ns) {
       const d = new Date(now());
       const b = randomBytes(8); let r = ''; for (const x of b) r += ID_CHARS[x % 32];
-      return `${cfg.orderIdPrefix}${String(d.getFullYear()).slice(-2)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${r}`;
+      return `${ns === 'sdk' ? SDK_NS : cfg.orderIdPrefix}${String(d.getFullYear()).slice(-2)}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}-${r}`;
     }
 
     // ── the placement record ──
@@ -222,15 +226,25 @@
     }
     // rule ii: a definitive answer moves the record out of unresolved (a failed write leaves it unresolved — the safe side)
     const settle = (id) => { try { patchPlace(id, { unresolved: false }); } catch (_) {} };
-    // a fresh record (a new id) — only when there is no live one
-    function mintPlace(method, p) {
+    // a fresh record (a new id) — only when there is no live one; `ns` = the namespace of the tender that will dispatch it (D4 F1)
+    function mintPlace(method, p, ns, carry) {
       const t = now();
-      const r = { order_id: genOrderId(), method, body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents),
+      // the namespace IS the id's prefix (nsOfId): no second field to drift; a std record stays byte-identical to the base
+      const r = { order_id: genOrderId(ns), method, ...(carry || {}), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents),
         totals: p.totals || null, dispatched: 0, unresolved: false, card: false, admitted: false, issued: false, ts: t, last_send: t, expires_at: expiresAtOf(t, t) };
       if (!writeJSON(PLACE_KEY, r)) throw fail('placement_write_failed');
       return r;
     }
     const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    // D4 F1 — THE namespace rule, before ANY dispatch: the live record when its id is in the tender's namespace; an UNDISPATCHED record in
+    // the other namespace is re-minted (today's fresh-mint transition; its cart generation carried, so the freeze moves to the new id); a
+    // DISPATCHED one is never re-minted — returned as is (the callers resolve a dispatched record by its own status before this point)
+    function placeFor(method, p, ns) {
+      const live = readPlace();
+      if (!live) return mintPlace(method, p, ns);
+      if (nsOfId(live.order_id) === ns || Number(live.dispatched) > 0) return live;
+      return mintPlace(method, p, ns, typeof live.cart_gen === 'string' && live.cart_gen ? { cart_gen: live.cart_gen } : null);
+    }
     // S4 (Codex r1 #2): identities whose send got a DEFINITIVE answer this page — the replay window is closed for them even when the
     // record's sched_pending:false could not be written (a refused slot is never re-sent)
     const schedSettled = new Set();
@@ -587,7 +601,8 @@
         { const g = guestGate(p, { ticket: true }); if (g) return g; }
         let rec;
         try {
-          rec = readPlace() || mintPlace(method, p);
+          rec = placeFor(method, p, 'std');
+          if (nsOfId(rec.order_id) !== 'std') return resolveStatus(rec.order_id);   // D4 F1: a dispatched sdk_ order is never sent to createOrder / chargeOnlineOrder
           priorSends = Number(rec.dispatched) || 0;   // S4: a retained identity (already dispatched by an earlier attempt)
           // Codex cash-chips r2 P1-1: the caller's no-quote allowance (freshOk:false) is for a REPLAY of the recorded body only — anything
           // that would build a FRESH body is refused here, before any freeze / dispatch is recorded for this send
@@ -816,7 +831,8 @@
       if (live && live.sdk !== true && Number(live.dispatched) > 0) return resolveExisting(live.order_id);   // a DISPATCHED placement of another tender is never paid over
       if (!h) return memberOf() ? { kind: 'offline', order_id: live ? live.order_id : null } : { kind: 'guest_ticket_invalid', local: true };
       let rec;
-      try { rec = live || mintPlace('online', p); } catch (e) { return placeErr(e, null) || { kind: 'error', error: 'placement_lost' }; }
+      try { rec = placeFor('online', p, 'sdk'); } catch (e) { return placeErr(e, null) || { kind: 'error', error: 'placement_lost' }; }
+      if (nsOfId(rec.order_id) !== 'sdk') return resolveExisting(rec.order_id);   // D4 F1: a dispatched std order is never paid over (never re-minted)
       { const g = guestGate(p, { ticket: true, id: rec.order_id }); if (g) return g; }
       const attemptId = PC.newAttemptId(randomBytes);
       const base = C.orderBody(p.flow, { ...p.ctx, orderId: rec.order_id });
@@ -945,8 +961,10 @@
     }
     // the identity the next place() dispatches under — the live record's, else one minted NOW (place reuses it: readPlace() ||
     // mintPlace); the checkout ticket is bound to it. A failed write ⇒ null (nothing to bind; the caller retries)
+    // D4 F1: minted in the namespace of the tender the guest pays with (p.sdk ⇔ the in-app SDK card); a later namespace re-mint unbinds the
+    // ticket ⇒ the existing guest_ticket_invalid re-ask
     function orderIdForCode(p) {
-      try { const live = readPlace(); return live ? live.order_id : mintPlace(p && p.flow && p.flow.pay === 'online' ? 'online' : 'cash', p || {}).order_id; } catch (_) { return null; }
+      try { return placeFor(p && p.flow && p.flow.pay === 'online' ? 'online' : 'cash', p || {}, p && p.sdk === true ? 'sdk' : 'std').order_id; } catch (_) { return null; }
     }
     async function verifyCheckoutCode({ phone, cartFp, code, orderId }) {
       if (!E.verifyCheckoutCode || typeof orderId !== 'string' || !orderId) return { kind: 'offline' };

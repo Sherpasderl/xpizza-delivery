@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
+import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -462,6 +463,7 @@ function scripted(script) {
     const ep = Object.keys(EP).find((k) => url.startsWith(EP[k]));
     const body = init && init.body ? JSON.parse(init.body) : null;
     calls.push({ ep, body, url, headers: (init && init.headers) || {} });
+    { const nr = namespaceRefusal(ep, body); if (nr) return { status: nr.status, ok: false, json: async () => nr.json }; }   // the server's namespace, before the script
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
