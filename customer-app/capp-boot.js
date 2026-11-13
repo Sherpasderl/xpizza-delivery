@@ -37,7 +37,7 @@
 
   // the order endpoints the app calls (capp-api.js's E.*) — capp-boot.test.mjs pins this list EQUAL to capp-api's
   const MODES = Object.freeze(['web', 'native']);
-  const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode']);
+  const ORDER_ENDPOINTS = Object.freeze(['quoteOrder', 'createOrder', 'chargeOnlineOrder', 'paymentStatus', 'requestCheckoutCode', 'verifyCheckoutCode', 'getMyLastTip']);   // getMyLastTip: rule 20 (3a, the header token)
   // S2 (sdkPay): the checkout endpoints (CONTRACT-sdk-checkout r3) D4 serves. D4 F4 (PLAN r12 §1.1 / §1.2): the adjustment consent
   // (getPayAdjust / respondPayAdjust) and the 3DS continuation (continueSdkPayment) were dropped — never served, so never in the runtime
   // (capp-shell-ui's consent block stays, inert: payEp() is null without them)

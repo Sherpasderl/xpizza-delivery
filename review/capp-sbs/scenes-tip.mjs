@@ -23,7 +23,7 @@ const tipFrame = (id) => (theme) => {
 const toStep = [click('#cta'), { until: 'document.querySelector(".tipchips .chip[aria-pressed=true]")', ms: 10000 },
   { until: 'document.querySelector("[data-act=tip-place]:not([disabled])")', ms: 15000 }, { wait: 700 }];
 const tip = (name, o) => ({ name, width: 390, height: 844, seed: MEMBER_SEED(), native: true, themes: ['light', 'dark'], geo: GEO, ...o,
-  fixtures: { extra: chainExtra(memberExtra(), s2Extra({ lastTip: null, ...(o.s2 || {}) })) }, injections: [NATIVE, 'GEO'].join(' + ') });
+  fixtures: { extra: chainExtra(memberExtra({ lastTip: (o.s2 || {}).lastTip ?? null }), s2Extra({ ...(o.s2 || {}) })) }, injections: [NATIVE, 'GEO'].join(' + ') });
 
 export const TIP_SCENES = [
   tip('tip-1-default', { steps: [...toCheckout, ...toStep], mock: tipFrame('mk-1'), note: 'a member with no last tip ⇒ L 20 pressed' }),

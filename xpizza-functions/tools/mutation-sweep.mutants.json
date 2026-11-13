@@ -35876,5 +35876,22 @@
   "kills_with": [
    "WAKE-7"
   ]
+ },
+ {
+  "id": "r20-01",
+  "slice": "r20",
+  "label": "the member last-tip read puts the ID token back in the URL (rule 20)",
+  "file": "../customer-app/capp-api.js",
+  "from": "sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "to": "sfetch(`${E.getMyLastTip}?context=platform&auth=${encodeURIComponent(tok)}`, { method: 'GET' })",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=tip r6 F4",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TIP-F4 (rule 20)"
+  ]
  }
 ]

@@ -448,8 +448,8 @@ const CK = require('./capp-checkout.js');
 const CA = require('./capp-api.js');
 const EP = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus',
   // S2-checkout (inert unless config.sdkCheckout)
-  // PLAN-capp-tip-step r6: the member's last tip, one RTDB leaf (inert unless config.rtdbBase)
-  lastTip: 'https://rtdb.test/user_private/',
+  // PLAN-capp-tip-step r6 → rule 20 (advisor 11-13): the member's last tip, 3a's getMyLastTip (the token in a HEADER, never a URL)
+  getMyLastTip: 'https://fn.test/getMyLastTip',
   placeSdkOrder: 'https://fn.test/placeSdkOrder', placeSdkStatus: 'https://fn.test/placeSdkStatus', cancelSdkPending: 'https://fn.test/cancelSdkPending', listCards: 'https://fn.test/listCards', sdkPayStatus: 'https://fn.test/sdkPayStatus' };
 const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
 const FEE = 4500;
@@ -3498,11 +3498,11 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
 // ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2, 11-09): the step opens WITH a choice — the member's last tip
 // (server-side, user_private/{uid}/last_tip, one authenticated leaf read started at checkout open) else L 20; resolved BEFORE the
 // step renders (the chip never moves); «Otro · L N»; tip_choice:true on the order. Guests: L 20, no read. ──
-const TIP_BASE = 'https://rtdb.test';
-const leaf = (cents, at = 1) => ({ status: 200, json: cents == null ? null : { cents, at } });
+// rule 20 swap (advisor 11-13): the answer is 3a's getMyLastTip contract (my-last-tip.js @990cf8c4): 200 { ok, cents: int | null }
+const leaf = (cents) => ({ status: 200, json: { ok: true, cents: cents == null ? null : cents } });
 const pressedChips = (b) => b.qa('.tipchips .chip[aria-pressed="true"]').map((c) => c.textContent);
 const TIP_MEMBER = (uid = 'u1') => ({ uid, name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: uid, exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig` });
-const bootTip = ({ member = null, last, script = {}, storage } = {}) => bootCo({ member, storage, config: { rtdbBase: TIP_BASE }, script: { ...(last !== undefined ? { lastTip: Array.isArray(last) ? last : [last] } : {}), ...script } });
+const bootTip = ({ member = null, last, script = {}, storage } = {}) => bootCo({ member, storage, config: {}, script: { ...(last !== undefined ? { getMyLastTip: Array.isArray(last) ? last : [last] } : {}), ...script } });   // no rtdbBase: the read never needs it
 async function memberToTip(b) { await toCheckout(b); await settle(); await b.type('#f-details', 'Portón negro'); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]'); await b.click('[data-act="pay"][data-val="online"]'); await settle(); }   // r7: the tip is card-only
 
 test('tip r6 F1: a guest opens the step with «L 20» pressed — no read; the step\'s quote is ONE new logical quote (tip 2000); «Hacer pedido» once it lands', async () => {
@@ -3514,7 +3514,7 @@ test('tip r6 F1: a guest opens the step with «L 20» pressed — no read; the s
   assert.equal(b.text('.tipfoot .sumrow'), `Propina ${L_(2000)}`, 'TIP-F1: the footer shows the default');
   assert.equal(b.srv.of('quoteOrder').length - before, 1, '🔴 TIP-F1: exactly one new logical quote on entry');
   assert.equal(b.srv.of('quoteOrder').at(-1).body.tip_cents, 2000, 'TIP-F1: that quote carries the default tip');
-  assert.equal(b.srv.of('lastTip').length, 0, '🔴 TIP-F1: a guest never reads a last tip');
+  assert.equal(b.srv.of('getMyLastTip').length, 0, '🔴 TIP-F1: a guest never reads a last tip');
   assert.ok(!b.q('[data-act="tip-place"]').disabled, 'TIP-F1: «Hacer pedido» enabled once the quote landed');
 });
 
@@ -3547,14 +3547,16 @@ test('tip r6 F3 / 3b: «Otro» L 35 ⇒ the chip reads «Otro · L 35»; reopeni
 });
 
 test('tip r6 F4: a member\'s last tip preselects — 4000 ⇒ «L 40», 0 ⇒ «Sin propina», 3500 ⇒ «Otro · L 35», malformed / none ⇒ «L 20»; ONE read of the member\'s own leaf; nothing stored on the device', async () => {
-  for (const [last, want] of [[leaf(4000), ['L 40']], [leaf(0), ['Sin propina']], [leaf(3500), ['Otro · L 35']], [leaf(null), ['L 20']], [{ status: 200, json: { cents: '4000', at: 1 } }, ['L 20']], [{ status: 401, json: { error: 'Permission denied' } }, ['L 20']]]) {
+  for (const [last, want] of [[leaf(4000), ['L 40']], [leaf(0), ['Sin propina']], [leaf(3500), ['Otro · L 35']], [leaf(null), ['L 20']], [{ status: 200, json: { ok: true, cents: '4000' } }, ['L 20']], [{ status: 200, json: { ok: false, cents: 4000 } }, ['L 20']], [{ status: 401, json: { ok: false, reason: 'unauthenticated' } }, ['L 20']], [{ status: 503, json: { ok: false, reason: 'unavailable' } }, ['L 20']], ['network', ['L 20']]]) {
     const storage = memStore();
     const b = bootTip({ member: TIP_MEMBER('u1'), last, storage });
     await memberToTip(b); await b.click('#cta'); await settle();
     assert.deepEqual(pressedChips(b), want, `🔴 TIP-F4: ${JSON.stringify(last.json)} ⇒ ${want}`);
-    const reads = b.srv.of('lastTip');
+    const reads = b.srv.of('getMyLastTip');
     assert.equal(reads.length, 1, 'TIP-F4: one read per mount');
-    assert.ok(/^https:\/\/rtdb\.test\/user_private\/u1\/last_tip\.json\?auth=/.test(reads[0].url), `🔴 TIP-F4: the member's OWN leaf, with the ID token (${reads[0].url.slice(0, 60)})`);
+    assert.equal(reads[0].url, 'https://fn.test/getMyLastTip?context=platform', `🔴 TIP-F4 (rule 20): getMyLastTip, NO token in the URL (${reads[0].url.slice(0, 80)})`);
+    assert.equal(reads[0].headers['x-firebase-id-token'], TIP_MEMBER('u1').idToken, '🔴 TIP-F4 (rule 20): the ID token rides the header');
+    assert.equal(reads[0].body, null, '🔴 TIP-F4 (rule 20): no body (a GET)');
     assert.ok(![...storage._m.keys()].some((k) => /tip/i.test(k)), '🔴 TIP-F4: no tip memory on the device');
   }
 });
@@ -3607,7 +3609,7 @@ test('tip r6 identity: a DEFAULT applied for A is cleared when B signs in (B\'s 
   assert.equal(b.ui.state.flow.tipChoice, null, '🔴 TIP-ID: A\'s DEFAULT is cleared on the identity change');
   await b.click('#cta'); await settle();
   assert.deepEqual(pressedChips(b), ['L 60'], '🔴 TIP-ID: B\'s own last tip');
-  assert.ok(/user_private\/u2\//.test(b.srv.of('lastTip').at(-1).url), 'TIP-ID: B\'s own leaf');
+  { const r = b.srv.of('getMyLastTip').at(-1); assert.equal(r.headers['x-firebase-id-token'], TIP_MEMBER('u2').idToken, '🔴 TIP-ID: B\'s own read (B\'s token, in the header)'); assert.ok(!/auth=|tok|\.sig/.test(r.url), '🔴 TIP-ID (rule 20): no token in the URL'); }
   const c = bootTip({ member: TIP_MEMBER('u1'), last: [leaf(4000), leaf(6000)] });
   await memberToTip(c); await c.click('#cta'); await settle();
   await c.click('[data-act="tipc"][data-val="20"]'); await c.click('[data-act="back"]'); await settle();
