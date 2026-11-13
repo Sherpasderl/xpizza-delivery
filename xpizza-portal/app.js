@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat, stagedName } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -2403,6 +2403,9 @@ function productReviewCtx() {
   // server sends S2 fields only for an S2 op
   const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
+  // STRUCTURE S4-E: how many dishes a section (or one of its subsections) holds now, and a section's name that only the staged list knows
+  structure.dishesIn = (id, sub = null) => items.filter((r) => r.display.variantOf == null && String(r.display.cat) === String(id) && (sub == null || r.display.subcat === sub)).length;
+  structure.categoryName = (id) => stagedName(state.draft, id) || categoryName(id);
   // STRUCTURE S3 (B3): an option's choice text (a removed one from the loaded rows) and a dish's choice label now, from the draft
   structure.choiceOf = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.choice === 'string' ? `${r.display.choice}` : String(k); };
   structure.choiceLabel = (k) => { const g = choiceGroup(state.draft, k); return g && typeof g.label === 'string' ? `${g.label}` : null; };

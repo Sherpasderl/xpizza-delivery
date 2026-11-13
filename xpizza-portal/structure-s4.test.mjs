@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { removeProduct, undoRemoveProduct, canRemoveProduct, pendingRenames, pendingSections, pendingCount, commit, setItemPrice } from './editor.js';
-import { addProduct, removeAddition, setAddition } from './editor.js';
+import { addProduct, removeAddition, setAddition, stagedName } from './editor.js';
 import { createDraft, draftSource, editItem, itemCategoryProblem, addCategory, renameCategory, dropStagedCategory, moveItem, addSubcat,
   renameSubcat, reorderSections, reorderSubcats, reorderItems } from './editor.js';
 
@@ -384,4 +384,15 @@ test('S4-F: the three mismatch codes are the stale-draft panel; subcat_partial /
   assert.deepEqual([sp.title, sp.detail, sp.action.id, sp.action.label, sp.section, sp.sectionLine], [P4('partialTitle'), P4('partialBody'), PUBLISH_ACTIONS.FIX_SECTION, P4('goSection'), 'dim_sum', P4('partialLine')]);
   const na = outcomeFor({ code: 'section_not_attachable_yet', body: { error: 'section_not_attachable_yet', key: 'postres' } }, 'edit');
   assert.deepEqual([na.title, na.detail, na.action.id, na.section], [P4('notAttachTitle'), P4('notAttachBody'), PUBLISH_ACTIONS.FIX_SECTION, 'postres']);
+});
+
+test('stagedName is a PURE reader: the draft\'s staged name, else the loaded draft\'s; a deep-frozen draft, byte-identical after', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  addCategory(d, 'Postres', {}, ON);
+  const id = stagedIds(d)[0];
+  const freeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+  const before = JSON.stringify([d.state, d.orig]);
+  freeze(d.state); freeze(d.orig);
+  assert.equal(stagedName(d, id), 'Postres'); assert.equal(stagedName(d, 'dim_sum'), null, 'a declared section is not staged');
+  assert.equal(JSON.stringify([d.state, d.orig]), before);
 });

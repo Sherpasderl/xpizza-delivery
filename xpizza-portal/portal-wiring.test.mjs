@@ -441,7 +441,7 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingSections', 'pendingStructure', 'pendingTexts',
     'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'sectionIsNew', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
-    'tidyItemName', 'undoRemoveProduct',
+    'stagedName', 'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
   // «Quitar del menú»: both writers ask the boundary first — removeProduct through the ONE predicate (which asks canEditContent),
   // undoRemoveProduct directly
@@ -1687,6 +1687,7 @@ const ALLOWED_CONSUMERS = new Set([
   // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
   'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections', 'reorderSubcats', 'reorderItems', 'renameSubcat',
   'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
+  'stagedName',        // S4-E: a staged section's name for the review — a pure reader (cell «stagedName is a PURE reader»)
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

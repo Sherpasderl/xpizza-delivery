@@ -1120,6 +1120,13 @@ function lastOfSection(draft, row) {
   if (others.length) return null;
   return draftOnlySection(draft, cat) ? 'draft' : 'live';
 }
+// a STAGED section's name — in the draft, else in the loaded draft (a dropped one): the review names what the server's staged lines
+// name by id. null when neither has it. A pure reader.
+export function stagedName(draft, id) {
+  if (!draft) return null;
+  const c = [...stagedOf(draft.state), ...stagedOf(draft.orig)].find((x) => x && String(x.id) === String(id));
+  return c && typeof c.name === 'string' && c.name ? c.name : null;
+}
 // a section NEW in this draft — staged (no dish yet) or declared since the draft was loaded: the rail's / header's F tag «Nueva». A pure reader.
 export function sectionIsNew(draft, id) {
   if (!draft || !draft.state) return false;

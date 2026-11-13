@@ -10,15 +10,12 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { runInThisContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { makeBackend, installSwitches } from './real-backend.mjs';
 
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const freq = createRequire(new URL('../xpizza-functions/package.json', import.meta.url));
 const CE = { on: false };
-{
-  const p = freq.resolve('./catalog/platform-structure');
-  const real = freq('./catalog/platform-structure');
-  freq.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), choiceEdit: CE.on }) } };
-}
+installSwitches(freq, () => ({ choiceEdit: CE.on }));
 // the page's classic scripts, in index.html order
 for (const f of ['extras-eligibility.js', 'exposure-transitions.js', 'choice-transitions.js']) runInThisContext(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'));
 const { createDraft, draftSource, setItemPrice, addProduct, setAddition, setRequiredChoice, setGroupLabel, setChoiceName, setChoicePrice,
@@ -33,48 +30,8 @@ const OWNER_LINE = 'Este producto se canjea con recompensas. Para mantener el pr
 const ON = { choiceEdit: true };
 const ref = (c) => `tmp:${c.repeat(8)}`;
 
-// ── the real backend, one store per rid ──
-async function backend(rid) {
-  const { makeDb } = freq('./catalog/firestore-fake');
-  const { createFakeDb } = freq('./merchant/_fake-db');
-  const { Timestamp } = freq('firebase-admin/firestore');
-  const { sourceRefOf } = freq('./catalog/source-store');
-  const { publishVersion } = freq('./catalog/catalog-publish');
-  const { readPublishBaseline, buildPublishCandidate } = freq('./tools/publish-version');
-  const { bootstrapIdentityStamps } = freq('./catalog/identity-bootstrap');
-  const { getActiveVersionId } = freq('./catalog/catalog-firestore');
-  const { authorizeCatalogEdit } = freq('./catalog/catalog-edit-auth');
-  const { editCatalogCore } = freq('./catalog/edit-catalog-handler');
-  const { getEditableCatalogCore } = freq('./catalog/portal-reads');
-  const PR = freq('./catalog/publish-request');
-  const U = 'uOwnerS3';
-  const fsdb = makeDb();
-  const rtdb = createFakeDb({ brands: { [rid]: { name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } } },
-    restaurants: { [rid]: { identity: { name: rid } } }, brand_members: { [rid]: { owners: { [U]: { granted_at: 1 } } } } });
-  const seed = clone(buildSourceFromCode(rid));
-  await fsdb.collection('restaurants').doc(rid).set({ pricing_key_mode: seed.key_mode });
-  await sourceRefOf(fsdb, rid).set(seed);
-  { const b = await readPublishBaseline(fsdb, rid, { fromStore: true }); const { input, expected } = buildPublishCandidate(rid, b, { source_sha: 's3ui' }); await publishVersion(fsdb, rid, input, { expected }); }
-  assert.equal((await bootstrapIdentityStamps(fsdb, rid)).stamped, true, `premise: the real bootstrap stamped ${rid}`);
-  const readActiveBuilt = async () => PR.readActiveBuiltFrom(fsdb, rid);
-  const authorize = (r, q) => authorizeCatalogEdit({ db: rtdb, verifyIdToken: async () => ({ uid: U }) }, q, r);
-  const rq = (m, auth) => ({ method: m, query: { restaurantId: rid }, get: (h) => (String(h).toLowerCase() === 'authorization' ? auth : undefined) });
-  const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [a, b] = v.split('.'); return /^\d+$/.test(a || '') && /^\d+$/.test(b || '') ? new Timestamp(Number(a), Number(b)) : v; };
-  const addProductIo = freq('./catalog/add-product-io').addProductIo({ fs: fsdb, rtdb });
-  const read = await getEditableCatalogCore({ db: rtdb, fsdb, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 6000 }, rq('GET', 'Bearer t'));
-  assert.equal(read.status, 200, `premise: the editable read (${JSON.stringify(read.body).slice(0, 200)})`);
-  const calls = [];
-  // the portal's fetch → the real save core (the URL, method, headers and JSON body as api.js sent them)
-  const fetch = async (url, opts = {}) => {
-    const u = new URL(url);
-    assert.equal(u.pathname, '/editCatalog', `only the save is expected here, got ${u.pathname}`);
-    const body = JSON.parse(opts.body);
-    calls.push(body);
-    const r = await editCatalogCore({ db: fsdb, authorize, readActiveBuilt, toPrecondition, addProduct: addProductIo }, body, rq('POST', opts.headers && opts.headers.Authorization));
-    return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => clone(r.body) };
-  };
-  return { read: read.body, fetch, calls };
-}
+// ── the real backend, one store per rid (real-backend.mjs) ──
+const backend = (rid) => makeBackend(freq, rid);
 const save = (B, rid, draft) => { globalThis.fetch = B.fetch; return editCatalog({ rid, source: draftSource(draft), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't' }); };
 const groupMembers = (src, launcherKey) => {
   const l = src.items.find((i) => i.key === launcherKey);

@@ -160,6 +160,7 @@ export const ALLOWED_CONSUMERS = new Set([
   // STRUCTURE S4: the S4 writer's two drawing-half mutators (sections switch, all or nothing, canEditContent) and its pure reader
   'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections', 'reorderSubcats', 'reorderItems', 'renameSubcat',
   'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
+  'stagedName',        // S4-E: a staged section's name for the review — a pure reader (cell «stagedName is a PURE reader»)
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.

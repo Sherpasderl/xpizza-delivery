@@ -202,6 +202,76 @@ function choiceRowsOf(d, names = {}) {
   }
   return rows;
 }
+// STRUCTURE S4-E — the server's S4 lines (review-diff.js sections, token-bound) in «Estructura», in the canonical order: subsections
+// added / renamed, the section order, the subsection order, the dish order, the staged lines (add · drop · rename · move · promote), the
+// sections declared in this draft, then each dish moved into one of those. A subsection rename is ONE row (its members' lines are it).
+// «Solo en la app Sherpa» follows the diff's own app_only. Approved words are literal (F: «Categoría», «pasa al N.º lugar», the staged
+// row, was → now); the addendum's proposed lines are ⟦s4.key⟧ until approved.
+function sectionRowsOf(d, names = {}) {
+  const S = d.sections && typeof d.sections === 'object' ? d.sections : null;
+  if (!S) return [];
+  const catName = typeof names.categoryName === 'function' ? names.categoryName : (id) => String(id);
+  const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);
+  const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });
+  const dishesIn = typeof names.dishesIn === 'function' ? names.dishesIn : () => 0;
+  const appOnly = !!((S.categories && S.categories.app_only === true) || (Array.isArray(S.added) && S.added.some((a) => a && a.app_only === true)));
+  const rows = [];
+  const row = (name, sub, kind, parts, src, app) => rows.push({ name, sub, kind, chip: S2_CHIP[kind], parts, src, ...(app && appOnly ? { appOnly: true } : {}) });
+  const place = (n) => `pasa al ${n}.\u00ba lugar`;
+  for (const c of Array.isArray(S.subcats) ? S.subcats : []) {
+    if (!c) continue;
+    if (c.change === 'added') row(catName(c.cat), s4Copy('rowSubcat'), 'Nuevo', [s4Copy('subAddedRow', { sub: c.new, n: dishesIn(c.cat, c.new) })], c, true);
+    else if (c.change === 'renamed') row(catName(c.cat), s4Copy('rowSubcat'), 'Cambio', [c.old, '\u2192', c.new], c, true);
+  }
+  const ord = S.categories && S.categories.order;
+  if (ord && Array.isArray(ord.old) && Array.isArray(ord.new)) {
+    const common = ord.new.filter((x) => ord.old.includes(x));
+    for (const id of movedGroups(ord.old.filter((x) => common.includes(x)), common)) row(catName(id), 'Categoría', 'Orden', [place(ord.new.indexOf(id) + 1)], { id }, true);
+  }
+  for (const o of Array.isArray(S.subcat_order) ? S.subcat_order : []) {
+    if (!o || !Array.isArray(o.old) || !Array.isArray(o.new)) continue;
+    for (const sub of movedGroups(o.old.filter((x) => o.new.includes(x)), o.new.filter((x) => o.old.includes(x)))) row(sub, s4Copy('rowCatSubcat', { categoria: catName(o.cat) }), 'Orden', [place(o.new.indexOf(sub) + 1)], o, true);
+  }
+  for (const it of Array.isArray(S.items) ? S.items : []) {
+    if (!it || typeof it.key !== 'string' || !Number.isInteger(it.new_index)) continue;
+    const sec = sectionOf(it.key) || {};
+    row(nameOf(it.key), [sec.cat == null ? null : catName(sec.cat), sec.subcat || null].filter(Boolean).join(' \u00b7 ') || '\u2014', 'Orden', [place(it.new_index + 1)], it, false);
+  }
+  const staged = Array.isArray(S.staged) ? S.staged : [];
+  const kinds = ['add', 'drop', 'rename', 'move', 'promote'];
+  const promotedIds = [];
+  for (const k of kinds) {
+    for (const x of staged.filter((y) => y && y.change === k)) {
+      if (k === 'add') row(x.name || catName(x.id), 'Categoría', 'Nuevo', ['categoría vacía \u00b7 se muestra cuando tenga productos'], x, true);
+      else if (k === 'drop') row(catName(x.id), s4Copy('rowCatEmpty'), 'Quitado', [s4Copy('neverShown')], x, false);
+      else if (k === 'rename') row(x.old, s4Copy('rowCatEmpty'), 'Cambio', [x.old, '\u2192', x.new], x, false);
+      else if (k === 'move') { if (x.old_after !== x.new_after) row(catName(x.id), s4Copy('rowCatEmpty'), 'Orden', [s4Copy('afterRow', { categoria: catName(x.new_after) })], x, false); }
+      else if (k === 'promote') promotedIds.push(x.id);
+    }
+  }
+  // a section new to the menu: promoted from staged, or declared in this draft — «se muestra con N productos · pasa después de {anterior}»
+  const order = ord && Array.isArray(ord.new) ? ord.new : [];
+  const declared = [...promotedIds, ...(Array.isArray(S.added) ? S.added.map((a) => a && a.id).filter((id) => id != null && !promotedIds.includes(id)) : [])];
+  for (const id of declared) {
+    const i = order.indexOf(id);
+    row(catName(id), s4Copy('rowCatNew'), 'Nuevo', [s4Copy('promoteRow', { n: dishesIn(id), anterior: i > 0 ? catName(order[i - 1]) : '' })], { id }, true);
+  }
+  // each dish moved INTO one of those sections (its «Categoría» line is this row)
+  for (const c of Array.isArray(d.changed) ? d.changed : []) {
+    if (!c || c.surface !== 'item' || c.field !== 'cat' || !declared.includes(c.new)) continue;
+    row(nameOf(c.key), catName(c.old), 'Cambio', [catName(c.old), '\u2192', catName(c.new)], c, true);
+  }
+  return rows;
+}
+// the lines an S4 row already says: a subsection's members (added / renamed), a dish moved into a new section
+function sectionFacts(d) {
+  const S = d.sections && typeof d.sections === 'object' ? d.sections : null;
+  if (!S) return () => false;
+  const subs = new Set((Array.isArray(S.subcats) ? S.subcats : []).filter((c) => c && (c.change === 'added' || c.change === 'renamed')).map((c) => c.new));
+  const fresh = new Set([...(Array.isArray(S.staged) ? S.staged : []).filter((x) => x && x.change === 'promote').map((x) => x.id), ...(Array.isArray(S.added) ? S.added.map((a) => a && a.id) : [])]);
+  return (c) => !!c && c.surface === 'item' && ((c.field === 'subcat' && subs.has(c.new)) || (c.field === 'cat' && fresh.has(c.new)));
+}
+
 // the facts a choice row already says — never ALSO a generic line (every server fact shown once): the option rows added / removed,
 // the mark's tag line, and a dish that lost its choice's reprice (that row and the seal)
 function choiceFacts(d) {
@@ -257,8 +327,9 @@ export function reviewModel(diff, ctx = {}) {
   const d0 = diff || {};
   // STRUCTURE S3 (B3): a fact a choice row says is dropped from the generic lists before anything else reads them
   const cf = choiceFacts(d0);
-  const d = Array.isArray(d0.choices) && d0.choices.length ? { ...d0,
-    changed: (Array.isArray(d0.changed) ? d0.changed : []).filter((c) => !cf.said(c)),
+  const sf = sectionFacts(d0);   // S4-E: the same rule for the S4 rows
+  const d = (Array.isArray(d0.choices) && d0.choices.length) || d0.sections ? { ...d0,
+    changed: (Array.isArray(d0.changed) ? d0.changed : []).filter((c) => !cf.said(c) && !sf(c)),
     added: (Array.isArray(d0.added) ? d0.added : []).filter((x) => !(x && x.surface === 'item' && cf.added.has(x.key))),
     removed: (Array.isArray(d0.removed) ? d0.removed : []).filter((x) => !(x && x.surface === 'item' && cf.removed.has(x.key))) } : d0;
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
@@ -275,7 +346,7 @@ export function reviewModel(diff, ctx = {}) {
     if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
   }
-  const structure = [...choiceRowsOf(d0, ctx && ctx.structure), ...structureRowsOf(d, ctx && ctx.structure)];
+  const structure = [...choiceRowsOf(d0, ctx && ctx.structure), ...sectionRowsOf(d0, ctx && ctx.structure), ...structureRowsOf(d, ctx && ctx.structure)];
   // a repriced extra is its «Estructura» row; its price line is not ALSO a «Precios» row (every server fact shown once)
   const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));
   const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));
