@@ -194,8 +194,11 @@ if (!scripts.length) {
   process.exit(2);
 }
 
+/* KNOWN_RED names are checked against the FULL test-script inventory (Codex fence-build r1 P2), never the --only / emulators
+   selection: an entry for a script the selection merely skipped is not stale (`--only=test:portal` must not exit 2). */
+const inventory = Object.keys(pkgScripts).filter((k) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(pkgScripts[k]).trim());
 for (const name of Object.keys(KNOWN_RED)) {
-  if (!scripts.includes(name) && !EMULATORS_ONLY) {
+  if (!inventory.includes(name)) {
     console.error(`gate-all: KNOWN_RED names "${name}", which is not a test script any more.`);
     console.error('   A stale excuse hides a suite nobody runs. Remove the entry or fix the name.');
     process.exit(2);

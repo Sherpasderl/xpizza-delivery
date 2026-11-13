@@ -41,10 +41,11 @@ function world({ script = {}, beforeTx = null } = {}) {
   const clock = { t: T0 };
   const db = makeHonestDb({ platform_config: { sdk_pay: { available: true, restaurants: { [RID]: true } } } }, { now: () => clock.t, ...(beforeTx ? { beforeTx } : {}) });
   const fake = makeFakePsp(script);
+  const expired = new Set();   // ID tokens that stopped verifying (an expiry mid-request)
   const deps = { db, psp: makeAdapter(fake.impl), clock: () => clock.t, voidEligible: () => false, ppNamespace: 'sandbox', releaseResources: async () => {},
     goLive: async (dp, id) => { await db.ref(`orders/${id}/tracking_token`).set(`tok_${id.slice(-8)}`); },   // the one field the status answer reads before «placed»
-    verifyIdToken: async (x) => (x === 'idt_A' || x === 'idt_A2' ? { uid: 'uid_A' } : x === 'idt_B' ? { uid: 'uid_B' } : (() => { throw new Error('bad'); })()) };
-  return { db, fake, deps, clock, auths: () => fake.callCount('authorize'), authsFor: (id) => { const atts = Object.keys(((db.getAt(`payment_sdk/${id}`) || {}).attempts) || {}); const refs = new Set(atts.map((a) => C.ppRef('sandbox', id, a))); return fake.calls.filter((c) => c.action === 'authorize' && refs.has(c.ref)).length; } };
+    verifyIdToken: async (x) => (expired.has(x) ? (() => { throw new Error('expired'); })() : x === 'idt_A' || x === 'idt_A2' ? { uid: 'uid_A' } : x === 'idt_B' ? { uid: 'uid_B' } : (() => { throw new Error('bad'); })()) };
+  return { db, fake, deps, clock, expired, auths: () => fake.callCount('authorize'), authsFor: (id) => { const atts = Object.keys(((db.getAt(`payment_sdk/${id}`) || {}).attempts) || {}); const refs = new Set(atts.map((a) => C.ppRef('sandbox', id, a))); return fake.calls.filter((c) => c.action === 'authorize' && refs.has(c.ref)).length; } };
 }
 // production's B4 ctx (index.js): a member, or a capp guest (guest_verified on the pending record + its phone hash)
 const ctx = (w, id, o = {}) => {
@@ -223,6 +224,43 @@ const OK_GATE = { refuse: null, provenance: null };
     assert.deepStrictEqual(fences(w), [[X, `p_${H}`]], `${L}: the guest's fence (p_<phone_hash>)`);
     assert.deepStrictEqual(await FINISH(w, X, { guest: true }), CLOSED, `${L}: the guest's late original ⇒ refused`);
     assert.strictEqual(w.auths(), 0, `${L}: zero authorizations`);
+  });
+
+  for (const who of ['member', 'guest']) {
+    await cell(`SDK-FENCE-CRED-EXPIRY-${who.toUpperCase()}`, async (L) => {
+      // Codex fence-build r1 P1: the cancel saw X absent; before its fence write, A created X, passed its post-check and parked; the
+      // caller's credentials then expire ⇒ the re-read after the fence is by the identity VERIFIED at the start (never a
+      // re-authorization) ⇒ the owned order is cancelled ⇒ X never authorizes; Y is the ONE authorization
+      const fz = pauseAt((p) => p.startsWith('sdk_fence/'));
+      const g = pauseAt(() => true);
+      const w = world({ script: { authorize: [{ outcome: 'approved' }, { outcome: 'approved' }] }, beforeTx: fz.hook });
+      const creds = who === 'guest' ? ticketFor(w, X) : { authorization: 'Bearer idt_A' };
+      const c = CANCEL(w, X, creds);
+      await fz.parked;                                                     // the cancel saw X absent; its fence write is next
+      const a = FINISH(w, X, { guest: who === 'guest', runGate: async () => { await g.hook('gate'); return OK_GATE; } });
+      await g.parked;                                                      // A created X and passed its post-check (no fence yet)
+      assert.ok(w.db.getAt(`orders/${X}`), 'premise: X exists, A parked before its claim / attempt');
+      if (who === 'guest') { const k = Object.keys(w.db.getAt('checkout_tickets'))[0]; w.db.setAt(`checkout_tickets/${k}/exp`, w.clock.t); }
+      else w.expired.add('idt_A');
+      fz.release();
+      const ans = await c;
+      assert.deepStrictEqual(ans, { status: 200, body: { cancelled: true, safe_to_switch: true } }, `${L}: the re-read by the verified identity found the owned order ⇒ cancelled (${JSON.stringify(ans)})`);
+      g.release(); await a;
+      const y = await FINISH(w, Y, { guest: who === 'guest', attemptId: 'att_fence_Y_00000001' });
+      assert.ok(y.status === 200 && y.body.outcome === 'placed', `premise: Y placed (${JSON.stringify(y.body)})`);
+      cancelledX(w, L);
+      assert.strictEqual(w.authsFor(X), 0, `${L}: X never authorizes`);
+      assert.strictEqual(w.auths(), 1, `${L}: exactly ONE authorization (Y's) (${w.auths()})`);
+    });
+  }
+
+  await cell('SDK-FENCE-REREAD-FAIL-CLOSED', async (L) => {
+    // the re-read after the fence write fails ⇒ 503, never safe
+    const w = world();
+    const realRef = w.db.ref; const down = { once: async () => { throw new Error('UNAVAILABLE'); }, get: async () => { throw new Error('UNAVAILABLE'); } };
+    w.deps.db = { ...w.db, ref: (p) => (p === `orders/${X}` && w.db.getAt('sdk_fence') ? down : realRef(p)) };   // order reads fail once the fence is stored
+    assert.deepStrictEqual(await CANCEL(w, X), { status: 503, body: { error: 'unavailable', retryable: true } }, `${L}: a failed re-read ⇒ 503 retryable, never safe`);
+    assert.deepStrictEqual(fences(w), [[X, 'u_uid_A']], `premise: the fence was stored before the re-read`);
   });
 
   await cell('SDK-FENCE-FAIL-CLOSED', async (L) => {

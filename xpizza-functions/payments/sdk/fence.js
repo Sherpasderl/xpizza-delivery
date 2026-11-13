@@ -30,4 +30,12 @@ async function guestOwnerForAbsent(deps, ticket, orderId) {
   if (!rec || !Number.isFinite(rec.exp) || !(deps.clock() < rec.exp) || rec.order_id !== orderId || typeof rec.phone_hash !== 'string' || !rec.phone_hash) return null;
   return ownerOf({ phoneHash: rec.phone_hash });
 }
-module.exports = { fenceKey, ownerOf, writeFence, isFenced, guestOwnerForAbsent };
+// the order belongs to the fenced owner key — the SAME identity rule as C6 / authorizeExistingOrder (a member's customer_uid; a guest
+// order — never a member's / claimed one — whose verified phone hash is the key's)
+function ownedByKey(order, owner) {
+  if (!order || typeof owner !== 'string') return false;
+  if (owner.startsWith('u_')) return order.customer_uid === owner.slice(2);
+  if (owner.startsWith('p_')) return !order.customer_uid && !!order.guest_verified && order.guest_verified.phone_hash === owner.slice(2);
+  return false;
+}
+module.exports = { fenceKey, ownerOf, writeFence, isFenced, guestOwnerForAbsent, ownedByKey };

@@ -2627,6 +2627,7 @@
   "payments/sdk/display.js",
   "payments/sdk/endpoints.js",
   "payments/sdk/fake-adapter.js",
+  "payments/sdk/fence.js",
   "payments/sdk/finish.js",
   "payments/sdk/fixtures/redact-pixelpay.js",
   "payments/sdk/flow.js",
@@ -6497,6 +6498,10 @@
    "lifts": []
   },
   "payments/sdk/fake-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/fence.js": {
    "pins": [],
    "lifts": []
   },
