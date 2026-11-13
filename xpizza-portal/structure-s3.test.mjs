@@ -95,6 +95,13 @@ test('the byte copy: xpizza-portal/choice-transitions.js IS the server\'s writer
   assert.equal(typeof globalThis.ChoiceTransitions.apply, 'function');
 });
 
+test('the switch the portal reads: the REAL getEditableCatalog always states choiceEdit as a boolean — false today, true only with the server\'s switch on', async () => {
+  assert.equal(LM.read.choiceEdit, false, 'stated, and OFF (the platform switch ships OFF)');
+  CE.on = true;
+  try { assert.equal((await backend('la_musa')).read.choiceEdit, true, '🔴 the read follows the server\'s switch'); } finally { CE.on = false; }
+  assert.equal((await backend('x_pizza')).read.choiceEdit, false, 'every brand, the same platform switch');
+});
+
 test('OFF: applyChoiceOps refuses without the server\'s switch (absent, false, a truthy non-boolean) and on a draft not owned for editing — the draft untouched', () => {
   const d = createDraft(clone(LM.read.source)); const before = JSON.stringify(draftSource(d));
   const op = { op: 'choice.label', launcher: PAD, label: 'Proteína' };
