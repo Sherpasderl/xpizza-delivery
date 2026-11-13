@@ -411,21 +411,22 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // «Quitar del menú» (PLAN-portal-remove-product r3, APPROVED 11-12) — a PUBLISHED plain dish leaves as ONE unit through removeProduct
   // (its row, order entry, photo and its OWN refs; its identity stamp claimed through mergeDeletionClaim) and comes back through
   // undoRemoveProduct («Deshacer»); both ask the ONE predicate canRemoveProduct / canEditContent first; rebuildOrders is the ONE order
-  // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed.
+  // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed. The read side app.js paints from
+  // (pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows) is pure and hands back copies.
   assert.deepStrictEqual(exported, [
     'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
     'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
-    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingStructure', 'pendingTexts',
-    'productsUsingGroup', 'rebuildOrders', 'removeAddition', 'removeChoice', 'removeProduct', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
+    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
   // «Quitar del menú»: both writers ask the boundary first — removeProduct through the ONE predicate (which asks canEditContent),
   // undoRemoveProduct directly
-  const rpBody = editor.slice(editor.indexOf('export function removeProduct('), editor.indexOf('export function removeProduct(') + 200);
-  assert.ok(/const p = canRemoveProduct\(draft, key, ctx\);\n  if \(!p\.enabled\) return \{ ok: false, code: p\.code \};/.test(rpBody), 'removeProduct asks the ONE predicate first');
-  const crBody = editor.slice(editor.indexOf('export function canRemoveProduct('), editor.indexOf('export function canRemoveProduct(') + 300);
+  const rpBody = editor.slice(editor.indexOf('export function removeProduct('), editor.indexOf('export function removeProduct(') + 400);
+  assert.ok(/\) \{\n  const p = canRemoveProduct\(draft, key, ctx, liveOrder, savedAdditions\);\n  if \(!p\.enabled\) return \{ ok: false, code: p\.code \};/.test(rpBody), 'removeProduct asks the ONE predicate first');
+  const crBody = editor.slice(editor.indexOf('export function canRemoveProduct('), editor.indexOf('export function canRemoveProduct(') + 500);
   assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return no\('not_editable'\);/.test(crBody), 'the predicate refuses when the draft is not owned for editing, or a name waits');
   const urBody = editor.slice(editor.indexOf('export function undoRemoveProduct('), editor.indexOf('export function undoRemoveProduct(') + 200);
   assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(urBody), 'undoRemoveProduct refuses when the draft is not owned for editing');
@@ -1064,6 +1065,13 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
     'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
     'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
+    // «Quitar del menú» (PLAN-portal-remove-product r3 §9) — per-load server facts, set ONLY in applyAddProductFacts on the generation-checked
+    // settle paths and reset with the edit facts (resetEditFacts); the server re-judges every save (the claim, the orders, the refs)
+    'state.productRemoval':      [2, 'guarded', 'P-R5 — the server\u2019s «Quitar del menú» switch (getEditableCatalog productRemoval); fail closed (no action) until a load sets it'],
+    'state.liveOrder':           [2, 'guarded', 'P-R9 — the ORIGINAL live item / reward orders the server serves while the switch is on; null ⇒ the action disabled (never a guessed order)'],
+    'state.pendingRemovals':     [2, 'guarded', 'P-R1 — the SAVED draft\u2019s removals (the live row, photo and refs) for the pending rows and «Deshacer» after a reload; presentational + the undo snapshot'],
+    'state.rewardKeys':          [2, 'guarded', 'P-R2 — the reward dishes (the server\u2019s gateFlagsOf), for R5\u2019s line only; presentational'],
+    'state.removalStash':        [5, 'guarded', 'D-2 — this session\u2019s «Deshacer» snapshots: replaced with every new draft (applyAddProductFacts) and with the edit facts, set by a confirmed removal, deleted by its undo, cleared by «Descartar»'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
@@ -1198,6 +1206,8 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  // renderers the tree found writing view state (state.drawerKey redirect, state.openGroups)
                  'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
                  'renderDrawer', 'renderAddDrawer', 'choiceBlock',
+                 // «Quitar del menú» — the confirmed removal and its undo (each through editor.js removeProduct / undoRemoveProduct, canEdit-guarded)
+                 'confirmRemoveProduct', 'undoRemoval',
                  // portal A — a PUBLISHED group's price-only block: its handlers are bound() (generation-checked) and write
                  // the draft only through onPrice → setItemPrice (canEdit-guarded), the list price boxes' own write
                  'publishedChoiceBlock',
@@ -1342,6 +1352,7 @@ const LISTENERS = {
   "ieEditInExtras::click":        ['bound', [], 'S2 A — «Editar en Extras»: the drawer\u2019s unsaved-copy confirm first (requestClose), then the Extras tab with that group selected — view state only, the draft untouched'],
   "ieDetach::click":              ['bound', [], 'S2 A — «Quitar de este producto»: detach.item into the drawer COPY (IE.setGroupAttached false), never the draft'],
   "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
+  "ieRemove::click":              ['bound', [], '«Quitar del menú» R1 — opens the R2 confirm; the press writes nothing (the confirm\u2019s «Quitar» is confirmRemoveProduct, built with bound())'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],

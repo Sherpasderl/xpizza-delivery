@@ -683,6 +683,26 @@
   /* R5: the reward edge line (a caution: sand) */
   .mk-sandline{display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:10px 12px;border:1px solid var(--sand-line);background:var(--sand-soft);color:var(--sand-text);border-radius:10px;font-size:12.5px;line-height:1.5}
   .mk-sandline svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:2px}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
+  /* R1: the quiet destructive action at the foot of the drawer body */
+  .mk-rmact{margin-top:4px;padding-top:16px;border-top:1px solid var(--line2);display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+  .mk-rmact .btn{min-height:40px;padding-left:9px;padding-right:13px}
+  .mk-rmact .btn svg{width:15px;height:15px;stroke-width:1.9}
+  /* R3: a dish pending removal — greyed in place, the sand chip («.tag.mk-sand», the S2 tip's), «Deshacer» */
+  .irow.mk-pend .tag.mk-sand{font-weight:650;letter-spacing:0;white-space:nowrap}
+  .irow.mk-pend .thumb{cursor:default}   /* the thumb is inert (render.js): no opener, no pointer rule (the S1 guard) */
+  .irow.mk-pend .thumb img{opacity:.42;filter:grayscale(1)}
+  .irow.mk-pend .thumb .cam{display:none}
+  .irow.mk-pend .iinfo{cursor:default}
+  .irow.mk-pend .price input{color:var(--mute2);opacity:.6}
+  .irow.mk-pend .mk-rgrip{display:none}
+  .irow.mk-pend .nm:has(.mk-sand){flex-wrap:wrap;row-gap:3px}
+  .mk-undo{flex:none;font-size:13px;padding:6px 9px;min-height:32px;border-radius:8px}
+  .mk-undo:hover{background:var(--tint)}
+  @media(max-width:560px){
+    .irow.mk-pend{flex-wrap:wrap;row-gap:8px}
+    .irow.mk-pend .iinfo{flex:1 1 200px}
+    .irow.mk-pend .mk-undo{margin-left:auto}
+  }
   #xattach .optrow .ogname{display:flex;flex-direction:column;gap:2px}
   #xattach .optrow .ogname .ogsub{font-weight:400}
   #xattach .mb .optrow:last-child{margin-bottom:0}
@@ -926,6 +946,7 @@
   .irow:last-child{border-bottom:none}
   .iinfo{flex:1;min-width:0}
   .idesc{color:var(--mute);font-size:12.5px;margin-top:2px}
+  .mk-pendtxt{color:var(--mute2)}   /* «Quitar del menú» R3: a pending row's name and description, muted — one class (render.js), after .idesc, no crossing */
   /* OWNER 11-12 (live: the footer looked crammed — the admin label showed UNDER «Dueño» on every view and wrapped): ONE role line,
      never wrapping — the brand role, or «Admin Sherpa» instead of it on a Sherpa-admin view; each line truncates with the full value
      in its tooltip; room before the logout button (standing rule 16b) */

@@ -147,6 +147,10 @@ export const ALLOWED_CONSUMERS = new Set([
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
   'deletionRows',
+  // «Quitar del menú» (PLAN-portal-remove-product r3): the ONE predicate (a pure reader), the removal and its undo (canEditContent-guarded
+  // editor.js writers, all or nothing — the served live order and saved additions are only read), and the read side's pure readers
+  // (pending snapshots, the list projection, a removed row, the dish rows) — each hands back COPIES, never a reference into state
+  'canRemoveProduct', 'removeProduct', 'undoRemoveProduct', 'pendingRemovalsOf', 'removalListSource', 'removedRowOf', 'removalDishRows',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -159,6 +163,8 @@ export const ALLOWED_METHOD_CHAINS = new Set([
   // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
   'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
   'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
+  // «Quitar del menú» — a membership read of the served reward dishes; the session's undo snapshots (census-counted)
+  'state.rewardKeys.has', 'state.removalStash.set', 'state.removalStash.delete', 'state.removalStash.clear',
 ]);
 // 🔴 PROPERTIES WHOSE VALUE IS A PRIMITIVE, and therefore cannot be retained or mutated by whoever
 // receives it. Reading one yields a copy of a string, number, boolean or null, so the escape rules
@@ -463,7 +469,8 @@ export function stateViolations(src, label = 'app.js') {
 // direct state write; the set then closes under "calls a writer", resolved through real scopes so a
 // local shadowing a module function does not count as calling it.
 // S2 Codex r1 P2-10: applyExposureOps (editor.js — the Extras page's ONE structural mutator: x3Create, addCommit, x4Write, the X2 remove)
-export const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'applyExposureOps']);
+export const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'applyExposureOps',
+  'removeProduct', 'undoRemoveProduct']);   // «Quitar del menú»: the dish removal and its undo
 
 export function writerFunctions(src) {
   const { ast, parents, scopeOf, fnOf, root, children } = analyse(src);

@@ -422,7 +422,7 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
 });
 
-test('«Quitar del menú»: editor.js gains exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
+test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
   for (const f of Object.keys(RP_FOLD)) {
     const was = execFileSync('git', ['show', `${RP_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.notEqual(withoutRP(f, fileOnDisk(f)), fileOnDisk(f), `non-vacuity: the ${f} fold changes something`);

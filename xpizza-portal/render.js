@@ -242,6 +242,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // S4 «Editar producto» (mockup frame B) — the row's unpublished-text tag, «Nombre sin publicar» / «Cambios sin publicar», or null
   const textTagOf = typeof opts.textTagOf === 'function' ? opts.textTagOf : () => null;
   const onPhoto = typeof opts.onPhoto === 'function' ? opts.onPhoto : (id) => onOpen && onOpen(id);
+  // «Quitar del menú» (MOCKUP-portal-remove-product frame R3) — a dish pending removal: { onUndo } from the caller, or null
+  const pendingOf = typeof opts.pendingOf === 'function' ? opts.pendingOf : () => null;
   const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
   // PLAN-public-menu-display T1 — a section's NAME (owner-approved mockup R1–R3b). All three are the caller's answers:
   //   rename   null (no control) | {mode: 'idle' | 'blocked' | 'edit', value, problem, onStart, onInput, onSave, onCancel}
@@ -293,7 +295,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     detailEl.append(e);
   }
   for (const it of group.items) {
-    const row = el('div', 'irow');
+    const pend = editable ? pendingOf(it) : null;
+    const row = el('div', pend ? 'irow mk-pend' : 'irow');
     const info = el('div', 'iinfo');
     const d = (it && it.display) || {};
     // `.nm` carries the name typography (display face, 750, 16px); `.nmed` is the mock's
@@ -301,10 +304,11 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     // name in the body font AND dressed unwritable text as editable — the wrong class in both senses.
     const nmEl = el('div', 'nm', typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto'));
     if (isAddition(it)) nmEl.append(el('span', 'newtag', 'Nuevo'));
-    const ttag = textTagOf(it);
+    const ttag = pend ? null : textTagOf(it);
+    if (pend) { nmEl.classList.add('mk-pendtxt'); nmEl.append(el('span', 'tag mk-sand', 'Se quita al publicar')); }
     if (ttag) nmEl.append(el('span', 'tag mk-ftag', ttag));
     info.append(nmEl);
-    if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
+    if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', pend ? 'idesc mk-pendtxt' : 'idesc', d.desc));
     const grp = groupOf(it);
     if (grp) {
       const chips = el('div', 'ochips');
@@ -319,7 +323,19 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     const label = typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto');
     const id = rid(it);
     const cells = [];
-    if (editable && onOpen) {
+    if (pend) {
+      // R3: greyed in place — the thumb stays (no opener), no info click, no chevron; «Deshacer» takes the chevron's place
+      const ph = photoOf(it, { name: label, open: () => {}, upload: () => {} });
+      const thumb = ph && ph.thumb ? ph.thumb : el('div', 'thumb');
+      thumb.setAttribute('inert', ''); thumb.tabIndex = -1;
+      cells.push(thumb);
+      const undo = el('button', 'mk-lnk mk-undo', 'Deshacer');
+      undo.type = 'button';
+      undo.dataset.k = id;
+      undo.setAttribute('aria-label', `Deshacer: ${label} vuelve al menú`);
+      undo.addEventListener('click', () => pend.onUndo());
+      cells.push(undo);
+    } else if (editable && onOpen) {
       // The mock's own three openers, rather than an invented control: a neutral 50x50 placeholder, the
       // info block itself, and a chevron. The placeholder stays EMPTY — the mock puts a camera there,
       // but images are deferred in this slice and a camera would advertise an upload that does nothing.
@@ -347,7 +363,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       cells.push(chev);
     }
     const pcell = grp ? groupPriceCell(grp, { changed: changed('item', id) || !!grp.changed, key: id }) : priceCell(it && it.price, {
-      editable, locked, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
+      editable, locked: locked || !!pend, changed: pend ? false : changed('item', id), onInput: (v) => onPrice('item', id, v),
       surface: 'item', key: id,
     });
     row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));

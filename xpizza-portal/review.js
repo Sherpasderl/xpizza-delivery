@@ -15,6 +15,7 @@
 // decided, because that is what the token is bound to and what publishEdited will re-check.
 
 import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
+import { COPY as IE_COPY } from './item-edit-logic.js';   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
 
 // The acknowledgement set: the server's OWN objects, untouched.
 //
@@ -219,7 +220,16 @@ export function reviewModel(diff, ctx = {}) {
   const s2Extras = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && (x.change === 'added' || x.change === 'removed')).map((x) => `${x.change}\u0000${x.key}`));
   const notS2 = (change) => (e) => !(e && e.surface === 'extra' && s2Extras.has(`${change}\u0000${e.key}`));
   const added = (Array.isArray(d.added) ? d.added : []).filter(notS2('added'));
-  const removed = (Array.isArray(d.removed) ? d.removed : []).filter(notS2('removed'));
+  // «Quitar del menú» (MOCKUP-portal-remove-product frame R4): with the server's switch on (ctx.productRemoval, the caller's served fact)
+  // a DISH's removal is its «Productos» row («Quitado»), not ALSO a «Se eliminan» line — every server fact shown once (the notS2
+  // pattern). Switch off: today's «Se eliminan» exactly.
+  const removed0 = (Array.isArray(d.removed) ? d.removed : []).filter(notS2('removed'));
+  const dishOut = (x) => ctx && ctx.productRemoval === true && !!x && x.surface === 'item';
+  const removed = removed0.filter((x) => !dishOut(x));
+  for (const x of removed0.filter(dishOut)) {
+    const p = products.find((y) => y.key === x.key);
+    if (p) { p.removal = true; p.count += 1; } else products.push({ key: x.key, removal: true, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 1 });
+  }
   const renamed = Array.isArray(d.renamed) ? d.renamed : [];
   const flagged = new Set(ackSetFrom(d).map(idOf));
   // PLAN-public-menu-display T1 — a SECTION'S NAME is the server's `{surface:'category', field:'name'}` line. It is shown
@@ -354,6 +364,17 @@ export function renderReview(root, model, opts = {}) {
     const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
     for (const p of products) {
       const now = sectionOf(p.key) || {};
+      if (p.removal) {
+        // R4: the dish and its place, the approved «Quitado» chip and the plain-words line (frame F's idiom)
+        const row = el('div', 'prow mk-srow');
+        row.dataset.k = `item::${p.key}::removed`;
+        const main = el('div', 'pmain');
+        main.append(el('div', 'pname', nameOf(p.key)), el('div', 'psub', place(now.cat, now.subcat)));
+        const v = el('div', 'pval');
+        v.append(el('span', 'bchip rem', 'Quitado'), el('span', 'now plain', 'se quita del menú; tus pedidos pasados no cambian'));
+        row.append(main, v);
+        g.append(row);
+      }
       // frame E: the rows head with the PUBLISHED name — a renamed product's name line carries it (old); otherwise the lookup
       const nl = p.lines.find((l) => l.kind === 'name');
       const head = nl && typeof nl.was === 'string' && nl.was.trim() ? nl.was : nameOf(p.key);
@@ -638,6 +659,9 @@ export function attestationModel(diff, ctx = {}) {
   // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish
   // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)
   const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  // P-R8 (Q-12 RULED; 5f 34f38bb8): the SAVE's own word that this publish needs no fiscalAck — literally `false`; absent (or anything
+  // else) ⇒ today's seal and fiscalAck, byte-identical. Never re-derived here.
+  const sealWaived = ctx.fiscalAckRequired === false;
   const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])
     .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));
   return {
@@ -645,9 +669,9 @@ export function attestationModel(diff, ctx = {}) {
     nameRows,
     hasNothing,
     sectionRows,
-    needsSeal: isFiscal && !hasNothing,
+    needsSeal: isFiscal && !hasNothing && !sealWaived,
     needsPlainAck: !isFiscal && ackSet.length > 0,
-    needsAck: !hasNothing && (isFiscal || ackSet.length > 0),
+    needsAck: !hasNothing && ((isFiscal && !sealWaived) || ackSet.length > 0),
     sealRows,
     addedRows,
     ackSet,
@@ -656,7 +680,8 @@ export function attestationModel(diff, ctx = {}) {
     photosOnly,
     // What the publish will send. Two separate fields for two separate facts: the attestation, and
     // the exact set of large changes the server flagged.
-    fiscalAck: isFiscal,
+    fiscalAck: isFiscal && !sealWaived,
+    sealWaived,
   };
 }
 
@@ -903,7 +928,7 @@ export function publishPayload(review) {
     // true or it is not a signature. The publish button being enabled is a UI state, not a guarantee —
     // it can be cleared from devtools — so the payload states what was actually signed rather than
     // what the screen looked like.
-    fiscalAck: att.isFiscal === true && review.acknowledged === true,
+    fiscalAck: att.isFiscal === true && att.sealWaived !== true && review.acknowledged === true,
   };
 }
 
@@ -1276,6 +1301,9 @@ export function outcomeFor(err, op = 'publish', ctx = {}) {
     if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
       base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';
     }
+    // «Quitar del menú» (D-8 + Q-11 RULED): the last dish of a section / subsection — today's panel, titled with the approved line
+    if (code === 'section_emptied') base.title = IE_COPY.cat.section_empty;
+    if (code === 'subsection_emptied') base.title = IE_COPY.cat.subsection_empty;
     return base;
   }
   // a publish the server ANSWERED: pre-commit, so nothing went live and the panel says so

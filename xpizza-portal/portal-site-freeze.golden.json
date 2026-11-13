@@ -81,8 +81,6 @@
   "portal-look.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
-  "portal-site-freeze.golden.json",
-  "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
   "portalui-guards.test.mjs",
@@ -181,8 +179,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "9930a911462b0fca5213a8e087032bf1b90487fe2351cca196e8e1cf9123ba49",
-   "bytes": 151397
+   "sha256": "744431e8a41ec3c50f655dfdbfef31239199ca450609ab7783739df26d526906",
+   "bytes": 152824
   }
  },
  "diff_aid": {
@@ -2029,6 +2027,12 @@
    ],
    [
     "",
+    ".irow.mk-pend .price input",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".irow:hover .iinfo.clk .nm",
     "color",
     "var(--accent)"
@@ -2515,6 +2519,12 @@
    ],
    [
     "",
+    ".mk-pendtxt",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk-pick .mk-why",
     "color",
     "var(--mute2)"
@@ -2590,6 +2600,12 @@
     ".mk-subh",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk-undo:hover",
+    "background",
+    "var(--tint)"
    ],
    [
     "",

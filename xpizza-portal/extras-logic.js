@@ -219,12 +219,17 @@ export function extrasOutcomeCtx(draft) {
 // STRUCTURE S2 §5.2 REVIEW-DELETIONS (frame X2b): the FULL deletion list, by name. `ids` = the claim's identity ids (the fresh read's
 // deletionClaim ∪ the refusal's existing_ids ∪ the draft's own claim); each is named from the extra row that carried it (display.identity_id —
 // the published row, or a row still in the draft) with its group; an id no row carries is «Un extra que ya no está en el menú». Pure.
-export function deletionRows(draft, ids) {
+// «Quitar del menú» (U1 / U5): `dishes` (id → { name, place }, the caller's dish rows: the loaded draft, the draft, P-R1, the session's
+// snapshots) names a DISH id with «{categoría} · {subcategoría}»; a dish with no name is «Un producto que ya no está en el menú»; an id
+// neither lists keeps the extra string (the advisor's ruling: only an id the client cannot classify).
+export function deletionRows(draft, ids, dishes = null) {
   const byId = new Map();
   for (const src of [draft && draft.orig, draftSource(draft)]) {
     for (const e of extrasOf(src)) { const id = e.display.identity_id; if (typeof id === 'string' && id && !byId.has(id)) byId.set(id, { name: e.display.name, group: String(e.display.cat) }); }
   }
-  return [...new Set((Array.isArray(ids) ? ids : []).map(String))].sort().map((id) => (byId.has(id) ? { id, ...byId.get(id), gone: false } : { id, name: 'Un extra que ya no está en el menú', group: null, gone: true }));
+  const dish = dishes instanceof Map ? dishes : new Map();
+  const dishRow = (id) => { const x = dish.get(id); const named = typeof x.name === 'string' && x.name.trim() !== ''; return { id, name: named ? x.name : 'Un producto que ya no está en el menú', group: x.place || null, gone: !named }; };
+  return [...new Set((Array.isArray(ids) ? ids : []).map(String))].sort().map((id) => (byId.has(id) ? { id, ...byId.get(id), gone: false } : dish.has(id) ? dishRow(id) : { id, name: 'Un extra que ya no está en el menú', group: null, gone: true }));
 }
 
 // P-6 (plan r3 §3.3, Codex r2 #5): re-key a view-state id after adopting a save — ONLY through the server's authoritative extraRefs

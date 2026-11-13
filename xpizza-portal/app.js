@@ -23,7 +23,8 @@ import { setPhoto, draftPhotos, origPhotos, pendingPhotos, canEditDraft } from '
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false,
+  productRemoval: false, liveOrder: null, pendingRemovals: [], rewardKeys: new Set(), removalStash: new Map() };
 
 // ── DISH PHOTOS B — per-load photo facts (getEditableCatalog E-P3) and the upload controller ─────────────────────────────
 //   enabled   photosEnabled === true (the server's PHOTOS_UPLOADS): the uploader is drawn only then (no control without effect)
@@ -80,8 +81,9 @@ import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 import { closeIcon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
-import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm } from './extras-view.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm, openRemoveProductConfirm } from './extras-view.js';
 import { applyExposureOps, mergeDeletionClaim } from './editor.js';
+import { canRemoveProduct, removeProduct, undoRemoveProduct, pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows } from './editor.js';   // «Quitar del menú» (PLAN-portal-remove-product r3)
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -531,7 +533,7 @@ function repaintFromDraft() {
   // portal mockup screen 2), not in the list as products of their own: they are folded out here, NEW and PUBLISHED groups
   // alike, so the section count counts products. An orphan bucket left empty by that (an unsaved option has no section of
   // its own — the server derives it) is not shown.
-  state.groups = groupByCategory(src)
+  state.groups = groupByCategory(listSource())   // «Quitar del menú» (R3): a dish pending removal stays in its place until publish
     .map((g) => ({ ...g, items: g.items.filter((it) => !isNewGroupOption(state.draft, it, state.additionKeys) && !listIsGroupOption(it)) }))
     .filter((g) => g.items.length || (categoriesOf().some((c) => c && String(c.id) === g.category.id)));
   // the extras ARRAY, not a {key: price} map — the rows need their display records to show a name
@@ -570,6 +572,16 @@ function applyAddProductFacts(data) {
   // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
   const db0 = data && data.deletionBase;
   state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
+  // «Quitar del menú» (PLAN-portal-remove-product r3 §9; 5f P-R5 / P-R9 / P-R1 / P-R2): the switch, the ORIGINAL live order, the SAVED
+  // draft's removals and the reward dishes — strictly from the server, served only while the switch is on; absent ⇒ off / unreadable / none
+  state.productRemoval = !!(data && data.productRemoval === true);
+  const lo = state.productRemoval ? data.liveOrder : null;
+  state.liveOrder = lo && Array.isArray(lo.items) && lo.items.every((k) => typeof k === 'string') && Array.isArray(lo.rewards) && lo.rewards.every((k) => typeof k === 'string')
+    ? { items: [...lo.items], rewards: [...lo.rewards] } : null;
+  state.pendingRemovals = state.productRemoval && Array.isArray(data.pendingRemovals)
+    ? data.pendingRemovals.filter((r) => r && typeof r.key === 'string' && r.row && typeof r.row === 'object' && r.row.key === r.key) : [];
+  state.rewardKeys = new Set(state.productRemoval && Array.isArray(data.rewardKeys) ? data.rewardKeys.filter((k) => typeof k === 'string') : []);
+  state.removalStash = new Map();             // a new draft: this session's «Deshacer» snapshots end with the draft they came from
   state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
   state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
@@ -1152,7 +1164,7 @@ function refreshBar() {
   const nGroups = go ? movedGroups(go.was, go.now).length : 0;
   if (nGroups) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nGroups} ${nGroups === 1 ? 'grupo' : 'grupos'}`; $('rbtxt').append(sfx); }
   // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
-  const nTexts = n > 0 ? textEditedKeys().size : 0;
+  const nTexts = n > 0 ? new Set([...textEditedKeys().keys(), ...pendingRemovalMap().keys()]).size : 0;   // «Quitar del menú»: a dish edited AND removed counts once
   if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
@@ -1499,6 +1511,7 @@ function paint() {
   $('drawer').classList.toggle('namehold', renamesPending());
   renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
+  const pend = pendingRemovalMap();
   paintNameCall();
   // PLAN-public-menu-display T1 — the section-name control for the section on screen (mockup R1–R3b), or none: no draft, no
   // section of its own (the uncategorized bucket), or no section named yet (then the R1c callout is the one way in).
@@ -1537,6 +1550,7 @@ function paint() {
     photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
     textTagOf: rowTextTag,         // S4 (B) — «Nombre sin publicar» / «Cambios sin publicar», only with the text-edit switch on
     onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
+    pendingOf: (it) => (pend.has(rowId(it)) ? { onUndo: bound(() => undoRemoval(rowId(it))) } : null),   // «Quitar del menú» (R3)
   });
   // F-2 — a Sherpa-written draft gets the calm notice INSTEAD of the reset offer; a merchant's own unpublishable draft keeps today's
   if (state.platformPending) offerPlatformNotice($('detail'));
@@ -1783,6 +1797,54 @@ function endEditSession() {
 // a new load: the S2 §1.1 facts fail closed — today's drawer, no served names, no saved text edits — and any open copy goes
 // The products with unpublished text: this session's (the draft vs what was loaded) ∪ the SAVED draft's (pendingTexts, S2 §1.1)
 // — key → the fields; empty without the switch (today's list).
+// ── «Quitar del menú» (PLAN-portal-remove-product r3 §3.3 / §4 / §9; MOCKUP-portal-remove-product frames R1–R5) ─────────────────
+// §2's switches (the server's, with the text-edit drawer; the readable baseline) — the served collections travel positionally
+const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null });
+// The dishes pending removal, key → a COPY of what «Deshacer» restores (this session's snapshot first, else the saved draft's P-R1 entry)
+const pendingRemovalMap = () => (state.productRemoval === true && state.draft ? pendingRemovalsOf(state.draft, state.removalStash, state.pendingRemovals) : new Map());
+// The list's DISPLAY projection (never sent): the pending rows back at their live places, by the same rebuild a restore runs
+const listSource = () => removalListSource(state.draft, pendingRemovalMap(), state.liveOrder);
+// a removed dish's row (a copy) for the review's names and places
+const removedRowFor = (k) => removedRowOf(state.draft, pendingRemovalMap(), k);
+// «{categoría} · {subcategoría}» (the category alone without a subcategory) — R2's place and U5's second column
+const dishPlace = (row) => (row && row.display ? [row.display.cat == null ? null : categoryName(row.display.cat), typeof row.display.subcat === 'string' && row.display.subcat ? row.display.subcat : null].filter(Boolean).join(' \u00b7 ') : '');
+function svgTrashIcon() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'); s.append(p);
+  return s;
+}
+// R2 / R5: the confirm (the served rewardKeys decide the reward line — P-R2, never derived here)
+function openRemoveProduct(key, from) {
+  const row = (draftSource(state.draft).items || []).find((r) => r && r.key === key);
+  if (!row) return;
+  const reward = state.rewardKeys.has(key);
+  openRemoveProductConfirm({ name: `${row.display.name}`, place: dishPlace(row), reward, returnTo: from,
+    onConfirm: bound(() => confirmRemoveProduct(key)) });
+}
+// «Quitar»: the removal (all or nothing), its snapshot stashed for «Deshacer», the dish's upload stopped, and the drawer closed — the
+// confirmed removal supersedes an uncommitted copy with no second confirm (D-3). Focus lands on the row's «Deshacer».
+function confirmRemoveProduct(key) {
+  const r = removeProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (!r.ok) { if (state.drawerKey === key) renderDrawer(); return; }   // the predicate moved under the open confirm: nothing written
+  state.removalStash.set(key, r.snap);
+  if (uploader.jobOf(key)) uploader.cancel(key);
+  closeDrawer();
+  repaintFromDraft();
+  const u = [...document.querySelectorAll('#detail .irow.mk-pend .mk-undo')].find((b) => b.dataset.k === key);
+  if (u) u.focus();
+}
+// «Deshacer» (R3): the dish back from its snapshot, its stamp withdrawn, both orders rebuilt from the served live order (§4.2)
+function undoRemoval(key) {
+  const snap = pendingRemovalMap().get(key);
+  if (!snap) return;
+  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder);
+  if (!r.ok) return;
+  state.removalStash.delete(key);
+  repaintFromDraft();
+  const c = document.querySelector(`#detail .irow > [data-k="item::${CSS.escape(key)}"]`);
+  const chev = c && c.parentNode.querySelector('.rowchev');
+  if (chev) chev.focus();
+}
 function textEditedKeys() {
   const out = new Map();
   if (state.textEditEnabled !== true || !state.draft) return out;
@@ -1813,18 +1875,18 @@ function productReviewCtx() {
   const extraNames = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display).map((x) => [x.key, x.display.name]));
   // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the
   // server sends S2 fields only for an S2 op
-  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
-    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
+  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
+    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
   // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
   const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
   return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null,
-    extraGroup: (k) => extraGroups.get(k) || null, structure };
+    extraGroup: (k) => extraGroups.get(k) || null, structure, productRemoval: state.productRemoval === true };   // «Quitar del menú» (R4): the served switch
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly
   const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
-  const section = (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
-  return { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
+  const section = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
+  return { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: section };
 }
 // Codex S2 r1 P1-2 — the auth boundary ends the Extras page's LOCAL world too: every local editor (the inline row, X3, B, the rail
@@ -1851,6 +1913,11 @@ function resetEditFacts() {
   state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
+  state.productRemoval = false;
+  state.liveOrder = null;
+  state.pendingRemovals = [];
+  state.rewardKeys = new Set();
+  state.removalStash = new Map();
   resetExtrasLocal();
   endEditSession();
 }
@@ -2184,6 +2251,19 @@ function renderEditDrawer(d, it, keepScroll) {
     }
     fOpc.append(lrO, box);
     body.append(fOpc);
+  }
+  // «Quitar del menú» (R1 / R1b): the body's last child, under a hairline — only when §2's ONE predicate shows it; §2 row 6 (no readable
+  // baseline, or no served live order) draws it disabled with S2's approved line under it. The press writes nothing (R2 confirms).
+  const rp = canRemoveProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (rp.show) {
+    const act = mk('div', 'mk-rmact');
+    const ieRemove = document.createElement('button'); ieRemove.className = 'btn ghost mk-quiet-danger'; ieRemove.type = 'button';
+    ieRemove.append(svgTrashIcon(), document.createTextNode('Quitar del menú'));
+    if (rp.enabled) ieRemove.addEventListener('click', bound(() => openRemoveProduct(key, ieRemove)));
+    else lockControl(ieRemove, true);
+    act.append(ieRemove);
+    if (!rp.enabled) act.append(mk('div', 'ferr mk-ferr', 'No pudimos leer el menú publicado. Recargá la página.'));
+    body.append(act);
   }
 
   const foot = mk('div', 'dwf');
@@ -2783,6 +2863,7 @@ $('discard').addEventListener('click', () => {
   if (copyDirty()) return;   // unsaved edits: the whole bar waits (frame 1)
   if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
+  state.removalStash.clear();                           // «Quitar del menú»: the in-session removals went with the thrown-away edits
   endEditSession();                                     // S4: the drawer's working copy goes with the thrown-away edits
   $('drawer').classList.remove('show');
   repaintFromDraft();
@@ -2861,7 +2942,7 @@ async function openReviewFlow() {
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
     const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent,
-      extraName: productReviewCtx().extraName });   // S4: a group's options fold under its «Nombre en factura»
+      extraName: productReviewCtx().extraName, fiscalAckRequired: res && res.fiscalAckRequired });   // P-R8: the SAVE's word, never re-derived   // S4: a group's options fold under its «Nombre en factura»
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -3221,6 +3302,15 @@ function productRefusal(outcome) {
 // deletionBase / deletionClaim ONLY (generation + rid checked; the draft kept); (2) show the FULL list from that read; (3) «Confirmar y seguir»
 // resends the SAME request (the owner's save, or the manager's send) acknowledged, with the fresh base; (4) the review from the server's
 // fresh diff. «Cancelar» keeps the draft. A second refusal lands here again — never a loop of silent resends.
+// U1 / U5 — the dishes a deletion list can name, by identity id: the loaded draft, the draft now, P-R1 and this session's snapshots
+function removedDishes() {
+  const out = new Map();
+  for (const r of removalDishRows(state.draft, pendingRemovalMap())) {
+    const id = r.display.identity_id;
+    if (typeof id === 'string' && id && !out.has(id)) out.set(id, { name: typeof r.display.name === 'string' ? r.display.name : '', place: dishPlace(r) });
+  }
+  return out;
+}
 async function reviewDeletions(outcome) {
   releaseEditLock(state.reviewLock);
   state.reviewLock = null;
@@ -3239,7 +3329,7 @@ async function reviewDeletions(outcome) {
   const served = read && fresh.deletionClaim && Array.isArray(fresh.deletionClaim.ids) ? fresh.deletionClaim.ids : [];
   const ids = [...served, ...(Array.isArray(outcome.existingIds) ? outcome.existingIds : []), ...mergeDeletionClaim(draftSource(state.draft), 'ids')];
   openDeletionsReview({
-    rows: deletionRows(state.draft, ids),
+    rows: deletionRows(state.draft, ids, removedDishes()),
     line: read ? null : 'No pudimos leer el menú publicado. Recargá la página.',
     onCancel: () => { reviewAck = false; },
     onGo: bound(() => { if (freshBase) state.deletionBase = freshBase; reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
