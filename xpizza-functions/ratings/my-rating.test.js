@@ -87,6 +87,18 @@ const W = V2.WINDOW_MS;
   }
   ok('the writer\'s predicate: no / bad / staff / handheld token, another customer, a guest order, an unknown order and a tombstoned caller ⇒ the ONE generic 403');
 
+  // ── 1b. the advisor's follow-up to PLAN-3a-capp-member-reads R2.1: customerUidOf is member-auth's predicate — the inactivity sweep's
+  //        claim (user_profiles/{uid}/deleting_at) and user_private/{uid}/deleted_at refuse the WRITER (rateOrder) and this READ alike ──
+  for (const tomb of [`user_profiles/${A}/deleting_at`, `user_private/${A}/deleted_at`]) {
+    const db = fakeDb(); await place(db, A, 'XPZ-1'); await fulfil(db, 'XPZ-1', 1000); db.set(tomb, 5);
+    const r = await call(h(db), { token: `tok-${A}`, query: { order_id: 'XPZ-1' } });
+    assert.strictEqual(r.code, 403, `🔴 getMyRating: ${tomb} ⇒ 403`); assert.deepStrictEqual(r.body, GENERIC);
+    const w = await rateOrderCore(db, { body: { order_id: 'XPZ-1', store: 5 }, idToken: `tok-${A}`, now: 2000, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
+    assert.strictEqual(w.httpStatus, 403, `🔴 rateOrder: ${tomb} ⇒ 403`);
+    assert.ok(!db.get(`ratings_v2/XPZ-1/store`), `🔴 rateOrder: ${tomb} ⇒ nothing rated`);
+  }
+  ok('member-auth predicate (R2.1 follow-up): the sweep claim (deleting_at) and user_private/deleted_at refuse rateOrder (nothing written) AND getMyRating — the ONE generic 403');
+
   // ── 2. strict request ──
   {
     const db = fakeDb(); await place(db, A, 'XPZ-1');
@@ -152,4 +164,4 @@ const W = V2.WINDOW_MS;
 
   FINISHED = true;
   console.log(`my-rating: OK (${n})`);
-})().catch((e) => { process.stderr.write(`my-rating: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`my-rating: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

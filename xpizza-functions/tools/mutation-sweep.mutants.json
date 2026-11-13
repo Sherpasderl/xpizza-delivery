@@ -33261,13 +33261,14 @@
   "id": "smr-8",
   "slice": "smr",
   "label": "the shared predicate accepts a handheld token as a customer (writer + reader)",
-  "file": "ratings/rate-order.js",
-  "from": "if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;",
-  "to": "if (!dec || dec.customer !== true || !dec.uid) return null;",
+  "file": "member-auth.js",
+  "from": "  if (!dec || dec.customer !== true || dec.handheld === true || typeof dec.uid !== 'string' || !dec.uid) return null;\n",
+  "to": "  if (!dec || dec.customer !== true || typeof dec.uid !== 'string' || !dec.uid) return null;\n",
   "command": [
    "node",
    "ratings/my-rating.test.js"
-  ]
+  ],
+  "kills_with": "a handheld token ⇒"
  },
  {
   "id": "smr-9",
