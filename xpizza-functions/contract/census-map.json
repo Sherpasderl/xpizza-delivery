@@ -476,6 +476,7 @@
   "catalog/extras-consequences.js#withConsequences": "catalog",
   "catalog/firestore-fake.js#updateNow": "fixtures",
   "catalog/edit-preflight.js#attributor": "catalog",
+  "catalog/edit-preflight.js#s4Problems": "catalog",
   "catalog/edit-preflight.js#editPreflight": "catalog",
   "catalog/group-intake.js#groupIssues": "catalog",
   "catalog/group-intake.js#rewardKeysOf": "catalog",

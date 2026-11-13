@@ -209,6 +209,7 @@
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
     "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -665,6 +666,7 @@
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
     "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -1147,6 +1149,7 @@
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
     "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -1600,6 +1603,7 @@
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
+    "xpizza-functions/catalog/s4-staging.test.js",
     "xpizza-functions/catalog/section-compare.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
@@ -2949,6 +2953,7 @@
   "catalog/snapshot-fallback.js",
   "catalog/source-accounting.js",
   "catalog/source-store.js",
+  "catalog/staged-categories.js",
   "catalog/structure-budget.js",
   "catalog/structure-gate.js",
   "catalog/text-version.js",
@@ -3593,6 +3598,12 @@
   "catalog/edit-catalog-handler.js": {
    "pins": [
     {
+     "file": "s3-served.test.mjs",
+     "inverses": [
+      "tools/s4sect-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
@@ -3601,12 +3612,12 @@
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "s3-served.test.mjs",
     "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
@@ -3677,7 +3688,9 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/s4sect-wiring.guard.test.js"
+   ]
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -4020,7 +4033,8 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4032,7 +4046,8 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4042,7 +4057,8 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -4053,20 +4069,27 @@
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
       "tools/s2bext-module-inverse.js",
-      "tools/s2core-module-inverse.js"
+      "tools/s2core-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/frozenkeys-wiring.guard.test.js"
+    "xpizza-functions/frozenkeys-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
+  },
+  "catalog/staged-categories.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/structure-budget.js": {
    "pins": [],

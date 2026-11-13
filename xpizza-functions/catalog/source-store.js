@@ -51,7 +51,7 @@ const KNOWN_STRUCTURE_FIELDS = Object.freeze([
   'schema_version', 'item_order', 'extra_order', 'categories', 'extra_categories',
   'variant_items', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'pickup_only_cats', 'weekend_only_cats',
-  'badge_priority',
+  'badge_priority', 'staged_categories',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras',
 ]);
 
@@ -210,7 +210,7 @@ function validateSource(source, rid) {
   const st = source.structure;
   if (!st || typeof st !== 'object') fail(`${rid} — structure missing`);
   if (!Array.isArray(st.categories) || st.categories.length === 0) fail(`${rid} — structure.categories must be a non-empty array`);
-  if (!Array.isArray(st.item_order)) fail(`${rid} — structure.item_order must be an array`);
+  if (!Array.isArray(st.item_order)) fail(`${rid} — structure.item_order must be an array`); require('./staged-categories').validateStaged(st, rid, fail);   // S4 §1.2: staged categories
 
   const catIds = new Set(st.categories.map((c) => c && c.id));
   // Duplicate category ids become duplicate DOM ids (`id="cat-<id>"`), so the second section is
@@ -762,7 +762,7 @@ function sourceToBuildInputs(source) {
   // 1A Task 4: extra_categories (the ordered option-group namespace) and badges (the definitions a tag
   // resolves against) join the list. Both are display data the build was silently dropping, so a
   // catalog built from a source could not group its options or render a badge.
-  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {
+  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras', 'staged_categories']) {   // S4 R2.1: staged categories carried
     if (source.structure[f] !== undefined) formData[f] = source.structure[f];
   }
   if (Array.isArray(source.extras) && source.extras.some((e) => e.display)) {

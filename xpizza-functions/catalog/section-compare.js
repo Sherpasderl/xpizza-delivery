@@ -21,6 +21,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const chars = (s) => [...String(s)].length;
 const refuse = (code, detail, { status = 400, field = 'categories', key = null } = {}) => { throw new AP.AddProductError(code, detail, { status, field, key }); };
 const catsOf = (b) => (isObj(b.structure) && Array.isArray(b.structure.categories) ? b.structure.categories : []);
+const stagedOf = (b) => (isObj(b.structure) && Array.isArray(b.structure.staged_categories) ? b.structure.staged_categories : []);   // §1.2 (shape: staged-categories.js via validateSource)
 const without = (o, ks) => { const c = JSON.parse(JSON.stringify(o)); for (const k of ks) delete c[k]; return c; };
 
 function judgeCategories(A, D) {
@@ -28,9 +29,10 @@ function judgeCategories(A, D) {
   const aById = new Map(ac.map((c) => [c.id, c]));
   const dIds = new Set(dc.map((c) => c.id));
   for (const c of ac) if (!dIds.has(c.id)) refuse('structure_changed', `the section ${JSON.stringify(c.id)} cannot be removed`);
-  if (dc.length > CATEGORIES_MAX) refuse('structure_caps', `at most ${CATEGORIES_MAX} sections`);
-  const newIds = [];
-  const folded = new Set();
+  const ds = stagedOf(D);
+  if (dc.length + ds.length > CATEGORIES_MAX) refuse('structure_caps', `at most ${CATEGORIES_MAX} sections (staged ones included)`);
+  const newIds = ds.map((e) => e.id);   // a staged category is never live
+  const folded = new Set(ds.filter(isObj).map((e) => AP.normalizeName(e.name)));
   for (const c of dc) {
     if (!isObj(c)) refuse('structure_changed', 'a section is malformed');
     const live = aById.get(c.id);
@@ -127,6 +129,7 @@ function compareToActive(args) {
   const aKeys = new Set(aOrder);
   Dp.structure.item_order = [...aOrder.filter((k) => dKeys.has(k)), ...((D.structure && D.structure.item_order) || []).filter((k) => !aKeys.has(k))];
   claimMoveProjection(A, D, Dp);
+  if (has(A.structure, 'staged_categories')) Dp.structure.staged_categories = clone(A.structure.staged_categories); else delete Dp.structure.staged_categories;   // judged above
   const renderedCategories = [...new Set([...(args.renderedCategories || []), ...declared])];
   return AP.compareToActive({ ...args, draftBuilt: Dp, renderedCategories });
 }

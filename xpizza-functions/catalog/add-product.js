@@ -714,8 +714,8 @@ function denyExtrasOf(ex) {
 // unpublished group removed, back to today's ABSENT shape) only while the ACTIVE catalog has no variant map at all — so
 // every entry is an unpublished addition, which compareToActive validates as whole new groups. Any other authored field
 // added or dropped is refused exactly as before.
-function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHasVariantItems = true } = {}) {
-  const exempt = (k) => !activeHasVariantItems && k === 'variant_items';
+function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHasVariantItems = true, stagedFree = false } = {}) {
+  const exempt = (k) => (!activeHasVariantItems && k === 'variant_items') || (stagedFree === true && k === 'staged_categories');   // S4: the sections switch lets a save add / drop staged categories
   const a = Object.keys(incomingStructure || {}).filter((k) => !exempt(k)).sort();
   const b = Object.keys(storedStructure || {}).filter((k) => !exempt(k)).sort();
   if (!sameJson(a, b)) refuse('structure_changed', `the menu's structure fields cannot be added or removed here (${a.join(',')} vs ${b.join(',')})`, { field: 'structure' });

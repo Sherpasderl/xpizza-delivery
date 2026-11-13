@@ -272,7 +272,7 @@ function buildCatalogV2(restaurantId, opts = {}) {
   // Source-inversion is the point of the whole slice: derivation is the BOOTSTRAP, not the authority.
   //
   // Invisible to the parity gate, because at bootstrap the authored order IS the derived order.
-  carryStructure('extra_categories', () => undefined);
+  carryStructure('extra_categories', () => undefined); carryStructure('staged_categories', () => undefined);   // S4 R2.1: carried into the version, never served (CARRIED_FROM_STRUCTURE)
   if (structure.extra_categories === undefined) {
     const cats = [];
     for (const e of extras) {

@@ -14,6 +14,41 @@ const HUNKS = Object.freeze([
   "file": "catalog/platform-structure.js",
   "now": "  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: SECTIONS === true };\n",
   "was": "  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: false };\n"
+ },
+ {
+  "file": "catalog/source-store.js",
+  "now": "  'badge_priority', 'staged_categories',\n",
+  "was": "  'badge_priority',\n"
+ },
+ {
+  "file": "catalog/source-store.js",
+  "now": "  if (!Array.isArray(st.item_order)) fail(`${rid} — structure.item_order must be an array`); require('./staged-categories').validateStaged(st, rid, fail);   // S4 §1.2: staged categories\n",
+  "was": "  if (!Array.isArray(st.item_order)) fail(`${rid} — structure.item_order must be an array`);\n"
+ },
+ {
+  "file": "catalog/source-store.js",
+  "now": "  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras', 'staged_categories']) {   // S4 R2.1: staged categories carried\n",
+  "was": "  for (const f of ['variant_items', 'pickup_only_cats', 'weekend_only_cats', 'extras_by_category', 'extras_by_item', 'exposure', 'extra_categories', 'badges', 'badge_priority', 'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']) {\n"
+ },
+ {
+  "file": "catalog/form-menu-source.js",
+  "now": "  carryStructure('extra_categories', () => undefined); carryStructure('staged_categories', () => undefined);   // S4 R2.1: carried into the version, never served (CARRIED_FROM_STRUCTURE)\n",
+  "was": "  carryStructure('extra_categories', () => undefined);\n"
+ },
+ {
+  "file": "catalog/add-product.js",
+  "now": "function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHasVariantItems = true, stagedFree = false } = {}) {\n  const exempt = (k) => (!activeHasVariantItems && k === 'variant_items') || (stagedFree === true && k === 'staged_categories');   // S4: the sections switch lets a save add / drop staged categories\n",
+  "was": "function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHasVariantItems = true } = {}) {\n  const exempt = (k) => !activeHasVariantItems && k === 'variant_items';\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  let photoMap = null; if (textEdit) { const pf = await require('./edit-preflight').runEditPreflight({ rid, draft: candidate, live, addProduct, mint: MO.mintCapabilities().enabled, renderedCategories: rendererContract(rid).renderedCategories, stored }); if (pf) return reply(pf.status, { ...pf.body, ...(pf.body.key && !pf.body.ref && Object.prototype.hasOwnProperty.call(refOfKey, pf.body.key) ? { ref: refOfKey[pf.body.key] } : {}) }); }   // S2 (§2 r1 E/F): with the switch on, ONE ordered preflight answers the first refusal, field-tagged — the publish runs the same pass\n",
+  "was": "  let photoMap = null; if (textEdit) { const pf = await require('./edit-preflight').runEditPreflight({ rid, draft: candidate, live, addProduct, mint: MO.mintCapabilities().enabled, renderedCategories: rendererContract(rid).renderedCategories }); if (pf) return reply(pf.status, { ...pf.body, ...(pf.body.key && !pf.body.ref && Object.prototype.hasOwnProperty.call(refOfKey, pf.body.key) ? { ref: refOfKey[pf.body.key] } : {}) }); }   // S2 (§2 r1 E/F): with the switch on, ONE ordered preflight answers the first refusal, field-tagged — the publish runs the same pass\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined, stagedFree: require('./platform-structure').structureCapabilities().sections === true });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first\n",
+  "was": "    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

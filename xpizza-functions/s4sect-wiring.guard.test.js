@@ -8,7 +8,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyS4sectModule } = require('./tools/s4sect-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['catalog/platform-structure.js'], 'the owned (pinned) files S4 edits same-line');
+assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/platform-structure.js', 'catalog/source-store.js'], 'the owned (pinned) files S4 edits same-line');
 for (const f of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, f), 'utf8'); const src = disk;   // BASE b6f6b82b (asm8) already carries every older layer's lines
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

@@ -43,7 +43,7 @@ function attributor(draft) {
    draft: the source being saved or published (options already re-derived); live: the ACTIVE built version ({ items, structure });
    reservedSet: the restaurant's reserved-key Map (reserved-keys.reservedKeySet); registryTaken: the Set of renamed labels the
    identity registry already holds (the caller reads it); mint: the minting switch. Pure. */
-function editPreflight({ draft, live, reservedSet = new Map(), registryTaken = new Set(), mint = false, renderedCategories = [] }) {
+function editPreflight({ draft, live, reservedSet = new Map(), registryTaken = new Set(), mint = false, renderedCategories = [], stored = null }) {
   const at = attributor(draft);
   const liveItems = (live && Array.isArray(live.items) ? live.items : []).filter((it) => isObj(it) && isObj(it.display));
   const liveByKey = new Map(liveItems.map((it) => [it.key, it]));
@@ -83,6 +83,10 @@ function editPreflight({ draft, live, reservedSet = new Map(), registryTaken = n
   { const hit = FK.renamedLabels({ draft, live: { items: liveItems } }).find((x) => registryTaken.has(x.name) && AP.normalizeName(x.key) !== AP.normalizeName(x.name)); if (hit) return bad(400, at(hit.key, 'name', 'name_previously_used')); }
   { const rc = RK.renameConflicts({ items, activeItems: liveItems, reserved: reservedSet })[0]; if (rc) return bad(400, at(rc.key, 'name', 'name_previously_used')); }
 
+  // S4 (PLAN-structure-S4-r4, sections ON) · typed section / subsection refusals BEFORE validateSource, and — at the SAVE only (it passes
+  // the stored draft) — the new-id derivation (R3.5) and the promotion order (R4.2)
+  if (sectionsOn) { const s4 = s4Problems({ draft, live, items, stored }); if (s4) return bad(400, s4); }
+
   // 5 · subsection coverage of every product whose section or subsection changed
   const cats = draft && draft.structure && draft.structure.categories;
   const moved = items.filter((it) => { const was = wasOf(it); return !was || was.display.cat !== it.display.cat || (was.display.subcat == null ? null : was.display.subcat) !== (it.display.subcat == null ? null : it.display.subcat); });
@@ -110,9 +114,47 @@ function editPreflight({ draft, live, reservedSet = new Map(), registryTaken = n
   return null;
 }
 
+// S4: every member of every category whose subcats changed (R3.6), declared categories never empty (R3.3), new ids (R3.5), promotion
+// order (R4.2). Returns null | { error, key, field, … }. The derivations are section-transitions' (the portal previews with the same bytes).
+function s4Problems({ draft, live, items, stored }) {
+  const st = draft && isObj(draft.structure) ? draft.structure : {};
+  const cats = (Array.isArray(st.categories) ? st.categories : []).filter(isObj);
+  const liveCats = new Map(((live && live.structure && Array.isArray(live.structure.categories)) ? live.structure.categories : []).filter(isObj).map((c) => [c.id, c]));
+  for (const c of cats) {
+    const members = items.filter((it) => it.display.cat === c.id);
+    if (!members.length) return { error: 'section_emptied', key: c.id, field: 'cat' };
+    const subs = Array.isArray(c.subcats) ? c.subcats : [];
+    const lc = liveCats.get(c.id);
+    if (lc && JSON.stringify(Array.isArray(lc.subcats) ? lc.subcats : []) === JSON.stringify(subs)) continue;   // unchanged: today's rules
+    for (const sc of subs) if (!members.some((it) => it.display.subcat === sc)) return { error: 'subcat_empty', key: c.id, field: 'subcats', subcat: sc };
+    if (subs.length) {
+      const missing = members.filter((it) => !subs.includes(it.display.subcat)).map((it) => (own(it, 'ref') ? it.ref : it.key));
+      if (missing.length) return { error: 'subcat_partial', key: c.id, field: 'subcats', missing };
+    }
+  }
+  if (!stored || !isObj(stored.structure)) return null;
+  const ST = require('./section-transitions');
+  const sst = stored.structure;
+  const sStaged = Array.isArray(sst.staged_categories) ? sst.staged_categories.filter(isObj) : [];
+  const storedIds = new Set([...(Array.isArray(sst.categories) ? sst.categories : []).filter(isObj).map((c) => c.id), ...sStaged.map((e) => e.id)]);
+  const dStaged = Array.isArray(st.staged_categories) ? st.staged_categories.filter(isObj) : [];
+  const fresh = [...cats, ...dStaged].filter((c) => !storedIds.has(c.id));   // categories order, then staged order
+  const want = ST.allocateCategoryIds(fresh.map((c) => c.name), [...storedIds]);
+  const off = fresh.findIndex((c, i) => c.id !== want[i]);
+  if (off !== -1) return { error: 'category_id_mismatch', key: fresh[off].id, field: 'cat', expected: want[off] };
+  const declared = cats.map((c) => c.id);
+  const promoted = sStaged.filter((e) => declared.includes(e.id));
+  if (promoted.length) {
+    const pIds = new Set(promoted.map((e) => e.id));
+    const expected = ST.promotedOrder(declared.filter((id) => !pIds.has(id)), promoted.map((e) => ({ id: e.id, after: e.after })));
+    if (JSON.stringify(expected) !== JSON.stringify(declared)) return { error: 'staged_promotion_mismatch', key: promoted[0].id, field: 'cat', expected };
+  }
+  return null;
+}
+
 /* The I/O wrapper both handlers call: reads the identity registry for the renamed labels and the reserved-key set through the
    add-product io, then runs the pure pass. A read error is a retryable 503, never a pass. */
-async function runEditPreflight({ rid, draft, live, addProduct, mint, renderedCategories }) {
+async function runEditPreflight({ rid, draft, live, addProduct, mint, renderedCategories, stored = null }) {
   const rn = FK.renamedLabels({ draft, live });
   let registryTaken = new Set(); let reservedSet = new Map();
   if (rn.length) {
@@ -120,7 +162,7 @@ async function runEditPreflight({ rid, draft, live, addProduct, mint, renderedCa
     try { registryTaken = await addProduct.registryKeysTaken(rid, rn.map((x) => x.name), 'name'); } catch (_) { return { status: 503, body: { error: 'store_unavailable', retryable: true } }; }
     try { reservedSet = await addProduct.readReservedKeys(rid); } catch (_) { return { status: 503, body: { error: 'store_unavailable', retryable: true } }; }
   }
-  return editPreflight({ draft, live, reservedSet, registryTaken, mint, renderedCategories });
+  return editPreflight({ draft, live, reservedSet, registryTaken, mint, renderedCategories, stored });
 }
 
 module.exports = { editPreflight, runEditPreflight, attributor };
