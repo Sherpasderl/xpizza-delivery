@@ -21,6 +21,10 @@ const { effectiveGroups } = require('./exposure-transitions');
 
 const same = (a, b) => JSON.stringify(canonicalize(a === undefined ? null : a)) === JSON.stringify(canonicalize(b === undefined ? null : b));
 
+// a dish that left the draft (the live menu has it, the draft has neither the dish nor an override for it): its override's removal is that
+// removal's own cleanup (compareToActive judges the removal itself — declared or existing_item_removed), never an attach / detach
+const leftWithDish = (k, dov, live, draftBuilt) => !Object.prototype.hasOwnProperty.call(dov, k) && (live.items || []).some((i) => i && i.key === k) && !(draftBuilt.items || []).some((i) => i && i.key === k);
+
 function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) {
   const lk = new Set((liveExtraRecords || []).map((e) => e.key)); const dk = new Set((draftExtraRecords || []).map((e) => e.key));
   if (lk.size !== dk.size || [...dk].some((k) => !lk.has(k))) return true;
@@ -32,16 +36,17 @@ function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) 
   if (!same(lx.category_allow, dx.category_allow)) return true;
   const lo = lx.item_overrides || {}, dov = dx.item_overrides || {};
   for (const k of new Set([...Object.keys(lo), ...Object.keys(dov)])) {
+    if (leftWithDish(k, dov, live, draftBuilt)) continue;   // «Quitar del menú» (train/portal-structure): a removed dish's override leaves with it — its cleanup, not an Extras-page op
     for (const f of ['add', 'deny']) if (!same((lo[k] || {})[f], (dov[k] || {})[f])) return true;
   }
   return false;
 }
 
-function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false }) {
+function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, removal = null }) {   // removal: removalDiffOptions(live, draft) («Quitar del menú» P-R3) or null
   const s2 = !!extrasCatalog && s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords });
   const L = photos ? { ...live, photos: photos.active } : live;
   const D = photos ? { ...draftBuilt, photos: photos.draft } : draftBuilt;
-  const diff = withConsequences(catalogDiff(L, D, { pairExtras: !s2 }), { live, liveExtraRecords, draftBuilt, draftExtraRecords });
+  const diff = withConsequences(catalogDiff(L, D, { pairExtras: !s2, ...(removal || {}) }), { live, liveExtraRecords, draftBuilt, draftExtraRecords });
   if (!s2) return diff;
 
   const lx = new Map((liveExtraRecords || []).map((e) => [e.key, e])); const dx = new Map((draftExtraRecords || []).map((e) => [e.key, e]));
@@ -74,6 +79,7 @@ function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, pho
   }
   const lov = lexp.item_overrides || {}; const dov = dxp.item_overrides || {};
   for (const k of new Set([...Object.keys(lov), ...Object.keys(dov)])) {
+    if (leftWithDish(k, dov, live, draftBuilt)) continue;   // the removed dish's own cleanup is no attachment row
     const a = lov[k] || {}; const d = dov[k] || {};
     for (const g of groupsAll) {
       const was = list(a.add).includes(g) ? 'attached' : list(a.deny).includes(g) ? 'detached' : null;

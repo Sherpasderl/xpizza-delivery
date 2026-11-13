@@ -160,7 +160,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     }
     let enabled;
     try { enabled = (await photos.enabled()) === true; } catch (_) { enabled = false; }
-    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {
+    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !(await require('./catalog-edit').removalPhotoChangesOk({ map: photoMap, stored: stored.photos || null, opts: require('./catalog-edit').removalDiffOptions(live, candidate), storedItems: stored.items, candidateItems: candidate.items, readActive: () => photos.readActive(rid, baseActiveVersionId) }))) {   // B-5 / A-4 (RULED): a declared removal's own photo leaving, or a withdrawn removal's ACTIVE photo returning, is not an upload
       return reply(409, { error: 'photo_change_disabled', detail: 'photo changes are switched off; the photos already in the draft are kept' });
     }
   }
@@ -367,7 +367,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims
+      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims
     }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, photos: photoMap });   // S2-core §4: caps + byte budgets, before the write
   } catch (e) {
     if (e instanceof AP.AddProductError) {
@@ -424,7 +424,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
   // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
-  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)
+  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a
@@ -446,7 +446,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }));
   // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
   // keys and ids, canonical order) before it builds the review.
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(Object.keys(extraRefs).length ? { extraRefs } : {}) });   // S2-core (P-6): { tmp ref: key } for the extras this save allocated
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(Object.keys(extraRefs).length ? { extraRefs } : {}), ...(require('./catalog-edit').fiscalAckWaived({ live, draftBuilt, draft: next, diff, liveExtraRecords: liveRes.extraRecords, draftExtraRecords, activePhotos, draftPhotos: photoMap }) ? { fiscalAckRequired: false } : {}) });   // S2-core (P-6): { tmp ref: key } for the extras this save allocated   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };

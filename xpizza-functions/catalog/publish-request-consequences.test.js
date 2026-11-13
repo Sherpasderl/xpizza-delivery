@@ -97,7 +97,11 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     const diff = require('./extras-consequences').withConsequences(plain, { live: { ...live.built, extras: live.inputs.extras }, liveExtraRecords: live.built.extras, draftBuilt: { ...d.built, extras: d.inputs.extras }, draftExtraRecords: d.built.extras });
     assert.ok(diff.consequences && diff.consequences.length, `${L}: premise — the draft carries a consequence`);
     const state = { rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored) };
-    const r = await w.request(issueEditToken({ ...state, diff }));
+    const token = issueEditToken({ ...state, diff });
+    const r = await w.request(token);
+    // «Quitar del menú» (Codex remove-refs r1 P2-2): the request answers exactly what the owner publish answers
+    const p = await w.ownerPublish(token);
+    assert.deepStrictEqual([p.status, p.body.error], [400, 'existing_item_changed'], `${L}: premise — the owner publish refuses the OFF move (${JSON.stringify(p.body).slice(0, 160)})`);
     // the folded token VERIFIES (it gets past the re-match), and then the request's current-state gate (S2-core Codex build r1 P2-6) judges
     // the draft as the owner's publish would: with item_text_edit OFF a section move is not an edit this switch allows
     assert.deepStrictEqual([r.status, r.body.error], [400, 'existing_item_changed'], `${L}: with the switch OFF the folded token verifies and the gate refuses the move (got ${JSON.stringify(r)})`);
@@ -121,6 +125,28 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
       const p = await w.ownerPublish(saved.token);
       assert.strictEqual(p.status, 200, `${L}: ${label} — the owner publish's recompute equals the save's (got ${JSON.stringify(p.body).slice(0, 200)})`);
     }
+  });
+
+  // «Quitar del menú» Codex r1 P2-2 (advisor RULED 11-12): the manager's request runs the SAME structural assessment as the owner's publish
+  // (compareToActive), before the request is written — a token-bound draft the owner publish refuses is refused at the request too.
+  await cell('PRS-STRUCTURE', async (L) => {
+    SWITCH.enabled = true;
+    const w = world(); await w.ready;
+    const { source } = await PR.readDraftFrom(w.fs, FISCAL);
+    const draft = JSON.parse(JSON.stringify(source)); draft.structure.exposure.category_allow.ny = ['Salsas & Queso', 'Carnes'];   // an unrelated exposure change
+    await w.meta('source').set(draft);
+    const { source: stored, updateTime } = await PR.readDraftFrom(w.fs, FISCAL);
+    const live = buildSourceCandidate(FISCAL, w.live); const d = buildSourceCandidate(FISCAL, stored);
+    const { withConsequences } = require('./extras-consequences');
+    const diff = withConsequences(catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras }), { live: { ...live.built, extras: live.inputs.extras }, liveExtraRecords: live.built.extras, draftBuilt: { ...d.built, extras: d.inputs.extras }, draftExtraRecords: d.built.extras });
+    const token = issueEditToken({ rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored), diff });
+    const p = await w.ownerPublish(token);
+    assert.deepStrictEqual([p.status, p.body.error], [400, 'structure_changed'], `${L}: premise — the owner publish refuses it (${JSON.stringify(p.body).slice(0, 200)})`);
+    const r = await w.request(token);
+    // train/portal-structure: a category_allow change is an Extras-page op — with the S2 switch OFF the request's current-state gate (S2-core
+    // Codex build r1 P2-6) answers the TYPED refusal first; refused before anything is written, as the owner publish refuses it
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'extras_catalog_not_supported_yet'], `${L}: the manager's request refuses it (got ${JSON.stringify(r)})`);
+    assert.strictEqual(await w.slot(), null, `${L}: no request is written`);
   });
 
   await cell('MRC-HELPER-PURE', (L) => {

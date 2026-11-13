@@ -21,7 +21,7 @@ async function judge({ rid, draft, draftRecords, live, liveExtraRecords, addProd
       draftAuthored: Object.keys(draft.structure || {}), renderedCategories: require('./source-store').rendererContract(rid).renderedCategories,
       deletedIds: draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? draft.deleted_ids.ids : [],
       authoring: require('./platform-groups').groupCapabilities().authoring, extrasAuthoring: require('./platform-extras').extrasCapabilities().authoring,
-      textEdit: require('./item-text-edit').textEditCapabilities().enabled, extrasCatalog,
+      textEdit: require('./item-text-edit').textEditCapabilities().enabled, extrasCatalog, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,
     });
   }
   const activeKeys = new Set(active.extras.map((e) => e.key));

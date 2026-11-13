@@ -165,6 +165,8 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
+    "xpizza-functions/catalog/remove-dish-refs.test.js",
+    "xpizza-functions/catalog/remove-product-server.test.js",
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
@@ -560,6 +562,7 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
+    "xpizza-functions/catalog/remove-product-server.test.js",
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
@@ -977,6 +980,8 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
+    "xpizza-functions/catalog/remove-dish-refs.test.js",
+    "xpizza-functions/catalog/remove-product-server.test.js",
     "xpizza-functions/catalog/renderer-contract.test.js",
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
@@ -1370,6 +1375,7 @@
     "xpizza-functions/catalog/publish-request.test.js",
     "xpizza-functions/catalog/redeem-eligibility.test.js",
     "xpizza-functions/catalog/redeem-exclusion.test.js",
+    "xpizza-functions/catalog/remove-product-server.test.js",
     "xpizza-functions/catalog/resolve-lines-extras.test.js",
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
@@ -2635,6 +2641,7 @@
   "catalog/move-rules.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
+  "catalog/platform-removal.js",
   "catalog/platform-structure.js",
   "catalog/portal-reads.js",
   "catalog/pricing-tables.js",
@@ -3217,6 +3224,7 @@
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2core-module-inverse.js"
@@ -3224,7 +3232,7 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/grpid-wiring.guard.test.js",
+    "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
@@ -3380,6 +3388,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/platform-removal.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/platform-structure.js": {
    "pins": [],
    "lifts": []
@@ -3451,29 +3463,46 @@
      "file": "xpizza-functions/catalog/reserved-keys-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
     {
+     "file": "xpizza-functions/grpid-wiring.guard.test.js",
+     "inverses": [
+      "tools/grpid-module-inverse.js",
+      "tools/rdr-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
+      "tools/rdr-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/catalog/publish-paths.test.js",
-    "xpizza-functions/grpid-wiring.guard.test.js",
+    "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/grpid-wiring.guard.test.js",
+     "inverses": [
+      "tools/grpid-module-inverse.js",
+      "tools/rdr-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/grpid-wiring.guard.test.js"
+    "xpizza-functions/rdr-wiring.guard.test.js"
    ]
   },
   "catalog/reserved-keys-audit.js": {

@@ -77,6 +77,79 @@ function priceSanity(key, surface, old, next, out) {
   if (old > 0 && Math.abs(next - old) / old > SWING_LIMIT) out.push({ key, surface, reason: 'swing_gt_50', old, new: next });
 }
 
+// «Quitar del menú» P-R1: the editor read's rows for the live dishes a SAVED draft removes (the comparator's honoured removals) —
+// { key, identity_id, row: the live item, after: its live item_order predecessor or null, photo: its live photo entry or null }, sorted
+// by key, plus its own refs (B-2). Here (not in portal-reads) because the stamp is identity: this module already owns reading it.
+function pendingRemovalRows(liveBuilt, keys, photoMap = null) {
+  const items = new Map(((liveBuilt && liveBuilt.items) || []).map((it) => [it && it.key, it]));
+  const order = (liveBuilt && liveBuilt.structure && liveBuilt.structure.item_order) || [];
+  const photos = new Map(photoMap && typeof photoMap === 'object' ? Object.entries(photoMap) : []);   // A-1: the ACTIVE entries in the draft map's shape (portal-reads)
+  const st = (liveBuilt && liveBuilt.structure) || {};
+  const ov = new Map(Object.entries(st.exposure && st.exposure.item_overrides && typeof st.exposure.item_overrides === 'object' ? st.exposure.item_overrides : {}));
+  const ebi = new Map(Object.entries(st.extras_by_item && typeof st.extras_by_item === 'object' ? st.extras_by_item : {}));
+  const rei = Array.isArray(st.redeem_eligible_items) ? st.redeem_eligible_items : [];
+  return [...keys].sort().map((key) => { const row = items.get(key) || null; const i = order.indexOf(key);
+    return { key, identity_id: row && row.display && row.display.identity_id !== undefined ? row.display.identity_id : null, row, after: i > 0 ? order.slice(i - 1, i).pop() : null, photo: photos.has(key) ? photos.get(key) : null,
+      // B-2: the dish's OWN refs, so a reload «Deshacer» restores them exactly (the entries P-R4 lets a removal take)
+      refs: { item_override: ov.has(key) ? ov.get(key) : null, extras_by_item: ebi.has(key) ? ebi.get(key) : null, redeem_index: rei.includes(key) ? rei.indexOf(key) : null } }; });
+}
+// «Quitar del menú» P-R3 (switch P-R5): the diff option for a draft whose deletion claim names live dishes — { declared: Set<live key> },
+// the live dishes whose identity stamp is in `draft.deleted_ids.ids` and whose key the draft no longer has. Switch OFF, or no claim → null
+// (today's diff). The save, the owner publish and the manager request pass it alike, so the token-bound diff re-matches.
+function removalDiffOptions(liveBuilt, draft) {
+  if (!require('./platform-removal').removalCapabilities().productRemoval) return null;
+  const ids = draft && draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? new Set(draft.deleted_ids.ids) : null;
+  if (!ids || !ids.size) return null;
+  const inDraft = new Set(((draft && draft.items) || []).map((it) => it && it.key));
+  const declared = new Set(((liveBuilt && liveBuilt.items) || []).filter((it) => it && it.display && ids.has(it.display.identity_id) && !inDraft.has(it.key)).map((it) => it.key));
+  return declared.size ? { declared } : null;
+}
+// B-1 (advisor RULED): the reviewed diff changes NOTHING but declared removals (their own cleanup is not a line) — no added, renamed or
+// changed line, no sanity line, no consequence, and every removed line is a declared dish. Then no factura price moves.
+function removalOnlyDiff(diff, opts) {
+  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
+  if (!declared || !diff) return false;
+  const none = (a) => !Array.isArray(a) || a.length === 0;
+  return none(diff.added) && none(diff.renamed) && none(diff.changed) && none(diff.largeChangeSet) && none(diff.consequences)
+    && Array.isArray(diff.removed) && diff.removed.length > 0 && diff.removed.every((r) => r && r.surface === 'item' && declared.has(r.key));
+}
+// Q-12 + A-3 (advisor RULED): THE one answer to «does this publish waive the fiscal acknowledgement?» — the switch ON (removalDiffOptions is
+// null when OFF), a removal-only diff, AND the whole draft document equals the ACTIVE one minus ONLY the declared removals and their
+// permitted cleanup (their item_overrides / extras_by_item / reward entries, item_order positions and photo) — compared canonically over
+// the items, the extras (prices + records), the whole structure and the photo map. Anything else (a deny_extras, a badge order…) ⇒ not
+// waived. The owner publish's gate and the save's `fiscalAckRequired: false` both read it.
+function fiscalAckWaived({ live, draftBuilt, draft, diff, liveExtraRecords = null, draftExtraRecords = null, activePhotos = null, draftPhotos = null }) {
+  const opts = removalDiffOptions(live, draft);
+  if (!opts || !removalOnlyDiff(diff, opts) || !draftBuilt || !live) return false;
+  const d = opts.declared;
+  const st = JSON.parse(JSON.stringify(live.structure || {}));
+  st.item_order = (st.item_order || []).filter((k) => !d.has(k));
+  if (st.exposure && st.exposure.item_overrides && typeof st.exposure.item_overrides === 'object') for (const k of d) delete st.exposure.item_overrides[k];
+  if (st.extras_by_item && typeof st.extras_by_item === 'object') for (const k of d) delete st.extras_by_item[k];   // emptied ⇒ {} (the sticky clear)
+  if (Array.isArray(st.redeem_eligible_items)) st.redeem_eligible_items = st.redeem_eligible_items.filter((k) => !d.has(k));
+  const photosOf = (m) => { const e = Object.entries(m || {}).filter(([k]) => !d.has(k)); return e.length ? Object.fromEntries(e) : null; };
+  const both = liveExtraRecords != null && draftExtraRecords != null;
+  const want = { items: (live.items || []).filter((it) => !d.has(it && it.key)), extras: live.extras || null, structure: st, ...(both ? { records: liveExtraRecords } : {}), photos: photosOf(PS.resetMapFromActive(activePhotos)) };
+  const got = { items: draftBuilt.items || [], extras: draftBuilt.extras || null, structure: require('./add-product').clearedMapsFor(draftBuilt.structure || {}, live.structure, true), ...(both ? { records: draftExtraRecords } : {}), photos: photosOf(draftPhotos) };
+  return JSON.stringify(canonicalize(want)) === JSON.stringify(canonicalize(got));
+}
+// B-5 / A-4 (advisor RULED): with photo uploads off, the draft map may differ from the stored one ONLY by (a) a declared removal's OWN entry
+// leaving, or (b) a WITHDRAWN removal's dish (absent from the stored draft, present again) getting back exactly its ACTIVE entry. Switch ON only.
+async function removalPhotoChangesOk({ map, stored, opts, storedItems, candidateItems, readActive }) {
+  if (!require('./platform-removal').removalCapabilities().productRemoval) return false;
+  const declared = opts && opts.declared instanceof Set ? opts.declared : new Set();
+  const keysOf = (items) => new Set((Array.isArray(items) ? items : []).map((it) => it && it.key));
+  const was = keysOf(storedItems), cur = keysOf(candidateItems);   // `cur`, not `now` (contract/now-clock.guard: `now` names clocks only)
+  const changed = PS.photoDiffLines(stored, map).map((l) => l.key);
+  let active;
+  for (const k of changed) {
+    if (declared.has(k) && !(map && Object.prototype.hasOwnProperty.call(map, k))) continue;   // (a)
+    if (was.has(k) || !cur.has(k)) return false;
+    if (active === undefined) { try { active = PS.resetMapFromActive(await readActive()) || {}; } catch (_) { return false; } }
+    if (!PS.sameStates({ [k]: map && map[k] }, active[k] ? { [k]: active[k] } : null)) return false;   // (b) exactly the active entry
+  }
+  return true;
+}
 // Pair removals with additions ONLY when the pairing is unambiguous: exactly one of each at that price.
 // Guessing is worse than not pairing. A deletion mislabelled as a "rename" is a deletion nobody reviewed,
 // and this diff is the only review there is — so ambiguity stays visible as add + remove.
@@ -101,7 +174,7 @@ function pairRenames(removed, added, surface) {
 
 // opts.pairExtras (default true = today): S2-core (PLAN-structure-S2core-r3 §1.6) passes false — an extra cannot be renamed there,
 // so a different key is a different extra (review-diff.js).
-function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true } = {}) {
+function catalogDiff(liveBuilt, draftBuilt, opts = null) {   // opts: { pairExtras } (S2-core) · { declared } («Quitar del menú» P-R3), either or both
   const added = [], removed = [], changed = [], largeChangeSet = [];
 
   // ── items
@@ -173,7 +246,12 @@ function catalogDiff(liveBuilt, draftBuilt, { pairExtras = true } = {}) {
   // Same field order as every other `changed` line. Never in largeChangeSet.
   for (const l of PS.photoDiffLines(liveBuilt.photos, draftBuilt.photos)) changed.push({ key: l.key, surface: l.surface, field: l.field, old: l.old, new: l.new });
 
-  const itemPairs = pairRenames(rawRemovedItems, rawAddedItems, 'item');
+  // «Quitar del menú» P-R3: a DECLARED removal (removalDiffOptions) is never rename-paired — it stays «Quitado» beside the addition
+  const declared = opts && opts.declared instanceof Set ? opts.declared : null;
+  const itemPairs = pairRenames(declared ? rawRemovedItems.filter((r) => !declared.has(r.key)) : rawRemovedItems, rawAddedItems, 'item');
+  if (declared) itemPairs.removed.push(...rawRemovedItems.filter((r) => declared.has(r.key)));
+  if (declared) for (let i = changed.length - 1; i >= 0; i--) if (changed[i].field === 'photo' && declared.has(changed[i].key)) changed.splice(i, 1);   // B-5: the photo cleanup folds into the one «Quitado» row
+  const pairExtras = !(opts && opts.pairExtras === false);
   const extraPairs = pairExtras ? pairRenames(rawRemovedEx, rawAddedEx, 'extra') : { renamed: [], removed: rawRemovedEx, added: rawAddedEx };
   added.push(...itemPairs.added, ...extraPairs.added);
   removed.push(...itemPairs.removed, ...extraPairs.removed);
@@ -231,4 +309,4 @@ function verifyEditToken(token, state) {
   return { ok: true, reason: null };
 }
 
-module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT };
+module.exports = { catalogDiff, issueEditToken, verifyEditToken, gateFlagsOf, sha256, SWING_LIMIT, removalDiffOptions, pendingRemovalRows, removalOnlyDiff, removalPhotoChangesOk, fiscalAckWaived };

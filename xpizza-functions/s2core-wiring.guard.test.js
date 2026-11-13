@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyS2coreModule } = require('./tools/s2core-modu
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/draft-assess.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/public-menu.js', 'catalog/publish-edited-handler.js', 'catalog/source-store.js'], 'the owned files');
 for (const f of FILES) {
-  const src = require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')));   // the NEWEST layer: the file on disk; train/portal-structure (5f): main's D4 innermost at every raw read (d4-wiring; it owns none of these files, so it passes them through)
+  const src = require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/rdr-module-inverse').unapplyRdrModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));   // the NEWEST layer: the file on disk; train/portal-structure (5f): main's D4 innermost at every raw read (d4-wiring; it owns none of these files, so it passes them through)
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyS2coreModule(f, src), b, `🔴 ${f} minus the s2core hunks is not ${BASE}:${f}`);

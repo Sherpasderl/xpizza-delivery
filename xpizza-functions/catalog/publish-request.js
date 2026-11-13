@@ -71,7 +71,7 @@ async function requestPublishCore(deps, ctx, body) {
     const { inputs, built } = buildSourceCandidate(rid, draft);
     const draftBuilt = { ...built, extras: inputs.extras };   // as the save builds it (edit-catalog-handler.js)
     // S2-core §1.6: THE one canonical review diff — the same function the save and the owner publish bind their token to
-    diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog });
+    diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, draft) });
     sameStructure = JSON.stringify(canonicalize(built.structure || null)) === JSON.stringify(canonicalize((live && live.structure) || null));
   } catch (_) { return reply(500, { error: 'draft_build_failed' }); }
   const sourceHash = sha256(draft);
