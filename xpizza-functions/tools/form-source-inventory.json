@@ -2933,6 +2933,7 @@
   "catalog/review-diff.js",
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
+  "catalog/section-transitions.js",
   "catalog/serve-memo.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-accounting.js",
@@ -3959,6 +3960,10 @@
    "lifts": []
   },
   "catalog/reward-removed.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/section-transitions.js": {
    "pins": [],
    "lifts": []
   },
