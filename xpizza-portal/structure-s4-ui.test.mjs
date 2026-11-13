@@ -218,7 +218,7 @@ test('S4-B — marking EVERY product of a subsection would empty it: the approve
 // ── step 3: the row menu (frame E2 «Mover a…»; S4-D's draft-only line, toast and the live refusal) ──
 const rowOf = (p, name) => [...detail(p).querySelectorAll('.irow')].find((r) => r.querySelector('.nm') && r.querySelector('.nm').firstChild.textContent === name);
 const more = (r) => r.querySelector('button.mk-more');
-const menu = (p) => detail(p).querySelector('.mk-pop[role="menu"]');
+const menu = (p) => p.d.querySelector('.mk-pop[role="menu"]');
 const mItems = (p) => [...menu(p).querySelectorAll('button.mk-popi')];
 const mItem = (p, t) => mItems(p).find((b) => b.firstChild.textContent === t);
 const dishName = (p, key) => p.src().items.find((i) => i.key === key).display.name;
@@ -318,6 +318,19 @@ test('3(b) — «Quitar del menú» on a LIVE section\'s last dish: the approved
   assert.equal(p.d.querySelector('#xscrim.show'), null, 'no confirm');
   assert.equal(rowOf(p, nm).nextElementSibling.textContent, 'No podés dejar la sección vacía. Agregá otro producto primero.');
   assert.equal(JSON.stringify(p.src()), before);
+});
+
+test('E2 — the menu is never clipped: it opens in a layer outside the list (no overflow:hidden ancestor), even on the LAST row; a repaint closes it', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Dim Sum');
+  const rows = [...detail(p).querySelectorAll('.irow')].filter((r) => more(r));
+  more(rows[rows.length - 1]).click(); await settle(5);
+  const m = menu(p);
+  assert.ok(m, 'premise: open');
+  assert.equal(m.closest('#detail'), null, '🔴 not inside the list');
+  for (let a = m.parentElement; a && a !== p.d.documentElement; a = a.parentElement) assert.notEqual(p.w.getComputedStyle(a).overflow, 'hidden', `no clipping ancestor (${a.id || a.className})`);
+  await pick(p, 'Starters');
+  assert.equal(menu(p), null, 'another section (a repaint) closes it');
 });
 
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {

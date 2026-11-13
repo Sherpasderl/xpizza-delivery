@@ -1697,8 +1697,10 @@ function menuClose(refocus) {
   m.pop.remove();
   m.from.setAttribute('aria-expanded', 'false'); m.from.classList.remove('mk-moreopen');
   document.removeEventListener('keydown', menuKey, true); document.removeEventListener('click', menuOutside, true);
+  window.removeEventListener('resize', menuAway, true); window.removeEventListener('scroll', menuAway, true);
   if (refocus && m.from.isConnected) m.from.focus();
 }
+function menuAway() { if (rowMenu) menuClose(false); }   // a fixed layer does not follow its row: a scroll / resize closes it
 function menuKey(e) { if (rowMenu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); menuClose(true); } }
 function menuOutside(e) { if (rowMenu && !rowMenu.pop.contains(e.target) && e.target !== rowMenu.from && !rowMenu.from.contains(e.target)) menuClose(false); }
 function menuOpen(key, from) {
@@ -1740,11 +1742,18 @@ function menuOpen(key, from) {
     }));
     pop.append(menuRemove);
   }
-  const host = from.closest('.irow, .grow') || from.parentElement;
-  host.after(pop);
+  // a layer OUTSIDE the list (.detail clips: overflow hidden for its corners) — fixed, under «Más acciones», right-aligned to it; flipped
+  // upward when the window has no room below. Placed through the CSSOM (the strict CSP: no style attribute in the markup)
+  document.body.append(pop);
+  const b = from.getBoundingClientRect(); const h = pop.offsetHeight; const vh = window.innerHeight || 0; const vw = window.innerWidth || 0;
+  const up = vh > 0 && b.bottom + 4 + h > vh - 8 && b.top - 4 - h >= 8;
+  pop.style.top = `${Math.max(8, up ? b.top - 4 - h : b.bottom + 4)}px`;
+  pop.style.right = `${Math.max(8, vw - b.right)}px`;
+  pop.classList.toggle('mk-popup', up);
   rowMenu = { key, from, pop };
   from.setAttribute('aria-expanded', 'true'); from.classList.add('mk-moreopen');
   document.addEventListener('keydown', menuKey, true); document.addEventListener('click', menuOutside, true);
+  window.addEventListener('resize', menuAway, true); window.addEventListener('scroll', menuAway, true);
   (first || pop.querySelector('button')).focus();
 }
 // a refusal said under the dish's row (the approved lines; no confirm, nothing written)
@@ -1895,6 +1904,7 @@ function dropSection(staged, from) {
 }
 
 function paint() {
+  if (rowMenu) menuClose(false);   // E2: the rows are rebuilt — the menu belongs to a row that no longer exists
   paintProductTabs();
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks

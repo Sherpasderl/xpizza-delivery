@@ -1417,6 +1417,8 @@ const LISTENERS = {
   "menuMove::click":              ['bound', ['menuMoveTo'], 'E2 \u2014 «Mover a…» one entry: moveItem (sections switch, all or nothing); a refusal is its line under the row'],
   "menuRemove::click":            ['bound', [], 'E2 \u2014 «Quitar del menú» from the row menu: the approved R2 confirm (its «Quitar» is confirmRemoveProduct), or the 3(b) line; the press writes nothing'],
   "document::click":              ['view', ['menuOutside'], 'E2 \u2014 while a row menu is open only (added on open, removed on close): a press outside closes it; nothing is written'],
+  "window::resize":               ['view', ['menuAway'], 'E2 \u2014 while a row menu is open only: the fixed layer does not follow its row, so a resize closes it; nothing is written'],
+  "window::scroll":               ['view', ['menuAway'], 'E2 \u2014 while a row menu is open only: a scroll closes it (the layer does not follow its row); nothing is written'],
   "$('xchoice')::click":          ['view', ['d2Scrim'], 'S3 D2 \u2014 the backdrop cancels the sheet: it closes, nothing is recorded'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
