@@ -227,6 +227,28 @@ test('FLIP-TIME: an unmarked new sized dish saves with choiceEdit OFF (today) an
     await assert.rejects(save(on, 'la_musa', newSizedDish(on, false)), (e) => e instanceof ApiError && e.code === 'choice_recommended_required');
   } finally { CE.on = false; }
 });
+// FLIP GATE (advisor ruling 11-13): with choiceEdit ON the «Agregar producto» drawer marks the FIRST option of a new group «Recomendada»
+// by default (the server's choice.add rule); OFF stays byte-identical. KNOWN_RED until the S3 drawing half builds it (the flip waits on it).
+test('FLIP GATE: choiceEdit ON — a new group from «Agregar producto» gets option 1 marked before sending, and the real save accepts it', { todo: 'KNOWN_RED: built in the S3 drawing half (advisor 11-13)' }, async () => {
+  CE.on = true;
+  try {
+    const B = await backend('la_musa');
+    const d = createDraft(clone(B.read.source));
+    const id = ref('z');
+    addProduct(d, { ref: id, cat: 'dim_sum' });
+    setAddition(d, id, 'name', 'Wonton especial'); setAddition(d, id, 'price', '300');
+    const [o1, o2] = [ref('x'), ref('y')];
+    setRequiredChoice(d, id, true, [o1, o2], new Set(), ON);
+    assert.deepEqual(draftSource(d).items.find((i) => i.ref === o1).display.tags, ['recommended'], 'option 1 marked by default');
+    setGroupLabel(d, id, 'Porción');
+    setChoiceName(d, o1, 'Media'); setChoiceName(d, o2, 'Entera');
+    setChoicePrice(d, o1, '300'); setChoicePrice(d, o2, '450');
+    assert.ok(await save(B, 'la_musa', d), 'accepted');
+    const off = createDraft(clone(B.read.source));
+    addProduct(off, { ref: id, cat: 'dim_sum' }); setRequiredChoice(off, id, true, [o1, o2]);
+    assert.equal(draftSource(off).items.find((i) => i.ref === o1).display.tags, undefined, 'OFF: today, unmarked');
+  } finally { CE.on = false; }
+});
 test('a BRAND-NEW sized dish (marked) in the same reward category is accepted by the real save (only existing dishes are protected)', async () => {
   CE.on = true;
   try {
