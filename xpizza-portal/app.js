@@ -1498,7 +1498,10 @@ function d2Paint(focusK) {
   d2Go.addEventListener('click', bound(() => {
     if (!d2Ready(p)) return;
     const r = IE.choiceAdd(p.s, { label: p.label.trim(), marked: p.marked, options: p.rows.map((x) => ({ ref: x.ref, choice: x.choice.trim(), price: parsePrice(x.price) })) });
-    if (!r.ok) return;
+    if (!r.ok) {   // the copy moved under the sheet (a stale draft): the approved line in the sheet, nothing recorded
+      if (!mb.querySelector('.mk-stale')) { const line = mk('div', 'ferr mk-ferr mk-stale', UNDO_REFUSED); line.setAttribute('role', 'alert'); mb.append(line); }
+      return;
+    }
     d2Close(false);
     renderDrawer(); holdDrawerForRename(); refocus(['ie-fold::req']);
   }));
@@ -2079,6 +2082,14 @@ const opcFolded = new Set();
 // STRUCTURE S3 — VIEW state, per drawer session: the required choice's editor is open (the pencil … «Listo»); «Guardar» held by B2
 const choiceEditing = new Set();
 let choiceHeld = null;
+// a press the writer refuses on a STALE copy (the draft moved under the drawer): the approved line, inline where it was pressed (B6);
+// nothing is recorded — the next rebuild drops the line
+function pressFailed(el) {
+  const at = (el && (el.closest('.mopt') || el.closest('.mk-gf') || el)) || null;
+  if (!at || (at.nextElementSibling && at.nextElementSibling.classList.contains('mk-stale'))) return;
+  const line = document.createElement('div'); line.className = 'ferr mk-ferr mk-stale'; line.setAttribute('role', 'alert'); line.textContent = UNDO_REFUSED;
+  at.after(line);
+}
 const tmpRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
 // panel D (MOCKUP-portal-structure-edit :1797, owner-approved: its strings are literal) + the addendum's B2 line (⟦s3.key⟧ until approved):
 // the choice's name, one row per option (name · L price · «Recomendada» · trash; a new one «Solo en la app Sherpa»), «Agregar opción»,
@@ -2127,13 +2138,17 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
     const ieRecPill = document.createElement('button'); ieRecPill.type = 'button'; ieRecPill.className = 'recpill'; ieRecPill.classList.toggle('recpill-on', o.marked);
     ieRecPill.textContent = 'Recomendada'; ieRecPill.setAttribute('aria-pressed', String(o.marked));
     // exactly one: a tap marks this option (the marked one stays marked — a group never goes back to zero)
-    ieRecPill.addEventListener('click', bound(() => { if (!o.marked) IE.choiceSet(s, { op: 'choice.recommended', launcher: key, option: o.id }); relayout(); refocus([`ie-cg-rec::${o.id}`]); }));
+    ieRecPill.addEventListener('click', bound(() => {
+      if (!o.marked && !IE.choiceSet(s, { op: 'choice.recommended', launcher: key, option: o.id }).ok) { pressFailed(ieRecPill); return; }
+      relayout(); refocus([`ie-cg-rec::${o.id}`]);
+    }));
     focusKey(ieRecPill, `ie-cg-rec::${o.id}`);
     const ieOptTrash = document.createElement('button'); ieOptTrash.type = 'button'; ieOptTrash.className = 'model';
     ieOptTrash.setAttribute('aria-label', `Quitar ${o.choice || 'opción'}`); ieOptTrash.append(svgTrashIcon());
     if (few) { lockControl(ieOptTrash, true); ieOptTrash.title = IE.s3Copy('tooFew'); }   // locked: the inert pass keeps it off
     ieOptTrash.addEventListener('click', bound(() => {
-      if (o.isNew) IE.choiceDropNew(s, o.id); else IE.choiceOp(s, { op: 'option.remove', key: o.id });
+      const r = o.isNew ? IE.choiceDropNew(s, o.id) : IE.choiceOp(s, { op: 'option.remove', key: o.id });
+      if (!r.ok) { pressFailed(ieOptTrash); return; }
       relayout(); refocus(['ie-cg-add']);
     }));
     row.append(ieOptName, pr, ieRecPill, ieOptTrash);
@@ -2147,7 +2162,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   ieAddOption.append(svgPlusIcon(), document.createTextNode('Agregar opción'));
   ieAddOption.addEventListener('click', bound(() => {
     const ref = tmpRef();
-    if (IE.choiceOp(s, { op: 'option.add', launcher: key, ref, choice: '', price: null }).ok) { relayout(); refocus([`ie-cg-opt::${ref}`]); }
+    if (IE.choiceOp(s, { op: 'option.add', launcher: key, ref, choice: '', price: null }).ok) { relayout(); refocus([`ie-cg-opt::${ref}`]); } else pressFailed(ieAddOption);
   }));
   focusKey(ieAddOption, 'ie-cg-add');
   const flag = mk('label', 'mgflag');
@@ -2242,7 +2257,7 @@ function openChoiceRemove(s, from) {
   cfQuit.addEventListener('click', bound(() => {
     if (!pick) return;
     close();
-    if (IE.choiceRemove(s, pick).ok) { choiceEditing.delete(s.id); renderDrawer(); holdDrawerForRename(); refocus(['ie-price']); }
+    if (IE.choiceRemove(s, pick).ok) { choiceEditing.delete(s.id); renderDrawer(); holdDrawerForRename(); refocus(['ie-price']); } else pressFailed(from);
   }));
   d.append(scrim);
   document.addEventListener('keydown', cfKey, true);
@@ -2661,6 +2676,7 @@ function renderEditDrawer(d, it, keepScroll) {
   R.dirty = mk('span', 'mk-dirty', 'Cambios sin guardar');   // frame 1: the quiet mark beside «Guardar»
   R.dirty.hidden = true;
   foot.append(ieCancel, mk('span', 'mk-sp'), R.dirty, ieSave);
+  errSlot(foot, 'foot'); R.ctl.foot = [ieSave];   // S3 B6: a refusal no field can fix (choice_index_invalid) says so beside «Guardar»
 
   R.body = body;
   editRefs = R;

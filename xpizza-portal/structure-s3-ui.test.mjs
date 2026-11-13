@@ -333,6 +333,33 @@ test('B6 — the reward refusal: the panel says the owner\'s line; «Corregir» 
   assert.equal(reqCard(p).querySelector(':scope > .ferr'), null, 'a choice edit clears it');
 });
 
+test('B6 — choice_index_invalid lands at the drawer\'s FOOTER (no field can fix it)', async () => {
+  const p = await page({ read: ON, on: { editCatalog: () => errJson(409, { error: 'choice_index_invalid', key: PAD, field: 'choices' }) } });
+  await editing(p);
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína a elegir');
+  pill(rows(p)[0]).click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  p.d.querySelector('#mbody .conflict button').click(); await settle(20);
+  const line = p.drawer().querySelector('.dwf .ferr');
+  assert.ok(line, '🔴 the footer line'); assert.equal(line.textContent.trim(), P('indexInvalid'));
+  assert.equal(reqCard(p).querySelector('.ferr'), null, 'not on the card');
+});
+
+test('a STALE press (the draft changed under the open editor): the approved «No pudimos aplicar el cambio. Recargá la página.» inline where it was pressed; nothing recorded', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const st = p.mods.app.state.draft.state;
+  const l = st.items.find((i) => i.key === PAD);
+  delete st.structure.variant_items[String(l.display.id)];   // the group is gone from the draft under the session
+  const r1 = rows(p)[1];
+  pill(r1).click(); await settle(5);
+  const line = r1.nextElementSibling;
+  assert.ok(line && line.classList.contains('ferr'), '🔴 the line under the pressed row');
+  assert.equal(line.textContent, 'No pudimos aplicar el cambio. Recargá la página.');
+  assert.equal(line.getAttribute('role'), 'alert');
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
   assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'revLauncher', 'revPlain', 'revRecChanged', 'revRecNew', 'tooFew']);
 });

@@ -654,7 +654,7 @@ export function refusalLine(body) {
     choice_label_required: ['options', s3Copy('optNameRequired')],
     label_required: ['options', s3Copy('labelRequired')],
     choice_price_from_invalid: ['options', s3Copy('priceFromInvalid')],
-    choice_index_invalid: ['options', s3Copy('indexInvalid')],
+    choice_index_invalid: ['foot', s3Copy('indexInvalid')],   // nothing in the drawer fixes it: the footer, beside «Guardar» (B6)
     name_needs_new_id: ['options', s3Copy('nameNeedsNewId')],
   }[body.error];
   if (!T) return null;

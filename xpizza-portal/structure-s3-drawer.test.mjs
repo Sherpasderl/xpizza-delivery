@@ -259,11 +259,12 @@ test('B6 routing: every S3 refusal lands on the choice card (field options); the
   assert.deepEqual([at('choice_on_reward_dish').field, at('choice_on_reward_dish').message], ['options', OWNER]);
   for (const [code, k] of [['choices_too_few', 'tooFew'], ['choice_recommended_required', 'recRequired'], ['choice_recommended_many', 'recMany'],
     ['choice_duplicate', 'dupName'], ['choice_label_required', 'optNameRequired'], ['label_required', 'labelRequired'],
-    ['choice_price_from_invalid', 'priceFromInvalid'], ['choice_index_invalid', 'indexInvalid'], ['name_needs_new_id', 'nameNeedsNewId']]) {
+    ['choice_price_from_invalid', 'priceFromInvalid'], ['name_needs_new_id', 'nameNeedsNewId']]) {
     const l = at(code);
     assert.ok(l, `🔴 ${code} is routed`); assert.equal(l.field, 'options', code); assert.equal(l.message, `⟦s3.${k}⟧`, code);
   }
   assert.equal(IE.refusalLine({ error: 'option_name_too_long', key: PAD, field: 'name', option_key: 'x' }).message, IE.COPY.name.option_long, 'S4\'s approved line stays');
+  assert.deepEqual([at('choice_index_invalid').field, at('choice_index_invalid').message], ['foot', '⟦s3.indexInvalid⟧'], '🔴 nothing in the drawer fixes it: the footer (advisor ruling 4)');
 });
 
 test('B6: a choice edit clears the server\'s line on the card (the merchant changed what it was about)', () => {

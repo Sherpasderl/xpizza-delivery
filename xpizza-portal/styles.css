@@ -637,6 +637,10 @@
   .mk-grp > .ferr{padding:10px 14px 12px;border-top:1px solid var(--line2)}
   /* B3 / F: the app-only mark on a review row, after the change */
   .prow .pval .mk-apponly{margin-left:10px;vertical-align:1px}
+  /* B6: the footer's line (choice_index_invalid) takes its own row above the buttons */
+  .dwf > .ferr{flex-basis:100%;order:-1;margin:0 0 4px}
+  /* B6: a stale press's line, inline under what was pressed */
+  .mk-stale{margin-top:2px}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */
   .mk-cf .mk-pf{display:flex;flex-direction:column;gap:6px;margin-top:14px}
