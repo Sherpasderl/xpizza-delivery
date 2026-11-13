@@ -31,6 +31,26 @@ const { FieldValue, Timestamp } = require('firebase-admin/firestore');
    A fixture that cannot express a production constraint makes that constraint untestable; this one is
    written down rather than assumed away, because the alternative is a green run standing in for a
    guarantee nobody checked. */
+/* UPDATE VALIDATION IS THE INSTALLED SDK'S OWN (advisor ruling 11-13, after Codex rdclaim r1/r2 — one source, parity by
+   construction): every update (batch.update and ref.update) is first handed to the real @google-cloud/firestore
+   WriteBatch.update on a throwaway batch of a LOCAL Firestore instance that is never committed (update() validates
+   synchronously; nothing is sent, no credentials are read). Its exact error propagates; only what it accepts is applied here.
+   The varargs form (field, value, …) is validated the same way but not modelled — no production code uses it — so it is then
+   refused by name, never misread. */
+let sdkDb = null;
+function sdkValidatedUpdate(path, args) {
+  if (!sdkDb) { const { Firestore } = require('firebase-admin/firestore'); sdkDb = new Firestore({ projectId: 'firestore-fake-validate' }); }
+  sdkDb.batch().update(sdkDb.doc(path), ...args);   // throws the SDK's own error; the batch is dropped, never committed
+  if (typeof args[0] !== 'object' || args[0] === null) throw new TypeError('firestore-fake: update(ref, field, value, …) — the field/value form is not modelled');
+  return { data: args[0], pre: args[1] };
+}
+// A STRUCTURAL copy: plain maps and arrays copied, a Timestamp re-made (so no stored value is ever shared with a caller or a
+// backup), every other value — NaN, ±Infinity, a FieldValue sentinel, any non-plain object — kept exactly.
+const clonePlain = (v) => (Array.isArray(v) ? v.map(clonePlain)
+  : v instanceof Timestamp ? new Timestamp(v.seconds, v.nanoseconds)
+    : v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clonePlain(x)]))
+      : v);
+
 function makeDb() {
   const docs = new Map();            // path -> { data, updateTime }
   let clock = 1757000000000;
@@ -94,7 +114,7 @@ function makeDb() {
          · the precondition must be a real Timestamp (the SDK's type; a caller passing a string is a bug production would hit);
          · a top-level key REPLACES that field; a DOTTED key is a field path — it sets the nested field and keeps its siblings
            (creating intermediate maps), exactly as Firestore's update(); every other field is kept. */
-      update: async (data, opts) => updateNow(path, data, opts),
+      update: async (...args) => { const { data, pre } = sdkValidatedUpdate(path, args); return updateNow(path, data, pre); },
       delete: async () => { docs.delete(path); },
     };
   }
@@ -116,8 +136,8 @@ function makeDb() {
         for (const [k, v] of Object.entries(data)) {
           const segs = k.split('.');
           let o = next;
-          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Array.isArray(o[sgm])) o[sgm] = {}; o = o[sgm]; }
-          o[segs[segs.length - 1]] = v;
+          for (const sgm of segs.slice(0, -1)) { if (!o[sgm] || typeof o[sgm] !== 'object' || Object.getPrototypeOf(o[sgm]) !== Object.prototype) o[sgm] = {}; o = o[sgm]; }   // a NON-MAP parent (a string, an array, a Timestamp) is replaced by a map, never written into (Codex rdclaim r1 P2-2) — «pending dotted-nonmap-probe (server behaviour unproven)»: the SDK accepts such a path; what the server does with it is to be measured (D4c-grill/rdclaim/dotted-nonmap-probe.js)
+          o[segs[segs.length - 1]] = v;   // put() below serializes (resolve copies every plain map) — NOW, at commit, as the SDK does
         }
         put(path, next);
         return { writeTime: docs.get(path).updateTime };
@@ -198,17 +218,14 @@ function makeDb() {
           });
           return self;
         },
-        update: (ref, data, ...rest) => {
-          if (typeof data === 'string' || rest.length > 1) throw new TypeError('firestore-fake: batch.update(ref, field, value, …) — the field/value form is not modelled');
-          if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) throw new Error('firestore-fake: batch.update needs at least one field to update (as the SDK)');
-          const opts = rest[0];
-          if (opts && opts.lastUpdateTime !== undefined && !(opts.lastUpdateTime instanceof Timestamp)) throw new TypeError('firestore-fake: update() precondition lastUpdateTime must be a Timestamp');
-          ops.push(() => updateNow(ref.path, data, opts));
+        update: (ref, ...args) => {
+          const { data, pre } = sdkValidatedUpdate(ref.path, args);
+          ops.push(() => updateNow(ref.path, data, pre));   // the SDK keeps the caller's references and serializes at COMMIT; so does this
           return self;
         },
         delete: (ref) => { ops.push(() => { docs.delete(ref.path); }); return self; },
         commit: async () => {
-          const before = new Map(docs);
+          const before = new Map([...docs].map(([k, v]) => [k, { data: clonePlain(v.data), updateTime: v.updateTime }]));   // a DEEP backup: nothing it holds is shared with a write
           pinned = tick();
           try {
             for (const op of ops) op();
