@@ -23,6 +23,7 @@ import { S2_BASE, S2_FOLD } from './s2-fold.mjs';
 import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
 import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
 import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
+import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -35,7 +36,18 @@ const BASE = '613f7e08';
 // UNSAVED and every older pin judge exactly what they judged before; the S2 test pins the layer itself on disk.
 // «Quitar del menú» (PLAN-portal-remove-product r3) is the NEWEST layer of all, above S2: folded out at the very lowest read, so S2
 // and every older pin judge exactly what they judged before; the RP test pins the layer itself on disk.
-const fileOnDisk = (f) => readFileSync(join(DIR, f), 'utf8');
+// «Rendimiento» (P-1 nav, owner 11-13 map Q4) is the NEWEST layer of all, above RP: folded out at the very lowest read, so RP and
+// every older pin judge exactly what they judged before; the REND test pins the layer itself on disk.
+const diskFile = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutREND(f, src) {
+  let out = src;
+  for (const [now, was] of REND_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `REND hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileOnDisk = (f) => withoutREND(f, diskFile(f));
 function withoutRP(f, src) {
   let out = src;
   for (const [now, was] of RP_FOLD[f] || []) {
@@ -420,6 +432,18 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   const inside = S1_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function extrasBaseline('));
   assert.ok(inside, 'premise: the baseline is one of the hunks');
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
+});
+
+test('«Rendimiento»: ventas.js gains exactly the named hunks — folding them out gives REND_BASE byte-for-byte', () => {
+  for (const f of Object.keys(REND_FOLD)) {
+    const was = execFileSync('git', ['show', `${REND_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutREND(f, diskFile(f)), diskFile(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutREND(f, diskFile(f)), was, `${f} minus the REND hunks ≠ ${REND_BASE}`);
+    assert.notEqual(withoutREND(f, diskFile(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = REND_FOLD['ventas.js'].map(([now]) => now).find((t) => t.includes('export function registerRendTab('));
+  assert.ok(inside, 'premise: the tab registry is one of the hunks');
+  assert.throws(() => withoutREND('ventas.js', diskFile('ventas.js').replace(inside, inside.replace('at most three tabs', 'at most three tabsX'))), 'an edit inside a hunk breaks it');
 });
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
