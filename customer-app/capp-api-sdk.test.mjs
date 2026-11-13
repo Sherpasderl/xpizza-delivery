@@ -437,3 +437,65 @@ test('F1: the guest\'s ticket id IS the dispatched id (orderIdForCode mints in t
   assert.equal(g.srv.of('placeSdkOrder')[0].body.order_id, id, '🔴 F1-TICKET: the ticket-bound id is the one dispatched');
   assert.match(id, SDK_ORDER_ID_RE, '🔴 F1-TICKET: in the sdk_ namespace');
 });
+
+// ── D4 F2: 409 attempt_unknown — the REAL placeSdkStatus core (status-endpoint.js) over the honest RTDB model answers it: the order
+// exists as an SDK order, no attempt and no PSP-call record (the server journals both BEFORE any PixelPay call) ⇒ proven «no money moved» ──
+const { makeHonestDb } = require('../xpizza-functions/_honest-rtdb-model.js');
+const { placeSdkStatusCore } = require('../xpizza-functions/payments/sdk/status-endpoint.js');
+function realStatus(clock) {
+  const db = makeHonestDb({}, { now: () => clock.t });
+  const deps = { db, clock: () => clock.t, verifyIdToken: async (t) => { if (t === JWT) return { uid: 'u_ana' }; throw new Error('bad token'); } };
+  // the order the server created before the attempt was journaled (the attempt_unknown window)
+  const create = (oid) => db.ref(`orders/${oid}`).set({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', customer_uid: 'u_ana', restaurant_id: 'rid_a', total_cents: 31500, pay_deadline_at: clock.t + 15 * 60e3 });
+  const answer = async (c) => { const h = c.headers || {}; const r = await placeSdkStatusCore(deps, { headers: { authorization: h.Authorization, 'x-sherpa-order-ticket': h['X-Sherpa-Order-Ticket'] }, query: { order_id: new URL(c.url).searchParams.get('order_id') } }); return { status: r.status, json: r.body }; };
+  return { db, create, answer };
+}
+test('F2: attempt_unknown (the real status core) ⇒ the SAME attempt re-sent ONCE, body identical (saved card); never a decline, never a new attempt', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, (c) => PLACED(c.body.order_id)], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  const first = await s.api.placeSdk(args(SAVED));
+  assert.equal(s.srv.of('placeSdkStatus').length, 1, 'premise: the status was asked');
+  assert.deepEqual([first.kind, first.order_id], ['sdk_resend', s.srv.of('placeSdkOrder')[0].body.order_id], '🔴 F2-RESEND-KIND: attempt_unknown ⇒ sdk_resend (never pending forever, never a decline)');
+  const out = await s.api.sdkResend(args(SAVED));
+  const [a, b] = s.srv.of('placeSdkOrder').map((c) => c.body);
+  assert.equal(s.srv.of('placeSdkOrder').length, 2, '🔴 F2-RESEND-ONCE: exactly one re-send');
+  assert.deepEqual([b.order_id, b.attempt_id], [a.order_id, a.attempt_id], '🔴 F2-SAME-ATTEMPT: the same order AND the same attempt_id');
+  assert.deepEqual(b, a, '🔴 F2-SAME-BODY: the re-sent body is the first one, byte for byte (saved card)');
+  assert.equal(out.kind, 'placed');
+});
+test('F2: attempt_unknown forever ⇒ at most 3 re-sends, then the normal pending poll; a re-send without a fresh 409 sends nothing', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, 'network'], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  let out = await s.api.placeSdk(args(SAVED));
+  for (let i = 0; i < 6 && out.kind === 'sdk_resend'; i++) out = await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, 4, '🔴 F2-BOUNDED: the first send + 3 re-sends, never more');
+  assert.equal(out.kind, 'sdk_pending', '🔴 F2-BOUNDED: then pending (the poll), never a decline');
+  const n = s.srv.of('placeSdkOrder').length;
+  await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, n, '🔴 F2-ONLY-ON-409: no fresh attempt_unknown ⇒ nothing sent');
+});
+test('F2: a 409 with any OTHER error stays the unknown it was (pending) — no re-send', async () => {
+  const s = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: [{ status: 409, json: { error: 'conflict' } }] } });
+  const out = await s.api.placeSdk(args(SAVED));
+  assert.equal(out.kind, 'sdk_pending', '🔴 F2-OTHER-409: unchanged behaviour');
+  await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 F2-OTHER-409: nothing re-sent');
+});
+test('F2 / Q-B (advisor 11-12): a NEW card whose token is gone (reload) ⇒ the attempt settled none, the SAME sdk_ order, the card sheet — the next card a NEW attempt_id', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, (c) => PLACED(c.body.order_id)], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  assert.equal((await s.api.placeSdk(args(NEW))).kind, 'sdk_resend', 'premise: attempt_unknown');
+  const a = s.srv.of('placeSdkOrder')[0].body;
+  const api2 = s.reload();
+  assert.equal((await api2.sdkStatus(a.order_id)).kind, 'sdk_resend', 'premise: the reloaded page hears the same 409');
+  const out = await api2.sdkResend({});   // the token lived in the old page only
+  assert.deepEqual([out.kind, out.order_id], ['sdk_reenter_card', a.order_id], '🔴 F2-QB: the card sheet again, on the same order');
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 F2-QB: nothing re-sent without the card');
+  const r = rec(s.storage); assert.ok(r && r.order_id === a.order_id && r.attempt_state === 'none' && r.unresolved === false, '🔴 F2-QB: the attempt settled none, the order kept');
+  assert.equal((await api2.placeSdk(args(NEW))).kind, 'placed');
+  const b = s.srv.of('placeSdkOrder')[1].body;
+  assert.ok(b.order_id === a.order_id && b.attempt_id !== a.attempt_id, '🔴 F2-QB: the same sdk_ order, a NEW attempt_id');
+});

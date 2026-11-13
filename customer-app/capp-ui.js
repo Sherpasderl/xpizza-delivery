@@ -45,6 +45,7 @@
   const POLL_SDK_MS = 3000, POLL_SDK_REVIEW_MS = 15000;
   // advisor 11-08: a long bank delay never hammers the server — after the first minute of pending (20 polls at 3 s) every 10 s
   const POLL_SDK_SLOW_MS = 10000, POLL_SDK_FAST_N = 20;
+  const SDK_RESEND_MS = [2000, 5000, 10000];   // D4 F2: the backoff before each re-send of an attempt the server proved unknown (capp-api bounds the count)
   const FULL_CART = 'Tu carrito está lleno. Empezá otro carrito con el resto de tu pedido.';   // owner-approved 2026-10-24 (cart_text_too_long)
 
   // ── icons (the prototype's, one stroke, one weight) ──
@@ -1598,7 +1599,7 @@
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
-    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
+    const SDK_KINDS = new Set(['sdk_pending', 'sdk_resend', 'sdk_reenter_card', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
     function onOutcome(out, attempt) {
       if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }   // Codex r2 P2: an SDK outcome from ANY entry point (send, «Ver estado»)
       emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
@@ -1931,7 +1932,7 @@
     // an identity change (sign-in, another member, sign-out): drop the cards, any in-flight list (gen), the selection and an adopted
     // tender — the next checkout render lists the new identity's own cards
     function sdkIdentity() {
-      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; SDK.avail = null;
+      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; SDK.avail = null; SDK.last = null;
       if (S.flow && S.flow.pay === 'online' && SDK.adopted) S.flow.pay = '';
       SDK.adopted = false;
     }
@@ -1981,6 +1982,18 @@
         if (!dead) onSdkOutcome(out);
       }, ms);
     }
+    // D4 F2: the server proved the attempt unknown (no authorization happened) ⇒ the SAME attempt re-sent after the backoff, from the inputs of
+    // the send this page made (SDK.last — page memory only, like the selection); none after a reload ⇒ capp-api settles it and asks for a card
+    function sdkResendLater(ms) {
+      sdkStopPoll();
+      SDK.pollT = T_.setTimeout(async () => {
+        SDK.pollT = null; if (dead) return;
+        let out; try { out = await api.sdkResend({ ...(SDK.last || {}), ...sdkAuth() }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }
+        if (dead) return;
+        if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }
+        onSdkOutcome(out);
+      }, ms);
+    }
     function sdkProc(review) {
       const total = S.sendTotals && Number.isFinite(S.sendTotals.total) ? S.sendTotals.total : (totalsNow().ready ? totalsNow().total : 0);
       const m = sdkMethod();
@@ -1993,7 +2006,9 @@
       sdkStopPoll();
       if (k === 'sdk_pending') { sdkProc(SDK.proc && SDK.proc.review); sdkPollLater(out.order_id, SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS); return; }
       if (k === 'sdk_review') { sdkProc(true); sdkPollLater(out.order_id, POLL_SDK_REVIEW_MS); return; }
+      if (k === 'sdk_resend') { sdkProc(SDK.proc && SDK.proc.review); sdkResendLater(SDK_RESEND_MS[Math.min(Number(out.resends) || 0, SDK_RESEND_MS.length - 1)]); return; }
       SDK.pollN = 0;   // any settled outcome restarts the backoff
+      SDK.last = null;   // …and ends the send whose inputs a re-send would use
       if (S.layerKind === 'sdkproc') { S.layerKind = null; renderLayer(); }
       if (k === 'placed') { SDK.replaces = null; onOutcome(out); return; }
       if (k === 'sdk_declined') {
@@ -2005,6 +2020,8 @@
       if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
       if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
       if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
+      // D4 F2 / Q-B (advisor 11-12): the card could not be re-sent (its token gone with a reload) — nothing was charged; the same order, a card again
+      if (k === 'sdk_reenter_card') { SDK.sel = null; backTo('checkout'); openLayer('paysheet'); return; }
       // CONTRACT A3: the card is gone / not this member's — unselected, the list read again, the chooser open (nothing was charged)
       if (k === 'sdk_card_unavailable') { SDK.sel = null; SDK.cards = null; SDK.loaded = false; SDK.loading = false; SDK.gen++; backTo('checkout'); sdkLoad(); openLayer('paysheet'); return; }
       if (k === 'sdk_switched') {
@@ -2021,6 +2038,7 @@
     // send(): the SDK card path (after the kept 2-s window); the processing sheet over the screen of the tap
     async function sdkSend(p, attempt) {
       sdkProc(false);
+      SDK.last = p;
       let out; try { out = await api.placeSdk({ ...p, onDispatch: (id) => keepSent(id) }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }   // Codex r1 P1-4: the sent order kept for a reload
       if (dead || attempt !== attemptSeq) return;
       if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }

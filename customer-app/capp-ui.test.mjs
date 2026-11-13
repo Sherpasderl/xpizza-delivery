@@ -3282,6 +3282,44 @@ test('Codex r1 P1-4: a reload that finds the attempt PLACED (a fresh mount, no f
   assert.equal(placed[1].card && placed[1].card.last4, '4242', 'with its card');
 });
 
+// ── D4 F2 (UI): 409 attempt_unknown, the body the REAL placeSdkStatus core answers (status-endpoint.js over the honest RTDB model: an
+// SDK order with no attempt and no PSP-call record) — the SAME attempt re-sent after 2 s; a reload (no card inputs) ⇒ the card sheet ──
+const REAL_ATTEMPT_UNKNOWN = await (async () => {
+  const { makeHonestDb } = require('../xpizza-functions/_honest-rtdb-model.js');
+  const { placeSdkStatusCore } = require('../xpizza-functions/payments/sdk/status-endpoint.js');
+  const t = NOON().getTime(), oid = 'sdk_261026-120000-ABCDEFGH';
+  const db = makeHonestDb({ orders: { [oid]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', customer_uid: 'u1', restaurant_id: 'rid_a', total_cents: 31500, pay_deadline_at: t + 900e3 } } }, { now: () => t });
+  const r = await placeSdkStatusCore({ db, clock: () => t, verifyIdToken: async () => ({ uid: 'u1' }) }, { headers: { authorization: 'Bearer x' }, query: { order_id: oid } });
+  assert.equal(r.status, 409, 'premise: the real core answers 409 for an SDK order with no attempt');
+  return { status: r.status, json: r.body };
+})();
+test('D4 F2 (UI): attempt_unknown ⇒ the processing sheet stays; after 2 s the SAME attempt is re-sent; placed ⇒ the order', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: ['network', (body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } })], placeSdkStatus: [REAL_ATTEMPT_UNKNOWN] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.srv.of('placeSdkStatus').length, 1, 'premise: the status was asked');
+  assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-F2: still processing — never a decline sheet');
+  assert.ok([...b.timers.ms.values()].includes(2000), '🔴 SDKUI-F2: the first re-send waits 2 s');
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, 'premise: nothing re-sent yet');
+  b.timers.flush(); await settle();
+  const [a, c] = b.srv.of('placeSdkOrder').map((x) => x.body);
+  assert.ok(c && c.order_id === a.order_id && c.attempt_id === a.attempt_id, '🔴 SDKUI-F2: the SAME order and attempt re-sent');
+  b.timers.flush(); await settle();
+  assert.ok(b.events.some(([n]) => n === 'placed'), '🔴 SDKUI-F2: placed');
+});
+test('D4 F2 / Q-B (UI): after a reload (no card inputs) attempt_unknown ⇒ the attempt settled, the card chooser open on the SAME order — nothing re-sent', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  const id = b1.srv.of('placeSdkOrder')[0].body.order_id;
+  const errs = []; const b2 = bootSdk({ storage, mountOpts: { onError: (e) => errs.push(e) }, script: { placeSdkStatus: [REAL_ATTEMPT_UNKNOWN] } });
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  assert.deepEqual(errs, [], 'no crash');
+  assert.equal(b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-QB: nothing re-sent without the card');
+  const r = JSON.parse(storage.getItem('capp:rid_a:pending_place') || 'null');
+  assert.ok(r && r.order_id === id && r.attempt_state === 'none' && r.unresolved === false, '🔴 SDKUI-QB: the attempt settled none, the same order kept');
+  assert.ok(b2.q('#layer .paysheet, #layer [data-act="paypick"], #layer [data-act="addcard"]'), '🔴 SDKUI-QB: the card chooser is open');
+});
+
 test('Codex r1 P1-3 (UI): «Probar otra tarjeta» → «Efectivo al entregar» → «Hacer pedido» goes through the switch — never createOrder on the SDK order\'s id', async () => {
   const b = bootSdk({ script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
     cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });

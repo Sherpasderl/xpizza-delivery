@@ -98,6 +98,7 @@
   const MAX_TRIES = 3;                                   // READ-ONLY calls only (the quote): 2 retries, 1.5 s then 3 s
   const BACKOFF_MS = (attempt) => attempt * 1500;
   const IN_PROGRESS_TRIES = 8;                           // 202 in_progress: re-send the SAME identity, bounded
+  const SDK_MAX_RESENDS = 3;                             // D4 F2: re-sends of ONE attempt after 409 attempt_unknown, then the normal poll
   const POLL_DEADLINE_MS = 90000, POLL_EVERY_MS = 2500;  // the forms' return cadence
   const CANCEL_CHECK_MS = 5000;                          // the forms' single bounded check on a cancel return
   const ID_CHARS = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // the forms' genOrderId suffix charset
@@ -813,9 +814,55 @@
       if (!E.placeSdkStatus || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);   // no authority to read it (a lost guest ticket ⇒ §1.3 recovery)
       const r = await sdkCall('GET', `${E.placeSdkStatus}?order_id=${encodeURIComponent(id)}`, null, h);
+      if (!r.network && r.status === 409 && r.json && r.json.error === 'attempt_unknown') return attemptUnknown(id);
       if (r.network || r.status !== 200 || !r.json) return { kind: 'sdk_pending', order_id: id };
       const out = PC.readPlacement(r.json);
       return out.outcome === 'invalid' ? { kind: 'sdk_pending', order_id: id } : sdkApply(id, out);
+    }
+    // D4 F2 (DECISIONS 4445; advisor 11-12): 409 attempt_unknown is the server's PROOF that no authorization happened for the order's
+    // attempt — it answers it only when ONE read shows no attempt AND no PSP-call record, and it journals both BEFORE any PixelPay
+    // call. The ruled action: re-send the SAME attempt (sdkResend). Only for THIS record's own in-flight attempt; one fresh 409
+    // authorizes one re-send (in memory: a reload hears the server again); SDK_MAX_RESENDS on the record bounds it; past it, the
+    // normal poll — never a decline, never a new attempt here
+    const unknownAttempt = new Map();
+    function attemptUnknown(id) {
+      const cur = readPlace();
+      if (!cur || cur.order_id !== id || cur.sdk !== true || cur.attempt_state !== 'sent' || typeof cur.attempt_id !== 'string') return { kind: 'sdk_pending', order_id: id };
+      if ((Number(cur.resends) || 0) >= SDK_MAX_RESENDS) { unknownAttempt.delete(id); return { kind: 'sdk_pending', order_id: id }; }
+      unknownAttempt.set(id, cur.attempt_id);
+      return { kind: 'sdk_resend', order_id: id, resends: Number(cur.resends) || 0 };
+    }
+    // the card the attempt was made with, rebuilt: a saved card from the record's card_ref (exact); a new card only while the page still
+    // holds ITS token (the record never stores one) — anything else ⇒ null
+    function attemptCard(ref, c) {
+      if (ref && ref.kind === 'saved' && typeof ref.card_id === 'string') return { kind: 'saved', card_id: ref.card_id };
+      if (ref && ref.kind === 'new' && c && c.kind === 'new' && typeof c.sdk_token === 'string' && c.sdk_token && c.display && c.display.brand === ref.brand && c.display.last4 === ref.last4) return c;
+      return null;
+    }
+    const sdkResend = (p) => enqueue(() => sdkResendInner(p || {}));
+    async function sdkResendInner(p) {
+      if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
+      const cur = readPlace(), id = cur ? cur.order_id : null;
+      if (!cur || cur.sdk !== true || cur.attempt_state !== 'sent' || unknownAttempt.get(id) !== cur.attempt_id) return cur ? { kind: 'sdk_pending', order_id: id } : { kind: 'offline' };
+      unknownAttempt.delete(id);
+      const attemptId = cur.attempt_id;
+      // advisor Q-B (11-12): the card cannot be rebuilt (a new card's token gone with a reload, or no inputs) ⇒ the attempt settled 'none',
+      // the SAME sdk_ order kept, the card sheet again — the next card is a NEW attempt on it (finishSdk reuses the order: 3a, Q1)
+      const card = attemptCard(cur.card_ref, p.card);
+      if (!card || !p.flow || !p.ctx) { settleSdk(id, 'none', attemptId); return { kind: 'sdk_reenter_card', order_id: id }; }
+      const h = await sdkHeaders(p, id);
+      if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };
+      if (!h) return memberOf() ? { kind: 'offline', order_id: id } : { kind: 'guest_ticket_invalid', local: true };
+      const now2 = readPlace();   // re-checked after the one await: still THIS attempt, still in flight
+      if (!now2 || now2.order_id !== id || now2.attempt_id !== attemptId || now2.attempt_state !== 'sent') return { kind: 'sdk_pending', order_id: id };
+      { const g = guestGate(p, { ticket: true, id }); if (g) return g; }
+      const base = C.orderBody(p.flow, { ...p.ctx, orderId: id });
+      if (cfg.guestCardOnly === true && !memberOf() && p.checkoutTicket) base.checkout_ticket = p.checkoutTicket.ticket;
+      cq.send(base, p.sig, p.expectedNetCents);
+      const body = PC.placeBody(base, card, attemptId, { guest: !memberOf() }, typeof p.replacesOrderId === 'string' ? p.replacesOrderId : null);
+      if (!body) { settleSdk(id, 'none', attemptId); return { kind: 'sdk_reenter_card', order_id: id }; }
+      try { confirmSend(id, 'online', { resends: (Number(now2.resends) || 0) + 1 }); } catch (e) { return placeErr(e, id) || { kind: 'offline', order_id: id }; }
+      return sdkAnswer(id, await sdkCall('POST', E.placeSdkOrder, body, h), attemptId, p);
     }
     const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
@@ -847,7 +894,10 @@
       } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
       const id = rec.order_id;
       if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
-      const r = await sdkCall('POST', E.placeSdkOrder, body, h);
+      return sdkAnswer(id, await sdkCall('POST', E.placeSdkOrder, body, h), attemptId, p);
+    }
+    // a placeSdkOrder answer for (id, attemptId) — the first send and an attempt_unknown re-send alike
+    function sdkAnswer(id, r, attemptId, p) {
       if (r.network || r.status >= 500 || !r.json) return sdkStatus(id, p);                        // unknown ⇒ the status, never a new attempt
       if (r.status === 200) { const out = PC.readPlacement(r.json); return out.outcome === 'invalid' ? sdkStatus(id, p) : sdkApply(id, out); }
       // Codex r1 P2-6: a quote refusal is pre-admission (nothing claimed): the attempt released, the checkout re-quotes
@@ -998,7 +1048,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }
