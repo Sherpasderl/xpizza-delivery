@@ -2911,6 +2911,7 @@
   "directory/directory.js",
   "directory/platform-config.js",
   "directory/presentation-shape.js",
+  "directory/pricing-view.js",
   "driver-ingest.js",
   "driver-ledger/functions.js",
   "driver-ledger/ledger-core.js",
@@ -4217,6 +4218,10 @@
    "lifts": []
   },
   "directory/presentation-shape.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "directory/pricing-view.js": {
    "pins": [],
    "lifts": []
   },
