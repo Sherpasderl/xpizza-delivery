@@ -238,13 +238,9 @@ const MERGE_ALLOW = {
   // asm5 (2e, advisor ruling B 11-10): the S3 merge restates capp-cart's minted-line premise under S2 «item_key wins» — an S2 × S3
   // interaction (red on S3 alone, true only once both are merged), so it lives in the merge resolution, not in either lane.
   '8e6abdf6 customer-app/capp-cart.test.mjs': 'S2 × S3: the minted line WITH its display id resolves by its key (S2 item_key wins)',
-  // S2b (5f, PLAN-structure-S2b-r3 §5; advisor 11-12 Q2): the server line's capp side rides ONE merge resolution, so the capp lane's
-  // range never includes S2b's server commits — the served extra_keys read, the key-aware deny / serializer / reorder, and its cells.
-  '78bc71cc customer-app/capp-menu.js': 'S2b: extras carry extra_key; extrasFor denies by key',
-  '78bc71cc customer-app/capp-serialize.js': 'S2b: a line extra sends extra_key (appended last) only with a served extra_keys map',
-  '78bc71cc customer-app/capp-shell-ui.js': 'S2b: reorder matches a stored option by its KEY when extra_keys is served',
-  '78bc71cc customer-app/capp-s2b.test.mjs': 'S2b: SERVED / MENU+SERIAL / MENU-DENY over the real publish',
-  '78bc71cc customer-app/capp-s7a2.test.mjs': 'S2b: two key-aware reorder cells',
+  // S2b on the portal-structure train (5f, 11-13): S2b's capp merge 78bc71cc is a FIRST-parent merge on S2b's own branch (listed
+  // there, a772d36b) but arrives here as parent 2 of bb8c79a9, whose customer-app/ blobs equal that parent — no resolution edit on
+  // this first-parent chain, so its five entries are stale here and are not carried (the 1bca1782 DRYRUN precedent).
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
