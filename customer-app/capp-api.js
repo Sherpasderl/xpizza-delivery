@@ -125,6 +125,7 @@
     // the cancel return's single bounded check: its OWN timer (a backoff sleep must never shorten it)
     const timeout = o.timeout || ((ms) => new Promise((r) => { const h = setTimeout(r, ms); if (h && typeof h.unref === 'function') h.unref(); }));
     const cryptoApi = (root && root.crypto) || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
+    const subtle = o.subtle || (cryptoApi && cryptoApi.subtle) || null;   // injectable (a digest failure is a tested path: Codex r4 P1)
     const randomBytes = o.randomBytes || ((n) => { const b = new Uint8Array(n); cryptoApi.getRandomValues(b); return b; });
     const memberOf = typeof o.member === 'function' ? o.member : () => o.member || null;
     const lockInterruptedCard = typeof o.lockInterruptedCard === 'boolean' ? o.lockInterruptedCard : LOCK_INTERRUPTED_CARD;
@@ -280,7 +281,11 @@
     // Codex r3 P1: a GUEST's principal is the PHONE its order-bound ticket was verified for — never the literal GUEST_OWNER (any guest).
     // The server fences under its salted p_<phone_hash>, which the device cannot compute; the device keys the same identity by
     // `phone_key` (SHA-256 of the ticket phone's digits, made at verify time) and stores ONLY that key (rule 20: never the phone)
-    const sdkPrincipal = (p) => { const u = uidNow(); if (u) return u; const k = p && p.checkoutTicket && p.checkoutTicket.phone_key; return typeof k === 'string' && k ? `g:${k}` : null; };
+    // Codex r4 P1 — FAIL CLOSED: a guest ticket WITHOUT a valid phone_key (a failed derivation) is the principal GUEST_UNKEYED: foreign to
+    // every keyed record and never able to dispatch; no ticket at all ⇒ null (no principal, and no authority to send anything)
+    const GUEST_UNKEYED = 'g:?';
+    const KEY_RE = /^[0-9a-f]{64}$/;
+    const sdkPrincipal = (p) => { const u = uidNow(); if (u) return u; const t = p && p.checkoutTicket; if (!t) return null; return typeof t.phone_key === 'string' && KEY_RE.test(t.phone_key) ? `g:${t.phone_key}` : GUEST_UNKEYED; };
     // foreign: an SDK record bound to another principal than the CURRENT one. A guest without a ticket has no principal here — and no
     // authority to send anything either (sdkHeaders ⇒ the recovery sheet), so nothing is refused that could reach the server
     function sdkForeign(id, p) { const r = readPlace(); const cur = sdkPrincipal(p); return !!(r && r.sdk === true && typeof r.owner === 'string' && cur !== null && r.owner !== cur && (id == null || r.order_id === id)); }
@@ -935,6 +940,9 @@
     const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
       if (retainedByOther(p)) return HELD_OTHER();   // before the token read, before any request (Codex r2 P1 / r3 P1)
+      // Codex r4 P1: no SDK dispatch without a principal to bind it to — a guest whose ticket carries no valid phone_key re-verifies (the
+      // normal ticket retry), and nothing is recorded or sent
+      { const pr = sdkPrincipal(p); if (pr === null || pr === GUEST_UNKEYED) return memberOf() ? { kind: 'offline', local: true } : { kind: 'guest_ticket_invalid', local: true }; }
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       // the authority FIRST (the one await before the dispatch, Codex r1 P1-1): everything after it is checked and sent with no await between
       const h = await sdkHeaders(p, null);
@@ -959,7 +967,7 @@
       try {
         const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec;
         // rule i: the attempt recorded and re-read BEFORE the dispatch (a failed write ⇒ no dispatch)
-        rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: sdkPrincipal(p) || GUEST_OWNER, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
+        rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: sdkPrincipal(p), attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
       } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
       const id = rec.order_id;
       if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
@@ -1109,14 +1117,16 @@
     // Codex r3 P1: the device's key for a guest phone (the SDK record's principal) — SHA-256 over the phone's digits; null ⇒ none
     async function phoneKeyOf(phone) {
       const d = String(phone || '').replace(/\D/g, ''); if (!d) return null;
-      try { const h = await cryptoApi.subtle.digest('SHA-256', new TextEncoder().encode(`capp-guest-phone\n${d}`)); return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, '0')).join(''); } catch (_) { return null; }
+      try { const h = await subtle.digest('SHA-256', Uint8Array.from(`capp-guest-phone\n${d}`, (c) => c.charCodeAt(0))); return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, '0')).join(''); } catch (_) { return null; }
     }
     async function verifyCheckoutCode({ phone, cartFp, code, orderId }) {
       if (!E.verifyCheckoutCode || typeof orderId !== 'string' || !orderId) return { kind: 'offline' };
       const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, order_id: orderId, code }, clientIdentity());
       if (r.network || !r.parsed) return { kind: 'offline' };
       const j = r.json;
-      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, phone_key: await phoneKeyOf(phone), cart_fp: cartFp, order_id: orderId, expires_at: now() + TICKET_TTL_MS } };
+      // Codex r4 P1: a ticket is handed over ONLY with its phone_key — a failed derivation is the normal retry (never a keyless ticket)
+      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) { const phone_key = await phoneKeyOf(phone); if (!phone_key) return { kind: 'offline' };
+        return { ok: true, ticket: { ticket: j.checkout_ticket, phone, phone_key, cart_fp: cartFp, order_id: orderId, expires_at: now() + TICKET_TTL_MS } }; }
       if (r.status === 400 && (j.error === 'code_wrong' || j.error === 'code_expired')) return { kind: j.error };
       if (r.status === 429 && j.error === 'too_many_attempts') return { kind: 'too_many_attempts', retryInS: secs(j.retry_in_s) ?? 600 };
       return { kind: 'offline' };
