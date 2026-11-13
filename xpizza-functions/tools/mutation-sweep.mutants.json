@@ -36062,8 +36062,8 @@
   "slice": "ga",
   "label": "rule 10: the guest free-delivery line without the store's promo",
   "file": "../customer-app/capp-ui.js",
-  "from": "const guest = cfg.promoFree === true && authOf() === 'guest';",
-  "to": "const guest = authOf() === 'guest';",
+  "from": "const guest = cfg.promoFree === true && authOf() === 'guest' && !(cartCtx && desk);",
+  "to": "const guest = authOf() === 'guest' && !(cartCtx && desk);",
   "command": [
    "node",
    "--test",
@@ -36140,6 +36140,74 @@
   ],
   "kills_with": [
    "RULE 10: the raw writer"
+  ]
+ },
+ {
+  "id": "da-01",
+  "slice": "da",
+  "label": "the desk aside shows the phone row («según tu dirección») instead of frame 2a's «Envío desde L floor»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)",
+  "to": "      const fee = true ? feeRowHtml(T, false, 'cart', desk)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA1: frame 2a"
+  ]
+ },
+ {
+  "id": "da-02",
+  "slice": "da",
+  "label": "a landed quote never reaches the desk aside",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (aside) aside.outerHTML = cartTotsHtml(total, true);",
+  "to": "      void aside;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA2",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA2: the new quote lands in the aside"
+  ]
+ },
+ {
+  "id": "da-03",
+  "slice": "da",
+  "label": "rule 10: the aside's member «Gratis» without the predicate",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${cfg.promoFree === true && authOf() === 'member' ? `<span class=\"strike\">${floor}</span>",
+  "to": "${authOf() !== 'guest' ? `<span class=\"strike\">${floor}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 DA3 (false, unresolved)"
+  ]
+ },
+ {
+  "id": "da-04",
+  "slice": "da",
+  "label": "the desk aside carries the guest line (frame 2a draws the card-only note there)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const guest = cfg.promoFree === true && authOf() === 'guest' && !(cartCtx && desk);",
+  "to": "      const guest = cfg.promoFree === true && authOf() === 'guest';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA3: priced — the aside never carries the guest line"
   ]
  }
 ]

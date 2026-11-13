@@ -3894,3 +3894,36 @@ test('G-A6 a chosen tip stays out of the cart (v6 draws no Propina row there): t
   await backToCart(b);
   assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A6: the cart Total leaves the tip out');
 });
+
+// ── the DESK aside's totals (advisor 11-13 option (a), exact to D-3 r3 frame 2a): «Envío desde L {fee floor}» before a quote (the
+// store fee cell's fact), the quote's amount once priced, Total as the cart; the member's struck «Gratis» only through the rule-10
+// predicate; no guest line (frame 2a draws the card-only note there instead) ──
+const DESK = { view: { desk: () => true } };
+const asideRows = (b) => b.qa('.deskcart .ctot .sumrow').map((r) => b.text(r));
+test('DA1 frame 2a, before a quote: the aside reads Subtotal · «Envío desde L 45» · Total = the subtotal; nothing quoted', async () => {
+  const b = bootCo({ config: { feeFromCents: 4500 }, mountOpts: { ...DESK, authState: () => 'guest' } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await settle();
+  const food = b.plain.price * 100;
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(food)}`, 'Envío Envío desde L 45', `Total ${L_(food)}`], '🔴 DA1: frame 2a\'s rows before a quote');
+  b.timers.flush(); await settle(); assert.equal(b.srv.of('quoteOrder').length, 0, 'no address ⇒ no quote');
+});
+test('DA2 frame 2a once priced: the quote\'s Envío and the checkout\'s Total; an edit ⇒ the floor again + «—», then the new quote in place', async () => {
+  const b = bootCo({ config: { feeFromCents: 4500 }, mountOpts: { ...DESK, authState: () => 'guest' } });
+  await toCheckout(b); await settle(); const coTot = b.text('.ostot .sumrow.tot'), food = b.plain.price * 100;
+  b.w.history.back(); await popped(); assert.equal(b.ui.state.screen, 'store', 'premise: back on the store');
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, coTot], '🔴 DA2: priced — the quote\'s Envío, the checkout\'s Total');
+  await b.click(b.q('.deskcart .cline [data-rev="1"]'));
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(2 * food)}`, 'Envío Envío desde L 45', 'Total —'], '🔴 DA2: stale ⇒ the floor (a fact) and «—» (never a guessed total)');
+  b.timers.flush(); await settle();
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(2 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(2 * food + FEE + 7)}`], '🔴 DA2: the new quote lands in the aside');
+});
+test('DA3 rule 10 in the aside: no free-delivery claim without the predicate (guest or member), and never the guest line', async () => {
+  for (const [promoFree, auth] of [[false, 'guest'], [true, 'guest'], [false, 'unresolved']]) {
+    const b = bootCo({ config: { feeFromCents: 4500, promoFree }, mountOpts: { ...DESK, authState: () => auth } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await settle();
+    const t = b.text('.deskcart .ctot');
+    assert.ok(!/Gratis|envío es gratis/.test(t) && !b.q('.deskcart .feelnk'), `🔴 DA3 (${promoFree}, ${auth}): no claim, no guest line: ${t}`);
+  }
+  const p = bootCo({ config: { feeFromCents: 4500, promoFree: true }, mountOpts: { ...DESK, authState: () => 'guest' } });   // PRICED, promo, guest
+  await toCheckout(p); await settle(); assert.ok(p.q('.ostot .feelnk'), 'premise: the checkout carries the guest line (v6)');
+  p.w.history.back(); await popped();
+  assert.ok(/Envío L /.test(p.text('.deskcart .ctot')) && !p.q('.deskcart .feelnk'), `🔴 DA3: priced — the aside never carries the guest line (frame 2a): ${p.text('.deskcart .ctot')}`);
+});

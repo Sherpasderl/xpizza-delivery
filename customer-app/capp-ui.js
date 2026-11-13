@@ -688,7 +688,7 @@
     function syncPill() { const p = $('cart-bar'); if (!p) return; const n = cart.count(); p.querySelectorAll('.cart-pill-text')[0].textContent = n ? unitOf(n) : 'Tu pedido'; p.querySelectorAll('.cart-pill-text')[1].textContent = money(cartTotal()); const dc = app.querySelector('.deskcart'); if (dc) { dc.innerHTML = cartInner(true); applyOrderable(); } }   // v6 :1726 — the desk aside follows every edit (and keeps browse-only)
     function bumpPill() { const p = $('cart-bar'); if (!p) return; p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); }
 
-    // ── CART SHEET (the phone sheet carries v6's fee rows, G-A: cartTotsHtml; the desk aside and a sold cart (frame 14) keep the Subtotal) ──
+    // ── CART SHEET (the phone sheet carries v6's fee rows, the desk aside frame 2a's — cartTotsHtml; a sold cart (frame 14) keeps the Subtotal) ──
     const lineName = (d, cls) => (d.editable
       ? `<button class="lnedit ${cls}" data-act="edit" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Editar ${esc(d.item.n)}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}<span class="ln-ed">Editar</span></button>`
       : `<div class="lnstatic ${cls}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}</div>`);
@@ -733,7 +733,7 @@
       return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
-        + cnote + (desk || soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total))
+        + cnote + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
@@ -1030,7 +1030,7 @@
     // Rule 10 (advisor 11-13): the guest's «Creá tu cuenta y tu envío es gratis» only with the store's free-delivery promo
     // (cfg.promoFree, the ONE claim predicate) AND a priced quote for this address; while that quote is pending its slot is reserved
     // (hidden, no control) — never a claim before the price, never a line popping in
-    function feeRowHtml(T, info, ctx = 'checkout') {
+    function feeRowHtml(T, info, ctx = 'checkout', desk = false) {
       const f = S.flow, cartCtx = ctx === 'cart';
       if ((cartCtx ? S.mode : f && f.mode) !== 'delivery') return '';
       const addr = cartCtx ? cartAddr() : !!f && quotable(f);
@@ -1038,7 +1038,7 @@
       const ib = info && d && Number.isFinite(d.from_cents) && Number.isFinite(d.max_km) ? `<button class="infobtn" data-act="feeinfo" aria-label="Cómo se calcula el envío">${IC.info}</button>` : '';
       // the promotion state (struck price + «Gratis»); the prototype's «Envío gratis · {promo}» note needs a promo label the quote does not carry
       if (T.ready && T.envioFree) return `<div class="sumrow"><span>Envío${ib}</span><span><span class="strike">${moneyC(T.envio)}</span><span class="free">Gratis</span></span></div>`;
-      const guest = cfg.promoFree === true && authOf() === 'guest';
+      const guest = cfg.promoFree === true && authOf() === 'guest' && !(cartCtx && desk);
       const line = T.ready ? (guest ? `<button class="feelnk" data-act="signin" data-ctx="${ctx}">Creá tu cuenta y tu envío es gratis</button>` : '')
         : guest && addr ? '<span class="feelnk" aria-hidden="true" style="visibility:hidden">Creá tu cuenta y tu envío es gratis</span>' : '';
       if (!T.ready) return (cartCtx && addr ? '<div class="sumrow"><span>Envío</span><span>—</span></div>'
@@ -1049,23 +1049,31 @@
     // cart (C.totals refuses a subtotal mismatch) and the cart's own mode; else «—» and the same requote(), debounced (rapid edits ⇒
     // ONE request), asked only once an address exists. Total = the quote's net minus its tip (the cart draws no Propina row, v6)
     const cartAddr = () => !!S.flow && S.flow.mode === S.mode && quotable(S.flow);
-    function cartTotsHtml(total) {   // total: the cart's shown subtotal, lempiras
+    // desk (advisor 11-13 (a), exact to D-3 r3 frame 2a): before a matching quote the Envío cell is the store fee cell's fact «Envío
+    // desde L {floor}» (or, for a member under the rule-10 predicate, the struck floor + «Gratis»); priced ⇒ the quote's amount; no
+    // guest line (frame 2a's card-only note stands there); the Total follows the cart's rule
+    function cartTotsHtml(total, desk = false) {   // total: the cart's shown subtotal, lempiras
       const sub = `<div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div>`;
       if (S.mode !== 'delivery') return `<div class="ctot">${sub}<div class="sumrow tot"><span>Total</span><span>${money(total)}</span></div></div>`;
       const addr = cartAddr(), T0 = addr ? totalsNow() : { ready: false };
       const T = T0.ready && T0.subtotal === Math.round(total * 100) ? T0 : { ready: false };
       if (addr && !T.ready) cartQuoteSoon();
-      return `<div class="ctot">${sub}${feeRowHtml(T, false, 'cart')}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
+      const floor = cfg.feeFromCents != null ? money(cfg.feeFromCents / 100) : null;
+      const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)
+        : `<div class="sumrow"><span>Envío</span><span class="r">${cfg.promoFree === true && authOf() === 'member' ? `<span class="strike">${floor}</span><span class="free">Gratis</span>` : `Envío desde ${floor}`}</span></div>`;
+      return `<div class="ctot">${sub}${fee}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
     }
     const CART_QUOTE_MS = 350;
     let cartQT = null;
     function cartQuoteSoon() { if (cartQT !== null) T_.clearTimeout(cartQT); cartQT = T_.setTimeout(() => { cartQT = null; if (!dead) requote(true); }, CART_QUOTE_MS); }
     // a landed (or failed) cart quote patches the sheet's totals IN PLACE (the sheet keeps its scroll; the rows keep their slots)
     function cartRefresh() {
-      if (dead || S.layerKind !== 'cart' || frozenNow()) return;
-      const el = $('layer') && $('layer').querySelector('.ctot'); if (!el) return;
+      if (dead || frozenNow()) return;
       const lines = displayLines(); if (!lines.length || lines.some((d) => isSold(find(d.key)))) return;
-      el.outerHTML = cartTotsHtml(lines.reduce((a, d) => a + d.total, 0));
+      const total = lines.reduce((a, d) => a + d.total, 0);
+      const sheet = S.layerKind === 'cart' && $('layer') ? $('layer').querySelector('.ctot') : null, aside = S.desk ? app.querySelector('.deskcart .ctot') : null;
+      if (sheet) sheet.outerHTML = cartTotsHtml(total);
+      if (aside) aside.outerHTML = cartTotsHtml(total, true);
     }
     // S4: the prototype's two cards + the inline picker (P:1838-1841): day chips, EVERY slot of the day (N3), the empty states; row 10b's
     // read-only variant while a scheduled send is unresolved (frame 10b: «Lo antes posible», the days and the OTHER slots in the drawn
