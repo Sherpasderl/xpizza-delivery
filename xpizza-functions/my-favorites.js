@@ -102,7 +102,10 @@ function makeMyFavorites({ getDatabase, getAuth, checkRateLimit, now = () => Dat
       if (!a.uid) return res.status(a.status).json(a.body);
       const { db, uid } = a; const rid = b.rid; const op = b.on ? 'on' : 'off';
       if (op === 'on') {
-        if (!(await db.ref(`restaurants/${rid}/identity`).once('value')).exists()) return res.status(404).json({ ok: false, reason: 'unknown_restaurant' });
+        // a LEAF read (advisor 11-13): identity/name is required of every routable restaurant (restaurant-config isRoutingValid; activation
+        // via brand-model validateBranchIdentity; rules .validate) — never the whole identity node (it carries hours)
+        const nm = (await db.ref(`restaurants/${rid}/identity/name`).once('value')).val();
+        if (!(typeof nm === 'string' && nm.length > 0)) return res.status(404).json({ ok: false, reason: 'unknown_restaurant' });
         const pre = await bounded(db, uid); let count = 0; let has = false;
         pre.forEach((c) => { if (c.key === FENCE) return; if (RID_RE.test(c.key)) count += 1; if (c.key === rid) has = true; });
         // an OVERSIZED node (> FAV_MAX: a legacy owner-direct write) is refused BEFORE the parent transaction, even for a favorite it

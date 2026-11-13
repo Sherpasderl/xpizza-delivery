@@ -176,7 +176,7 @@ const deleteA = (db, at) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { ui
   // ── 5. identity on ADD only (R2.2 #8): an unknown restaurant ⇒ 404 on `on`; a REMOVED restaurant's favorite is still removable ──
   {
     const db = fakeDb(); seedRestaurants(db); const h = harness(db);
-    let r = await h.fav(`tok-${A}`, 'nowhere_rest', true); assert.deepStrictEqual([r.code, r.body], [404, { ok: false, reason: 'unknown_restaurant' }]);
+    let r = await h.fav(`tok-${A}`, 'nowhere_rest', true); assert.deepStrictEqual([r.code, r.body], [404, { ok: false, reason: 'unknown_restaurant' }], '🔴 an unknown restaurant ⇒ 404 on `on`');
     assert.strictEqual(db.get(`user_favorites/${A}`), undefined);
     await h.fav(`tok-${A}`, 'merch_a', true);
     db.set('restaurants/merch_a/identity', null);   // the restaurant left the platform
@@ -185,6 +185,24 @@ const deleteA = (db, at) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { ui
     assert.strictEqual(db.get(`user_favorites/${A}`), undefined);
   }
   ok('identity is checked on ADD only: an unknown restaurant ⇒ 404; a removed restaurant\'s favorite is always removable (off needs only a path-valid rid)');
+
+  // ── 5b. the existence check is a LEAF read (advisor 2026-11-13, hours-tripwire R4): restaurants/<rid>/identity/name — never the whole
+  // identity node (it carries hours; a heart tap must not download it). identity/name is required of every routable restaurant
+  // (restaurant-config.isRoutingValid; brand-model.validateBranchIdentity ⇒ branch-ops.readinessOf gates activation; rules .validate
+  // hasChildren name), so a name-less identity is not a restaurant a customer can order from ⇒ 404 like an unknown one ──
+  {
+    const db = fakeDb(); seedRestaurants(db); const h = harness(db);
+    db.reads.length = 0;
+    let r = await h.fav(`tok-${A}`, 'merch_a', true); assert.strictEqual(r.code, 200, 'premise: a known restaurant ⇒ 200');
+    const idReads = db.reads.filter((x) => x.path.startsWith('restaurants/')).map((x) => x.path);
+    assert.deepStrictEqual(idReads, ['restaurants/merch_a/identity/name'], `🔴 the existence check reads ONLY the identity/name leaf (${idReads.join(', ')})`);
+    db.set('restaurants/merch_b/identity', { active: true, hours: { mon: { open: true, start: '10:00', end: '22:00' } } });   // no name
+    r = await h.fav(`tok-${A}`, 'merch_b', true); assert.deepStrictEqual([r.code, r.body], [404, { ok: false, reason: 'unknown_restaurant' }], '🔴 an identity without a name ⇒ 404 (not a routable restaurant)');
+    db.set('restaurants/merch_b/identity/name', '');
+    r = await h.fav(`tok-${A}`, 'merch_b', true); assert.strictEqual(r.code, 404, '🔴 an EMPTY name ⇒ 404 (isRoutingValid: a non-empty string)');
+    for (const bad of [7, { length: 3 }]) { db.set('restaurants/merch_b/identity/name', bad); r = await h.fav(`tok-${A}`, 'merch_b', true); assert.strictEqual(r.code, 404, `🔴 a non-string name (${JSON.stringify(bad)}) ⇒ 404`); }
+  }
+  ok('the add-time existence check reads ONLY restaurants/<rid>/identity/name (never the whole identity, hours included); a name-less identity ⇒ 404');
 
   // ── 6. the cap: FAV_MAX exactly, a bounded pre-check (never reads past FAV_MAX + 1), exact under concurrency; a legacy oversized node ──
   {
