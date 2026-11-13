@@ -408,3 +408,23 @@ export function feesOnlyBody(attempt) {
   return { expected_policy_version: attempt.expectedVersion, bands: attempt.sentBands.map((b) => ({ max_km: b.max_km, cents: b.cents })),
     ...(attempt.sentLimits.length ? { limits: attempt.sentLimits.map((e) => ({ rid: e.rid, km: e.km })) } : {}) };
 }
+
+// ── ENVÍO step 2, Z1 — the card's COPY: the approved v2 card's strings live in envio.js COPY; every string the zones addendum PROPOSES is
+// null here ⇒ «⟦zones.key⟧» on screen until the owner approves it (envio-zones-view's SHIP GATE stays red until then)
+export const ZONES_COPY = Object.freeze({
+  editableNote: null, mapUpdating: null, lockedTitle: null, lockedBody: null, hoursTitle: null, hoursBody: null, recheck: null, unreadable: null,
+});
+export const zonesCopy = (k) => (typeof ZONES_COPY[k] === 'string' ? ZONES_COPY[k] : `⟦zones.${k}⟧`);
+// a zone's row line «N puntos · dentro de X km» (approved v2): X = the farthest vertex from the restaurant's pin, rounded UP to a km;
+// no pin ⇒ null (the line says only the points)
+const EARTH_KM = 6371;
+const toRad = (x) => (x * Math.PI) / 180;
+const kmBetween = (a, b) => {
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.sqrt(h));
+};
+export function zoneReachKm(zone, hub) {
+  if (!zone || !Array.isArray(zone.points) || !zone.points.length || !hub || !Number.isFinite(hub.lat) || !Number.isFinite(hub.lng)) return null;
+  return Math.ceil(Math.max(...zone.points.map((p) => kmBetween(hub, p))));
+}

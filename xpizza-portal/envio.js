@@ -35,9 +35,14 @@ const I = Object.freeze({
   search: [{ tag: 'circle', cx: 11, cy: 11, r: 7 }, 'M20 20l-3.5-3.5'],
   check: ['M5 12l5 5 9-10'],
   reload: ['M21 12a9 9 0 1 1-3-6.7', 'M21 3v6h-6'],
+  pencil: ['M4 20h4l10-10-4-4L4 16v4zM13 7l4 4'],   // ENVÍO step 2: the approved v2 zones card's «Renombrar»
+  hatch: ['M-2 4L4 -2M-2 10L10 -2M-2 16L16 -2M-2 22L22 -2M4 26L26 4M10 26L26 10M16 26L26 16'],   // the zone swatch's diagonals
 });
 const ic = (k) => svg(...I[k]);
 const COPY = Object.freeze({
+  // ENVÍO step 2 — the «Zonas sin entrega» card, the approved v2 mockup's own words (owner 11-10)
+  zonesH: 'Zonas sin entrega', zonesHint: 'Para todos los restaurantes', zonesDraw: 'Dibujar zona',
+  zonesHelp: 'Áreas donde no entregamos aunque estén dentro del límite, por seguridad de los repartidores. Dibujalas sobre el mapa.',
   h1: 'Envío', pill: 'Área de Sherpa',
   lede: 'Una sola tarifa por distancia para todos los restaurantes; cada uno con su distancia máxima. La paga el cliente en la app de Sherpa y se mide en línea recta desde el pin de cada sucursal.',
   ledePh: 'Una tarifa por distancia para todos; cada restaurante con su distancia máxima. Se mide en línea recta desde el pin de cada sucursal.',
@@ -88,6 +93,7 @@ const S = {
   floor: 0,                // Codex r1 F4: the newest policy version this session adopted or confirmed — an older read is never adopted
   inerted: [],             // Codex r1 F1: the background nodes the open confirm made inert (released on EVERY exit)
   map: null,               // { frame, mount, deadline, listening, ready, failed, onMsg }
+  zones: null,             // ENVÍO step 2: envio-logic zonesFromBody(the read) — { zones | null, editable, lock, caps }; fail closed
   refs: null,
 };
 function snap() {
@@ -141,6 +147,7 @@ const bodyVersion = (b) => { const v = b && (b.current_malformed === true ? b.po
 const raiseFloor = (v) => { if (Number.isSafeInteger(v) && v > S.floor) S.floor = v; };
 function adoptBody(b) {
   S.loaded = EL.loadedState(b);
+  S.zones = EL.zonesFromBody(b);
   raiseFloor(bodyVersion(b));
   S.branchesUnavailable = !Array.isArray(b.branches);
   S.branchesRaw = Array.isArray(b.branches) ? b.branches : [];
@@ -183,6 +190,7 @@ async function load({ fresh } = {}) {
     // the draft wins on screen; the CAS catches a newer server version at save. The directory still refreshes.
     S.branchesUnavailable = !Array.isArray(res.body.branches);
     S.branchesRaw = Array.isArray(res.body.branches) ? res.body.branches : S.branchesRaw;
+    S.zones = EL.zonesFromBody(res.body);   // the lock follows the server (the list is the draft's)
     refreshEntries();
   } else {
     adoptBody(res.body);
@@ -485,7 +493,7 @@ function render() {
     return;
   }
   if (!S.refs) buildPage();
-  paintBanner(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintBar(); paintConfirm();
+  paintBanner(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintZones(); paintBar(); paintConfirm();
   postRender('keep');   // Codex r1 F6: every adoption / restoration reaches the map
 }
 
@@ -517,7 +525,15 @@ function buildPage() {
   const callout = el('div', 'ecallout envcallout');
   const ct = el('div'); ct.append(el('b', null, COPY.calloutB), document.createTextNode(COPY.calloutT));
   callout.append(ic('info'), ct);
-  left.append(sb, callout);
+  // ENVÍO step 2, Z1 — «Zonas sin entrega» (the approved v2 card; the addendum's server states A–C)
+  const sz = el('section', 'esec envzones');
+  const zh = el('h3', null, COPY.zonesH); zh.append(el('span', 'ehint', COPY.zonesHint));
+  refs.zonesLock = el('div');
+  refs.zonesList = el('div', 'zlist');
+  refs.zonesDraw = button('railadd', COPY.zonesDraw, () => {}); refs.zonesDraw.prepend(ic('plus'));
+  refs.zonesNotes = el('div');
+  sz.append(zh, el('p', 'ehelp', COPY.zonesHelp), refs.zonesLock, refs.zonesList, refs.zonesDraw, refs.zonesNotes);
+  left.append(sb, callout, sz);
   // map
   const sm = el('section', 'esec envmap');
   const mh = el('h3', null, COPY.mapH); const mhint = el('span', 'ehint'); mhint.append(ic('ring'), document.createTextNode(COPY.mapHint)); mh.append(mhint);
@@ -682,7 +698,43 @@ function bandRow(i) {
   node.append(n, kmL, feeL, del);
   return node;
 }
-function afterEdit() { refreshEntries(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintBar(); postRender('keep'); }
+function afterEdit() { refreshEntries(); paintBands(); paintPicker(); paintMax(); paintMapBox(); paintLegend(); paintZones(); paintBar(); postRender('keep'); }
+// ENVÍO step 2, Z1 — the zones card from the read: the rows (name · «N puntos · dentro de X km» from the picked pin), the lock's callout
+// (B: a restaurant open; C: hours unknown / unavailable, with a fresh read), the notes. Rename / remove are on only when the server says
+// the zones are editable; «Dibujar zona» waits for the map's drawing (Z2, protocol v3)
+function paintZones() {
+  const r = S.refs;
+  if (!r || !r.zonesList) return;
+  const z = S.zones || { zones: null, editable: false, lock: { reason: 'unavailable', branches: [] } };
+  const hub = (S.entries.find((e) => e.rid === S.pick) || {}).hub || null;
+  r.zonesLock.replaceChildren();
+  if (z.zones !== null && !z.editable && z.lock) {
+    const open = z.lock.reason === 'open';
+    const co = el('div', `ecallout${open ? ' sand' : ''}`);
+    const t = el('div'); t.append(el('b', null, EL.zonesCopy(open ? 'lockedTitle' : 'hoursTitle')), document.createTextNode(` ${EL.zonesCopy(open ? 'lockedBody' : 'hoursBody')}`));
+    co.append(ic('info'), t);
+    if (!open) co.append(button('btn ghost sm', EL.zonesCopy('recheck'), () => load({ fresh: true })));
+    r.zonesLock.append(co);
+  }
+  r.zonesList.replaceChildren();
+  for (const zone of z.zones || []) {
+    const row = el('div', 'zrow');
+    const km = EL.zoneReachKm(zone, hub);
+    const k = el('span', 'k', zone.name);
+    k.append(el('span', 's', `${zone.points.length} puntos${km === null ? '' : ` \u00b7 dentro de ${km} km`}`));
+    const ren = button('ib', '', () => {}); ren.title = 'Renombrar'; ren.setAttribute('aria-label', `Renombrar ${zone.name}`); ren.append(ic('pencil'));
+    const rem = button('ib', '', () => {}); rem.title = 'Quitar'; rem.setAttribute('aria-label', `Quitar ${zone.name}`); rem.append(ic('x'));
+    ren.disabled = !z.editable; rem.disabled = !z.editable;
+    const sw = el('span', 'zsw'); sw.append(ic('hatch'));
+    row.append(sw, k, ren, rem);
+    r.zonesList.append(row);
+  }
+  r.zonesDraw.disabled = true;   // Z1: the map cannot draw yet (protocol v3)
+  r.zonesNotes.replaceChildren();
+  const note = (t) => r.zonesNotes.append(el('p', 'efnote', t));
+  if (z.zones === null) note(EL.zonesCopy('unreadable'));
+  else { if (z.editable) note(EL.zonesCopy('editableNote')); note(EL.zonesCopy('mapUpdating')); }
+}
 // ENVÍO v3 A1 / A4 — the field for the picked branch's restaurant: the edit text, else its stored value (none → the table top; a flagged
 // restaurant: empty, «—»); «+» off at the cap; the line for an edited text; the sand note when the STORED value stays above the top
 function shownMax(r, top) {
