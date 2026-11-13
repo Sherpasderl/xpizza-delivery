@@ -3086,12 +3086,22 @@ async function g1Reorder(patch, { dropSnapshot = false } = {}) {
   return { S, st };
 }
 const g1Changes = (S) => JSON.parse(JSON.stringify(S.ui.store().ui.cart.priceChanges())).map((c) => [c.name, c.sig ? 'extra' : 'plain', c.fromCents, c.toCents]);
-test('C-3r G1 v1 (dish price changed since the order): «Volver a pedir» shows the frame-13 note — one line per configuration, the EXACT past dish price → today\'s', async () => {
+test('C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1', async () => {
   const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; });
   try {
-    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 29900 + 5000, 30900 + 5000], ['Margherita', 'plain', 29900, 30900]], '🔴 G1-dish: from = the snapshot\'s unit_cents (+ the live extra), to = the live price');
+    assert.deepEqual(g1Changes(S), [['Margherita', 'plain', 29900, 30900]], '🔴 G1-dish: only the option-less configuration, exact from → to');
     const notes = S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
-    assert.deepEqual(notes, ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 359.', 'Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-dish: the frame-13 note lines, exact');
+    assert.deepEqual(notes, ['Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-dish: the one frame-13 line, exact');
+    assert.deepEqual(S.qa('.cline .cl-old').map((x) => x.textContent), ['L 299'], '🔴 G1-dish: the ONE struck old subtotal = unit_cents × 1');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 v1 RULE — Codex C-3r r1 P2 repro (Margherita 299→309 AND Mozzarella 50→60): never an «antes» built from the snapshot dish + a LIVE extra (it would read «antes L 359»; the configuration really cost L 349) — the extra configuration gets no note, the plain one is exact', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; m.extras.find((x) => x.name === 'Mozzarella').price = 60; });
+  try {
+    const notes = S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+    assert.ok(!notes.some((n) => /L 359|L 349|Mozzarella/.test(n)), `🔴 G1-mixed: no configured «antes» from mixed sources (${notes.join(' | ')})`);
+    assert.deepEqual(notes, ['Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-mixed: only the provable line');
+    assert.deepEqual(S.qa('.cline .cl-old').map((x) => x.textContent), ['L 299'], '🔴 G1-mixed: only the provable struck subtotal');
   } finally { S.w.close(); }
 });
 test('C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)', async () => {

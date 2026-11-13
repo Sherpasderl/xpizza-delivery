@@ -1317,8 +1317,9 @@
     }
     const reorderable = (lines) => lines.some((l) => l.dish_id);
     const UNKNOWN = '\u0000';   // a key no menu serves: hydrate drops the line and COUNTS it (the one disclosure path)
-    // C-3r G1 (advisor 11-13, option A): the past DISH price from S-D's v1 snapshot (unit_cents, exact); extras at the live price (v1
-    // has none); no snapshot line ⇒ the live price. The cart's priceChanges() then shows frame 13 for a dish changed since the order
+    // C-3r G1 (advisor 11-13, option A; after Codex C-3r r1 P2): S-D's v1 snapshot proves a past price ONLY for an OPTION-LESS instance
+    // (unit = unit_cents exactly). An instance WITH extras is seeded from the live menu (no note) — never a past dish price + a live
+    // extra presented as «antes» (an invented configured price); v2 (extras_cents) makes it exact. No snapshot line ⇒ the live price
     function reorderSnap(menu, lines, prev, ps) {
       const out = lines.map((l, i) => {
         const ex = Array.from({ length: l.qty }, () => ({}));
@@ -1333,8 +1334,8 @@
         }
         // Codex VP r1 #6: the prices on show NOW are what the customer saw — so a later change is disclosed by the cart's priceChanges()
         const d = key !== UNKNOWN ? menu.dish(key) : null, c = (v) => Math.round(Number(v) * 100);
-        const past = ps && ps.lines[l.si], b = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : d ? c(d.price) : 0;
-        const seen = d ? ex.map((x) => ({ b, x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
+        const past = ps && ps.lines[l.si], pb = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : null, live = d ? c(d.price) : 0;
+        const seen = d ? ex.map((x) => ({ b: pb !== null && !Object.keys(x).length ? pb : live, x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
         return { key, qty: l.qty, ex, added: i + 1, ...(seen ? { seen } : {}) };
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };

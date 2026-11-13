@@ -35595,8 +35595,8 @@
   "slice": "c3r",
   "label": "the reorder seeds the past dish price from the LIVE menu instead of S-D's snapshot (a dish change since the order goes undisclosed; C-3r G1)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "const past = ps && ps.lines[l.si], b = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : d ? c(d.price) : 0;",
-  "to": "const b = d ? c(d.price) : 0;",
+  "from": "const past = ps && ps.lines[l.si], pb = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : null, live = d ? c(d.price) : 0;",
+  "to": "const pb = null, live = d ? c(d.price) : 0;",
   "command": [
    "node",
    "--test",
@@ -35605,7 +35605,8 @@
   ],
   "kills_with": [
    "G1-dish"
-  ]
+  ],
+  "repointed": "Codex C-3r r1 P2 fix: the snapshot price is pb (option-less instances only); the mutant still seeds every past price from the live menu"
  },
  {
   "id": "c3r-03",
@@ -35656,6 +35657,23 @@
   ],
   "kills_with": [
    "PED-G3"
+  ]
+ },
+ {
+  "id": "c3r-06",
+  "slice": "c3r",
+  "label": "a configuration WITH extras takes the snapshot dish price + the LIVE extras as «antes» (an invented configured past price; Codex C-3r r1 P2)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "b: pb !== null && !Object.keys(x).length ? pb : live,",
+  "to": "b: pb !== null ? pb : live,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G1-mixed"
   ]
  }
 ]
