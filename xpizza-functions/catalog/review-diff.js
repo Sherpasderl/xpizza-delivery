@@ -42,7 +42,81 @@ function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) 
   return false;
 }
 
-function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, removal = null, choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit }) {   // removal: removalDiffOptions(live, draft) («Quitar del menú» P-R3) or null
+// S4 (PLAN-structure-S4-r4 §4, R2.6, Q9) — the S4 lines ride ON TOP of the S2/S3 diff, ONLY when an S4 op is present (sections switch):
+//   sections: { categories: { order: { old, new } }?, added: [{ id, name }], subcats: [{ cat, change: 'added' | 'renamed', old, new }],
+//               subcat_order: [{ cat, old, new }], items: [{ key, cat, old_index, new_index }], item_order_sha256,
+//               staged: [{ change: 'add' | 'drop' | 'rename' | 'move' | 'promote', … }], staged_sha256 }
+// An S4 op: the section order / set or a section's subcats changed (a NAME alone is T1's rename, today's diff), the relative order of the
+// dishes both versions carry changed, or the staged list changed. Without one the diff is today's, byte for byte.
+function reviewDiff(args) {
+  const out = reviewDiffS2S3(args);
+  const sections = has(args, 'sections') ? args.sections : require('./platform-structure').structureCapabilities().sections;
+  if (!sections || !s4OpPresent(args.live, args.draftBuilt)) return out;
+  return { ...out, sections: sectionLines(args.live, args.draftBuilt) };
+}
+
+const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+const catsOf = (b) => ((b && b.structure && Array.isArray(b.structure.categories)) ? b.structure.categories : []);
+const stagedOf = (b) => ((b && b.structure && Array.isArray(b.structure.staged_categories)) ? b.structure.staged_categories : []);
+const orderOf = (b) => ((b && b.structure && Array.isArray(b.structure.item_order)) ? b.structure.item_order : []);
+const subsOf = (c) => (Array.isArray(c && c.subcats) ? c.subcats : []);
+function commonOrder(live, draft) {
+  const dk = new Set(orderOf(draft)); const lk = new Set(orderOf(live));
+  return [orderOf(live).filter((k) => dk.has(k)), orderOf(draft).filter((k) => lk.has(k))];
+}
+function s4OpPresent(live, draft) {
+  const lc = catsOf(live); const dc = catsOf(draft);
+  if (!same(lc.map((c) => c.id), dc.map((c) => c.id))) return true;
+  if (dc.some((c, i) => !same(subsOf(c), subsOf(lc[i])))) return true;
+  if (!same(stagedOf(live), stagedOf(draft))) return true;
+  const [a, b] = commonOrder(live, draft);
+  return !same(a, b);
+}
+function sectionLines(live, draft) {
+  const { sha256 } = require('./catalog-edit');
+  const lc = catsOf(live); const dc = catsOf(draft); const lById = new Map(lc.map((c) => [c.id, c]));
+  const out = {};
+  if (!same(lc.map((c) => c.id), dc.map((c) => c.id))) out.categories = { order: { old: lc.map((c) => c.id), new: dc.map((c) => c.id) } };
+  out.added = dc.filter((c) => !lById.has(c.id)).map((c) => ({ id: c.id, name: c.name }));
+  const subcats = []; const subcatOrder = [];
+  for (const c of dc) {
+    const ls = subsOf(lById.get(c.id)); const ds = subsOf(c); const renamed = new Map();
+    ds.forEach((x, i) => {
+      if (ls.includes(x)) return;
+      if (i < ls.length && !ds.includes(ls[i])) { renamed.set(ls[i], x); subcats.push({ cat: c.id, change: 'renamed', old: ls[i], new: x }); } else subcats.push({ cat: c.id, change: 'added', old: null, new: x });
+    });
+    const mapped = ls.map((x) => renamed.get(x) || x).filter((x) => ds.includes(x));
+    if (!same(mapped, ds.filter((x) => mapped.includes(x)))) subcatOrder.push({ cat: c.id, old: ls, new: ds });
+  }
+  out.subcats = subcats; out.subcat_order = subcatOrder;
+  const catOf = (b) => new Map((b.items || []).map((i) => [i.key, i.display && i.display.cat]));
+  const lCat = catOf(live); const dCat = catOf(draft);
+  const [a, b] = commonOrder(live, draft);
+  const rank = (keys, cats) => { const per = new Map(); const r = new Map(); for (const k of keys) { const c = cats.get(k); const n = per.get(c) || 0; r.set(k, n); per.set(c, n + 1); } return r; };
+  const stay = (k) => lCat.get(k) === dCat.get(k);
+  const lr = rank(a.filter(stay), lCat); const dr = rank(b.filter(stay), dCat);
+  out.items = a.filter(stay).filter((k) => lr.get(k) !== dr.get(k)).map((k) => ({ key: k, cat: dCat.get(k), old_index: lr.get(k), new_index: dr.get(k) }));
+  out.item_order_sha256 = sha256(orderOf(draft));
+  const ls = stagedOf(live); const ds = stagedOf(draft);
+  const rankIn = (list, e) => list.filter((x) => x.after === e.after).indexOf(e);
+  const lsById = new Map(ls.map((e) => [e.id, e])); const dsById = new Map(ds.map((e) => [e.id, e]));
+  const dIds = dc.map((c) => c.id); const staged = [];
+  for (const e of ds) {
+    const w = lsById.get(e.id);
+    if (!w) { staged.push({ change: 'add', id: e.id, name: e.name, after: e.after }); continue; }
+    if (w.name !== e.name) staged.push({ change: 'rename', id: e.id, old: w.name, new: e.name });
+    if (w.after !== e.after || rankIn(ls, w) !== rankIn(ds, e)) staged.push({ change: 'move', id: e.id, old_after: w.after, new_after: e.after, old_rank: rankIn(ls, w), new_rank: rankIn(ds, e) });
+  }
+  for (const w of ls) {
+    if (dsById.has(w.id)) continue;
+    if (dIds.includes(w.id)) staged.push({ change: 'promote', id: w.id, at: dIds.indexOf(w.id) });
+    else staged.push({ change: 'drop', id: w.id });
+  }
+  out.staged = staged; out.staged_sha256 = sha256(ds);
+  return out;
+}
+
+function reviewDiffS2S3({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, removal = null, choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit }) {   // removal: removalDiffOptions(live, draft) («Quitar del menú» P-R3) or null
   const s2 = !!extrasCatalog && s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords });
   const s3 = !!choiceEdit && require('./choice-activation').s3EditPresent({ baseline: live, target: draftBuilt });   // S3 §4: the classifier's touched-group rule (Codex build r1 P2-3)
   const choices = s3 ? require('./choice-activation').choiceRows({ baseline: live, target: draftBuilt }) : [];
@@ -111,4 +185,4 @@ function fiscalOf(diff, draftBuilt, dx) {
   return { added, repriced };
 }
 
-module.exports = { reviewDiff, s2OpPresent };
+module.exports = { reviewDiff, s2OpPresent, s4OpPresent };
