@@ -242,3 +242,28 @@ test('T3: removeAddition is byte-identical to the base for a new plain dish and 
     assert.deepEqual(build(mod)[1], src, 'premise: the unit leaves nothing behind');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// advisor (11-12, the stamp deviation): no pure cell may depend on the stamp's FORMAT — real stamps are opaque (i_…), not `id_${key}`.
+// The same removals and undos over OPAQUE stamps give the same drafts, stamp for stamp (only presence and equality matter).
+test('stamp format: the removal / undo results are the same with OPAQUE i_ stamps (presence and equality only)', () => {
+  const opaque = (k) => `i_${[...String(k)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36)}q${String(k).length}`;
+  const run = (rid, stampOf) => {
+    const s = canonicalize(buildSourceFromCode(rid)); for (const it of s.items) it.display.identity_id = stampOf(it.key);
+    const lo = liveOrderOf(s); const d = createDraft(s); const out = []; const snaps = new Map();
+    const keys = rid === 'la_musa' ? ['rice_03', 'soft_01', 'dimsum_01', 'dimsum_02'] : [plainDish(s)];
+    draftSource(d).deleted_ids = [stampOf('zz_adopted')];
+    for (const k of keys) { const r = removeProduct(d, k, { on: true, baseReadable: true, liveOrder: lo }); out.push(r.ok); snaps.set(k, r.snap); out.push(clone(draftSource(d))); }
+    for (const k of [...keys].reverse()) { out.push(undoRemoveProduct(d, k, snaps.get(k), lo).ok); out.push(clone(draftSource(d))); }
+    return JSON.stringify(out);
+  };
+  for (const rid of ['la_musa', 'x_pizza']) {
+    const a = run(rid, stamp), b = run(rid, opaque);
+    assert.notEqual(a, b, `${rid}: premise — the stamps differ`);
+    // map every opaque stamp back to its id_ form: the drafts must then be byte-identical
+    const keysOf = canonicalize(buildSourceFromCode(rid)).items.map((r) => r.key).concat('zz_adopted');
+    let back = b; for (const k of keysOf) back = back.split(JSON.stringify(opaque(k))).join(JSON.stringify(stamp(k)));
+    // the claim is ONE sorted array: its ORDER follows the stamps' text, so compare it as a set (re-sorted after the mapping)
+    const norm = (j) => JSON.stringify(JSON.parse(j).map((x) => (x && typeof x === 'object' && Array.isArray(x.deleted_ids) ? { ...x, deleted_ids: [...x.deleted_ids].sort() } : x)));
+    assert.equal(norm(back), norm(a), `${rid}: the results do not depend on the stamp format`);
+  }
+});
