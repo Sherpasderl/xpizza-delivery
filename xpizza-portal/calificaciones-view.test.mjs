@@ -2,7 +2,7 @@
 // strings pending). The REAL getMerchantRatingComments core over the real writers (calificaciones-harness.mjs), the portal's real api.js,
 // the view in jsdom. Every string the mockup PROPOSES is a placeholder ⟦cal.key⟧ until the owner approves it; the SHIP GATE cell below is
 // RED until then, by design. The figures follow the approved contract (advisor 11-13): the first page's `stats` — {rating_avg,
-// rating_count} ⇒ the two figures; null ⇒ the under-10 sentence; ABSENT ⇒ no box (3a's 7fd58fca, read-only from its
+// rating_count} ⇒ the two figures; null ⇒ the under-10 sentence; ABSENT ⇒ no box (3a's f5cad194, read-only from its
 // ref). Run: node --test calificaciones-view.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -149,7 +149,7 @@ test('SHIP GATE: no placeholder ships — every Calificaciones string is owner-a
   assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
 });
 
-// 3a's contract (7fd58fca, loaded read-only from its ref by the harness): the REAL first page, end to end through the view
+// 3a's contract (f5cad194, loaded read-only from its ref by the harness): the REAL first page, end to end through the view
 const publishFor = async (db, rid, ids) => {   // public_stats/{rid} through the REAL chain (3a's own test): readCountable → the producer
   const ratings = []; for (const id of ids) ratings.push(await V2.readCountable(db, id));
   db.set(`public_stats/${rid}`, AG.publish({ rid, nowMs: 50000, buckets: {}, ratings, priceOf: () => null, firstServedAt: 1000 }));
@@ -189,5 +189,18 @@ test('the REAL first page on INVALID published stats (≥ 10 with an average out
     const v = page(db); await settle();
     assert.equal(v.$('.kfigs'), null, '🔴 invalid data never draws a box (never a guess, never «fewer than 10»)');
     assert.equal(v.$$('.crow').length, 12);
+  } finally { console.error = err; }
+});
+
+test('the REAL first page on a NON-OBJECT published doc (a number, a string, an array): the key is absent ⇒ no box', async () => {
+  const err = console.error; console.error = () => {};
+  try {
+    for (const bad of [7, 'x', [1, 2], true]) {
+      const db = await rated(2);
+      db.set('public_stats/x_pizza', bad);
+      const v = page(db); await settle();
+      assert.equal(v.$('.kfigs'), null, `🔴 ${JSON.stringify(bad)}: no box (never «fewer than 10»)`);
+      assert.equal(v.$$('.crow').length, 2);
+    }
   } finally { console.error = err; }
 });

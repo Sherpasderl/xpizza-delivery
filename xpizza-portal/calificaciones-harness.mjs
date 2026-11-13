@@ -15,10 +15,10 @@ process.env.OTP_SALT = process.env.OTP_SALT || 'calificaciones-test-salt-'.padEn
 const V2 = require('./ratings/rating-v2.js');
 const { rateOrderCore } = require('./ratings/rate-order.js');
 const { stampRatingFulfilment } = require('./ratings/rating-fulfilment.js');
-// 3a's getMerchantRatingComments WITH the first-page stats (7fd58fca on feat/member-reads-3a, over d100deb3 + 06a236c2; not merged yet): loaded READ-ONLY from its
+// 3a's getMerchantRatingComments WITH the first-page stats (f5cad194 on feat/member-reads-3a, over d100deb3 + 06a236c2 + 7fd58fca; not merged yet): loaded READ-ONLY from its
 // ref — never taken by path into this branch. Its requires (rating-v2, access/membership, directory) are byte-equal here. When 3a's
 // commit merges, this falls back to the file on disk (the ref is then an ancestor and the bytes match).
-const MC_REF = '7fd58fca0';
+const MC_REF = 'f5cad194';
 const MC = (() => {
   const file = join(FN, 'ratings', 'merchant-comments.js');
   let src;
