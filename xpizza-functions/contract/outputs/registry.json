@@ -1457,6 +1457,12 @@
   "xpizza-functions/my-orders.js#getMyOrders@self": {
    "status": "pending"
   },
+  "xpizza-functions/my-favorites.js#getMyFavorites@self": {
+   "status": "pending"
+  },
+  "xpizza-functions/my-favorites.js#setFavorite@self": {
+   "status": "pending"
+  },
   "xpizza-functions/my-orders.js#getMyOrders>anon@self": {
    "status": "via",
    "target": "xpizza-functions/my-orders.js#getMyOrders@self",

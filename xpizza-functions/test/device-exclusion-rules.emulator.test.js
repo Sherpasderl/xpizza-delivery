@@ -169,9 +169,8 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/tasks/$task_id/stack_uid/.write': ['tasks/O1_delivery/stack_uid', UID, SVC],
     '/tasks/$task_id/stack_at/.write': ['tasks/O1_delivery/stack_at', { '.sv': 'timestamp' }, SVC],
     '/tasks/$task_id/stack_plus_min/.write': ['tasks/O1_delivery/stack_plus_min', 4, SVC],
-    //   favorites S-C (client-direct, members only): the rules' pinned shape — user_favorites/{uid}/{rid} = { createdAt ≤ now+60 s }
-    //   on a seeded identity; control = the customer human, device = the customer device (handheld is the only difference)
-    '/user_favorites/$uid/.write': [`user_favorites/${UID}/${RID}`, { createdAt: { '.sv': 'timestamp' } }, { cust: true }],
+    //   favorites: no write case — PLAN-3a-capp-member-reads R2.2 made user_favorites/$uid .write false (server-only, setFavorite);
+    //   its customer-only READ leaf stays pinned in CUST_LEAVES above
   };
   const writeLeaves = [];
   (function walkW(node, p) {
