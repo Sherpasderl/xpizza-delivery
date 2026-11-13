@@ -10,9 +10,10 @@
 // 'extra_not_allowed' }); pauseGate() — the next finish waits at its gate (after the create-once order, BEFORE any attempt is claimed)
 // until release(); loseNext() — the next placeSdkOrder reaches the server but its response is lost (the client sees a network error —
 // once that request is parked at a paused gate, or at once). THE FENCE (advisor contract 11-12; 3a's approved sdk_fence/{id}, store-then-
-// check, shipping before this build goes live): MODELLED here — a cancel of an ABSENT order stores the fence (its answer stays the
-// byte-identical NO_SDK_ORDER), and a fenced id is refused at intake and again after the gate (before any attempt is claimed). The
-// refusal body is the model's own until 3a's plan names it. GO-LIVE: production's is index.js's live write (the emulator suite); here it
+// check, shipping before this build goes live): MODELLED here after PLAN-sdk-fence-r1 §2b — a cancel of an ABSENT order stores the fence
+// (its answer stays the byte-identical NO_SDK_ORDER); finish pre-checks it (B4, before enrol) and post-checks it after the create-once
+// txn, before the gate (a hit cancels the just-created order, pendingOnly) — both refuse through acquireRefusal's 'closed' branch:
+// 409 order_exists 'closed'. A late original parked AT the gate meets the real coordinator's cancel fence instead (§2b.4). GO-LIVE: production's is index.js's live write (the emulator suite); here it
 // writes ONLY the tracking token — the one field the status answer reads before it says «placed» (status.js: «no token yet ⇒ keep polling»).
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -24,6 +25,7 @@ const INTAKE = require(`${FN}payments/sdk/intake.js`);
 const { finishSdk } = require(`${FN}payments/sdk/finish.js`);
 const { placeSdkStatusCore } = require(`${FN}payments/sdk/status-endpoint.js`);
 const { cancelSdkPendingCore } = require(`${FN}payments/sdk/switch-endpoint.js`);
+const C = require(`${FN}payments/sdk/coordinator.js`);
 const { sdkPayStatusCore } = require(`${FN}payments/sdk/sdk-pay-flag.js`);
 const { orderFingerprint } = require(`${FN}pixelpay-charge.js`);
 const TIP = require(`${FN}tip.js`);
@@ -44,7 +46,6 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     goLive: async (dp, id) => { await db.ref(`orders/${id}/tracking_token`).set(`tok_${id.replace(/[^A-Za-z0-9]/g, '').slice(-12)}`); },
     verifyIdToken, isTombstoned: async () => false, attributionUid: (d, tomb) => (!tomb && d && typeof d.uid === 'string' ? d.uid : null), deadlineMs: 1500 };
   let armed = { ...NO_FLAGS }; let gate = null; let loseNext = false; let parked = null; const inflight = [];
-  const FENCED = Object.freeze({ status: 409, body: Object.freeze({ error: 'order_fenced' }) });   // MODEL (see the header)
   const fenced = async (id) => (await db.ref(`sdk_fence/${id}`).once('value')).val() != null;
   const hdrs = (h) => Object.fromEntries(Object.entries(h || {}).map(([k, v]) => [k.toLowerCase(), v]));
 
@@ -55,12 +56,12 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     const r = { headers: hdrs(req.headers), body };
     const a = await INTAKE.authorize(r, deps);                                                       // B1
     if (a.refuse) return a.refuse;
-    if (await fenced(body.order_id)) return { ...FENCED };                                            // MODEL: the fence, at intake
     const uid = a.kind === 'member' ? a.uid : null;
     const rp = await INTAKE.replay(deps, { orderId: body.order_id, attemptId: body.attempt_id, uid });   // B2: a KNOWN attempt
     if (rp) return rp;
     const ad = await INTAKE.admit(deps, { restaurantId: body.restaurant_id, scheduledFor: body.scheduled_for == null ? null : body.scheduled_for });
     if (ad) return ad;
+    if (await fenced(body.order_id)) return refusalAnswer({ outcome: 'closed', reason: 'fenced' }, body.order_id, flags);   // MODEL §2b.1: the pre-check
     const total = body.expected_net_cents;
     const pendingOrderRecord = { order_id: body.order_id, restaurant_id: body.restaurant_id, status: 'pending_payment', payment_status: 'pending', payment_method: 'online',
       order_type: body.order_type, customer_name: body.customer_name, customer_phone: body.customer_phone, items_text: body.items_text, total: total / 100, total_cents: total,
@@ -69,7 +70,14 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
       orderId: body.order_id, kind: uid ? 'member' : 'guest', uid, guestPhoneHash: null, attemptId: body.attempt_id, card: body.card,
       replacesOrderId: body.replaces_order_id == null ? null : body.replaces_order_id, pendingOrderRecord,
       fingerprint: orderFingerprint(body.order_id, total, body.items_text, TIP.extraOf(body)), tipCents: TIP.ofBody(body), nowTs: clock.t, flags,
-      runGate: async () => { if (myGate) { myGate.mark(); await myGate.wait; } return (await fenced(body.order_id)) ? { refuse: { ...FENCED } } : { refuse: null, provenance: null }; },   // MODEL: store-then-check
+      runGate: async () => {
+        if (await fenced(body.order_id)) {   // MODEL §2b.3: the post-check (after the txn, before the gate): the created order cancelled, then closed
+          await C.cancelSdkOrder(deps, { orderId: body.order_id, kind: 'cancel', pendingOnly: true });
+          return { refuse: refusalAnswer({ outcome: 'closed', reason: 'fenced' }, body.order_id, flags) };
+        }
+        if (myGate) { myGate.mark(); await myGate.wait; }
+        return { refuse: null, provenance: null };
+      },
       deliveryResume: (o) => DW.deliveryResumeRefusal(db, o, DW.loadPricing(db)),
       answerRefusal: (x) => ({ answer: refusalAnswer(x, body.order_id, flags) }),
     });

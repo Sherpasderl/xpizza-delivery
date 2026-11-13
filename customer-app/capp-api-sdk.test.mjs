@@ -625,7 +625,8 @@ test('Codex r1 P2-4: a never-created order (status 404) is NOT released on a 404
   const nu = s.posted()[1];
   assert.ok(nu.order_id !== old.order_id && SDK_ORDER_ID_RE.test(nu.order_id), '🔴 P2-4-REMINT: a NEW sdk_ id after the release');
   const late = await s.real.fetchFor(E, () => null)(E.placeSdkOrder, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${JWT}` }, body: JSON.stringify(old) });
-  assert.equal(late.status, 409, '🔴 P2-4-FENCE (model): a late original with the old id is refused');
+  const OE = require('../xpizza-functions/order-exists.js');
+  assert.deepEqual([late.status, await late.json()], [409, OE.orderExistsBody('closed', old.order_id)], '🔴 P2-4-FENCE (model, PLAN-sdk-fence-r1 §2b): a late original with the old id ⇒ 409 order_exists closed');
   assert.equal(s.real.authorizations(), 1, '🔴 P2-4: one authorization');
 });
 test('Q-B through the REAL server: the budget spent ⇒ a NEW attempt on the SAME order with the record\'s own inputs — ONE authorization', async () => {
