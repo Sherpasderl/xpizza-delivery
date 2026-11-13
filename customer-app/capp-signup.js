@@ -45,6 +45,7 @@
     const o = opts || {};
     const doc = o.doc, host = o.host, api = o.api, auth = o.auth;
     const T = o.timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), setInterval: (f, ms) => setInterval(f, ms), clearInterval: (t) => clearInterval(t) };
+    const now = typeof o.now === 'function' ? o.now : () => Date.now();   // the host's clock (the shell's now(); PLAN-capp-virtual-clock P2)
     const emit = (n, d) => { try { (o.onEvent || (() => {}))(n, d); } catch (_) {} };
     // gen: every async continuation belongs to ONE opening of the sheet — closing makes it stale (nothing lands after a close)
     const S = { open: false, gen: 0, pane: 'phone', stack: [], path: 'phone', memberOnly: false, phone: '', email: '', name: '', promos: false, terms: false,
@@ -80,7 +81,7 @@
       return `<div class="h1">País del número</div><p class="sub">Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</p><div class="clist">${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-su="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
     function codePane() {
-      const left = Math.max(0, Math.ceil((S.resendAt - Date.now()) / 1000));
+      const left = Math.max(0, Math.ceil((S.resendAt - now()) / 1000));
       return `<div class="h1">Ingresá el código</div><p class="sub">Te lo enviamos por WhatsApp al <b>${esc(shown())}</b>.</p>
     <div class="otp" role="group" aria-label="Código de 6 dígitos">${[0, 1, 2, 3, 4, 5].map((i) => `<input inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="${S.code[i] ? 'f' : ''}" value="${esc(S.code[i] || '')}" data-su-otp="${i}" aria-label="Dígito ${i + 1}">`).join('')}</div>${err()}
     <button class="cta" data-su="verify"${S.code.length === 6 && !S.busy ? '' : ' disabled'}>Verificar</button><div class="rowx">${left > 0 ? `<span data-su-left>Reenviar en 0:${left < 10 ? '0' : ''}${left}</span>` : '<button data-su="resend">Reenviar código</button>'}</div>`;
@@ -115,10 +116,10 @@
     const live = (g) => S.open && g === S.gen;
 
     // ── the flow ──
-    function tickStart() { tickStop(); tick = T.setInterval(() => { if (!S.open || S.pane !== 'code') return tickStop(); const el = host.querySelector('[data-su-left]'); if (!el) return; if (Date.now() >= S.resendAt) render(); else { const l = Math.ceil((S.resendAt - Date.now()) / 1000); el.textContent = `Reenviar en 0:${l < 10 ? '0' : ''}${l}`; } }, 1000); }
+    function tickStart() { tickStop(); tick = T.setInterval(() => { if (!S.open || S.pane !== 'code') return tickStop(); const el = host.querySelector('[data-su-left]'); if (!el) return; if (now() >= S.resendAt) render(); else { const l = Math.ceil((S.resendAt - now()) / 1000); el.textContent = `Reenviar en 0:${l < 10 ? '0' : ''}${l}`; } }, 1000); }
     function tickStop() { if (tick !== null) { T.clearInterval(tick); tick = null; } }
     async function sendCode() {
-      const g = S.gen; S.busy = true; S.code = ''; S.resendAt = Date.now() + 29000;
+      const g = S.gen; S.busy = true; S.code = ''; S.resendAt = now() + 29000;
       if (S.pane !== 'code') go('code'); else render();
       tickStart();
       await api.requestOtp({ phone: wire(), ...(S.google && S.google.ticket ? { linkTicket: S.google.ticket, sessionId: S.google.session } : {}) });

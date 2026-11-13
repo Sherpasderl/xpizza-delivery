@@ -2,7 +2,8 @@
 // (pinned to the REAL 5f handler's output), the client directory store, Inicio / Buscar from the real served envelopes, and the
 // shell driven through the REAL shell.html + modules in jsdom.
 // Run: node --test customer-app/capp-s7a2.test.mjs
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
+import { createClock } from './test-clock.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -241,10 +242,14 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
-const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+// PLAN-capp-virtual-clock r0: a cell booted with bootShell({ clock: true }) runs on the VIRTUAL clock VC — flush(ms) = drain, advance
+// ms virtual, drain; until() spends a virtual budget. Every other cell keeps the real-sleep flush until its chunk migrates
+let VC = null;
+afterEach(() => { VC = null; });
+const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null } = {}) {
+function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = false } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
@@ -267,9 +272,11 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
     if (mode === 'fail') return Promise.resolve({ status: 500 });
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
-  const clock = now || { t: T0 };
+  // clock: true ⇒ the shell's timers AND its app time are the virtual clock (a cell moving S.clock.t forward is a wall-clock jump)
+  if (vclock) VC = createClock(now ? now.t : T0);
+  const clock = vclock ? { get t() { return VC.now(); }, set t(v) { VC.jump(v); } } : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: vclock ? VC : { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vclock ? { timeout: (ms) => new Promise((r) => VC.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -1571,7 +1578,7 @@ test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — 
 // no pop-in), the ⓘ only when fee + zone are finite, the feeinfo sheet falling back to the DIRECTORY values (never «undefined km»)
 const liveAuth = (st) => { const fns = new Set(); return { a: { state: () => st, onChange: (f) => { fns.add(f); return () => fns.delete(f); } }, set(v) { st = v; for (const f of [...fns]) f(v); } }; };
 // bounded wait for a boot condition (load-robust: a fixed flush count flaked at load1 ≈ 12); the cell's own asserts still decide
-const until = async (f, ms = 4000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 >= ms) throw new Error(`until: timed out after ${ms} ms — ${String(f).slice(0, 120)}`); await flush(); } };
+const until = async (f, ms = 4000) => { const vc = VC, now = () => (vc ? vc.now() : Date.now()), t0 = now(); if (vc) await vc.drain(); while (!f()) { if (now() - t0 >= ms) throw new Error(`until: timed out after ${ms} ${vc ? 'virtual ' : ''}ms — ${String(f).slice(0, 120)}`); await flush(); } };
 async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await until(() => S.q(`.rlist .rcard[data-rid="${rid}"]`)); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
 const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
 
@@ -4840,4 +4847,43 @@ test('G-C2: the fee chip is COMPUTED — the lowest priced fee labels it, and pr
   assert.deepEqual([...ph.querySelectorAll('.hsec[aria-label="Todos los restaurantes"] .rcard')].map((c) => c.dataset.rid).sort(), ['la_musa', 'x_pizza'], '🔴 G-C2: no HIDDEN filter — the phone has no fee chip, so it filters nothing there');
   const none = rowsOf(withFees({ x_pizza: { state: 'none' }, la_musa: { state: 'none' } }));
   assert.ok(!chipLabels(CappHome.homeHtml(VM({ desk: true, rows: none }))).some((l) => /Envío/.test(l)), '🔴 G-C2: no priced fee ⇒ no fee chip');
+});
+
+// ── PLAN-capp-virtual-clock r0 step 0 (advisor 11-13): P1/P2 — ONE clock in production. The shell hands its timers to the store UI
+// (CappUI.mount) and the signup transport, and its now() to the signup sheet (the resend countdown) — never a second, real clock ──
+function spyGlobals(seen) {
+  return (w) => {
+    const trap = (name, wrap) => { let v; Object.defineProperty(w, name, { configurable: true, get: () => v, set: (x) => { v = wrap(x); } }); };
+    trap('CappUI', (x) => ({ ...x, mount: (d, o) => { seen.ui = o.timers; return x.mount(d, o); } }));
+    trap('CappSignupApi', (x) => ({ ...x, createSignupApi: (o) => { seen.suApi = o.timers; return x.createSignupApi(o); } }));
+    trap('CappSignup', (x) => ({ ...x, createSignup: (o) => { seen.suNow = o.now; seen.suTimers = o.timers; return x.createSignup(o); } }));
+  };
+}
+test('VC-P1/P2 (production): the shell\'s ONE timers reach the store UI and the signup transport; its now() reaches the signup sheet', async () => {
+  const seen = {}, mine = { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && h.unref) h.unref(); return h; }, clearTimeout: (h) => clearTimeout(h), setInterval: (f, ms) => { const h = setInterval(f, ms); if (h && h.unref) h.unref(); return h; }, clearInterval: (h) => clearInterval(h) };
+  const myNow = () => T0, fb = fakeFirebase({});
+  const S = bootShell({ runtime: SU_RUNTIME, preMount: spyGlobals(seen), mountExtra: { timers: mine, now: myNow, loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.ok(S.q('.info'), 'premise: the store mounted');
+    assert.equal(seen.ui, mine, '🔴 P1: CappUI.mount gets the shell\'s timers');
+    assert.equal(seen.suApi, mine, '🔴 P1: the signup transport gets the shell\'s timers');
+    assert.equal(seen.suTimers, mine, 'premise: the sheet already did');
+    assert.equal(seen.suNow, myNow, '🔴 P2: the signup sheet reads the shell\'s now()');
+  } finally { S.w.close(); }
+});
+// step 0's opt-in: bootShell({ clock: true }) runs the shell on the VIRTUAL clock — the view's 120 ms settle fires at exactly +120
+// virtual, whatever the machine does meanwhile (a 350 ms real stall moves nothing)
+test('VC-H1 bootShell({ clock: true }): the desk→phone switch fires at EXACTLY the view\'s settle (+120 virtual ms) — a real 350 ms stall moves nothing', async () => {
+  const media = fakeMedia(true), S = bootShell({ media, clock: true }), SET = require('./capp-view.js').SETTLE_MS;
+  assert.equal(SET, 120, 'premise: the view settles in 120 ms');
+  try {
+    await flush(); assert.ok(S.q('#app').classList.contains('desk'), 'premise: the desk');
+    media.set(false);
+    const t0 = Date.now(); while (Date.now() - t0 < 350) { /* a real stall (load) */ }
+    await flush(0);
+    assert.ok(S.q('#app').classList.contains('desk'), '🔴 VC-H1: no virtual time passed ⇒ the debounce has not fired');
+    await flush(SET - 1); assert.ok(S.q('#app').classList.contains('desk'), '🔴 VC-H1: settle − 1 ⇒ still the desk');
+    await flush(1); assert.ok(!S.q('#app').classList.contains('desk'), '🔴 VC-H1: at the settle ⇒ the phone, exactly');
+  } finally { S.w.close(); }
 });

@@ -85,7 +85,7 @@ function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
   if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
-  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
+  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: o.timers || { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, ...(o.now ? { now: o.now } : {}), onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const txt = (s) => { const el = q(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
   const click = async (s) => { const el = q(s); assert.ok(el, `premise: ${s}`); assert.ok(!el.disabled, `premise: ${s} enabled`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
@@ -435,4 +435,18 @@ test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-
   };
   for (const [k, ps] of Object.entries(bad)) assert.equal((await served({ ...entry, price_snapshot: ps })).price_snapshot, undefined, `🔴 G1-row ${k}: dropped`);
   assert.equal((await served({ ...entry, price_snapshot: undefined })).price_snapshot, undefined, 'no snapshot ⇒ none');
+});
+
+// PLAN-capp-virtual-clock r0 step 0, P2 (advisor 11-13): the resend countdown reads the INJECTED now() (the shell's clock), never
+// Date.now — exact under a virtual clock: 0:29 at the send, 0:09 twenty seconds later, the button at 29 s
+test('VC-P2 the resend countdown follows the injected now(): «Reenviar en 0:29» → 0:09 after 20 s → «Reenviar código» at 29 s', async () => {
+  let t = 5e6; const ticks = [];
+  const b = sheet({ now: () => t, timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: (f) => { ticks.push(f); return ticks.length; }, clearInterval: () => {} } });
+  b.su.open({ ctx: 'checkout' }); await settle();
+  await b.type('#su-phone', '9999 0000'); await b.click('[data-su="phone-go"]');
+  assert.equal(b.txt('[data-su-left]'), 'Reenviar en 0:29', '🔴 VC-P2: the countdown starts from the injected now');
+  t += 20000; ticks.at(-1)(); await settle();
+  assert.equal(b.txt('[data-su-left]'), 'Reenviar en 0:09', '🔴 VC-P2: the tick reads the injected now');
+  t += 9000; ticks.at(-1)(); await settle();
+  assert.ok(b.q('[data-su="resend"]'), '🔴 VC-P2: at 29 s the resend button');
 });

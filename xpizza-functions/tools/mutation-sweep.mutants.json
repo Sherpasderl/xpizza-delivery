@@ -36277,5 +36277,141 @@
   "kills_with": [
    "G-C2: no HIDDEN filter"
   ]
+ },
+ {
+  "id": "vc-01",
+  "slice": "vc",
+  "label": "same-due timers run LIFO (not in arming order)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "(t.due === best[1].due && t.seq < best[1].seq)",
+  "to": "(t.due === best[1].due && t.seq > best[1].seq)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC1",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC1: same due"
+  ]
+ },
+ {
+  "id": "vc-02",
+  "slice": "vc",
+  "label": "drain never fails on an instant self-re-arming loop (would hang / pass silently)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    throw new Error(`drain: not quiet after ${ROUNDS} rounds",
+  "to": "    return; throw new Error(`drain: not quiet after ${ROUNDS} rounds",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC4",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC4: bounded"
+  ]
+ },
+ {
+  "id": "vc-03",
+  "slice": "vc",
+  "label": "drain does not wait for WebCrypto digests in flight",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "      if (digestsInFlight()) { await digestsSettled(); continue; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC5",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC5: the digest landed"
+  ]
+ },
+ {
+  "id": "vc-04",
+  "slice": "vc",
+  "label": "a timer's microtasks are not drained before the next timer fires",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "{ now = e[1].due; fire(e); await drain(); }",
+  "to": "{ now = e[1].due; fire(e); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC2",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC2: the 10 ms timer"
+  ]
+ },
+ {
+  "id": "vc-05",
+  "slice": "vc",
+  "label": "the virtual clock can jump backwards",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "if (!(v >= now)) throw new Error(`jump:",
+  "to": "if (false) throw new Error(`jump:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC6",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC6: never backwards"
+  ]
+ },
+ {
+  "id": "vc-06",
+  "slice": "vc",
+  "label": "P1: the store UI gets no timers from the shell (a second, real clock)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "...(uo.timers ? {} : { timers: T }), ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: CappUI.mount gets the shell's timers"
+  ]
+ },
+ {
+  "id": "vc-07",
+  "slice": "vc",
+  "label": "P1: the signup transport gets no timers from the shell",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "fetch: o.signupFetch, timers: T })",
+  "to": "fetch: o.signupFetch })",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: the signup transport"
+  ]
+ },
+ {
+  "id": "vc-08",
+  "slice": "vc",
+  "label": "P2: the resend countdown reads Date.now, not the injected now()",
+  "file": "../customer-app/capp-signup.js",
+  "from": "const now = typeof o.now === 'function' ? o.now : () => Date.now();",
+  "to": "const now = () => Date.now();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "VC-P2: the tick reads the injected now"
+  ]
  }
 ]
