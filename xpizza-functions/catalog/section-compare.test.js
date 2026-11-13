@@ -154,6 +154,16 @@ cell('SC-PERDISH-EXPOSURE (R4.1 condition 1): the move + an authored exposure ch
   d.structure.exposure.item_overrides.dimsum_01 = { deny: ['Salsas'] }; reproject('la_musa', d);
   const o = ON(() => judge('la_musa', LM, d)); assert.ok(!o.ok, `${L}: refused (${JSON.stringify(o)})`);
 });
+cell('SC-X-MATRIX (R2.3/R3.2, sections × extrasCatalog): attach a group to a LIVE category → S2\'s rule, unchanged by S4; to a NEW category → refused whatever extrasCatalog says', (L) => {
+  const live = clone(LM); live.structure.exposure.category_allow.dim_sum = [...live.structure.exposure.category_allow.dim_sum, 'Proteínas']; reproject('la_musa', live);
+  for (const xc of [false, true]) {
+    const over = { extrasCatalog: xc, extrasAuthoring: true };
+    assert.deepStrictEqual(ON(() => judge('la_musa', LM, live, over)), today('la_musa', LM, live, over), `${L}: live attach, extrasCatalog ${xc} — S4 changes nothing`);
+    const nw = postres(); nw.structure.exposure.category_allow.postres = ['Proteínas']; reproject('la_musa', nw);
+    refused(ON(() => judge('la_musa', LM, nw, over)), 'section_not_attachable_yet', `${L}: new-category attach, extrasCatalog ${xc}`);
+    accepted(ON(() => judge('la_musa', LM, postres(), over)), `${L}: the plain new-category move, extrasCatalog ${xc}`);
+  }
+});
 cell('SC-COMPOSE (S0-2): through choice-compare, choiceEdit OFF (:26) and ON (:70), sections ON reaches S4', (L) => {
   for (const ce of [false, true]) {
     STRUCT.choiceEdit = ce;
