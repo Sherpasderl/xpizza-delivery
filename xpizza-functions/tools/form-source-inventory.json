@@ -2701,6 +2701,7 @@
   "catalog/choice-rollback.js",
   "catalog/choice-transitions.js",
   "catalog/client-retired.js",
+  "catalog/deletion-claim.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
@@ -3203,7 +3204,9 @@
   },
   "catalog/catalog-edit.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/rdclaim-wiring.guard.test.js"
+   ]
   },
   "catalog/catalog-firestore.js": {
    "pins": [
@@ -3343,6 +3346,10 @@
    "lifts": []
   },
   "catalog/client-retired.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/deletion-claim.js": {
    "pins": [],
    "lifts": []
   },

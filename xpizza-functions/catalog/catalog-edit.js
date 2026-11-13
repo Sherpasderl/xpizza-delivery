@@ -94,11 +94,11 @@ function pendingRemovalRows(liveBuilt, keys, photoMap = null) {
       refs: { item_override: ov.has(key) ? ov.get(key) : null, extras_by_item: ebi.has(key) ? ebi.get(key) : null, redeem_index: rei.includes(key) ? rei.indexOf(key) : null } }; });
 }
 // «Quitar del menú» P-R3 (switch P-R5): the diff option for a draft whose deletion claim names live dishes — { declared: Set<live key> },
-// the live dishes whose identity stamp is in `draft.deleted_ids.ids` and whose key the draft no longer has. Switch OFF, or no claim → null
+// the live dishes whose identity stamp is in the draft's claim (either shape) and whose key the draft no longer has. Switch OFF, or no claim → null
 // (today's diff). The save, the owner publish and the manager request pass it alike, so the token-bound diff re-matches.
 function removalDiffOptions(liveBuilt, draft) {
   if (!require('./platform-removal').removalCapabilities().productRemoval) return null;
-  const ids = draft && draft.deleted_ids && Array.isArray(draft.deleted_ids.ids) ? new Set(draft.deleted_ids.ids) : null;
+  const ids = ((c) => (Array.isArray(c) ? new Set(c) : null))(require('./deletion-claim').claimIds(draft && draft.deleted_ids));   // both shapes the save accepts (catalog/deletion-claim.js)
   if (!ids || !ids.size) return null;
   const inDraft = new Set(((draft && draft.items) || []).map((it) => it && it.key));
   const declared = new Set(((liveBuilt && liveBuilt.items) || []).filter((it) => it && it.display && ids.has(it.display.identity_id) && !inDraft.has(it.key)).map((it) => it.key));
