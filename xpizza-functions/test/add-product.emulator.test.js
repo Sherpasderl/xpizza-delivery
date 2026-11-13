@@ -97,7 +97,8 @@ const wipe = async () => {
         const hwmDoc = await hwmRefOf(db, rid).get();
         assert.ok(hwmDoc.exists, `${tag}: the save WROTE the high-water mark`);
         assert.strictEqual(hwmDoc.data().value, added.display.id, `${tag}: the high-water mark advanced in the same commit`);
-      } else assert.strictEqual(added.key, 'producto_nuevo');
+      } else if (MINT_ON) assert.deepStrictEqual([OPAQUE_SYNTAX.test(added.key), added.display.id], [true, 'producto_nuevo'], `${tag}: MINT on — a fresh i_ pricing key; the display id is still today's slug (${added.key})`);
+      else assert.strictEqual(added.key, 'producto_nuevo');
       assert.deepStrictEqual(await draft(rid), s1.body.source, `${tag}: the response IS the stored canonical source`);
       const s2 = await save(rid, s1.body.source);   // back to editing → review again
       assert.strictEqual(s2.status, 200);
