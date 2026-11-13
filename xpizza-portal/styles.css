@@ -675,6 +675,22 @@
   .mk-rowline{padding:0 20px 10px}
   /* S4-F: a refusal that names a section, under its header (the base's refusal line); the box line's way out (a quiet link) */
   .mk-headline{padding:10px 20px 0}
+  /* frame E — the grips inside a section (real buttons: keyboard-reachable; ↑ / ↓) and a head's rename in place */
+  .mk-grip,.irow .mk-rgrip{border:0;background:none;padding:0;font:inherit}
+  .mk-grip{color:var(--mute2);opacity:.6;display:flex;flex:none;cursor:grab;touch-action:none}
+  .mk-grip svg{width:14px;height:14px;fill:currentColor;stroke:none}
+  .mk-subh .mk-grip{opacity:.5}
+  .mk-subh .mk-grip:focus-visible,.mk-subh .mk-grip.mk-gripon{opacity:1}
+  .mk-subpen{color:var(--mute2);display:flex;margin-left:1px;border:0;background:none;padding:0;cursor:pointer}
+  .mk-subpen svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .mk-subh .mk-subin{font:inherit;font-size:12.5px;text-transform:none;letter-spacing:0;padding:4px 8px;border:1px solid var(--accent);border-radius:8px;min-width:0;flex:0 1 220px}
+  .mk-subline{padding:6px 20px 0}
+  .irow{position:relative}
+  .irow .mk-rgrip{position:absolute;left:3px;top:50%;transform:translateY(-50%);color:var(--mute2);display:flex;opacity:0;transition:opacity .15s;cursor:grab;touch-action:none}
+  .irow:hover .mk-rgrip,.irow .mk-rgrip:focus-visible,.irow .mk-rgrip.mk-gripon{opacity:.7}
+  .irow .mk-rgrip svg{width:14px;height:14px;fill:currentColor;stroke:none}
+  @media(hover:none){.irow .mk-rgrip{opacity:.7}}
+  .irow.mk-drag,.grow.mk-drag,.mk-subh.mk-drag{background:var(--card);box-shadow:var(--shadow-lg);outline:1px solid var(--accent-line);border-radius:12px;position:relative;z-index:2;transform:translateY(-14px) rotate(-.3deg)}
   .mk-newcat .ferr .mk-lnk{font-size:12.5px}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */

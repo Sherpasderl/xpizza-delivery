@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections, reorderSubcats, reorderItems, renameSubcat } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -1675,6 +1675,69 @@ function sectionsDrop(id, idx) {
   const others = declaredIds().filter((x) => x !== String(id));
   sectionsReorder([...others.slice(0, idx), String(id), ...others.slice(idx)], id);
 }
+// frame E — inside a section: the subsections' order and names, the dishes' order (sections switch). A grip keeps focus after its move.
+let subRename = null;   // { cat, sub, value, line } — the head being renamed in place (view state)
+const focusGripOf = (k) => { const g = [...$('detail').querySelectorAll('[data-grip]')].find((x) => x.dataset.grip === k); if (g) g.focus(); };
+function subsWrite(cat, names, sub) {
+  if (!reorderSubcats(state.draft, cat.id, names, S4ON()).ok) return;
+  refreshBar(); repaintFromDraft(); focusGripOf(`sub:${sub}`);
+}
+function subsMove(cat, sub, dir) {
+  const names = (cat.subcats || []).slice(); const i = names.indexOf(sub); const j = i + dir;
+  if (i === -1 || j < 0 || j >= names.length) return;
+  [names[i], names[j]] = [names[j], names[i]];
+  subsWrite(cat, names, sub);
+}
+function subsDrop(cat, sub, idx) {
+  const others = (cat.subcats || []).filter((x) => x !== sub);
+  subsWrite(cat, [...others.slice(0, idx), sub, ...others.slice(idx)], sub);
+}
+// a head's rename: T1's name rule and words; a taken name the addendum's line; every member's subsection follows (renameSubcat)
+function subRenameSave(cat) {
+  const r0 = subRename;
+  if (!r0) return;
+  const problem = categoryNameProblem(r0.value);
+  if (problem) { r0.line = SECTION_NAME_PROBLEM[problem] || SECTION_NAME_PROBLEM.empty; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); return; }
+  if (r0.value.trim() === r0.sub) { subRename = null; paint(); focusGripOf(`sub:${r0.sub}`); return; }
+  const r = renameSubcat(state.draft, cat.id, r0.sub, r0.value, S4ON());
+  if (!r.ok) {
+    r0.line = r.code === 'subcat_name_taken' ? s4Copy('subNameTaken', { categoria: categoryName(cat.id) }) : UNDO_REFUSED;
+    paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); return;
+  }
+  subRename = null; refreshBar(); repaintFromDraft();
+}
+// the dishes: ↑ / ↓ swaps with the neighbour in the SAME subsection; a drop lands before the dish it was dropped on (or last), joining
+// that dish's subsection when it differs (moveItem first — its refusal is the row's line); item_order is the one order (reorderItems)
+const shownRows = () => [...$('detail').querySelectorAll('[data-row]')].map((x) => x.dataset.row);
+const rowSub = (k) => { const r = (draftSource(state.draft).items || []).find((x) => x && rowId(x) === k); return r && r.display && typeof r.display.subcat === 'string' ? r.display.subcat : null; };
+function itemsOrder(order, id) {
+  if (!reorderItems(state.draft, order, S4ON()).ok) { rowLine(id, UNDO_REFUSED); return; }
+  refreshBar(); repaintFromDraft(); focusGripOf(`row:${id}`);
+}
+function itemsMove(cat, id, dir) {
+  const rows = shownRows().filter((k) => rowSub(k) === rowSub(id));
+  const i = rows.indexOf(id); const j = i + dir;
+  if (i === -1 || j < 0 || j >= rows.length) return;
+  const order = (((draftSource(state.draft) || {}).structure || {}).item_order || []).slice();
+  const a = order.indexOf(id), b = order.indexOf(rows[j]);
+  if (a === -1 || b === -1) return;
+  [order[a], order[b]] = [order[b], order[a]];
+  itemsOrder(order, id);
+}
+function itemsDrop(cat, id, idx) {
+  const others = shownRows().filter((k) => k !== id);
+  const before = idx < others.length ? others[idx] : null;
+  const target = before || others[others.length - 1] || null;
+  const sub = target ? rowSub(target) : rowSub(id);
+  if (sub !== rowSub(id)) {
+    const m = moveItem(state.draft, id, { cat: String(cat.id), subcat: sub }, S4ON());
+    if (!m.ok) { rowLine(id, m.code === 'subsection_empty' ? IE.COPY.cat.subsection_empty : m.code === 'section_empty' ? IE.COPY.cat.section_empty : UNDO_REFUSED); return; }
+  }
+  const order = (((draftSource(state.draft) || {}).structure || {}).item_order || []).filter((k) => k !== id);
+  const at = before ? order.indexOf(before) : (target ? order.indexOf(target) + 1 : order.length);
+  order.splice(at === -1 ? order.length : at, 0, id);
+  itemsOrder(order, id);
+}
 // «Crear» (frame E): the writer judges the name (T1's words for empty / long / markup; the addendum's for a taken one); the new section
 // is selected at once, its page waiting for a dish (S4-C)
 function createSection() {
@@ -1715,7 +1778,14 @@ function detailS4(staged) {
   return { isNew: isNewSection(cat.id), subcat: { disabled: false, onClick: bound((from) => subOpen(cat, from)) },
     subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null,
     onMore: bound((id, from) => menuOpen(id, from)), moreFor: (it) => !isAddition(it) && !(state.drawerKey && state.drawerKey === rowId(it)),
-    headLine: sectionLine && String(sectionLine.cat) === String(cat.id) ? sectionLine.text : null };
+    headLine: sectionLine && String(sectionLine.cat) === String(cat.id) ? sectionLine.text : null,
+    subs: Array.isArray(cat.subcats) && cat.subcats.length ? {
+      move: bound((sub, dir) => subsMove(cat, sub, dir)), drop: bound((sub, idx) => subsDrop(cat, sub, idx)),
+      rename: { editing: subRename && String(subRename.cat) === String(cat.id) ? subRename.sub : null, value: subRename ? subRename.value : '', line: subRename ? subRename.line : null,
+        onStart: bound((sub) => { subRename = { cat: cat.id, sub, value: sub, line: null }; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) i.focus(); }),
+        onInput: bound((v) => { subRename.value = v; if (subRename.line) { subRename.line = null; paint(); const i = $('detail').querySelector('input.mk-subin'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } } }),
+        onSave: bound(() => subRenameSave(cat)), onCancel: bound(() => { const sub = subRename && subRename.sub; subRename = null; paint(); focusGripOf(`sub:${sub}`); }) } } : null,
+    items: { move: bound((id, dir) => itemsMove(cat, id, dir)), drop: bound((id, idx) => itemsDrop(cat, id, idx)) } };
 }
 // E2 — a row's menu (.mk-pop, role=menu): «Mover a» every section (each subsection its own entry, the current one inert «actual», a new one
 // «nueva»), S4-D's line when the dish is the last of a section declared in THIS draft, «Quitar del menú» (the approved R2 flow). Esc / a

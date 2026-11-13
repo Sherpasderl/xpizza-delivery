@@ -328,7 +328,9 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page),
   // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count),
   // onMore: null | (id, button) (frame E2: a row's «Más acciones», before its chevron — existing dishes only, moreFor(it)),
-  // headLine: null | text (S4-F: a refusal that names this section, under its header — the base's refusal line) }
+  // headLine: null | text (S4-F: a refusal that names this section, under its header — the base's refusal line),
+  // subs: null | { move(sub, ±1), drop(sub, idx), rename: { editing, value, line, onStart(sub), onInput(v), onSave(), onCancel() } }
+  // (frame E: a head's grip and pencil), items: null | { move(id, ±1), drop(id, idx) } (frame E: a dish row's grip — S2's drag) }
   const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
@@ -395,6 +397,36 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     detailEl.append(e);
   }
   const subheads = s4 && Array.isArray(s4.subheads) && s4.subheads.length ? s4.subheads : null;
+  // frame E: a subsection head — its grip (drag among the heads; ↑ / ↓), its name and pencil (renamed in place), its count
+  const subHead = (sub, n) => {
+    const h = el('div', 'mk-subh'); h.dataset.sub = sub;
+    const sx = s4 && s4.subs ? s4.subs : null;
+    const ren = sx && sx.rename && sx.rename.editing === sub ? sx.rename : null;
+    if (sx) {
+      const g = el('button', 'mk-grip'); g.type = 'button'; g.dataset.grip = `sub:${sub}`;
+      g.setAttribute('aria-label', `Mover ${sub}`); g.title = 'Arrastrá para ordenar'; g.append(dots());
+      dragOn(g, h, sub, detailEl, { drop: (x, idx) => sx.drop(x, idx) }, { row: '.mk-subh', lift: null, tail: '.addrow' });
+      g.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); sx.move(sub, e.key === 'ArrowUp' ? -1 : 1); } });
+      h.append(g);
+    }
+    if (ren) {
+      const inp = el('input', 'mk-subin'); inp.type = 'text'; inp.value = ren.value; inp.setAttribute('aria-label', `Nombre de ${sub}`);
+      inp.addEventListener('input', () => ren.onInput(inp.value));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ren.onSave(); } else if (e.key === 'Escape') { e.preventDefault(); ren.onCancel(); } });
+      h.append(inp);
+    } else {
+      h.append(el('span', 'mk-sn', sub));
+      if (sx && sx.rename) {
+        // base E's .dpen look, its own class (no colour crossing)
+        const pen = el('button', 'mk-subpen'); pen.type = 'button'; pen.setAttribute('aria-label', `Cambiar nombre de ${sub}`); pen.append(svgIcon(PENCIL));
+        pen.addEventListener('click', () => sx.rename.onStart(sub));
+        h.append(pen);
+      }
+    }
+    h.append(el('span', 'mk-n', String(n)));
+    if (ren && ren.line) { const l = el('div', 'ferr mk-ferr mk-subline', ren.line); l.setAttribute('role', 'alert'); return [h, l]; }
+    return [h];
+  };
   const subOf = (it) => (it && it.display && typeof it.display.subcat === 'string' ? it.display.subcat : null);
   const subRank = (it) => { const i = subheads ? subheads.indexOf(subOf(it)) : -1; return i === -1 ? -1 : i; };
   const listed = subheads ? [...group.items].sort((a, b) => subRank(a) - subRank(b)) : group.items;
@@ -402,9 +434,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   for (const it of listed) {
     if (subheads && subOf(it) !== curSub && subRank(it) !== -1) {
       curSub = subOf(it);
-      const h = el('div', 'mk-subh');
-      h.append(el('span', 'mk-sn', curSub), el('span', 'mk-n', String(group.items.filter((x) => subOf(x) === curSub).length)));
-      detailEl.append(h);
+      detailEl.append(...subHead(curSub, group.items.filter((x) => subOf(x) === curSub).length));
     }
     const pend = editable ? pendingOf(it) : null;
     const row = el('div', pend ? 'irow mk-pend' : 'irow');
@@ -479,6 +509,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       }
       const chev = el('button', 'rowchev');
       chev.type = 'button';
+      if (s4 && s4.items && (typeof s4.moreFor !== 'function' || s4.moreFor(it))) row.dataset.rowgrip = '1';
       chev.setAttribute('aria-label', `Editar ${label}`);
       chev.append(svgIcon('M9 6l6 6-6 6'));
       chev.addEventListener('click', () => onOpen(id));
@@ -489,12 +520,23 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       surface: 'item', key: id,
     });
     row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));
+    let unitEl = row;
     if (grp && Array.isArray(grp.options) && grp.options.length) {
       // ONE product row with its choices nested beneath (mockup screen 2): the pair is one unit in the list
       const unit = el('div', 'grow');
       unit.append(row, groupKids(grp));
-      detailEl.append(unit);
+      detailEl.append(unit); unitEl = unit;
     } else detailEl.append(row);
+    // frame E: the dish's grip, first in its row — the unit drags among the section's dishes (S2's drag; ↑ / ↓)
+    if (row.dataset.rowgrip) {
+      delete row.dataset.rowgrip;
+      unitEl.dataset.row = id;
+      const g = el('button', 'mk-rgrip'); g.type = 'button'; g.dataset.grip = `row:${id}`;
+      g.setAttribute('aria-label', `Mover ${label}`); g.title = 'Arrastrá para ordenar'; g.append(dots());
+      dragOn(g, unitEl, id, detailEl, { drop: (x, idx) => s4.items.drop(x, idx) }, { row: '[data-row]', lift: null, tail: '.addrow' });
+      g.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); s4.items.move(id, e.key === 'ArrowUp' ? -1 : 1); } });
+      row.prepend(g);
+    }
   }
   if (onAdd) {
     const addRow = el('div', 'addrow');

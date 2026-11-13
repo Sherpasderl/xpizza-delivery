@@ -158,7 +158,7 @@ export const ALLOWED_CONSUMERS = new Set([
   // (pending snapshots, the list projection, a removed row, the dish rows) — each hands back COPIES, never a reference into state
   'canRemoveProduct', 'removeProduct', 'undoRemoveProduct', 'pendingRemovalsOf', 'removalListSource', 'removedRowOf', 'removalDishRows',
   // STRUCTURE S4: the S4 writer's two drawing-half mutators (sections switch, all or nothing, canEditContent) and its pure reader
-  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections',
+  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections', 'reorderSubcats', 'reorderItems', 'renameSubcat',
   'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
@@ -480,7 +480,7 @@ export function stateViolations(src, label = 'app.js') {
 // S2 Codex r1 P2-10: applyExposureOps (editor.js — the Extras page's ONE structural mutator: x3Create, addCommit, x4Write, the X2 remove)
 export const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'applyExposureOps',
   'removeProduct', 'undoRemoveProduct',   // «Quitar del menú»: the dish removal and its undo
-  'addCategory', 'dropStagedCategory', 'addSubcat', 'moveItem', 'reorderSections']);   // STRUCTURE S4: a new section, and dropping a new one (sections switch, canEditContent-guarded)
+  'addCategory', 'dropStagedCategory', 'addSubcat', 'moveItem', 'reorderSections', 'reorderSubcats', 'reorderItems', 'renameSubcat']);   // STRUCTURE S4: a new section, and dropping a new one (sections switch, canEditContent-guarded)
 
 export function writerFunctions(src) {
   const { ast, parents, scopeOf, fnOf, root, children } = analyse(src);

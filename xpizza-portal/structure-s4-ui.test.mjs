@@ -417,6 +417,47 @@ test('E — a pointer drag on a grip drops the section where the line is (here: 
   assert.deepEqual(declaredOrder(p), [...ids0.slice(1), ids0[0]], '🔴 dropped at the end');
 });
 
+// ── frame E: subsection heads (grip, pencil) and dish rows (grip) ──
+const headEl = (p, sub) => [...detail(p).querySelectorAll('.mk-subh')].find((h) => h.querySelector('.mk-sn') && h.querySelector('.mk-sn').textContent === sub);
+const subsOfCat = (p, id) => p.src().structure.categories.find((c) => c.id === id).subcats;
+const key = (el, k) => el.dispatchEvent(new el.ownerDocument.defaultView.KeyboardEvent('keydown', { key: k, bubbles: true }));
+test('E — a subsection head: its grip moves it (↓ / ↑); its pencil renames it in place (Enter saves, every member follows; a taken name is refused there)', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Bebidas');
+  const g = headEl(p, 'Sodas').querySelector('button.mk-grip');
+  assert.ok(g, '🔴 the head\'s grip'); assert.equal(g.getAttribute('aria-label'), 'Mover Sodas');
+  key(g, 'ArrowDown'); await settle(5);
+  assert.deepEqual(subsOfCat(p, 'bebidas'), ['Cervezas', 'Sodas']);
+  assert.equal(p.d.activeElement, headEl(p, 'Sodas').querySelector('button.mk-grip'), 'focus stays on it');
+  const pen = headEl(p, 'Sodas').querySelector('button.mk-subpen');
+  assert.equal(pen.getAttribute('aria-label'), 'Cambiar nombre de Sodas');
+  pen.click(); await settle(5);
+  const inp = detail(p).querySelector('.mk-subh input.mk-subin');
+  assert.equal(inp.value, 'Sodas'); assert.equal(p.d.activeElement, inp);
+  p.type(inp, 'cervezas'); key(inp, 'Enter'); await settle(5);
+  assert.equal(detail(p).querySelector('.mk-subh + .ferr, .mk-subh .ferr').textContent, P('subNameTaken'), 'taken: the line in place');
+  p.type(detail(p).querySelector('.mk-subh input.mk-subin'), 'Refrescos'); key(detail(p).querySelector('.mk-subh input.mk-subin'), 'Enter'); await settle(5);
+  assert.deepEqual(subsOfCat(p, 'bebidas'), ['Cervezas', 'Refrescos']);
+  assert.equal(p.src().items.filter((i) => i.display.cat === 'bebidas' && i.display.subcat === 'Sodas').length, 0, 'every member follows');
+  assert.ok(headEl(p, 'Refrescos'));
+});
+test('E — a dish row: its grip moves it within its subsection (↓); dragged past a head it joins that subsection', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Dim Sum');
+  const order = () => p.src().structure.item_order.filter((k) => p.src().items.find((i) => i.key === k && i.display.cat === 'dim_sum' && i.display.variantOf == null));
+  const o0 = order();
+  const g = rowOf(p, dishName(p, o0[0])).querySelector('button.mk-rgrip');
+  assert.ok(g, '🔴 the row\'s grip'); assert.equal(g.getAttribute('aria-label'), `Mover ${dishName(p, o0[0])}`);
+  key(g, 'ArrowDown'); await settle(5);
+  assert.deepEqual(order().slice(0, 2), [o0[1], o0[0]], 'moved down one');
+  await pick(p, 'Bebidas');
+  const soda = p.src().items.find((i) => i.display.cat === 'bebidas' && i.display.subcat === 'Sodas').key;
+  const gr = rowOf(p, dishName(p, soda)).querySelector('button.mk-rgrip');
+  const ev = (type, y) => gr.dispatchEvent(new p.w.PointerEvent(type, { bubbles: true, clientY: y, button: 0, pointerType: 'mouse' }));
+  ev('pointerdown', 0); ev('pointermove', 50); ev('pointerup', 50); await settle(10);
+  assert.equal(p.src().items.find((i) => i.key === soda).display.subcat, 'Cervezas', '🔴 past the Cervezas head: it joins Cervezas');
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
   assert.deepEqual(Object.keys(S4_COPY).sort(), ['barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'notAttachBody', 'notAttachLine', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
 });
