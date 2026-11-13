@@ -1145,3 +1145,27 @@ test('§1b recovery WITH limits (the REAL writer commits, the answer is lost): t
   assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado', 'the recovery judged the requested limit: saved');
   assert.equal(maxIn(P).value, '4.5', 'the field shows the stored value');
 });
+
+test('SBS 11-13 (rule 16b): the table-top value «{km} km» never breaks — the sheet keeps it on one line beside its label', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const rule = (css.match(/\.envio \.limit b\{[^}]*\}/) || [''])[0];
+  assert.ok(/white-space:\s*nowrap/.test(rule), `«10 km» stays together (${rule})`);
+});
+
+test('SBS 11-13 vs MOCKUP-portal-envio-v3 A3 / A4: the limit row carries the restaurant\'s initial; the callout and the capped note lead in bold; the field fits «9.5»', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: [...B3, { max_km: 10, cents: 8000 }], limits: [{ rid: 'r_lm', km: 9.5 }] }, { bands: [...B3, { max_km: 8, cents: 8000 }] }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  const note = fld(P).querySelector('.capnote');
+  assert.equal(note.querySelector('b') && note.querySelector('b').textContent, 'Hoy entrega hasta 8 km:', 'A4: the capped note leads in bold');
+  assert.equal(note.textContent, 'Hoy entrega hasta 8 km: la tabla no llega más lejos. Si la tabla vuelve a crecer, recupera sus 9.5 km.', 'the same sentence');
+  setMax(P, '7'); await settle(5);
+  P.btn('Guardar').click(); await settle(10);
+  const m = P.host().querySelector('[role="dialog"]');
+  const row = [...m.querySelectorAll('.edrow')].find((r) => r.querySelector('.k') && r.querySelector('.k').textContent === 'La Musa');
+  assert.equal(row && row.querySelector('.epi') && row.querySelector('.epi').textContent, 'L', 'A3: the limit row carries the restaurant\'s initial');
+  const c = [...m.querySelectorAll('.ecallout')].find((x) => x.textContent.includes('distancia máxima'));
+  assert.equal(c.querySelector('b') && c.querySelector('b').textContent, 'La Musa: distancia máxima 9.5 km → 7 km.', 'A3: the callout leads in bold (the stored value, as MOCKUP A3)');
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  assert.ok(/\.envio \.maxfld \.sinp\{[^}]*min-width:\s*\d+px/.test(css), 'the stepper field keeps a width that fits «9.5»');
+});

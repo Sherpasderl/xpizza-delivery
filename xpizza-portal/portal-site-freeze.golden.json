@@ -180,8 +180,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "744431e8a41ec3c50f655dfdbfef31239199ca450609ab7783739df26d526906",
-   "bytes": 152824
+   "sha256": "153999b8080a4e2df3b3dca6b3fd54d144d31b57509e7c6d977922177c892d0c",
+   "bytes": 153315
   }
  },
  "diff_aid": {
@@ -1329,6 +1329,18 @@
     ".envio .edrow .dwas",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".envio .edrow .epi",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".envio .edrow .epi",
+    "color",
+    "var(--ink)"
    ],
    [
     "",

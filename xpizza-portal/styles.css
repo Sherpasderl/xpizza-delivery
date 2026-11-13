@@ -1601,6 +1601,7 @@
   .envio .maxfld{display:flex;flex-direction:column;gap:8px;padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--board-2)}
   .envio .step{display:flex;align-items:center;gap:8px}
   .envio .sinp{flex:1;background:var(--card);min-width:0}
+  .envio .maxfld .sinp{min-width:88px}   /* SBS 11-13 rule 16b: «9.5» / «10.5» never clipped in the stepper */
   .envio .sinp input{text-align:center;font-size:18px}
   .envio .stepcap{font-size:12px;color:var(--mute);white-space:nowrap;flex:none}
   .envio .stepcap b{font-family:var(--disp);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -1619,7 +1620,7 @@
   .envio .berr{grid-column:2/5;color:var(--red-text);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-top:-2px}
   .envio .berr svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex:none}
   .envio .limit{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px;border:1px solid var(--line2);border-radius:11px;background:var(--board-2);font-size:13px}
-  .envio .limit b{font-family:var(--disp);font-size:18px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .envio .limit b{font-family:var(--disp);font-size:18px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}   /* SBS 11-13 rule 16b: «10 km» never breaks */
   .envio .pickfld{position:relative;display:flex;flex-direction:column;gap:6px}
   .envio .pick{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:var(--card);cursor:pointer;text-align:left;color:var(--ink);min-height:46px;font-family:inherit}
   .envio .pick[aria-expanded="true"]{border-color:var(--ink)}
@@ -1681,6 +1682,7 @@
   .envio .mfoot{padding:0 22px 20px;display:flex;justify-content:flex-end;gap:9px}
   .envio .edrows{display:flex;flex-direction:column;gap:8px}
   .envio .edrow{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line2);border-radius:11px;font-size:13px;background:var(--board-2);margin-bottom:0}
+  .envio .edrow .epi{width:24px;height:24px;border-radius:7px;background:var(--card);border:1px solid var(--line);font-family:var(--disp);font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}   /* MOCKUP-portal-envio-v3 A3 .drow .pi */
   .envio .edrow .k{font-weight:650;min-width:0;flex:1}
   .envio .edrow .v{font-family:var(--disp);font-weight:800;font-size:15px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .envio .edrow .dwas{font-size:12px;color:var(--mute);text-decoration:line-through;margin-right:8px;font-family:var(--body);font-weight:600}

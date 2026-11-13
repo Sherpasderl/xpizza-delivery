@@ -709,7 +709,10 @@ function paintMax() {
   R0.maxLine.textContent = line || ''; R0.maxLine.classList.toggle('hidden', !line);
   R0.maxIn.setAttribute('aria-invalid', line ? 'true' : 'false');
   const capped = !edited && !r.invalid && r.stored !== null && top !== null && r.stored > top;
-  R0.maxNoteT.textContent = capped ? COPY.capped(top, r.stored) : '';
+  // the capped note leads in bold (MOCKUP-portal-envio-v3 A4): «Hoy entrega hasta {top} km:» then the rest of the one sentence
+  const capText = capped ? COPY.capped(top, r.stored) : '';
+  const capCut = capText.indexOf(': ');
+  R0.maxNoteT.replaceChildren(...(capCut > 0 ? [el('b', null, capText.slice(0, capCut + 1)), document.createTextNode(capText.slice(capCut + 1))] : [document.createTextNode(capText)]));
   R0.maxNote.classList.toggle('hidden', !capped);
 }
 
@@ -866,16 +869,21 @@ function paintConfirm() {
       const v = el('span', 'v');
       if (row.was !== null) v.append(el('span', 'dwas', `${row.was} km`));
       v.append(document.createTextNode(`${row.now} km`));
-      dr.append(el('span', 'k', row.label), v, el('span', 'echip echg', 'Cambia'));
+      dr.append(el('span', 'epi', String(row.label || '').charAt(0).toUpperCase()), el('span', 'k', row.label), v, el('span', 'echip echg', 'Cambia'));   // SBS 11-13: the mockup's initial
       ll.append(dr);
     }
     lb.append(ll);
     body.append(lb);
   }
+  // the step-1 table-top callout stays as approved; a v3 limit callout leads with its own sentence in bold (MOCKUP-portal-envio-v3 A3)
+  const limitLines = new Set(S.confirm.limitCallouts);
   const lines = [...(EL.limitCallout(d.limit, S.restaurants) || []), ...S.confirm.limitCallouts];
   for (const line of lines) {
     const c = el('div', 'ecallout');
-    const t = el('div', null, line);
+    const t = el('div');
+    const cut = limitLines.has(line) ? line.indexOf('. ') : -1;
+    if (cut > 0) t.append(el('b', null, line.slice(0, cut + 1)), document.createTextNode(line.slice(cut + 1)));
+    else t.textContent = line;
     c.append(ic('info'), t);
     body.append(c);
   }
