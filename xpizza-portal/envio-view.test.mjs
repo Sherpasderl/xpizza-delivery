@@ -38,15 +38,15 @@ const WORLD = {
 };
 
 // ── the server: 5f's REAL cores over the faithful fake RTDB, plus a transport layer ─────────────────────────────────────────
-function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry } = {}) {
-  const db = fakeRtdb({ platform_admins: admins, ...(policy ? { platform_config: { delivery_pricing: policy } } : {}), restaurants: WORLD.restaurants, brands: WORLD.brands }, { strict: true });
+function server({ policy = POLICY(3, B3), admins = { uAdmin: true }, registry, world = WORLD } = {}) {
+  const db = fakeRtdb({ platform_admins: admins, ...(policy ? { platform_config: { delivery_pricing: policy } } : {}), restaurants: world.restaurants, brands: world.brands }, { strict: true });
   const srv = {
     db, uid: null, at: 0, commits: 0, posts: [], gets: 0,
     fault: { post: null, get: null },   // post: 'before503' | 'after503' | 'afterDrop' | 'afterMalformed' | 'drop' ; get: 'fail' | 'hold'
     hold: { get: null, post: null, getAfter: null },
   };
   const deps = () => ({ db, verifyIdToken: async (t) => { if (t !== 'TK-test' || !srv.uid) throw new Error('bad'); return { uid: srv.uid }; },
-    timestamp: () => ++srv.at, readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: WORLD.ids })) });
+    timestamp: () => ++srv.at, readRegistry: registry || (async () => ({ ok: true, fresh: true, ids: world.ids })) });
   const req = (body) => ({ get: (h) => (String(h).toLowerCase() === 'authorization' ? 'Bearer TK-test' : null), body });
   const answer = (out) => (out.status === 200 ? okJson(out.body) : { ok: false, status: out.status, json: async () => out.body, text: async () => JSON.stringify(out.body), headers: { get: () => null } });
   const ver = () => { const v = db.ref(CORE.PATH); return v; };
@@ -1073,4 +1073,59 @@ test('the caption with no reach known (no fee table yet): the mockup’s own fal
   const P = await page({ srv: server({ policy: null }) });
   await P.signIn(); await P.open(); await settle(5);
   assert.equal(P.host().querySelector('.emap .emz').textContent, 'Anillos desde el pin de La Musa. Línea recta, no calles.');
+});
+
+// ── ENVÍO v3 on the train: the §1c / §1e cases through 5f's REAL GET / POST at page level ─────────────────────────────────────────────
+// La Musa with TWO branches (one restaurant: shared brand_id); a stored entry made malformed in the policy node (the writer never
+// writes one — 5f's own portal/sucursales-limit.test.js stages it the same way)
+const WORLD2 = { ...WORLD, ids: [...WORLD.ids, 'r_lm2'], restaurants: { ...WORLD.restaurants, r_lm2: { identity: { brand_id: 'b_lm', name: 'La Musa', location_name: 'Sur', hub_lat: 15.4950, hub_lng: -88.0300 } } } };
+test('INVALID-LIMIT-UI-BLAST-RADIUS (§1c, the REAL GET): one branch malformed → the restaurant\'s field «—», still editable; saving 6 fans out to BOTH branches; the flagged branch draws no ring', async () => {
+  const srv = server({ world: WORLD2 });
+  await seedLimits(srv, [{ bands: B3, limits: [{ rid: 'r_lm', km: 4 }, { rid: 'r_lm2', km: 5 }] }]);
+  await srv.db.ref(`${CORE.PATH}/restaurants/r_lm2`).set({ max_km: 'x' });   // malformed in storage
+  const got = await CORE.getDeliveryPricingCore({ db: srv.db, verifyIdToken: async () => ({ uid: 'uAdmin' }), readRegistry: async () => ({ ok: true, fresh: true, ids: WORLD2.ids }) },
+    { get: (h) => (String(h).toLowerCase() === 'authorization' ? 'Bearer x' : null) });
+  const row = (rid) => (got.body.branches || got.body.rows || []).find((b) => b.rid === rid) || {};
+  assert.equal(row('r_lm2').limit_invalid, true, `premise: the REAL GET flags the branch (${JSON.stringify(row('r_lm2')).slice(0, 160)})`);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  assert.equal(fld(P).querySelector('.elab').textContent, 'Distancia máxima de La Musa', 'premise: La Musa picked');
+  assert.equal(maxIn(P).value, '', 'the field shows no asserted reach');
+  assert.equal(maxIn(P).placeholder, '—', 'the existing empty-value rendering');
+  assert.equal(maxIn(P).readOnly, false, 'still editable (the repair is the owner\'s edit)');
+  const out = await listening(P);
+  const pickBranch = async (loc) => {
+    P.host().querySelector('.pick').click(); await settle();
+    const it = [...P.host().querySelectorAll('.pitem')].find((b) => b.textContent.includes(`La Musa · ${loc}`));
+    assert.ok(it, `premise: the picker lists «La Musa · ${loc}»`);
+    it.click(); await settle(5);
+    return out[out.length - 1][0].limit;
+  };
+  assert.equal(await pickBranch('Sur'), null, 'the flagged branch draws NO limit ring');
+  assert.deepEqual(await pickBranch('Centro'), { km: 4, capped: false, name: 'La Musa' }, 'its valid branch keeps its own ring');
+  assert.equal(maxIn(P).placeholder, '—', 'the restaurant\'s field stays «—» whichever branch is picked');
+  setMax(P, '6'); await settle(5);
+  P.btn('Guardar').click(); await settle(10);
+  P.btn('Guardar cambios', P.host().querySelector('[role="dialog"]')).click(); await settle(60);
+  assert.deepEqual([...srv.posts[srv.posts.length - 1].limits].sort((a, b) => a.rid.localeCompare(b.rid)), [{ rid: 'r_lm', km: 6 }, { rid: 'r_lm2', km: 6 }], 'a save fans out to ALL its branches');
+  const node = await srv.node();
+  assert.deepEqual([node.restaurants.r_lm.max_km, node.restaurants.r_lm2.max_km], [6, 6], 'the REAL writer repaired both');
+  assert.ok(!JSON.stringify(srv.posts).includes('"x"'), 'the save body never carries the bad value');
+});
+
+test('§1e directory_changed (the REAL writer): a branch deregistered between the read and the save → the v2 conflict / refresh panel, never the client-bug error', async () => {
+  let ids = WORLD.ids;
+  const srv = server({ registry: async () => ({ ok: true, fresh: true, ids }) });
+  await seedLimits(srv, [{ bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  setMax(P, '4.5'); await settle(5);
+  ids = WORLD.ids.filter((r) => r !== 'r_lm');                                // La Musa leaves the registry under the open page
+  P.btn('Guardar').click(); await settle(10);
+  P.btn('Guardar cambios', P.host().querySelector('[role="dialog"]')).click(); await settle(80);
+  const t = P.text();
+  assert.ok(srv.posts.length >= 1, 'premise: the save went out');
+  assert.equal(srv.posts.length, 1, 'premise: ONE save went out');
+  assert.ok(t.includes('Alguien más cambió las tarifas, recargá'), `the v2 conflict / refresh panel (${t.slice(0, 300)})`);
+  assert.ok(t.includes('Tus cambios no se guardaron. Recargá para ver la versión actual y volvé a editar sobre ella.'), 'the owner\'s sentence');
+  assert.ok(P.btn('Recargar'), '«Recargar» offered');
+  assert.equal((await srv.node()).restaurants, undefined, 'nothing was written');
 });

@@ -67,3 +67,37 @@ for (const theme of ['light', 'dark']) {
     assert.ok(!isInk(p.cs('q').boxShadow, p), 'no ink ring on the search');
   });
 }
+
+// ── «No amber» (OWNER 11-12) — the SAND surfaces as the browser computes them over the shipped styles.css: ENVÍO v3 A4's capped note,
+// «Quitar del menú» R3's «Se quita al publicar» chip (over the base .tag, which is AMBER) and R5's reward line. Each resolves to the sand
+// tokens — text, background and border — never an amber one, and its text passes AA (≥ 4.5:1) on its own background, in both themes.
+const hex = (h) => { const x = String(h).trim().replace('#', ''); return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16) / 255); };
+const lum = (h) => { const [r, g, b] = hex(h).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+function sandPage(theme) {
+  const t = theme === 'dark' ? DARK : LIGHT;
+  const dom = new JSDOM(`<!doctype html><style>${resolve(CSS, t)}</style>
+    <div class="envio"><div class="capnote sand" id="cap"><span>Hoy entrega hasta 6 km</span></div></div>
+    <div class="irow mk-pend"><div class="iinfo"><div class="nm mk-pendtxt">Wonton<span class="tag mk-sand" id="chip">Se quita al publicar</span></div></div></div>
+    <div class="mk-sandline" id="line"><span>Este producto se canjea con recompensas</span></div>`, { pretendToBeVisual: true });
+  const d = dom.window.document;
+  const probe = d.createElement('i'); d.body.append(probe);
+  const color = (c) => { probe.style.color = c; return dom.window.getComputedStyle(probe).color; };
+  return { t, color, cs: (id) => dom.window.getComputedStyle(d.getElementById(id)) };
+}
+for (const theme of ['light', 'dark']) {
+  test(`sand, not amber (${theme}): the capped note, the pending chip and the reward line compute to the sand tokens; AA on their background`, () => {
+    const p = sandPage(theme);
+    const amber = new Set(['amber', 'amber-soft', 'amber-line'].filter((k) => k in p.t).map((k) => p.color(p.t[k])));
+    assert.ok(amber.size >= 2, 'premise: the amber tokens exist in this theme (the chip sits on the AMBER base .tag)');
+    for (const id of ['cap', 'chip', 'line']) {
+      const s = p.cs(id);
+      assert.equal(s.color, p.color(p.t['sand-text']), `${id}: sand text`);
+      assert.equal(s.backgroundColor, p.color(p.t['sand-soft']), `${id}: sand background`);
+      assert.equal(s.borderTopColor, p.color(p.t['sand-line']), `${id}: sand border`);
+      for (const v of [s.color, s.backgroundColor, s.borderTopColor]) assert.ok(!amber.has(v), `${id}: never an amber token (${v})`);
+    }
+    const c = contrast(p.t['sand-text'], p.t['sand-soft']);
+    assert.ok(c >= 4.5, `AA: sand text on sand background ${c.toFixed(2)}:1 ≥ 4.5`);
+  });
+}
