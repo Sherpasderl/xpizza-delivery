@@ -37,7 +37,8 @@ async function boot(register) {
   await signIn();
   return { byId, calls, mods, view: byId.get('viewventas') };
 }
-const califTab = (log) => ({ id: 'calificaciones', label: 'Calificaciones',
+// a test-only THIRD tab (the room the registry keeps; nothing like it is drawn) — Calificaciones itself is registered by ventas.js
+const califTab = (log) => ({ id: 'tercera', label: 'Tercera',
   mount: (el) => { log.push('mount'); const p = document.createElement('p'); p.textContent = 'PANE'; el.append(p); }, unmount: () => log.push('unmount') });
 
 test('index.html: the nav entry (desktop + mobile) reads «Rendimiento»; its ids stay (every module and the nav groups anchor on them)', () => {
@@ -56,7 +57,7 @@ test('the page: «Rendimiento» + the mockup\'s lede + the text tabs, Ventas fir
   assert.ok(!textOf(view).includes('Cómo se está vendiendo'), 'today\'s Ventas lede gives way to the page\'s');
   const bar = tabBar(view);
   assert.equal(bar.tag, 'nav'); assert.equal(bar.attrs['aria-label'], 'Secciones de Rendimiento');
-  assert.deepEqual(tabsOf(view).map((t) => t.textContent), ['Ventas'], 'Ventas only: no other tab is registered yet (nothing drawn for it)');
+  assert.deepEqual(tabsOf(view).map((t) => t.textContent), ['Ventas', 'Calificaciones'], 'Ventas · Calificaciones (P-1), nothing else');
   assert.deepEqual(onTab(view), ['Ventas']); assert.equal(tabsOf(view)[0].attrs['aria-current'], 'page');
   for (const want of ['L 38,146', '158', 'Resumen diario (CSV)', 'Pedidos (CSV)']) assert.ok(textOf(view).includes(want), `the Ventas tab still renders: ${want}`);
   assert.equal(statsCalls(calls).length, 1, 'one sales read, as today');
@@ -66,11 +67,11 @@ test('a registered tab: «Ventas · Calificaciones» in that order; switching mo
   const log = [];
   const { byId, calls, view } = await boot((v) => v.registerRendTab(califTab(log)));
   byId.get('navventas').click(); await settle();
-  assert.deepEqual(tabsOf(view).map((t) => t.textContent), ['Ventas', 'Calificaciones'], '🔴 the order the mockup draws');
+  assert.deepEqual(tabsOf(view).map((t) => t.textContent), ['Ventas', 'Calificaciones', 'Tercera'], '🔴 the order the mockup draws, then the room');
   assert.deepEqual(onTab(view), ['Ventas'], 'Ventas opens by default');
   const n = statsCalls(calls).length;
-  tabsOf(view)[1].click(); await settle();
-  assert.deepEqual(onTab(view), ['Calificaciones']); assert.equal(tabsOf(view)[1].attrs['aria-current'], 'page'); assert.equal(tabsOf(view)[0].attrs['aria-current'], undefined);
+  tabsOf(view)[2].click(); await settle();
+  assert.deepEqual(onTab(view), ['Tercera']); assert.equal(tabsOf(view)[2].attrs['aria-current'], 'page'); assert.equal(tabsOf(view)[0].attrs['aria-current'], undefined);
   assert.deepEqual(log, ['mount']);
   const pane = findAll(view, (n) => (n.children || []).some((c) => c.textContent === 'PANE'))[0];
   const salesHidden = () => ['vacts', 'vperiod'].every((c) => hasClass(findAll(view, (n) => hasClass(n, c))[0], 'hidden'));
@@ -84,14 +85,14 @@ test('a registered tab: «Ventas · Calificaciones» in that order; switching mo
   assert.deepEqual(onTab(view), ['Ventas'], 'leaving and coming back opens Ventas again');
 });
 
-test('entry points: goto(\'ventas\') and goto(\'rendimiento\') land on the Ventas tab; goto(\'calificaciones\') on its tab when registered, else Ventas', async () => {
+test('entry points: goto(\'ventas\') and goto(\'rendimiento\') land on the Ventas tab; goto(\'calificaciones\') on Calificaciones (registered by ventas.js)', async () => {
   {
     const { mods, view, byId } = await boot();
-    for (const v of ['ventas', 'rendimiento', 'calificaciones']) {
+    for (const [v, want] of [['ventas', 'Ventas'], ['rendimiento', 'Ventas'], ['calificaciones', 'Calificaciones']]) {
       byId.get('navprod').click();
       mods.shell.goto(v); await settle();
       assert.ok(!hasClass(byId.get('viewventas'), 'hidden'), `${v}: the page shows`);
-      assert.deepEqual(onTab(view), ['Ventas'], `🔴 ${v} → Ventas`);
+      assert.deepEqual(onTab(view), [want], `🔴 ${v} → ${want}`);
       assert.ok(hasClass(byId.get('navventas'), 'on'), `${v}: the nav entry is current`);
     }
   }
@@ -100,7 +101,7 @@ test('entry points: goto(\'ventas\') and goto(\'rendimiento\') land on the Venta
     const { mods, view, byId } = await boot((v) => v.registerRendTab(califTab(log)));
     byId.get('navprod').click();
     mods.shell.goto('calificaciones'); await settle();
-    assert.deepEqual(onTab(view), ['Calificaciones'], '🔴 the alias opens the registered tab');
+    assert.deepEqual(onTab(view), ['Calificaciones'], '🔴 the alias opens the Calificaciones tab');
     mods.shell.goto('ventas'); await settle();
     assert.deepEqual(onTab(view), ['Ventas']);
   }
@@ -112,8 +113,8 @@ test('registerRendTab: refuses a duplicate id, Ventas\' id, a missing label or m
   assert.throws(() => R({ id: 'ventas', label: 'X', mount() {} }));
   assert.throws(() => R({ id: 'x', mount() {} }));
   assert.throws(() => R({ id: 'x', label: 'X' }));
-  R({ id: 'a', label: 'A', mount() {} });
+  assert.throws(() => R({ id: 'calificaciones', label: 'X', mount() {} }), 'Calificaciones is already registered (by ventas.js)');
+  R({ id: 'a', label: 'A', mount() {} });   // the third: the room kept for «Tu nivel»
   assert.throws(() => R({ id: 'a', label: 'A2', mount() {} }), 'a duplicate');
-  R({ id: 'b', label: 'B', mount() {} });
-  assert.throws(() => R({ id: 'c', label: 'C', mount() {} }), 'a fourth tab');
+  assert.throws(() => R({ id: 'b', label: 'B', mount() {} }), 'a fourth tab');
 });

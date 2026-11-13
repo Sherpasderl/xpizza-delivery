@@ -29,7 +29,10 @@
   "branches-1b-life.test.mjs",
   "branches-1b.test.mjs",
   "branches-view.js",
+  "calificaciones-harness.mjs",
   "calificaciones-logic.js",
+  "calificaciones-view.test.mjs",
+  "calificaciones.js",
   "calificaciones.test.mjs",
   "category-name.browser.test.mjs",
   "editor.js",
@@ -187,8 +190,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "decbd36c5fb1ed3a67f7da71fba2bc62b1e090262310739e2ab9e86fdfd57099",
-   "bytes": 154699
+   "sha256": "9d38835db4c695802d5c2801b4e5a1dfbcf399cc53527ab68add0e70a6185ffe",
+   "bytes": 159482
   }
  },
  "diff_aid": {
@@ -820,6 +823,72 @@
     ".btn:hover",
     "border-color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cempty p,.calif .cerr p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .endl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kfig .kl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .kfig .kn small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kfigs.surface",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .qact",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".calif .qact",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .sect .subl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .skb",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".calif .stars",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".calif-scope",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

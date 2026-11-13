@@ -14,6 +14,7 @@
 // widths, heat-cell opacity) — values computed here that no class could hold.
 import { token } from './auth.js';
 import { getSalesStats, fetchSalesCsv } from './api.js';
+import { calificacionesTab } from './calificaciones.js';   // P-1: the «Calificaciones» tab of «Rendimiento»
 import {
   PRESETS, COMPARES, ORDERS_CSV_MAX_DAYS, rangeFor, validateCustom, defaultCompare, granularityFor, todayHN,
   rangeLabel, daysBetween, viewModel, csvHeaderOk, joinCsvPages, csvFilename, ventasMessage,
@@ -83,7 +84,10 @@ export function registerRendTab({ id, label, mount, unmount } = {}) {
   if (REND_TABS.length + 1 >= REND_MAX) throw new Error('registerRendTab: at most three tabs');
   REND_TABS.push({ id, label, mount, unmount: typeof unmount === 'function' ? unmount : () => {} });
 }
+registerRendTab(calificacionesTab);   // Ventas · Calificaciones (MOCKUP-portal-map s-rend; owner Q4 11-13)
 const tabOf = (id) => REND_TABS.find((t) => t.id === id) || null;
+// what a tab's pane gets: the page's restaurant (the owner proof), the guarded token, and the shell's scope label for its one-line scope
+const tabCtx = () => ({ rid: S.rid, token, scopeLabel: ($('mscope') && $('mscope').textContent) || '' });
 // shell.js goto('calificaciones' | 'rendimiento' | 'ventas') names the tab first; an unknown or unregistered tab is Ventas
 let wantTab = null;
 document.addEventListener('portal:rend-tab', (e) => { wantTab = e && e.detail ? e.detail.tab : null; });
@@ -121,7 +125,7 @@ function showTab(id) {
   refs.pane.classList.toggle('hidden', sales);
   refs.pane.replaceChildren();
   if (sales) { if (prev !== 'ventas') load(); }
-  else tabOf(S.tab).mount(refs.pane);
+  else tabOf(S.tab).mount(refs.pane, tabCtx());
 }
 
 document.addEventListener('portal:auth', (e) => {

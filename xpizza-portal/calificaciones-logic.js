@@ -63,27 +63,46 @@ export function createCommentList({ rid, fetchPage }) {
   return { load, state };
 }
 
-// the rows, as the approved mockup draws a rating: N filled stars then empty ones («N de 5 estrellas»), the comment as TEXT
+// ── the COPY (MOCKUP-portal-calificaciones.html): the strings the owner already approved are literal; every other one is a PLACEHOLDER
+// (null ⇒ «⟦cal.key⟧» on screen) until the owner approves the mockup's copy — the view test's SHIP GATE stays red until then
+export const CAL_COPY = Object.freeze({
+  title: 'Lo que dicen tus clientes', avg: 'Calificación promedio', count: 'Calificaciones',   // approved (map v3 + Q4)
+  anon: null, avgOf: null, countTotal: null, under10: null,
+  emptyTitle: null, emptyBody: null, errTitle: null, errBody: null, retry: null, deniedTitle: null, deniedBody: null,
+  more: null, loading: null, end: null, readMore: null, readLess: null, srLoading: null,
+});
+export const calCopy = (k) => (typeof CAL_COPY[k] === 'string' ? CAL_COPY[k] : `⟦cal.${k}⟧`);
+
+// the rows, as the mockup draws a rating: N filled stars then outlined ones («N de 5 estrellas», approved), the comment as TEXT clamped
+// to three lines, and the row's own expander (shown by CSS only when the text overflows)
 const SVG = 'http://www.w3.org/2000/svg';
+const STAR = 'M12 2.5l2.9 6 6.6 1-4.8 4.6 1.1 6.6L12 17.6l-5.8 3.1 1.1-6.6L2.5 9.5l6.6-1z';
 export function renderCommentRows(doc, rows) {
   const frag = doc.createDocumentFragment();
   for (const r of rows) {
-    const li = doc.createElement('li'); li.className = 'crow';
+    const row = doc.createElement('div'); row.className = 'crow';
     if (r.stars !== null) {
       const st = doc.createElement('span'); st.className = 'stars';
       st.setAttribute('role', 'img'); st.setAttribute('aria-label', `${r.stars} de 5 estrellas`);
       for (let i = 1; i <= 5; i++) {
         const svg = doc.createElementNS(SVG, 'svg');
         if (i > r.stars) svg.setAttribute('class', 'e');
-        svg.setAttribute('aria-hidden', 'true');
-        const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', '#i-starf');
-        svg.append(use); st.append(svg);
+        svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+        const path = doc.createElementNS(SVG, 'path'); path.setAttribute('d', STAR);
+        svg.append(path); st.append(svg);
       }
-      li.append(st);
+      row.append(st);
     }
-    const p = doc.createElement('p'); p.className = 'ctxt'; p.textContent = r.comment;
-    li.append(p);
-    frag.append(li);
+    const p = doc.createElement('p'); p.className = 'ctxt clamp'; p.textContent = r.comment;
+    const more = doc.createElement('button'); more.type = 'button'; more.className = 'qact cmore';
+    more.setAttribute('aria-expanded', 'false'); more.textContent = calCopy('readMore');
+    more.addEventListener('click', () => {
+      const open = p.classList.contains('clamp');
+      p.classList.toggle('clamp', !open);
+      more.textContent = calCopy(open ? 'readLess' : 'readMore'); more.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    row.append(p, more);
+    frag.append(row);
   }
   return frag;
 }
