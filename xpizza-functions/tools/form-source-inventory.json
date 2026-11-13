@@ -336,6 +336,7 @@
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js",
+    "xpizza-functions/signup-platform.test.js",
     "xpizza-functions/signup-wiring.guard.test.js",
     "xpizza-functions/stacked-tracker-wiring.guard.test.js",
     "xpizza-functions/stackseq-wiring.guard.test.js",

@@ -5,6 +5,8 @@
 // S2's REAL issuer (checkout-guest-gate grantFor over a stored order). The emulator cells are the S3 heavy suite.
 // Run: node signup-platform.test.js
 process.env.OTP_SALT = process.env.OTP_SALT || 'test-salt-'.padEnd(40, 'x');
+const fs = require('fs');
+const path = require('path');
 const assert = require('assert');
 const OTP = require('./otp-lib');
 const S = require('./signup-core');
@@ -47,7 +49,7 @@ function harness({ legal = true, rollout = 1, env = {} } = {}) {
   if (legal) db.set('platform_config/legal', { terms_url: 'https://sherpa.test/t', privacy_url: 'https://sherpa.test/p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' });
   if (rollout !== null) db.set('signup_config/rollout_at', rollout);
   const mintFail = { once: false };
-  const auth = { createCustomToken: async (uid, claims) => { if (mintFail.once) { mintFail.once = false; throw new Error('injected mint failure'); } minted.push([uid, claims]); return `tok:${uid}`; }, verifyIdToken: async (t) => { const [kind, uid] = String(t).split(':'); if (kind === 'cust') return { uid, customer: true }; if (kind === 'staff') return { uid }; throw new Error('bad'); } };
+  const auth = { createCustomToken: async (uid, claims) => { if (mintFail.once) { mintFail.once = false; throw new Error('injected mint failure'); } minted.push([uid, claims]); return `tok:${uid}`; }, verifyIdToken: async (t) => { const [kind, uid] = String(t).split(':'); if (kind === 'cust') return { uid, customer: true }; if (kind === 'staff') return { uid }; if (kind === 'hh') return { uid, customer: true, handheld: true }; throw new Error('bad'); } };
   const H = makeSignupPlatform({ getDatabase: () => db, getAuth: () => auth, checkRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }), now: () => clock,
     env: { ULTRAMSG_INSTANCE_ID_PLATFORM: 'i', ULTRAMSG_TOKEN_PLATFORM: 't', SIGNUP_OTP_TEMPLATE_PLATFORM: 'Sherpa: {code}', ...env },
     sendPlatformOtp: require('./checkout-otp').sendPlatformOtp, senderConfigured: require('./checkout-otp').platformSenderConfigured, isSendConfirmed: () => true,
@@ -246,7 +248,7 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     t.db.set(`user_profiles/${B}`, { phone: '50488881111', created_at: 5, name: 'Beto' });
     const get = (q, hdr, body) => t.call('getMyProfile', body, { method: 'GET', query: q, headers: hdr ? { 'x-firebase-id-token': hdr } : {} });
     let r = await get({ context: 'platform' }, `cust:${A}`);
-    assert.deepStrictEqual(r.body, { ok: true, name: 'Ana', email: 'a@x.hn', phone: '50499990000', phone_last4: '0000', consent: { terms: true, terms_version: 't1', promos: false }, completion: 'complete', promos: false });
+    assert.deepStrictEqual(r.body, { ok: true, name: 'Ana', email: 'a@x.hn', phone: '50499990000', phone_last4: '0000', consent: { terms: true, terms_version: 't1', promos: false }, completion: 'complete', promos: false, addresses: [], default_address: null }, '🔴 getMyProfile\'s body, the book ALWAYS present ([] / null)');   // S-ADDR-1
     assert.strictEqual(r.headers['Cache-Control'], 'no-store');
     for (const [q, why] of [[{ context: 'platform', uid: B }, 'a uid param'], [{ context: 'platform', phone: '50488881111' }, 'a phone param'], [{}, 'no scope'], [{ context: 'x_pizza' }, 'a rid scope']]) {
       r = await get(q, `cust:${A}`); assert.deepStrictEqual([r.statusCode, r.body], [400, { ok: false, reason: 'bad_request' }], `🔴 ${why}`);
@@ -259,6 +261,85 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     assert.strictEqual(r.body.name, 'Beto'); assert.ok(!('promos' in r.body), 'promos OMITTED when no consent is stored'); assert.deepStrictEqual(r.body.consent, { terms: false, terms_version: null, promos: false });
   }
   ok('getMyProfile: the caller\'s OWN data (token uid only); any uid / phone / body parameter or a wrong scope ⇒ 400; non-customer / missing token ⇒ 401; tombstone ⇒ 403; promos omitted when unset; no-store');
+
+  // ── 8b. PLAN-3a-addr S-ADDR-1: the ADDRESS BOOK, written by the REAL writer (the frozen form's own saveAddress, lifted from
+  // xpizza-orders/account.js and run against this db) and served through getMyProfile's whitelist ──
+  const ACC = fs.readFileSync(path.join(__dirname, '..', 'xpizza-orders', 'account.js'), 'utf8');
+  const liftFn = (head) => { const at = ACC.indexOf(head); assert.ok(at > 0, `premise: account.js defines ${head}`); return ACC.slice(at, ACC.indexOf('\n  }\n', at) + 4); };
+  const formSaveAddress = (db, uid) => new Function('ensureFirebase', 'heal', 'MAX_ADDRESSES', 'window', `${liftFn('function newAddrId()')}\n${liftFn('async function saveAddress(')}\nreturn saveAddress;`)(
+    async () => ({ auth: { authStateReady: async () => {}, currentUser: { uid } }, db: null,
+      dbMod: { ref: (_d, p) => p, get: async (p) => db.ref(p).get(), update: async (_r, u) => db.ref().update(u) } }), () => {}, 10, { crypto: require('crypto').webcrypto });
+  {
+    const t = harness(); const A = 'u_' + 'c'.repeat(24);
+    t.db.set(`user_profiles/${A}`, { phone: '50499990000', phone_hash: PH, created_at: 5, name: 'Ana' });
+    const save = formSaveAddress(t.db, A);
+    const casa = await save({ label: 'Casa', detected: 'Col. Palmira, Tegucigalpa', details: 'Casa azul, portón negro', lat: 14.09, lng: -87.18, makeDefault: true });
+    await new Promise((r) => setTimeout(r, 2));
+    const trab = await save({ label: 'Trabajo', detected: 'Blvd. Morazán', details: 'Torre 2, piso 5', lat: 14.1, lng: -87.19 });
+    assert.ok(casa.ok && trab.ok, `premise: the form's own saveAddress wrote the book (${JSON.stringify([casa, trab])})`);
+    const stored = t.db.get(`user_profiles/${A}`);
+    const get = (tok) => t.call('getMyProfile', undefined, { method: 'GET', query: { context: 'platform' }, headers: { 'x-firebase-id-token': tok } });
+    let r = await get(`cust:${A}`);
+    const want = (id) => { const e = stored.addresses[id]; return { id, label: e.label, detected: e.detected, details: e.details, lat: e.lat, lng: e.lng, last_used_at: e.last_used_at }; };
+    assert.deepStrictEqual(r.body.addresses, [want(trab.addrId), want(casa.addrId)], '🔴 the book served from the real writer: newest use first, exactly the whitelist');
+    assert.strictEqual(r.body.default_address, casa.addrId, '🔴 default_address served (it names a served entry)');
+    assert.ok(!JSON.stringify(r.body.addresses).includes('created_at'), '🔴 never created_at');
+    // a malformed stored entry is DROPPED; a default naming it ⇒ null
+    t.db.set(`user_profiles/${A}/addresses/${casa.addrId}/label`, '');
+    r = await get(`cust:${A}`);
+    assert.deepStrictEqual(r.body.addresses.map((x) => x.id), [trab.addrId], '🔴 a malformed entry (empty label) is dropped, never repaired');
+    assert.strictEqual(r.body.default_address, null, '🔴 a default naming a dropped entry ⇒ null');
+    for (const bad of [{ secret: 1 }, { lat: 91 }, { details: 'x'.repeat(201) }]) {
+      t.db.set(`user_profiles/${A}/addresses/${trab.addrId}`, { ...stored.addresses[trab.addrId], ...bad });
+      assert.deepStrictEqual((await get(`cust:${A}`)).body.addresses, [], `🔴 an entry violating the rules' shape (${JSON.stringify(bad).slice(0, 30)}) is dropped`);
+    }
+    t.db.set(`user_profiles/${A}/addresses/not_an_id`, { ...stored.addresses[trab.addrId] });
+    assert.deepStrictEqual((await get(`cust:${A}`)).body.addresses, [], 'a key that is not an address id ⇒ dropped');
+    // the cap: a self-written oversized book serves at most 20 (newest use first)
+    const big = {}; for (let i = 0; i < 25; i++) big[`a_${String(i).padStart(6, '0')}`] = { label: `L${i}`, detected: 'D', details: '', lat: 1, lng: 1, created_at: 1, last_used_at: 1000 + i };
+    t.db.set(`user_profiles/${A}/addresses`, big);
+    r = await get(`cust:${A}`);
+    assert.strictEqual(r.body.addresses.length, 20, '🔴 at most 20 served'); assert.strictEqual(r.body.addresses[0].last_used_at, 1024, 'newest use first');
+    assert.ok(Buffer.byteLength(JSON.stringify(r.body.addresses)) < 20 * 400, 'a capped book stays small');
+    // 0 added reads: the book comes from the profile read getMyProfile already makes
+    const reads = []; const orig = t.db.ref; t.db.ref = (p) => { reads.push(p); return orig(p); };
+    await get(`cust:${A}`); t.db.ref = orig;
+    assert.ok(!reads.some((p) => /addresses|default_address/.test(String(p))), `🔴 no extra read for the book (${reads.join(', ')})`);
+  }
+  ok('S-ADDR-1: the book written by the frozen form\'s OWN saveAddress is served through getMyProfile — newest use first, exactly { id, label, detected, details, lat, lng, last_used_at } (never created_at); default_address only when it names a served entry; malformed / foreign-key / off-shape entries dropped; at most 20; 0 added reads');
+
+  // ── 8c. S-ADDR-1 auth = memberUidOf (the R2.1 fix): a customer+HANDHELD token ⇒ 401; the 3rd tombstone (deleting_at) ⇒ 403 ──
+  {
+    const t = harness(); const A = 'u_' + 'd'.repeat(24);
+    t.db.set(`user_profiles/${A}`, { phone: '50499990000', phone_hash: PH, created_at: 5, name: 'Ana' });
+    const get = (tok) => t.call('getMyProfile', undefined, { method: 'GET', query: { context: 'platform' }, headers: { 'x-firebase-id-token': tok } });
+    assert.strictEqual((await get(`cust:${A}`)).statusCode, 200, 'premise: the member reads');
+    assert.deepStrictEqual([(await get(`hh:${A}`)).statusCode, (await get(`hh:${A}`)).body], [401, { ok: false, reason: 'unauthenticated' }], '🔴 a customer+handheld token ⇒ 401');
+    t.db.set(`user_profiles/${A}/deleting_at`, 7);
+    assert.deepStrictEqual([(await get(`cust:${A}`)).statusCode, (await get(`cust:${A}`)).body], [403, { ok: false, reason: 'deleted' }], '🔴 mid-deletion (user_profiles/deleting_at) ⇒ 403');
+    t.db.set(`user_profiles/${A}/deleting_at`, null); t.db.set(`user_private/${A}/deleted_at`, 8);
+    assert.strictEqual((await get(`cust:${A}`)).statusCode, 403, 'user_private/deleted_at ⇒ 403 (unchanged)');
+  }
+  ok('S-ADDR-1 auth is memberUidOf: a customer+handheld token ⇒ 401; user_profiles/deleting_at ⇒ 403 (plus the two existing tombstones)');
+
+  // ── 8d. owner-only PII: NO address field ever reaches a log line (success and an injected failure) ──
+  {
+    const t = harness(); const A = 'u_' + 'e'.repeat(24);
+    t.db.set(`user_profiles/${A}`, { phone: '50499990000', phone_hash: PH, created_at: 5, name: 'Ana',
+      addresses: { a_abcdef01: { label: 'CasaSecreta', detected: 'DireccionSecreta', details: 'RefSecreta', lat: 14.0912345, lng: -87.1812345, created_at: 1, last_used_at: 2 } }, default_address: 'a_abcdef01' });
+    const lines = []; const keep = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+    for (const k of Object.keys(keep)) console[k] = (...a) => lines.push(a.map((x) => (typeof x === 'string' ? x : (() => { try { return JSON.stringify(x); } catch (_) { return String(x); } })())).join(' '));
+    try {
+      await t.call('getMyProfile', undefined, { method: 'GET', query: { context: 'platform' }, headers: { 'x-firebase-id-token': `cust:${A}` } });
+      const orig = t.db.ref; t.db.ref = (p) => { const r = orig(p); if (String(p) === `user_profiles/${A}`) return { ...r, once: async () => { throw new Error('injected read failure'); } }; return r; };
+      const r = await t.call('getMyProfile', undefined, { method: 'GET', query: { context: 'platform' }, headers: { 'x-firebase-id-token': `cust:${A}` } });
+      t.db.ref = orig;
+      assert.strictEqual(r.statusCode, 500, 'premise: the injected failure was hit');
+    } finally { Object.assign(console, keep); }
+    const all = lines.join('\n');
+    for (const pii of ['CasaSecreta', 'DireccionSecreta', 'RefSecreta', '14.0912345', '-87.1812345']) assert.ok(!all.includes(pii), `🔴 an address field reached a log line: ${pii}`);
+  }
+  ok('owner-only PII: no address field (label, detected, details, lat, lng) reaches any log line — on success and on an injected failure');
 
   // ── 9. the signup family's scope parsing (signup-endpoints): forms unchanged, platform additive, both/neither refused ──
   {
@@ -527,4 +608,4 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
   ok('Codex capp batch r1 #4: platform setPromos — own uid only (a body uid ignored), exactly one selector, boolean only, 401 without a customer token; consent/_platform/promos (what profileOf reads) with the platform copy version, terms kept; → {ok, value} READ BACK from the committed record; not_completed / legal_unconfigured; deleted_uids ⇒ 401 and deleted_at ⇒ 403 with nothing written; a deletion with / after the commit (either tombstone, forced retry) ⇒ aborted, never ok; concurrent toggles answer their own commit; the forms\' {ok:true} unchanged');
 
   console.log(`\nsignup-platform: OK (${n})`);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { console.error(`  ✗ ${(e && e.message) || e}`); console.error(e); process.exit(1); });

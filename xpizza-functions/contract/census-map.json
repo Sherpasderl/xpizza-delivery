@@ -865,6 +865,8 @@
   "signup-platform.js#redeemSignupGrant": "infra",
   "signup-platform.js#redeemSignupGrant>anon": "infra",
   "signup-platform.js#getMyProfile": "infra",
+  "address-book.js#isValidEntry": "infra",
+  "address-book.js#projectBook>anon": "infra",
   "access/membership-admin-core.js#myRestaurants": "access",
   "access/membership-admin-core.js#census": "access",
   "access/membership-admin-core.js#expectedIndex": "access",

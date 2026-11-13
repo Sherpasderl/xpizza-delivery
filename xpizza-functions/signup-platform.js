@@ -20,6 +20,8 @@ const S = require('./signup-core');
 const SE = require('./signup-endpoints');
 const G = require('./checkout-guest-lib');
 const { parseE164 } = require('./phone-countries');
+const MA = require('./member-auth');
+const AB = require('./address-book');
 
 const P = S.PLATFORM_SCOPE;
 const NAME_MAX = 80;
@@ -232,13 +234,11 @@ function makeSignupPlatform(deps) {
       if (q.context !== 'platform' || Object.keys(q).length !== 1 || Object.keys(body).length) return res.status(400).json({ ok: false, reason: 'bad_request' });
       const db = deps.getDatabase();
       if (await limited(db, req, res)) return;
-      const t = req.get('x-firebase-id-token');
-      let uid = null;
-      if (t) {
-        try { const dec = await deps.getAuth().verifyIdToken(t); if (dec && dec.customer === true && typeof dec.uid === 'string') uid = dec.uid; } catch (_) { uid = null; }
-      }
-      if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
-      if (await isDeleted(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });
+      // PLAN-3a-addr S-ADDR-1 (advisor 2026-11-13, the R2.1 fix): THE member predicate — a customer, never a HANDHELD token, and none of
+      // the THREE tombstones (deleted_uids, user_private/deleted_at, user_profiles/deleting_at). No shipped client calls this today.
+      const a = await MA.memberUidOf(db, req.get('x-firebase-id-token'), (x) => deps.getAuth().verifyIdToken(x));
+      if (!a.uid) return res.status(a.status).json({ ok: false, reason: a.reason });
+      const uid = a.uid;
       const [profS, privS, completion] = await Promise.all([db.ref(`user_profiles/${uid}`).once('value'), db.ref(`user_private/${uid}`).once('value'), S.completionState(db, uid, P, env)]);
       const prof = profS.val() || {};
       const priv = privS.val() || {};
@@ -250,6 +250,9 @@ function makeSignupPlatform(deps) {
           promos: !!(c.promos && c.promos.value === true) },
         completion };
       if (c.promos && typeof c.promos.value === 'boolean') out.promos = c.promos.value;   // ADDITIVE: the stored consent; omitted when none
+      // S-ADDR-1 (ADDITIVE, always present): the member's address book from the profile ALREADY read — 0 added reads. Whitelisted and
+      // re-validated against the rules' shape (address-book.js); owner-only PII, never logged.
+      Object.assign(out, AB.projectBook(prof));
       return res.status(200).json(out);
     } catch (e) {
       console.error('getMyProfile', e && e.message);
