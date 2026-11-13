@@ -4,7 +4,7 @@
 // Run: node --test review/capp-sbs/fixtures.probe.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { s2Extra, memberToken, placeBodyViolations } from './fixtures.mjs';
+import { s2Extra, memberToken, memberExtra, placeBodyViolations } from './fixtures.mjs';
 
 const CF = 'https://us-central1-p.cloudfunctions.net/';
 const AUTH = { Authorization: `Bearer ${memberToken()}` };
@@ -61,4 +61,32 @@ test('§1.1 authority and A3 ownership', () => {
   assert.equal(place({ ...BASE, card: SAVED }, {}), 401, 'no token ⇒ 401');
   assert.equal(place({ ...BASE, card: SAVED }, { Authorization: 'Bearer nope' }), 401, 'a foreign token ⇒ 401');
   assert.equal(place({ ...BASE, card: { kind: 'saved', card_id: 'c_other' } }), 409, 'A3: not this member\'s card ⇒ the identical 409');
+});
+
+// Codex asm9b P3: the last-tip route answers as the REAL handler does (my-last-tip.js @990cf8c4, read from git with its member-auth),
+// over Codex's schedule — every method, and stored values inside and outside the handler's CENTS_MAX bound.
+// Mutants (harness-local: the shared catalogue may not name the harness, SBS-1): from xpizza-functions,
+//   node tools/mutation-sweep.js --mutants="$PWD/../review/capp-sbs/fixtures.mutants.json"   (the sweep require()s the path)
+test('getMyLastTip: the fixture = the real handler (405 for a non-GET; null outside 0..CENTS_MAX)', async () => {
+  const { execFileSync } = await import('node:child_process'), { mkdtempSync, writeFileSync } = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { createRequire } = await import('node:module');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'lasttip-'));
+  for (const f of ['my-last-tip.js', 'member-auth.js']) writeFileSync(path.join(dir, f), execFileSync('git', ['show', `990cf8c4:xpizza-functions/${f}`], { cwd: new URL('../..', import.meta.url).pathname }));
+  const H = createRequire(path.join(dir, 'x.js'))('./my-last-tip.js');
+  const real = async (method, stored) => {
+    const snap = (v) => ({ val: () => (v === undefined ? null : v), exists: () => v !== undefined });
+    const db = { ref: (p) => ({ once: async () => snap(p === 'user_private/u_ana/last_tip' && stored !== undefined ? { cents: stored } : undefined) }) };
+    const { getMyLastTip } = H.makeMyLastTip({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async (t) => (t === memberToken() ? { uid: 'u_ana', customer: true } : Promise.reject(new Error('bad'))) }), checkRateLimit: async () => ({ allowed: true }) });
+    let out = null; const res = { set() {}, status: (s) => ({ json: (b) => { out = { status: s, body: b }; } }) };
+    await getMyLastTip({ method, query: { context: 'platform' }, body: undefined, get: (h) => (h === 'x-firebase-id-token' ? memberToken() : undefined) }, res);
+    return out;
+  };
+  const fixture = (method, stored) => {
+    const r = memberExtra({ lastTip: stored === undefined ? null : stored })({ method, headers: { 'x-firebase-id-token': memberToken() } }, new URL(CF + 'getMyLastTip?context=platform'));
+    return { status: r.status, body: r.body };
+  };
+  assert.equal(H.CENTS_MAX, 200000, 'premise: the handler\'s bound');
+  for (const method of ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']) for (const stored of [undefined, 0, 1250, 200000, 200001, -1, 12.5]) {
+    assert.deepEqual(fixture(method, stored), await real(method, stored), `🔴 P3: ${method} with stored ${stored} — the fixture answers as the handler`);
+  }
 });

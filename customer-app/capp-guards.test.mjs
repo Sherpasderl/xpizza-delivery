@@ -36,7 +36,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // BASE → 604e96ab (advisor 11-13, option (a), the D4 precedent): the asm9b capp lane (the rule-20 swap + C-1b) branches FROM the
 // asm9 RC itself (2e: no fork-point auto-merges), so first-parent from 1d862e17 would walk the TRAIN's own commits (other lanes'
 // server files). The lane's range is now 604e96ab..CAPP_TIP; everything below it is the RC (all prior capp work, Codex-approved).
-// Bite proof: a planted capp commit touching xpizza-functions/index.js in the new range fails «no server change» (commit message)
+// Bite proof: a planted capp commit touching xpizza-functions/claim-order.js in the new range fails «no server change» (index.js is
+// in the cell's own S2TIP_SERVER allowlist, so it cannot be the proof file; the run is in the d8256f73 commit message)
 const BASE = '604e96ab';
 const CAPP_TIP = '37054aed';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });

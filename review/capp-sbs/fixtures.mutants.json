@@ -1,0 +1,36 @@
+[
+ {
+  "id": "cx9b-05",
+  "slice": "c1b",
+  "label": "SBS last-tip fixture answers a non-GET 400, not the handler's 405 — Codex P3",
+  "file": "../review/capp-sbs/fixtures.mjs",
+  "from": "      if (req.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);   // the handler's order (Codex asm9b P3)\n      if ([...u",
+  "to": "      if (req.method !== 'GET' || [...u",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=getMyLastTip: the fixture = the real handler",
+   "../review/capp-sbs/fixtures.probe.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 P3: POST with stored undefined"
+  ]
+ },
+ {
+  "id": "cx9b-06",
+  "slice": "c1b",
+  "label": "SBS last-tip fixture serves a stored value outside 0..CENTS_MAX — Codex P3",
+  "file": "../review/capp-sbs/fixtures.mjs",
+  "from": "Number.isSafeInteger(lastTip) && lastTip >= 0 && lastTip <= 200000 ? lastTip : null",
+  "to": "Number.isSafeInteger(lastTip) ? lastTip : null",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=getMyLastTip: the fixture = the real handler",
+   "../review/capp-sbs/fixtures.probe.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 P3: GET with stored 200001"
+  ]
+ }
+]

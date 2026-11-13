@@ -4788,15 +4788,19 @@ test('WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ REA
 // getMyFavorites / setFavorite. The fake answers in the REAL handler's bodies (fixtures/c1b/favorites-contract.json, generated
 // from my-favorites.js @990cf8c4) and keeps the book's state so a toggle is read back like the server's ──
 const FAVC = JSON.parse(readFileSync(join(HERE, 'fixtures/c1b/favorites-contract.json'), 'utf8')).scenarios;
-function favServer({ favs = [], recent = [], refuse = null } = {}) {
+// refuse: a scenario key for every write, or (body) ⇒ key | null; gate: (ep, body) ⇒ a promise the answer waits on (a late response)
+function favServer({ favs = [], recent = [], refuse = null, gate = null } = {}) {
   const st = { favs: [...favs], recent: [...recent] }, calls = [];
   const out = (status, json) => ({ status, json: async () => JSON.parse(JSON.stringify(json)) });
   const handler = async (u, i = {}) => {
     const url = new URL(u), body = i.body ? JSON.parse(i.body) : null, tok = (i.headers || {})['x-firebase-id-token'];
-    calls.push({ ep: url.pathname.split('/').pop(), url: url.toString(), body, tok });
+    const ep = url.pathname.split('/').pop(); calls.push({ ep, url: url.toString(), body, tok });
     if (!tok) return out(FAVC.unauth.status, FAVC.unauth.body);
-    if (url.pathname.endsWith('/getMyFavorites')) return out(200, { ok: true, favorites: [...st.favs], more: false, recent: st.recent });
-    if (refuse) return out(FAVC[refuse].status, FAVC[refuse].body);
+    const snap = ep === 'getMyFavorites' ? { ok: true, favorites: [...st.favs], more: false, recent: st.recent } : null;   // a read is the state AT the request
+    const g = gate && gate(ep, body); if (g) await g;
+    if (snap) return out(200, snap);
+    const rf = typeof refuse === 'function' ? refuse(body) : refuse;
+    if (rf) return out(FAVC[rf].status, FAVC[rf].body);
     if (body.on) { if (!st.favs.includes(body.rid)) st.favs.unshift(body.rid); } else st.favs = st.favs.filter((x) => x !== body.rid);
     return out(200, { ok: true, on: body.on });
   };
@@ -4820,11 +4824,11 @@ test('C-1b F1 (9.4, no pop-in): a member with NO cached book sees no «Para vos�
     assert.ok(order.indexOf('Para vos') >= 0 && order.indexOf('Para vos') < order.indexOf('Destacados'), '🔴 C1B-F1: «Para vos» before «Destacados» (9.4)');
   } finally { S.w.close(); }
 });
-test('C-1b F2 (cached-first): the member\'s persisted book paints «Para vos» at the FIRST paint; a guest sees no row and makes no read', async () => {
+test('C-1b F2 (cached-first): entering Inicio, an admitted member\'s persisted book paints «Para vos» AT ONCE — the network read still pending; a guest sees no row and makes no read', async () => {
   const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
-  const fav = favServer({ favs: ['x_pizza'] });
+  const fav = favServer({ favs: ['x_pizza'], gate: (ep) => (ep === 'getMyFavorites' ? new Promise(() => {}) : null) });   // the read never answers
   const { S } = await pedidosBoot({}, { fav, storage: st });
-  try { await flush(); assert.deepEqual(pvCards(S).map((x) => x[0]), ['x_pizza'], '🔴 C1B-F2: the cached row at once'); } finally { S.w.close(); }
+  try { await flush(); await reEnterHome(S); assert.deepEqual(pvCards(S).map((x) => x[0]), ['x_pizza'], '🔴 C1B-F2: the cached row at once (no network needed)'); } finally { S.w.close(); }
   const gfav = favServer({ favs: ['x_pizza'] });
   const { S: G } = await pedidosBoot({}, { fav: gfav, fbOpts: { persisted: null }, storage: memStorage({}) });
   try { await flush(); await reEnterHome(G); assert.equal(PV(G), null, '🔴 C1B-F2: a guest has no «Para vos»'); assert.equal(gfav.reads(), 0, '🔴 C1B-F2: and no read'); } finally { G.w.close(); }
@@ -4834,7 +4838,7 @@ test('C-1b F3: a card\'s heart toggles IN PLACE (optimistic) through setFavorite
   const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] });
   const { S } = await pedidosBoot({}, { fav, storage: st });
   try {
-    await flush();
+    await flush(); await reEnterHome(S);   // the row is decided at a visit's first paint (rule 7)
     S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
     assert.equal(pvCards(S)[0][1], true, '🔴 C1B-F3: the heart fills at once');
     const w = fav.calls.filter((c) => c.ep === 'setFavorite');
@@ -4845,7 +4849,7 @@ test('C-1b F3: a card\'s heart toggles IN PLACE (optimistic) through setFavorite
   const st2 = g7Store(G7_PROFILE({ promos: true })); st2.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
   const R = await pedidosBoot({}, { fav: favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], refuse: 'set_too_many' }), storage: st2 });
   try {
-    await flush(); R.S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
+    await flush(); await reEnterHome(R.S); R.S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
     assert.equal(pvCards(R.S)[0][1], false, '🔴 C1B-F3: a refusal reverts the heart');
     assert.ok(txt(R.S.q('#toast')).length > 0, '🔴 C1B-F3: and says so');
   } finally { R.S.w.close(); }
@@ -4868,9 +4872,86 @@ test('C-1b F5 (rule 20 + privacy): signing out clears the member\'s cached book 
   const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
   const { S, fb } = await pedidosBoot({}, { fav: favServer({ favs: ['x_pizza'] }), storage: st });
   try {
-    await flush(); assert.ok(PV(S), 'premise: Ana\'s row');
+    await flush(); await reEnterHome(S); assert.ok(PV(S), 'premise: Ana\'s row');
     const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
     assert.equal(st.getItem('capp:fav:u_ana'), null, '🔴 C1B-F5: the book removed from the device');
     await reEnterHome(S); assert.equal(PV(S), null, '🔴 C1B-F5: no row after sign-out');
+  } finally { S.w.close(); }
+});
+
+// ── Codex HIGH r1 on asm9b (C-1b state handling) — each cell reproduces Codex's schedule ──
+const TOKB = (uid) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, customer: true, exp: Math.floor((T0 + 3600e3) / 1000) })}.sig`;
+async function switchTo(S, fb, st, uid) { const { authMod } = await fb.loadSdk(); st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid })); await authMod.signInWithCustomToken(null, 'ct:' + uid); await flush(); await flush(); }
+const bookOf = (st, uid = 'u_ana') => { try { return JSON.parse(st.getItem(`capp:fav:${uid}`)).favorites; } catch (_) { return null; } };
+test('Codex P1 (identity): a heart tapped as Ana whose TOKEN read is still pending when Bob signs in is DROPPED — never dispatched under Bob, never applied to Bob', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const hold = { on: false, q: [] }, fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] });
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st, fbOpts: { hold } });
+  try {
+    await flush(); await reEnterHome(S); assert.ok(PV(S), 'premise: Ana\'s row');
+    hold.on = true; S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    hold.on = false; await switchTo(S, fb, st, 'u_bob');
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush();
+    assert.equal(fav.calls.filter((c) => c.ep === 'setFavorite').length, 0, '🔴 P1: nothing dispatched after the identity changed');
+    assert.ok(!(bookOf(st, 'u_bob') || []).includes('x_pizza'), '🔴 P1: nothing applied to Bob');
+  } finally { S.w.close(); }
+});
+test('Codex P1 (A→B→A): Ana\'s OLD refusal landing after Bob and Ana again never rolls back the NEW session\'s book', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const held = []; let first = true;
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }], refuse: (b) => (b.rid === 'x_pizza' ? 'set_too_many' : null),
+    gate: (ep, b) => (ep === 'setFavorite' && b.rid === 'x_pizza' && first ? (first = false, new Promise((r) => held.push(r))) : null) });
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S); S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    assert.equal(held.length, 1, 'premise: Ana\'s x_pizza save is in flight');
+    await switchTo(S, fb, st, 'u_bob'); await switchTo(S, fb, st, 'u_ana'); await flush(); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+    assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
+    const t0 = txt(S.q('#toast') || S.q('body'));
+    held[0](); await flush(); await flush();
+    assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
+    assert.ok(!/máximo/.test(txt(S.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (read × save): a getMyFavorites snapshot that started BEFORE a save and lands AFTER it never erases the save', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], gate: (ep) => (ep === 'getMyFavorites' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); assert.equal(held.length, 1, 'premise: the read is in flight (its snapshot: no favorites)'); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
+    assert.ok(fav.st.favs.includes('x_pizza'), 'premise: the save landed on the server');
+    held[0](); await flush(); await flush();
+    assert.ok(bookOf(st).includes('x_pizza'), '🔴 P2: the late snapshot did not erase the save (persisted)');
+    assert.equal(pvCards(S)[0][1], true, '🔴 P2: the heart stays filled');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (rollback per rid): a 409 on x_pizza landing AFTER la_musa was saved reverts ONLY x_pizza', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }], refuse: (b) => (b.rid === 'x_pizza' ? 'set_too_many' : null),
+    gate: (ep, b) => (ep === 'setFavorite' && b.rid === 'x_pizza' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+    held[0](); await flush(); await flush();
+    assert.deepEqual(bookOf(st), ['la_musa'], '🔴 P2: only x_pizza reverted; la_musa kept');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (rule 7): a member admitted AFTER Inicio\'s first paint (a delayed token) gets NO «Para vos» inserted into the visible Inicio; the next entry shows it', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const hold = { on: true, q: [] };
+  const { S } = await pedidosBoot({}, { fav: favServer({ favs: ['x_pizza'] }), storage: st, fbOpts: { hold }, noFlush: true });
+  try {
+    await flush(); assert.ok(S.q('.rlist .rcard'), 'premise: Inicio painted while the session is unresolved');
+    const before = [...S.qa('.home-body .hsec')].map((x) => x.getAttribute('aria-label'));
+    hold.on = false; for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();
+    assert.ok(S.ui.state.member, 'premise: admitted now');
+    assert.deepEqual([...S.qa('.home-body .hsec')].map((x) => x.getAttribute('aria-label')), before, '🔴 P2 (rule 7): no section inserted into the visible Inicio');
+    await reEnterHome(S); assert.ok(PV(S), '🔴 P2: «Para vos» on the next Inicio entry');
   } finally { S.w.close(); }
 });

@@ -35917,8 +35917,8 @@
   "slice": "c1b",
   "label": "a refused toggle is NOT reverted (the heart lies about the server)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "S.fav.favorites = before; favSave(); storeHeart(); schedule();",
-  "to": "favSave(); storeHeart(); schedule();",
+  "from": "if (favTouched.get(rid) === seq) { favApply(rid, was); favSave(); storeHeart(); schedule(); }",
+  "to": "",
   "command": [
    "node",
    "--test",
@@ -35927,7 +35927,8 @@
   ],
   "kills_with": [
    "C1B-F3"
-  ]
+  ],
+  "repointed": "Codex asm9b r1: the rollback is per rid and ordering-protected; the mutant still never reverts"
  },
  {
   "id": "c1b-03",
@@ -35961,6 +35962,74 @@
   ],
   "kills_with": [
    "C1B-F4"
+  ]
+ },
+ {
+  "id": "cx9b-01",
+  "slice": "c1b",
+  "label": "a toggle whose token read outlived the identity is dispatched anyway (under the NEXT member) — Codex P1",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== favGen || !S.fav) return;   // another identity now: never dispatched under it",
+  "to": "if (dead || !S.fav) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P1 \\(identity\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: nothing dispatched"
+  ]
+ },
+ {
+  "id": "cx9b-02",
+  "slice": "c1b",
+  "label": "a stale answer (A→B→A) lands on the later session — Codex P1",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== favGen || !S.fav) return;   // a stale answer never lands on a later session",
+  "to": "if (dead || !S.fav) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P1 \\(A",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: the stale refusal never speaks"
+  ]
+ },
+ {
+  "id": "cx9b-03",
+  "slice": "c1b",
+  "label": "a late read snapshot overwrites the saves made since it began — Codex P2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "for (const [rid, seq] of favTouched) if (seq > startSeq) { merged = merged.filter((x) => x !== rid); if (S.fav.favorites.includes(rid)) merged.unshift(rid); }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P2 \\(read",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P2: the late snapshot"
+  ]
+ },
+ {
+  "id": "cx9b-04",
+  "slice": "c1b",
+  "label": "«Para vos» inserted into a visible Inicio after a delayed admission (rule 7) — Codex P2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!pvVisit && !S.fav) { pvVisit = []; return []; }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P2 \\(rule 7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P2 (rule 7)"
   ]
  }
 ]

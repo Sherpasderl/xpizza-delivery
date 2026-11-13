@@ -941,7 +941,12 @@
     // paint; a sign-out or a member switch REMOVES the previous member's book from the device. Hearts reflect it live; the «Para
     // vos» row is frozen per Inicio visit (no row inserted into a visible Inicio) ──
     const FAV_KEY = (uid) => `capp:fav:${uid}`;
-    let favGen = 0, pvVisit = null;
+    // Codex HIGH r1 (asm9b): favGen = the identity GENERATION (bumped on every identity change), captured at a tap / a read and
+    // re-validated after EVERY await — a mismatch drops silently (no dispatch, no rollback). favTouched: rid → the seq of this
+    // generation's last local mutation, so a read that started earlier is reconciled with them and a refusal reverts ONLY its rid
+    // while it is still the rid's latest mutation
+    let favGen = 0, pvVisit = null, favSeq = 0;
+    const favTouched = new Map();
     S.fav = null;
     const RIDRE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
     function favParse(v) {
@@ -953,7 +958,8 @@
       const uid = S.member && S.member.uid ? S.member.uid : null;
       if (S.fav && S.fav.who === uid) return;
       if (S.fav && S.fav.who) { try { storage && storage.removeItem(FAV_KEY(S.fav.who)); } catch (_) {} }   // the previous member's book leaves the device
-      favGen++; S.fav = null; pvVisit = null;
+      favGen++; S.fav = null; favTouched.clear();
+      if (pvVisit !== null) pvVisit = [];   // mid-visit: the row is frozen EMPTY (no insertion; a signed-out member's row leaves at once)
       if (!uid || !suApi || !fbAuth) return;
       const c = favParse(readJ(FAV_KEY(uid)));
       S.fav = { who: uid, favorites: c ? c.favorites : [], recent: c ? c.recent : [] };
@@ -962,29 +968,35 @@
         if (dead || gen !== favGen) return;
         let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
         if (!tok || dead || gen !== favGen) return;
+        const startSeq = favSeq;   // the mutations made AFTER this point win over the snapshot
         const r = await suApi.getMyFavorites({ idToken: tok });
         if (dead || gen !== favGen || !r || r.ok !== true || !S.fav) return;
-        S.fav = { who: uid, favorites: r.favorites, recent: r.recent }; favSave(); storeHeart(); schedule();
+        let merged = [...r.favorites];
+        for (const [rid, seq] of favTouched) if (seq > startSeq) { merged = merged.filter((x) => x !== rid); if (S.fav.favorites.includes(rid)) merged.unshift(rid); }
+        S.fav = { who: uid, favorites: merged, recent: r.recent }; favSave(); storeHeart(); schedule();
       }, 0);
     }
     const isFav = (rid) => !!(S.fav && S.fav.favorites.includes(rid));
     function storeHeart() { try { if (S.store && S.store.ui && typeof S.store.ui.socialUpdated === 'function') S.store.ui.socialUpdated(); } catch (_) {} }
+    const favApply = (rid, on) => { const rest = S.fav.favorites.filter((x) => x !== rid); S.fav.favorites = on ? [rid, ...rest] : rest; };
     async function setFav(rid, on) {
       if (!S.fav || !S.member || !suApi || !fbAuth || !RIDRE.test(String(rid))) return;
-      const uid = S.fav.who, before = [...S.fav.favorites];
-      S.fav.favorites = on ? [rid, ...before.filter((x) => x !== rid)] : before.filter((x) => x !== rid);   // optimistic, in place
+      const gen = favGen, was = isFav(rid), seq = ++favSeq;
+      favTouched.set(rid, seq); favApply(rid, on);   // optimistic, in place
       favSave(); storeHeart(); schedule();
       let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      if (dead || gen !== favGen || !S.fav) return;   // another identity now: never dispatched under it
       const r = tok ? await suApi.setFavorite({ idToken: tok, rid, on }) : { ok: false, reason: 'unauthenticated' };
-      if (dead || !S.fav || S.fav.who !== uid) return;
+      if (dead || gen !== favGen || !S.fav) return;   // a stale answer never lands on a later session
       if (!r || r.ok !== true) {
-        S.fav.favorites = before; favSave(); storeHeart(); schedule();
+        if (favTouched.get(rid) === seq) { favApply(rid, was); favSave(); storeHeart(); schedule(); }   // ONLY this rid, if still its latest
         // PLACEHOLDER copy for the 50 cap until the owner rules (advisor 11-13); the other failure is the app's calm retry line
         toast(r && r.reason === 'too_many' ? 'Llegaste al máximo de favoritos.' : 'No pudimos guardar tu favorito. Intentá de nuevo.');
       }
     }
     // the per-visit «Para vos» list: favorites first (newest first), then the recent restaurants not among them; only listed stores
     function paraVosOf(rows) {
+      if (!pvVisit && !S.fav) { pvVisit = []; return []; }   // rule 7: decided at the visit's FIRST paint — not admitted yet ⇒ none this visit
       if (!S.fav) return [];
       if (!pvVisit) {
         const listed = new Set(rows.filter((r) => !r.gone).map((r) => r.rid)), rec = new Map(S.fav.recent.map((x) => [x.rid, x.last_at]));

@@ -225,9 +225,10 @@ export function memberExtra({ receiptDelay = 0, active = false, snapshots = null
     }
     if (u.pathname.endsWith('/getMyLastTip')) {   // my-last-tip.js @990cf8c4: GET ?context=platform only, the member token in the header
       const hdr = Object.entries(req.headers || {}).find(([k]) => k.toLowerCase() === 'x-firebase-id-token');
-      if (req.method !== 'GET' || [...u.searchParams.keys()].join() !== 'context' || u.searchParams.get('context') !== 'platform' || req.postData) return json({ ok: false, reason: 'bad_request' }, 400);
+      if (req.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);   // the handler's order (Codex asm9b P3)
+      if ([...u.searchParams.keys()].join() !== 'context' || u.searchParams.get('context') !== 'platform' || req.postData) return json({ ok: false, reason: 'bad_request' }, 400);
       if (!hdr || hdr[1] !== memberToken()) return json({ ok: false, reason: 'unauthenticated' }, 401);
-      return json({ ok: true, cents: Number.isSafeInteger(lastTip) ? lastTip : null });
+      return json({ ok: true, cents: Number.isSafeInteger(lastTip) && lastTip >= 0 && lastTip <= 200000 ? lastTip : null });   // CENTS_MAX: outside ⇒ null
     }
     if (u.pathname.endsWith('/getMyRating') && req.method === 'GET') {
       const oid = u.searchParams.get('order_id'), row = rows.find((r) => r.order_id === oid);
