@@ -1601,7 +1601,7 @@
   .envio .maxfld{display:flex;flex-direction:column;gap:8px;padding:13px 14px;border:1px solid var(--line2);border-radius:12px;background:var(--board-2)}
   .envio .step{display:flex;align-items:center;gap:8px}
   .envio .sinp{flex:1;background:var(--card);min-width:0}
-  .envio .maxfld .sinp{min-width:88px}   /* SBS 11-13 rule 16b: «9.5» / «10.5» never clipped in the stepper */
+  .envio .maxfld .sinp{min-width:76px}   /* SBS 11-13 rule 16b: «9.5» (the widest: values stop at 10 km) never clipped; «máximo {top} km» keeps its room */
   .envio .sinp input{text-align:center;font-size:18px}
   .envio .stepcap{font-size:12px;color:var(--mute);white-space:nowrap;flex:none}
   .envio .stepcap b{font-family:var(--disp);font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
