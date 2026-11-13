@@ -187,7 +187,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     try {
       const g = await gatesFor(restaurantId, versionId);
       return { weekend: g.weekend, known: g.known || staticKnownFallback(restaurantId), knownExtras: g.knownExtras || staticKnownExtrasFallback(restaurantId),
-        groups: g.groups === undefined ? staticGroupsFallback(restaurantId) : g.groups, fallback: !!g.fallback };
+        groups: g.groups === undefined ? staticGroupsFallback(restaurantId) : g.groups, fallback: !!g.fallback, version: g.readFailed ? undefined : String(versionId), livePointer: () => withDeadline(Promise.resolve().then(() => getVersionId(restaurantId)), deadlineMs, 'gate_pointer_live') };   // S3 D3: the snapshot's version + ONE fresh pointer read (no TTL), bounded
     } catch (e) {
       console.error('menu_gates_unexpected', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
       return fallback();

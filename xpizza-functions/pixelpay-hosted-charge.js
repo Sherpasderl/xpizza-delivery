@@ -125,7 +125,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // no charge) and can NEVER be handed a payable URL, regardless of what the read-only classify predicted.
     // Fail-open: cartBlocked === [] (the default, and every checkItemAvailability read-error) ⇒ CAS proceeds.
     if (controlRefuseFresh === true) return { outcome: 'conflict', reason: 'order_control' };   // D4-c4 §0.2: paused / unknown → no fresh URL
-    if (menuRefuseFresh === true) return { outcome: 'conflict', reason: 'menu_updating' };   // 1D add-product A §0b.1: a key the gate cannot classify → no fresh URL
+    if (menuRefuseFresh === true || menuRefuseFresh === 'removed') return { outcome: 'conflict', reason: menuRefuseFresh === 'removed' ? 'menu_changed' : 'menu_updating' };   // 1D add-product A §0b.1: a key the gate cannot classify → no fresh URL
     if (choiceRefuseFresh === true) return { outcome: 'conflict', reason: 'choice_required' };   // 1D add-product B: a bare launcher → no fresh URL
     // per-product extras (PLAN rev 2.1 §5): a denied extra / unavailable eligibility under enforce (or an unknown mode) → no
     // fresh URL, at THIS authoritative point (create / install / recover / rotate); bound reuse returned above, never re-judged

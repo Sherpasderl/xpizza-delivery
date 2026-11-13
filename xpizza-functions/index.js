@@ -1817,7 +1817,7 @@ chargeOnlineApp.all('*', async (req, res) => {
         rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables),
         readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);
       if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }
-      if (gd.armMenu) menuArmed = true;
+      if (gd.armMenu) menuArmed = (menuArmed === true || gd.armMenu === true) ? true : gd.armMenu;   // S3 D3: 'removed' unless a key is unclassifiable
       if (gd.armChoice) choiceArmed = true;
       for (const b of gd.block) if (!cartBlocked.includes(b)) cartBlocked.push(b);
     }
@@ -2192,7 +2192,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[controlArmed].status} (order control race guard: ${controlArmed})`);
       return OC.respond(res, controlArmed);
     }
-    if (acq.reason === 'menu_updating') {   // 1D add-product A §0b.1: a drift to a fresh issuance with a key the gate cannot classify
+    if (acq.reason === 'menu_changed') { console.warn(`chargeOnlineOrder: ${orderId} — 409 menu_changed (a removed reward; menu guard)`); const mc = require('./catalog/reward-removed').menuChangedRefusal(); return res.status(mc.status).json({ ...mc.body }); } if (acq.reason === 'menu_updating') {   // 1D add-product A §0b.1: a drift to a fresh issuance with a key the gate cannot classify
       console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (menu guard)`);
       res.set('Retry-After', '2');
       return res.status(503).json({ ...MENU_UPDATING });
