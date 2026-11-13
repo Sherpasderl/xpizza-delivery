@@ -3562,7 +3562,7 @@ export function openEditor(rid, { name = rid, sales } = {}) {
   state.restaurants = [{ rid, name }];
   state.currentRid = rid;
   lastMenuLoad = null;
-  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales, name } }));   // P-1: the name labels Calificaciones' scope
   return lastMenuLoad;   // shell-wait r7: the catalog's first load — the shell's reveal waits for it (bounded)
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.

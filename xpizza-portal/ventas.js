@@ -87,7 +87,8 @@ export function registerRendTab({ id, label, mount, unmount } = {}) {
 registerRendTab(calificacionesTab);   // Ventas · Calificaciones (MOCKUP-portal-map s-rend; owner Q4 11-13)
 const tabOf = (id) => REND_TABS.find((t) => t.id === id) || null;
 // what a tab's pane gets: the page's restaurant (the owner proof), the guarded token, and the shell's scope label for its one-line scope
-const tabCtx = () => ({ rid: S.rid, token, scopeLabel: ($('mscope') && $('mscope').textContent) || '' });
+// (the scope label is the PAGE'S restaurant — its name from the event; the shell's label only when the event carries none: «Todas» never labels it)
+const tabCtx = () => ({ rid: S.rid, token, scopeLabel: S.ridName || ($('mscope') && $('mscope').textContent) || '' });
 // shell.js goto('calificaciones' | 'rendimiento' | 'ventas') names the tab first; an unknown or unregistered tab is Ventas
 let wantTab = null;
 document.addEventListener('portal:rend-tab', (e) => { wantTab = e && e.detail ? e.detail.tab : null; });
@@ -132,7 +133,7 @@ document.addEventListener('portal:auth', (e) => {
   // EVERY auth event closes the page. A signed-in owner is re-announced right after (portal:signed-in →
   // getMyRestaurants → portal:restaurant); anyone else never is.
   S.uid = e && e.detail ? e.detail.uid : null;
-  S.rid = null; S.epoch += 1; S.gen += 1;
+  S.rid = null; S.ridName = null; S.epoch += 1; S.gen += 1;
   S.body = null; S.err = null; S.shown = null; S.loading = false; S.csvBusy = null; S.note = ''; S.refused = false;
   setGate(false);
   $('viewventas').replaceChildren();
@@ -143,6 +144,7 @@ document.addEventListener('portal:restaurant', (e) => {
   if (!rid) return;
   if (e.detail.sales === false) return;   // PORTAL-UI 1a §11 A3: Ventas is owner-only in 1a — shell.js says so per page
   S.rid = rid; S.epoch += 1;
+  S.ridName = typeof e.detail.name === 'string' && e.detail.name ? e.detail.name : null;
   S.body = null; S.err = null; S.shown = null; S.csvBusy = null; S.note = ''; S.refused = false;
   setGate(true);
   if (S.view === 'ventas') { buildPage(); load(); }

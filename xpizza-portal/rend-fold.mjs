@@ -14,7 +14,7 @@ export const REND_FOLD = {
    ""
   ],
   [
-   "// ── «Rendimiento» (owner 11-13, map Q4): today's Ventas page under ONE entry with text tabs (MOCKUP-portal-map.html s-rend). Ventas\n// is the first tab and the default; another tab registers its pane (Calificaciones when its approved view lands). At most three tabs.\nconst REND_MAX = 3;\nconst REND_TABS = [];\nexport function registerRendTab({ id, label, mount, unmount } = {}) {\n  if (typeof id !== 'string' || !id || id === 'ventas' || REND_TABS.some((t) => t.id === id)) throw new Error('registerRendTab: bad or duplicate id');\n  if (typeof label !== 'string' || !label || typeof mount !== 'function') throw new Error('registerRendTab: a label and mount() are required');\n  if (REND_TABS.length + 1 >= REND_MAX) throw new Error('registerRendTab: at most three tabs');\n  REND_TABS.push({ id, label, mount, unmount: typeof unmount === 'function' ? unmount : () => {} });\n}\nregisterRendTab(calificacionesTab);   // Ventas · Calificaciones (MOCKUP-portal-map s-rend; owner Q4 11-13)\nconst tabOf = (id) => REND_TABS.find((t) => t.id === id) || null;\n// what a tab's pane gets: the page's restaurant (the owner proof), the guarded token, and the shell's scope label for its one-line scope\nconst tabCtx = () => ({ rid: S.rid, token, scopeLabel: ($('mscope') && $('mscope').textContent) || '' });\n// shell.js goto('calificaciones' | 'rendimiento' | 'ventas') names the tab first; an unknown or unregistered tab is Ventas\nlet wantTab = null;\ndocument.addEventListener('portal:rend-tab', (e) => { wantTab = e && e.detail ? e.detail.tab : null; });\n\n",
+   "// ── «Rendimiento» (owner 11-13, map Q4): today's Ventas page under ONE entry with text tabs (MOCKUP-portal-map.html s-rend). Ventas\n// is the first tab and the default; another tab registers its pane (Calificaciones when its approved view lands). At most three tabs.\nconst REND_MAX = 3;\nconst REND_TABS = [];\nexport function registerRendTab({ id, label, mount, unmount } = {}) {\n  if (typeof id !== 'string' || !id || id === 'ventas' || REND_TABS.some((t) => t.id === id)) throw new Error('registerRendTab: bad or duplicate id');\n  if (typeof label !== 'string' || !label || typeof mount !== 'function') throw new Error('registerRendTab: a label and mount() are required');\n  if (REND_TABS.length + 1 >= REND_MAX) throw new Error('registerRendTab: at most three tabs');\n  REND_TABS.push({ id, label, mount, unmount: typeof unmount === 'function' ? unmount : () => {} });\n}\nregisterRendTab(calificacionesTab);   // Ventas · Calificaciones (MOCKUP-portal-map s-rend; owner Q4 11-13)\nconst tabOf = (id) => REND_TABS.find((t) => t.id === id) || null;\n// what a tab's pane gets: the page's restaurant (the owner proof), the guarded token, and the shell's scope label for its one-line scope\n// (the scope label is the PAGE'S restaurant — its name from the event; the shell's label only when the event carries none: «Todas» never labels it)\nconst tabCtx = () => ({ rid: S.rid, token, scopeLabel: S.ridName || ($('mscope') && $('mscope').textContent) || '' });\n// shell.js goto('calificaciones' | 'rendimiento' | 'ventas') names the tab first; an unknown or unregistered tab is Ventas\nlet wantTab = null;\ndocument.addEventListener('portal:rend-tab', (e) => { wantTab = e && e.detail ? e.detail.tab : null; });\n\n",
    ""
   ],
   [
@@ -24,6 +24,14 @@ export const REND_FOLD = {
   [
    "  if (v) { buildPage(); if (S.tab === 'ventas') load(); else showTab(S.tab); }\n}\nfunction showTab(id) {\n  if (!refs || !refs.tabs) return;\n  const prev = S.tab;\n  if (prev !== id && prev !== 'ventas' && tabOf(prev)) tabOf(prev).unmount();\n  S.tab = tabOf(id) ? id : 'ventas';\n  for (const [tid, b] of refs.tabs) {\n    const on = tid === S.tab;\n    b.classList.toggle('on', on);\n    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');\n  }\n  const sales = S.tab === 'ventas';\n  for (const n of [refs.acts, refs.note, refs.period, refs.body]) n.classList.toggle('hidden', !sales);\n  refs.pane.classList.toggle('hidden', sales);\n  refs.pane.replaceChildren();\n  if (sales) { if (prev !== 'ventas') load(); }\n  else tabOf(S.tab).mount(refs.pane, tabCtx());\n",
    "  if (v) { buildPage(); load(); }\n"
+  ],
+  [
+   "  S.rid = null; S.ridName = null; S.epoch += 1; S.gen += 1;\n",
+   "  S.rid = null; S.epoch += 1; S.gen += 1;\n"
+  ],
+  [
+   "  S.ridName = typeof e.detail.name === 'string' && e.detail.name ? e.detail.name : null;\n",
+   ""
   ],
   [
    "  const h1 = el('h1', null, 'Rendimiento');\n",
@@ -44,6 +52,12 @@ export const REND_FOLD = {
   [
    "  if (!refs) return;\n  const range = currentRange();\n",
    "  if (!refs) return;\n  const range = currentRange();\n  const name = ($('shopname') && $('shopname').textContent) || '';\n  refs.lede.textContent = `Cómo se está vendiendo ${name && name !== '—' ? name : 'tu local'} en el período que elijas.`;\n"
+  ]
+ ],
+ "app.js": [
+  [
+   "  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales, name } }));   // P-1: the name labels Calificaciones' scope\n",
+   "  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid, sales } }));\n"
   ]
  ]
 };

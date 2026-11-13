@@ -63,7 +63,7 @@ test('OWNER: boot makes ONE getEditableCatalog and ZERO getSalesStats; opening V
   assert.equal(P.count('getMyBranches'), 1);
   assert.equal(P.count('getEditableCatalog'), 1, 'the editor opened once');
   assert.equal(P.count('getSalesStats'), 0, 'boot does not load Ventas');
-  assert.deepEqual(ev, [{ rid: 'r_a', sales: true }], 'portal:restaurant fired exactly once, Ventas allowed');
+  assert.deepEqual(ev, [{ rid: 'r_a', sales: true, name: 'R_A' }], 'portal:restaurant fired exactly once, Ventas allowed (P-1: + the branch name)');
   assert.ok(!hasClass(P.byId.get('navventas'), 'hidden'), 'the Ventas nav is shown to the owner');
   P.byId.get('navventas').click();
   await settle(20);
@@ -96,7 +96,7 @@ test('MANAGER WITH the menu permission: the editor once, Ventas never (owner-onl
   const ev = restaurantEvents();
   await signIn('uManager002');
   assert.equal(P.count('getEditableCatalog'), 1);
-  assert.deepEqual(ev, [{ rid: 'r_n', sales: false }]);
+  assert.deepEqual(ev, [{ rid: 'r_n', sales: false, name: 'R_N' }]);
   for (const id of ['navventas', 'mnventas']) P.byId.get(id).click();
   await settle(20);
   assert.equal(P.count('getSalesStats'), 0, 'ventas.js refuses the event with sales:false — no request, even forced');

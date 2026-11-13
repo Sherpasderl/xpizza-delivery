@@ -118,3 +118,21 @@ test('registerRendTab: refuses a duplicate id, Ventas\' id, a missing label or m
   assert.throws(() => R({ id: 'a', label: 'A2', mount() {} }), 'a duplicate');
   assert.throws(() => R({ id: 'b', label: 'B', mount() {} }), 'a fourth tab');
 });
+
+test('the Calificaciones scope line names the PAGE\'S restaurant: the shell\'s branch label, but never «Todas las sucursales» (a per-restaurant list)', async () => {
+  const { byId, mods } = await boot();
+  const ctxs = [];
+  const real = mods.ventas.registerRendTab;
+  byId.get('mscope').textContent = 'Todas las sucursales';
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid: 'x_pizza', name: 'Centro' } }));
+  await settle();
+  mods.shell.goto('calificaciones'); await settle();
+  const scope = findAll(byId.get('viewventas'), (n) => hasClass(n, 'calif-scope'))[0];
+  assert.ok(scope, 'premise: the Calificaciones view mounted');
+  assert.equal(textOf(scope), 'Centro', '🔴 «Todas» never labels a per-restaurant list');
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid: 'x_pizza' } }));   // a path without the name
+  byId.get('mscope').textContent = 'Centro Sur';
+  await settle(); byId.get('navprod').click(); mods.shell.goto('calificaciones'); await settle();
+  assert.equal(textOf(findAll(byId.get('viewventas'), (n) => hasClass(n, 'calif-scope'))[0]), 'Centro Sur', 'no name on the event: the shell\'s label');
+  assert.ok(real && ctxs);
+});
