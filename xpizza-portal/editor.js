@@ -1061,8 +1061,21 @@ export function moveItem(draft, key, { cat, subcat = null } = {}, opts = {}) {
   if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
   if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
   const problem = itemCategoryProblem(draft, key, { cat, subcat }, opts);
-  if (problem !== null) return { ok: false, code: problem };
+  // 3(a) (advisor 11-13; S4-r4 :138–:140): the LAST dish of a section declared in THIS draft may leave — the section goes back to staged
+  // in the same op (the server never sees an emptied declared section); a live section still refuses
+  const row0 = existingRow(draft.state, key);
+  const fromCat = row0 && row0.display ? row0.display.cat : null;
+  const undoPromotion = problem === 'section_empty' && lastOfSection(draft, row0) === 'draft';
+  if (problem !== null && !undoPromotion) return { ok: false, code: problem };
   const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (undoPromotion) {
+    return sectionOp(draft, opts, (st) => {
+      if (staged) promoteStaged(draft, st, staged);
+      const row = existingRow(st, key);
+      writeMove([row, ...membersOf(st, row)], staged ? staged.id : cat, staged ? null : subcat);
+      unpromote(draft, st, fromCat);
+    });
+  }
   if (!staged) return editItem(draft, key, { cat, subcat }) ? { ok: true } : { ok: false, code: 'invalid' };
   return sectionOp(draft, opts, (st) => {
     promoteStaged(draft, st, staged);

@@ -1244,6 +1244,7 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
                  'createSection',   // STRUCTURE S4 (frame E): «Crear» — addCategory (sections switch), then the new section selected
                  'subCreate',       // S4-A / S4-B: «Crear subcategoría» — addSubcat (sections switch)
+                 'menuMoveTo',      // E2: «Mover a…» — moveItem (sections switch; 3(a) un-promotes a draft-only section)
                  // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
                  // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
                  // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
@@ -1413,6 +1414,9 @@ const LISTENERS = {
   "subCancel::click":             ['bound', [], 'S4-A \u2014 «Cancelar»: the sheet closes; nothing written'],
   "subGo::click":                 ['bound', ['subCreate'], 'S4-A \u2014 «Crear subcategoría»: addSubcat (sections switch, all or nothing); the list repaints'],
   "$('xsubcat')::click":          ['view', ['subScrim'], 'S4-A \u2014 the backdrop cancels the sheet: it closes, nothing written'],
+  "menuMove::click":              ['bound', ['menuMoveTo'], 'E2 \u2014 «Mover a…» one entry: moveItem (sections switch, all or nothing); a refusal is its line under the row'],
+  "menuRemove::click":            ['bound', [], 'E2 \u2014 «Quitar del menú» from the row menu: the approved R2 confirm (its «Quitar» is confirmRemoveProduct), or the 3(b) line; the press writes nothing'],
+  "document::click":              ['view', ['menuOutside'], 'E2 \u2014 while a row menu is open only (added on open, removed on close): a press outside closes it; nothing is written'],
   "$('xchoice')::click":          ['view', ['d2Scrim'], 'S3 D2 \u2014 the backdrop cancels the sheet: it closes, nothing is recorded'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
@@ -1677,7 +1681,7 @@ const ALLOWED_CONSUMERS = new Set([
   // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
   'IE.choiceNameProblems',
   // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
-  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat',
+  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

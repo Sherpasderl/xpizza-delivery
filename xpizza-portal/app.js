@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew, addSubcat } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -79,7 +79,7 @@ function showEmpty(title, detail) {
 }
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
-import { closeIcon } from './ops-dom.js';
+import { closeIcon, icon } from './ops-dom.js';
 // STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
 import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
 import { openXConfirm } from './extras-view.js';   // S4-D: the drop confirm is E3's small confirm
@@ -1672,7 +1672,114 @@ function detailS4(staged) {
   if (!cat) return null;
   // a declared section: «Nueva subcategoría» (S4-A / S4-B) and its list under one head per subsection (frame E)
   return { isNew: isNewSection(cat.id), subcat: { disabled: false, onClick: bound((from) => subOpen(cat, from)) },
-    subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null };
+    subheads: Array.isArray(cat.subcats) ? cat.subcats.slice() : null,
+    onMore: bound((id, from) => menuOpen(id, from)), moreFor: (it) => !isAddition(it) && !(state.drawerKey && state.drawerKey === rowId(it)) };
+}
+// E2 — a row's menu (.mk-pop, role=menu): «Mover a» every section (each subsection its own entry, the current one inert «actual», a new one
+// «nueva»), S4-D's line when the dish is the last of a section declared in THIS draft, «Quitar del menú» (the approved R2 flow). Esc / a
+// press outside closes it and returns focus to «Más acciones». A move is moveItem (sections switch); a refusal says its approved line under
+// the row; moving the last dish out of a draft-only section un-promotes it and the toast says so.
+let rowMenu = null;
+const moveTargets = () => {
+  const out = [];
+  for (const c of categoriesOf()) {
+    if (!c) continue;
+    const subs = Array.isArray(c.subcats) ? c.subcats : [];
+    if (subs.length) for (const sub of subs) out.push({ cat: String(c.id), subcat: sub, label: `${categoryName(String(c.id))} \u00b7 ${sub}` });
+    else out.push({ cat: String(c.id), subcat: null, label: categoryName(String(c.id)) });
+  }
+  for (const c of stagedNow()) out.push({ cat: String(c.id), subcat: null, label: c.name, isNew: true });
+  return out;
+};
+function menuClose(refocus) {
+  const m = rowMenu; rowMenu = null;
+  if (!m) return;
+  m.pop.remove();
+  m.from.setAttribute('aria-expanded', 'false'); m.from.classList.remove('mk-moreopen');
+  document.removeEventListener('keydown', menuKey, true); document.removeEventListener('click', menuOutside, true);
+  if (refocus && m.from.isConnected) m.from.focus();
+}
+function menuKey(e) { if (rowMenu && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); menuClose(true); } }
+function menuOutside(e) { if (rowMenu && !rowMenu.pop.contains(e.target) && e.target !== rowMenu.from && !rowMenu.from.contains(e.target)) menuClose(false); }
+function menuOpen(key, from) {
+  if (rowMenu) { const same = rowMenu.key === key; menuClose(false); if (same) return; }
+  const row = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === key);
+  if (!row || !row.display) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const pop = mk('div', 'mk-pop'); pop.setAttribute('role', 'menu');
+  pop.append(mk('div', 'mk-pl', 'Mover a'));
+  const here = { cat: String(row.display.cat), subcat: typeof row.display.subcat === 'string' ? row.display.subcat : null };
+  const targets = moveTargets();
+  const curI = targets.findIndex((t) => t.cat === here.cat && (t.subcat === here.subcat || (!t.subcat && !here.subcat)));
+  const ordered = curI === -1 ? targets : [targets[curI], ...targets.filter((_, i) => i !== curI)];
+  let first = null;
+  for (const t of ordered) {
+    const cur = t.cat === here.cat && t.subcat === here.subcat;
+    const menuMove = document.createElement('button'); menuMove.type = 'button'; menuMove.className = 'mk-popi'; menuMove.setAttribute('role', 'menuitem');
+    menuMove.append(document.createTextNode(t.label));
+    if (cur) { menuMove.classList.add('mk-cur'); menuMove.setAttribute('aria-disabled', 'true'); menuMove.append(mk('span', 'mk-sub2', 'actual')); }
+    else {
+      if (t.isNew) menuMove.append(mk('span', 'mk-sub2', 'nueva'));
+      menuMove.addEventListener('click', bound(() => menuMoveTo(key, t)));
+      if (!first) first = menuMove;
+    }
+    pop.append(menuMove);
+  }
+  // S4-D: this dish is the last of a section declared in this draft — moving it out returns the section to «Nueva»
+  const others = (draftSource(state.draft).items || []).some((r) => r && r !== row && r.display && r.display.variantOf == null && String(r.display.cat) === here.cat);
+  if (!others && isNewSection(here.cat)) pop.append(mk('div', 'mk-popnote', s4Copy('menuNote', { categoria: categoryName(here.cat) })));
+  const rp = canRemoveProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (rp.show) {
+    pop.append(mk('div', 'mk-popsep'));
+    const menuRemove = document.createElement('button'); menuRemove.type = 'button'; menuRemove.className = 'mk-popi danger'; menuRemove.setAttribute('role', 'menuitem');
+    menuRemove.append(svgTrashIcon(), document.createTextNode('Quitar del menú'));
+    menuRemove.addEventListener('click', bound(() => {
+      menuClose(false);
+      if (rp.enabled) openRemoveProduct(key, from);
+      else rowLine(key, rp.code === 'section_empty' ? IE.COPY.cat.section_empty : 'No pudimos leer el menú publicado. Recargá la página.');
+    }));
+    pop.append(menuRemove);
+  }
+  const host = from.closest('.irow, .grow') || from.parentElement;
+  host.after(pop);
+  rowMenu = { key, from, pop };
+  from.setAttribute('aria-expanded', 'true'); from.classList.add('mk-moreopen');
+  document.addEventListener('keydown', menuKey, true); document.addEventListener('click', menuOutside, true);
+  (first || pop.querySelector('button')).focus();
+}
+// a refusal said under the dish's row (the approved lines; no confirm, nothing written)
+function rowLine(key, text) {
+  const cell = [...$('detail').querySelectorAll('[data-k]')].find((x) => x.dataset.k === `item::${key}`);   // the row's price cell names it
+  const row = cell && cell.closest('.irow');
+  if (!row) return;
+  const at = row.closest('.grow') || row;
+  if (at.nextElementSibling && at.nextElementSibling.classList.contains('mk-rowline')) at.nextElementSibling.remove();
+  const line = document.createElement('div'); line.className = 'ferr mk-ferr mk-rowline'; line.setAttribute('role', 'alert'); line.textContent = text;
+  at.after(line);
+}
+function menuMoveTo(key, t) {
+  menuClose(false);
+  const row = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === key);
+  const from = row && row.display ? String(row.display.cat) : null;
+  const wasNew = from !== null && isNewSection(from);
+  const r = moveItem(state.draft, key, { cat: t.cat, subcat: t.subcat }, S4ON());
+  if (!r.ok) {
+    rowLine(key, r.code === 'section_empty' ? IE.COPY.cat.section_empty : r.code === 'subsection_empty' ? IE.COPY.cat.subsection_empty : UNDO_REFUSED);
+    return;
+  }
+  const backToStaged = wasNew && stagedNow().some((c) => String(c.id) === from);
+  repaintFromDraft();
+  if (backToStaged) sayToast(s4Copy('toastBack', { producto: row.display.name, seccion: t.label, categoria: categoryName(from) }));
+}
+// the shared toast (#opstoast, shell.js's look): written here directly — app.js cannot import shell.js (shell imports app; the cycle)
+let toastTimer = null;
+function sayToast(text) {
+  const t = $('opstoast');
+  if (!t) return;
+  t.replaceChildren(icon('check'), document.createTextNode(text));
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 // S4-A / S4-B — «Nueva subcategoría» (#xsubcat, X3's sheet pattern). The FIRST subsection of an ungrouped section takes every dish (rows
 // checked and locked: the portal can never send a partial first subsection); a further one takes the dishes the merchant marks. Typing
@@ -2084,7 +2191,8 @@ function endEditSession() {
 // — key → the fields; empty without the switch (today's list).
 // ── «Quitar del menú» (PLAN-portal-remove-product r3 §3.3 / §4 / §9; MOCKUP-portal-remove-product frames R1–R5) ─────────────────
 // §2's switches (the server's, with the text-edit drawer; the readable baseline) — the served collections travel positionally
-const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null });
+const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null,
+  sections: state.sections === true });   // S4 3(b): a LIVE section's last dish says the approved line, never a round trip
 // The dishes pending removal, key → a COPY of what «Deshacer» restores (this session's snapshot first, else the saved draft's P-R1 entry)
 const pendingRemovalMap = () => (state.productRemoval === true && state.draft ? pendingRemovalsOf(state.draft, state.removalStash, state.pendingRemovals) : new Map());
 // The list's DISPLAY projection (never sent): the pending rows back at their live places, by the same rebuild a restore runs
@@ -2103,7 +2211,12 @@ function openRemoveProduct(key, from) {
   const row = (draftSource(state.draft).items || []).find((r) => r && r.key === key);
   if (!row) return;
   const reward = state.rewardKeys.has(key);
+  // S4-D: the last dish of a section new in this draft — the section goes back to «Nueva» with it (removeProduct's 3(a)); the confirm says so
+  const cat = row.display ? row.display.cat : null;
+  const lastOfNew = state.sections === true && isNewSection(cat)
+    && !(draftSource(state.draft).items || []).some((r) => r && r !== row && r.display && r.display.variantOf == null && String(r.display.cat) === String(cat));
   openRemoveProductConfirm({ name: `${row.display.name}`, place: dishPlace(row), reward, returnTo: from,
+    note: lastOfNew ? s4Copy('unpromoteLine', { categoria: categoryName(cat) }) : null,
     onConfirm: bound(() => confirmRemoveProduct(key)) });
 }
 // «Quitar»: the removal (all or nothing), its snapshot stashed for «Deshacer», the dish's upload stopped, and the drawer closed — the

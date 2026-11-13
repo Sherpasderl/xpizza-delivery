@@ -85,7 +85,7 @@ const el = (tag, cls, text) => {
 export const S4_COPY = Object.freeze({
   emptyTitle: null, emptyBody: null, subcatNeedsDish: null, dropCat: null, dropTitle: null, dropSub: null, dropBody: null, nameTaken: null,
   sheetSubFirst: null, sheetSub: null, subName: null, subPh: null, products: null, firstLine: null, moveLine: null, needOne: null, createSub: null,
-  subNameTaken: null, subCaps: null,
+  subNameTaken: null, subCaps: null, menuNote: null, toastBack: null, unpromoteLine: null,
 });
 export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
 
@@ -304,7 +304,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   const rename = editable && opts.rename && typeof opts.rename === 'object' ? opts.rename : null;
   // STRUCTURE S4 (absent ⇒ today's header and empty state): { isNew (the F tag after the title), subcat: null | { disabled, title,
   // onClick } («Nueva subcategoría», quiet, before «Agregar producto»), empty: null | { title, body, dropLabel, onDrop } (a new section's page),
-  // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count) }
+  // subheads: null | [names] (frame E: the list grouped under one head per subsection, in its order — «{sub}» · its count),
+  // onMore: null | (id, button) (frame E2: a row's «Más acciones», before its chevron — existing dishes only, moreFor(it)) }
   const s4 = editable && opts.s4 && typeof opts.s4 === 'object' ? opts.s4 : null;
   const locked = editable && opts.locked === true;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
@@ -442,6 +443,16 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       info.addEventListener('click', () => onOpen(id));
       // A real <button>, not the mock's <span>: this is the row's only keyboard-reachable way into the
       // editor, and a merchant who cannot use a mouse still has to be able to change a price.
+      if (s4 && typeof s4.onMore === 'function' && (typeof s4.moreFor !== 'function' || s4.moreFor(it))) {
+        const mo = el('button', 'mk-more'); mo.type = 'button';
+        mo.setAttribute('aria-label', `Más acciones: ${label}`); mo.setAttribute('aria-haspopup', 'menu'); mo.setAttribute('aria-expanded', 'false');
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+        for (const cy of [5, 12, 19]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', '12'); c.setAttribute('cy', String(cy)); c.setAttribute('r', '2'); svg.append(c); }
+        mo.append(svg);
+        mo.addEventListener('click', () => s4.onMore(id, mo));
+        cells.push(mo);
+      }
       const chev = el('button', 'rowchev');
       chev.type = 'button';
       chev.setAttribute('aria-label', `Editar ${label}`);

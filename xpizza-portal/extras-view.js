@@ -242,11 +242,11 @@ export function openXConfirm(o) {
   const p = body ? el('p', 'eqbody', body) : null; if (p) p.id = 'xcf-d';
   const mf = el('div', sheet ? 'mk-sheeta' : 'mf');
   let parts;
-  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [line] : []), mf];
+  if (sheet) parts = [el('div', 'mk-handle'), t, ...(s ? [s] : []), ...(p ? [p] : []), ...(line ? [].concat(line) : []), mf];
   else {
     const mh = el('div', 'mh'); mh.append(t); if (s) mh.append(s);
     parts = [mh];
-    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(line); parts.push(mb); }
+    if (p || line) { const mb = el('div', 'mb'); if (p) mb.append(p); if (line) mb.append(...[].concat(line)); parts.push(mb); }
     parts.push(mf);
   }
   if (sheet) parts[0].setAttribute('aria-hidden', 'true');
@@ -301,10 +301,12 @@ export function openDiscardConfirm({ onDiscard, onKeep, returnTo }) {
 const R2_BODY = 'Desaparece del menú al publicar. Tus pedidos pasados no cambian. Para volver a venderlo, crealo como un producto nuevo.';
 const R5_LINE = 'Este producto se canjea con recompensas; al quitarlo deja de estar disponible como premio.';
 const STAR = ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'];
-export function openRemoveProductConfirm({ name, place, reward = false, onConfirm, onCancel = null, returnTo = null }) {
+// `note` (STRUCTURE S4-D): one more sentence after the approved body — the dish is the last of a section new in this draft
+export function openRemoveProductConfirm({ name, place, reward = false, note = null, onConfirm, onCancel = null, returnTo = null }) {
   const sheet = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width:560px)').matches;
   let line = null;
   if (reward) { line = el('div', 'mk-sandline'); line.append(svg(STAR), el('span', null, R5_LINE)); }
+  if (note) { const n = el('p', 'eqbody', note); line = line ? [line, n] : n; }
   openXConfirm({ title: [`¿Quitar «${name}» `, el('span', 'nw', 'del menú?')], titleClass: 'mk-cft', sub: place || null, body: R2_BODY, line, sheet, over: true, returnTo,
     onGo: onConfirm, onCancel,
     buttons: [{ label: 'Volver', mods: ['ghost'], sheetMods: [], act: 'cancel', focus: true }, { label: 'Quitar', mods: ['ghost', 'mk-quiet-danger'], sheetMods: ['danger'], act: 'go' }] });

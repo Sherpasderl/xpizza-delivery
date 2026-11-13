@@ -5,7 +5,7 @@
 // Run: node --test --test-force-exit structure-s4-ui.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { editable, settle, page } from './drawer-harness.mjs';
+import { editable, settle, page, SRC } from './drawer-harness.mjs';
 
 const { S4_COPY } = await import('./render.js');
 const P = (k) => `⟦s4.${k}⟧`;
@@ -215,8 +215,113 @@ test('S4-B — marking EVERY product of a subsection would empty it: the approve
   assert.equal(JSON.stringify(p.src()), before);
 });
 
+// ── step 3: the row menu (frame E2 «Mover a…»; S4-D's draft-only line, toast and the live refusal) ──
+const rowOf = (p, name) => [...detail(p).querySelectorAll('.irow')].find((r) => r.querySelector('.nm') && r.querySelector('.nm').firstChild.textContent === name);
+const more = (r) => r.querySelector('button.mk-more');
+const menu = (p) => detail(p).querySelector('.mk-pop[role="menu"]');
+const mItems = (p) => [...menu(p).querySelectorAll('button.mk-popi')];
+const mItem = (p, t) => mItems(p).find((b) => b.firstChild.textContent === t);
+const dishName = (p, key) => p.src().items.find((i) => i.key === key).display.name;
+
+test('E2 — each row gets «Más acciones» (before the chevron); its menu lists every section and subsection, the current one inert «actual», a new one «nueva»; OFF: no menu', async () => {
+  const off = await page({ read: () => editable({}) });
+  await off.signIn(); await pick(off, 'Dim Sum');
+  assert.equal(detail(off).querySelector('button.mk-more'), null, 'OFF');
+  const p = await page({ read: ON });
+  await p.signIn();
+  await create(p, 'Postres');
+  await pick(p, 'Dim Sum');
+  const nm = dishName(p, 'dimsum_01');
+  const r = rowOf(p, nm);
+  const b = more(r);
+  assert.ok(b, '🔴 the menu button'); assert.equal(b.getAttribute('aria-label'), `Más acciones: ${nm}`); assert.equal(b.getAttribute('aria-haspopup'), 'menu');
+  assert.ok(b.nextElementSibling && b.nextElementSibling.classList.contains('rowchev'), 'before the chevron');
+  b.click(); await settle(5);
+  assert.equal(menu(p).querySelector('.mk-pl').textContent, 'Mover a');
+  const cur = mItems(p)[0];
+  assert.equal(cur.firstChild.textContent, 'Dim Sum'); assert.ok(cur.classList.contains('mk-cur')); assert.equal(cur.getAttribute('aria-disabled'), 'true');
+  assert.equal(cur.querySelector('.mk-sub2').textContent, 'actual');
+  assert.ok(mItem(p, 'Bebidas · Sodas') && mItem(p, 'Bebidas · Cervezas'), 'a section with subsections: one entry each');
+  assert.equal(mItem(p, 'Postres').querySelector('.mk-sub2').textContent, 'nueva');
+  assert.equal(p.d.activeElement, mItems(p)[1], 'focus on the first movable entry');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(menu(p), null, 'Esc closes'); assert.equal(p.d.activeElement, more(rowOf(p, nm)), 'focus back on the button');
+});
+
+test('E2 — «Mover a…» moves the dish (the menu closes); a LIVE section\'s last dish is refused with the approved line under the row, nothing written', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await pick(p, 'Crudo');
+  const keys = p.src().items.filter((i) => i.display.cat === 'crudo' && i.display.variantOf == null).map((i) => i.key);
+  for (const k of keys.slice(0, -1)) { more(rowOf(p, dishName(p, k))).click(); await settle(5); mItem(p, 'Starters').click(); await settle(10); }
+  assert.ok(keys.slice(0, -1).every((k) => p.src().items.find((i) => i.key === k).display.cat === 'starters'), 'moved');
+  assert.equal(menu(p), null);
+  const last = rowOf(p, dishName(p, keys[keys.length - 1]));
+  const before = JSON.stringify(p.src());
+  more(last).click(); await settle(5); mItem(p, 'Starters').click(); await settle(10);
+  const row = rowOf(p, dishName(p, keys[keys.length - 1]));
+  const line = row.nextElementSibling;
+  assert.ok(line && line.classList.contains('ferr'), '🔴 the line under the row');
+  assert.equal(line.textContent, 'No podés dejar la sección vacía. Agregá otro producto primero.');
+  assert.equal(JSON.stringify(p.src()), before, 'nothing written');
+});
+
+test('S4-D — a dish moved INTO a new section promotes it; its menu then says so (the line); moving it back un-promotes and the toast tells', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await create(p, 'Postres');
+  await pick(p, 'Dim Sum');
+  const nm = dishName(p, 'dimsum_01');
+  more(rowOf(p, nm)).click(); await settle(5); mItem(p, 'Postres').click(); await settle(10);
+  const pid = p.src().structure.categories.find((c) => c.name === 'Postres');
+  assert.ok(pid, 'promoted');
+  await pick(p, 'Postres');
+  more(rowOf(p, nm)).click(); await settle(5);
+  assert.equal(menu(p).querySelector('.mk-popnote').textContent, P('menuNote'), '🔴 the line in the menu');
+  mItem(p, 'Dim Sum').click(); await settle(10);
+  assert.equal(p.src().items.find((i) => i.key === 'dimsum_01').display.cat, 'dim_sum');
+  assert.deepEqual((p.src().structure.staged_categories || []).map((c) => c.name), ['Postres'], 'staged again');
+  const t = p.d.querySelector('.toast.show');
+  assert.ok(t, 'the toast'); assert.equal(t.textContent, P('toastBack'));
+});
+
+// the removal switch as getEditableCatalog serves it, over a stamped menu (identity_id: the server's bootstrap stamps every live dish)
+const RM = () => {
+  const r = editable({ sections: true, productRemoval: true, textEditEnabled: true, deletionBase: { version: 'v-live', generation: 1 },
+    liveOrder: { items: [...SRC.structure.item_order], rewards: [...(SRC.structure.redeem_eligible_items || [])] } });
+  for (const it of r.source.items) if (it && it.display && typeof it.key === 'string') it.display.identity_id = `d_${it.key}`;
+  return r;
+};
+test('S4-D — «Quitar del menú» on the last dish of a section promoted in this draft: the approved confirm plus the un-promote sentence', async () => {
+  const p = await page({ read: RM });
+  await p.signIn();
+  await create(p, 'Postres');
+  await pick(p, 'Dim Sum');
+  const nm = dishName(p, 'dimsum_01');
+  more(rowOf(p, nm)).click(); await settle(5); mItem(p, 'Postres').click(); await settle(10);
+  await pick(p, 'Postres');
+  more(rowOf(p, nm)).click(); await settle(5);
+  mItems(p).find((b) => b.classList.contains('danger')).click(); await settle(5);
+  const m = p.d.querySelector('#xscrim.show .modal, #xscrim.show .mk-sheet');
+  assert.ok(m, 'the approved R2 confirm');
+  const ps = [...m.querySelectorAll('p')].map((x) => x.textContent);
+  assert.equal(ps[ps.length - 1], P('unpromoteLine'), '🔴 the un-promote sentence after the approved body');
+});
+test('3(b) — «Quitar del menú» on a LIVE section\'s last dish: the approved line under the row, no confirm, nothing written', async () => {
+  const p = await page({ read: RM });
+  await p.signIn(); await pick(p, 'Crudo');
+  const keys = p.src().items.filter((i) => i.display.cat === 'crudo' && i.display.variantOf == null).map((i) => i.key);
+  for (const k of keys.slice(0, -1)) { more(rowOf(p, dishName(p, k))).click(); await settle(5); mItem(p, 'Starters').click(); await settle(10); }
+  const nm = dishName(p, keys[keys.length - 1]);
+  const before = JSON.stringify(p.src());
+  more(rowOf(p, nm)).click(); await settle(5);
+  mItems(p).find((b) => b.classList.contains('danger')).click(); await settle(5);
+  assert.equal(p.d.querySelector('#xscrim.show'), null, 'no confirm');
+  assert.equal(rowOf(p, nm).nextElementSibling.textContent, 'No podés dejar la sección vacía. Agregá otro producto primero.');
+  assert.equal(JSON.stringify(p.src()), before);
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'menuNote', 'moveLine', 'nameTaken', 'needOne', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unpromoteLine']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

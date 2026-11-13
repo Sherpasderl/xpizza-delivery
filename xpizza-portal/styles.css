@@ -657,6 +657,22 @@
   .mk-pick.mk-inv{border-color:var(--red)}
   .mk-pick .modopt.mk-fixed{cursor:default}
   .mk-pick .modopt.mk-fixed input{opacity:.55;cursor:default}
+  /* E2 — a row's «Más acciones» and its menu (under the row, right-aligned); S4-D's quiet line at the menu's foot; a row's refusal line */
+  .mk-more{width:26px;height:30px;margin:0 -6px 0 -8px;border:none;background:none;border-radius:8px;color:var(--mute2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
+  .mk-more:hover,.mk-more.mk-moreopen{color:var(--ink);background:var(--board-2)}
+  .mk-more svg{width:16px;height:16px;fill:currentColor;stroke:none}
+  .detail{position:relative}
+  .mk-pop{position:absolute;right:10px;z-index:5;background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow-lg);padding:6px;width:238px}
+  .mk-pop .mk-pl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute2);font-weight:750;padding:8px 12px 4px}
+  .mk-popi{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:none;border:none;width:100%;text-align:left;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer}
+  .mk-popi:hover{background:var(--board-2)}
+  .mk-popi.mk-cur{color:var(--mute2);cursor:default}
+  .mk-popi.danger{color:var(--red-text)}
+  .mk-popi .mk-sub2{margin-left:auto;font-size:12px;color:var(--mute2);font-weight:400;white-space:nowrap}
+  .mk-popi svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .mk-popsep{height:1px;background:var(--line2);margin:5px 6px}
+  .mk-popnote{padding:6px 12px 7px;font-size:12px;color:var(--mute2);line-height:1.45}
+  .mk-rowline{padding:0 20px 10px}
   /* B2b: the D3 card's price list (the base's .optrow pick rows, the price on the right); the row ground is its own class so the
      base's .optrow.sel look still wins once picked */
   .mk-cf .mk-pf{display:flex;flex-direction:column;gap:6px;margin-top:14px}

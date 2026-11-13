@@ -346,3 +346,17 @@ test('S4-C: «Agregar producto» on a new category promotes it; removing that ad
   addProduct(off, { ref: 'tmp:cccccccc', cat: stagedIds(off)[0] });
   assert.equal(JSON.stringify(draftSource(off).structure.categories), JSON.stringify(JSON.parse(before).categories), 'OFF: no promotion (today\'s addProduct)');
 });
+
+test('3(a) — moving the LAST dish out of a section promoted in this draft is allowed and returns it to staged (a live section still refuses)', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  assert.equal(addCategory(d, 'Postres', {}, ON).ok, true);
+  const id = stagedIds(d)[0];
+  assert.equal(moveItem(d, 'dimsum_01', { cat: id }, ON).ok, true);
+  assert.ok(declaredIds(d).includes(id), 'premise: promoted');
+  assert.deepEqual(moveItem(d, 'dimsum_01', { cat: 'dim_sum' }, ON), { ok: true }, '🔴 the draft-only section may empty');
+  assert.deepEqual(stagedIds(d), [id], 'staged again'); assert.ok(!declaredIds(d).includes(id));
+  assert.equal(draftSource(d).items.find((i) => i.key === 'dimsum_01').display.cat, 'dim_sum');
+  const crudo = dishesOf(draftSource(d), 'crudo');
+  for (const k of crudo.slice(0, -1)) assert.equal(moveItem(d, k, { cat: 'starters' }, ON).ok, true);
+  assert.equal(moveItem(d, crudo[crudo.length - 1], { cat: 'starters' }, ON).code, 'section_empty', 'a LIVE section never empties');
+});
