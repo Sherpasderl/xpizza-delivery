@@ -200,7 +200,7 @@ test('D2: choiceAdd gives a PLAIN dish its required choice in the copy — the m
   const s = IE.open(d, PLAIN, null, ON);
   IE.set(s, 'price', '275');                                                     // a price typed before: the first option takes it
   const opts = [{ ref: ref('a'), choice: 'Seis', price: 275 }, { ref: ref('b'), choice: 'Doce', price: 480 }];
-  assert.equal(IE.choiceAdd(s, { label: '', options: opts, marked: 0 }).ok, false, 'no name: refused locally (the server would refuse choice_label_required)');
+  assert.equal(IE.choiceAdd(s, { label: '', options: opts, marked: 0 }).ok, false, 'no name: refused locally (the server would refuse label_required)');
   assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts.slice(0, 1), marked: 0 }).ok, false, 'one option: choices_too_few');
   assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts, marked: 1 }).ok, true);
   const m = IE.choiceModel(d, s);
@@ -222,4 +222,33 @@ test('after D2, a new option\'s trash edits the choice.add op itself (two left �
   assert.deepEqual(s.choiceOps.map((x) => x.op), ['choice.add'], 'the mark on the dropped option went with it');
   assert.deepEqual(s.choiceOps[0].options.map((x) => x.ref), [ref('a'), ref('b')]);
   assert.equal(IE.choiceDropNew(s, ref('b')).code, 'choices_too_few', '🔴 two left: the writer refuses');
+});
+
+test('names (the server\'s rules, before saving): an empty choice name, an empty option name, a duplicate under the SAME fold (accents, case, spaces) — «Guardar» holds', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  const [a, b] = membersOf(draftSource(d), PAD).map((o) => o.key);
+  IE.choiceSet(s, { op: 'choice.recommended', launcher: PAD, option: a });
+  assert.deepEqual(IE.choiceNameProblems(d, s), { label: null, options: {} }, 'premise: the live group is clean');
+  IE.choiceSet(s, { op: 'option.rename', key: b, choice: '  sin  PROTEINA ' });           // ≡ «Sin Proteína» under the server's fold
+  IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('e'), choice: '', price: 300 });
+  IE.choiceSet(s, { op: 'choice.label', launcher: PAD, label: '  ' });
+  assert.deepEqual(IE.choiceNameProblems(d, s), { label: 'empty', options: { [b]: 'duplicate', [ref('e')]: 'empty' } }, '🔴 the later twin is flagged, as the server does');
+  assert.deepEqual(IE.save(d, s), { ok: false, error: 'choice_names' }, '🔴 held');
+  IE.choiceSet(s, { op: 'option.rename', key: b, choice: 'Pollo frito' });
+  IE.choiceUpdateNew(s, ref('e'), { choice: 'Tofu' });
+  IE.choiceSet(s, { op: 'choice.label', launcher: PAD, label: 'Proteína' });
+  assert.deepEqual(IE.choiceNameProblems(d, s), { label: null, options: {} });
+  assert.deepEqual(IE.save(d, s), { ok: true });
+});
+
+test('choiceNameProblems is a PURE reader (the wiring guards rule it so): a deep-frozen draft source and copy ops, byte-identical after', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('p'), choice: 'pollo', price: 1 });
+  const freeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+  const before = JSON.stringify([draftSource(d), d.orig, s.choiceOps]);
+  freeze(draftSource(d)); freeze(d.orig); freeze(s.choiceOps);
+  assert.deepEqual(IE.choiceNameProblems(d, s).options, { [ref('p')]: 'duplicate' }, 'premise: the reader judged the ops');
+  assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
 });

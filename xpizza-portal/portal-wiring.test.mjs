@@ -1662,6 +1662,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.choiceModel',
   // S3 D3: the price that stays when the choice goes (the marked option, or null ⇒ the card asks) — a pure reader (cell «choiceRemovePlan is a PURE reader»)
   'IE.choiceRemovePlan',
+  // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
+  'IE.choiceNameProblems',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

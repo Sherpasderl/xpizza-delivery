@@ -284,8 +284,35 @@ test('B7 — a new dish\'s group: option 1 pre-marked + the quiet line; a pill i
   assert.deepEqual(pills(gbo), ['false', 'false'], 'OFF: today, unmarked'); assert.equal(gbo.querySelector('.mk-recline'), null);
 });
 
+const lineAfter = (el) => { const n = el.nextElementSibling; return n && n.classList.contains('ferr') ? n : null; };
+test('names before saving — a duplicate (the server\'s fold) shows its line LIVE under the later option; empty names show once «Guardar» holds; each clears as it is fixed', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  pill(rows(p)[0]).click(); await settle(5);
+  const before = JSON.stringify(p.src());
+  p.type(rows(p)[1].querySelector('input.moname'), 'sin proteina'); await settle(5);
+  let l = lineAfter(rows(p)[1]);
+  assert.ok(l, '🔴 live: the twin\'s line'); assert.equal(l.textContent, P('dupName')); assert.equal(l.getAttribute('role'), 'alert');
+  assert.equal(rows(p)[1].querySelector('input.moname').getAttribute('aria-invalid'), 'true');
+  assert.equal(lineAfter(rows(p)[0]), null, 'the first is not the twin');
+  ge(p).querySelector('.mgadd').click(); await settle(5);
+  assert.equal(lineAfter(rows(p)[3]), null, 'an empty new row: no line yet');
+  p.type(ge(p).querySelector('input.mgname-in'), ''); await settle(5);
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')), null, 'an emptied name: no line yet');
+  p.btn('Guardar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 held: nothing written');
+  assert.equal(lineAfter(rows(p)[3]).textContent, P('optNameRequired'));
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')).textContent, P('labelRequired'));
+  p.type(rows(p)[1].querySelector('input.moname'), 'Pollo'); p.type(rows(p)[3].querySelector('input.moname'), 'Tofu');
+  p.type(ge(p).querySelector('input.mgname-in'), 'Proteína'); await settle(5);
+  assert.equal(ge(p).querySelectorAll('.ferr').length, 0, 'every line cleared as it was fixed');
+  p.type(rows(p)[3].querySelector('.mopr input'), '330'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show') || !reqCard(p), 'saved');
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'labelRequired', 'optNameRequired', 'pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

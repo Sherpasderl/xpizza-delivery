@@ -411,6 +411,7 @@ export function save(draft, s) {
   // STRUCTURE S3 (addendum B2): a touched group with no «Recomendada» is HELD here — never sent to a sure 409
   const cm = choiceModel(draft, s);
   if (cm && cm.hold) return { ok: false, error: 'choice_hold', reason: cm.hold.reason };
+  if (hasNameProblem(choiceNameProblems(draft, s))) return { ok: false, error: 'choice_names' };
   const ch = changed(s), w = s.work, e = {};
   if (ch.includes('name')) e.name = w.name;
   if (ch.includes('desc')) e.desc = w.desc;
@@ -475,8 +476,30 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 }
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
-export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null });
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, optNameRequired: null, dupName: null });
 export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
+// The server's NAME rules for the copy's choice, judged before «Guardar» (choice-compare.js / add-product.js): the choice's own name is
+// required (label_required), every option needs a name (choice_label_required), and no two options of the group share a name under
+// the ONE fold (choice_duplicate: add-product normalizeName ≡ section-transitions nameFold, the synced byte copy) — the LATER twin is
+// the one flagged, as the server does. → { label: 'empty' | null, options: { [id]: 'empty' | 'duplicate' } }; null with the switch off.
+const nameFoldOf = () => { const t = globalThis.SectionTransitions; return t && typeof t.nameFold === 'function' ? t.nameFold : null; };
+export function choiceNameProblems(draft, s) {
+  const m = choiceModel(draft, s);
+  if (!m || m.removed || m.label === null) return m ? { label: null, options: {} } : null;
+  const fold = nameFoldOf();
+  const out = { label: tidyItemName(m.label || '') ? null : 'empty', options: {} };
+  const seen = new Set();
+  for (const o of m.options) {
+    const c = tidyItemName(String(o.choice || ''));
+    if (!c) { out.options[o.id] = 'empty'; continue; }
+    if (!fold) continue;   // the fold is the server's: without its copy the duplicate check waits for the server (never a guessed fold)
+    const f = fold(c);
+    if (seen.has(f)) out.options[o.id] = 'duplicate';
+    seen.add(f);
+  }
+  return out;
+}
+const hasNameProblem = (p) => !!p && (!!p.label || Object.keys(p.options).length > 0);
 // D3 «Quitar elección» (confirmed): the copy becomes a PLAIN dish — choice.remove with the picked price_from is queued (dry-run as
 // every op), the Precio field shows that price and stays editable (UI-r0 :81: «Guardar» replays the removal, then the typed price);
 // option prices typed before are moot (their options leave the menu) and go back to the base
@@ -496,11 +519,11 @@ export function choiceRemove(s, priceFrom) {
 // D2 «Agregar elección» (the sheet): a PLAIN dish gains its required choice in the copy — choice.add (the writer marks the FIRST
 // option), then choice.recommended when the sheet's mark is another row; both dry-run as one. The sheet prefilled the first option
 // with the dish's price (a typed one included), so the copy's own price edit is folded in and goes back to the base. A name is
-// required here (the server refuses an unnamed choice: choice_label_required); the option count is the writer's (choices_too_few).
+// required here (the server refuses an unnamed choice: label_required); the option count is the writer's (choices_too_few).
 export function choiceAdd(s, { label, options, marked = 0 } = {}) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
-  if (typeof label !== 'string' || !label.trim()) return { ok: false, code: 'choice_label_required' };
+  if (typeof label !== 'string' || !label.trim()) return { ok: false, code: 'label_required' };
   const opts = Array.isArray(options) ? options.map((o) => ({ ref: o.ref, choice: o.choice, price: o.price })) : [];
   const add = { op: 'choice.add', key: s.key, label, options: opts };
   const next = [...s.choiceOps, add];

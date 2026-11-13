@@ -2097,6 +2097,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   const work = new Map((v.options || []).map((o) => [o.key, o.price]));
   const few = cm.options.length <= 2;
   R.opts = []; R.optCnt = mk('span', 'mk-cnt');
+  const nameRows = [];
   let last = null;
   for (const o of cm.options) {
     const row = mk('div', `mopt${o.isNew ? ' chg' : ''}`);
@@ -2136,6 +2137,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
     if (o.isNew) row.append(mk('span', 'mk-apponly', 'Solo en la app Sherpa'));
     ge.append(row);
     if (!o.isNew) R.opts.push({ key: o.id, row, cnt: mk('span', 'mk-cnt'), pi: ieOptPrice });
+    nameRows.push({ id: o.id, row, input: ieOptName, line: null });
     last = row;
   }
   const ieAddOption = document.createElement('button'); ieAddOption.type = 'button'; ieAddOption.className = 'mgadd';
@@ -2153,7 +2155,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   R.same = ieSame;
   const sub = mk('div', 'mk-sub');
   ge.append(ieAddOption, flag, sub);
-  R.choice = { s, key, ge, after: last, add: ieAddOption, sub, card, line: null };
+  R.choice = { s, key, ge, after: last, add: ieAddOption, sub, card, line: null, rows: nameRows, label: { id: null, row: ieChoiceName, input: ieChoiceName, line: null } };
   const gf = mk('div', 'mk-gf');
   const ieQuitChoice = document.createElement('button'); ieQuitChoice.type = 'button'; ieQuitChoice.className = 'btn ghost mk-quiet-danger sm'; ieQuitChoice.textContent = 'Quitar elección';
   ieQuitChoice.addEventListener('click', bound(() => openChoiceRemove(s, ieQuitChoice)));
@@ -2255,7 +2257,22 @@ function syncChoice(R) {
   const v = IE.view(state.draft, c.s);
   const o = cm.options.find((x) => x.marked) || cm.options[0];
   c.sub.textContent = o ? `En el menú cada opción se llama «${v.fields.name} - ${o.choice}»: el nombre se arma solo y cambia con el producto.` : '';
-  if (!cm.hold) { if (choiceHeld === c.s.id) choiceHeld = null; if (c.line) { c.line.remove(); c.line = null; } return; }
+  // the server's NAME rules (B6 placement: under the box concerned): a duplicate shows at once; an empty name once «Guardar» held
+  const np = IE.choiceNameProblems(state.draft, c.s) || { label: null, options: {} };
+  const held = choiceHeld === c.s.id;
+  const fieldLine = (slot, key, lineId) => {
+    if (!key) { if (slot.line) { slot.line.remove(); slot.line = null; } slot.input.removeAttribute('aria-invalid'); slot.input.removeAttribute('aria-describedby'); return; }
+    if (!slot.line) {
+      slot.line = document.createElement('div'); slot.line.className = 'ferr mk-ferr'; slot.line.setAttribute('role', 'alert'); slot.line.id = lineId;
+      slot.row.after(slot.line);
+    }
+    slot.line.textContent = IE.s3Copy(key);
+    slot.input.setAttribute('aria-invalid', 'true'); slot.input.setAttribute('aria-describedby', lineId);
+  };
+  fieldLine(c.label, np.label && held ? 'labelRequired' : null, `ie-cg-err-${c.s.id}`);
+  c.rows.forEach((r, i) => { const pr = np.options[r.id]; fieldLine(r, pr === 'duplicate' ? 'dupName' : pr === 'empty' && held ? 'optNameRequired' : null, `ie-cg-err-${c.s.id}-${i}`); });
+  const named = !np.label && !Object.keys(np.options).length;
+  if (!cm.hold) { if (named && held) choiceHeld = null; if (c.line) { c.line.remove(); c.line = null; } return; }
   const text = IE.s3Copy(cm.hold.reason === 'recommended_removed' ? 'recRemoved' : 'recRequired');
   if (!c.line) {
     c.line = document.createElement('div'); c.line.setAttribute('role', 'status');
@@ -2746,7 +2763,7 @@ function saveEdit() {
   if (!s || s.closed) return;
   const r = IE.save(state.draft, s);
   // B2: a touched choice with no «Recomendada» is held HERE (never sent to a sure refusal) — the editor opens on its line, refusal style
-  if (!r.ok && r.error === 'choice_hold') { choiceHeld = s.id; choiceEditing.add(s.id); renderDrawer(); holdDrawerForRename(); return; }
+  if (!r.ok && (r.error === 'choice_hold' || r.error === 'choice_names')) { choiceHeld = s.id; choiceEditing.add(s.id); renderDrawer(); holdDrawerForRename(); return; }
   if (!r.ok) { syncEdit(); return; }
   editSess = null; editUpload = null; editRefs = null;
   closeDrawer();
