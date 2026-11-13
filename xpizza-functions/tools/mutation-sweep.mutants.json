@@ -35743,5 +35743,22 @@
   "kills_with": [
    "C1-T7"
   ]
+ },
+ {
+  "id": "c1a-05",
+  "slice": "c1a",
+  "label": "the mounted store reads its rating LIVE from the directory (a revalidation during the visit changes it; T4)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()),",
+  "to": "const social = { get rating() { const rr = dir.view().rows.find((x) => x.rid === entry.rid); return CappHome.ratingHtml(rr && rr.entry && rr.entry.ratings, nowMs()); },",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a T4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T4"
+  ]
  }
 ]

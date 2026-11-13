@@ -4705,3 +4705,20 @@ test('C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s he
     } finally { M.w.close(); }
   }
 });
+test('C-1a T4 (advisor 11-13): the store\'s rating is FIXED per mount — a directory revalidation that lands DURING the store visit changes nothing; the next mount adopts it', async () => {
+  const B = deferred();
+  const eleven = { x_pizza: c1Stats('x_pizza', { stars: [...TEN, 5] }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 10 * DAY }) };
+  const S = bootShell({ dirScript: [c1Resp(RATED()), { p: B.p }] });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+    S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();   // a revalidation starts (held)
+    assert.ok(S.dirCalls.length >= 2, 'premise: a second directory read is in flight');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(10)', 'premise: mounted with the first body\'s rating');
+    B.resolve(c1Resp(eleven)); await flush(); await flush();
+    S.click('[data-act="mode"][data-val="pickup"]'); await flush(); S.click('[data-act="mode"][data-val="delivery"]'); await flush();   // the facts RE-RENDER mid-visit
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(10)', '🔴 C1-T4: the mounted store\'s rating did not change mid-visit (even across a re-render)');
+    S.click('.store-nav [data-act="back"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(11)', '🔴 C1-T4: the next mount adopts it');
+  } finally { S.w.close(); }
+});
