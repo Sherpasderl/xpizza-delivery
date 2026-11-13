@@ -28,6 +28,8 @@ const ROOT = path.join(__dirname, '..');
    RUN, and their failure is reported and excused. If one starts passing, this run fails until the
    entry is deleted, so the allowlist cannot outlive what it excuses. */
 const KNOWN_RED = {
+  /* PLAN-sdk-fence-r1 §4b (3a, 2026-11-13) — a CROSS-LANE suite, deterministic: true only once feat/capp-d4-client merges with the fence. */
+  'test:sdk-fence-client': 'PLAN-sdk-fence-r1 §4b cross-lane: payments/sdk/d4-fence-client.test.js drives the capp client over the real fenced server; RED with this tree\'s customer-app/capp-api.js (it mints TA… ids outside the sdk_ namespace and releases on an item refusal with no cancel — capp F1 + Codex fence-plan r1 P2-3); GREEN with feat/capp-d4-client. The train merge that carries both DELETES this entry (the stale-excuse rule fails the gate once the suite passes) and wires the file into npm test. Owner: 3a / 2e.',
   /* Empty, and that is the point: the last entry was DELETED when its defect was fixed rather than
      surviving as an excuse. `test:resolve-manual` was excused while the paid-after-close park lived
      on another branch; the owner merged that fix (c954558), the rebase carried it here, the suite
@@ -192,8 +194,11 @@ if (!scripts.length) {
   process.exit(2);
 }
 
+/* KNOWN_RED names are checked against the FULL test-script inventory (Codex fence-build r1 P2), never the --only / emulators
+   selection: an entry for a script the selection merely skipped is not stale (`--only=test:portal` must not exit 2). */
+const inventory = Object.keys(pkgScripts).filter((k) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(pkgScripts[k]).trim());
 for (const name of Object.keys(KNOWN_RED)) {
-  if (!scripts.includes(name) && !EMULATORS_ONLY) {
+  if (!inventory.includes(name)) {
     console.error(`gate-all: KNOWN_RED names "${name}", which is not a test script any more.`);
     console.error('   A stale excuse hides a suite nobody runs. Remove the entry or fix the name.');
     process.exit(2);

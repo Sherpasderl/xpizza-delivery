@@ -348,6 +348,7 @@
     "customer_cards": { ".read": false, ".write": false },
     "sdk_checkout_subject": { ".read": false, ".write": false },
     "recovery_verify_pad": { ".read": false, ".write": false },
+    "sdk_fence":        { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
     "refund_attempts":  { ".read": false, ".write": false },
     "payment_audit":    { ".read": false, ".write": false },

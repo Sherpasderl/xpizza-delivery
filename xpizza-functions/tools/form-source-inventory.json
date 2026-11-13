@@ -447,6 +447,7 @@
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-fence.emulator.test.js",
     "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
     "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
@@ -827,6 +828,7 @@
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-fence.emulator.test.js",
     "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
     "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
@@ -1304,6 +1306,7 @@
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-fence.emulator.test.js",
     "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
     "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
@@ -1687,6 +1690,7 @@
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
     "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-fence.emulator.test.js",
     "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
     "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
@@ -2837,6 +2841,7 @@
   "payments/sdk/display.js",
   "payments/sdk/endpoints.js",
   "payments/sdk/fake-adapter.js",
+  "payments/sdk/fence.js",
   "payments/sdk/finish.js",
   "payments/sdk/fixtures/redact-pixelpay.js",
   "payments/sdk/flow.js",
@@ -7029,6 +7034,10 @@
    "lifts": []
   },
   "payments/sdk/fake-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/fence.js": {
    "pins": [],
    "lifts": []
   },
