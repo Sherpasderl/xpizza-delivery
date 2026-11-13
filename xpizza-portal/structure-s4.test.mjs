@@ -132,7 +132,10 @@ test('renameSubcat (ON): the name AND every member (options too) rewritten exact
   const want = clone(src);
   want.structure.categories.find((c) => c.id === 'bebidas').subcats = ['Refrescos', 'Cervezas'];
   for (const i of want.items) if (i.display && i.display.cat === 'bebidas' && i.display.subcat === 'Sodas') i.display.subcat = 'Refrescos';
-  assert.deepEqual(out, want, '🔴 exactly the rename');
+  // the members as compact lines (a whole-source deepEqual diff can take minutes to render when it fails), then the rest byte-equal
+  const subLines = (x) => x.items.filter((i) => i.display && i.display.cat === 'bebidas').map((i) => `${i.key}:${i.display.subcat || ''}`);
+  assert.deepEqual(subLines(out), subLines(want), '🔴 exactly the rename');
+  assert.ok(JSON.stringify(out) === JSON.stringify(want), 'nothing else changes');
   for (const [args, code] of [[['Nope', 'X'], 'subcat_unknown'], [['Cervezas', 'refrescos'], 'subcat_name_taken'], [['Cervezas', ''], 'subcat_name_invalid']]) {
     assert.equal(renameSubcat(d, 'bebidas', ...args, ON).code, code);
   }
