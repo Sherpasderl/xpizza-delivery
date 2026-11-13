@@ -6,12 +6,15 @@
 // Any other error propagates (publish fails closed). `storage` is a @google-cloud/storage client (getStorage() in production).
 const is412 = (e) => e && (e.code === 412 || e.code === '412');
 
-function makeGcsCopy(storage, privateBucket) {   // codex r1 P1-1: the private (source) bucket is NAMED
+// codex r1 P1-1: the private (source) bucket is NAMED. PLAN-photos-public-bucket-config r5 §2: it may be a GETTER, resolved here — inside a
+// copy, i.e. only for a pid that needs one — so building the publish IO for a photo-free publish resolves no bucket.
+function makeGcsCopy(storage, privateBucket) {
   return {
     async copyIfAbsent(srcPath, dstBucket, dstPath) {
+      const src = typeof privateBucket === 'function' ? privateBucket() : privateBucket;
       const dst = storage.bucket(dstBucket).file(dstPath);
       try {
-        await storage.bucket(privateBucket).file(srcPath).copy(dst, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' });
+        await storage.bucket(src).file(srcPath).copy(dst, { preconditionOpts: { ifGenerationMatch: 0 }, contentType: 'image/webp', cacheControl: 'public, max-age=31536000, immutable' });
         const [m] = await dst.getMetadata();
         return { generation: String(m.generation), created: true };
       } catch (e) {

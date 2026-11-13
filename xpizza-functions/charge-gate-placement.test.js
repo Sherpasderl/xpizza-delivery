@@ -47,9 +47,12 @@ const before = (hay, a, b, msg) => {
   const card = slice('const chargeOnlineApp = express();', 'chargeOnlineApp.use((err, req, res, next)');
 
   // The terminal outcomes still return in the handler, above the decision.
-  before(card, "acq.outcome === 'already_paid'", 'resolveAndIssueHostedCheckout(', 'an already-paid order must return before the decision');
-  before(card, "acq.outcome === 'conflict'", 'resolveAndIssueHostedCheckout(', 'a conflicting order must return before the decision');
-  before(card, "acq.outcome === 'closed'", 'resolveAndIssueHostedCheckout(', 'a closed order must return before the decision');
+  // D4 §A3: the four abandoned outcomes return through ONE folded branch (release, then the shared acquireRefusal responder)
+  const FOLD = "if (['item_unavailable', 'already_paid', 'conflict', 'closed'].includes(acq.outcome)) {";
+  before(card, FOLD, 'resolveAndIssueHostedCheckout(', 'an already-paid / conflicting / closed / unavailable order must return before the decision');
+  { const f = card.slice(card.indexOf(FOLD), card.indexOf(FOLD) + FOLD.length + 120);
+    for (const o of ['already_paid', 'conflict', 'closed', 'item_unavailable']) assert.ok(f.includes(`'${o}'`), `the folded return covers ${o}`);
+    assert.ok(/\{\n    await releaseHoldIfOwned\(\);\n    return acquireRefusal\(acq\)\(res\);/.test(f), 'the folded branch returns (release, then the responder)'); }
 
   /* 🔴 THE HANDLER MUST NOT BE ABLE TO CHARGE ON ITS OWN. createHostedCharge is no longer CALLED in
      index.js at all — it is passed into the flow module as an injected effect, which is what makes
@@ -62,7 +65,7 @@ const before = (hay, a, b, msg) => {
   assert.strictEqual((card.match(/resolveAndIssueHostedCheckout\(/g) || []).length, 1,
     'exactly ONE decision on the card path — a second would be a second chance to charge');
   assert.strictEqual((card.match(/applyConfirmedNetGate\(/g) || []).length, 1,
-    'and exactly ONE gate call, inside that decision — no inline gate may reappear beside it');
+    'and exactly ONE gate call — the hoisted runGate the decision (and the SDK finish) runs; no inline gate may reappear beside it');
   ok('card: the handler routes through the gated flow and never calls the gateway itself');
 }
 
@@ -88,6 +91,9 @@ const before = (hay, a, b, msg) => {
   const i = card.indexOf('const hostedFlowOpts = {');
   assert.ok(i !== -1, 'non-vacuity: the flow options block was found');
   const call = card.slice(i, i + 2000);
+  // D4 §A2 B4 (r7): the gate's CONTENTS live in the hoisted runGate (hosted and the SDK finish both run it)
+  const g0 = card.indexOf('const runGate = async (recordedTotalCents, releaseHold) =>'); assert.ok(g0 !== -1, 'non-vacuity: the hoisted gate');
+  const gate = card.slice(g0, card.indexOf('\n  });', g0));
 
   /* 🔴 ONE SERVER TOTAL, NAMED ONCE. effBreakdown.total_cents is handed to the flow as `totalCents`,
      and the flow passes that same value back into the gate as recordedTotalCents — so "the number the
@@ -96,10 +102,14 @@ const before = (hay, a, b, msg) => {
      recomputation) would mean the gate is checking something other than what travels. */
   assert.ok(/totalCents: effBreakdown\.total_cents,/.test(call),
     '🔴 the flow is handed the SERVER total, named once');
-  assert.ok(/^\s*recordedTotalCents,\s*\/\//m.test(call),
-    '🔴 and the gate is given exactly that total back — not a literal and not a second expression');
-  assert.ok(!/recordedTotalCents:/.test(call),
-    '…so no separate number can be introduced for the gate to check');
+  // D4 §A2 B4 (r7): the gate is HOISTED (the SDK finish runs it too) with the release as a parameter; hosted hands it the SAME
+  // recordedTotalCents binding and its OWN release, and the hoisted body passes that total back as the bare shorthand
+  assert.ok(/runGate: \(recordedTotalCents\) => runGate\(recordedTotalCents, releaseHoldIfOwned\),/.test(call),
+    '🔴 hosted hands the hoisted gate exactly the flow\'s total and its own release');
+  {
+    assert.ok(/^\s*recordedTotalCents,\s*\/\//m.test(gate), '🔴 and the gate is given exactly that total back — not a literal and not a second expression');
+    assert.ok(!/recordedTotalCents:/.test(gate) && !/recordedTotalCents:/.test(call), '…so no separate number can be introduced for the gate to check');
+    assert.ok(/DW\.refusalGate\(dq, releaseHold, orderId\)/.test(gate) && /pickupGate\(releaseHold\)/.test(gate) && /^\s*releaseHold,\s*$/m.test(gate), '🔴 every stage of the hoisted gate releases through the PARAMETER (hosted: releaseHoldIfOwned)'); }
   assert.ok(/releaseHold: releaseHoldIfOwned/.test(call),
     '🔴 the card path passes its OWN release — releaseHoldIfOwned frees only a debit this call owns, so a reused or in-progress hold is preserved');
   assert.ok(!/releaseRedemption\(db/.test(call),
@@ -116,7 +126,7 @@ const before = (hay, a, b, msg) => {
     '🔴 the reservation attach is injected into the gated flow, which calls it only on an accepted fresh claim');
   assert.strictEqual((card.match(/await attachAttempt\(/g) || []).length, 0,
     '🔴 the handler must not attach on its own — that is what let a resume rewrite a live hold');
-  assert.ok(/reward: redemptionResolved/.test(call),
+  assert.ok(/reward: redemptionResolved/.test(gate),
     '🔴 the gate binds the RESOLVED redemption the issuer fingerprinted, not a reconstruction');
   /* 🔴 THE REQUEST→GATE MAPPING MOVED, AND THAT IS THE POINT. These used to assert the field names
      inline at each call site — which is exactly the check that could not catch a rename, because it
@@ -124,7 +134,7 @@ const before = (hay, a, b, msg) => {
      and is driven end-to-end by composition.test.mjs: the real client's body → the real adapter → the
      real gate. What is asserted here is only that the handler routes through it rather than rebuilding
      the mapping locally, which is what would put the names back in two places. */
-  assert.ok(/gateInput: gateInputFromRequest\(body,/.test(call),
+  assert.ok(/gateInput: gateInputFromRequest\(body,/.test(gate),
     '🔴 the card gate must build its input through the ONE shared request→gate mapping');
   assert.ok(!/token: body\.quote_token/.test(card),
     '…and must not re-inline the field mapping — two copies is how a rename survives the suite');
@@ -134,12 +144,12 @@ const before = (hay, a, b, msg) => {
      forever — the flip would land in config, the owner would see the flag go true, and card orders
      would still never enforce. That is a silent no-op, which is the worst kind: it looks shipped.
      The flag itself fails safe to grace (tokenEnforceEnabled), so reading it is never the risky half. */
-  assert.ok(/enforce: tokenEnforce\b/.test(call),
+  assert.ok(/enforce: tokenEnforce\b/.test(gate),
     '🔴 the card gate must READ the enforce flag — a hardcoded value makes the rollout flip a no-op');
-  assert.ok(!/enforce: (false|true)\b/.test(call), '…and must not hardcode either direction');
+  assert.ok(!/enforce: (false|true)\b/.test(gate), '…and must not hardcode either direction');
   // The ceiling now travels through the shared mapping, asserted end-to-end in composition.test.mjs.
   // Re-asserting the literal here would restore the two-copies problem the extraction removed.
-  assert.ok(/gateInputFromRequest\(body,/.test(call),
+  assert.ok(/gateInputFromRequest\(body,/.test(gate),
     '🔴 the client ceiling reaches the gate through the shared mapping, not a local copy of it');
   ok('card: the gate is wired to the charged amount, the card\'s own release, the retirement, and the resolved reward');
 }

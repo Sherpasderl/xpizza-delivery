@@ -20,7 +20,7 @@ const { photoProcessCore } = require('./process');
 const { makeGcsSigner } = require('./signer');
 const { makeGcsStore } = require('./gcs-store');
 const { errorBody, ERRORS } = require('./errors');
-const { privateBucketName, publicBucketName } = require('./buckets');   // codex r1 P1-1: every bucket is NAMED (lib/admin has no default bucket)
+const { photoBuckets } = require('./buckets');   // codex r1 P1-1: every bucket is NAMED (lib/admin has no default bucket); resolved per request (a refusal → unavailable)
 
 const sendPhotoReply = (res, out) => res.status(out.status).json(out.body);
 const fail = (code) => ({ status: ERRORS[code].status, body: errorBody(code) });
@@ -52,7 +52,7 @@ async function handle(req, res, run) {
 exports.photoUploadStart = onRequest(
   { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 4 },
   (req, res) => handle(req, res, (body, uid, photosEnabled) => photoUploadStartCore({
-    db: getFirestore(), bucket: privateBucketName(), now: Date.now, newUploadId: randomId, photosEnabled,
+    db: getFirestore(), bucket: photoBuckets().private, now: Date.now, newUploadId: randomId, photosEnabled,
     authorize: async () => ({ ok: true }),   // authorized above, on THIS request
     signer: makeGcsSigner({ bucket: (name) => getStorage().bucket(name) }),
   }, { uid, rid: body.rid, op_id: body.op_id, contentType: body.contentType, bytes: body.bytes })),
@@ -62,7 +62,7 @@ exports.photoProcess = onRequest(
   // PLAN §2.2 (P2-9): concurrency 1, 1 GiB, 60 s, capped instances — tuned later from measured peak memory only
   { region: 'us-central1', cors: PORTAL_ORIGINS, concurrency: 1, memory: '1GiB', timeoutSeconds: 60, maxInstances: 4 },
   (req, res) => handle(req, res, (body, uid, photosEnabled) => {
-    const store = makeGcsStore(getStorage().bucket(privateBucketName()));
+    const store = makeGcsStore(getStorage().bucket(photoBuckets().private));
     return photoProcessCore({
       db: getFirestore(), storage: store, now: Date.now, newClaimId: randomId, photosEnabled,
       authorize: async () => ({ ok: true }),
@@ -74,12 +74,15 @@ exports.photoProcess = onRequest(
 
 // DISH PHOTOS A2 step 13 (PLAN-dish-photos r2 §2.6; advisor ruling #5) — the daily SWEEPER, in this same isolation group. Its mode is RTDB
 // config/photos_sweep: exactly 'dry_run' | 'live', else OFF (absent = off: nothing is read beyond the flag). 'live' while
-// PHOTOS_PUBLIC_BUCKET is unset runs as 'dry_run'. One instance; every restaurant in photo_registry, one at a time (photos/sweep-io.js).
+// the public bucket is not configured (platform/photos.json) runs as 'dry_run'. One instance; every restaurant in photo_registry, one at a time (photos/sweep-io.js).
 exports.photoSweep = onSchedule(
   { schedule: 'every day 04:30', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 },
   async () => {
     const { modeOf, makeGcsDeleter, sweepEntry } = require('./sweep-io');
-    const pubName = publicBucketName();
+    // the buckets FIRST, guarded: a config refusal leaves the sweeper OFF for this run (logged), never a half-configured sweep
+    let buckets;
+    try { buckets = photoBuckets(); } catch (e) { if (e && e.photosConfig) { console.error('photo_sweep_config_refused', e.code); return; } throw e; }
+    const pubName = buckets.public;
     // codex r1 P1-1: the mode FIRST — off returns before ANY Storage / Firestore dependency is built
     const r = await sweepEntry({
       readMode: () => modeOf(getDatabase(), pubName || ''),
@@ -89,7 +92,7 @@ exports.photoSweep = onSchedule(
         const fs = getFirestore();
         return { sweepRid, fs, now: Date.now, newClaimId: randomId, log: console,
           listRids: async () => (await fs.collection('photo_registry').listDocuments()).map((d) => d.id),
-          priv: makeGcsDeleter(getStorage().bucket(privateBucketName())), pub: pubName ? makeGcsDeleter(getStorage().bucket(pubName)) : null,
+          priv: makeGcsDeleter(getStorage().bucket(buckets.private)), pub: pubName ? makeGcsDeleter(getStorage().bucket(pubName)) : null,
           activeVersionId: (rid) => getActiveVersionId(fs, rid) };
       },
     });

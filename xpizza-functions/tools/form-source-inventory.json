@@ -191,6 +191,7 @@
     "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/claim-address-capture.test.js",
+    "xpizza-functions/confirmretire-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -217,13 +218,19 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
+    "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/dpao-wiring.guard.test.js",
     "xpizza-functions/driver-ledger-wiring.guard.test.js",
     "xpizza-functions/drvc-wiring.guard.test.js",
     "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/factura/factura-labels.test.js",
@@ -241,6 +248,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -255,6 +263,8 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-order-id.test.js",
+    "xpizza-functions/payments/sdk/d4-stored-admission.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -271,6 +281,7 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
@@ -281,6 +292,9 @@
     "xpizza-functions/rewards-parity.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s1srv-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -293,6 +307,8 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
+    "xpizza-functions/secfp-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -343,9 +359,11 @@
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
     "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
+    "xpizza-functions/test/dpao.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
     "xpizza-functions/test/edit-e2e.emulator.test.js",
+    "xpizza-functions/test/envlim.emulator.test.js",
     "xpizza-functions/test/extra-price-edit.emulator.test.js",
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
@@ -363,6 +381,7 @@
     "xpizza-functions/test/item-key-wins.emulator.test.js",
     "xpizza-functions/test/item-s3-rename.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js",
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
@@ -403,6 +422,9 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -412,6 +434,8 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -427,6 +451,7 @@
     "xpizza-functions/unassign-wiring.guard.test.js",
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
+    "xpizza-functions/zones-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-apply.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
@@ -442,6 +467,8 @@
     "xpizza-orders/form-serial-order.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -577,6 +604,10 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
+    "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -597,6 +628,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -607,6 +639,7 @@
     "xpizza-functions/order-control-wiring.guard.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-stored-admission.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -621,10 +654,14 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s1srv-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -637,6 +674,7 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -684,9 +722,11 @@
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
     "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
+    "xpizza-functions/test/dpao.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
     "xpizza-functions/test/edit-e2e.emulator.test.js",
+    "xpizza-functions/test/envlim.emulator.test.js",
     "xpizza-functions/test/extra-price-edit.emulator.test.js",
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
@@ -704,6 +744,7 @@
     "xpizza-functions/test/item-key-wins.emulator.test.js",
     "xpizza-functions/test/item-s3-rename.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js",
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
@@ -741,6 +782,9 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -750,6 +794,8 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -766,7 +812,9 @@
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-portal/branch-1b-logic.test.mjs",
-    "xpizza-portal/branches-1b-life.test.mjs"
+    "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -955,6 +1003,7 @@
     "xpizza-functions/checkout-guest-lib.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/claim-address-capture.test.js",
+    "xpizza-functions/confirmretire-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -982,13 +1031,19 @@
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/createorder-selfheal-client.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
+    "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
     "xpizza-functions/dlite-push-wiring.guard.test.js",
+    "xpizza-functions/dpao-wiring.guard.test.js",
     "xpizza-functions/driver-ledger-wiring.guard.test.js",
     "xpizza-functions/drvc-wiring.guard.test.js",
     "xpizza-functions/drvf-wiring.guard.test.js",
+    "xpizza-functions/envlim-wiring.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/f2-client.test.js",
     "xpizza-functions/factura/factura-labels.test.js",
@@ -1006,6 +1061,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1020,6 +1076,8 @@
     "xpizza-functions/order-form-location-escape.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-order-id.test.js",
+    "xpizza-functions/payments/sdk/d4-stored-admission.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -1036,6 +1094,7 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
@@ -1046,6 +1105,9 @@
     "xpizza-functions/rewards-parity.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s1srv-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -1058,6 +1120,8 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
+    "xpizza-functions/secfp-wiring.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -1107,9 +1171,11 @@
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
     "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
+    "xpizza-functions/test/dpao.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
     "xpizza-functions/test/edit-e2e.emulator.test.js",
+    "xpizza-functions/test/envlim.emulator.test.js",
     "xpizza-functions/test/extra-price-edit.emulator.test.js",
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
@@ -1127,6 +1193,7 @@
     "xpizza-functions/test/item-key-wins.emulator.test.js",
     "xpizza-functions/test/item-s3-rename.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js",
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
@@ -1167,6 +1234,9 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -1176,6 +1246,8 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1190,6 +1262,7 @@
     "xpizza-functions/unassign-wiring.guard.test.js",
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
+    "xpizza-functions/zones-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-orders/form-cart.copy.test.mjs",
     "xpizza-orders/form-confirm-quote.copy.test.mjs",
@@ -1199,6 +1272,8 @@
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -1343,6 +1418,10 @@
     "xpizza-functions/contract/version-witness.test.js",
     "xpizza-functions/cors-preflight.test.js",
     "xpizza-functions/d12b-wiring.guard.test.js",
+    "xpizza-functions/delivery/limits-charge.test.js",
+    "xpizza-functions/delivery/limits.test.js",
+    "xpizza-functions/delivery/pricing-admin.test.js",
+    "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
     "xpizza-functions/directory/directory.test.js",
@@ -1363,6 +1442,7 @@
     "xpizza-functions/intl-otp-endpoint.test.js",
     "xpizza-functions/intl-wiring.guard.test.js",
     "xpizza-functions/kds-manifest-writer.test.mjs",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1373,6 +1453,7 @@
     "xpizza-functions/order-control-wiring.guard.test.js",
     "xpizza-functions/p5a-wiring.guard.test.js",
     "xpizza-functions/pausa-wiring.guard.test.js",
+    "xpizza-functions/payments/sdk/d4-stored-admission.test.js",
     "xpizza-functions/photos-module-wiring.guard.test.js",
     "xpizza-functions/photos-wiring.guard.test.js",
     "xpizza-functions/photos/diff-photos.test.js",
@@ -1387,10 +1468,14 @@
     "xpizza-functions/portal/ops-devices.test.js",
     "xpizza-functions/portal/ops-split.test.js",
     "xpizza-functions/portal/portal-split.test.js",
+    "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
+    "xpizza-functions/s1d-wiring.guard.test.js",
+    "xpizza-functions/s1srv-wiring.guard.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js",
     "xpizza-functions/s2app-wiring.guard.test.js",
     "xpizza-functions/s2tip-wiring.guard.test.js",
     "xpizza-functions/s2tip.test.js",
@@ -1403,6 +1488,7 @@
     "xpizza-functions/sb-wiring.guard.test.js",
     "xpizza-functions/sd-wiring.guard.test.js",
     "xpizza-functions/sdkpay-wiring.guard.test.js",
+    "xpizza-functions/sec-null-fp.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -1450,9 +1536,11 @@
     "xpizza-functions/test/d4p1-stamp-write.emulator.test.js",
     "xpizza-functions/test/directory-house-ids.emulator.test.js",
     "xpizza-functions/test/display-number.emulator.test.js",
+    "xpizza-functions/test/dpao.emulator.test.js",
     "xpizza-functions/test/driver-freshness.emulator.test.js",
     "xpizza-functions/test/driver-return-shift.emulator.test.js",
     "xpizza-functions/test/edit-e2e.emulator.test.js",
+    "xpizza-functions/test/envlim.emulator.test.js",
     "xpizza-functions/test/extra-price-edit.emulator.test.js",
     "xpizza-functions/test/extras-eligibility-publish.emulator.test.js",
     "xpizza-functions/test/extras-intake.emulator.test.js",
@@ -1470,6 +1558,7 @@
     "xpizza-functions/test/item-key-wins.emulator.test.js",
     "xpizza-functions/test/item-s3-rename.emulator.test.js",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js",
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
@@ -1508,6 +1597,9 @@
     "xpizza-functions/test/s3b-return.emulator.test.js",
     "xpizza-functions/test/s4-schedule-only.emulator.test.js",
     "xpizza-functions/test/s5-backend.emulator.test.js",
+    "xpizza-functions/test/sdk-envlim.emulator.test.js",
+    "xpizza-functions/test/sdk-hosted-parity.emulator.test.js",
+    "xpizza-functions/test/sdk-intake.emulator.test.js",
     "xpizza-functions/test/sdk-pay-legacy.emulator.test.js",
     "xpizza-functions/test/signup-http.emulator.test.js",
     "xpizza-functions/test/signup-platform.emulator.test.js",
@@ -1517,6 +1609,8 @@
     "xpizza-functions/test/trigger-runner.emulator.test.mjs",
     "xpizza-functions/test/unassign.emulator.test.js",
     "xpizza-functions/test/verify-first-group.emulator.test.js",
+    "xpizza-functions/test/zones.emulator.test.js",
+    "xpizza-functions/tippref-wiring.guard.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1533,7 +1627,9 @@
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
-    "xpizza-portal/branches-1b-life.test.mjs"
+    "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/envio-server-parity.test.mjs",
+    "xpizza-portal/envio-view.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -1560,6 +1656,7 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/kitchen-compat-floor.test.js",
     "xpizza-functions/kitchen-sdk-harness.guard.test.js",
     "xpizza-functions/pselfupdate-stamp.test.js",
@@ -1571,6 +1668,7 @@
     "xpizza-functions/test/kds-feed-parity.emulator.test.mjs",
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/kds-pre-q2-denial.emulator.test.mjs",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/s5-ratings.emulator.test.js",
@@ -1728,7 +1826,8 @@
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
-    "xpizza-functions/test/unassign.emulator.test.js"
+    "xpizza-functions/test/unassign.emulator.test.js",
+    "xpizza-portal/envio-map-site.test.mjs"
    ],
    "via_helper": [
     "xpizza-dispatch-mobile/board-model.test.mjs",
@@ -1956,12 +2055,14 @@
     "customer-app/capp-price-notice-copy.test.mjs",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
+    "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/platform-runtime.test.js",
     "xpizza-functions/platform-sync.guard.test.js",
     "xpizza-functions/seed-kitchen-staff.test.mjs",
     "xpizza-functions/test/capp-s2a.emulator.test.js",
-    "xpizza-functions/test/d4b-readers.emulator.test.js"
+    "xpizza-functions/test/d4b-readers.emulator.test.js",
+    "xpizza-functions/test/kds-ticket-names.emulator.test.js"
    ],
    "via_helper": [
     "xpizza-functions/catalog-kds-parity.test.mjs",
@@ -2028,6 +2129,7 @@
   "xpizza-functions/contract/timer-bounds.js",
   "xpizza-functions/contract/tracer.js",
   "xpizza-functions/contract/version-witness.js",
+  "xpizza-functions/delivery/pricing-admin-core.js",
   "xpizza-functions/directory/directory-deps.js",
   "xpizza-functions/index.js",
   "xpizza-functions/menu-extract.mjs",
@@ -2047,6 +2149,7 @@
   "xpizza-functions/tools/app-suites.js",
   "xpizza-functions/tools/bake-form-bundle.js",
   "xpizza-functions/tools/draft-drift-report.js",
+  "xpizza-functions/tools/envlim-module-inverse.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
   "xpizza-functions/tools/identity-usable-check.js",
@@ -2562,6 +2665,12 @@
   "createorder-classify.js",
   "delivery/delivery-pricing.js",
   "delivery/delivery-wire.js",
+  "delivery/limits.js",
+  "delivery/pricing-admin-core.js",
+  "delivery/pricing-admin-functions.js",
+  "delivery/zone-resume.js",
+  "delivery/zones-lock.js",
+  "delivery/zones.js",
   "directory/directory-deps.js",
   "directory/directory.js",
   "directory/platform-config.js",
@@ -2577,6 +2686,7 @@
   "factura/eligibility.js",
   "factura/pricing.js",
   "form-signal.js",
+  "hosted-charge-flow.js",
   "index.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
@@ -2608,17 +2718,36 @@
   "otp-lib.js",
   "pay-rate.js",
   "payer-email.js",
+  "payments/sdk/cards.js",
   "payments/sdk/coordinator.js",
+  "payments/sdk/decline-buckets.js",
   "payments/sdk/deps.js",
+  "payments/sdk/display.js",
+  "payments/sdk/endpoints.js",
   "payments/sdk/fake-adapter.js",
+  "payments/sdk/finish.js",
+  "payments/sdk/fixtures/redact-pixelpay.js",
   "payments/sdk/flow.js",
   "payments/sdk/functions.js",
+  "payments/sdk/intake.js",
   "payments/sdk/materialize-sdk.js",
+  "payments/sdk/order-auth.js",
+  "payments/sdk/order-id.js",
+  "payments/sdk/pixelpay-adapter.js",
   "payments/sdk/psp-adapter.js",
   "payments/sdk/record.js",
+  "payments/sdk/recovery.js",
   "payments/sdk/release.js",
+  "payments/sdk/replaces.js",
   "payments/sdk/rules-clauses.js",
+  "payments/sdk/sdk-pay-flag.js",
+  "payments/sdk/secrets.js",
+  "payments/sdk/status-endpoint.js",
+  "payments/sdk/status.js",
+  "payments/sdk/stored-admission.js",
+  "payments/sdk/subject.js",
   "payments/sdk/sweeper.js",
+  "payments/sdk/switch-endpoint.js",
   "payments/sdk/void-eligibility.js",
   "phone-countries.js",
   "phone/flag.js",
@@ -2640,6 +2769,7 @@
   "photos/gcs-store.js",
   "photos/legacy-encode.js",
   "photos/photo-state.js",
+  "photos/photos-config.js",
   "photos/pipeline.js",
   "photos/process.js",
   "photos/publish-io.js",
@@ -3064,9 +3194,17 @@
    "lifts": []
   },
   "catalog/charge-inputs.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
-    "xpizza-functions/addproduct-b-wiring.guard.test.js"
+    "xpizza-functions/addproduct-b-wiring.guard.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js"
    ]
   },
   "catalog/draft-assess.js": {
@@ -3571,39 +3709,87 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s2tip-module-inverse.js"
+      "tools/s2tip-module-inverse.js",
+      "tools/secfp-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s2tip-module-inverse.js"
+      "tools/s2tip-module-inverse.js",
+      "tools/secfp-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/order-control-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
-      "tools/s2tip-module-inverse.js"
+      "tools/s2tip-module-inverse.js",
+      "tools/secfp-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/secfp-wiring.guard.test.js"
+   ]
   },
   "delivery/delivery-pricing.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "delivery/delivery-wire.js": {
    "pins": [
     {
-     "file": "xpizza-functions/s1srv-wiring.guard.test.js",
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
      "inverses": [
-      "tools/s1srv-module-inverse.js"
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     }
    ],
+   "lifts": []
+  },
+  "delivery/limits.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/pricing-admin-core.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-portal/envio-view.test.mjs"
+   ]
+  },
+  "delivery/pricing-admin-functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zone-resume.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zones-lock.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "delivery/zones.js": {
+   "pins": [],
    "lifts": []
   },
   "directory/directory-deps.js": {
@@ -3672,6 +3858,22 @@
    "pins": [],
    "lifts": []
   },
+  "hosted-charge-flow.js": {
+   "pins": [
+    {
+     "file": "xpizza-functions/envlim-wiring.guard.test.js",
+     "inverses": [
+      "tools/envlim-module-inverse.js"
+     ]
+    }
+   ],
+   "lifts": [
+    "xpizza-functions/catalog/identity-shadow.test.js",
+    "xpizza-functions/charge-gate-placement.test.js",
+    "xpizza-functions/hosted-refusal-reused-hold.test.js",
+    "xpizza-functions/s2-wiring.guard.test.js"
+   ]
+  },
   "index.js": {
    "pins": [
     {
@@ -3681,10 +3883,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -3724,7 +3930,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3734,12 +3941,16 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3784,7 +3995,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3795,12 +4007,16 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3845,7 +4061,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3855,8 +4072,12 @@
       "tools/area-inverse.js",
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -3880,7 +4101,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3889,10 +4111,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -3924,7 +4150,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3935,14 +4162,18 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -3987,7 +4218,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -3996,6 +4228,10 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
@@ -4007,7 +4243,18 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/confirmretire-wiring.guard.test.js",
+     "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/s1srv-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4017,11 +4264,15 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4066,7 +4317,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4074,10 +4326,14 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4109,7 +4365,19 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/dpao-wiring.guard.test.js",
+     "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/s1srv-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4117,9 +4385,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4149,7 +4421,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4157,8 +4430,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4185,7 +4462,8 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4193,9 +4471,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4222,7 +4504,17 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/envlim-wiring.guard.test.js",
+     "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/s1srv-module-inverse.js"
      ]
     },
     {
@@ -4232,10 +4524,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4279,7 +4575,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4287,9 +4584,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4318,7 +4619,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4326,7 +4628,11 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4352,7 +4658,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4362,10 +4669,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h0-inverse.js",
@@ -4407,7 +4718,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4416,10 +4728,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -4457,7 +4773,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4466,10 +4783,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1c-inverse.js",
@@ -4506,12 +4827,17 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -4522,13 +4848,18 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/intl-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
@@ -4538,18 +4869,24 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/sdkpay-module-inverse.js"
+      "tools/sdkpay-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/keymode-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4566,9 +4903,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4600,7 +4941,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4608,9 +4950,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4640,7 +4986,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4648,9 +4995,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4679,7 +5030,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4690,13 +5042,17 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4741,12 +5097,17 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -4756,7 +5117,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4764,9 +5126,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4796,20 +5162,26 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/photos-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/sdkpay-module-inverse.js"
+      "tools/sdkpay-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4820,14 +5192,18 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -4872,7 +5248,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4880,9 +5257,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4914,7 +5295,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4923,10 +5305,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -4959,13 +5345,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
-     ]
-    },
-    {
-     "file": "xpizza-functions/resolvelines-wiring.guard.test.js",
-     "inverses": [
-      "tools/s1srv-module-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -4975,10 +5356,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -5019,7 +5404,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5029,10 +5415,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -5073,30 +5463,46 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1srv-wiring.guard.test.js",
      "inverses": [
-      "tools/s1srv-module-inverse.js"
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/s1srv-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5104,8 +5510,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5130,7 +5540,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5141,8 +5552,12 @@
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5169,7 +5584,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-charge-inputs-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5177,8 +5593,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5208,7 +5628,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5216,8 +5637,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5246,7 +5671,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5254,8 +5680,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5283,7 +5713,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5291,7 +5722,11 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
@@ -5314,7 +5749,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5323,10 +5759,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h1-inverse.js",
@@ -5365,7 +5805,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5373,8 +5814,12 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5401,13 +5846,18 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/sb-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5416,13 +5866,18 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/sd-wiring.guard.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5431,19 +5886,25 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5453,10 +5914,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/h0-inverse.js",
@@ -5499,7 +5964,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5508,10 +5974,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5547,7 +6017,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5557,12 +6028,16 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -5607,7 +6082,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5615,9 +6091,13 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5645,7 +6125,8 @@
       "tools/sdkpay-module-inverse.js",
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5657,12 +6138,17 @@
     {
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5694,9 +6180,19 @@
      ]
     },
     {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/tools/mem512-inverse.test.js",
      "inverses": [
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
@@ -5710,7 +6206,8 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
-      "tools/tippref-inverse.js"
+      "tools/tippref-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5749,10 +6246,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5786,7 +6287,8 @@
       "tools/stackseq-inverse.js",
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5795,10 +6297,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5833,7 +6339,8 @@
       "tools/tippref-inverse.js",
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5843,10 +6350,14 @@
       "tools/area-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
       "tools/dlite-push-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/extras-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
@@ -5891,7 +6402,8 @@
       "tools/tracker-fixes-inverse.js",
       "tools/unassign-inverse.js",
       "tools/wacancel-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     },
     {
@@ -5899,7 +6411,11 @@
      "inverses": [
       "tools/area-inverse.js",
       "tools/checkout-inverse.js",
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
+      "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/formsignal-inverse.js",
       "tools/hostedrace-module-inverse.js",
@@ -5926,7 +6442,18 @@
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
-      "tools/wahealth-inverse.js"
+      "tools/wahealth-inverse.js",
+      "tools/zones-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/zones-wiring.guard.test.js",
+     "inverses": [
+      "tools/confirmretire-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/envlim-module-inverse.js",
+      "tools/s1srv-module-inverse.js",
+      "tools/zones-module-inverse.js"
      ]
     }
    ],
@@ -5942,10 +6469,12 @@
     "xpizza-functions/catalog/restaurant-registry.test.js",
     "xpizza-functions/catalog/text-version.test.js",
     "xpizza-functions/charge-gate-placement.test.js",
+    "xpizza-functions/confirm-retired.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
@@ -5969,9 +6498,12 @@
     "xpizza-functions/ratings/ratings-grace.guard.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/reorder-price-snapshot.test.js",
+    "xpizza-functions/resolvelines-wiring.guard.test.js",
     "xpizza-functions/restaurant-config.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/s2tip.test.js",
+    "xpizza-functions/sdk-intake-branch.guard.test.js",
+    "xpizza-functions/sdk-order-namespace.guard.test.js",
     "xpizza-functions/sequencing/writer.test.js",
     "xpizza-functions/serial3-confirm-cold.test.js",
     "xpizza-functions/serial3-create-stamp.test.js",
@@ -6179,7 +6711,15 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/cards.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/coordinator.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/decline-buckets.js": {
    "pins": [],
    "lifts": []
   },
@@ -6187,7 +6727,23 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/display.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/endpoints.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/fake-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/finish.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/fixtures/redact-pixelpay.js": {
    "pins": [],
    "lifts": []
   },
@@ -6199,7 +6755,25 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/intake.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/materialize-sdk.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/order-auth.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/order-id.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/sdk-order-namespace.guard.test.js"
+   ]
+  },
+  "payments/sdk/pixelpay-adapter.js": {
    "pins": [],
    "lifts": []
   },
@@ -6211,7 +6785,15 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/recovery.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/release.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/replaces.js": {
    "pins": [],
    "lifts": []
   },
@@ -6219,7 +6801,35 @@
    "pins": [],
    "lifts": []
   },
+  "payments/sdk/sdk-pay-flag.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/secrets.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/status-endpoint.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/status.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/stored-admission.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/subject.js": {
+   "pins": [],
+   "lifts": []
+  },
   "payments/sdk/sweeper.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/switch-endpoint.js": {
    "pins": [],
    "lifts": []
   },
@@ -6304,6 +6914,10 @@
    "lifts": []
   },
   "photos/photo-state.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "photos/photos-config.js": {
    "pins": [],
    "lifts": []
   },
@@ -6408,10 +7022,26 @@
    ]
   },
   "pixelpay-hosted-charge.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/envlim-wiring.guard.test.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js",
+      "tools/envlim-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
+    "xpizza-functions/d4-wiring.guard.test.js",
+    "xpizza-functions/delivery/envlim-callers.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js"
    ]
   },
@@ -6694,6 +7324,7 @@
      "file": "xpizza-functions/a1-wiring.guard.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
@@ -6703,6 +7334,7 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/a1-inverse.js",
+      "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
@@ -6710,6 +7342,7 @@
     }
    ],
    "lifts": [
+    "xpizza-functions/kdsnames-wiring.guard.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
@@ -6737,11 +7370,20 @@
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/d4-intake-inverse.js",
       "tools/sdkpay-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/tools/d4-intake-inverse.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/d4-wiring.guard.test.js"
+   ]
   },
   "schedule/hours-grammar.js": {
    "pins": [],

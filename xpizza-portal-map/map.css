@@ -1,0 +1,20 @@
+/* «Envío» map site (PLAN-portal-envio-step1 r2 §1, §4) — the one page the portal frames. The overlay's declarations are the
+   approved mockup's (MOCKUP-portal-envio-v2-APPROVED.html .map .ring / .outside / .rl / .opin / .pin / .pl), scaled with the
+   box: --u = rendered width / 640 px per mockup unit (map.js sets it). */
+@font-face{font-family:'Archivo';font-style:normal;font-weight:600 800;font-stretch:100%;font-display:optional;src:url(fonts/archivo-latin.7150c0ec5a.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+:root{--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif}
+html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
+#map{position:absolute;inset:0}
+.rings{pointer-events:none}
+.rings .ring{fill:rgba(14,159,91,.07);stroke:#0E9F5B;stroke-width:calc(1.4px * var(--u));stroke-dasharray:calc(4px * var(--u)) calc(3px * var(--u))}
+.rings .ring.outer{fill:rgba(14,159,91,.05);stroke:#0A6E3E;stroke-width:calc(2.2px * var(--u));stroke-dasharray:none}
+.rings .ring.bad{fill:none;stroke:#D23425;stroke-width:calc(1.6px * var(--u));stroke-dasharray:calc(6px * var(--u)) calc(4px * var(--u))}
+.rings .outside{fill:rgba(10,10,11,.07);fill-rule:evenodd}
+.rings .rl rect{fill:#FFFFFF;stroke:#BEE6CE;stroke-width:1}
+.rings .rl text{font-family:var(--body);font-size:calc(11px * var(--u));font-weight:700;fill:#0B7C47;text-anchor:middle}
+.rings .rl.outer rect{stroke:#0A6E3E}
+.rings .rl.bad rect{stroke:#EFC9C2}
+.rings .opin{fill:#FFFFFF;stroke:#9A9A9E;stroke-width:calc(1.6px * var(--u))}
+.rings .pin{fill:#0A0A0B}
+.rings .pindot{fill:#FFFFFF}
+.rings .pl{font-family:var(--disp);font-size:calc(11.5px * var(--u));font-weight:800;fill:#0A0A0B;letter-spacing:-.02em}

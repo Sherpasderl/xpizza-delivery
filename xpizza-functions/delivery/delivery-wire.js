@@ -9,16 +9,16 @@
 //                           unreadable). The ORDER paths refuse through the gate step (refusalGate), which runs AFTER
 //                           a live issued PixelPay checkout is resumed (§3.3 grandfathering) and releases a reward hold.
 const P = require('./delivery-pricing');
-const TIP = require('../tip');   // S2-srv-tip (PLAN-capp-S2-r4 §3)
+const TIP = require('../tip'); const { deliveryResumeRefusal, preBookkeepingRefusal, dropOwnStamps } = require('./zone-resume');   // S2-srv-tip (PLAN-capp-S2-r4 §3); envío step 2 + the restaurant limit (r5 §2.3): the resume guard
 
-const REFUSAL_STATUS = { delivery_pricing_unavailable: 503 };
+const REFUSAL_STATUS = { delivery_pricing_unavailable: 503, delivery_zones_invalid: 503 };
 
 // One read of platform_config/delivery_pricing. NEVER rejects (a handler starts it early and may return before awaiting
 // it). A read FAILURE is a refusal (fail closed), never dark: an outage must not make an active restaurant's delivery free.
 async function loadPricing(db, rid) {
   try {
     const snap = await db.ref('platform_config/delivery_pricing').get();
-    return { pricing: P.readPricing(snap.val(), rid) };
+    const raw = snap.val(); const pr = P.readPricing(raw && typeof raw === 'object' ? { ...raw, restaurants: { app: { active: true, free_delivery: false } } } : raw, 'app'); const lim = pr && !pr.invalid && raw && typeof raw === 'object' ? P.readLimits(raw.restaurants) : {}; return { pricing: Object.keys(lim).length ? { ...pr, limits: lim } : pr };   // envío limit (r5 §1): the per-branch map rides the SAME read   // owner 2026-11-10: ONE platform-wide table — every restaurant priced, no per-restaurant map, free delivery off
   } catch (e) {
     return { failed: true };
   }
@@ -29,16 +29,16 @@ async function loadPricing(db, rid) {
 /* S2 (§3.1): `tip` is the request's raw tip_cents (already validated by the handler's early TIP.orderRefusal). A tip needs an
    ACTIVE restaurant (dark + tip → 409 tip_not_enabled) and a delivery (pickup + tip → 400 tip_pickup); otherwise it rides the
    server ctx (P.withTip), so the breakdown, the gate's recompute and the record all carry it. No tip → byte-identical. */
-async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP, tip }) {
+async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, pricingP, tip, app }) {
   const t = TIP.normTip(tip);
   if (Number.isNaN(t)) return { refusal: 'tip_invalid', httpStatus: 400 };
   const lp = await (pricingP || loadPricing(db, rid));   // pricingP: the handler started the read in parallel with its first reads
   if (lp.failed) return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 };
-  if (!lp.pricing) return t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;
+  if (!lp.pricing || app !== true) return app === true && mode === 'delivery' ? { refusal: 'delivery_pricing_unavailable', httpStatus: 503 } : t > 0 ? { refusal: 'tip_not_enabled', httpStatus: 409 } : null;   // owner 2026-11-10: envío + tip are APP-only (the frozen forms are dark); an app delivery with no table fails closed, an app pickup stays dark
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }; }
   const hub = identity && { lat: identity.hub_lat, lng: identity.hub_lng };
-  const q = P.quoteDelivery({ pricing: lp.pricing, hub, mode, pin, customerUid });
+  const q = P.quoteDelivery({ pricing: lp.pricing, hub, mode, pin, customerUid, maxKm: lp.pricing.invalid ? null : P.effectiveMaxKm(lp.pricing, rid) });   // envío limit (r5 §2.1): the app ORDER enforces the branch's effective limit (closes F3)
   if (q.refusal) return { refusal: q.refusal, httpStatus: REFUSAL_STATUS[q.refusal] || 409 };
   if (t > 0 && q.ctx.mode === 'pickup') return { refusal: 'tip_pickup', httpStatus: 400 };
   return t > 0 ? { ctx: P.withTip(q.ctx, t) } : q;
@@ -52,7 +52,7 @@ async function deliveryFor(db, { rid, mode, pin, customerUid, getIdentity, prici
      · otherwise a different fulfilment or pin than the stored order's → refused order_context_changed: the client starts a
        fresh order; mixed contexts are never re-priced
    A refusal dq is answered by the handler BEFORE any pending order or hold exists. */
-async function chargeContext(db, orderId, dq, body, now) {
+async function chargeContext(db, orderId, dq, body, now, pricingP) {
   if (!dq) return dq;
   const order = (await db.ref(`orders/${orderId}`).get()).val();
   if (!order || order.payment_status === 'confirmed') return dq;   // fresh, or already paid (the acquire answers already_paid as today)
@@ -62,7 +62,7 @@ async function chargeContext(db, orderId, dq, body, now) {
     // LIVE now → GRANDFATHERED: priced at its STORED economics so the acquire can REUSE it. Whether it IS reused is decided
     // by the acquire, not by this clock read (codex S3a r2 P1): if the checkout expires before the acquire and a FRESH one
     // would be issued instead, the gate step refuses it (refusalGate → re-quote) — a fresh checkout is always priced now.
-    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }
+    if (at && at.hosted_state === 'created' && Number(at.hosted_expires_at) > now) { const zr = await deliveryResumeRefusal(db, order, pricingP); if (zr) return zr; const c = P.storedCtx(order); return c ? { ctx: c, grandfathered: true } : { grandfathered: true }; }   // step 2 (F1): a live checkout whose STORED pin is in a zone is not resumed
   }
   const pin = orderPin(body);
   const same = order.order_type === (body && body.order_type)
@@ -128,15 +128,15 @@ async function refusalGate(dq, releaseHold, orderId) {
    `knownUid` (quoteRedemption already verified one) skips the second verify. */
 /* S2 (§3.1/§3.5/§3.6): the tip is validated here for BOTH quote endpoints (they pass the raw body) — malformed → 400
    tip_invalid; a tip with a reward (`redeem`) → 409 tip_reward_unsupported; dark + tip → 409 tip_not_enabled; pickup + tip →
-   400 tip_pickup. An APP quote (`entry_mode:'app'`) is refused beyond min(last band, identity.delivery_radius_km), so it never
-   prices a pin the order's radius check refuses. Active quotes carry the public { from_cents, max_km } (quoteFields). */
+   400 tip_pickup. An APP quote (`entry_mode:'app'`) is refused beyond the branch's effective Envío limit (min(top, max_km)), so it never
+   prices a pin the app order refuses. Active quotes carry the public { from_cents, max_km } (quoteFields). */
 async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attributionUid, knownUid, pricingP }) {
   const t = TIP.normTip(body && typeof body === 'object' ? body.tip_cents : undefined);
   if (Number.isNaN(t)) return { refuse: { ok: false, error: 'tip_invalid' }, httpStatus: 400 };
   if (t > 0 && body.redeem != null) return { refuse: { ok: false, error: 'tip_reward_unsupported' }, httpStatus: 409 };
   const lp = await (pricingP || loadPricing(db, rid));
   if (lp.failed) return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 };
-  if (!lp.pricing) return t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };
+  if (!lp.pricing || !isApp(body)) return isApp(body) && body.mode === 'delivery' ? { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 } : t > 0 ? { refuse: { ok: false, error: 'tip_not_enabled' }, httpStatus: 409 } : { ctx: null, uid: knownUid === undefined ? null : knownUid };   // owner 2026-11-10: APP-only; an app delivery with no table fails closed
   let uid = knownUid === undefined ? null : knownUid;
   if (knownUid === undefined) {
     const idTok = req.get && req.get('x-firebase-id-token');
@@ -149,9 +149,9 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
   }
   let identity = null;
   try { identity = await getIdentity(db, rid); } catch (_) { return { refuse: { ok: false, error: 'delivery_pricing_unavailable', retryable: true }, httpStatus: 503 }; }
-  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, identity, body);   // an invalid config has no bands: quoteDelivery refuses it (delivery_pricing_invalid) exactly as before S2 — coverage is never read for it (codex S2-srv-tip r1 P2)
+  const maxKm = lp.pricing.invalid ? null : coverageKm(lp.pricing, rid, body);   // an invalid config has no bands: quoteDelivery refuses it (delivery_pricing_invalid) exactly as before S2 — coverage is never read for it (codex S2-srv-tip r1 P2)
   const q = P.quoteDelivery({ pricing: lp.pricing, hub: identity && { lat: identity.hub_lat, lng: identity.hub_lng }, mode: body && body.mode, pin: quotePin(body), customerUid: uid, ...(isApp(body) ? { maxKm } : {}) });
-  if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
+  if (q.refusal) return { refuse: { ok: false, error: q.refusal }, httpStatus: REFUSAL_STATUS[q.refusal] === 503 ? 503 : q.refusal === 'no_delivery_zone' ? 409 : 200 };   // a config outage is a 503; a request refusal stays a fail-soft 200 body
   if (t > 0 && q.ctx.mode === 'pickup') return { refuse: { ok: false, error: 'tip_pickup' }, httpStatus: 400 };
   const ctx = P.withTip(q.ctx, t);
   PUBLIC.set(ctx, { from_cents: lp.pricing.bands[0].cents, max_km: maxKm });
@@ -161,11 +161,11 @@ async function quoteDeliveryFor(req, db, rid, body, { getIdentity, getAuth, attr
 // S2 §3.6: an APP request (the only entry_mode value besides 'direct' — never priced, charge-inputs.js NON_CHARGE_FIELDS).
 const isApp = (body) => !!body && body.entry_mode === 'app';
 // The coverage a quote reports and (for the app) enforces: the last band's max_km; for the app, also no further than the
-// restaurant's own delivery radius (the identity read just above — no new read). A missing/invalid radius → the bands.
-function coverageKm(pricing, identity, body) {
-  const last = pricing.bands[pricing.bands.length - 1].max_km;
-  const r = identity && identity.delivery_radius_km;
-  return isApp(body) && typeof r === 'number' && Number.isFinite(r) && r > 0 ? Math.min(last, r) : last;
+// branch's own Envío limit from the same policy read (r5 §1 — no new read). A malformed entry → LIMIT_INVALID (refused).
+function coverageKm(pricing, rid, body) {
+  // owner 2026-11-11 (DECISIONS ~23:20 CST, supersedes 11-10): the table's top, capped by the branch's own Envío limit (r5 §1) — never the identity radius
+  // a malformed branch entry → LIMIT_INVALID, which quoteDelivery refuses (delivery_pricing_invalid) — never the top
+  return P.effectiveMaxKm(pricing, rid);
 }
 // The public delivery facts of an ACTIVE quote ctx (WeakMap: never a field on the money ctx, never signed or recorded).
 const PUBLIC = new WeakMap();
@@ -178,4 +178,4 @@ function quoteOutcome(dq) {
 // The additive quote response fields (absent when dark → byte-identical response).
 const quoteFields = (ctx) => (ctx ? { delivery: { delivery_cents: ctx.delivery_cents, promo_discount_cents: ctx.promo_discount_cents, policy_version: ctx.policy_version, mode: ctx.mode, ...(PUBLIC.get(ctx) || {}) } } : {});   // S2 §3.6: + { from_cents, max_km }
 
-module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };
+module.exports = { deliveryResumeRefusal, preBookkeepingRefusal, dropOwnStamps, loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };

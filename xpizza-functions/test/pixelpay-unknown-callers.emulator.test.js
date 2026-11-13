@@ -12,7 +12,6 @@
 require('./_emulator-required')('database');   // refuse if the emulator host vars are unset (would hit real infrastructure, or a foreign emulator)
 
 const assert = require('assert');
-const http = require('http');
 process.env.PIXELPAY_MODE = 'sandbox';
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'tb-make-secret';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
@@ -95,18 +94,9 @@ async function cell(name, fn) {
   catch (e) { fails.push(name); console.error(`  ✗ ${String((e && e.message) || e).split('\n')[0]}`); }
 }
 
-// Drive the confirm HTTP handler (express app inside onRequest) over a local socket, body pre-parsed as the platform does.
-function postConfirm(body) {
-  return new Promise((resolve, reject) => {
-    const srv = http.createServer((req, res) => { req.body = body; app.confirmOnlinePayment(req, res); });
-    srv.listen(0, '127.0.0.1', () => {
-      const r = http.request({ host: '127.0.0.1', port: srv.address().port, method: 'POST', path: '/', headers: { authorization: `Bearer ${process.env.MAKE_SECRET}`, 'content-type': 'application/json' } }, (res) => {
-        let t = ''; res.on('data', (c) => { t += c; }); res.on('end', () => { srv.close(); try { resolve({ status: res.statusCode, body: JSON.parse(t) }); } catch (e) { reject(e); } });
-      });
-      r.on('error', (e) => { srv.close(); reject(e); }); r.end(JSON.stringify(body));
-    });
-  });
-}
+// confirmOnlinePayment's HTTP export is RETIRED (NOTE-security-confirm-tracking-token, 2026-11-12): the confirm machine is driven through
+// its core (pixelpay-confirm.js — the webhook / sweeps / recovery still use it) with the deps the handler used to build (index.js confirmDeps).
+const { confirmOnlinePayment } = require('../pixelpay-confirm');
 
 (async () => {
   // ── resolve-manual refund, void outcome UNKNOWN → refund_pending AND the hold secured (never released) ──
@@ -256,19 +246,21 @@ function postConfirm(body) {
     assert.strictEqual(await holdState(), 'reserved', `${L}: hold untouched`);
   });
 
-  // ── the REAL confirm HTTP handler: an unconfirmed mismatch void is reported refund_pending, never "failed" ──
-  await cell('POU-E-CONFIRM-HTTP-MISMATCH-UNKNOWN', async () => {
-    const L = 'POU-E-CONFIRM-HTTP-MISMATCH-UNKNOWN';
+  // ── the confirm CORE: an unconfirmed mismatch void stays mismatch_voided with voided !== true (never a definitive failure) ──
+  await cell('POU-E-CONFIRM-CORE-MISMATCH-UNKNOWN', async () => {
+    const L = 'POU-E-CONFIRM-CORE-MISMATCH-UNKNOWN';
     await clearAll();
     await seed({ order: { status: 'pending_payment', payment_status: 'pending' }, attempt: { payment_uuid: 'S-1', status: 'active', total_cents: 29900, pixelpay_order_id: `${OID}-${AID}`, created_at: 1 } });
     await db.ref(`restaurants/${RID}/identity`).set({ active: true, hub_lat: 15.5, hub_lng: -88.0, name: 'TB', phone: 'p', version: 1, delivery_radius_km: 7 });
     useScript({ status: [json(200, { success: true, data: { status: 'authorized' } })],
       capture: [json(200, { success: true, data: { response_approved: true, transaction_approved_amount: 299, payment_hash: 'deadbeef', transaction_reference: 'R' } })],
       void: [{ kind: 'bodyLost' }] });
-    const r = await postConfirm({ order_id: OID, payment_uuid: 'S-1' });
-    if (r.body && r.body.payment_status === 'manual_reconciliation') throw new Error(`${L}: PREMISE — confirm did not reach the mismatch branch (${JSON.stringify(r.body)})`);
-    assert.strictEqual(calls.capture, 1, `${L}: PREMISE — one capture reached (${JSON.stringify(calls)}, body ${JSON.stringify(r.body)})`);
-    assert.strictEqual(r.body.payment_status, 'refund_pending', `${L}: an unconfirmed mismatch void is reported refund_pending, got ${JSON.stringify(r.body)}`);
+    const { alert } = alertsDeps();
+    const r = await confirmOnlinePayment({ db, client: realClient, restaurant: RESTAURANT, buildMaterializeUpdates, getIdentity: async () => ({ active: true }),
+      chargeAmountLempiras: (cents) => Number((Number(cents) / 100).toFixed(2)), voidOrRefund, alert }, { orderId: OID, paymentUuid: 'S-1', now: NOW, trackingToken: 'TOK' });
+    if (r.outcome === 'manual_reconciliation') throw new Error(`${L}: PREMISE — confirm did not reach the mismatch branch (${JSON.stringify(r)})`);
+    assert.strictEqual(calls.capture, 1, `${L}: PREMISE — one capture reached (${JSON.stringify(calls)}, result ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([r.outcome, r.voided === true], ['mismatch_voided', false], `${L}: an unconfirmed mismatch void stays unconfirmed (refund_pending upstream), got ${JSON.stringify(r)}`);
     assert.strictEqual(await holdState(), 'held_paid', `${L}: the hold is secured held_paid (got ${await holdState()})`);
   });
 

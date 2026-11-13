@@ -66,7 +66,28 @@ function genPollToken() {
    guest's attempt — the caller answers guest_ticket_invalid, nothing written. */
 const guestForeign = (order, pending) => !!(pending && pending.guest_verified)
   && !(order && order.guest_verified && order.guest_verified.phone_hash === pending.guest_verified.phone_hash);
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false) {
+// D4 §A3 (PLAN-sdk-d4-r11): the deferred refusals of a FRESH issuance, in today's order — extracted VERBATIM from acquireHostedAttempt
+// so the hosted acquire and the SDK finish (B4) answer the same flags the same way. Returns the outcome or null.
+function freshIssueRefusal({ controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, cartBlocked = [], refuseFresh = false, payerRefuseFresh = false } = {}) {
+  if (controlRefuseFresh === true) return { outcome: 'conflict', reason: 'order_control' };   // D4-c4 §0.2: paused / unknown → no fresh URL
+  if (menuRefuseFresh === true) return { outcome: 'conflict', reason: 'menu_updating' };   // 1D add-product A §0b.1: a key the gate cannot classify → no fresh URL
+  if (choiceRefuseFresh === true) return { outcome: 'conflict', reason: 'choice_required' };   // 1D add-product B: a bare launcher → no fresh URL
+  // per-product extras (PLAN rev 2.1 §5): a denied extra / unavailable eligibility under enforce (or an unknown mode) → no
+  // fresh URL, at THIS authoritative point (create / install / recover / rotate); bound reuse returned above, never re-judged
+  if (extrasRefuseFresh === 'extra_not_allowed' || extrasRefuseFresh === 'eligibility_unavailable') return { outcome: 'conflict', reason: extrasRefuseFresh };
+  if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
+    return { outcome: 'item_unavailable', blocked: cartBlocked };
+  }
+  // P-SELFUPDATE §5 (2): a below-floor request reaching ANY fresh issuance (create / install / recover / rotate) — a race
+  // after it was admitted as a reuse — is refused here, before the CAS. NOT a 426: it is not safe-to-reload proof.
+  if (refuseFresh === true) return { outcome: 'conflict', reason: 'client_update_race' };
+  // S2 P-C (§4.1): no payer email for a FRESH checkout (the pre-reserve check passed on a reuse that raced to fresh, or the
+  // classify failed) → refused here, BEFORE the CAS: no attempt is created or retired; the caller releases only its own hold.
+  if (payerRefuseFresh === true) return { outcome: 'conflict', reason: 'payer_email_unconfigured' };
+  return null;
+}
+
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false, reuseGuard = null) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
   const freshFp = (textBinding && textBinding.fresh === 'a8') ? a8() : fingerprint;
@@ -104,7 +125,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
         if (st === 'created') {
           if (Number(att.hosted_expires_at) > now && att.hosted_checkout_url) {
             // I10: one live payable checkout → reuse it.
-            return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };
+            const rf = reuseGuard ? await reuseGuard({ restaurant_id: order.restaurant_id, order_type: order.order_type, delivery_snapshot: order.delivery_snapshot, hub_lat: order.hub_lat, hub_lng: order.hub_lng, lat: order.lat, lng: order.lng }) : null; if (rf) return { outcome: 'delivery_refused', refusal: rf }; return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };   // envío limit r5 §2.3(c): a reuse is a resume — the guard judges the stored order first
           }
           // expired 'created' (TTL passed, never paid) → old checkout is dead → fresh attempt.
           decided = { kind: 'rotate', newAaid: candidate, fromAaid: order.active_attempt_id };
@@ -124,21 +145,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // BEFORE the CAS transaction — so a blocked cart writes NOTHING (no orders/{id}, no payment_attempts,
     // no charge) and can NEVER be handed a payable URL, regardless of what the read-only classify predicted.
     // Fail-open: cartBlocked === [] (the default, and every checkItemAvailability read-error) ⇒ CAS proceeds.
-    if (controlRefuseFresh === true) return { outcome: 'conflict', reason: 'order_control' };   // D4-c4 §0.2: paused / unknown → no fresh URL
-    if (menuRefuseFresh === true) return { outcome: 'conflict', reason: 'menu_updating' };   // 1D add-product A §0b.1: a key the gate cannot classify → no fresh URL
-    if (choiceRefuseFresh === true) return { outcome: 'conflict', reason: 'choice_required' };   // 1D add-product B: a bare launcher → no fresh URL
-    // per-product extras (PLAN rev 2.1 §5): a denied extra / unavailable eligibility under enforce (or an unknown mode) → no
-    // fresh URL, at THIS authoritative point (create / install / recover / rotate); bound reuse returned above, never re-judged
-    if (extrasRefuseFresh === 'extra_not_allowed' || extrasRefuseFresh === 'eligibility_unavailable') return { outcome: 'conflict', reason: extrasRefuseFresh };
-    if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
-      return { outcome: 'item_unavailable', blocked: cartBlocked };
-    }
-    // P-SELFUPDATE §5 (2): a below-floor request reaching ANY fresh issuance (create / install / recover / rotate) — a race
-    // after it was admitted as a reuse — is refused here, before the CAS. NOT a 426: it is not safe-to-reload proof.
-    if (refuseFresh === true) return { outcome: 'conflict', reason: 'client_update_race' };
-    // S2 P-C (§4.1): no payer email for a FRESH checkout (the pre-reserve check passed on a reuse that raced to fresh, or the
-    // classify failed) → refused here, BEFORE the CAS: no attempt is created or retired; the caller releases only its own hold.
-    if (payerRefuseFresh === true) return { outcome: 'conflict', reason: 'payer_email_unconfigured' };
+    { const r = freshIssueRefusal({ controlRefuseFresh, menuRefuseFresh, choiceRefuseFresh, extrasRefuseFresh, cartBlocked, refuseFresh, payerRefuseFresh }); if (r) return r; }   // D4 §A3: the ONE deferred-refusal block (the SDK finish calls it too)
 
     // CAS on orders/{id} (the lock). Admin SDK calls the fn with null on its first uncached
     // invocation; for non-create paths fall back to the pre-read `order` (return a value, never
@@ -273,4 +280,4 @@ async function classifyFromOrder(db, order, fingerprint, now, canonicalFp, a8Fp 
   return { willIssueFreshUrl: true };                                // non-money terminal → rotate (fresh URL)
 }
 
-module.exports = { acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };
+module.exports = { freshIssueRefusal, guestForeign, acquireHostedAttempt, classifyHostedAttempt, genPollToken, HOSTED_TTL_MS, genAttemptId, orderFingerprint, centsToLempiras };

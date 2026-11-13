@@ -3,8 +3,9 @@
 // Why: the Storage emulator lets two CONCURRENT create-only saves both win (heavy 2026-11-01), so only real GCS can prove the guarantee
 // processPhoto's draft writes rely on. One throwaway object: drafts/__acceptance__/e4-<16 random hex>-card.webp in the PRIVATE bucket.
 //   0 REFUSALS before any client (codex r1): a storage-emulator override in the environment; a private or public bucket identity that
-//     cannot be resolved from what production reads (photos/buckets.js over the project's own deploy dotenv params — the operator's shell
-//     never decides them); the two being equal; --bucket not the private one.
+//     cannot be resolved from what production reads (photos/buckets.js over the COMMITTED photos config, platform/photos.json, for the
+//     CLI's explicit --project — no dotenv and no shell variable decides them; PLAN-photos-public-bucket-config r5); the two being equal;
+//     --bucket not the private one.
 //     NO privacy probe (advisor ruling, codex r2): bucket IAM alone cannot prove privacy (inherited grants, object ACLs), so a partial
 //     probe would only add false assurance. The target is pinned to production's private-bucket identity, and the object is a 2-byte
 //     throwaway at a random path, deleted by generation.
@@ -26,9 +27,9 @@
 // create-only v1 → a plain overwrite v2 → the PRODUCTION sweeper deleter (photos/sweep-io.js deleteIfGeneration) pinned to v1's
 // generation → PASS iff it answers other_generation and v2 is still the live object; a delete that removed v2 = FAIL (the sweeper
 // would destroy a re-created object). Cleanup as above.
-const { privateBucketName, publicBucketName } = require('../photos/buckets');
+const { resolveBuckets } = require('../photos/buckets');
+const { loadPhotosConfig } = require('../photos/photos-config');
 const RE_HEX16 = /^[0-9a-f]{16}$/;
-const PARAM_KEYS = Object.freeze(['PHOTOS_PRIVATE_BUCKET', 'PHOTOS_PUBLIC_BUCKET']);
 const EMULATOR_VARS = Object.freeze(['FIREBASE_STORAGE_EMULATOR_HOST', 'STORAGE_EMULATOR_HOST']);
 const is404 = (e) => e && (e.code === 404 || e.code === '404');
 
@@ -67,55 +68,28 @@ function refuseEmulatorEnv(env) {
   return set.length ? `${set.join(' and ')} ${set.length > 1 ? 'are' : 'is'} set — this check must run against real GCS, never an emulator` : null;
 }
 
-// a dotenv file, ONE LINE AT A TIME (codex r2): read in small chunks; each complete line is handed out and then dropped — the file is
-// never buffered whole. ENOENT surfaces on the first iteration (the caller treats it as "no such file").
-function* dotenvLines(file, { fsImpl = require('fs'), chunk = 4096 } = {}) {
-  const fd = fsImpl.openSync(file, 'r');
-  try {
-    const buf = Buffer.alloc(chunk); let rest = '';
-    for (;;) {
-      const nRead = fsImpl.readSync(fd, buf, 0, chunk, null);
-      if (nRead === 0) break;
-      const parts = (rest + buf.toString('utf8', 0, nRead)).split(/\r?\n/);
-      rest = parts.pop();
-      for (const line of parts) yield line;
-    }
-    if (rest) yield rest;
-  } finally { fsImpl.closeSync(fd); }
-}
-
-// the two photo bucket params from the project's deploy dotenv files — the files the deployed functions' params are read from
-// (.env, then .env.<projectId> overriding it). ONLY these two keys are RETAINED; every other line is scanned and discarded unstored.
-function readBucketParams(functionsDir, projectId, { lines = dotenvLines } = {}) {
-  const out = {};
-  for (const name of ['.env', `.env.${projectId}`]) {
-    try {
-      for (const line of lines(require('path').join(functionsDir, name))) {
-        const m = /^\s*(PHOTOS_PRIVATE_BUCKET|PHOTOS_PUBLIC_BUCKET)\s*=\s*(.*?)\s*$/.exec(line);
-        if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2').trim();
-      }
-    } catch (e) { if (e && e.code === 'ENOENT') continue; throw e; }
-  }
-  return out;
-}
-
-// the dry-run plan: the resolved bucket NAMES (not secrets — they let the owner confirm the target) and nothing else from the dotenv
+// the dry-run plan: the resolved bucket NAMES (not secrets — they let the owner confirm the target) and nothing else from the config
 function dryRunMessage({ projectId, privateBucket, publicBucket, bucket }) {
   return `photo-create-only-check: DRY — project ${projectId}; private ${privateBucket}, public ${publicBucket}. With --yes: write ONE throwaway object drafts/__acceptance__/e4-<random>-card.webp to gs://${bucket} twice, concurrently, create-only; then ONE more, drafts/__acceptance__/e5-<random>-card.webp, created, overwritten once, and read pinned to its first generation (unversioned → refused; versioned → the old bytes); then a third, drafts/__acceptance__/del-<random>-card.webp, created, overwritten once, and deleted by the photo sweeper's deleter pinned to its first generation (must be refused, the new object kept); then delete only the generations it created, generation-scoped, and verify them gone.`;
 }
 
-// the private + public identities through photos/buckets.js (production's resolvers), from the dotenv params and the stated project only
-function resolveTargets({ projectId, params }) {
-  let priv = null;
-  try { priv = privateBucketName({ param: () => params.PHOTOS_PRIVATE_BUCKET || '', env: { GCLOUD_PROJECT: projectId } }); } catch (_) { priv = null; }
-  const pub = publicBucketName({ param: () => params.PHOTOS_PUBLIC_BUCKET || '' });
-  return { privateBucket: priv, publicBucket: pub };
+// the private + public identities through photos/buckets.js (production's resolver) over the committed config, for the stated project
+// (explicit; the shell's own project declarations must agree with it — photos/buckets.js projectOf). A refusal is reported, never guessed past.
+function resolveTargets({ projectId, env = process.env, loaded = loadPhotosConfig() }) {
+  try {
+    const b = resolveBuckets(loaded, { explicit: projectId, env });
+    return { privateBucket: b.private, publicBucket: b.public, reason: null };
+  } catch (e) {
+    if (!(e && e.photosConfig)) throw e;
+    return { privateBucket: null, publicBucket: null, reason: e.code };
+  }
 }
 
 // → null when --bucket is THE private bucket and both identities are resolved and distinct, else the refusal reason
-function checkTarget({ bucket, privateBucket, publicBucket }) {
+function checkTarget({ bucket, privateBucket, publicBucket, reason = null }) {
+  if (reason) return `the committed photos config refused this project (${reason})`;
   if (!privateBucket) return 'the private photo bucket could not be resolved for this project';
-  if (!publicBucket) return 'the public photo bucket (PHOTOS_PUBLIC_BUCKET) could not be resolved for this project — both identities are required';
+  if (!publicBucket) return 'the public photo bucket (public_bucket in platform/photos.json) is not configured for this project — both identities are required';
   if (privateBucket === publicBucket) return `the private and public photo buckets resolve to the SAME bucket (${privateBucket}) — refusing`;
   if (bucket === publicBucket) return `--bucket ${bucket} is the PUBLIC photo bucket — this check only ever writes to the private one`;
   if (bucket !== privateBucket) return `--bucket ${bucket} is not the private photo bucket (${privateBucket})`;
@@ -240,4 +214,4 @@ async function runDeletePinCheck({ store, gens, deleter, randomHex, log = consol
 // the CLI's exit code over every check: cleanup trouble (3) > REFUSED (2) > FAIL (1) > PASS (0)
 const combineExit = (...codes) => [3, 2, 1].find((c) => codes.includes(c)) || 0;
 
-module.exports = { parseArgs, refuseEmulatorEnv, dotenvLines, readBucketParams, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, cleanupHeld, deletePinPath, runDeletePinCheck };
+module.exports = { parseArgs, refuseEmulatorEnv, dryRunMessage, resolveTargets, checkTarget, makeGenerationOps, runCheck, acceptancePath, pinPath, runPinCheck, combineExit, cleanupHeld, deletePinPath, runDeletePinCheck };

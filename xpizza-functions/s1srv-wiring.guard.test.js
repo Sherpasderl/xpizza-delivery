@@ -8,9 +8,9 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyS1srvModule } = require('./tools/s1srv-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-wire.js', 'index.js'], 'the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['index.js'], 'the owned files');   // train/portal-structure: the delivery-wire hunk is main's (dpao)
 for (const f of FILES) {
-  const src = require('./tools/grpid-module-inverse').unapplyGrpidModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'));   // the NEWEST layer: the file on disk
+  const src = require('./tools/dpao-module-inverse').unapplyDpaoModule(f, require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/zones-module-inverse').unapplyZonesModule(f, require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))))));   // the NEWEST layer: the file on disk; train/portal-structure (5f): main's asm7 layers (D4, envlim, zones, confirmretire, dpao — disjoint index.js hunks) merged beside this lane are peeled at the read
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyS1srvModule(f, src), b, `🔴 ${f} minus the s1srv hunks is not ${BASE}:${f}`);

@@ -56,7 +56,8 @@ const uploader = createUploader({
   },
   changed: (key, what) => photoChanged(key, what),
   decode: decodeFile,
-  newOpId: () => `op:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`,
+  // LIVE 2026-11-12: `op_`, never `op:` — the server's OP_ID_RE (photos/upload-start.js) is [A-Za-z0-9_-]{8,64} (portal-request-ids.test)
+  newOpId: () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`,
 });
 
 export { pickRid, messageFor } from './portal-logic.js';

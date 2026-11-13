@@ -24,11 +24,14 @@ export const IDS = ['switcher', 'switchmenu', 'discard', 'review', 'pubback', 'p
   // PORTAL-UI slice 2: Equipos
   'navequipos', 'navequiposcount', 'mnequipos', 'viewequipos', 'devscrim', 'devmodal',
   // PORTAL-UI 1b: the Menú section label (hidden in the lifecycle-only shell) and the Sucursales confirm modal
-  'navmenulabel', 'sucscrim', 'sucmodal'];
+  'navmenulabel', 'sucscrim', 'sucmodal',
+  // ENVÍO: the Sherpa-admin group label (desktop) and its mobile chip anchor (shell.js 'Sherpa' group)
+  'navadmlabel', 'mnadmanchor'];
 // the classes index.html gives them, so `hidden` / `on` start where the real page starts
 const INITIAL_CLASS = {
   navprod: 'nav on', navbiz: 'nlabel hidden', navventas: 'nav hidden', mnav: 'mnav', mnprod: 'mn on', mnventas: 'mn',
   viewmenu: 'main', viewventas: 'main vmain hidden', switchmenu: 'switchmenu hidden', app: 'app',
+  navadmlabel: 'nlabel hidden', mnadmanchor: 'hidden',
 };
 
 export function installDom() {

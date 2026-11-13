@@ -1,0 +1,244 @@
+'use strict';
+// D4 S2 (PLAN-sdk-d4-r5) — the STANDALONE parts: decline buckets (§7), the card-availability flag (§9), the C6 subject arbiter
+// (W2), safeToSwitch (row 9), and the §4 status resolver. Every response body the resolver builds is read by the CUSTOMER APP's
+// real readPlacement (exact keys per outcome), so the server and the client compose for real. No status amount is relied on.
+// Run: node payments/sdk/d4-s2.test.js
+const assert = require('assert');
+const { makeHonestDb } = require('../../_honest-rtdb-model');
+const PC = require('../../../customer-app/capp-pay-card.js');
+
+const OID = 'tb_sdk_s2';
+let pass = 0; const fails = [];
+const cell = async (L, fn) => { try { await fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
+const B = () => require('./decline-buckets');
+const FLAG = () => require('./sdk-pay-flag');
+const SUB = () => require('./subject');
+const ST = () => require('./status');
+const C = () => require('./coordinator');
+
+const T0 = 1_000_000;
+const order = (o = {}) => ({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', pay_deadline_at: T0 + 15 * 60 * 1000, restaurant_id: 'tb_rest', total_cents: 10000, ...o });
+const att = (leg_id, at, extra = {}) => ({ leg_id, token_hash: 'h', card_ref: 'new', display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 }, save: false, amount_cents: 10000, at, ...extra });
+const op = (leg_id, n, result) => ({ [`${OID}:${leg_id}:auth:${n}`]: { leg_id, action: 'auth', amount_cents: 10000, dispatched_at: T0, ...(result === undefined ? {} : { result }) } });
+const rec = (o = {}) => ({ flow: 'sdk_auth_v1', phase: 'open', ttl_at: T0 + 15 * 60 * 1000, legs: {}, ops: {}, attempts: {}, ...o });
+
+(async () => {
+  await cell('SDK-D4-BUCKETS', async (L) => {
+    const b = B().declineBucketOf;
+    assert.strictEqual(b({ kind: 'definitive_decline', code: 'ANY-UNMAPPED' }), 'hard', `${L}: an unmapped code ⇒ hard`);
+    assert.strictEqual(b({ kind: 'definitive_decline', code: null }), 'hard', `${L}: no code ⇒ hard`);
+    assert.strictEqual(b({ kind: 'token_expired_confirmed' }), 'token_expired', `${L}: token_expired_confirmed ⇒ token_expired`);
+    assert.strictEqual(b({ kind: 'requires_action' }), 'hard', `${L}: a challenged token charge ⇒ declined / hard (Q3)`);
+    assert.deepStrictEqual(Object.keys(B().TABLE), [], `${L}: the table starts EMPTY (no invented BAC codes)`);
+    assert.ok(Object.isFrozen(B().TABLE), `${L}: frozen`);
+  });
+
+  await cell('SDK-D4-SDKPAY-RID', async (L) => {
+    // advisor Q2 RULED 2026-11-12: ?restaurant_id ⇒ THAT restaurant's availability (the flag ∩ its allowlist entry); without it ⇒ the
+    // global answer, byte-identical; a malformed / unknown rid ⇒ unavailable (no existence oracle)
+    const db = makeHonestDb({});
+    const F = FLAG();
+    const NODE = { available: true, retry_after_s: 60, restaurants: { tb_rest: true, tb_off: false } };
+    db.setAt('platform_config/sdk_pay', NODE);
+    assert.strictEqual(JSON.stringify(await F.sdkPayStatusCore(db)), JSON.stringify({ available: true, retry_after_s: 60 }), `${L}: no rid ⇒ the global answer, byte-identical`);
+    assert.strictEqual(JSON.stringify(await F.sdkPayStatusCore(db, undefined)), JSON.stringify({ available: true, retry_after_s: 60 }), `${L}: an absent query ⇒ global`);
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: true, retry_after_s: 60 }, `${L}: an allowlisted rid ⇒ available`);
+    for (const rid of ['tb_off', 'tb_unknown', 'TB_REST', 'tb rest', '', 'x', 'a'.repeat(41), ['tb_rest'], { a: 1 }, null, 7]) {
+      assert.deepStrictEqual(await F.sdkPayStatusCore(db, rid), { available: false, retry_after_s: 60 }, `${L}: ${JSON.stringify(rid)} ⇒ unavailable`);
+    }
+    // the grammar is enforced, not just implied by the allowlist: a malformed key written into the allowlist by mistake is never «available»
+    db.setAt('platform_config/sdk_pay', { ...NODE, restaurants: { ...NODE.restaurants, 'TB REST': true, 'Tb-Rest': true } });
+    for (const rid of ['TB REST', 'Tb-Rest']) assert.deepStrictEqual(await F.sdkPayStatusCore(db, rid), { available: false, retry_after_s: 60 }, `${L}: a malformed allowlist key ${JSON.stringify(rid)} ⇒ unavailable (the rid grammar)`);
+    db.setAt('platform_config/sdk_pay', { ...NODE, available: false });
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: false, retry_after_s: 60 }, `${L}: the flag off ⇒ unavailable for every rid`);
+    db.setAt('platform_config/sdk_pay', null);
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db, 'tb_rest'), { available: false, retry_after_s: 300 }, `${L}: absent ⇒ unavailable, default retry`);
+    // the per-rid answer equals the placement gate (one rule)
+    db.setAt('platform_config/sdk_pay', NODE);
+    for (const rid of ['tb_rest', 'tb_off', 'tb_unknown']) assert.strictEqual((await F.sdkPayStatusCore(db, rid)).available, await F.newAttemptsAllowed(db, rid), `${L}: ${rid}: status ≡ the placement gate`);
+  });
+
+  await cell('SDK-D4-SDKPAY-FLAG', async (L) => {
+    const db = makeHonestDb({});
+    const F = FLAG();
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db), { available: false, retry_after_s: 300 }, `${L}: absent ⇒ unavailable (fail-closed)`);
+    assert.strictEqual(await F.newAttemptsAllowed(db, 'tb_rest'), false, `${L}: absent ⇒ no new attempt`);
+    db.setAt('platform_config/sdk_pay', { available: true, retry_after_s: 60, restaurants: { tb_rest: true } });
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db), { available: true, retry_after_s: 60 }, `${L}: the exact client keys`);
+    assert.strictEqual(await F.newAttemptsAllowed(db, 'tb_rest'), true, `${L}: an allowlisted restaurant ⇒ allowed`);
+    assert.strictEqual(await F.newAttemptsAllowed(db, 'other_rest'), false, `${L}: a restaurant NOT on the allowlist ⇒ refused`);
+    db.setAt('platform_config/sdk_pay', { available: true, retry_after_s: 60 });
+    assert.strictEqual(await F.newAttemptsAllowed(db, 'tb_rest'), false, `${L}: no allowlist ⇒ none (absent ⇒ none)`);
+    db.setAt('platform_config/sdk_pay', { available: 'yes', retry_after_s: 'x', restaurants: { tb_rest: true } });
+    assert.deepStrictEqual(await F.sdkPayStatusCore(db), { available: false, retry_after_s: 300 }, `${L}: malformed ⇒ unavailable, default retry`);
+  });
+
+  await cell('SDK-D4-SAFE-TO-SWITCH', async (L) => {
+    const s = C().safeToSwitch;
+    const cancelled = order({ status: 'cancelled', payment_cancel: { kind: 'cancel', at: T0 } });
+    assert.strictEqual(s(rec({ phase: 'cancelled' }), cancelled), true, `${L}: cancelled + fenced + nothing live ⇒ safe`);
+    assert.strictEqual(s(rec({ phase: 'open' }), cancelled), false, `${L}: the record not fenced ⇒ not safe`);
+    assert.strictEqual(s(rec({ phase: 'cancelled' }), order()), false, `${L}: the order not cancelled ⇒ not safe`);
+    assert.strictEqual(s(rec({ phase: 'cancelled', ops: op('L1', 1) }), cancelled), false, `${L}: an unanswered op ⇒ not safe`);
+    assert.strictEqual(s(rec({ phase: 'cancelled', ops: op('L1', 1, { kind: 'unknown' }), legs: { L1: { kind: 'original', state: 'unknown' } } }), cancelled), false, `${L}: an unknown op ⇒ not safe`);
+    for (const st of ['approved', 'requires_action', 'sent', 'unknown']) assert.strictEqual(s(rec({ phase: 'cancelled', legs: { L1: { kind: 'original', state: st, role: 'surplus' } } }), cancelled), false, `${L}: a ${st} leg ⇒ not safe`);
+    for (const st of ['voided', 'expired', 'declined']) assert.strictEqual(s(rec({ phase: 'cancelled', legs: { L1: { kind: 'original', state: st } } }), cancelled), true, `${L}: a ${st} leg ⇒ safe`);
+    assert.strictEqual(s(rec({ phase: 'cancelled', lock: { reason: 'manual_reconciliation' } }), cancelled), false, `${L}: a lock ⇒ not safe`);
+    assert.strictEqual(s(null, cancelled), false, `${L}: no record ⇒ not safe (W4: the cancel creates the fence first)`);
+  });
+
+  await cell('SDK-D4-SUBJECT-CLAIM', async (L) => {
+    const db = makeHonestDb({});
+    const S = SUB();
+    const deps = { db, clock: () => T0 };
+    const resolved = async () => false;
+    assert.strictEqual(S.subjectKey({ uid: 'abc' }), 'u_abc', `${L}: member key`);
+    assert.strictEqual(S.subjectKey({ phoneHash: 'f00d' }), 'p_f00d', `${L}: guest key`);
+    assert.deepStrictEqual(await S.claimSubject(deps, 'u_abc', 'ord_1', resolved), { ok: true }, `${L}: absent ⇒ taken`);
+    assert.deepStrictEqual(await S.claimSubject(deps, 'u_abc', 'ord_1', resolved), { ok: true }, `${L}: the same order ⇒ kept`);
+    const r = await S.claimSubject(deps, 'u_abc', 'ord_2', resolved);
+    assert.deepStrictEqual([r.ok, r.held], [false, 'ord_1'], `${L}: another unresolved order ⇒ refused (previous_payment_unresolved)`);
+    const r2 = await S.claimSubject(deps, 'u_abc', 'ord_2', async (id) => id === 'ord_1');
+    assert.ok(r2.ok && db.getAt('sdk_checkout_subject/u_abc').order_id === 'ord_2', `${L}: a RESOLVED held order is replaced`);
+    await S.releaseSubject(deps, 'u_abc', 'ord_1');
+    assert.strictEqual(db.getAt('sdk_checkout_subject/u_abc').order_id, 'ord_2', `${L}: a release for another order never deletes the current claim`);
+    await S.releaseSubject(deps, 'u_abc', 'ord_2');
+    assert.strictEqual(db.getAt('sdk_checkout_subject/u_abc'), null, `${L}: the owner's release deletes it`);
+  });
+
+  await cell('SDK-D4-SUBJECT-CONCURRENT', async (L) => {
+    const db = makeHonestDb({});
+    const deps = { db, clock: () => T0 };
+    const out = await Promise.all([SUB().claimSubject(deps, 'u_x', 'ord_a', async () => false), SUB().claimSubject(deps, 'u_x', 'ord_b', async () => false)]);
+    assert.strictEqual(out.filter((o) => o.ok).length, 1, `${L}: two concurrent claims of different orders ⇒ exactly one admitted (got ${JSON.stringify(out)})`);
+  });
+
+  await cell('SDK-D4-SUBJECT-REPLACE-CAS', async (L) => {
+    // the held order resolves, but a THIRD claim replaces it between the check and the swap: the swap must not delete that one
+    const db = makeHonestDb({ sdk_checkout_subject: { u_y: { order_id: 'ord_1', at: T0 } } });
+    const deps = { db, clock: () => T0 };
+    const r = await SUB().claimSubject(deps, 'u_y', 'ord_2', async () => { db.setAt('sdk_checkout_subject/u_y', { order_id: 'ord_3', at: T0 + 1 }); return true; });
+    assert.ok(!r.ok && db.getAt('sdk_checkout_subject/u_y').order_id === 'ord_3', `${L}: the replacement claim survives (got ${JSON.stringify(r)}, now ${JSON.stringify(db.getAt('sdk_checkout_subject/u_y'))})`);
+  });
+
+  await cell('SDK-D4-STATUS-TABLE', async (L) => {
+    const R = (o, r, opts) => ST().resolveStatus(OID, o, r, { now: T0, ...opts });
+    const read = (x) => PC.readPlacement(x.body);
+    // row 1: placed (with the winning attempt's card)
+    const placed = R(order({ payment_placed: { leg_id: 'L1', at: T0 }, tracking_token: 'tt_1' }), rec({ legs: { L1: { kind: 'original', state: 'approved', role: 'committed' } }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.strictEqual(read(placed).outcome, 'placed', `${L}: placed ⇒ the client reads placed (${JSON.stringify(placed)})`);
+    assert.deepStrictEqual(placed.body.card, { brand: 'visa', last4: '4242' }, `${L}: the card label = the WINNING attempt's display`);
+    // row 2 beats an unknown op: the manual lock
+    const ur = R(order(), rec({ lock: { reason: 'manual_reconciliation' }, legs: { L1: { kind: 'original', state: 'unknown' } }, ops: op('L1', 1, { kind: 'unknown' }), attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.strictEqual(read(ur).outcome, 'under_review', `${L}: manual lock beats unknown`);
+    // row 3: cancelled / past the deadline
+    const ex = R(order({ status: 'cancelled', payment_cancel: { kind: 'expire', at: T0 } }), rec({ phase: 'cancelled' }));
+    assert.deepStrictEqual([read(ex).outcome, ex.body.safe_to_switch], ['expired', true], `${L}: cancelled ⇒ expired + safe_to_switch`);
+    const late = R(order(), rec(), { now: T0 + 15 * 60 * 1000 });
+    assert.deepStrictEqual([read(late).outcome, late.body.safe_to_switch], ['expired', false], `${L}: past the deadline, not yet cancelled ⇒ expired, not yet safe`);
+    // row 4: approved but unplaced ⇒ the caller decides
+    const dec = R(order(), rec({ legs: { L1: { kind: 'original', state: 'approved', role: 'committed' } }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.deepStrictEqual(dec, { kind: 'decide', leg_id: 'L1' }, `${L}: approved + unplaced ⇒ decidePlacement`);
+    // row 5: unanswered / unknown ⇒ bank_pending
+    const bp = R(order(), rec({ legs: { L1: { kind: 'original', state: 'sent' } }, ops: op('L1', 1), attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.strictEqual(read(bp).outcome, 'bank_pending', `${L}: an unanswered op ⇒ bank_pending`);
+    // row 6: a challenged original (Q3) ⇒ declined / hard — never bank_pending
+    const ra = R(order(), rec({ legs: { L1: { kind: 'original', state: 'requires_action', role: 'none' } }, ops: op('L1', 1, { kind: 'requires_action' }), attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.deepStrictEqual([read(ra).outcome, read(ra).decline], ['declined', 'hard'], `${L}: declined / hard, never bank_pending (got ${JSON.stringify(ra)})`);
+    // row 7: declined + its bucket; the newest attempt decides
+    const dc = R(order(), rec({ legs: { L1: { kind: 'original', state: 'declined' }, L2: { kind: 'original', state: 'declined' } }, ops: { ...op('L1', 1, { kind: 'definitive_decline', code: 'Z' }), ...op('L2', 2, { kind: 'token_expired_confirmed' }) }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0), att_bbbbbbbbbbbbbbbb: att('L2', T0 + 5) } }));
+    assert.deepStrictEqual([read(dc).outcome, read(dc).decline, dc.body.attempt_id], ['declined', 'token_expired', 'att_bbbbbbbbbbbbbbbb'], `${L}: the LATEST attempt's bucket`);
+    assert.ok(!JSON.stringify(dc.body).includes('"Z"'), `${L}: never a raw code`);
+    // a REPLAY applies the rows to THAT attempt
+    const rp = R(order(), rec({ legs: { L1: { kind: 'original', state: 'declined' }, L2: { kind: 'original', state: 'sent' } }, ops: { ...op('L1', 1, { kind: 'definitive_decline' }), ...op('L2', 2) }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0), att_bbbbbbbbbbbbbbbb: att('L2', T0 + 5) } }), { attempt_id: 'att_aaaaaaaaaaaaaaaa' });
+    assert.deepStrictEqual([read(rp).outcome, rp.body.attempt_id], ['declined', 'att_aaaaaaaaaaaaaaaa'], `${L}: a replay of attempt 1 answers attempt 1`);
+    // placed but not yet materialized (no tracking token) keeps the client polling, never a fake «placed»
+    const pending = R(order({ payment_placed: { leg_id: 'L1', at: T0 } }), rec({ legs: { L1: { kind: 'original', state: 'approved', role: 'committed' } }, attempts: { att_aaaaaaaaaaaaaaaa: att('L1', T0) } }));
+    assert.strictEqual(read(pending).outcome, 'bank_pending', `${L}: placed but no tracking token yet ⇒ bank_pending (polling), never placed without its token`);
+    // no attempt at all
+    assert.deepStrictEqual(R(order(), rec()), { kind: 'no_attempt' }, `${L}: no attempt ⇒ the handler decides (never a guessed outcome)`);
+  });
+
+
+  await cell('SDK-D4-ORDER-AUTH', async (L) => {
+    const crypto = require('crypto');
+    const tk = (t) => crypto.createHash('sha256').update(t).digest('hex');
+    const db = makeHonestDb({
+      orders: { [OID]: order({ customer_uid: 'uid_A' }), ord_guest: order({ guest_verified: { phone: '50499990000', phone_hash: 'ph_1' } }) },
+      checkout_tickets: { [tk('ct_good')]: { order_id: 'ord_guest', phone_hash: 'ph_1', exp: T0 + 60000 }, [tk('ct_old')]: { order_id: 'ord_guest', phone_hash: 'ph_1', exp: T0 - 1 }, [tk('ct_other')]: { order_id: OID, phone_hash: 'ph_1', exp: T0 + 60000 }, [tk('ct_phone')]: { order_id: 'ord_guest', phone_hash: 'ph_2', exp: T0 + 60000 } },
+    });
+    const deps = { db, clock: () => T0, verifyIdToken: async (t) => { if (t === 'idt_A') return { uid: 'uid_A' }; if (t === 'idt_B') return { uid: 'uid_B' }; throw new Error('bad token'); } };
+    const A = (h, id) => require('./order-auth').authorizeExistingOrder(deps, h, id);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer idt_A' }, OID), { ok: true, uid: 'uid_A' }, `${L}: the owner's token`);
+    const notFound = await A({ authorization: 'Bearer idt_B' }, OID);
+    const absent = await A({ authorization: 'Bearer idt_B' }, 'no_such_order');
+    assert.deepStrictEqual([notFound, absent], [{ ok: false, status: 404 }, { ok: false, status: 404 }], `${L}: a foreign order and an absent one answer the SAME 404 (no existence leak)`);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer junk' }, OID), { ok: false, status: 401, error: 'auth_invalid' }, `${L}: an invalid token ⇒ 401, never a guest fallback`);
+    assert.deepStrictEqual(await A({ authorization: 'Bearer junk', ticket: 'ct_good' }, 'ord_guest'), { ok: false, status: 401, error: 'auth_invalid' }, `${L}: a bad token with a ticket is still refused (no fallback)`);
+    assert.deepStrictEqual(await A({ ticket: 'ct_good' }, 'ord_guest'), { ok: true, guest: true }, `${L}: a valid guest ticket`);
+    for (const t of ['ct_old', 'ct_other', 'ct_phone', 'ct_none']) assert.deepStrictEqual(await A({ ticket: t }, 'ord_guest'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: ${t} ⇒ 401 guest_auth_required (expired / other order / other phone / unknown)`);
+    assert.deepStrictEqual(await A({}, 'ord_guest'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: no credential ⇒ 401`);
+    assert.deepStrictEqual(await A({ ticket: 'ct_good' }, 'no_such_order'), { ok: false, status: 401, error: 'guest_auth_required' }, `${L}: a ticket for an absent order ⇒ the same 401`);
+  });
+
+  // ── placeSdkStatus (§4 + the advisor's attempt_unknown ruling 11-12) ──
+  const { makeAdapter } = require('./psp-adapter');
+  const { makeFakePsp } = require('./fake-adapter');
+  const ATT = 'att_status_cell_0001';
+  const statusWorld = (script = {}, ord = {}) => {
+    let t = T0;
+    const db = makeHonestDb({ orders: { [OID]: order({ customer_uid: 'uid_A', customer_name: 'Ana Pérez', ...ord }) } }, { now: () => t });
+    const fake = makeFakePsp(script);
+    const golive = [];
+    const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: () => false, ppNamespace: 'sandbox', verifyIdToken: async (x) => (x === 'idt_A' ? { uid: 'uid_A' } : x === 'idt_B' ? { uid: 'uid_B' } : (() => { throw new Error('bad'); })()), goLive: async (dp, id) => { golive.push(id); } };
+    return { db, fake, deps, golive, tick: (ms) => { t += ms; } };
+  };
+  const STATUS = (w, q, h = { authorization: 'Bearer idt_A' }) => require('./status-endpoint').placeSdkStatusCore(w.deps, { headers: h, query: q });
+  await cell('SDK-D4-STATUS-ATTEMPT-UNKNOWN', async (L) => {
+    const w = statusWorld();
+    const r = await STATUS(w, { order_id: OID });
+    assert.deepStrictEqual(r, { status: 409, body: { error: 'attempt_unknown' } }, `${L}: no attempt AND no PSP-call record ⇒ 409 attempt_unknown, exactly {error} (got ${JSON.stringify(r)})`);
+    assert.ok(w.db.getAt(`payment_sdk_due/${OID}`) != null, `${L}: a status read re-enrols the pending order (W1)`);
+  });
+  await cell('SDK-D4-STATUS-RACE-NEVER-UNKNOWN', async (L) => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const w = statusWorld({ authorize: [{ pause: gate }] });
+    const placing = require('./coordinator').placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-1', amount_cents: 10000 });
+    await new Promise((r) => setTimeout(r, 20));
+    const r = await STATUS(w, { order_id: OID });
+    release(); await placing;
+    assert.deepStrictEqual([r.status, r.body.outcome, r.body.attempt_id], [200, 'bank_pending', ATT], `${L}: a claimed attempt in flight ⇒ bank_pending with its id, never attempt_unknown (got ${JSON.stringify(r)})`);
+    assert.strictEqual(PC.readPlacement(r.body).outcome, 'bank_pending', `${L}: the client reads it`);
+  });
+  await cell('SDK-D4-JOURNAL-BEFORE-CALL', async (L) => {
+    // the precondition attempt_unknown relies on: the attempt (and its op) are durable BEFORE the adapter is invoked
+    let seenAtCall = null; let crash;
+    const crashed = new Promise((r) => { crash = r; });
+    const w = statusWorld();
+    w.fake.impl.pspAuthorize = async () => { seenAtCall = w.db.getAt(`payment_sdk/${OID}`); crash(); return new Promise(() => {}); };   // the process dies inside the call
+    require('./coordinator').placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-1', amount_cents: 10000 });
+    await crashed;
+    assert.ok(seenAtCall && seenAtCall.attempts && seenAtCall.attempts[ATT] && Object.values(seenAtCall.ops || {}).some((o) => o.action === 'auth'), `${L}: at the adapter call the attempt and its op are already journaled`);
+    const r = await STATUS(w, { order_id: OID });
+    assert.deepStrictEqual([r.status, r.body.outcome], [200, 'bank_pending'], `${L}: a crash between journal and call ⇒ bank_pending, never attempt_unknown (got ${JSON.stringify(r)})`);
+  });
+  await cell('SDK-D4-STATUS-AUTH', async (L) => {
+    const w = statusWorld();
+    assert.deepStrictEqual(await STATUS(w, { order_id: OID }, { authorization: 'Bearer idt_B' }), await STATUS(w, { order_id: 'no_such_order' }, { authorization: 'Bearer idt_B' }), `${L}: foreign ≡ absent`);
+    assert.strictEqual((await STATUS(w, { order_id: OID }, { authorization: 'Bearer junk' })).status, 401, `${L}: a bad token ⇒ 401`);
+    assert.strictEqual((await STATUS(w, { order_id: 'bad id!' })).status, 400, `${L}: a malformed order_id ⇒ 400`);
+    const w2 = statusWorld({}, { payment_flow: undefined });
+    assert.strictEqual((await STATUS(w2, { order_id: OID })).status, 404, `${L}: a non-SDK order ⇒ the same 404`);
+  });
+  await cell('SDK-D4-STATUS-DECIDES', async (L) => {
+    const w = statusWorld();
+    // an approved original found by reconciliation, never placed: the status read runs decidePlacement
+    await require('./record').createRecord(w.db, OID, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: 10000, created_at: T0, ttl_at: T0 + 15 * 60 * 1000 });
+    await require('./record').casRecord(w.db, OID, (r) => { r.legs = { L1: { kind: 'original', amount_cents: 10000, role: 'committed', state: 'approved', pp_uuid: 'P-1', attempt_id: ATT, created_at: T0, hold_expires_at: T0 + 1e9 } }; r.attempts = { [ATT]: att('L1', T0) }; r.ops = op('L1', 1, { kind: 'approved' }); return r; });
+    const r = await STATUS(w, { order_id: OID });
+    assert.ok(w.db.getAt(`orders/${OID}/payment_placed/leg_id`) === 'L1' && w.golive.length === 1, `${L}: the status read placed it and drove go-live`);
+    assert.deepStrictEqual([r.status, r.body.outcome, r.body.attempt_id], [200, 'bank_pending', ATT], `${L}: placed, not yet live (no tracking token) ⇒ bank_pending with the winning attempt (got ${JSON.stringify(r)})`);
+  });
+  console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nd4-s2: OK (${pass})`);
+  process.exit(fails.length ? 1 : 0);
+})().catch((e) => { console.error('TEST FAILED:', e && e.stack || e); process.exit(1); });

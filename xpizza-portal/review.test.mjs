@@ -1085,10 +1085,8 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent', 'structure_unexplained']);   // S2-core accounting: the portal writers never produce a residual (proven by the zero-residual cells)
   // per-product extras: STRUCTURE S1 (Codex build r1 #7) built the extras form, so both codes have designed panels NOW,
   // independent of the platform switch (no exemption tied to it any more)
-  // S1c opaque minting: a minted-key collision (mint_unavailable) is unreachable ONLY while the one-time minting switch is OFF —
-  // allocation draws no opaque key. The exemption is TIED to the switch: turning minting on turns this test red until the code has a panel.
-  const { mintCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/mint-opaque.js');
-  if (!mintCapabilities().enabled) GENERIC_BY_DESIGN.add('mint_unavailable');
+  // S1c opaque minting: mint_unavailable has its designed panel now (advisor 11-11, for the MINT_OPAQUE flip bbd11fc3) — no exemption
+  // tied to the minting switch any more
   // STRUCTURE S2 §5.2: the Extras page exists — existing_extra_removed / extras_group_empty have designed panels (the switch-tied exemption is gone)
   // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
   // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
@@ -1099,11 +1097,17 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   const writesCategoryName = portalSrc.split('\n').some((l) => /\bcat\w*(?:\([^)]*\))?(?:\[[^\]]*\])?\.name\s*=[^=]/i.test(l) || (/categor/i.test(l) && /\.name\s*=[^=]/.test(l)));
   if (!writesCategoryName) GENERIC_BY_DESIGN.add('rename_not_alone');
   const RESET = new Set(['existing_item_changed', 'existing_item_removed', 'extras_changed', 'item_order_changed', 'structure_changed']);
+  // the server's own word: a refusal raised with { status: 503 } is retryable (S1c mint_unavailable: «try again»)
+  const TRANSIENT = new Set([...src.matchAll(/refuse\('([a-z_]+)'[^;]*?status:\s*503/g)].map((m) => m[1]));
+  assert.ok(TRANSIENT.has('mint_unavailable'), `premise: the server raises mint_unavailable as transient (read: ${[...TRANSIENT]})`);
   for (const c of codes) {
     if (GENERIC_BY_DESIGN.has(c)) continue;
     const o = outcomeFor(err(c, 409), 'edit');
     assert.strictEqual(o.generic, false, `${c} lands on a designed panel`);
-    assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is deterministic — RETRY would be refused again, forever`);
+    // TRANSIENT (read from the server: a refusal raised with status 503 — «try again»): RETRY is the way out; every other code is
+    // deterministic, and RETRY would be refused again, forever
+    if (TRANSIENT.has(c)) assert.strictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is transient (server status 503) — RETRY is its way out`);
+    else assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is deterministic — RETRY would be refused again, forever`);
     if (RESET.has(c)) assert.strictEqual(o.action.id, PUBLISH_ACTIONS.RESET, `${c}: a drifted draft recovers only by "Volver al menú publicado"`);
   }
   for (const c of GENERIC_BY_DESIGN) assert.ok(codes.includes(c), `${c} is still a real server code (no stale exemption)`);
@@ -1365,4 +1369,16 @@ test('S2 §5.2 — the caps panels: the three owner-approved lines, the numbers 
   assert.deepStrictEqual([pg.title, pg.detail, pg.group], ['Llegaste al máximo de extras en un grupo', 'Un grupo puede tener hasta 30 extras.', 'Salsas'], 'a group over its cap (5f: field extras_in_group + group)');
   const all = outcomeFor(xErr('structure_caps', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
   assert.deepStrictEqual([all.title, all.detail], ['Llegaste al máximo de extras', 'Podés tener hasta 600 extras.'], 'the menu over its cap (field extras = menu-wide only)');
+});
+
+// ── S1c opaque minting (advisor 11-11): a minted-key collision is TRANSIENT — its own panel, «Reintentar», whatever the switch says ──
+test('mint_unavailable — the designed RETRY panel on a save and on a publish, never the generic one', () => {
+  for (const op of ['edit', 'publish']) {
+    const o = outcomeFor({ code: 'mint_unavailable', status: 503, body: { error: 'mint_unavailable', retryable: true } }, op);
+    assert.equal(o.generic, false, op);
+    assert.equal(o.title, 'No pudimos guardar el producto nuevo', op);
+    assert.equal(o.detail, 'Fue un problema momentáneo. Intentá de nuevo.', op);
+    assert.equal(o.action.id, PUBLISH_ACTIONS.RETRY, op);
+    assert.equal(o.action.label, 'Reintentar', op);
+  }
 });

@@ -8,6 +8,7 @@
   import './ventas.js';   // Stats S2: the owner-only Ventas page (listens for portal:auth / portal:restaurant)
   import './shell.js';    // PORTAL-UI 1a: discovery + the brand/branch switcher + the branch screens (after ventas.js: its nav handlers run first)
   import './team.js';     // PLAN-portal-team-invites T-b: «Equipo de trabajo», registered on the shell (after shell.js, before the first nav render)
+  import './envio.js';    // ENVÍO (PLAN-portal-envio-step1 r2): the Sherpa-admin delivery-fee screen, registered on the shell's 'Sherpa' group
   import './pubreq.js';   // PLAN-portal-team-invites T-d: the owner's publish-request banner + Productos badge, and the manager's «Enviado» toast
 
   const $ = (id) => document.getElementById(id);
@@ -129,6 +130,7 @@
       showError('');
       $('pass').value = '';                   // do not leave a password sitting in the DOM
       $('whoami').textContent = user.email || user.uid;
+      $('whoami').title = user.email || '';   // the footer truncates a long email: the full one in the tooltip
       $('avatar').textContent = (user.email || '?').slice(0, 1).toUpperCase();
       document.dispatchEvent(new CustomEvent('portal:signed-in'));   // Task 5 listens for this
     }

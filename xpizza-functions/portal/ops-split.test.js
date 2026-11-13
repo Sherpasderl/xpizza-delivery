@@ -91,6 +91,7 @@ const EXPECTED = [
   /* S4 C′: branch-ops.js now requires the ONE hours grammar (hours7Errors MOVED there, re-exported); a pure leaf, no requires */
   'schedule/hours-grammar.js',
   'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
+  'delivery/delivery-pricing.js', 'delivery/limits.js', 'delivery/zones.js',   // envío restaurant limit r5 §5: Sucursales' effective app limit (pure readers of the one policy read)
 ].sort();
 const CONDITIONAL = ['lib/emulator-endpoint.js'];   // reached via lib/admin.js only when an emulator env var is set
 const FORBIDDEN = /^(catalog\/catalog-publish\.js|catalog\/portal-reads\.js|stats\/.*|factura\/.*|index\.js|merchant\/merchant-location\.js|merchant\/merchant-orders\.js|portal\/functions\.js)$/;
@@ -136,8 +137,11 @@ ok(`CLOSURE: the static require closure is EXACTLY the ${EXPECTED.length} review
   fs.writeFileSync(path.join(tmp, 'index.js'), execFileSync('git', ['show', '613f7e08:xpizza-functions/index.js'], { cwd: FN, maxBuffer: 1 << 28 }));
   const baseNames = [...new Set([...fs.readFileSync(path.join(tmp, 'index.js'), 'utf8').matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map((m) => m[1]))];
   fs.rmSync(tmp, { recursive: true, force: true });
-  for (const k of baseNames) assert.ok(full.exports.includes(k), `the full load still exports ${k}`);
-  ok(`FULL LOAD: the ${OPS.length} are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there`);
+  // RETIRED on purpose since the base: confirmOnlinePayment's HTTP export (NOTE-security-confirm-tracking-token, 2026-11-12) — it must be GONE
+  const RETIRED = ['confirmOnlinePayment'];
+  for (const k of RETIRED) { assert.ok(baseNames.includes(k), `premise: the base exported ${k}`); assert.ok(!full.exports.includes(k), `the retired ${k} is no longer exported`); }
+  for (const k of baseNames.filter((n) => !RETIRED.includes(n))) assert.ok(full.exports.includes(k), `the full load still exports ${k}`);
+  ok(`FULL LOAD: the ${OPS.length} are re-exported as the same objects; every one of the base's ${baseNames.length} directly-assigned exports is still there, bar the ${RETIRED.length} retired (${RETIRED.join(', ')}), which is gone`);
 }
 
 // ── 4. THE WRAPPER ──────────────────────────────────────────────────────────────────────────────────────────────────────

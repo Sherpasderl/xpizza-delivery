@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions, MUTATING_IMPORTS } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js']);   // PORTAL-UI 1a: success toasts only (see the write-path rule)
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js']);   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
+// PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')
   .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -46,7 +47,9 @@ test('every function a module calls is one it defines or imports', () => {
     // T-c /aceptar: the WHATWG URL parser (strips the email link's one-time code from the address bar)
     'URL',
     // DISH PHOTOS B: cancel an upload (AbortController), read a picked photo's EXIF-oriented size (createImageBitmap, Image)
-    'AbortController', 'createImageBitmap', 'Image']);
+    'AbortController', 'createImageBitmap', 'Image',
+    // ENVÍO: the map frame's per-mount id is 16 random bytes (crypto.getRandomValues into a Uint8Array)
+    'Uint8Array']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([
@@ -104,6 +107,12 @@ test('the CSP allows exactly the hosts the code actually talks to', () => {
   // every absolute host the modules fetch or import from must be allowed by SOME directive
   const hosts = new Set();
   for (const f of JS) for (const m of codeOf(f).matchAll(/https:\/\/([a-z0-9.-]+)/g)) hosts.add(m[1]);
+  // ENVÍO: the portal's OWN production origin appears as a postMessage identity (envio-map-protocol.js PORTAL_ORIGIN — the map
+  // frame accepts messages only from it). The page never requests it as a third-party host: it is the page itself ('self').
+  // Exactly that one host, and only because it is the portal's own origin in the server's allowlist (portal/origins.js).
+  const SELF_HOST = 'sherpa-portal.netlify.app';
+  assert.ok(readFileSync(join(DIR, '..', 'xpizza-functions', 'portal', 'origins.js'), 'utf8').includes(`'https://${SELF_HOST}'`), 'the self host is the portal origin');
+  hosts.delete(SELF_HOST);
   for (const h of hosts) {
     assert.ok(policy.includes(h), `the code talks to ${h} but the CSP does not allow it — every deployed request would be blocked`);
   }

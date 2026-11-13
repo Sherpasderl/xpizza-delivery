@@ -4,7 +4,7 @@
 //   photos           the draft map (exactly what editCatalog stored)
 //   photoPreviews    {[pid]: {card, hero, expiresAt?}} for EVERY pid the draft map references AND every pid of the ACTIVE version's
 //                    meta/photos (amendment), resolved by the pid's REGISTRY state, never by version membership (Codex r2 P2-3):
-//                      published → public URLs https://storage.googleapis.com/<PHOTOS_PUBLIC_BUCKET>/photos/{rid}/{pid}-*.webp, no expiry
+//                      published → public URLs https://storage.googleapis.com/<the public bucket>/photos/{rid}/{pid}-*.webp, no expiry
 //                      draft     → 1 h signed GETs of drafts/{rid}/{pid}-*.webp (+ expiresAt; the portal re-reads at expiresAt − 5 min)
 //                      anything else (deleting / deleted / no doc) → no preview (the portal shows P5, never a broken image)
 //                    No public bucket configured (A0 pending) → no public URL is ever emitted. A signing failure omits that one preview.

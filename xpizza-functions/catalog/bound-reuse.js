@@ -50,7 +50,7 @@ async function probeBoundReuse(db, { orderId, uid, rid, body, now }) {
     if (!hv.ok || hv.version !== ov.version) return null;
     if (hold.order_fingerprint !== order.payment_fingerprint || canonicalJson(hold.canonical === undefined ? null : hold.canonical) !== canonicalJson(order.redemption)) return null;
     if (hold.attempt_id != null && hold.attempt_id !== order.active_attempt_id) return null;
-    return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };
+    return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token, order };   // envío step 2: the record already read, for the resume guard (never a response field)
   } catch (_) {
     return null;
   }

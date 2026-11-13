@@ -44,7 +44,7 @@ function stubDb(stored = base()) {
   };
   return db;
 }
-const addProductIo = (db) => ({ readKeyMode: async () => 'name', hwmRef: () => db.hwmRef, registryKeysTaken: async () => new Set() });
+const addProductIo = (db) => ({ readKeyMode: async () => 'name', hwmRef: () => db.hwmRef, registryKeysTaken: async () => new Set(), readReservedKeys: async () => require('../catalog/reserved-keys').reservedKeySet(undefined) });   // production's add-product-io shape (S1c: read when minting)
 // the photos dependency: flag, the ACTIVE version's meta/photos entries, and the registry attach (§2.6)
 function photosDep({ enabled = true, active = null, registry = {}, readFails = false, attachFails = false } = {}) {
   const calls = { attach: [] };

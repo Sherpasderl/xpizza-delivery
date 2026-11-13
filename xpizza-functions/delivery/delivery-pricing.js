@@ -21,7 +21,7 @@
 //   · free_delivery ON + an authenticated customer → promo_discount_cents = delivery_cents (Sherpa-funded); guests pay
 // Driver pay is unaffected (flat L 70, S8).
 
-const crypto = require('crypto');
+const crypto = require('crypto'); const Z = require('./zones'); const LIM = require('./limits');   // envío step 2: drawn no-delivery zones (PLAN-envio-zones-step2-r2); the restaurant limit (PLAN-envio-restaurant-limit-r5)
 
 const EARTH_KM = 6371;
 const rad = (d) => (d * Math.PI) / 180;
@@ -48,7 +48,7 @@ function readPricing(raw, rid) {
     prev = b.max_km;
   }
   if (!ok) return { invalid: true };
-  return { policy_version: pv, bands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })), free_delivery: r.free_delivery === true };
+  const zp = Z.storedProblem(raw.no_delivery_zones), zl = Z.logical(raw.no_delivery_zones); return { policy_version: pv, bands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })), free_delivery: r.free_delivery === true, ...(zp ? { zonesInvalid: true } : zl.length ? { zones: zl } : {}) };   // step 2: malformed zones stay distinct from invalid bands (F5); absent → step 1's exact object
 }
 
 /* The envío for one request on an ACTIVE restaurant → { ctx } or { refusal }.
@@ -63,9 +63,9 @@ function quoteDelivery({ pricing, hub, mode, pin, customerUid, maxKm = null }) {
   if (mode !== 'delivery') return { refusal: 'mode_required' };
   if (!pin || pin.confirmed !== true || !isLat(pin.lat) || !isLng(pin.lng)) return { refusal: 'pin_required' };
   if (!hub || !isLat(hub.lat) || !isLng(hub.lng)) return { refusal: 'delivery_pricing_invalid' };
-  const km = haversineKm(hub.lat, hub.lng, pin.lat, pin.lng);
+  if (maxKm === LIM.LIMIT_INVALID) return { refusal: 'delivery_pricing_invalid' }; const km = haversineKm(hub.lat, hub.lng, pin.lat, pin.lng);   // envío limit: a malformed branch entry fails closed for that branch (r5 §1)
   const band = pricing.bands.findIndex((b) => km <= b.max_km);
-  if (band < 0 || (typeof maxKm === 'number' && km > maxKm)) return { refusal: 'outside_delivery_bands' };
+  if (band < 0 || (typeof maxKm === 'number' && km > maxKm)) return { refusal: 'outside_delivery_bands' }; if (pricing.zonesInvalid) return { refusal: 'delivery_zones_invalid' }; if (pricing.zones && Z.inZone(pricing.zones, pin)) return { refusal: 'no_delivery_zone' };   // step 2: after the limit; pickup returned above
   const delivery_cents = pricing.bands[band].cents;
   const promo = pricing.free_delivery && typeof customerUid === 'string' && customerUid ? 'free_delivery' : null;
   return { ctx: mint({ mode: 'delivery', delivery_cents, promo_discount_cents: promo ? delivery_cents : 0, policy_version: pricing.policy_version,
@@ -119,4 +119,4 @@ const SERVER_CTX = new WeakSet();
 const isServerDeliveryCtx = (c) => !!c && typeof c === 'object' && SERVER_CTX.has(c);
 const mint = (ctx) => { SERVER_CTX.add(ctx); return ctx; };
 
-module.exports = { haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };
+module.exports = { ...LIM, haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };

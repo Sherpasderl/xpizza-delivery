@@ -11,8 +11,11 @@
 //                      never touch already-issued economics)
 //   P-C              → no payer email (env unset, none from the customer) → 503 before any gateway call / attempt / order;
 //                      a live checkout still resumes
-//   APP COVERAGE     → entry_mode:'app' quotes are refused beyond min(last band, radius); legacy quotes unchanged; the
-//                      public { from_cents, max_km }
+//   APP COVERAGE     → (addendum A) the band table is the app's only limit: an app quote/order beyond the restaurant radius but
+//                      inside the bands is priced; a FORM keeps the radius ("Outside delivery zone") and is never priced
+// APP-ONLY (owner 2026-11-10): envío and the tip apply only to entry_mode:'app' requests — every helper sends it; a FORM request
+// (entry_mode stripped) is dark even with an active table; the app reads ONE platform-wide table (the per-restaurant map and
+// free delivery are ignored); an absent table refuses an app delivery 503.
 // Run: npm run test:s2tip
 require('./_emulator-required')('database', 'firestore');
 
@@ -98,7 +101,7 @@ const body = (method, { type = 'delivery', km = 4, extra = {}, id = null } = {})
   const p = north(km);
   return { restaurant_id: RID, order_id: id || `s2t_${method}_${PH}_${Date.now()}`, customer_name: 'S2 Tip', customer_phone: phone(), customer_email: 's2tip@example.com',
     items_text: `1x ${LINE.name}`, order_type: type, payment_method: method, items: [LINE],
-    ...(type === 'delivery' ? { lat: p.lat, lng: p.lng, address_detected: 'Col. Prueba', address_details: 'Casa 1', pin_confirmed: true } : {}), ...extra };
+    ...(type === 'delivery' ? { lat: p.lat, lng: p.lng, address_detected: 'Col. Prueba', address_details: 'Casa 1', pin_confirmed: true } : {}), entry_mode: 'app', ...extra };
 };
 const attemptsOf = async (oid) => Object.values((await rtdb.ref('payment_attempts').get()).val() || {}).filter((a) => a && a.order_id === oid);
 async function cash(opts = {}, hdr = {}) { await clean(); const b = opts.body || body(opts.method || 'cash', opts);   /* r7: tipped orders on the createOrder path use card_delivery (cash + tip is refused) */ const r = await post(app.createOrder, b, hdr); return { ...r, b, rec: (await rtdb.ref(`orders/${b.order_id}`).get()).val() }; }
@@ -108,7 +111,8 @@ async function card(opts = {}, hdr = {}) {
   const r = await post(app.chargeOnlineOrder, b, hdr);
   return { ...r, b, charged: [...CHARGED], attempts: (await attemptsOf(b.order_id)).length, rec: (await rtdb.ref(`orders/${b.order_id}`).get()).val() };
 }
-async function quote(extra = {}, km = 4) { await clean(); const p = north(km); return post(app.quoteOrder, { restaurant_id: RID, items: [LINE], mode: 'delivery', pin: { lat: p.lat, lng: p.lng, confirmed: true }, ...extra }); }
+async function quote(extra = {}, km = 4) { await clean(); const p = north(km); return post(app.quoteOrder, { restaurant_id: RID, items: [LINE], mode: 'delivery', pin: { lat: p.lat, lng: p.lng, confirmed: true }, entry_mode: 'app', ...extra }); }
+const FORM = { entry_mode: undefined };   // strips the app marker: a FORM-shaped request
 const setPricing = (restaurants) => (restaurants === undefined ? rtdb.ref('platform_config/delivery_pricing').remove() : rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS, restaurants }));
 const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_km`).set(km);
 
@@ -122,20 +126,28 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     await rtdb.ref(`restaurants/${rid}/identity`).set({ name: rid, phone: '+504', active: true, hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 8, version: 1, hours: HOURS });
   }
 
-  // ── 1. DARK + tip → 409 tip_not_enabled everywhere, nothing written; DARK without a tip → accepted as before ──
+  // ── 1. a FORM + tip → 409 tip_not_enabled everywhere, nothing written; a FORM without a tip → accepted as before ──
   await setPricing(undefined);
   const food = (await cash({ type: 'pickup' })).rec.total_cents;   // the food total (dark, no envío)
   {
-    const q = await quote({ tip_cents: 2000 });
+    const q = await quote({ ...FORM, tip_cents: 2000 });
     assert.deepStrictEqual([q.status, q.json], [409, { ok: false, error: 'tip_not_enabled' }], `dark quote + tip (${q.text.slice(0, 160)})`);
-    const c = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } });
+    const c = await cash({ method: 'card_delivery', extra: { ...FORM, tip_cents: 2000 } });
     assert.deepStrictEqual([c.status, c.json && c.json.error, c.rec], [409, 'tip_not_enabled', null], `dark cash + tip: refused, no order (${c.text.slice(0, 160)})`);
-    const k = await card({ extra: { tip_cents: 2000 } });
+    const k = await card({ extra: { ...FORM, tip_cents: 2000 } });
     assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [409, 'tip_not_enabled', 0, 0, null], `dark card + tip: refused, no checkout, nothing written (${k.text.slice(0, 160)})`);
-    const plain = await cash({ extra: { tip_cents: 0 } });
+    const plain = await cash({ extra: { ...FORM, tip_cents: 0 } });
     assert.deepStrictEqual([plain.status, plain.rec.total_cents, 'tip_cents' in plain.rec], [200, food, false], 'dark + tip_cents:0 → the no-tip order, no tip field');
   }
-  ok('DARK: a tip is refused 409 tip_not_enabled on quote / cash / card with nothing written and no checkout; tip_cents:0 is the ordinary no-tip order');
+  ok('FORM (no table): a tip is refused 409 tip_not_enabled on quote / cash / card with nothing written and no checkout; tip_cents:0 is the ordinary no-tip order');
+  {
+    await setPricing({ x_pizza: { active: true, free_delivery: true } });
+    const fq = await quote({ ...FORM, tip_cents: 2000 });
+    const fc = await cash({ method: 'card_delivery', extra: { ...FORM, tip_cents: 2000 } });
+    assert.deepStrictEqual([fq.status, fq.json, fc.status, fc.json && fc.json.error, fc.rec], [409, { ok: false, error: 'tip_not_enabled' }, 409, 'tip_not_enabled', null], 'a FORM tip under an ACTIVE table is refused exactly as dark');
+    await setPricing(undefined);
+  }
+  ok('FORM (active table): a tip is still refused 409 tip_not_enabled — the tip is app-only');
 
   // ── 2. ACTIVE: quote(tip) → createOrder(token, tip) — recorded = quoted = food + envío + tip; card charged = recorded ──
   await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: false } });
@@ -153,7 +165,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     const task = (await rtdb.ref(`tasks/${c.b.order_id}_delivery`).get()).val();
     assert.strictEqual(Math.round(task.total * 100), food + 7000, 'the delivery task carries the full total (what the driver collects)');
     const promo = await cash({ method: 'card_delivery', extra: { tip_cents: 2000 } }, { 'x-firebase-id-token': 'member1' });
-    assert.deepStrictEqual([promo.status, promo.rec.total_cents, promo.rec.tip_cents], [200, food + 2000, 2000], 'member promo: envío free, the tip still charged (food + 0 + tip)');
+    assert.deepStrictEqual([promo.status, promo.rec.total_cents, promo.rec.tip_cents, promo.rec.promo_discount_cents], [200, food + 7000, 2000, 0], 'a member pays envío (free delivery is off, addendum A) and the tip');
     const qk = await quote({ tip_cents: 2000 });
     const k = await card({ extra: { tip_cents: 2000, quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents } });
     assert.ok(k.status === 200 && k.charged.length === 1, `card accepted (${k.text.slice(0, 200)})`);
@@ -177,7 +189,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.deepStrictEqual([p.status, p.json && p.json.error, p.rec], [400, 'tip_pickup', null], 'pickup + tip → 400 tip_pickup, no order');
     const ok200 = await cash({ method: 'card_delivery', extra: { tip_cents: 200000 } });
     assert.deepStrictEqual([ok200.status, ok200.rec.tip_cents], [200, 200000], 'TIP_MAX (L 2,000) itself is accepted');
-    const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Carnivora' }, tip_cents: 500, mode: 'delivery', pin: { ...north(4), confirmed: true } }, { 'x-firebase-id-token': 'member1' });
+    const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Carnivora' }, tip_cents: 500, mode: 'delivery', pin: { ...north(4), confirmed: true }, entry_mode: 'app' }, { 'x-firebase-id-token': 'member1' });
     assert.deepStrictEqual([qr.status, qr.json && qr.json.error], [409, 'tip_reward_unsupported'], `quoteRedemption + tip (${qr.text.slice(0, 160)})`);
   }
   ok('refusals: tip_invalid 400 (string / over L 2,000 / negative), tip_reward_unsupported 409 (orders + quoteRedemption), tip_pickup 400 — each before any write or checkout; L 2,000 itself accepted');
@@ -240,16 +252,16 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
   }
   ok('idempotency: same id + same tip = idempotent 200 (cash) / reuse (card); a changed or dropped tip = 409 order_exists reason tip on both paths');
 
-  // ── 5. recovery: a live checkout issued WITH a tip still resumes after the restaurant goes dark ──
+  // ── 5. recovery: a live checkout issued WITH a tip still resumes after the table is removed ──
   {
-    await setPricing({ x_pizza: { active: false } });
+    await setPricing(undefined);
     const resumed = await card({ body: tipped.b });
     assert.deepStrictEqual([resumed.status, resumed.charged.length, resumed.json && resumed.json.checkout_url ? 'url' : resumed.text.slice(0, 160)], [200, 0, 'url'], 'dark now, the tipped live checkout resumes (grandfathered economics, not tip_not_enabled)');
     const fresh = await card({ extra: { tip_cents: 2000 } });
-    assert.strictEqual(fresh.json.error, 'tip_not_enabled', 'while a FRESH tipped checkout is refused');
+    assert.strictEqual(fresh.json.error, 'delivery_pricing_unavailable', 'while a FRESH app delivery checkout is refused (no table: fail closed)');
     await setPricing({ x_pizza: { active: true, free_delivery: true } });
   }
-  ok('recovery: an already-issued tipped checkout resumes after the restaurant goes dark; only fresh tipped issuance is refused');
+  ok('recovery: an already-issued tipped checkout resumes after the table is removed; only a fresh app delivery issuance is refused');
 
   // ── 6. P-C: no payer email → 503 before any gateway call / attempt / order; recovery unaffected ──
   {
@@ -305,31 +317,33 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
   //        exactly as before S2, for an absent and a zero tip (never a 500) ──
   {
     await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 'x', cents: 1 }], restaurants: { [RID]: { active: true } } });
-    for (const extra of [{}, { tip_cents: 0 }, { entry_mode: 'app' }]) {
+    for (const extra of [{}, { tip_cents: 0 }]) {   // app requests (the helper sends entry_mode:'app'; quoteRedemption below gets it explicitly)
       const q = await quote(extra);
       assert.deepStrictEqual([q.status, q.text], [200, JSON.stringify({ ok: false, error: 'delivery_pricing_invalid' })], `quoteOrder, invalid config ${JSON.stringify(extra)} → the base 200 body (${q.status} ${q.text.slice(0, 160)})`);
       await clean();
-      const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, mode: 'delivery', pin: { ...north(4), confirmed: true }, ...extra }, { 'x-firebase-id-token': 'member1' });
+      const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' }, mode: 'delivery', pin: { ...north(4), confirmed: true }, entry_mode: 'app', ...extra }, { 'x-firebase-id-token': 'member1' });
       assert.deepStrictEqual([qr.status, qr.text], [200, JSON.stringify({ ok: false, error: 'delivery_pricing_invalid' })], `quoteRedemption, invalid config ${JSON.stringify(extra)} → the base 200 body (${qr.status} ${qr.text.slice(0, 160)})`);
     }
+    const fq = await quote({ ...FORM });
+    assert.deepStrictEqual([fq.status, fq.json.ok, 'delivery' in fq.json], [200, true, false], `a FORM quote under an invalid table is dark (never priced, never refused) (${fq.text.slice(0, 160)})`);
     await setPricing({ x_pizza: { active: true, free_delivery: true }, la_musa: { active: false } });
   }
-  ok('invalid active delivery config: quoteOrder AND quoteRedemption answer the base 200 {ok:false, error:"delivery_pricing_invalid"} for an absent / zero tip (legacy + app), never a 500');
+  ok('invalid active delivery config: quoteOrder AND quoteRedemption answer the base 200 {ok:false, error:"delivery_pricing_invalid"} for an absent / zero tip on an app request, never a 500; a FORM quote stays dark');
 
-  // ── 7. the APP quote: coverage = min(last band, radius); legacy unchanged ──
+  // ── 7. addendum A: the band table is the app's only distance limit; a FORM keeps the restaurant radius and is never priced ──
   {
     await setRadius(3.5);
-    const legacy = await quote({}, 4);
-    assert.deepStrictEqual([legacy.status, legacy.json.delivery.delivery_cents, legacy.json.delivery.max_km], [200, 5000, 7], 'legacy (no entry_mode): priced at the band, max_km = the last band');
-    const appQ = await quote({ entry_mode: 'app' }, 4);
-    assert.deepStrictEqual([appQ.status, appQ.json], [200, { ok: false, error: 'outside_delivery_bands' }], 'APP: a pin between the radius (3.5) and the last band (7) is outside');
-    const appNear = await quote({ entry_mode: 'app' }, 1);
-    assert.deepStrictEqual([appNear.json.ok, appNear.json.delivery.max_km], [true, 3.5], 'APP: max_km reports min(last band, radius)');
-    const order = await cash({ km: 4 });
-    assert.ok(order.status === 400 && /Outside delivery zone/.test(order.text), 'and the order\'s own radius check refuses that pin, so the app quote now agrees with it');
+    const appQ = await quote({}, 4);
+    assert.deepStrictEqual([appQ.status, appQ.json.delivery && appQ.json.delivery.delivery_cents, appQ.json.delivery && appQ.json.delivery.max_km], [200, 5000, 7], `APP: a pin beyond the radius (3.5) but inside the bands is priced; max_km = the last band (${appQ.text.slice(0, 160)})`);
+    const formQ = await quote({ ...FORM }, 4);
+    assert.deepStrictEqual([formQ.status, formQ.json.ok, 'delivery' in formQ.json], [200, true, false], 'a FORM quote is dark (never priced)');
+    const appOrder = await cash({ km: 4 });
+    assert.deepStrictEqual([appOrder.status, appOrder.rec && appOrder.rec.delivery_cents], [200, 5000], `the app order there is accepted and priced (${appOrder.text.slice(0, 160)})`);
+    const formOrder = await cash({ km: 4, extra: { ...FORM } });
+    assert.ok(formOrder.status === 400 && /Outside delivery zone/.test(formOrder.text), 'a FORM order there is still refused by the restaurant radius, as today');
     await setRadius(8);
   }
-  ok('APP coverage: entry_mode:app quotes refuse beyond min(bands, radius) and report it, matching the order radius check; legacy quotes are unchanged');
+  ok('APP coverage (addendum A): an app quote/order beyond the restaurant radius but inside the bands is priced, max_km = the last band; a FORM quote stays dark and a FORM order keeps the radius check');
 
   // ── 8. PLAN-capp-tip-step r6 §1: the member's last tip — user_private/{uid}/last_tip = {cents, at}, best-effort AFTER acceptance, from
   //        the VERIFIED token uid only, delivery + tip_choice:true only, `at` = the accepted order's resolved created_at, newer-only ──

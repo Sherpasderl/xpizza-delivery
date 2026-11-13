@@ -15,6 +15,9 @@
 //   S-9 the hosted returns: success ⇒ placed{scheduled}; failed (cancelled) ⇒ payment_failed (the UI restore is the light suite)
 // The served schedule = the identity hours + the server's own cfg (SCHED.resolveCfg — the values schedule_only serves); slots
 // come from the app's generator at the REAL clock (intake validates against Date.now()).
+// Delivery pricing is ACTIVE for x_pizza (asm6, advisor 2026-11-11: dpao makes an app delivery quote with no table fail closed (503),
+// so the app's orders need the launch-state table), seeded exactly as capp-domain-transition U / s2tip.emulator's setPricing (the same
+// BANDS), cleared in finally.
 // Run: npm run test:capp-s4
 require('./_emulator-required')('database', 'firestore');
 
@@ -90,6 +93,9 @@ const todayKey = () => DAYK[new Date(Date.now() - SCHED.TZ_OFFSET_MS).getUTCDay(
 const HOURS_TODAY_CLOSED = () => ({ ...HOURS, [todayKey()]: { open: false } });
 const APP_HOURS = Array.from({ length: 7 }, () => [0, 0, 23, 59]);
 const HUB = { lat: 14.1, lng: -87.2 }; const KM = 1 / 111.195;
+// asm6 (advisor 2026-11-11): exactly capp-domain-transition / s2tip.emulator.test.js:92/112 — a raw admin set of delivery-pricing.js's shape
+const BANDS = [{ max_km: 2, cents: 3000 }, { max_km: 5, cents: 5000 }, { max_km: 7, cents: 7000 }];
+const setPricing = (restaurants) => (restaurants === undefined ? rtdb.ref('platform_config/delivery_pricing').remove() : rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: BANDS, restaurants }));
 const IDENT = (rid, o = {}) => ({ name: rid, phone: '+504', active: true, hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 8, version: 1, hours: HOURS, ...o });
 const clean = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); };
 const order = async (id) => (await rtdb.ref(`orders/${id}`).get()).val();
@@ -157,6 +163,8 @@ const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s4_pending_pay`
     await serve(rid);
   }
   await startServer();
+  await setPricing({ x_pizza: { active: true, free_delivery: true } });   // the launch state: every rid this suite orders from (x_pizza only)
+  try {   // (the cells below keep their indentation; the table is cleared in finally)
 
   // ── S-1: cash scheduled delivery → held → the REAL releaseOne → live ──
   {
@@ -166,6 +174,7 @@ const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s4_pending_pay`
     const { out } = await quoteAndPlace(pg, f, cartOf('x_pizza'));
     assert.deepStrictEqual([out.kind, out.scheduled, out.scheduled_for], ['placed', true, slot], `🔴 S-1 placed{scheduled} (${JSON.stringify(out)})`);
     const o = await order(out.order_id);
+    assert.ok(Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0, `premise: delivery pricing is ACTIVE — the app delivery order carries its envío (${o.delivery_cents})`);
     assert.deepStrictEqual([o.status, o.scheduled_for, o.release_at], ['scheduled', slot, slot - 60 * 60000], 'S-1 the held record: the slot, release_at = slot − 60 (delivery)');
     assert.deepStrictEqual(await tasksOf(out.order_id), [], 'S-1 held ⇒ no tasks before release');
     const rel = await REL.releaseOne(relDeps, { orderId: out.order_id, now: o.release_at, claimId: 'c-s1' });
@@ -286,6 +295,7 @@ const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s4_pending_pay`
     ok('S-9 the hosted returns: success is S-2; a cancelled scheduled checkout ⇒ payment_failed (the UI restore of the slot: the light suite)');
   }
 
+  } finally { await setPricing(undefined); }
   FINISHED = true;
   await new Promise((r) => SERVER.close(r));
   console.log(`capp-s4(emulator): OK (${n})`);

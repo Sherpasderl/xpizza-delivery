@@ -44,7 +44,7 @@ const BASE = 'https://order.tb.example/';
   const noActive = await mk({ publicBucket: () => '' }).fieldsFor({ rid: RID, source: src({ tb_x: { state: 'pid', pid: P2 } }), activeVersionId: null });
   assert.deepStrictEqual(Object.keys(noActive.photoPreviews), [P2], 'EIO-NO-ACTIVE-VERSION');
   assert.deepStrictEqual(noActive.legacyPreviews, { tb_img: {} }, 'EIO-EMPTY-BUCKET-PARAM-IS-UNSET');
-  ok('no active version → the draft map alone; an empty PHOTOS_PUBLIC_BUCKET is "unset" (no public URL)');
+  ok('no active version → the draft map alone; an empty public bucket is "unset" (no public URL)');
 
   console.log(`editable-io: OK (${n})`);
   process.exit(0);

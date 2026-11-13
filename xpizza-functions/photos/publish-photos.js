@@ -30,7 +30,7 @@ function makePublishPhotos({ fs, store, publicBucket, now = Date.now }) {
         states[pid] = st;
       }
       const bucket = (publicBucket() || '').trim();
-      if (pids.length && !bucket) throw err('photo_publish_failed', 'no public photo bucket is configured (PHOTOS_PUBLIC_BUCKET)');
+      if (pids.length && !bucket) throw err('photo_publish_failed', 'no public photo bucket is configured (public_bucket in platform/photos.json)');
       const gens = {};
       for (const pid of pids) {
         if (states[pid] === 'published') continue;

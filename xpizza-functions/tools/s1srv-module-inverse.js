@@ -29,13 +29,8 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "      {   // per-product extras: the paid lines' extras (reward items are reward lines, never judged by a product's list)\n        const xr = await extrasCheckFor(restaurantId, quoteTables, body.items, body);\n        EI.logShadow('quoteRedemption', restaurantId, xr, EI.ordersClientGen(clientHdr));\n",
   "was": "      {   // per-product extras: the paid lines' extras (reward items are reward lines, never judged by a product's list)\n        const xr = await extrasCheckFor(restaurantId, quoteTables, body.items);\n        EI.logShadow('quoteRedemption', restaurantId, xr, EI.ordersClientGen(clientHdr));\n"
- },
- {
-  "file": "delivery/delivery-wire.js",
-  "now": "module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf, isApp };\n",
-  "was": "module.exports = { loadPricing, deliveryFor, quoteDeliveryFor, chargeContext, orderPin, quotePin, withDelivery, totalLempiras, waEnvio, orderFields, gateExtra, refusalGate, quoteOutcome, quoteFields, ctxOf };\n"
  }
-]);
+]);   // train/portal-structure (5f): the delivery-wire isApp export hunk is DROPPED — main's dpao (7a216cf5) exports isApp on that same line, so the merged line is main's (dpao-module-inverse owns it)
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
 function unapplyS1srvModule(file, src) {
   if (!FILES.includes(file)) return src;

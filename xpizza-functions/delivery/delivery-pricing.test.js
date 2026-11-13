@@ -88,12 +88,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.strictEqual(await DW.deliveryFor(fakeDb(null), { rid: 'r1', mode: 'delivery', pin: null, customerUid: null, getIdentity }), null);
   assert.deepStrictEqual([reads, idReads], [['platform_config/delivery_pricing'], []], 'dark: ONE config read, no identity read');
   assert.deepStrictEqual(await DW.deliveryFor(fakeDb(null, { fail: true }), { rid: 'r1', getIdentity }), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, '🔴 an unreadable config is a 503 refusal, never free');
-  assert.deepStrictEqual((await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4), confirmed: true }, customerUid: null, getIdentity })).ctx.delivery_cents, 5000);
-  assert.deepStrictEqual(await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4) }, getIdentity }), { refusal: 'pin_required', httpStatus: 409 });
-  assert.deepStrictEqual(await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4), confirmed: true }, getIdentity: async () => { throw Object.assign(new Error('x'), { statusCode: 503 }); } }), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, 'an unreadable hub → 503 refusal');
+  assert.deepStrictEqual((await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4), confirmed: true }, customerUid: null, getIdentity, app: true })).ctx.delivery_cents, 5000);
+  assert.deepStrictEqual(await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4) }, getIdentity, app: true }), { refusal: 'pin_required', httpStatus: 409 });
+  assert.deepStrictEqual(await DW.deliveryFor(fakeDb(RAW), { rid: 'r1', mode: 'delivery', pin: { ...north(4), confirmed: true }, app: true, getIdentity: async () => { throw Object.assign(new Error('x'), { statusCode: 503 }); } }), { refusal: 'delivery_pricing_unavailable', httpStatus: 503 }, 'an unreadable hub → 503 refusal');
   reads.length = 0;
   const early = DW.loadPricing(fakeDb(RAW), 'r1');                       // a handler starts the read early …
-  assert.deepStrictEqual((await DW.deliveryFor(fakeDb(null), { rid: 'r1', mode: 'pickup', getIdentity, pricingP: early })).ctx.mode, 'pickup', '… and deliveryFor uses THAT read');
+  assert.deepStrictEqual((await DW.deliveryFor(fakeDb(null), { rid: 'r1', mode: 'pickup', getIdentity, pricingP: early, app: true })).ctx.mode, 'pickup', '… and deliveryFor uses THAT read');
   assert.deepStrictEqual(reads, ['platform_config/delivery_pricing'], 'no second config read');
   await DW.loadPricing(fakeDb(null, { fail: true }), 'r1').then((x) => assert.deepStrictEqual(x, { failed: true }));   // never rejects
   ok('reads: dark = one config read and nothing else; an unreadable config or hub refuses 503 (fail closed); a pre-started read is reused, never repeated, and never rejects');
@@ -194,7 +194,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual((await DW.refusalGate({ grandfathered: true }, async () => {}, 'o1')).refuse.body.reason, 'checkout_expired');
     assert.strictEqual(DW.withDelivery(kept, { total_cents: 29900, subtotal_cents: 26000, tax_cents: 3900 }).total_cents, 29900 + 7000, 'the reuse fingerprint is computed from the STORED economics');
     // codex S3a r3 / advisor ruling: order_context_changed touches NO reward hold (chargeContext takes no release hook at all)
-    assert.strictEqual(DW.chargeContext.length, 5, 'chargeContext(db, orderId, dq, body, now) — no hold-release parameter');
+    assert.strictEqual(DW.chargeContext.length, 6, 'chargeContext(db, orderId, dq, body, now, pricingP) — no hold-release parameter (zones c9f2f195: the request\'s one pricing read)');
     assert.ok(!/releaseRedemption|releaseStaleHold|reserv/.test(require('fs').readFileSync(require('path').join(__dirname, 'delivery-wire.js'), 'utf8').replace(/\/\/[^\n]*/g, '')), 'delivery-wire.js has no reward-hold code');
     assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'pickup' }, now), { refusal: 'order_context_changed', httpStatus: 409 }, '🔴 delivery stored → a pickup retry is refused (never charged food-only)');
     assert.deepStrictEqual(await DW.chargeContext(mk({ o1: stored }, expired), 'o1', fresh4, { order_type: 'delivery', lat: north(1).lat, lng: north(1).lng }, now), { refusal: 'order_context_changed', httpStatus: 409 }, 'another pin → refused');
@@ -210,7 +210,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const failDb = { ref: () => ({ get: () => Promise.reject(new Error('down')) }) };
     const r = await DW.quoteDeliveryFor({ get: () => null }, failDb, 'r1', {}, { getIdentity, knownUid: null });
     assert.deepStrictEqual([r.httpStatus, r.refuse.error], [503, 'delivery_pricing_unavailable']);
-    const r2 = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'r1', { mode: 'delivery' }, { getIdentity, knownUid: null });
+    const r2 = await DW.quoteDeliveryFor({ get: () => null }, fakeDb(RAW), 'r1', { mode: 'delivery', entry_mode: 'app' }, { getIdentity, knownUid: null });
     assert.deepStrictEqual([r2.httpStatus, r2.refuse.error], [200, 'pin_required']);
     ok('P2-6: quote config outage → 503 (retryable); a pin/mode refusal → the fail-soft 200 body');
   }

@@ -32,4 +32,8 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'extras-eligibili
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'exposure-transitions.js'), path.join(ROOT, 'xpizza-portal', 'exposure-transitions.js'));
 // S2-core (Codex build r1 P1-2): the capp serializer — the ONE extra-label predicate — → the functions, byte-identical (catalog/capp-serialize-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'customer-app', 'capp-serialize.js'), path.join(ROOT, 'xpizza-functions', 'catalog', 'capp-serialize.js'));
+// ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' Archivo face → the map site's
+// own folder (it is a separate origin, so it needs its own committed copies; envio-map-site.test.mjs pins them byte-identical)
+fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'envio-map-protocol.js'), path.join(ROOT, 'xpizza-portal-map', 'envio-map-protocol.js'));
+fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'archivo-latin.7150c0ec5a.woff2'), path.join(ROOT, 'xpizza-portal-map', 'fonts', 'archivo-latin.7150c0ec5a.woff2'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);

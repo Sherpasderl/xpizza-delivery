@@ -61,7 +61,7 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches, inc
   if (tv.version === TV.TEXT_A8) incomingFp = a8Incoming;
   /* a1:end classify-select */
   if (fmt.format === FORMAT_LEGACY) {
-    if (existing.payment_fingerprint && incomingFp && existing.payment_fingerprint !== incomingFp) {
+    if (existing.payment_fingerprint && !incomingFp) return { action: '409', reason: 'cart_unverifiable' }; if (existing.payment_fingerprint && incomingFp && existing.payment_fingerprint !== incomingFp) {   // SECURITY (NOTE-security-null-fp, advisor Option A): an unverifiable incoming cart never matches a fingerprinted order — the canonical format's answer, never the 200 that returns its tracking token
       return { action: '409', reason: 'cart' };                                        // case 4 — same id, different cart
     }
   } else if (existing.payment_fingerprint) {

@@ -54,7 +54,7 @@ const adminOf = (fake) => ({ ref: (p) => { const r = fake.ref(p); return { ...r,
 const world = () => { const fake = createFakeDb(seed()); const db = adminOf(fake); db.fake = fake; return db; };
 const deps = (db) => ({ db, verifyIdToken: async (tok) => ({ uid: tok }), now: () => NOW, log: { warn() {}, log() {} } });
 const get = (uid) => ({ method: 'GET', body: {}, get: (h) => (h === 'authorization' ? `Bearer ${uid}` : undefined) });
-const ROW_ADDED = ['lifecycle', 'profile', 'location', 'legacy', 'version', 'readiness'];
+const ROW_ADDED = ['lifecycle', 'profile', 'location', 'legacy', 'version', 'readiness', 'app_max_km', 'limit_invalid'];   // + the envío limit (r5 §5)
 const BRAND_ADDED = ['caps', 'activation', 'drafts'];
 const strip = (body) => ({ ...body, brands: body.brands.map((b) => Object.fromEntries(Object.entries(b).filter(([k]) => !BRAND_ADDED.includes(k)))),
   branches: body.branches.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !ROW_ADDED.includes(k)))) });
@@ -124,6 +124,25 @@ const strip = (body) => ({ ...body, brands: body.brands.map((b) => Object.fromEn
     assert.deepStrictEqual([nueva.name, nueva.caps, nueva.activation, nueva.drafts.map((d) => d.rid)], ['Nueva', ['brand.locations'], 'off', ['tb_nueva_centro']]);
     assert.ok(!r.branches.some((b) => b.rid === 'tb_nueva_centro'), 'the draft is not a branch row');
     ok('an owned brand whose only branch is a draft is listed (caps, activation, its draft)');
+  }
+
+  // ── G1 (delivery pricing, the portal «Envío» entry): `platform_admin: true` ONLY for platform_admins/{uid} === true — absent for
+  //    anyone else and on a failed read (display-only; the pricing callables enforce on their own) ──
+  {
+    const flagged = (db) => { const fake = db.fake; fake.ref('platform_admins/ownerTB').set(true); fake.ref('platform_admins/mgrSur').set('yes'); return db; };
+    const admin = await C.getMyBranchesCore(deps(flagged(world())), get('ownerTB'));
+    assert.deepStrictEqual([admin.status, admin.body.platform_admin], [200, true], 'G1-PLATFORM-ADMIN: the owner-granted admin is flagged');
+    const plain = await C.getMyBranchesCore(deps(world()), get('ownerTB'));
+    assert.deepStrictEqual([plain.status, 'platform_admin' in plain.body], [200, false], 'G1-PLATFORM-ADMIN: not granted → the key is absent');
+    const notTrue = await C.getMyBranchesCore(deps(flagged(world())), get('mgrSur'));
+    assert.deepStrictEqual([notTrue.status, 'platform_admin' in notTrue.body], [200, false], 'G1-PLATFORM-ADMIN: a non-true grant is not a grant');
+    const failing = world(); const fref = failing.ref;
+    failing.ref = (p) => (String(p).startsWith('platform_admins') ? { once: async () => { throw new Error('down'); }, get: async () => { throw new Error('down'); } } : fref(p));
+    const down = await C.getMyBranchesCore(deps(failing), get('ownerTB'));
+    assert.deepStrictEqual([down.status, 'platform_admin' in down.body, down.body.branches.length > 0], [200, false, true], 'G1-PLATFORM-ADMIN: a failed read → absent, never an error');
+    const { platform_admin: _pa, ...rest } = admin.body;
+    assert.deepStrictEqual(rest, plain.body, 'G1-PLATFORM-ADMIN: the flag is the only difference');
+    ok('G1: platform_admin:true only for platform_admins/{uid} === true; absent otherwise and on a failed read (never an error); nothing else changes');
   }
 
   FINISHED = true;

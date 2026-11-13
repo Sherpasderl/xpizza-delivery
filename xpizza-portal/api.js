@@ -96,6 +96,26 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
   return readResponse(res);
 }
 
+// ── ENVÍO (PLAN-portal-envio-step1 r2 §6, Codex r1 F3) — the Sherpa-admin delivery-fee callables ─────────────────────────
+// These two never throw for an HTTP answer: the caller needs the RAW outcome to tell SAVED from UNKNOWN (a 503 after a commit,
+// a transport error after sending, or a 200 whose body doesn't parse are all UNKNOWN until a fresh GET decides — envio-logic.js
+// classifyPost / classifyRecovery). → { status, body } | { status: 200, body: null, malformed: true } | { transport: true }.
+// A missing token or a withheld call (assertLive) throws BEFORE anything is sent — nothing landed, nothing to recover.
+async function rawCall(fnName, { body, token, assertLive }) {
+  const tokenStr = await token();
+  if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
+  if (assertLive) assertLive();
+  const { url, options } = buildRequest(fnName, { body, tokenStr });
+  let res;
+  try { res = await sherpaFetch(url, options); } catch (_) { return { transport: true }; }
+  let parsed = null, parsedOk = true;
+  try { parsed = await res.json(); } catch (_) { parsedOk = false; }
+  if (res.status === 200 && (!parsedOk || parsed === null || typeof parsed !== 'object')) return { status: 200, body: null, malformed: true };
+  return { status: res.status, body: parsedOk ? parsed : null };
+}
+export const getDeliveryPricingRaw = ({ token, assertLive }) => rawCall('getDeliveryPricing', { token, assertLive });
+export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('setDeliveryPricing', { body, token, assertLive });
+
 // ── Portal 2b-2b — THE WRITE CALLS ───────────────────────────────────────────────────────────────
 // 🔴 MONEY PATH. These two carry a merchant's price into the catalog that serves the customer order
 // forms and prints on the SAR factura.

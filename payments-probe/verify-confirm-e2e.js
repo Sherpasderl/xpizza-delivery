@@ -4,6 +4,8 @@
  * verify + materialize) over an in-memory RTDB → asserts the order materializes.
  * Proves the whole capture→confirm→materialize path with a REAL sandbox capture.
  *   PIXELPAY_MODE=sandbox node verify-confirm-e2e.js
+ * NOTE 2026-11-12: the confirmOnlinePayment HTTP EXPORT is retired (NOTE-security-confirm-tracking-token); this script drives the
+ * module CORE directly (pixelpay-confirm.js), which stays — it remains a valid sandbox probe of the confirm machine.
  */
 process.env.PIXELPAY_MODE = 'sandbox';
 const assert = require('assert');

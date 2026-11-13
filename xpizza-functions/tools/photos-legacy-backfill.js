@@ -9,14 +9,14 @@
 // restaurant's OWN order-site origin only, ≤ 10 MB, 20 s), re-encodes it (photos/legacy-encode.js: centre 4:3 800×600 WEBP) and writes a
 // CONTACT SHEET — <out>/<rid>/contact.html with every before/after pair — for the owner to review BEFORE any --apply (the crop changes images
 // the restaurants already show). Nothing is uploaded or recorded.
-// --apply: create-only uploads to the PUBLIC bucket (PHOTOS_PUBLIC_BUCKET env) photos/{rid}/legacy/<hash>-card.webp, then the Firestore
+// --apply: create-only uploads to the PUBLIC bucket (public_bucket[--project] in the committed platform/photos.json) photos/{rid}/legacy/<hash>-card.webp, then the Firestore
 // records photo_registry/{rid}/legacy/{hash}. Idempotent (an existing record is skipped). Reports per rid: copied / already present /
 // unresolvable / same image. The project is NEVER inferred (require-project, --project mandatory) — a refusal touches nothing.
 const fs = require('fs');
 const path = require('path');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });   // before any client
-const { backfillRid } = require('./photos-legacy-backfill-core');
+const { backfillRid, backfillBucketGate } = require('./photos-legacy-backfill-core');
 
 function parseArgs(argv) {
   const out = { rids: [], apply: false, out: null };
@@ -34,6 +34,10 @@ function parseArgs(argv) {
 }
 const args = parseArgs(process.argv.slice(2));
 if (args.error) { console.error(`photos-legacy-backfill: REFUSED — ${args.error}`); process.exit(2); }
+// the bucket gate BEFORE any client or read, in BOTH modes (PLAN-photos-public-bucket-config r5; codex r1 #1): the committed photos config
+// must resolve for --project; a public bucket that is merely not configured is fine for the dry run (the contact sheet)
+const gate = backfillBucketGate(() => require('../photos/buckets').photoBuckets({ explicit: PROJECT_ID }));
+if (!gate.ok) { console.error(`photos-legacy-backfill: REFUSED — the committed photos config refused this project (${gate.reason})`); process.exit(2); }
 
 const admin = require('firebase-admin');
 admin.initializeApp({ projectId: PROJECT_ID });
@@ -57,7 +61,7 @@ async function fetchFrom(origin, url) {
 }
 
 (async () => {
-  const bucketName = (process.env.PHOTOS_PUBLIC_BUCKET || '').trim();
+  const bucketName = gate.bucket;   // '' = not configured (the dry run proceeds; --apply refuses in backfillRid)
   const outDir = args.out || path.join(process.cwd(), `legacy-backfill-${Date.now()}`);
   const summary = [];
   for (const rid of args.rids) {

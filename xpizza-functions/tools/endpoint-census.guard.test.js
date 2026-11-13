@@ -124,7 +124,10 @@ const D = {
     'platform-config-admin',
     // F-1 (BRIEF-portal-stale-draft-clobber) — the owner's platform-pending stamp CLI (status / clear; DRY RUN unless --apply):
     // strict parseArgs, then requireProject({ requireFlag: true }) before any client
-    'platform-pending'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'platform-pending',
+    // PLAN-photos-public-bucket-config r5 §4 step 2 — the owner's READ-ONLY photos-config census (counts + distinct bucket names; no write):
+    // requireProject({ requireFlag: true }) before any client; refuses an emulator variable
+    'photos-config-census'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -141,8 +144,10 @@ const D = {
   [F('portal/reset-draft.js')]: 'lib: deployed portal module — lib/admin.js',
   [F('portal/ops-functions.js')]: 'lib: the deployed portal branch-ops entry (PORTAL-UI 1a) — lib/admin.js',
   [F('photos/functions.js')]: 'lib: the deployed dish-photos entry (DISH PHOTOS A1, isolated group) — lib/admin.js',
+  [F('delivery/pricing-admin-functions.js')]: 'lib: the deployed owner-only «Envío» pricing entry (delivery pricing app-only) — lib/admin.js',
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('memory-floor.guard.test.js')]: 'unit: loads index.js only to read each export\'s __endpoint options; no handler runs, and the import itself is proven network-free (emulator-endpoint.test cell 8: index.js full load)',
+  [F('photos/photos-config-wiring.test.js')]: 'unit: every scenario in a fresh child under tools/egress-guard.js (loopback-only; any refusal fails the test), offline — index.js / publish-io / the CLIs are only LOADED or run to their pre-client refusal or dry run; the only fake I/O is in-process (no client call reaches anything)',
   [F('deploy-params.guard.test.js')]: 'unit: loads index.js in an env-scrubbed child under tools/egress-guard.js (loopback-only; any refusal fails the test) and reads params.declaredParams only — no handler is invoked, no client call made',
   [F('tools/portal-split.js')]: 'lib: source-TEXT fold (the initializeApp is a string it rewrites, no runtime Admin)',
   [F('tools/deploy-env-guard.js')]: 'lib: reads deploy env KEY NAMES only, no client',

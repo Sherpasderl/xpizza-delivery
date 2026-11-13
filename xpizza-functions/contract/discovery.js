@@ -48,8 +48,41 @@ function sourceInventory(file = INDEX) {
     if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier') bindings.set(d.id.name, d.init);
   }
   const baseOf = (n) => { const chain = []; while (n && n.type === 'MemberExpression' && !n.computed) { chain.unshift(n.property.name); n = n.object; } return n && n.type === 'Identifier' ? { id: n.name, chain } : null; };
+  // 2e asm7 (r3-p0-scheduler D0: D4's eight SDK exports were invisible) — a COMPUTED export `exports[k] = …` is resolved ONLY in
+  // the loop shape `for (const k of B.LIST) exports[k] = B[k];` where B is a top-level `const B = require('./m')` binding: the
+  // names come from loading ./m and reading LIST (an array of strings), each then classified like any re-export. Every other
+  // computed export (and a LIST that is not an array of strings) is UNCLASSIFIED — never silently dropped (it was, before).
+  const isExportsObj = (o) => (o.type === 'Identifier' && o.name === 'exports') || (o.type === 'MemberExpression' && !o.computed && o.object.type === 'Identifier' && o.object.name === 'module' && o.property.name === 'exports');
+  const loopExports = new Map();   // the computed-export AssignmentExpression → { module, chain, list }
+  (function walkL(node) {
+    if (!node || typeof node.type !== 'string') return;
+    if (node.type === 'ForOfStatement' && node.left.type === 'VariableDeclaration' && node.left.declarations.length === 1 && node.left.declarations[0].id.type === 'Identifier') {
+      const k = node.left.declarations[0].id.name; const it = node.right;
+      const st = node.body.type === 'BlockStatement' && node.body.body.length === 1 ? node.body.body[0] : node.body;
+      const a = st && st.type === 'ExpressionStatement' ? st.expression : null;
+      const B = it.type === 'MemberExpression' && !it.computed && it.object.type === 'Identifier' ? it.object.name : null;
+      const init = B && bindings.has(B) ? bindings.get(B) : null;
+      const rc = init && init !== 'function' ? requireChain(init) : null;
+      if (rc && a && a.type === 'AssignmentExpression' && a.operator === '=' && a.left.type === 'MemberExpression' && a.left.computed && isExportsObj(a.left.object)
+        && a.left.property.type === 'Identifier' && a.left.property.name === k && a.right.type === 'MemberExpression' && a.right.computed
+        && a.right.object.type === 'Identifier' && a.right.object.name === B && a.right.property.type === 'Identifier' && a.right.property.name === k) {
+        loopExports.set(a, { module: rc.module, chain: rc.chain, list: it.property.name });
+      }
+    }
+    for (const key of Object.keys(node)) { const v = node[key]; if (Array.isArray(v)) v.forEach(walkL); else if (v && typeof v === 'object' && typeof v.type === 'string') walkL(v); }
+  })(ast);
   (function walk(node) {
     if (!node || typeof node.type !== 'string') return;
+    if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && node.left.computed && isExportsObj(node.left.object)) {
+      const line = node.loc.start.line; const le = loopExports.get(node);
+      if (!le) unclassified.push({ name: null, line, type: 'computed-export', why: 'a computed export outside the `for (const k of B.LIST) exports[k] = B[k]` shape' });
+      else {
+        let m = require(path.resolve(path.dirname(file), le.module)); for (const c of le.chain) m = m == null ? m : m[c];
+        const names = m == null ? null : m[le.list];
+        if (!Array.isArray(names) || !names.length || names.some((x) => typeof x !== 'string')) unclassified.push({ name: null, line, type: 'computed-export', module: le.module, why: `${le.list} is not a non-empty array of strings` });
+        else for (const nm of names) out.push({ name: nm, line, how: 'reexport', module: le.module, chain: [...le.chain, nm], via: le.list });
+      }
+    }
     if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && !node.left.computed) {
       const obj = node.left.object;
       const isExports = (obj.type === 'Identifier' && obj.name === 'exports') || (obj.type === 'MemberExpression' && obj.object.type === 'Identifier' && obj.object.name === 'module' && obj.property.name === 'exports');

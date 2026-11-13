@@ -20,6 +20,8 @@ import { S4_BASE, S4_FOLD } from './s4-fold.mjs';
 import { UNSAVED_BASE, UNSAVED_FOLD } from './unsaved-fold.mjs';
 import { S1_BASE, S1_FOLD } from './s1-fold.mjs';
 import { S2_BASE, S2_FOLD } from './s2-fold.mjs';
+import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
+import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -48,7 +50,29 @@ function withoutS1(f, src) {
   }
   return out;
 }
-const diskRead = (f) => withoutS1(f, fileRead(f));
+// train/portal-structure: main's LIVE HOTFIX 2026-11-12 (hotfix-1112-fold.mjs) and the S1c MINT panel (mint-fold.mjs, advisor 11-11) are the NEWEST layers, above
+// UNSAVED: each is folded out at the very lowest read (they fold DISJOINT files — HOTFIX app.js, MINT review.js — so their order is
+// immaterial), so every older pin judges exactly what it judged before; the HOTFIX and MINT cells pin each layer on disk.
+// they sit BELOW S1/S2 here: their cells read main's bytes = the disk minus S2 and S1 (mainBytes); S1/S2's cells peel them too (legacy).
+const mainBytes = (f) => withoutS1(f, withoutS2(f, portalOnDisk(f)));
+function withoutHotfix(f, src) {
+  let out = src;
+  for (const [now, was] of HF_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `HOTFIX hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+function withoutMint(f, src) {
+  let out = src;
+  for (const [now, was] of MINT_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `MINT hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const legacy = (f, src) => withoutMint(f, withoutHotfix(f, src));
+const diskRead = (f) => legacy(f, mainBytes(f));
 function withoutUnsaved(f, src) {
   let out = src;
   for (const [now, was] of UNSAVED_FOLD[f] || []) {
@@ -378,8 +402,8 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   for (const f of Object.keys(S1_FOLD)) {
     const was = execFileSync('git', ['show', `${S1_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.notEqual(withoutS1(f, fileRead(f)), fileRead(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutS1(f, fileRead(f)), was, `${f} minus the S1 hunks ≠ ${S1_BASE}`);
-    assert.notEqual(withoutS1(f, fileRead(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+    assert.equal(legacy(f, withoutS1(f, fileRead(f))), was, `${f} minus the S1 hunks ≠ ${S1_BASE}`);
+    assert.notEqual(legacy(f, withoutS1(f, fileRead(f) + '\n// stray\n')), was, 'non-vacuity: a stray edit survives the fold');
   }
   const inside = S1_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function extrasBaseline('));
   assert.ok(inside, 'premise: the baseline is one of the hunks');
@@ -390,12 +414,33 @@ test('STRUCTURE S2: app.js / editor.js / item-edit-logic.js gain exactly the nam
   for (const f of Object.keys(S2_FOLD)) {
     const was = execFileSync('git', ['show', `${S2_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
     assert.notEqual(withoutS2(f, portalOnDisk(f)), portalOnDisk(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutS2(f, portalOnDisk(f)), was, `${f} minus the S2 hunks ≠ ${S2_BASE}`);
-    assert.notEqual(withoutS2(f, portalOnDisk(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+    assert.equal(legacy(f, withoutS2(f, portalOnDisk(f))), was, `${f} minus the S2 hunks ≠ ${S2_BASE}`);
+    assert.notEqual(legacy(f, withoutS2(f, portalOnDisk(f) + '\n// stray\n')), was, 'non-vacuity: a stray edit survives the fold');
   }
   const inside = S2_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function composeDish('));
   assert.ok(inside, 'premise: the composition is one of the hunks');
   assert.throws(() => withoutS2('editor.js', portalOnDisk('editor.js').replace(inside, inside.replace('before any exposure op', 'before any exposure opX'))), 'an edit inside a hunk breaks it');
+});
+
+test('LIVE HOTFIX 11-12: app.js gains exactly the named hunk (the uploader\u2019s op_ id) — folding it out gives HF_BASE byte-for-byte', () => {
+  for (const f of Object.keys(HF_FOLD)) {
+    const was = execFileSync('git', ['show', `${HF_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutHotfix(f, mainBytes(f)), mainBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutHotfix(f, mainBytes(f)), was, `${f} minus the HOTFIX hunk ≠ ${HF_BASE}`);
+    assert.notEqual(withoutHotfix(f, mainBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+});
+
+test('S1c MINT panel: review.js gains exactly the named hunks — folding them out gives MINT_BASE byte-for-byte', () => {
+  for (const f of Object.keys(MINT_FOLD)) {
+    const was = execFileSync('git', ['show', `${MINT_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutMint(f, mainBytes(f)), mainBytes(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutMint(f, mainBytes(f)), was, `${f} minus the MINT hunks ≠ ${MINT_BASE}`);
+    assert.notEqual(withoutMint(f, mainBytes(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = MINT_FOLD['review.js'].map(([now]) => now).find((t) => t.includes('mint_unavailable:'));
+  assert.ok(inside, 'premise: the panel is one of the hunks');
+  assert.throws(() => withoutMint('review.js', mainBytes('review.js').replace(inside, inside.replace('momentáneo', 'momentaneo'))), 'an edit inside a hunk breaks it');
 });
 
 test('UNSAVED EDITS: app.js / item-edit-logic.js gain exactly the named hunks — folding them out gives UNSAVED_BASE byte-for-byte', () => {

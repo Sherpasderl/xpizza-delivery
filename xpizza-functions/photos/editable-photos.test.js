@@ -67,7 +67,7 @@ const input = (over = {}) => ({
   const noBucket = await E.editablePhotoFields(input({ publicBucket: null }));
   assert.deepStrictEqual(Object.keys(noBucket.photoPreviews), [P_DRAFT], 'EP3-NO-BUCKET-NO-PUBLIC-URL');
   assert.deepStrictEqual(noBucket.legacyPreviews, { tb_img: {}, tb_has: {} }, 'EP3-NO-BUCKET-LEGACY-WITHOUT-URL');
-  ok('PHOTOS_PUBLIC_BUCKET unset → no public URL anywhere (published / legacy present without URL); draft previews still signed');
+  ok('the public bucket not configured → no public URL anywhere (published / legacy present without URL); draft previews still signed');
 
   // ── 5. a signing failure omits only that preview (the editor still loads) ──
   const sf = await E.editablePhotoFields(input({ signRead: async () => { throw new Error('signBlob denied'); } }));
