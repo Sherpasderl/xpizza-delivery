@@ -2426,6 +2426,16 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/choice-compare.js#keyOfId#items#0",
+   "line": 24,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#0",
    "line": 50,
    "kind": "member",
@@ -4902,7 +4912,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#catOf#items#0",
-   "line": 97,
+   "line": 107,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4912,7 +4922,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#0",
-   "line": 144,
+   "line": 154,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4922,7 +4932,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3#items#0",
-   "line": 176,
+   "line": 186,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4932,7 +4942,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3>anon#items#0",
-   "line": 179,
+   "line": 189,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4942,7 +4952,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#1",
-   "line": 187,
+   "line": 197,
    "kind": "member",
    "facts": [
     "ITEMS"

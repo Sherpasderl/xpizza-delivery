@@ -15,11 +15,13 @@ const { groupIndexFrom } = require('./group-index');
 const { choiceActivation, TAG } = require('./choice-activation');
 
 const NAME_MAX = 60;
+const LABEL_MAX = require('./section-compare').NAME_MAX;   // a group label: the section-name limit (40)
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const refuse = (code, detail, key = null, field = 'choices') => { throw new AP.AddProductError(code, detail, { status: 400, field, key }); };
 const withoutMark = (tags) => (Array.isArray(tags) ? tags.filter((t) => t !== TAG) : []);
 const chars = (s) => [...String(s)].length;
+const keyOfId = (b, id) => { const it = b.items.find((i) => String(i.display && i.display.id) === String(id)); return it ? it.key : null; };
 
 // Codex #119 P2 — the LEGACY-FORM reward-group guard. While the legacy order forms remain, a group holding an extra listed in the brand's
 // structure.redeem_eligible_extras feeds a frozen form's reward picker (la-musa-orders buildRedeemCatalog offers every extra of its group),
@@ -63,6 +65,15 @@ function compareToActive(rid, args0) {
     const name = `${lr.display.name} - ${choice}`;
     if (o.display.name !== name) refuse('choice_name_not_derived', `an option's name is derived ("${name}")`, v, 'name');
     if ((!was || (was.display || {}).name !== name) && chars(name) > NAME_MAX) refuse('option_name_too_long', `the option's full name "${name}" is over ${NAME_MAX} characters`, v, 'choice');
+  }
+
+  // (1b) a group label new or changed in the draft is at most 40 characters (advisor 11-13: CATEGORY_NAME_MAX, the portal's «n/40»); a live
+  // label left as it is is not re-judged
+  const avm = isObj(A.structure.variant_items) ? A.structure.variant_items : {};
+  for (const [lid, spec] of Object.entries(isObj(D.structure.variant_items) ? D.structure.variant_items : {})) {
+    const label = isObj(spec) && typeof spec.label === 'string' ? spec.label : '';
+    const was = isObj(avm[lid]) ? avm[lid].label : undefined;
+    if (label !== was && chars(label) > LABEL_MAX) refuse('label_too_long', `a choice group's name is at most ${LABEL_MAX} characters`, keyOfId(D, lid), 'label');
   }
 
   // (2) today's judgment on the draft minus the S3 delta
