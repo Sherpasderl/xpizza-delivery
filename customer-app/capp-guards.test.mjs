@@ -235,6 +235,10 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 const MERGE_ALLOW = {
   // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
   // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
+  // asm8 (2e, advisor merge obligation 11-13): the capp D4 client × 3a's fence — the harness runs the REAL fence (finishSdk's reads +
+  // cancelSdkPendingCore) and the mirror is deleted; RED-or-meaningless on either lane alone (the fence lives only on 3a's branch)
+  '195147ff customer-app/test/real-sdk-server.mjs': 'capp D4 client × fence: the REAL fence imported, the line-for-line mirror deleted',
+  '195147ff customer-app/capp-api-sdk.test.mjs': 'capp D4 client × fence: P2-4-FENCE names the REAL fence, not the model',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
