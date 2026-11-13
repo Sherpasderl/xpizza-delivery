@@ -14,7 +14,8 @@
   ],
   "kills_with": [
    "🔴 P3: POST with stored undefined"
-  ]
+  ],
+  "run": "from xpizza-functions: node tools/mutation-sweep.js --mutants=../../review/capp-sbs/fixtures.mutants.json (harness-scoped: SBS-1 keeps the shared catalogue harness-free; not covered by the shared anchors guard — advisor 11-13 accepted)"
  },
  {
   "id": "cx9b-06",
@@ -31,6 +32,7 @@
   ],
   "kills_with": [
    "🔴 P3: GET with stored 200001"
-  ]
+  ],
+  "run": "from xpizza-functions: node tools/mutation-sweep.js --mutants=../../review/capp-sbs/fixtures.mutants.json (harness-scoped: SBS-1 keeps the shared catalogue harness-free; not covered by the shared anchors guard — advisor 11-13 accepted)"
  }
 ]

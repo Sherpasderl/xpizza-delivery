@@ -66,7 +66,7 @@ test('§1.1 authority and A3 ownership', () => {
 // Codex asm9b P3: the last-tip route answers as the REAL handler does (my-last-tip.js @990cf8c4, read from git with its member-auth),
 // over Codex's schedule — every method, and stored values inside and outside the handler's CENTS_MAX bound.
 // Mutants (harness-local: the shared catalogue may not name the harness, SBS-1): from xpizza-functions,
-//   node tools/mutation-sweep.js --mutants="$PWD/../review/capp-sbs/fixtures.mutants.json"   (the sweep require()s the path)
+//   node tools/mutation-sweep.js --mutants=../../review/capp-sbs/fixtures.mutants.json   (a leading «.» resolves from tools/)
 test('getMyLastTip: the fixture = the real handler (405 for a non-GET; null outside 0..CENTS_MAX)', async () => {
   const { execFileSync } = await import('node:child_process'), { mkdtempSync, writeFileSync } = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
   const { createRequire } = await import('node:module');
