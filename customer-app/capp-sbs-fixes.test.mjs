@@ -38,8 +38,23 @@ test('D6 (robustness / 16b): a logo that FAILS to load becomes the initials plat
   assert.ok(/CappHome\.logoFallback\(doc\)/.test(readFileSync(join(HERE, 'capp-shell-ui.js'), 'utf8')), '🔴 D6: the shell installs it');
 });
 
-test('D2 (C-6c desk, 16b): the fee / ETA cells grow to their content and their bold line never wraps (frame f2a: «Envío desde L 45» on ONE line)', () => {
-  const cells = CSS.match(/\.app\.desk \.cells\{[^}]*\}/)[0], b = CSS.match(/\.app\.desk \.cells b\{[^}]*\}/)[0];
-  assert.ok(/flex:1 0 auto/.test(cells), '🔴 D2: the cells box takes its content width (never squeezed by the Delivery/Pickup toggle)');
-  assert.ok(/white-space:nowrap/.test(b), '🔴 D2: «Envío desde L 45» never breaks');
+test('D2 (C-6c desk, 16b) + Codex P2: «Envío desde L 45» stays on ONE line (f2a) and the cells NEVER overflow the tools column — when they do not fit beside the Delivery/Pickup toggle they move below it, full width', () => {
+  const row = CSS.match(/\.app\.desk \.sinfo \.toolrow\{[^}]*\}/)[0], cells = CSS.match(/\.app\.desk \.cells\{[^}]*\}/)[0], b = CSS.match(/\.app\.desk \.cells b\{[^}]*\}/)[0];
+  assert.ok(/white-space:nowrap/.test(b), '🔴 D2: the bold line never breaks');
+  assert.ok(/flex-wrap:wrap/.test(row), '🔴 P2: the tools row wraps (the cells go below the toggle instead of overflowing)');
+  assert.ok(/min-width:fit-content/.test(cells) && /flex:1 1 auto/.test(cells), '🔴 P2: the cells box is never narrower than its content, and fills its line');
+  assert.ok(!/flex:1 0 auto/.test(cells), '🔴 P2: no non-shrinking box forced beside the toggle');
+});
+
+test('Codex P3: logoFallback returns its cleanup and the shell\'s destroy() removes it — mounting twice leaves ONE listener', () => {
+  const H = require('./capp-home.js');
+  const d = dom('<div class="avatar"><img src="x.png" data-initials="XP"></div>');
+  let n = 0; const add = d.addEventListener.bind(d), rem = d.removeEventListener.bind(d);
+  d.addEventListener = (t, f, o) => { if (t === 'error') n++; return add(t, f, o); }; d.removeEventListener = (t, f, o) => { if (t === 'error') n--; return rem(t, f, o); };
+  const off = H.logoFallback(d);
+  assert.equal(typeof off, 'function', '🔴 P3: logoFallback returns its cleanup'); assert.equal(n, 1);
+  off(); assert.equal(n, 0, '🔴 P3: the cleanup removes the listener');
+  d.querySelector('img').dispatchEvent(new d.defaultView.Event('error'));
+  assert.ok(d.querySelector('img'), 'removed ⇒ inert');
+  assert.ok(/logoOff\(\)/.test(readFileSync(join(HERE, 'capp-shell-ui.js'), 'utf8')), '🔴 P3: the shell\'s destroy() calls it');
 });

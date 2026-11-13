@@ -35939,5 +35939,37 @@
   "kills_with": [
    "D2"
   ]
+ },
+ {
+  "id": "sbs9-05",
+  "slice": "sbs9",
+  "label": "the desk tools row cannot wrap — the nowrap cells overflow the column at ≥ 1280 (Codex P2)",
+  "file": "../customer-app/capp.css",
+  "from": "gap:10px;flex-wrap:wrap}   /* Codex P2",
+  "to": "gap:10px}   /* Codex P2",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "P2"
+  ]
+ },
+ {
+  "id": "sbs9-06",
+  "slice": "sbs9",
+  "label": "the shell's destroy() leaves the logo-error listener on the document (one more per mount; Codex P3)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "stopOrder(); if (typeof logoOff === 'function') logoOff();",
+  "to": "stopOrder();",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "P3"
+  ]
  }
 ]

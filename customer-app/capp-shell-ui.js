@@ -37,7 +37,7 @@
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
-    CappHome.logoFallback(doc);   // SBS asm9 D6: a failed logo ⇒ the initials plate (home cards + the store avatar)
+    const logoOff = CappHome.logoFallback(doc);   // SBS asm9 D6: a failed logo ⇒ the initials plate (home cards + the store avatar); removed on destroy (Codex P3)
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
     const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');   // S2: the total changes after the card hold (presenter)
@@ -1614,7 +1614,7 @@
       // §4c for the sign-in flow (G6): set the marker at sign-in; ONLY «Cerrar sesión y olvidar este teléfono» / deletion forgets it
       rememberAccount: (e164) => CappDeviceAccount.remember(storage, e164), forgetAccount: () => CappDeviceAccount.forget(storage),
       destroy() {
-        dead = true; clearTokenTimers(); stopOrder(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
+        dead = true; clearTokenTimers(); stopOrder(); if (typeof logoOff === 'function') logoOff(); if (typeof unTheme === 'function') { try { unTheme(); } catch (_) {} } unmountStore(); T.clearInterval(dirTimer); if (typeof unAuth === 'function') unAuth(); if (unView) unView(); if (view) view.destroy(); if (routing && typeof win.removeEventListener === 'function') win.removeEventListener('popstate', onPopReflect); if (typeof doc.removeEventListener === 'function') for (const ev of USER_INTENT) doc.removeEventListener(ev, onUserIntent, true);
         doc.removeEventListener('click', onClick); doc.removeEventListener('input', onInput); doc.removeEventListener('keydown', onKey); doc.removeEventListener('visibilitychange', onVisible); if (app && typeof app.removeEventListener === 'function') app.removeEventListener('scroll', onRowScroll, true); nav.destroy();
       },
     };

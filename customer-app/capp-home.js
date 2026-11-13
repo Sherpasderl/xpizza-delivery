@@ -164,12 +164,14 @@
   // broken-image glyph with its alt text overflowing the circle. ONE capture listener (an img's error does not bubble), installed once
   // by the shell; inline onerror is not allowed (CSP script-src 'self')
   function logoFallback(doc) {
-    if (!doc || typeof doc.addEventListener !== 'function') return;
-    doc.addEventListener('error', (e) => {
+    if (!doc || typeof doc.addEventListener !== 'function') return () => {};
+    const h = (e) => {
       const img = e.target; if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-initials')) return;
       const box = img.parentElement; if (!box) return;
       box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');
-    }, true);
+    };
+    doc.addEventListener('error', h, true);
+    return () => doc.removeEventListener('error', h, true);   // Codex P3: the shell's destroy() removes it (one listener per mount)
   }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
