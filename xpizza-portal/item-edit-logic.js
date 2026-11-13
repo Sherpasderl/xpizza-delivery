@@ -475,7 +475,7 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 }
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
-export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null });
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null });
 export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
 // D3 «Quitar elección» (confirmed): the copy becomes a PLAIN dish — choice.remove with the picked price_from is queued (dry-run as
 // every op), the Precio field shows that price and stays editable (UI-r0 :81: «Guardar» replays the removal, then the typed price);

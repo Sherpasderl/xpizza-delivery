@@ -2998,7 +2998,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   const onIn = document.createElement('input'); onIn.type = 'radio'; onIn.name = radioName; onIn.checked = !!group; lockControl(onIn, !unsaved);
   focusKey(onIn, 'on');
   onIn.setAttribute('aria-label', 'El cliente elige 1 opción');
-  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()]); state.samePrice.delete(id); restructure(['label', 'on']); } }));
+  // STRUCTURE S3 B7: with the server's choiceEdit the FIRST option is «Recomendada» from the start (the server's rule for a new group)
+  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()], undefined, { choiceEdit: state.choiceEdit === true }); state.samePrice.delete(id); restructure(['label', 'on']); } }));
   attach.append(onIn);
   const n = group ? group.options.length : 0;
   const sub = group ? `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio · en 1 producto` : 'el cliente elige 1 opción · define el precio';
@@ -3031,7 +3032,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
 
   if (group && open) {
     const gb = mk('div', 'mgbody');
-    const canBadge = state.choiceBadges.includes('recommended');
+    // B7: with choiceEdit the pill is always there and is a RADIO (exactly one mark; a tap on the marked one keeps it)
+    const canBadge = state.choiceBadges.includes('recommended') || state.choiceEdit === true;
     for (const o of group.options) {
       const oid = rowId(o);
       const row = mk('div', 'mopt');
@@ -3065,7 +3067,11 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
         const pill = document.createElement('button'); pill.className = 'recpill'; if (on) pill.classList.add('recpill-on');
         pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); lockControl(pill, !unsaved);
         focusKey(pill, `pill::${oid}`);
-        pill.addEventListener('click', bound(() => { setChoiceRecommended(state.draft, oid, !on); restructure([`pill::${oid}`]); }));
+        pill.addEventListener('click', bound(() => {
+          if (state.choiceEdit === true) { if (!on) for (const sib of group.options) setChoiceRecommended(state.draft, rowId(sib), rowId(sib) === oid); }
+          else setChoiceRecommended(state.draft, oid, !on);
+          restructure([`pill::${oid}`]);
+        }));
         row.append(pill);
       }
       if (unsaved) {
@@ -3075,12 +3081,21 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
         // after a removal: the next option's name, else the previous one's, else "Agregar opción"
         const i = group.options.indexOf(o);
         const near = [group.options[i + 1], group.options[i - 1]].filter(Boolean).map((r) => `name::${rowId(r)}`);
-        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid); restructure([...near, 'add']); }));
+        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid, { choiceEdit: state.choiceEdit === true }); restructure([...near, 'add']); }));   // B7: the mark follows the first row
         row.append(x);
       }
       gb.append(row);
       const oErr = errAt(oid);
       if (oErr) { row.classList.add('invalid'); gb.append(mk('div', 'ferr', oErr)); }
+    }
+    // B7 (S3 addendum): the quiet line under the rows says the first is marked and how to move it — only with choiceEdit
+    if (unsaved && state.choiceEdit === true) {
+      const recLine = mk('div', 'mk-recline'); recLine.setAttribute('role', 'status');
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+      const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', 'M6 3h12v18l-6-4-6 4z'); svg.append(pth);
+      recLine.append(svg, mk('span', null, IE.s3Copy('b7Line')));
+      gb.append(recLine);
     }
     if (unsaved) {
       const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';

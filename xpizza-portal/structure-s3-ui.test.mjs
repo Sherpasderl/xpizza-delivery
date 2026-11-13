@@ -249,8 +249,43 @@ test('D2 — «Cancelar» records nothing; the trash is off at two options; «Ag
   assert.ok(p.fld('Precio'), 'the dish keeps its one price');
 });
 
+// B7 — the «Agregar producto» drawer: with choiceEdit ON a new group's FIRST option is «Recomendada» from the start, with the quiet line;
+// a pill is a radio (one tap moves the mark; the marked one stays); deleting the marked row moves it to the new first. OFF: today's.
+async function newSized(p) {
+  const btn = [...p.d.getElementById('detail').querySelectorAll('button')].find((x) => x.textContent.trim() === 'Agregar producto');
+  assert.ok(btn, 'premise: «Agregar producto» in the open section');
+  btn.click(); await settle(10);
+  const on = p.drawer().querySelector('input[aria-label="El cliente elige 1 opción"]');
+  assert.ok(on, 'premise: the new-product drawer\'s «El cliente elige 1 opción»');
+  on.click(); await settle(5);
+  return p.drawer().querySelector('.modgrp .mgbody');
+}
+const pills = (gb) => [...gb.querySelectorAll('.mopt .recpill')].map((b) => b.getAttribute('aria-pressed'));
+test('B7 — a new dish\'s group: option 1 pre-marked + the quiet line; a pill is a radio; deleting the marked row moves the mark; OFF unchanged', async () => {
+  const p = await page({ read: () => editable({ extrasAuthoring: true, choiceEdit: true, groupAuthoring: true }) });
+  await p.signIn();
+  let gb = await newSized(p);
+  assert.deepEqual(pills(gb), ['true', 'false'], '🔴 option 1 marked from the start');
+  const line = gb.querySelector('.mk-recline');
+  assert.equal(line.textContent, P('b7Line')); assert.equal(line.getAttribute('role'), 'status');
+  assert.ok(line.nextElementSibling.classList.contains('mgadd'), 'under the rows, before «Agregar opción»');
+  gb.querySelectorAll('.mopt .recpill')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['false', 'true'], 'one tap moves the mark');
+  gb.querySelectorAll('.mopt .recpill')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['false', 'true'], 'the marked pill stays marked');
+  gb.querySelectorAll('.mopt .model')[1].click(); await settle(5);
+  gb = p.drawer().querySelector('.modgrp .mgbody');
+  assert.deepEqual(pills(gb), ['true'], 'the mark follows the first row: never zero');
+  const off = await page({ read: () => editable({ extrasAuthoring: true, groupAuthoring: true, choiceBadges: ['recommended'] }) });
+  await off.signIn();
+  const gbo = await newSized(off);
+  assert.deepEqual(pills(gbo), ['false', 'false'], 'OFF: today, unmarked'); assert.equal(gbo.querySelector('.mk-recline'), null);
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy
