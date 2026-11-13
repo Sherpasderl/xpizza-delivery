@@ -5,9 +5,9 @@
 //   extrasCatalog — the «Extras» page: add / remove / reprice extras, create a group, attach / detach groups, the one group order (S2-core)
 //   choiceEdit    — the required choice on an existing dish (S3)
 //   sections      — categories / subcategories, moves, reorders (S4)
-const EXTRAS_CATALOG = true; const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): choiceEdit OFF at ship; flipped in its own commit after the portal's choice editor ships
+const EXTRAS_CATALOG = true; const CHOICE_EDIT = false; const SECTIONS = false;   // S3 (PLAN-structure-S3-r3): choiceEdit OFF at ship; flipped in its own commit after the portal's choice editor ships · S4 (PLAN-structure-S4-r4): sections likewise, after the S4 UI
 function structureCapabilities() {
-  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: false };
+  return { extrasCatalog: EXTRAS_CATALOG === true, choiceEdit: CHOICE_EDIT === true, sections: SECTIONS === true };
 }
 // LEGACY-FORM reward pickers (Codex #119 P2): while the legacy order forms remain, a frozen form's reward picker offers EVERY extra of a
 // group that holds a reward-eligible extra (la-musa-orders buildRedeemCatalog), and no new extra is ever server-eligible — so a NEW extra

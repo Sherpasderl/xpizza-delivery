@@ -207,6 +207,7 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -660,6 +661,7 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1139,6 +1141,7 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -1589,6 +1592,7 @@
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
+    "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/seed-source.test.js",
     "xpizza-functions/catalog/source-store.test.js",
     "xpizza-functions/catalog/structure-accounting-flows.test.mjs",
@@ -3784,7 +3788,8 @@
   "catalog/platform-structure.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js"
+    "xpizza-functions/s3choice-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
   },
   "catalog/portal-reads.js": {
