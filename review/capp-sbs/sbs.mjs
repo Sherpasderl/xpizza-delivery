@@ -20,6 +20,7 @@ import { router, DIRECTORY_ENDPOINT, CLOCK_SHIM } from './fixtures.mjs';
 import { SCENES } from './scenes.mjs';
 import { S2_SCENES } from './scenes-s2.mjs';
 import { TIP_SCENES } from './scenes-tip.mjs';
+import { C1_SCENES } from './scenes-c1.mjs';   // --set c1: C-1a (D-3 r3 9.1 / 9.4) + C-3r (frame 13 on «Volver a pedir», the Pedidos dot)
 import { S3_SCENES } from './scenes-s3.mjs';   // --set s3: item S3 refusals vs MOCKUP-item-s3-refusals (a bundle WITH the sdkPay flag)   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -159,7 +160,7 @@ async function diffPair(id, a, b, tag) {
 const results = [];
 const SET = arg('--set', 'main');
 if (!['main', 's2', 'tip', 's3'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3`);
-const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
+const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SET === 'c1' ? C1_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {

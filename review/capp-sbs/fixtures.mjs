@@ -109,7 +109,8 @@ async function quoteOrder(req) {
 }
 // opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
-  const scen = FX.scenarios[opts.directory || 'complete'];
+  // C-1a SBS: a scene may serve a directory-2 body it built with the REAL ratings chain (scenes-c1.mjs) instead of a pinned scenario
+  const scen = opts.directoryBody ? { status: 200, body: opts.directoryBody, headers: { ETag: opts.directoryEtag || '"sbs-c1"' } } : FX.scenarios[opts.directory || 'complete'];
   return (req) => {
     const u = new URL(req.url), p = u.pathname, host = u.host;
     if (host.endsWith('cloudfunctions.net')) {
@@ -148,6 +149,8 @@ export function router(opts = {}) {
   };
 }
 export { PROV };
+// C-1a SBS: a pinned directory scenario's body (a copy) — scenes-c1.mjs rebuilds its entries with the real ratings chain
+export const directoryScenario = (k = 'complete') => JSON.parse(JSON.stringify(FX.scenarios[k]));
 
 // ── a restored MEMBER (Ana) ──
 // The packaged app restores a member from (a) the Firebase SDK's browserLocalPersistence record (under the capp's own app name) and (b) the capp's own completion
@@ -160,6 +163,7 @@ export { PROV };
 // 17:00–21:45 in the s7a2 directory), the 60-min lead inside the close. On the wall clock a 01:53 run painted «Cerrado · Abre hoy 12:00 p.m.» and the disabled «Lo antes posible» where every mockup draws an open store.
 export const NOW_PIN = Date.UTC(2026, 10, 8, 0, 30);
 const T0 = Date.now(), nowMs = () => NOW_PIN + (Date.now() - T0);
+export const sbsNow = () => nowMs();   // the run's pinned clock (C-1a SBS: «Nuevo en Sherpa» is relative to it)
 export const CLOCK_SHIM = `(() => { const D = Date, off = ${NOW_PIN} - D.now();
   function P(...a) { if (!new.target) return new D(D.now() + off).toString(); return a.length ? new D(...a) : new D(D.now() + off); }
   P.prototype = D.prototype; P.now = () => D.now() + off; P.UTC = D.UTC; P.parse = D.parse; self.Date = P; })();`;
@@ -205,8 +209,10 @@ export function memberActive() {
   return { order_id: 'XPZ261107-LIVE04', ts: nowMs() - 25 * 60e3, total: 295, order_type: 'delivery', restaurant: 'x_pizza', status: 'out_for_delivery', display_number: 4833,
     items_text: '1x Margherita (L250)', items: [{ dish_id: xpA, qty: 1, options: [] }] };
 }
-export function memberExtra({ receiptDelay = 0, active = false } = {}) {
-  const rows = memberRows(), live = active ? [memberActive()] : [], W = 7 * 24 * 3600e3;
+// snapshots: { [order_id]: S-D price_snapshot } — C-3r SBS: a past row carries the snapshot of its OWN charge (a v1 shape, aligned
+// 1:1 with that row's items), so «Volver a pedir» against today's menu shows frame 13
+export function memberExtra({ receiptDelay = 0, active = false, snapshots = null } = {}) {
+  const rows = memberRows().map((r) => (snapshots && snapshots[r.order_id] ? { ...r, price_snapshot: snapshots[r.order_id] } : r)), live = active ? [memberActive()] : [], W = 7 * 24 * 3600e3;
   return (req, u) => {
     if (u.host === 'identitytoolkit.googleapis.com' && u.pathname.endsWith('/accounts:lookup')) return json({ kind: 'identitytoolkit#GetAccountInfoResponse', users: [{ localId: 'u_ana', email: 'ana.perez@gmail.com', emailVerified: true, providerUserInfo: [], validSince: '0', lastLoginAt: String(nowMs()), createdAt: '1' }] });
     if (u.host === 'securetoken.googleapis.com') { const t = memberToken(); return json({ access_token: t, id_token: t, expires_in: '3600', token_type: 'Bearer', refresh_token: 'sbs-refresh', user_id: 'u_ana', project_id: 'xpizza-delivery' }); }
