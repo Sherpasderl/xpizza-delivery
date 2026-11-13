@@ -4,11 +4,13 @@
 //   → 200 { ok, active: [Row], past: [Row], next_cursor } | 400 bad_request | 401 unauthenticated | 403 deleted | 405 | 429
 // MEMBER-ONLY: the uid comes ONLY from the verified customer token (guests have no user_orders — attribution is a no-op for
 // them). ONE bounded query on user_orders/{uid} (orderByChild('ts') [.endBefore(ts, id)] .limitToLast(limit + 1), the existing
-// .indexOn) and no other read but the tombstone check: no fan-out. Rules unchanged (Admin read; the node stays owner-read-only).
+// .indexOn) and no other read but the tombstone checks: no fan-out. The member predicate is member-auth's (PLAN-3a-capp-member-reads
+// R2.1, security): a customer token that is NOT a handheld token ⇒ else 401; any of the THREE tombstones (incl. the sweep's
+// user_profiles/{uid}/deleting_at) ⇒ 403 — in list AND receipt mode. Rules unchanged (Admin read; the node stays owner-read-only).
 // Row = a WHITELIST of the stored entry; `items` + `recipe_format` (the server-authored, menu-allowlisted reorder recipe) and S-D's
 // additive `price_snapshot` (server-authored, aligned with `items`) pass through as stored. active = a status outside the
 // terminal set; a stale non-terminal status (status-mirror is fail-open) stays active — the stored truth (backlog: a reconciler).
-const S = require('./signup-core');
+const MA = require('./member-auth');   // R2.1: the ONE member predicate (verified customer, never handheld; three tombstones)
 const CB = require('./catalog/canonical-binding');   // identityMap: the ONE legacy-key → canonical-id resolver (via the pricing envelope's D4-a context)
 const { HEAL_TERMINAL_STATUSES: TERMINAL } = require('./sweep-pending');   // {cancelled, delivered, completed} — one source
 
@@ -110,15 +112,12 @@ function makeMyOrders(deps) {
         return res.status(400).json({ ok: false, reason: 'bad_request' });
       }
       const t = typeof req.get === 'function' ? req.get('x-firebase-id-token') : null;
-      let uid = null;
-      if (t) {
-        try { const dec = await deps.getAuth().verifyIdToken(t); if (dec && dec.customer === true && typeof dec.uid === 'string' && dec.uid) uid = dec.uid; } catch (_) { uid = null; }
-      }
+      const uid = await MA.verifiedMemberUid(t, (x) => deps.getAuth().verifyIdToken(x));
       if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
       const db = deps.getDatabase();
       const { allowed, retryAfterSec } = await deps.checkRateLimit(db, 'my_orders', uid, RATE);
       if (!allowed) { res.set('Retry-After', String(retryAfterSec)); return res.status(429).json({ ok: false, reason: 'rate_limited' }); }
-      if (await S.isTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });
+      if (await MA.isMemberTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });
       if (detailId !== undefined) {
         const [eS, oS] = await Promise.all([db.ref(`user_orders/${uid}/${detailId}`).once('value'), db.ref(`orders/${detailId}`).once('value')]);
         const entry = eS.val(); const order = oS.val();
