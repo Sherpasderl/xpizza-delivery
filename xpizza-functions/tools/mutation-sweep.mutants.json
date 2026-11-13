@@ -35900,7 +35900,7 @@
   "slice": "c1b",
   "label": "a sign-out / member switch leaves the previous member's book on the device",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (S.fav && S.fav.who) { try { storage && storage.removeItem(FAV_KEY(S.fav.who)); } catch (_) {} }",
+  "from": "if (favConf && favConf.who) { try { storage && storage.removeItem(FAV_KEY(favConf.who)); } catch (_) {} }",
   "to": "",
   "command": [
    "node",
@@ -35917,8 +35917,8 @@
   "slice": "c1b",
   "label": "a refused toggle is NOT reverted (the heart lies about the server)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (favTouched.get(rid) === seq) { favApply(rid, was); favSave(); storeHeart(); schedule(); }",
-  "to": "",
+  "from": "favPend.delete(rid); favShow();   // the UI falls back to confirmed",
+  "to": "favShow();",
   "command": [
    "node",
    "--test",
@@ -35969,7 +35969,7 @@
   "slice": "c1b",
   "label": "a toggle whose token read outlived the identity is dispatched anyway (under the NEXT member) — Codex P1",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (dead || gen !== favGen || !S.fav) return;   // another identity now: never dispatched under it",
+  "from": "if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it",
   "to": "if (dead || !S.fav) return;",
   "command": [
    "node",
@@ -35986,7 +35986,7 @@
   "slice": "c1b",
   "label": "a stale answer (A→B→A) lands on the later session — Codex P1",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (dead || gen !== favGen || !S.fav) return;   // a stale answer never lands on a later session",
+  "from": "if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)",
   "to": "if (dead || !S.fav) return;",
   "command": [
    "node",
@@ -36001,18 +36001,19 @@
  {
   "id": "cx9b-03",
   "slice": "c1b",
-  "label": "a late read snapshot overwrites the saves made since it began — Codex P2",
+  "label": "a read that started before a save settled overwrites it (r1: read → save → answer; r2 schedule 1: save pending at read-start) — Codex P2",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "for (const [rid, seq] of favTouched) if (seq > startSeq) { merged = merged.filter((x) => x !== rid); if (S.fav.favorites.includes(rid)) merged.unshift(rid); }",
-  "to": "",
+  "from": "const keep = (rid) => favPend.has(rid) || (favEnd.get(rid) || 0) > start;",
+  "to": "const keep = (rid) => favPend.has(rid);",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=Codex P2 \\(read",
+   "--test-name-pattern=Codex P2 \\(read × save|Codex r2 P2 schedule 1",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "P2: the late snapshot"
+   "P2: the late snapshot",
+   "r2 S1"
   ]
  },
  {
@@ -36030,6 +36031,74 @@
   ],
   "kills_with": [
    "P2 (rule 7)"
+  ]
+ },
+ {
+  "id": "cx9c-02",
+  "slice": "c1b",
+  "label": "a read answer never updates CONFIRMED (another device's favorite never lands) — Codex r2 race",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "favConf = { who: uid, favorites, recent: r.recent }; favShow();",
+  "to": "favShow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: a read racing a write",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 race: the read lands la_musa"
+  ]
+ },
+ {
+  "id": "cx9c-03",
+  "slice": "c1b",
+  "label": "taps are not coalesced: a second write per rid is sent while one is in flight — Codex r2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (p) { p.want = on; favShow(); return; }",
+  "to": "if (p) { p.want = on; favShow(); favPump(rid, favGen); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: rapid taps coalesce",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 coalesce: on/off/on"
+  ]
+ },
+ {
+  "id": "cx9c-04",
+  "slice": "c1b",
+  "label": "the settled write is never followed by the latest wish (on/off ends on) — Codex r2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      for (;;) {\n        const p = favPend.get(rid); if (!p) return;",
+  "to": "      for (let once = 0; once < 1; once++) {\n        const p = favPend.get(rid); if (!p) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: rapid taps coalesce",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 coalesce: on/off ⇒"
+  ]
+ },
+ {
+  "id": "cx9c-05",
+  "slice": "c1b",
+  "label": "a failed save keeps its optimistic wish as truth (on, off, both fail ⇒ favorited) — Codex r2 P2 schedule 2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "favPend.delete(rid); favShow();   // the UI falls back to confirmed",
+  "to": "favConf = { ...favConf, favorites: withFav(favConf.favorites, rid, !favConf.favorites.includes(rid)) }; favPend.delete(rid); favShow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2 P2 schedule 2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 S2"
   ]
  }
 ]
