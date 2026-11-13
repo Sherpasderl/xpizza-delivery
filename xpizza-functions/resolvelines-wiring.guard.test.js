@@ -11,7 +11,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const read = (f) => require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));   // train asm7 (2e): D4 then confirmretire; train/portal-structure: S2's s1srv+grpid innermost
+const read = (f) => require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))));   // train asm7 (2e): D4 then confirmretire; train/portal-structure: S2's s1srv+grpid innermost
 const src = read('index.js');
 const STAGE = 'RL.resolveLines(restaurantId, body, ';
 

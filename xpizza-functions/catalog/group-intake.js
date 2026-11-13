@@ -66,7 +66,7 @@ async function groupIssues({ caps, gates, items, restaurantId, keyMode = undefin
     for (const k of rewardKeys) {
       const ns = nsOf(k);
       const member = ns === 'dish' ? knownDish.has(k) : ns === 'extra' ? knownExtra.has(k) : (knownDish.has(k) || knownExtra.has(k));
-      if (!member) return { unclassifiable: true };
+      if (!member) return require('./reward-removed').removedOrUnclassifiable(gates, rewardKeys.filter((x) => { const s = nsOf(x); return !(s === 'dish' ? knownDish.has(x) : s === 'extra' ? knownExtra.has(x) : (knownDish.has(x) || knownExtra.has(x))); }));   // S3 D3: removed (gate current) vs unclassifiable
     }
   }
   const lines = (Array.isArray(items) ? items : []).map((it) => ({ it, key: itemPricingKey(it, restaurantId, keyMode) })).filter((l) => typeof l.key === 'string' && l.key);
@@ -97,7 +97,7 @@ async function groupIssues({ caps, gates, items, restaurantId, keyMode = undefin
 // CASH: refuse outright (no reuse concept: an existing order already returned at the dedupe).
 function cashRefusal(issues) {
   if (!issues) return null;
-  if (issues.unclassifiable) return { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } };
+  if (issues.removed) return require('./reward-removed').menuChangedRefusal(); if (issues.unclassifiable) return { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } };   // S3 D3: a removed reward → 409 menu_changed
   if (issues.bare.length || issues.rewardBare.length) return { status: 409, body: { ...CHOICE_REQUIRED, keys: [...issues.bare, ...issues.rewardBare] } };
   if (issues.parentBlocked.length) return { status: 400, body: { error: 'item_unavailable', blocked: issues.parentBlocked } };
   return null;
@@ -110,7 +110,7 @@ function chargeDecision(issues, cls) {
   const none = { respond: null, armChoice: false, armMenu: false, block: [] };
   if (!issues) return none;
   const fresh = cls && cls.willIssueFreshUrl === true;
-  if (issues.unclassifiable) {
+  if (issues.removed) return !cls ? { ...none, respond: { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } } } : fresh ? { ...none, respond: require('./reward-removed').menuChangedRefusal() } : { ...none, armMenu: 'removed' }; if (issues.unclassifiable) {   // S3 D3: a removed reward — fresh 409, reuse arms the guard as removed
     if (!cls || fresh) return { ...none, respond: { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } } };
     return { ...none, armMenu: true };
   }
@@ -126,7 +126,7 @@ function chargeDecision(issues, cls) {
 // QUOTES (quoteOrder fails SOFT with 200 ok:false; quoteRedemption answers like the redemption intake).
 function quoteRefusal(issues) {
   if (!issues) return null;
-  if (issues.unclassifiable) return { error: 'menu_updating' };
+  if (issues.removed) return { error: 'menu_changed' }; if (issues.unclassifiable) return { error: 'menu_updating' };   // S3 D3
   if (issues.bare.length || issues.rewardBare.length) return { error: 'choice_required' };
   if (issues.parentBlocked.length) return { error: 'item_unavailable', blocked: issues.parentBlocked };
   return null;
@@ -137,7 +137,7 @@ function quoteRefusal(issues) {
    error (e.g. redemption_invalid). Consulted ONLY on that failure path, so nothing that succeeds today changes. */
 function prepFailureRefusal(issues) {
   if (!issues) return null;
-  if (issues.unclassifiable) return { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } };
+  if (issues.removed) return require('./reward-removed').menuChangedRefusal(); if (issues.unclassifiable) return { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } };   // S3 D3
   if (issues.rewardBare.length) return { status: 409, body: { ...CHOICE_REQUIRED, keys: issues.rewardBare.slice() } };
   return null;
 }

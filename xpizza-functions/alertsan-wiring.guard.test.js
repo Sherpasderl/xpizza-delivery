@@ -12,7 +12,7 @@ const ASM_BASE = '2b132041';
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['pixelpay-cancel.js', 'pixelpay-confirm.js'], 'the slice owns exactly these files');
 for (const f of FILES) {
-  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));   // asm2 (5f): P5a (newer: pixelpay-confirm.js) stripped first, INNERMOST
+  const src = require('./tools/p5a-inverse').unapplyP5aModule(f, require('./tools/sdkpay-module-inverse').unapplySdkPayModule(f, require('./tools/grpid-module-inverse').unapplyGrpidModule(f, require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))));   // asm2 (5f): P5a (newer: pixelpay-confirm.js) stripped first, INNERMOST
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyAlertSanModule(f, src), b, `🔴 ${f} minus the alert-sanitize hunks is not ${ASM_BASE}:${f}`);

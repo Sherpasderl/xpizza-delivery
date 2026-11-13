@@ -27,7 +27,7 @@ function assessDraft(rid, source, activeRes) {
   try {
     const draftBuilt = { items: built.items, extras: built.extras, structure: built.structure };
     const activeBuilt = { items: activeRes.built.items, extras: activeRes.extraRecords, structure: activeRes.built.structure };
-    const r = AP.compareToActive({
+    const r = require('./choice-compare').compareToActive(rid, {
       draftBuilt,
       activeBuilt,
       draftAuthored: Object.keys(source.structure || {}),

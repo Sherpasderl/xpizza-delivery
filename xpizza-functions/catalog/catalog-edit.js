@@ -174,7 +174,7 @@ function pairRenames(removed, added, surface) {
 
 // opts.pairExtras (default true = today): S2-core (PLAN-structure-S2core-r3 §1.6) passes false — an extra cannot be renamed there,
 // so a different key is a different extra (review-diff.js).
-function catalogDiff(liveBuilt, draftBuilt, opts = null) {   // opts: { pairExtras } (S2-core) · { declared } («Quitar del menú» P-R3), either or both
+function catalogDiff(liveBuilt, draftBuilt, opts = null) {   // opts: { pairExtras } (S2-core) · { declared } («Quitar del menú» P-R3) · { pairItems } (S3 §4), any combination
   const added = [], removed = [], changed = [], largeChangeSet = [];
 
   // ── items
@@ -248,8 +248,8 @@ function catalogDiff(liveBuilt, draftBuilt, opts = null) {   // opts: { pairExtr
 
   // «Quitar del menú» P-R3: a DECLARED removal (removalDiffOptions) is never rename-paired — it stays «Quitado» beside the addition
   const declared = opts && opts.declared instanceof Set ? opts.declared : null;
-  const itemPairs = pairRenames(declared ? rawRemovedItems.filter((r) => !declared.has(r.key)) : rawRemovedItems, rawAddedItems, 'item');
-  if (declared) itemPairs.removed.push(...rawRemovedItems.filter((r) => declared.has(r.key)));
+  const itemPairs = !(opts && opts.pairItems === false) ? pairRenames(declared ? rawRemovedItems.filter((r) => !declared.has(r.key)) : rawRemovedItems, rawAddedItems, 'item') : { renamed: [], removed: rawRemovedItems.slice(), added: rawAddedItems };   // S3 §4 (pairItems false): an option replaced at the same price is a removal + an addition
+  if (declared && !(opts && opts.pairItems === false)) itemPairs.removed.push(...rawRemovedItems.filter((r) => declared.has(r.key)));
   if (declared) for (let i = changed.length - 1; i >= 0; i--) if (changed[i].field === 'photo' && declared.has(changed[i].key)) changed.splice(i, 1);   // B-5: the photo cleanup folds into the one «Quitado» row
   const pairExtras = !(opts && opts.pairExtras === false);
   const extraPairs = pairExtras ? pairRenames(rawRemovedEx, rawAddedEx, 'extra') : { renamed: [], removed: rawRemovedEx, added: rawAddedEx };

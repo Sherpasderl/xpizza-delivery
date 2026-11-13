@@ -123,26 +123,29 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
       // enforce: today's 400 item_malformed + copy, nothing written or charged. off: the extras check is skipped at the base too,
       // so the stage must simply not answer (its codes never appear); the byte-identity with the base is the capture's
       // (test/s1b-reward-parity.capture.js, both settings)
-      const judge = setting === 'enforce' ? isMalformed : notStage;
-      for (const [rid, over] of [['x_pizza', { name: ['Carnivora'] }], ['la_musa', { id: ['dimsum_01'] }]]) {
-        const tag = `${setting} ${rid} ${Object.keys(over)[0]}=array`;
+      // S1 (owner 2026-11-11, catalog/extras-entry.js): only an APP cart (entry_mode 'app') is judged under the runtime mode; a FORM
+      // cart is judged as off, so under enforce the app cart keeps today's refusal and the form cart is the off answer
+      for (const entry of ['app', 'form']) for (const [rid, over] of [['x_pizza', { name: ['Carnivora'] }], ['la_musa', { id: ['dimsum_01'] }]]) {
+        const judge = setting === 'enforce' && entry === 'app' ? isMalformed : notStage;
+        const ent = entry === 'app' ? { entry_mode: 'app' } : {};
+        const tag = `${setting} ${entry} ${rid} ${Object.keys(over)[0]}=array`;
         const f = await fresh();
-        const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)]), { 'x-firebase-id-token': uid });
+        const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)], ent), { 'x-firebase-id-token': uid });
         assert.ok(judge(co), `I-CREATE ${tag} (${co.status} ${co.text.slice(0, 200)})`);
-        if (setting === 'enforce') assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
+        if (judge === isMalformed) assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
         const g = await fresh(); const before = CHARGED.length;
-        const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [lineOf(rid, over)], { payment_method: 'online' }), { 'x-firebase-id-token': uid });
+        const ch = await post(app.chargeOnlineOrder, bodyFor(rid, g.oid, g.phone, [lineOf(rid, over)], { payment_method: 'online', ...ent }), { 'x-firebase-id-token': uid });
         assert.ok(judge(ch), `I-CHARGE ${tag} (${ch.status} ${ch.text.slice(0, 200)})`);
-        if (setting === 'enforce') { assert.strictEqual(CHARGED.length, before, `I-CHARGE ${tag} nothing charged`); assert.strictEqual(await written(g.oid), false, `I-CHARGE ${tag} nothing written`); }
-        const q = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup' });
+        if (judge === isMalformed) { assert.strictEqual(CHARGED.length, before, `I-CHARGE ${tag} nothing charged`); assert.strictEqual(await written(g.oid), false, `I-CHARGE ${tag} nothing written`); }
+        const q = await post(app.quoteOrder, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', ...ent });
         assert.ok(judge(q), `I-QUOTE ${tag} (${q.status} ${q.text.slice(0, 200)})`);
-        const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', redeem: REDEEM[rid] }, { 'x-firebase-id-token': uid });
+        const qr = await post(app.quoteRedemption, { restaurant_id: rid, items: [lineOf(rid, over)], order_type: 'pickup', redeem: REDEEM[rid], ...ent }, { 'x-firebase-id-token': uid });
         assert.ok(judge(qr), `I-QUOTE-REDEEM ${tag} (${qr.status} ${qr.text.slice(0, 200)})`);
       }
     }
     await rtdb.ref('platform_config/extras_eligibility').remove();
   }
-  ok('a malformed legacy key: under enforce today\'s 400 item_malformed + copy at all four endpoints (nothing written or charged); under off the stage never answers');
+  ok('a malformed legacy key: under enforce an app cart gets today\'s 400 item_malformed + copy at all four endpoints (nothing written or charged); a form cart (S1: judged off) and every cart under off: the stage never answers');
 
   // ── K: item_key ──
   for (const rid of ['x_pizza', 'la_musa']) {

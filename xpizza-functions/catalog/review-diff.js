@@ -42,12 +42,15 @@ function s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords }) 
   return false;
 }
 
-function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, removal = null }) {   // removal: removalDiffOptions(live, draft) («Quitar del menú» P-R3) or null
+function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos = null, extrasCatalog = false, removal = null, choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit }) {   // removal: removalDiffOptions(live, draft) («Quitar del menú» P-R3) or null
   const s2 = !!extrasCatalog && s2OpPresent({ live, liveExtraRecords, draftBuilt, draftExtraRecords });
+  const s3 = !!choiceEdit && require('./choice-activation').s3EditPresent({ baseline: live, target: draftBuilt });   // S3 §4: the classifier's touched-group rule (Codex build r1 P2-3)
+  const choices = s3 ? require('./choice-activation').choiceRows({ baseline: live, target: draftBuilt }) : [];
   const L = photos ? { ...live, photos: photos.active } : live;
   const D = photos ? { ...draftBuilt, photos: photos.draft } : draftBuilt;
-  const diff = withConsequences(catalogDiff(L, D, { pairExtras: !s2, ...(removal || {}) }), { live, liveExtraRecords, draftBuilt, draftExtraRecords });
-  if (!s2) return diff;
+  const diff = withConsequences(catalogDiff(L, D, { pairExtras: !s2, ...(s3 ? { pairItems: false } : {}), ...(removal || {}) }), { live, liveExtraRecords, draftBuilt, draftExtraRecords });
+  if (!s2 && !s3) return diff;
+  if (!s2) return { ...diff, fiscal: fiscalOf(diff, draftBuilt, new Map((draftExtraRecords || []).map((e) => [e.key, e]))), choices };
 
   const lx = new Map((liveExtraRecords || []).map((e) => [e.key, e])); const dx = new Map((draftExtraRecords || []).map((e) => [e.key, e]));
   const row = (e, price, change) => ({ key: e.key, name: e.display && e.display.name, group: e.display && e.display.cat, price, change });
@@ -96,7 +99,16 @@ function reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, pho
   const reach = {};
   for (const g of [...changedGroups].sort()) reach[g] = Object.keys(E).filter((k) => !P.items[k].launcherKey && E[k] && E[k].includes(g)).length;
   out.reach = reach;
+  if (s3) out.choices = choices;
   return out;
+}
+
+// the fiscal seal of an S3-only diff — the S2 rule above, verbatim: one row per added key, one per price change (item / extra)
+function fiscalOf(diff, draftBuilt, dx) {
+  const nameOf = (surface, key) => { const r = surface === 'extra' ? dx.get(key) : (draftBuilt.items || []).find((i) => i.key === key); return r && r.display ? r.display.name : null; };
+  const added = diff.added.filter((a) => a.surface === 'item' || a.surface === 'extra').map((a) => ({ surface: a.surface, key: a.key, name: nameOf(a.surface, a.key), price: a.price }));
+  const repriced = diff.changed.filter((c) => c.field === 'price' && (c.surface === 'item' || c.surface === 'extra')).map((c) => ({ surface: c.surface, key: c.key, name: nameOf(c.surface, c.key), old: c.old, new: c.new }));
+  return { added, repriced };
 }
 
 module.exports = { reviewDiff, s2OpPresent };

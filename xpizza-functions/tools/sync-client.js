@@ -30,6 +30,8 @@ for (const f of cartSigFolders) fs.copyFileSync(CART_SIG_SRC, path.join(ROOT, f,
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'extras-eligibility.js'), path.join(ROOT, 'xpizza-portal', 'extras-eligibility.js'));
 // S2-core (PLAN-structure-S2core-r3 §3.2): the ONE Extras-page writer → the portal, byte-identical (catalog/exposure-transitions-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'exposure-transitions.js'), path.join(ROOT, 'xpizza-portal', 'exposure-transitions.js'));
+// S3 (PLAN-structure-S3-r3 §0): the ONE choice writer → the portal, byte-identical (catalog/choice-transitions-sync.guard.test.js)
+fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'choice-transitions.js'), path.join(ROOT, 'xpizza-portal', 'choice-transitions.js'));
 // S2-core (Codex build r1 P1-2): the capp serializer — the ONE extra-label predicate — → the functions, byte-identical (catalog/capp-serialize-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'customer-app', 'capp-serialize.js'), path.join(ROOT, 'xpizza-functions', 'catalog', 'capp-serialize.js'));
 // ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' Archivo face → the map site's
