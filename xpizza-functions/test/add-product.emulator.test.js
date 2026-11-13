@@ -153,7 +153,7 @@ const wipe = async () => {
         const row = reused.body.source.items.find((i) => i.display && i.display.name === 'Ya Existio');
         assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== usedKey, `${tag}: under a fresh i_ key, never the used one (${row && row.key})`);
         assert.deepStrictEqual((await keysColOf(db, rid, 'dish').doc(encodeKey(usedKey)).get()).data(), { canonical_id: 'old', legacy_key: 'x' }, `${tag}: the old key's registry row stays`);
-        const back = await save(rid, cur);   // the draft back to what the later steps expect
+        const back = await save(rid, { ...cur, frozen_keys: (await draft(rid)).frozen_keys });   // the draft back to what the later steps expect; it echoes the STORED frozen_keys (server-owned: the mint recorded the fresh key, and a draft may never drop an entry — the portal echoes what it read)
         assert.strictEqual(back.status, 200, `${tag}: the draft restored (${JSON.stringify(back.body).slice(0, 200)})`);
       }
       ok(`${tag}: refused at save with nothing written — staff adds (403), a folded duplicate name, a name with a registry row ("Ese nombre ya existió…", MINT off; MINT on: a fresh i_ key, the old row kept), > 20 additions, an existing item changed, a client key`);
