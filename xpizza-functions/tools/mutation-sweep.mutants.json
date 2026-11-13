@@ -31231,8 +31231,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
   "command": [
    "node",
    "--test",
@@ -31242,7 +31242,7 @@
   "kills_with": [
    "SU-endpoints"
   ],
-  "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos"
+  "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos · C-1b: the endpoint list gains getMyFavorites + setFavorite; the mutant still drops setPromos"
  },
  {
   "id": "g7-17",
@@ -35733,9 +35733,9 @@
  {
   "id": "c1a-04",
   "slice": "c1a",
-  "label": "the heart shown to a member / an unresolved session before C-1b (a heart that cannot save)",
+  "label": "the heart shown to an UNRESOLVED session (a heart that cannot save — C-1b keeps it reserved until the session is admitted)",
   "file": "../customer-app/capp-ui.js",
-  "from": "const heartOff = () => (authOf() === 'guest' ?",
+  "from": "const heartOff = () => (heartShown() ?",
   "to": "const heartOff = () => (true ?",
   "command": [
    "node",
@@ -35745,7 +35745,8 @@
   ],
   "kills_with": [
    "C1-T7"
-  ]
+  ],
+  "repointed": "C-1b: a member's heart is live; the reserved slot is now the unresolved session's"
  },
  {
   "id": "c1a-05",
@@ -35892,6 +35893,74 @@
   ],
   "kills_with": [
    "TIP-F4 (rule 20)"
+  ]
+ },
+ {
+  "id": "c1b-01",
+  "slice": "c1b",
+  "label": "a sign-out / member switch leaves the previous member's book on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.fav && S.fav.who) { try { storage && storage.removeItem(FAV_KEY(S.fav.who)); } catch (_) {} }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F5"
+  ]
+ },
+ {
+  "id": "c1b-02",
+  "slice": "c1b",
+  "label": "a refused toggle is NOT reverted (the heart lies about the server)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "S.fav.favorites = before; favSave(); storeHeart(); schedule();",
+  "to": "favSave(); storeHeart(); schedule();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F3"
+  ]
+ },
+ {
+  "id": "c1b-03",
+  "slice": "c1b",
+  "label": "the «Para vos» row recomputed live (a row inserted into a visible Inicio — pop-in)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!pvVisit) {\n        const listed",
+  "to": "      if (true) {\n        const listed",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F1"
+  ]
+ },
+ {
+  "id": "c1b-04",
+  "slice": "c1b",
+  "label": "a member's saved store shows an EMPTY heart",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const heartOn = () => authOf() === 'member' && !!SOC && typeof SOC.isFav === 'function' && SOC.isFav() === true;",
+  "to": "const heartOn = () => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F4"
   ]
  }
 ]

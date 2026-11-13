@@ -1414,3 +1414,14 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .csplash.exit .needle{animation:none;transform:rotate(0);transition:transform 200ms ease-out}
 .csplash.gone{display:none}
 @media (prefers-reduced-motion:reduce){.csplash .needle,.csplash .ringg,.csplash .halo,.csplash .pivot{animation:none!important}.csplash.exit{transition-duration:150ms}}
+
+/* C-1b (D-3 r3 9.4): the «Para vos» card's heart (the store hero's chip, filled = saved) and «Pediste el …» */
+.rcard{position:relative}
+.rcard .heart{position:absolute;right:10px;top:10px;z-index:2;width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#0D1424;box-shadow:0 1px 4px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.rcard .heart svg.i{width:18px;height:18px}
+.rcard .heart.on{color:var(--err)}
+.rcard .heart.on svg.i{fill:currentColor}
+.hbtns button.on,.store-nav .iconbtn.on{color:var(--err)}
+.hbtns button.on svg.i,.store-nav .iconbtn.on svg.i{fill:currentColor}
+.again{color:var(--acc);font-weight:600}
+.pvrow .rcard{flex:0 0 300px;width:300px}
