@@ -42,7 +42,8 @@ function inv(index, m = M_SRC) {
   ok('for (const k of B.LIST) exports[k] = B[k] → each listed name discovered and classified (http / schedule / db kind+ref / not-endpoint)');
 }
 
-// 2 — the allowlist's other two forms + the live-code allowances, together: clean
+// 2 — the allowlist's other two forms + the live-code allowances, together: clean. A FUNCTION-scoped `this` is accepted on purpose
+// (advisor ruling on Codex r3 P3): it is the call's receiver, not the export surface; only a MODULE-level `this` (=== exports) is refused.
 {
   const r = inv([REQ, LOOP, 'exports.plain = M.aHttp;', 'function helper() {} module.exports.testOnly = helper;',
     "const S1 = Object.freeze(new Set(['f1'])); if (S1.has(process.env.FUNCTION_TARGET)) { console.log('iso'); module.exports = require('./x'); return; }",
@@ -51,7 +52,7 @@ function inv(index, m = M_SRC) {
   assert.deepStrictEqual(r.unclassified, [], `🔴 DC-2 control: the allowlisted forms are clean (got ${JSON.stringify(r.unclassified)})`);
   assert.deepStrictEqual(r.isolated.map((x) => [x.set, x.module, x.names]), [['S1', './x', ['f1']], ['S2', './x', ['f2']]], '🔴 DC-2 control: both isolated branches listed');
   assert.deepStrictEqual(['plain', 'testOnly'].map((nm) => r.entries.filter((e) => e.name === nm).length), [1, 1], '🔴 DC-2 control: exports.X = B.Y and module.exports.X = … are inventoried');
-  ok('control: exports.X = B.Y, module.exports.X = …, both isolated-set spellings and a function-scoped this are clean');
+  ok('control: exports.X = B.Y, module.exports.X = …, both isolated-set spellings, and a function-scoped this (not export surface) are clean');
 }
 
 // 3 — the REAL index.js
@@ -79,6 +80,7 @@ const CASES = {
   'L6 B is a require member chain': [`const M = require('./m').self; ${LOOP}`, /is not `const M = require/],
   'L7 Codex r2 #1: an alias of B rewrites the list': [`${REQ} const alias = M; alias.LIST = Object.freeze(['aSched']); ${LOOP}`, /M is referenced outside the allowlisted forms/],
   'L8 B written directly': [`${REQ} M.LIST = Object.freeze(['aSched']); ${LOOP}`, /M is referenced outside the allowlisted forms/],
+  'L10 require redeclared': [`${REQ} function g(require) { return require; } ${LOOP}`, /`require` is redeclared/],
   'L9 B read computed outside the loop': [`${REQ} ${LOOP} exports.z = M['aHttp'];`, /M is referenced outside the allowlisted forms/],
   // (b) ./m's surface
   'M1 Codex r2 #2: Object.assign(exports, { LIST }) in ./m': [`${REQ} ${LOOP}`, /m L\d+: `exports` is used other than/, `${M_SRC}\nObject.assign(exports, { LIST: Object.freeze(['aSched']) });`],
@@ -108,13 +110,21 @@ const CASES = {
   'S7 a compound export assignment': [`${REQ} exports.x = M.aHttp; exports.x += '';`, /`exports` is used other than/],
   'S8 exports redeclared': [`${REQ} function h(exports) { return exports; }`, /`exports` is redeclared/],
   'S9 an export name assigned twice': [`${REQ} exports.x = M.aHttp; exports.x = M.aSched;`, /x is exported more than once/],
+  // builtin writes (Codex r3 P2-3): the allowlist trusts Object.freeze / Set#has / process.env / require
+  'W1 Codex r3 #3: ./m replaces Object.freeze': [`${REQ} ${LOOP}`, /m L\d+: a write to a builtin global/, `Object.freeze = (a) => a;\n${M_SRC}`],
+  'W2 index.js replaces a builtin member': [`Object.freeze = (a) => a; ${REQ} ${LOOP}`, /a write to a builtin global/],
+  'W3 index.js writes process.env': ["process.env.FUNCTION_TARGET = 'f'; const S = new Set(['f']); if (S.has(process.env.FUNCTION_TARGET)) { module.exports = require('./x'); return; }", /a write to a builtin global/],
+  'W4 a write through __proto__': [`[].__proto__.map = null; ${REQ} ${LOOP}`, /a write to a builtin global/],
+  'W5 defineProperty onto a builtin': [`Object.defineProperty(Set.prototype, 'has', { value: () => true }); ${REQ} ${LOOP}`, /a write to a builtin global/],
+  'W6 a builtin rebound': [`Set = Array; ${REQ} ${LOOP}`, /a write to a builtin global/],
 };
 for (const [label, [src, why, m]] of Object.entries(CASES)) {
   const r = inv(src, m);
   assert.ok(r.unclassified.some((u) => why.test(u.why)), `🔴 DC-4 ${label}: UNCLASSIFIED with the named reason (got ${JSON.stringify(r.unclassified)})`);
   assert.strictEqual(r.entries.filter((e) => e.via).length, 0, `🔴 DC-4 ${label}: no name is resolved from a list`);
+  assert.deepStrictEqual(r.isolated, [], `🔴 DC-4 ${label}: no isolated branch is accepted`);
 }
-ok(`${Object.keys(CASES).length} non-allowlisted shapes (9 loop binding, 9 ./m surface, 7 isolated branch, 9 export surface; incl. Codex r2 #1–#3) → UNCLASSIFIED, each with its own reason`);
+ok(`${Object.keys(CASES).length} non-allowlisted shapes (10 loop binding, 9 ./m surface, 7 isolated branch, 9 export surface, 6 builtin writes; incl. Codex r2 #1–#3 + r3 #3) → UNCLASSIFIED, each with its own reason`);
 
 for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 console.log(`discovery computed exports: OK (${n})`);

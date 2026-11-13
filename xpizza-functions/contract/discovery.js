@@ -47,7 +47,8 @@ function requireChain(node) {
 //  (c) the FUNCTION_TARGET isolated-entry branch: `const S = new Set([<string literals>])` (optionally Object.freeze(…)),
 //      S declared once and referenced only by exactly `if (S.has(process.env.FUNCTION_TARGET)) { …; module.exports =
 //      require('./x'); return; }` — listed in `isolated`, never an export.
-// ANY other reference to exports / module / module.exports / a module-level this, at any depth, and any redeclaration of
+// ANY write to a builtin global / its members / a prototype (index.js or ./m), ANY other reference to exports / module /
+// module.exports / a module-level this (a function-scoped this is the call's receiver, not export surface), at any depth, any redeclaration of
 // exports / module / require / process / Set / Object, is UNRESOLVED with a reason (the callers fail on a non-empty list).
 // Pure: it reads source text only (index.js + each loop's ./m through readModule), so deploy-closure2 runs it on `git show`.
 const parseSrc = (src) => acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true, allowHashBang: true, allowReturnOutsideFunction: true });
@@ -83,7 +84,27 @@ function scan(ast) {
   })(ast, null, null);
   return { declared, refs };
 }
-// the module-level `this` occurrences (outside every non-arrow function)
+// the module-level `this` occurrences (outside every non-arrow function). A function-scoped `this` is the call's receiver, not
+// the export surface (advisor ruling on Codex r3 P3): only the module-level one (=== exports) is refused.
+// Codex r3 P2-3: every WRITE to a builtin global or one of its members (`Object.freeze = …`, `Set.prototype.has = …`,
+// `process.env.X = …`, `require.cache[k] = …`, `Object = …`), through any `prototype` / `__proto__`, or by
+// Object.assign / defineProperty / defineProperties / setPrototypeOf / Reflect.set / deleteProperty onto one — anywhere in the
+// file. The allowlist trusts Object.freeze, Set#has, process.env.FUNCTION_TARGET and require; a file that can rewrite them is refused.
+const BUILTIN_ROOTS = new Set(['Object', 'Set', 'Array', 'Function', 'JSON', 'process', 'require', 'Reflect', 'globalThis', 'global']);
+const MUTATORS = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf', 'set', 'deleteProperty']);
+function builtinWrites(ast) {
+  const out = [];
+  const touches = (n) => { const ks = []; while (n && n.type === 'MemberExpression') { if (!n.computed) ks.push(n.property.name); n = n.object; } return (isId(n) && BUILTIN_ROOTS.has(n.name)) || ks.includes('prototype') || ks.includes('__proto__'); };
+  const target = (n) => (n.type === 'AssignmentExpression' ? n.left : n.type === 'UpdateExpression' || (n.type === 'UnaryExpression' && n.operator === 'delete') ? n.argument : (n.type === 'ForInStatement' || n.type === 'ForOfStatement') && n.left.type !== 'VariableDeclaration' ? n.left : null);
+  (function w(n) {
+    const t = target(n);
+    if (t && ((t.type === 'MemberExpression' && touches(t)) || (isId(t) && BUILTIN_ROOTS.has(t.name)))) out.push(n);
+    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed && (isId(n.callee.object, 'Object') || isId(n.callee.object, 'Reflect')) && MUTATORS.has(n.callee.property.name) && n.arguments[0]
+      && ((isId(n.arguments[0]) && BUILTIN_ROOTS.has(n.arguments[0].name)) || (n.arguments[0].type === 'MemberExpression' && touches(n.arguments[0])))) out.push(n);
+    kidsOf(n, w);
+  })(ast);
+  return out;
+}
 function moduleThis(ast) { const out = []; (function w(n, inFn) { if (n.type === 'ThisExpression' && !inFn) out.push(n); const f = inFn || n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression'; kidsOf(n, (c) => w(c, f)); })(ast, false); return out; }
 // ./m for a loop: top-level `exports.Y = …` only; exactly one LIST = Object.freeze([strings]); each listed name exported → { names } | { why }
 function moduleList(src, list, label) {
@@ -100,6 +121,7 @@ function moduleList(src, list, label) {
   for (const r of refs.get('exports') || []) if (!(r.key === 'object' && topAssign.has(r.parent))) return { why: `${label} L${r.node.loc.start.line}: \`exports\` is used other than as a top-level \`exports.Y = …\`` };
   if ((refs.get('module') || []).length) return { why: `${label} L${refs.get('module')[0].node.loc.start.line}: \`module\` is used` };
   const th = moduleThis(ast); if (th.length) return { why: `${label} L${th[0].loc.start.line}: a module-level \`this\`` };
+  const bw = builtinWrites(ast); if (bw.length) return { why: `${label} L${bw[0].loc.start.line}: a write to a builtin global / prototype` };
   const lists = [...topAssign.values()].filter((e) => e.left.property.name === list);
   if (lists.length !== 1) return { why: `${label} assigns exports.${list} ${lists.length}×` };
   const arr = freezeArg(lists[0].right); const vals = arr ? strList(arr) : null;
@@ -114,6 +136,7 @@ function exportSurface(src, readModule) {
   const unresolved = []; const exportsOut = []; const isolated = [];
   const bad = (node, why, type = 'export-surface') => unresolved.push({ name: null, line: node ? node.loc.start.line : null, type, why });
   for (const nm of ['exports', 'module', 'require', 'process', 'Set', 'Object']) if (declared.has(nm)) bad(null, `\`${nm}\` is redeclared in the file`);
+  const bw = builtinWrites(ast);   // a file that rewrites a builtin gets NO loop and NO isolated branch (each write is also refused below)
   const okExportsMember = new Set(); const okModuleExports = new Set();   // the member nodes an allowed form owns
   const topConst = new Map();   // name → { kind, init, stmt } for single-identifier top-level declarations
   for (const st of ast.body) if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier') topConst.set(d.id.name, { kind: st.kind, init: d.init, stmt: st });
@@ -140,7 +163,9 @@ function exportSurface(src, readModule) {
     // (k === B needs no guard of its own: the loop then declares B a second time, so "declared exactly once" refuses it)
     const line = st.loc.start.line; const d = topConst.get(B); const spec = d && d.kind === 'const' ? bareRequire(d.init) : null;
     let why = null;
-    if (declared.get(B) !== 1 || !d) why = `${B} is declared ${declared.get(B) || 0}× in the file (must be exactly once, a top-level const)`;
+    if (bw.length) why = `the file writes a builtin global / prototype (L${bw[0].loc.start.line})`;
+    else if (['require', 'Object'].some((nm) => declared.has(nm))) why = 'the file redeclares `require` / `Object` (the loop trusts both)';
+    else if (declared.get(B) !== 1 || !d) why = `${B} is declared ${declared.get(B) || 0}× in the file (must be exactly once, a top-level const)`;
     else if (!spec) why = `${B} is not \`const ${B} = require('./m')\``;
     else {
       const allowed = new Set([it.object, a.right.object]);
@@ -165,7 +190,9 @@ function exportSurface(src, readModule) {
     const d = topConst.get(S); const nw = d && d.kind === 'const' ? (freezeArg(d.init) || d.init) : null;
     const names = nw && nw.type === 'NewExpression' && isId(nw.callee, 'Set') && nw.arguments.length === 1 ? strList(nw.arguments[0]) : null;
     let why = null;
-    if (declared.get(S) !== 1 || !d) why = `${S} is declared ${declared.get(S) || 0}× (must be exactly once, a top-level const)`;
+    if (bw.length) why = `the file writes a builtin global / prototype (L${bw[0].loc.start.line})`;
+    else if (['process', 'Set', 'Object'].some((nm) => declared.has(nm))) why = 'the file redeclares `process` / `Set` / `Object` (the branch trusts all three)';
+    else if (declared.get(S) !== 1 || !d) why = `${S} is declared ${declared.get(S) || 0}× (must be exactly once, a top-level const)`;
     else if (!names) why = `${S} is not \`const ${S} = new Set([<non-empty string literals>])\``;
     else { const stray = (refs.get(S) || []).find((r) => r.node !== t.callee.object); if (stray) why = `${S} is referenced outside its FUNCTION_TARGET test (L${stray.node.loc.start.line})`; }
     if (why) { bad(st, why); continue; }
@@ -175,6 +202,7 @@ function exportSurface(src, readModule) {
   for (const r of refs.get('exports') || []) if (!(r.key === 'object' && okExportsMember.has(r.parent))) bad(r.node, '`exports` is used other than as a top-level `exports.X = …` (or the allowlisted loop)');
   for (const r of refs.get('module') || []) if (!(r.key === 'object' && okModuleExports.has(r.parent))) bad(r.node, '`module` is used other than as a top-level `module.exports.X = …` (or the isolated-entry branch)');
   for (const th of moduleThis(ast)) bad(th, 'a module-level `this` (=== exports)');
+  for (const x of bw) bad(x, 'a write to a builtin global / prototype (the allowlist trusts Object.freeze, Set, process.env, require)');
   const seen = new Set(); for (const x of exportsOut) { if (seen.has(x.name)) bad(x.node || x.stmt, `${x.name} is exported more than once`); seen.add(x.name); }
   return { exports: exportsOut, isolated, unresolved };
 }
