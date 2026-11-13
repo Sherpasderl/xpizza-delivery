@@ -262,6 +262,38 @@ const node = (w) => w.db.get(PATH);
     assert.strictEqual(node(w), null, `${L}: nothing written`);
   });
 
+  // ── advisor 11-13: the READ names why the zones are locked (Sherpa-admin only; zones_editable unchanged in meaning) ──
+  const lockOf = async (w) => { const g = await w.get(); assert.strictEqual(g.status, 200, JSON.stringify(g.body)); return [g.body.zones_editable, g.body.zones_lock]; };
+  await cell('LOCK-READ-CLOSED: every branch closed → editable, zones_lock null', async (L) => {
+    assert.deepStrictEqual(await lockOf(world()), [true, null], L);
+  });
+  await cell('LOCK-READ-OPEN: one branch open → reason open, that branch named', async (L) => {
+    assert.deepStrictEqual(await lockOf(world({ identities: { tb_r1: ID('Uno', OPEN), tb_r2: ID('Dos', CLOSED) } })),
+      [false, { reason: 'open', branches: [{ rid: 'tb_r1', name: 'Sucursal Uno', state: 'open' }] }], L);
+  });
+  await cell('LOCK-READ-HOURS-UNKNOWN: fresh identity without hours → reason hours_unknown', async (L) => {
+    assert.deepStrictEqual(await lockOf(world({ identities: { tb_r1: ID('Uno', CLOSED), tb_r2: ID('Dos', undefined) } })),
+      [false, { reason: 'hours_unknown', branches: [{ rid: 'tb_r2', name: 'Sucursal Dos', state: 'hours_unknown' }] }], L);
+  });
+  await cell('LOCK-READ-MIXED: open + hours_unknown → reason open, EVERY blocking branch listed with its own state', async (L) => {
+    assert.deepStrictEqual(await lockOf(world({ identities: { tb_r1: ID('Uno', undefined), tb_r2: ID('Dos', OPEN) } })),
+      [false, { reason: 'open', branches: [{ rid: 'tb_r1', name: 'Sucursal Uno', state: 'hours_unknown' }, { rid: 'tb_r2', name: 'Sucursal Dos', state: 'open' }] }], L);
+  });
+  await cell('LOCK-READ-UNAVAILABLE: registry not fresh → reason unavailable, no branches', async (L) => {
+    assert.deepStrictEqual(await lockOf(world({ registry: async () => ({ ok: true, fresh: false, ids: ['tb_r1'] }) })), [false, { reason: 'unavailable', branches: [] }], `${L}: stale registry`);
+    const w = world(); w.faults['config/order_grace_minutes'] = 'throw';
+    assert.deepStrictEqual(await lockOf(w), [false, { reason: 'unavailable', branches: [] }], `${L}: grace read fails`);
+  });
+  await cell('LOCK-READ-THROW: the lock itself throws → the read still answers 200, fail-closed (not editable, unavailable)', async (L) => {
+    const ids = ['tb_r1']; ids[Symbol.iterator] = () => { throw new Error('boom'); };
+    assert.deepStrictEqual(await lockOf(world({ registry: async () => ({ ok: true, fresh: true, ids }) })), [false, { reason: 'unavailable', branches: [] }], L);
+  });
+  await cell('LOCK-READ-ADMIN-ONLY: a non-admin gets 403 and no zones_lock', async (L) => {
+    const w = world({ identities: { tb_r1: ID('Uno', OPEN), tb_r2: ID('Dos', CLOSED) } }); w.deps.verifyIdToken = async () => ({ uid: 'merchant1' });
+    const g = await w.get();
+    assert.deepStrictEqual([g.status, 'zones_lock' in g.body, 'branches' in g.body], [403, false, false], `${L}: ${JSON.stringify(g.body)}`);
+  });
+
   if (fails.length) { console.log(`zones-writer FAILED ${fails.length} cell(s): ${fails.join(', ')}`); process.exit(1); }
   console.log(`zones-writer: OK (${n})`);
 })();

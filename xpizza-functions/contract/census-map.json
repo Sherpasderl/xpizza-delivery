@@ -844,6 +844,7 @@
   "delivery/pricing-admin-functions.js#handler>anon": "delivery_pricing",
   "delivery/pricing-admin-core.js#exactKeys": "delivery_pricing",
   "delivery/pricing-admin-core.js#setDeliveryPricingCore": "delivery_pricing",
+  "delivery/pricing-admin-core.js#lockSummary": "delivery_pricing",
   "delivery/zones.js#normalizeInput": "delivery_pricing",
   "delivery/zones.js#inZone": "delivery_pricing",
   "delivery/zones.js#exactKeys": "delivery_pricing",
