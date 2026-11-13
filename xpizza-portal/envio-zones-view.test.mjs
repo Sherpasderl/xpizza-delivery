@@ -108,7 +108,8 @@ test('rename in place: Enter keeps it in the draft (the bar says so); empty / du
   await rename(p, 'Sector A', '  ');
   assert.equal(card(p).querySelector('.zrow.editing + .ferr, .zrow.editing .ferr, .zlist .ferr').textContent, P('nameEmpty'));
   const inp2 = card(p).querySelector('.zrow.editing input'); inp2.value = 'sector b'; inp2.dispatchEvent(new inp2.ownerDocument.defaultView.Event('input', { bubbles: true })); key(inp2, 'Enter'); await settle(5);
-  assert.equal(card(p).querySelector('.zlist .ferr').textContent, P('nameTaken'), '🔴 a taken name, case-folded (the server\'s rule)');
+  const taken = card(p).querySelector('.zlist .ferr');
+  assert.ok(taken, '🔴 a taken name, case-folded (the server\'s rule)'); assert.equal(taken.textContent, P('nameTaken'), '🔴 a taken name, case-folded (the server\'s rule)');
   const inp3 = card(p).querySelector('.zrow.editing input'); inp3.value = 'Sector Norte'; inp3.dispatchEvent(new inp3.ownerDocument.defaultView.Event('input', { bubbles: true })); key(inp3, 'Enter'); await settle(5);
   assert.ok(zrow(p, 'Sector Norte'), '🔴 renamed in the draft');
   assert.ok(p.bar().classList.contains('show'), 'the bar'); assert.ok(p.bar().textContent.includes(P('barSuffix')), 'the zones suffix');
@@ -155,6 +156,7 @@ test('D — a restaurant opened before the save: 409 zones_locked_while_open ⇒
   const fees = [...box.querySelectorAll('button')].find((b) => b.textContent === P('feesOnly'));
   assert.ok(fees, 'the fees-only action (bands are dirty too)');
   fees.click(); await settle(80);
+  assert.equal('no_delivery_zones' in srv.posts[srv.posts.length - 1], false, '🔴 «Guardar solo las tarifas» never sends the zones');
   const node = await srv.node();
   assert.equal(node.bands[0].cents, 4500, 'the fees landed');
   assert.deepEqual(node.no_delivery_zones.map((z) => z.name), ['Sector A', 'Sector B'], 'the zones did not');
