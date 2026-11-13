@@ -6765,6 +6765,7 @@
     "xpizza-functions/charge-gate-placement.test.js",
     "xpizza-functions/confirm-retired.test.js",
     "xpizza-functions/contract/census.negative.test.js",
+    "xpizza-functions/contract/discovery.js",
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
