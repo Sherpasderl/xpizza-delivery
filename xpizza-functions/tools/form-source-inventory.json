@@ -2718,6 +2718,7 @@
   "catalog/choice-transitions.js",
   "catalog/client-retired.js",
   "catalog/deletion-claim.js",
+  "catalog/dish-stats-serve.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
@@ -3373,6 +3374,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/dish-stats-serve.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/draft-assess.js": {
    "pins": [],
    "lifts": []
@@ -3619,6 +3624,7 @@
      "inverses": [
       "tools/avail-identity-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -3626,9 +3632,16 @@
      ]
     },
     {
+     "file": "xpizza-functions/memberreads-wiring.guard.test.js",
+     "inverses": [
+      "tools/memberreads-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/photos-module-wiring.guard.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -3638,6 +3651,7 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/memberreads-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
