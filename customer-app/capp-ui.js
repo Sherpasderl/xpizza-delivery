@@ -809,7 +809,7 @@
       const m = member();
       return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;
     }
-    const heldByOther = () => { try { return !!((sched() || sdkOn()) && api && api.retainedByOther()); } catch (_) { return false; } };   // D4 r2 P1: an SDK placement of another account too
+    const heldByOther = () => { try { return !!((sched() || sdkOn()) && api && api.retainedByOther(sdkOn() ? sdkAuth() : undefined)); } catch (_) { return false; } };   // r3 P1: the guest's ticket names its principal   // D4 r2 P1: an SDK placement of another account too
     // Codex G7 r3: the retained send's slot — null whenever the record has none (an owned ASAP send keeps its tender lock, never a slot
     // lock); hasSlotLock() is the ONE predicate every consumer reads
     function lockedSlot() { const b = lockedBody(); return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }

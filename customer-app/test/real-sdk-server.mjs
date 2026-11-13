@@ -133,6 +133,7 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     if (rp) return rp;
     const ad = await INTAKE.admit(deps, { restaurantId: body.restaurant_id, scheduledFor: body.scheduled_for == null ? null : body.scheduled_for });
     if (ad) return ad;
+    if (myGate && myGate.at === 'intake') { myGate.mark(); await myGate.wait; }   // pauseIntake(): parked BEFORE finish — the order still absent
     const fenceOwner = ownerOf({ uid, phoneHash: guest ? guest.phone_hash : null });
     if (await isFenced(body.order_id, fenceOwner)) return refusalAnswer({ outcome: 'closed', reason: 'fenced' }, body.order_id, flags);   // MIRROR finish.js: before the first write
     const total = body.expected_net_cents;
@@ -148,7 +149,7 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
           await C.cancelSdkOrder(deps, { orderId: body.order_id, kind: 'cancel', pendingOnly: true });
           return { refuse: refusalAnswer({ outcome: 'closed', reason: 'fenced' }, body.order_id, flags) };
         }
-        if (myGate) { myGate.mark(); await myGate.wait; }
+        if (myGate && myGate.at !== 'intake') { myGate.mark(); await myGate.wait; }
         return { refuse: null, provenance: null };
       },
       deliveryResume: (o) => DW.deliveryResumeRefusal(db, o, DW.loadPricing(db)),
@@ -196,7 +197,7 @@ export function realSdkServer({ clock, members = {}, cards = {}, rids = [], pspS
     },
     authorizations: () => psp.callCount('authorize'),
     arm: (f) => { armed = { ...NO_FLAGS, ...f }; },
-    pauseGate: () => { let release, mark; const wait = new Promise((r) => { release = r; }); parked = new Promise((r) => { mark = r; }); gate = { wait, mark }; return () => release(); },
+    pauseGate: (at = 'gate') => { let release, mark; const wait = new Promise((r) => { release = r; }); parked = new Promise((r) => { mark = r; }); gate = { wait, mark, at }; return () => release(); },
     loseNext: () => { loseNext = true; },
     settled: () => Promise.allSettled(inflight),
   };

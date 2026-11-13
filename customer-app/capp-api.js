@@ -277,9 +277,15 @@
     // uid, else GUEST_OWNER — a guest's authority is its order-bound ticket, enforced by the server). Another principal on this device is
     // refused LOCALLY, before any request: no status, cancel, release, re-send or placement under foreign credentials — X resolves only
     // through its own principal's answers, once that principal is back
-    function sdkForeign(id) { const r = readPlace(); return !!(r && r.sdk === true && typeof r.owner === 'string' && r.owner !== ownerNow() && (id == null || r.order_id === id)); }
+    // Codex r3 P1: a GUEST's principal is the PHONE its order-bound ticket was verified for — never the literal GUEST_OWNER (any guest).
+    // The server fences under its salted p_<phone_hash>, which the device cannot compute; the device keys the same identity by
+    // `phone_key` (SHA-256 of the ticket phone's digits, made at verify time) and stores ONLY that key (rule 20: never the phone)
+    const sdkPrincipal = (p) => { const u = uidNow(); if (u) return u; const k = p && p.checkoutTicket && p.checkoutTicket.phone_key; return typeof k === 'string' && k ? `g:${k}` : null; };
+    // foreign: an SDK record bound to another principal than the CURRENT one. A guest without a ticket has no principal here — and no
+    // authority to send anything either (sdkHeaders ⇒ the recovery sheet), so nothing is refused that could reach the server
+    function sdkForeign(id, p) { const r = readPlace(); const cur = sdkPrincipal(p); return !!(r && r.sdk === true && typeof r.owner === 'string' && cur !== null && r.owner !== cur && (id == null || r.order_id === id)); }
     const HELD_OTHER = () => ({ kind: 'held_other_account', local: true });
-    function retainedByOther() { const rs = retainedSend(); return (!!rs && rs.owner !== ownerNow()) || (cfg.sdkCheckout === true && sdkForeign(null)); }   // the SDK check only with the SDK checkout on (the base's reads unchanged)
+    function retainedByOther(p) { const rs = retainedSend(); return (!!rs && rs.owner !== ownerNow()) || (cfg.sdkCheckout === true && sdkForeign(null, p)); }   // the SDK check only with the SDK checkout on (the base's reads unchanged)
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -562,7 +568,7 @@
     async function placeLegacy(p) {
       // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
       // record write or request; it places normally once that record resolves or expires
-      if (retainedByOther()) return { kind: 'held_other_account', local: true };
+      if (retainedByOther(p)) return { kind: 'held_other_account', local: true };
       let method = p.flow.pay === 'online' ? 'online' : 'cash';
       // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
       // lock or send (and re-checked before EVERY dispatch below, Codex guest r1 #1)
@@ -840,7 +846,7 @@
     }
     // the durable-state resolver (§4): unknown stays unknown (pending) — never declined, never placed, never a new attempt
     async function sdkStatus(id, p) {
-      if (sdkForeign(id)) return HELD_OTHER();
+      if (sdkForeign(id, p)) return HELD_OTHER();
       if (!E.placeSdkStatus || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);   // no authority to read it (a lost guest ticket ⇒ §1.3 recovery)
       const r = await sdkCall('GET', `${E.placeSdkStatus}?order_id=${encodeURIComponent(id)}`, null, h);
@@ -887,7 +893,7 @@
     // THE release (advisor contract 11-12): ONLY cancelSdkPending's safe_to_switch:true ends an SDK placement this side — never a refusal,
     // a 404, a timeout, a 401 / 503 or a network error. Released ⇒ the record is gone, so the next attempt mints a NEW sdk_ id
     async function sdkRelease(id, p) {
-      if (sdkForeign(id) || !E.cancelSdkPending || !PC) return { ok: false };
+      if (sdkForeign(id, p) || !E.cancelSdkPending || !PC) return { ok: false };
       const h = await sdkHeaders(p, id); if (!h) return { ok: false };
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { ok: false };
@@ -902,7 +908,7 @@
     }
     const sdkResend = (p) => enqueue(() => sdkResendInner(p || {}));
     async function sdkResendInner(p) {
-      if (sdkForeign(null)) return HELD_OTHER();
+      if (sdkForeign(null, p)) return HELD_OTHER();
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       const cur = readPlace(), id = cur ? cur.order_id : null;
       if (!cur || cur.sdk !== true || cur.attempt_state !== 'sent' || unknownAttempt.get(id) !== cur.attempt_id) return cur ? { kind: 'sdk_pending', order_id: id } : { kind: 'offline' };
@@ -928,12 +934,12 @@
     }
     const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
-      if (retainedByOther()) return HELD_OTHER();   // before the token read, before any request (Codex r2 P1)
+      if (retainedByOther(p)) return HELD_OTHER();   // before the token read, before any request (Codex r2 P1 / r3 P1)
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       // the authority FIRST (the one await before the dispatch, Codex r1 P1-1): everything after it is checked and sent with no await between
       const h = await sdkHeaders(p, null);
       if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };
-      if (retainedByOther()) return { kind: 'held_other_account', local: true };
+      if (retainedByOther(p)) return { kind: 'held_other_account', local: true };
       { const g0 = guestGate(p, { ticket: false }); if (g0) return g0; }
       { const hg = hostedGate(p); if (hg) return hg; }
       const live = readPlace();
@@ -953,7 +959,7 @@
       try {
         const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec;
         // rule i: the attempt recorded and re-read BEFORE the dispatch (a failed write ⇒ no dispatch)
-        rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: ownerNow(), attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
+        rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: sdkPrincipal(p) || GUEST_OWNER, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
       } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
       const id = rec.order_id;
       if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
@@ -984,7 +990,7 @@
     // REMEMBERED on the record (Codex r1 P2-9) and completes when a later status says «expired, safe»
     const sdkSwitchToCash = (id, p) => enqueue(() => sdkSwitchInner(id, p));
     async function sdkSwitchInner(id, p) {
-      if (sdkForeign(id)) return HELD_OTHER();
+      if (sdkForeign(id, p)) return HELD_OTHER();
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
       // BEFORE the request: a crash keeps the intent — and the cash order's inputs (Codex r2 P2: a reload completes the SAME transition)
@@ -1100,12 +1106,17 @@
     function orderIdForCode(p) {
       try { return placeFor(p && p.flow && p.flow.pay === 'online' ? 'online' : 'cash', p || {}, p && p.sdk === true ? 'sdk' : 'std').order_id; } catch (_) { return null; }
     }
+    // Codex r3 P1: the device's key for a guest phone (the SDK record's principal) — SHA-256 over the phone's digits; null ⇒ none
+    async function phoneKeyOf(phone) {
+      const d = String(phone || '').replace(/\D/g, ''); if (!d) return null;
+      try { const h = await cryptoApi.subtle.digest('SHA-256', new TextEncoder().encode(`capp-guest-phone\n${d}`)); return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, '0')).join(''); } catch (_) { return null; }
+    }
     async function verifyCheckoutCode({ phone, cartFp, code, orderId }) {
       if (!E.verifyCheckoutCode || typeof orderId !== 'string' || !orderId) return { kind: 'offline' };
       const r = await sendOnce(E.verifyCheckoutCode, { phone_e164: phone, restaurant_id: cfg.restaurantId, cart_fp: cartFp, order_id: orderId, code }, clientIdentity());
       if (r.network || !r.parsed) return { kind: 'offline' };
       const j = r.json;
-      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, cart_fp: cartFp, order_id: orderId, expires_at: now() + TICKET_TTL_MS } };
+      if (r.status === 200 && j.ok === true && typeof j.checkout_ticket === 'string' && j.checkout_ticket) return { ok: true, ticket: { ticket: j.checkout_ticket, phone, phone_key: await phoneKeyOf(phone), cart_fp: cartFp, order_id: orderId, expires_at: now() + TICKET_TTL_MS } };
       if (r.status === 400 && (j.error === 'code_wrong' || j.error === 'code_expired')) return { kind: j.error };
       if (r.status === 429 && j.error === 'too_many_attempts') return { kind: 'too_many_attempts', retryInS: secs(j.retry_in_s) ?? 600 };
       return { kind: 'offline' };
@@ -1132,7 +1143,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, sdkInputs, listCards, sdkPayStatus, sdkPayCached, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, sdkInputs, listCards, sdkPayStatus, sdkPayCached, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, phoneKeyOf, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }

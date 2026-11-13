@@ -727,3 +727,33 @@ test('Codex r2 P2-4 (guest): an absent guest order answers 401 (the REAL status 
   assert.deepEqual([late.status, await late.json()], [409, OE.orderExistsBody('closed', id)], '🔴 R2-P2-4: the late original ⇒ 409 order_exists closed (the guest\'s fence)');
   assert.equal(s.real.authorizations(), 1, '🔴 R2-P2-4: one authorization');
 });
+
+// ── Codex capp-d4-client r3 (advisor 11-13): a guest's principal is its ticket PHONE ──
+test('Codex r3 P1 (guest phone switch): A\'s original lost BEFORE the create; guest B verifies a ticket for the SAME id ⇒ B refused LOCALLY (zero requests); A\'s ticket resolves X — ONE authorization', async () => {
+  const s = realRig({ member: null, guestCardOnly: true });
+  const tkFor = async (flow, oid) => { const b = C.orderBody(flow, { ...CTX, orderId: oid }); return { ticket: await s.real.issueTicket({ phone: b.customer_phone, orderId: oid, body: b }), order_id: oid, expires_at: at(12, 14), phone: b.customer_phone, phone_key: await s.api.phoneKeyOf(b.customer_phone) }; };
+  const flowA = flowOf('online');
+  const x = s.api.orderIdForCode({ flow: flowA, sdk: true });
+  const tkA = await tkFor(flowA, x);
+  s.real.loseNext(); const releaseA = s.real.pauseGate('intake');
+  await s.api.placeSdk(args(NEW, { flow: flowA, checkoutTicket: tkA }));
+  const recA = rec(s.storage);
+  assert.ok(recA && !JSON.stringify(recA).includes(tkA.phone.replace(/\D/g, '').slice(-8)), '🔴 R3-P1-PII: the record never holds the phone (rule 20)');
+  const flowB = flowOf('online'); Object.assign(flowB, { name: 'Beto', phone: '88887777' });
+  let tkB = await tkFor(flowB, x);   // guest B, a valid ticket bound to the SAME order id
+  const n0 = s.calls.length; const outs = [];
+  for (let i = 0; i < 6; i++) {
+    s.clock.t += 61e3;
+    const k = (await s.api.placeSdk(args(NEW, { flow: flowB, checkoutTicket: tkB }))).kind; outs.push(k);
+    if (k === 'placed') break;
+    if (k === 'guest_ticket_invalid' || k === 'sdk_expired') tkB = await tkFor(flowB, s.api.orderIdForCode({ flow: flowB, sdk: true }));   // (the r2 client: B re-verifies for its new id)
+  }
+  const n1 = s.calls.length;
+  releaseA(); await s.real.settled();
+  const fin = await s.api.sdkStatus(x, { checkoutTicket: tkA });
+  assert.equal(s.real.authorizations(), 1, `🔴 R3-P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.ok(outs.every((k) => k === 'held_other_account'), `🔴 R3-P1-LOCAL: every guest-B action is refused locally (${outs})`);
+  assert.equal(n1, n0, '🔴 R3-P1-LOCAL: guest B made no request at all');
+  assert.equal(fin.kind, 'placed', '🔴 R3-P1: X resolves through A\'s own ticket');
+  assert.equal(recA.owner, `g:${tkA.phone_key}`, '🔴 R3-P1-KEY: A\'s record is bound to A\'s phone KEY');
+});
