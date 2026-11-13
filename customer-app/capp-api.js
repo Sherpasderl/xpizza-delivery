@@ -180,7 +180,9 @@
     }
     // an SDK placement whose money is still in doubt (an attempt in flight, or a cash switch waiting for safe_to_switch) — kept past the
     // legacy closing / 12-h expiry until an AUTHORITATIVE answer resolves it (contract §4: elapsed time never decides)
-    function sdkUnresolved(r) { return !!r && r.sdk === true && (r.attempt_state === 'sent' || r.switch_intent === true); }
+    // Codex r2 P2-3 (advisor): a DISPATCHED SDK placement is never dropped by the local expiry — it lives until an authoritative end
+    // (placed, or safe_to_switch:true): its server order may still hold or take money, and its status / cancel route must survive reloads
+    function sdkUnresolved(r) { return !!r && r.sdk === true && (Number(r.dispatched) > 0 || r.attempt_state === 'sent' || r.switch_intent === true); }
     // a clearing outcome removes the record ONLY while it still holds THAT order (a newer placement is never deleted)
     function clearPlace(id) {
       const r = readJSON(PLACE_KEY);
@@ -271,7 +273,13 @@
     // Codex G7 r2: the ONE tender rule — the endpoint is a function of the exact bytes sent (createOrder ⇔ cash, chargeOnlineOrder ⇔ online)
     const methodOf = (body) => (body && body.payment_method === 'online' ? 'online' : 'cash');
     // the retained send belongs to someone else (a guest now, or another member): never replayed, never re-identified — a local refusal
-    function retainedByOther() { const rs = retainedSend(); return !!rs && rs.owner !== ownerNow(); }
+    // Codex r2 P1 (advisor option 1, the G7 pattern): an SDK placement is BOUND to the principal that dispatched it (`owner`: the member
+    // uid, else GUEST_OWNER — a guest's authority is its order-bound ticket, enforced by the server). Another principal on this device is
+    // refused LOCALLY, before any request: no status, cancel, release, re-send or placement under foreign credentials — X resolves only
+    // through its own principal's answers, once that principal is back
+    function sdkForeign(id) { const r = readPlace(); return !!(r && r.sdk === true && typeof r.owner === 'string' && r.owner !== ownerNow() && (id == null || r.order_id === id)); }
+    const HELD_OTHER = () => ({ kind: 'held_other_account', local: true });
+    function retainedByOther() { const rs = retainedSend(); return (!!rs && rs.owner !== ownerNow()) || (cfg.sdkCheckout === true && sdkForeign(null)); }   // the SDK check only with the SDK checkout on (the base's reads unchanged)
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -832,11 +840,14 @@
     }
     // the durable-state resolver (§4): unknown stays unknown (pending) — never declined, never placed, never a new attempt
     async function sdkStatus(id, p) {
+      if (sdkForeign(id)) return HELD_OTHER();
       if (!E.placeSdkStatus || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);   // no authority to read it (a lost guest ticket ⇒ §1.3 recovery)
       const r = await sdkCall('GET', `${E.placeSdkStatus}?order_id=${encodeURIComponent(id)}`, null, h);
       if (!r.network && r.status === 409 && r.json && r.json.error === 'attempt_unknown') return attemptUnknown(id);
-      if (!r.network && r.status === 404) return sdkAbsent(id, p);
+      // Codex r2 P2-4: an absent GUEST order answers 401 guest_auth_required (never 404) — the same bounded window, its cancel carrying the
+      // order-bound ticket (sdkHeaders); the 401 itself never releases
+      if (!r.network && (r.status === 404 || (r.status === 401 && r.json && r.json.error === 'guest_auth_required' && !memberOf()))) return sdkAbsent(id, p);
       if (r.network || r.status !== 200 || !r.json) return { kind: 'sdk_pending', order_id: id };
       noteNotAbsent(id);
       const out = PC.readPlacement(r.json);
@@ -876,7 +887,7 @@
     // THE release (advisor contract 11-12): ONLY cancelSdkPending's safe_to_switch:true ends an SDK placement this side — never a refusal,
     // a 404, a timeout, a 401 / 503 or a network error. Released ⇒ the record is gone, so the next attempt mints a NEW sdk_ id
     async function sdkRelease(id, p) {
-      if (!E.cancelSdkPending || !PC) return { ok: false };
+      if (sdkForeign(id) || !E.cancelSdkPending || !PC) return { ok: false };
       const h = await sdkHeaders(p, id); if (!h) return { ok: false };
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { ok: false };
@@ -891,6 +902,7 @@
     }
     const sdkResend = (p) => enqueue(() => sdkResendInner(p || {}));
     async function sdkResendInner(p) {
+      if (sdkForeign(null)) return HELD_OTHER();
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       const cur = readPlace(), id = cur ? cur.order_id : null;
       if (!cur || cur.sdk !== true || cur.attempt_state !== 'sent' || unknownAttempt.get(id) !== cur.attempt_id) return cur ? { kind: 'sdk_pending', order_id: id } : { kind: 'offline' };
@@ -916,6 +928,7 @@
     }
     const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
+      if (retainedByOther()) return HELD_OTHER();   // before the token read, before any request (Codex r2 P1)
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       // the authority FIRST (the one await before the dispatch, Codex r1 P1-1): everything after it is checked and sent with no await between
       const h = await sdkHeaders(p, null);
@@ -940,7 +953,7 @@
       try {
         const fr = freezeFirst(rec, p); if (fr.stop) return fr.stop; rec = fr.rec;
         // rule i: the attempt recorded and re-read BEFORE the dispatch (a failed write ⇒ no dispatch)
-        rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
+        rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: ownerNow(), attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card), sdk_inputs: inputsOf(base), body_sig: p.sig == null ? null : String(p.sig), expected_net_cents: num(p.expectedNetCents), totals: p.totals || rec.totals || null });
       } catch (e) { return placeErr(e, rec.order_id) || { kind: 'offline', order_id: rec.order_id }; }
       const id = rec.order_id;
       if (typeof p.onDispatch === 'function') { try { p.onDispatch(id); } catch (_) {} }   // the UI keeps the sent order for a reload (Codex r1 P1-4)
@@ -960,7 +973,7 @@
       const cr = commonRefusal({ status: r.status, json: r.json, parsed: true });
       // an item refusal changes the cart, so the order cannot be reused: it ends ONLY through the cancel's safe answer (then a NEW sdk_ id);
       // not yet safe ⇒ held (the status decides)
-      if (cr && ITEM_REFUSALS.has(cr.kind)) { settleSdk(id, 'none', attemptId); const rel = await sdkRelease(id, p); return rel.ok ? { ...cr, order_id: id, ...settledOf(rel.settled) } : { kind: 'sdk_pending', order_id: id, held: true }; }
+      if (cr && ITEM_REFUSALS.has(cr.kind)) { const rel = await sdkRelease(id, p); return rel.ok ? { ...cr, order_id: id, ...settledOf(rel.settled) } : { kind: 'sdk_pending', order_id: id, held: true }; }   // Codex r2 P2-3: nothing settled before the release
       if (cr) { settleSdk(id, 'none', attemptId); return { ...cr, order_id: id }; }                   // the intake gates refuse before any claim
       if (r.status === 401 || r.status === 404) return recoverySheet(id);
       return sdkStatus(id, p);
@@ -971,6 +984,7 @@
     // REMEMBERED on the record (Codex r1 P2-9) and completes when a later status says «expired, safe»
     const sdkSwitchToCash = (id, p) => enqueue(() => sdkSwitchInner(id, p));
     async function sdkSwitchInner(id, p) {
+      if (sdkForeign(id)) return HELD_OTHER();
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
       // BEFORE the request: a crash keeps the intent — and the cash order's inputs (Codex r2 P2: a reload completes the SAME transition)

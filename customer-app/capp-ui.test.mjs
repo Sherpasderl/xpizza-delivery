@@ -3264,6 +3264,18 @@ test('Codex r1 P2-6 (UI): a cached «unavailable» does not outlive its retry_af
   assert.equal(u.q('.gate'), null, '🔴 SDKUI-P2-6: frame 7 does not outlive retry_after_s');
 });
 
+test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the existing «otra cuenta» sheet; no status, no cancel, no placement under its credentials', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  assert.equal(JSON.parse(storage.getItem('capp:rid_a:pending_place')).owner, 'u1', 'premise: the SDK record is bound to its account');
+  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
+  const b2 = bootSdk({ storage, member: B, script: {} });
+  await settle(); b2.timers.flush(); await settle();
+  assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 SDKUI-R2-P1: the existing held-by-another-account sheet');
+  assert.equal(b2.srv.of('placeSdkStatus').length + b2.srv.of('cancelSdkPending').length + b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-R2-P1: nothing under B\'s credentials');
+});
+
 test('S2-checkout resume (advisor condition): a live SDK attempt on this device ⇒ the status FIRST at mount, the processing sheet — never a new placement', async () => {
   const storage = memStore();
   const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
