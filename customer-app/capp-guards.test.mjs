@@ -39,7 +39,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Bite proof: a planted capp commit touching xpizza-functions/claim-order.js in the new range fails «no server change» (index.js is
 // in the cell's own S2TIP_SERVER allowlist, so it cannot be the proof file; the run is in the d8256f73 commit message)
 const BASE = '604e96ab';
-const CAPP_TIP = '37054aed';
+const CAPP_TIP = 'f665a9dc';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
