@@ -902,10 +902,7 @@ test('T18 perf (§12): removeProduct and undoRemoveProduct each stay within 5 ms
   assert.ok(tList <= 2, `the list projection ${tList.toFixed(2)} ms ≤ 2`);
 });
 
-// TODO (routed to the advisor 11-13): 5f's catalog/firestore-fake has no batch.update, which editCatalogCore uses to commit a draft
-// WITH an addition (the draft and the high-water mark together, edit-catalog-handler.js:405) — the double answers 503 store_unavailable.
-// Runs once the double carries batch.update with its precondition (a stub may never be laxer than production, so not faked here).
-test('T10 chain (P-R3): remove one dish and add a new dish at the same price — R4 shows «Quitado» AND the addition, never a rename', { todo: 'needs batch.update in 5f catalog/firestore-fake' }, async () => {
+test('T10 chain (P-R3): remove one dish and add a new dish at the same price — R4 shows «Quitado» AND the addition, never a rename', async () => {
   const B = await rpBackend('la_musa');
   const p = await rpPage(B); await p.signIn();
   const gone = p.src().items.find((r) => r.key === 'dimsum_04');
@@ -923,10 +920,7 @@ test('T10 chain (P-R3): remove one dish and add a new dish at the same price —
   assert.ok(p.review_().textContent.includes('Wonton de la Casa'), 'AND the addition');
 });
 
-// TODO (routed to the advisor 11-13): RED on 5f's server — catalog-edit.removalDiffOptions reads the claim ONLY as `deleted_ids.ids`,
-// but the save accepts (and the portal's ONE claim writer sends) `deleted_ids: [ids]`; at the photo gate (edit-catalog-handler.js:163) the
-// claim is not normalized yet, so a declared removal is not declared there and the save answers 409 photo_change_disabled. Turned on with 5f's fix.
-test('T22 chain (B-5, P-R7): a dish WITH an active photo, uploads off — save 200 (no photo_change_disabled); R4 one «Quitado» row, no «Fotos» row; «Deshacer» puts the photo back', { todo: 'removalDiffOptions misses the array claim shape (5f)' }, async () => {
+test('T22 chain (B-5, P-R7): a dish WITH an active photo, uploads off — save 200 (no photo_change_disabled); R4 one «Quitado» row, no «Fotos» row; «Deshacer» puts the photo back', async () => {
   const B = await rpBackend('la_musa', { photo: 'rice_03' });
   const p = await rpPage(B); await p.signIn();
   assert.deepEqual(p.src().photos && p.src().photos.rice_03, { state: 'pid', pid: B.photoPid }, 'premise: the loaded draft carries the live photo');
@@ -943,7 +937,7 @@ test('T22 chain (B-5, P-R7): a dish WITH an active photo, uploads off — save 2
   assert.deepEqual(p.src().photos.rice_03, { state: 'pid', pid: B.photoPid }, '«Deshacer» puts the photo back');
 });
 
-test('T22b chain (A-4): a photo dish removed → saved → «Deshacer» after a reload, uploads OFF — save 200, its own active photo comes back; an unrelated photo change is still refused', { todo: 'removalDiffOptions misses the array claim shape (5f)' }, async () => {
+test('T22b chain (A-4): a photo dish removed → saved → «Deshacer» after a reload, uploads OFF — save 200, its own active photo comes back; an unrelated photo change is still refused', async () => {
   const B = await rpBackend('la_musa', { photo: 'rice_03' });
   const p = await rpPage(B); await p.signIn();
   await p.section('Rice'); await p.remove('rice_03');
@@ -974,5 +968,14 @@ test('T13 R1 (real read): a «Nuevo» dish keeps «Descartar» — its drawer ca
   await p.open('tmp:rp-t13-nuevo');
   assert.ok(p.drawer().classList.contains('show'), 'premise: the new dish\'s drawer opened');
   assert.equal(p.drawer().querySelector('.mk-rmact'), null, 'a new dish keeps Descartar, no Quitar del menú');
-  // (the SAVED-but-unpublished addition — pendingAdditions — runs once 5f's firestore-fake commits an addition; pure T2 pins the predicate)
+  // SAVED but unpublished (the server's addition, now known by key): still «Nuevo», still no «Quitar del menú»
+  p.mods.app.closeDrawer && p.mods.app.closeDrawer();
+  await p.review();
+  const s = B.saves[B.saves.length - 1];
+  assert.equal(s.status, 200, `the addition saves (${JSON.stringify(s.reply).slice(0, 160)})`);
+  const key = (s.reply.diff.added || []).find((a) => a && a.surface === 'item').key;
+  await p.back();
+  await p.open(key);
+  assert.ok(p.drawer().classList.contains('show'), 'premise: the saved addition\'s drawer opened');
+  assert.equal(p.drawer().querySelector('.mk-rmact'), null, 'a saved addition keeps Descartar, no Quitar del menú');
 });
