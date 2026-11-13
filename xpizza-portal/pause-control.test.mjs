@@ -57,6 +57,7 @@ test('ONE control on the branch page: pausas.js and its view are gone; shell.js 
   assert.ok(/id="pausescrim"/.test(html) && /id="pausemodal"/.test(html), 'the confirm stays');
   const bv = readFileSync(new URL('./branches-view.js', import.meta.url), 'utf8');
   assert.ok(!bv.includes("ctx.goto('pausas')"), 'the branch page no longer navigates away to pause');
+  assert.ok(!bv.includes('setBranchPause'), '🔴 the branch page carries no copy of the request (pause-control.js owns it)');
 });
 
 
