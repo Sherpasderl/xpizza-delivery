@@ -167,6 +167,14 @@ function normalize(out) {
   if (capIdx < 0 && fs.existsSync(path.join(FN, 'catalog/extra-identity.js'))) { SW.on = true; try { on = {}; for (const rid of ['x_pizza', 'la_musa']) on[rid] = await scenarios(rid); } finally { SW.on = false; } }
   const text = JSON.stringify(now, null, 1) + '\n';
   if (capIdx > 0) { fs.writeFileSync(GOLDEN, text); console.log(`s2b-off-golden: CAPTURED from ${FN} → ${path.relative(process.cwd(), GOLDEN)} (${text.length} bytes)`); return; }
+  // PLAN-3a-capp-member-reads (3) — the representation marker advanced 1d.3 → 1d.4 AFTER this base (the body may carry dish_stats).
+  // PEELED like an inverse layer, asserted first: SERVED must be exactly 1d.4 with NO dish_stats in its body (this harness passes no
+  // stats reader, so the decoration is omitted), then the marker reads as the base's 1d.3; every other SERVED byte stays pinned.
+  for (const [label, set] of [['OFF', now], ['ON', on]]) if (set) for (const rid of Object.keys(set)) if (set[rid].SERVED) {
+    assert.strictEqual(set[rid].SERVED.representation_version, '1d.4', `🔴 ${label} ${rid} SERVED: the (3) peel expects 1d.4`);
+    assert.ok(!('dish_stats' in set[rid].SERVED.body), `🔴 ${label} ${rid} SERVED: no dish_stats without a stats reader`);
+    set[rid].SERVED = { ...set[rid].SERVED, representation_version: '1d.3' };
+  }
   const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'));
   let n = 0;
   for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
