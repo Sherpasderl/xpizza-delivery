@@ -374,7 +374,7 @@ test('S4-F — «Crear» at the 30-section cap, and with an unnamed section (the
   const q = await page({ read: () => { const r = editable({ sections: true }); r.source.structure.categories[1].name = ''; return r; } });
   await q.signIn();
   await create(q, 'Postres');
-  const l = box(q).querySelector('.ferr');
+  const l = box(q) && box(q).querySelector('.ferr');   // the sheet gone = it was not refused in place
   assert.ok(l, '🔴 refused in place'); assert.equal(l.firstChild.textContent, P('unnamedLine'));
   const link = l.querySelector('button.mk-lnk'); assert.equal(link.textContent, P('nameAll'));
   link.click(); await settle(10);

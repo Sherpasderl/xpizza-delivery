@@ -145,7 +145,7 @@ test('a NEW option\'s trash drops its add op and every op that names it (its mar
   const s = IE.open(d, PAD, null, ON);
   IE.choiceOp(s, { op: 'option.add', launcher: PAD, ref: ref('t'), choice: 'Tofu', price: 330 });
   IE.choiceSet(s, { op: 'choice.recommended', launcher: PAD, option: ref('t') });
-  assert.equal(IE.choiceDropNew(s, ref('t')).ok, true);
+  assert.equal(IE.choiceDropNew(s, ref('t')).ok, true, '🔴 the new option drops, its mark with it');
   assert.deepEqual(s.choiceOps, [], '🔴 nothing left of the new option');
   assert.equal(IE.choiceModel(d, s).touched, false, 'the group is as loaded again: no line');
   assert.equal(IE.choiceDropNew(s, ref('t')).ok, false, 'an unknown ref is refused');
@@ -204,7 +204,7 @@ test('D2: choiceAdd gives a PLAIN dish its required choice in the copy — the m
   assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts.slice(0, 1), marked: 0 }).ok, false, 'one option: choices_too_few');
   assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts, marked: 1 }).ok, true);
   const m = IE.choiceModel(d, s);
-  assert.deepEqual(m.options.map((o) => [o.choice, o.price, o.marked, o.isNew]), [['Seis', 275, false, true], ['Doce', 480, true, true]]);
+  assert.deepEqual(m.options.map((o) => [o.choice, o.price, o.marked, o.isNew]), [['Seis', 275, false, true], ['Doce', 480, true, true]], '🔴 the marked option is «Recomendada»');
   assert.equal(m.hold, null);
   assert.equal(s.work.price, s.base.price, 'the dish\'s own price edit is folded into the first option');
   assert.deepEqual(IE.save(d, s), { ok: true });
@@ -218,7 +218,7 @@ test('after D2, a new option\'s trash edits the choice.add op itself (two left �
   const s = IE.open(d, 'dimsum_01', null, ON);
   const o = [ref('a'), ref('b'), ref('c')].map((r, i) => ({ ref: r, choice: `O${i}`, price: 100 + i }));
   IE.choiceAdd(s, { label: 'Porción', options: o, marked: 2 });
-  assert.equal(IE.choiceDropNew(s, ref('c')).ok, true);
+  assert.equal(IE.choiceDropNew(s, ref('c')).ok, true, '🔴 the new option drops, its mark with it');
   assert.deepEqual(s.choiceOps.map((x) => x.op), ['choice.add'], 'the mark on the dropped option went with it');
   assert.deepEqual(s.choiceOps[0].options.map((x) => x.ref), [ref('a'), ref('b')]);
   assert.equal(IE.choiceDropNew(s, ref('b')).code, 'choices_too_few', '🔴 two left: the writer refuses');
