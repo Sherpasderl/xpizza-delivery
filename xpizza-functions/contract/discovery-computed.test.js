@@ -55,8 +55,56 @@ for (const k of SDK.ENDPOINT_EXPORTS) {
   assert.strictEqual(hits.length, 1, `🔴 DC-3 ${k} is discovered once from index.js source`);
   assert.strictEqual(hits[0].category, D.classifyRuntime(SDK[k]).category, `🔴 DC-3 ${k} keeps its endpoint category`);
 }
-assert.deepStrictEqual(real.unclassified.filter((u) => u.type === 'computed-export'), [], '🔴 DC-3 index.js has no unresolved computed export');
+assert.deepStrictEqual(real.unclassified, [], '🔴 DC-3 index.js has no unresolved computed export and no other export-surface use');
+assert.deepStrictEqual(real.isolated.map((x) => x.set).sort(), ['PHOTOS_TARGETS', 'PORTAL_ISOLATED_TARGETS', 'PORTAL_OPS_TARGETS'], '🔴 DC-3 index.js: the three FUNCTION_TARGET branches are the isolated entries');
 ok(`index.js: all ${SDK.ENDPOINT_EXPORTS.length} ENDPOINT_EXPORTS discovered from source with their runtime category`);
+
+// 4 — Codex r1 P2-1: the loop resolves ONLY when B is a once-declared, never-written, top-level const require binding, the loop
+// is top-level, and the list is frozen + distinct. One fixture per shape, each over m2.js (m.js + OPEN + DUP; a fresh module, so the require cache holds no stale m.js); exactly ONE reason each.
+w('m2.js', fs.readFileSync(path.join(dir, 'm.js'), 'utf8') + "\nexports.OPEN = ['aHttp'];\nexports.DUP = Object.freeze(['aHttp', 'aHttp']);\n");
+const LOOP = 'for (const k of M.LIST) exports[k] = M[k];';
+const REQ = "const M = require('./m2');";
+const one = (src) => { w('index.js', src); return D.sourceInventory(path.join(dir, 'index.js')); };
+const LOOP_CASES = {
+  'L1 nested': [`${REQ} { ${LOOP} }`, /outside a top-level/],
+  'L2 let loop var': [`${REQ} for (let k of M.LIST) exports[k] = M[k];`, /is not `for \(const k of …\)`/],
+  'L3 k shadows B': [`${REQ} for (const M of M.LIST) exports[M] = M[M];`, /loop variable M shadows M/],
+  'L4 B shadowed in a function': [`${REQ} function f() { const M = 1; return M; } ${LOOP}`, /M is declared 2× in the file/],
+  'L5 B declared with let': [`let M = require('./m2'); ${LOOP}`, /M is declared with let, not const/],
+  'L6 B written through a member': [`${REQ} M.LIST = ['aHttp']; ${LOOP}`, /M \(or a member of it\) is written/],
+  'L7 require redeclared': [`${REQ} function g(require) { return require; } ${LOOP}`, /`require` is redeclared/],
+  'L8 unfrozen list': [`${REQ} for (const k of M.OPEN) exports[k] = M[k];`, /OPEN is not frozen/],
+  'L9 repeated name': [`${REQ} for (const k of M.DUP) exports[k] = M[k];`, /DUP repeats a name/],
+};
+for (const [label, [src, why]] of Object.entries(LOOP_CASES)) {
+  const r = one(src);
+  assert.deepStrictEqual(r.unclassified.map((u) => u.type), ['computed-export'], `🔴 DC-4 ${label}: exactly one computed-export UNCLASSIFIED (got ${JSON.stringify(r.unclassified)})`);
+  assert.ok(why.test(r.unclassified[0].why), `🔴 DC-4 ${label}: the reason names the rule (got ${r.unclassified[0].why})`);
+  assert.strictEqual(r.entries.filter((e) => e.via).length, 0, `🔴 DC-4 ${label}: no name is resolved from the list`);
+}
+assert.deepStrictEqual(one(`${REQ} ${LOOP}`).unclassified, [], '🔴 DC-4 control: the canonical shape over the same m.js is clean');
+ok(`the loop fails CLOSED on each of ${Object.keys(LOOP_CASES).length} shapes (nested / let / k shadows B / B shadowed / let B / B written / require redeclared / unfrozen / repeated) — one reason each`);
+
+// 5 — Codex r1 P2-2: every OTHER use of the export objects is UNCLASSIFIED (it was silently dropped)
+const SURFACE_CASES = {
+  'S1 Object.assign(exports, …)': [`${REQ} Object.assign(exports, M);`, /`exports` is used other than/],
+  'S2 module.exports = { ...B }': [`${REQ} module.exports = { ...M };`, /`module\.exports` is used other than/],
+  'S3 defineProperty(module.exports, …)': [`${REQ} Object.defineProperty(module.exports, 'x', { value: M.aHttp });`, /`module\.exports` is used other than/],
+  'S4 exports = …': [`${REQ} exports = M;`, /`exports` is used other than/],
+  'S5 an alias of module': [`${REQ} const mod = module; mod.exports.x = M.aHttp;`, /`module` is used other than as `module\.exports`/],
+  'S6 module-level this': [`${REQ} this.x = M.aHttp;`, /module-level `this`/],
+  'S7 compound export assignment': [`${REQ} exports.x = M.aHttp; exports.x += '';`, /`exports` is used other than/],
+  'S8 exports redeclared': [`${REQ} function h(exports) { return exports; }`, /`exports` is redeclared/],
+  'S9 the isolated branch falls through (no return)': [`${REQ} const S = new Set(); if (S.has(process.env.FUNCTION_TARGET)) { module.exports = require('./m2'); console.log('after'); }`, /`module\.exports` is used other than/],
+  'S10 an isolated-looking branch on another variable': [`${REQ} const S = new Set(); if (S.has(process.env.OTHER)) { module.exports = require('./m2'); return; }`, /`module\.exports` is used other than/],
+};
+for (const [label, [src, why]] of Object.entries(SURFACE_CASES)) {
+  const r = one(src); const u = r.unclassified.filter((x) => x.type === 'export-surface');
+  assert.ok(u.some((x) => why.test(x.why)),`🔴 DC-5 ${label}: UNCLASSIFIED for the export surface (got ${JSON.stringify(r.unclassified)})`);
+}
+const iso = one(`${REQ} const S = new Set(); if (S.has(process.env.FUNCTION_TARGET)) { console.log('e'); module.exports = require('./m2'); return; } function q() { return this; } exports.y = M.aHttp;`);
+assert.deepStrictEqual([iso.unclassified, iso.isolated.map((x) => [x.set, x.module])], [[], [['S', './m2']]], '🔴 DC-5 control: the isolated-entry branch + a function-scoped this + exports.y = … are clean');
+ok(`every other use of exports / module.exports / module / module-level this is UNCLASSIFIED (${Object.keys(SURFACE_CASES).length} shapes); the FUNCTION_TARGET branch is listed as isolated`);
 
 fs.rmSync(dir, { recursive: true, force: true });
 console.log(`discovery computed exports: OK (${n})`);

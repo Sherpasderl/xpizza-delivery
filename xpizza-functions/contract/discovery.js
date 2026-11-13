@@ -48,38 +48,107 @@ function sourceInventory(file = INDEX) {
     if (st.type === 'VariableDeclaration') for (const d of st.declarations) if (d.id.type === 'Identifier') bindings.set(d.id.name, d.init);
   }
   const baseOf = (n) => { const chain = []; while (n && n.type === 'MemberExpression' && !n.computed) { chain.unshift(n.property.name); n = n.object; } return n && n.type === 'Identifier' ? { id: n.name, chain } : null; };
-  // 2e asm7 (r3-p0-scheduler D0: D4's eight SDK exports were invisible) — a COMPUTED export `exports[k] = …` is resolved ONLY in
-  // the loop shape `for (const k of B.LIST) exports[k] = B[k];` where B is a top-level `const B = require('./m')` binding: the
-  // names come from loading ./m and reading LIST (an array of strings), each then classified like any re-export. Every other
-  // computed export (and a LIST that is not an array of strings) is UNCLASSIFIED — never silently dropped (it was, before).
-  const isExportsObj = (o) => (o.type === 'Identifier' && o.name === 'exports') || (o.type === 'MemberExpression' && !o.computed && o.object.type === 'Identifier' && o.object.name === 'module' && o.property.name === 'exports');
-  const loopExports = new Map();   // the computed-export AssignmentExpression → { module, chain, list }
-  (function walkL(node) {
-    if (!node || typeof node.type !== 'string') return;
-    if (node.type === 'ForOfStatement' && node.left.type === 'VariableDeclaration' && node.left.declarations.length === 1 && node.left.declarations[0].id.type === 'Identifier') {
-      const k = node.left.declarations[0].id.name; const it = node.right;
-      const st = node.body.type === 'BlockStatement' && node.body.body.length === 1 ? node.body.body[0] : node.body;
-      const a = st && st.type === 'ExpressionStatement' ? st.expression : null;
-      const B = it.type === 'MemberExpression' && !it.computed && it.object.type === 'Identifier' ? it.object.name : null;
-      const init = B && bindings.has(B) ? bindings.get(B) : null;
-      const rc = init && init !== 'function' ? requireChain(init) : null;
-      if (rc && a && a.type === 'AssignmentExpression' && a.operator === '=' && a.left.type === 'MemberExpression' && a.left.computed && isExportsObj(a.left.object)
-        && a.left.property.type === 'Identifier' && a.left.property.name === k && a.right.type === 'MemberExpression' && a.right.computed
-        && a.right.object.type === 'Identifier' && a.right.object.name === B && a.right.property.type === 'Identifier' && a.right.property.name === k) {
-        loopExports.set(a, { module: rc.module, chain: rc.chain, list: it.property.name });
-      }
-    }
-    for (const key of Object.keys(node)) { const v = node[key]; if (Array.isArray(v)) v.forEach(walkL); else if (v && typeof v === 'object' && typeof v.type === 'string') walkL(v); }
+  // 2e asm7 r2 (r3-p0-scheduler D0: D4's eight SDK exports were invisible; Codex r1 2×P2) — the EXPORT SURFACE fails CLOSED.
+  // A COMPUTED export `exports[k] = …` resolves ONLY as a TOP-LEVEL statement `for (const k of B.LIST) exports[k] = B[k];` where
+  // B is declared exactly ONCE in the whole file, by a top-level `const B = require('./m')` (a member chain is allowed), is never
+  // written (assigned / updated / deleted / a for-in-of target, itself or a member), k !== B, `require` is never declared, and
+  // ./m's LIST is a FROZEN array of distinct strings; each name is then classified like any re-export. Everything else is
+  // UNCLASSIFIED with a reason, never dropped: any other computed export, `exports = …`, `module.exports = …` (except the
+  // FUNCTION_TARGET isolated-entry branch, listed in `isolated`), a compound export assignment, the export objects passed or
+  // read as values (Object.assign / defineProperty / spread / an alias), `module` used other than as `module.exports`, a
+  // redeclared `exports` / `module`, and a module-level `this` (=== exports).
+  const isModExports = (o) => o.type === 'MemberExpression' && !o.computed && o.object.type === 'Identifier' && o.object.name === 'module' && o.property.name === 'exports';
+  const isExportsObj = (o) => (o.type === 'Identifier' && o.name === 'exports') || isModExports(o);
+  const kids = (n, f) => { for (const key of Object.keys(n)) { const v = n[key]; if (Array.isArray(v)) v.forEach((c) => c && typeof c.type === 'string' && f(c, key)); else if (v && typeof v === 'object' && typeof v.type === 'string') f(v, key); } };
+  const patNames = (p, acc = []) => {
+    if (!p) return acc;
+    if (p.type === 'Identifier') acc.push(p.name);
+    else if (p.type === 'ObjectPattern') p.properties.forEach((q) => patNames(q.type === 'RestElement' ? q.argument : q.value, acc));
+    else if (p.type === 'ArrayPattern') p.elements.forEach((q) => patNames(q, acc));
+    else if (p.type === 'RestElement') patNames(p.argument, acc);
+    else if (p.type === 'AssignmentPattern') patNames(p.left, acc);
+    return acc;
+  };
+  const rootId = (n) => { while (n && n.type === 'MemberExpression') n = n.object; return n && n.type === 'Identifier' ? n.name : null; };
+  const declared = new Map();   // every binding name declared ANYWHERE in the file → count (the shadow check)
+  const written = new Set();    // identifiers written anywhere, as themselves or through a member
+  const bump = (nm) => declared.set(nm, (declared.get(nm) || 0) + 1);
+  const writeTarget = (t) => { if (t.type === 'MemberExpression') { const r = rootId(t); if (r) written.add(r); } else patNames(t).forEach((x) => written.add(x)); };
+  (function walkD(n) {
+    if (n.type === 'VariableDeclarator') patNames(n.id).forEach(bump);
+    if (/Function/.test(n.type)) { if (n.id) bump(n.id.name); n.params.forEach((p) => patNames(p).forEach(bump)); }
+    if (/^Class/.test(n.type) && n.id) bump(n.id.name);
+    if (n.type === 'CatchClause' && n.param) patNames(n.param).forEach(bump);
+    if (n.type === 'AssignmentExpression') writeTarget(n.left);
+    if ((n.type === 'ForOfStatement' || n.type === 'ForInStatement') && n.left.type !== 'VariableDeclaration') writeTarget(n.left);
+    if (n.type === 'UpdateExpression' || (n.type === 'UnaryExpression' && n.operator === 'delete')) { const r = rootId(n.argument); if (r) written.add(r); }
+    kids(n, walkD);
   })(ast);
+  const loopExports = new Map();   // the loop's computed-export AssignmentExpression → { module, chain, list } | { why }
+  for (const st of ast.body) {
+    if (st.type !== 'ForOfStatement' || st.left.type !== 'VariableDeclaration' || st.left.declarations.length !== 1 || st.left.declarations[0].id.type !== 'Identifier') continue;
+    const k = st.left.declarations[0].id.name; const it = st.right;
+    const s1 = st.body.type === 'BlockStatement' && st.body.body.length === 1 ? st.body.body[0] : st.body;
+    const a = s1 && s1.type === 'ExpressionStatement' ? s1.expression : null;
+    const B = it.type === 'MemberExpression' && !it.computed && it.object.type === 'Identifier' ? it.object.name : null;
+    if (!B || !a || a.type !== 'AssignmentExpression' || a.left.type !== 'MemberExpression' || !a.left.computed || !isExportsObj(a.left.object)) continue;
+    const decl = ast.body.filter((d) => d.type === 'VariableDeclaration').flatMap((d) => d.declarations.filter((x) => x.id.type === 'Identifier' && x.id.name === B).map((x) => ({ kind: d.kind, init: x.init })));
+    const rc = decl.length === 1 && decl[0].init ? requireChain(decl[0].init) : null;
+    let why = null;
+    if (st.await || st.left.kind !== 'const') why = `the loop is not \`for (const ${k} of …)\``;
+    else if (a.operator !== '=' || a.left.property.type !== 'Identifier' || a.left.property.name !== k || a.right.type !== 'MemberExpression' || !a.right.computed
+      || a.right.object.type !== 'Identifier' || a.right.object.name !== B || a.right.property.type !== 'Identifier' || a.right.property.name !== k) why = `the loop body is not exactly \`exports[${k}] = ${B}[${k}]\``;
+    else if (k === B) why = `the loop variable ${k} shadows ${B}`;
+    else if (declared.get(B) !== 1 || decl.length !== 1) why = `${B} is declared ${declared.get(B) || 0}× in the file (must be exactly once, a top-level const)`;
+    else if (decl[0].kind !== 'const') why = `${B} is declared with ${decl[0].kind}, not const`;
+    else if (!rc) why = `${B} is not bound to require('./m')`;
+    else if (written.has(B)) why = `${B} (or a member of it) is written in the file`;
+    else if (declared.has('require')) why = '`require` is redeclared in the file';
+    loopExports.set(a, why ? { why } : { module: rc.module, chain: rc.chain, list: it.property.name });
+  }
+  // the FUNCTION_TARGET isolated-entry branch: a top-level `if (S.has(process.env.FUNCTION_TARGET)) { …; module.exports = require('./m'); return; }`
+  // (the default load never takes it, so its module is not an index.js export; listed for the caller)
+  const isolated = []; const isoAssign = new Set();
+  for (const st of ast.body) {
+    if (st.type !== 'IfStatement' || st.alternate || st.consequent.type !== 'BlockStatement') continue;
+    const t = st.test; const arg = t.type === 'CallExpression' && t.arguments.length === 1 ? baseOf(t.arguments[0]) : null;
+    if (!(t.type === 'CallExpression' && t.callee.type === 'MemberExpression' && !t.callee.computed && t.callee.object.type === 'Identifier' && t.callee.property.name === 'has'
+      && arg && arg.id === 'process' && arg.chain.join('.') === 'env.FUNCTION_TARGET')) continue;
+    const b = st.consequent.body; const last = b[b.length - 1]; const prev = b[b.length - 2];
+    const e = prev && prev.type === 'ExpressionStatement' ? prev.expression : null;
+    const rc = e && e.type === 'AssignmentExpression' && e.operator === '=' && isModExports(e.left) ? requireChain(e.right) : null;
+    if (rc && !rc.chain.length && last.type === 'ReturnStatement' && !last.argument) { isoAssign.add(e); isolated.push({ line: e.loc.start.line, set: t.callee.object.name, module: rc.module }); }
+  }
+  // every other use of the export objects
+  for (const nm of ['exports', 'module']) if (declared.has(nm)) unclassified.push({ name: null, line: null, type: 'export-surface', why: `\`${nm}\` is redeclared in the file` });
+  (function walkU(n, up) {
+    const [p, pk, g, gk, gg, ggk] = up;
+    const memberTarget = (m, mk, a) => mk === 'left' && a && a.type === 'AssignmentExpression' && a.operator === '=' && m;   // m is the assignment's left side
+    let why = null;
+    if (n.type === 'Identifier' && n.name === 'exports' && !(p && ((p.type === 'MemberExpression' && pk === 'property' && !p.computed) || (p.type === 'Property' && pk === 'key' && !p.computed)))) {
+      if (!(p && p.type === 'MemberExpression' && pk === 'object' && memberTarget(p, gk, g))) why = '`exports` is used other than as `exports.X = …` / `exports[k] = …`';
+    }
+    if (n.type === 'Identifier' && n.name === 'module' && !(p && ((p.type === 'MemberExpression' && pk === 'property' && !p.computed) || (p.type === 'Property' && pk === 'key' && !p.computed)))) {
+      if (!(p && isModExports(p) && pk === 'object')) why = '`module` is used other than as `module.exports`';
+      else if (!((g && g.type === 'MemberExpression' && gk === 'object' && memberTarget(g, ggk, gg)) || (g && gk === 'left' && isoAssign.has(g)))) why = '`module.exports` is used other than as `module.exports.X = …` / `module.exports[k] = …` (or the isolated-entry branch)';
+    }
+    if (n.type === 'ThisExpression' && !up.inFn) why = 'a module-level `this` (=== exports)';
+    if (why) unclassified.push({ name: null, line: n.loc.start.line, type: 'export-surface', why });
+    const inFn = up.inFn || n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression';
+    kids(n, (c, key) => { const nu = [n, key, p, pk, g, gk]; nu.inFn = inFn; walkU(c, nu); });
+  })(ast, Object.assign([], { inFn: false }));
   (function walk(node) {
     if (!node || typeof node.type !== 'string') return;
     if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && node.left.computed && isExportsObj(node.left.object)) {
       const line = node.loc.start.line; const le = loopExports.get(node);
-      if (!le) unclassified.push({ name: null, line, type: 'computed-export', why: 'a computed export outside the `for (const k of B.LIST) exports[k] = B[k]` shape' });
+      if (!le) unclassified.push({ name: null, line, type: 'computed-export', why: 'a computed export outside a top-level `for (const k of B.LIST) exports[k] = B[k]`' });
+      else if (le.why) unclassified.push({ name: null, line, type: 'computed-export', why: le.why });
       else {
         let m = require(path.resolve(path.dirname(file), le.module)); for (const c of le.chain) m = m == null ? m : m[c];
         const names = m == null ? null : m[le.list];
         if (!Array.isArray(names) || !names.length || names.some((x) => typeof x !== 'string')) unclassified.push({ name: null, line, type: 'computed-export', module: le.module, why: `${le.list} is not a non-empty array of strings` });
+        else if (!Object.isFrozen(names)) unclassified.push({ name: null, line, type: 'computed-export', module: le.module, why: `${le.list} is not frozen` });
+        else if (new Set(names).size !== names.length) unclassified.push({ name: null, line, type: 'computed-export', module: le.module, why: `${le.list} repeats a name` });
         else for (const nm of names) out.push({ name: nm, line, how: 'reexport', module: le.module, chain: [...le.chain, nm], via: le.list });
       }
     }
@@ -129,7 +198,7 @@ function sourceInventory(file = INDEX) {
     const cls = classifyRuntime(v);
     Object.assign(e, cls || { category: 'not-endpoint' });
   }
-  return { entries: out, unclassified };
+  return { entries: out, unclassified, isolated };
 }
 
 const normRef = (r) => String(r).replace(/^\/+/, '');
