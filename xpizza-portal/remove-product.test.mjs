@@ -16,7 +16,7 @@ import { runInThisContext } from 'node:vm';
 import { installFetch, okJson, errJson, loadModules } from './ventas-harness.mjs';
 import {
   createDraft, draftSource, mergeDeletionClaim, addProduct, setAddition, setRequiredChoice, setGroupLabel, setChoiceName, addChoice, removeAddition,
-  canRemoveProduct, removeProduct, undoRemoveProduct, rebuildOrders, removalListSource,
+  canRemoveProduct, removeProduct, undoRemoveProduct, rebuildOrders, removalListSource, setPhoto,
 } from './editor.js';
 
 const req = createRequire(import.meta.url);
@@ -398,7 +398,10 @@ const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // a real handler chain takes as long as it takes: wait for the fact, bounded
 async function until(fact, ms = 4000) { const t0 = Date.now(); while (!fact() && Date.now() - t0 < ms) await settle(20); return fact(); }
 
-async function rpBackend(rid) {
+// `photo`: a dish key whose ACTIVE version carries a photo (T22 / T22b) — the version's meta/photos doc from 5f's own writer
+// (photo-state.versionPhotosDoc), the pid published in the registry, the stored draft carrying the same entry; the editor read and the
+// save then get 5f's REAL photo cores (makeEditableIo / makePhotoEditIo) over the same store, uploads OFF
+async function rpBackend(rid, { photo = null } = {}) {
   const { makeDb } = freq('./catalog/firestore-fake');
   const { createFakeDb } = freq('./merchant/_fake-db');
   const { Timestamp } = freq('firebase-admin/firestore');
@@ -433,19 +436,31 @@ async function rpBackend(rid) {
   const boot = await bootstrapIdentityStamps(fsdb, rid);
   assert.equal(boot.stamped, true, `premise: the real bootstrap stamped ${rid}`);
   const readActiveBuilt = async () => PR.readActiveBuiltFrom(fsdb, rid);
+  let photoReads = null, photos = null;
+  const PHOTO_PID = 'b'.repeat(32);
+  if (photo) {
+    const vid = await getActiveVersionId(fsdb, rid);
+    const doc = freq('./photos/photo-state').versionPhotosDoc({ [photo]: { state: 'pid', pid: PHOTO_PID } }, (p, sz) => `https://cdn.test/${p}-${sz}.webp`);
+    await fsdb.collection('restaurants').doc(rid).collection('versions').doc(vid).collection('meta').doc('photos').set(doc);
+    await fsdb.collection('photo_registry').doc(rid).collection('pids').doc(PHOTO_PID).set({ state: 'published' });
+    await sourceRefOf(fsdb, rid).update({ photos: { [photo]: { state: 'pid', pid: PHOTO_PID } } });
+    photoReads = freq('./photos/editable-io').makeEditableIo({ fs: fsdb, enabled: async () => false, publicBucket: () => 'tb-public', legacyBase: () => null,
+      signRead: async (pp, e) => `https://storage.test/${pp}?e=${e}` });
+    photos = freq('./photos/edit-io').makePhotoEditIo({ fs: fsdb, enabled: async () => false });
+  }
   const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [a, b] = v.split('.'); return /^\d+$/.test(a || '') && /^\d+$/.test(b || '') ? new Timestamp(Number(a), Number(b)) : v; };
   const addProduct = freq('./catalog/add-product-io').addProductIo({ fs: fsdb, rtdb });
-  const B = { who: 'owner', rid, fs: fsdb, statuses: [], saves: [], publishBodies: [], tweakRead: null };
+  const B = { who: 'owner', rid, fs: fsdb, photoPid: PHOTO_PID, statuses: [], saves: [], publishBodies: [], tweakRead: null };
   const rq = (call, method) => ({ method, query: { restaurantId: rid }, get: (h) => (String(h).toLowerCase() === 'authorization' ? call.auth : undefined) });
   const authorize = (r, q) => authorizeCatalogEdit({ db: rtdb, verifyIdToken: async () => ({ uid: RP_UID[B.who] }) }, q, r);
   const out = (r) => (r.status === 200 ? okJson(r.body) : errJson(r.status, r.body));
   B.on = {
     getEditableCatalog: (call) => (async () => {
-      const r = await getEditableCatalogCore({ db: rtdb, fsdb, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 6000 }, rq(call, 'GET'));
+      const r = await getEditableCatalogCore({ db: rtdb, fsdb, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 6000, ...(photoReads ? { photoReads } : {}) }, rq(call, 'GET'));
       if (r.status === 200 && B.tweakRead) B.tweakRead(r.body);   // a contract break a cell stages on purpose (T21g)
       return out(r);
     })(),
-    editCatalog: (call) => (async () => { const r = await editCatalogCore({ db: fsdb, authorize, readActiveBuilt, toPrecondition, addProduct }, call.body, rq(call, 'POST')); B.statuses.push(r.status); B.saves.push({ body: clone(call.body), status: r.status, reply: clone(r.body) }); return out(r); })(),
+    editCatalog: (call) => (async () => { const r = await editCatalogCore({ db: fsdb, authorize, readActiveBuilt, toPrecondition, addProduct, ...(photos ? { photos } : {}) }, call.body, rq(call, 'POST')); B.statuses.push(r.status); B.saves.push({ body: clone(call.body), status: r.status, reply: clone(r.body) }); return out(r); })(),
     publishEdited: (call) => (async () => {
       B.publishBodies.push(clone(call.body));
       const r = await publishEditedCore({ db: fsdb, authorize, readActiveBuilt, readDraft: () => PR.readDraftFrom(fsdb, rid), publishVersion, addProduct }, call.body, rq(call, 'POST'));
@@ -893,4 +908,58 @@ test('T10 chain (P-R3): remove one dish and add a new dish at the same price —
   const row = prodGroup(p) && prodGroup(p).querySelector('.prow.mk-srow');
   assert.ok(row && row.querySelector('.bchip.rem'), 'R4 shows «Quitado»');
   assert.ok(p.review_().textContent.includes('Wonton de la Casa'), 'AND the addition');
+});
+
+// TODO (routed to the advisor 11-13): RED on 5f's server — catalog-edit.removalDiffOptions reads the claim ONLY as `deleted_ids.ids`,
+// but the save accepts (and the portal's ONE claim writer sends) `deleted_ids: [ids]`; at the photo gate (edit-catalog-handler.js:163) the
+// claim is not normalized yet, so a declared removal is not declared there and the save answers 409 photo_change_disabled. Turned on with 5f's fix.
+test('T22 chain (B-5, P-R7): a dish WITH an active photo, uploads off — save 200 (no photo_change_disabled); R4 one «Quitado» row, no «Fotos» row; «Deshacer» puts the photo back', { todo: 'removalDiffOptions misses the array claim shape (5f)' }, async () => {
+  const B = await rpBackend('la_musa', { photo: 'rice_03' });
+  const p = await rpPage(B); await p.signIn();
+  assert.deepEqual(p.src().photos && p.src().photos.rice_03, { state: 'pid', pid: B.photoPid }, 'premise: the loaded draft carries the live photo');
+  await p.section('Rice'); await p.remove('rice_03');
+  assert.ok(!(p.src().photos && p.src().photos.rice_03), 'the dish\'s photo goes with it');
+  await p.review();
+  const s = B.saves[B.saves.length - 1];
+  assert.equal(s.status, 200, `save 200, never photo_change_disabled (${JSON.stringify(s.reply).slice(0, 200)})`);
+  const labels = [...p.review_().querySelectorAll('.mglabel span:first-child')].map((x) => x.textContent);
+  assert.ok(!labels.includes('Fotos'), `ONE «Quitado» row, no «Fotos» row (${labels.join(', ')})`);
+  assert.equal(prodGroup(p).querySelectorAll('.prow.mk-srow').length, 1, 'ONE «Quitado» row, no «Fotos» row');
+  await p.back();
+  await p.section('Rice'); await p.undo('rice_03');
+  assert.deepEqual(p.src().photos.rice_03, { state: 'pid', pid: B.photoPid }, '«Deshacer» puts the photo back');
+});
+
+test('T22b chain (A-4): a photo dish removed → saved → «Deshacer» after a reload, uploads OFF — save 200, its own active photo comes back; an unrelated photo change is still refused', { todo: 'removalDiffOptions misses the array claim shape (5f)' }, async () => {
+  const B = await rpBackend('la_musa', { photo: 'rice_03' });
+  const p = await rpPage(B); await p.signIn();
+  await p.section('Rice'); await p.remove('rice_03');
+  await p.review();
+  assert.equal(B.saves[B.saves.length - 1].status, 200);
+  await p.back(); await p.reload();
+  await p.section('Rice');
+  assert.ok(p.rowOf('rice_03').classList.contains('mk-pend'), 'premise: the pending row from P-R1');
+  await p.undo('rice_03');
+  assert.deepEqual(p.src().photos.rice_03, { state: 'pid', pid: B.photoPid }, 'its own active photo comes back');
+  await p.review();
+  const s = B.saves[B.saves.length - 1];
+  assert.equal(s.status, 200, `the withdrawn removal saves 200 with uploads off (${JSON.stringify(s.reply).slice(0, 200)})`);
+  await p.back();
+  setPhoto(p.mods.app.state.draft, 'rice_01', { state: 'removed' });   // an unrelated photo change, through the draft's ONE photo setter
+  await p.review();
+  const s2 = B.saves[B.saves.length - 1];
+  assert.deepEqual([s2.status, s2.reply.error], [409, 'photo_change_disabled'], 'an unrelated photo change in the same draft is still refused');
+});
+
+test('T13 R1 (real read): a «Nuevo» dish keeps «Descartar» — its drawer carries no «Quitar del menú»', async () => {
+  const B = await rpBackend('la_musa');
+  const p = await rpPage(B); await p.signIn();
+  const draft = p.mods.app.state.draft;                                  // the add flow's own writer (editor.js), on the page's draft
+  addProduct(draft, { ref: 'tmp:rp-t13-nuevo', cat: 'dim_sum' });
+  setAddition(draft, 'tmp:rp-t13-nuevo', 'name', 'Bao Nuevo');
+  setAddition(draft, 'tmp:rp-t13-nuevo', 'price', 120);
+  await p.open('tmp:rp-t13-nuevo');
+  assert.ok(p.drawer().classList.contains('show'), 'premise: the new dish\'s drawer opened');
+  assert.equal(p.drawer().querySelector('.mk-rmact'), null, 'a new dish keeps Descartar, no Quitar del menú');
+  // (the SAVED-but-unpublished addition — pendingAdditions — runs once 5f's firestore-fake commits an addition; pure T2 pins the predicate)
 });
