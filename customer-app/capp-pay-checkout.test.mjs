@@ -15,7 +15,7 @@ const P = require('./capp-pay-card.js');
 const flat = (s) => String(s == null ? '' : s).replace(/>\s+</g, '><').trim();
 const VISA = '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><text x="20" y="17.6" text-anchor="middle" font-family="Red Hat Display, Arial, sans-serif" font-weight="800" font-style="italic" font-size="11.5" letter-spacing=".2" fill="#1A1F71">VISA</text></svg>';
 const MC = '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><circle cx="16" cy="13" r="7" fill="#EB001B"></circle><circle cx="24" cy="13" r="7" fill="#F79E1B" fill-opacity=".92"></circle></svg>';
-const CARDS = P.cardsVm(listCards([{ card_id: 'c_v', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }, { card_id: 'c_m', brand: 'mastercard', last4: '8810', exp_month: 3, exp_year: 2027, expired: false }]));
+const CARDS = P.cardsVm(listCards([{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }, { card_id: 'c_m', brand: 'mastercard', last4: '8810', exp_month: 3, exp_year: 2027, expired: false }]));
 
 test('1: the pay bar — the payment row (brand tile · label · chevron), the charge line + «Más información», «Hacer pedido · L X»', () => {
   const h = H.payBarHtml({ method: { kind: 'card', brand: 'visa', label: 'Visa ···· 4242' }, total_cents: 58500, cta: { label: 'Hacer pedido · L 585', enabled: true } });
@@ -101,11 +101,11 @@ test('1 cash (card-only tip, OWNER 11-09; tip mockup frame 5 SUPERSEDED): the ca
 });
 
 test('2: the chooser sheet — ✕, the saved cards (tile, label, expiry, a checkmark on the selected), «Agregar tarjeta», «Efectivo al entregar» for members where allowed', () => {
-  const h = H.chooserHtml({ cards: CARDS, selected: { kind: 'card', card_id: 'c_v' }, cash: true });
+  const h = H.chooserHtml({ cards: CARDS, selected: { kind: 'card', card_id: 'CV4242000000000000AB' }, cash: true });
   assert.equal(flat(h), flat(`<div class="scrim" data-act="paysheet-close"></div><div class="sheet" role="dialog" aria-label="Elegí cómo pagar"><div class="grab"></div>
     <div class="topbar"><button class="iconbtn" aria-label="Cerrar" data-act="paysheet-close"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button><h2>Elegí cómo pagar</h2><span class="sp"></span></div>
     <div class="body"><div class="urows">
-      <button class="urow" aria-pressed="true" data-act="paypick" data-card="c_v">${VISA}<span class="t"><b>Visa ···· 4242</b><span>Vence 12/28</span></span><svg class="i tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></button>
+      <button class="urow" aria-pressed="true" data-act="paypick" data-card="CV4242000000000000AB">${VISA}<span class="t"><b>Visa ···· 4242</b><span>Vence 12/28</span></span><svg class="i tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg></button>
       <button class="urow" aria-pressed="false" data-act="paypick" data-card="c_m">${MC}<span class="t"><b>Mastercard ···· 8810</b><span>Vence 03/27</span></span></button>
       <button class="urow" data-act="addcard"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg><span class="t"><b>Agregar tarjeta</b></span></button>
       <button class="urow" aria-pressed="false" data-act="paypick" data-card="cash"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle><path d="M6 9h.01M18 15h.01"></path></svg><span class="t"><b>Efectivo al entregar</b><span>Pagás cuando llegue tu pedido.</span></span></button>

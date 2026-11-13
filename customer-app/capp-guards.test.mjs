@@ -7,8 +7,10 @@
 //      package.json test chain (whose dependencies stay identical)
 // 3 and 4 are proven over the capp lane's OWN commit range, never the live tree (the portal/slice2-untouched precedent): at an
 // assembled tip, other approved slices legitimately change those files, and that is not this lane's change.
-//   RANGE: BASE 2ce3198d → CAPP_TIP 927acf22 (capp G7 batch + the S3c module inverse + its regenerated form-source inventory + the
-//   native shell N1–N2 + readAvailability). A later capp commit that touches the live
+//   RANGE: BASE 1d862e17 → CAPP_TIP (the D4 client lane, feat/capp-d4-client). BASE was 2ce3198d through the S1–S4 / S3 lanes; that whole
+//   range (to 1cd083e4) has LANDED on main, and on main's first-parent line the old base now spans other lanes' own non-merge commits
+//   (asm trains, sdk-d4), which are not this lane's change — so a lane forked from main re-bases the range at its fork point (advisor
+//   ruling 11-12, option (a); proven to still bite with planted form / payments commits). A later capp commit that touches the live
 //   forms or xpizza-functions/ re-points CAPP_TIP to itself. Fails closed: both resolve, BASE ⊑ CAPP_TIP ⊑ HEAD, git answers.
 //   SELF-ENFORCING (Codex capp-tail r1 P2): any commit after CAPP_TIP that touches customer-app/ FAILS the range until CAPP_TIP is
 //   re-pointed — a later capp commit can never escape the scope checks. This file alone is exempt (a re-pin cannot name itself);
@@ -31,8 +33,8 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BASE = '2ce3198d';
-const CAPP_TIP = '1cd083e4';
+const BASE = '1d862e17';
+const CAPP_TIP = '08a0bc43';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -231,16 +233,8 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {
-  // DRYRUN (2e, next-train dry assembly asm2; TRAIN-NEXT2 A4): 1bca1782 hand-wrote CAPP_TIP (the pre-B4 placeholder pin + a DRYRUN
-  // comment) in the first capp merge; the B4 merge 01d76176 then took capp's line verbatim. The REAL assembly merges the capp tip
-  // taking capp-guards VERBATIM, so this entry must NOT exist there (its stale check makes it RED if unused).
-  '1bca1782 customer-app/capp-guards.test.mjs': 'dry-run placeholder CAPP_TIP, superseded verbatim by the B4 merge',
-  // asm5 (2e, advisor ruling B 11-10): the S3 merge restates capp-cart's minted-line premise under S2 «item_key wins» — an S2 × S3
-  // interaction (red on S3 alone, true only once both are merged), so it lives in the merge resolution, not in either lane.
-  '8e6abdf6 customer-app/capp-cart.test.mjs': 'S2 × S3: the minted line WITH its display id resolves by its key (S2 item_key wins)',
-  // S2b on the portal-structure train (5f, 11-13): S2b's capp merge 78bc71cc is a FIRST-parent merge on S2b's own branch (listed
-  // there, a772d36b) but arrives here as parent 2 of bb8c79a9, whose customer-app/ blobs equal that parent — no resolution edit on
-  // this first-parent chain, so its five entries are stale here and are not carried (the 1bca1782 DRYRUN precedent).
+  // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
+  // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);

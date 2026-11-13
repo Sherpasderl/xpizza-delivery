@@ -2,6 +2,18 @@
 // placeSdkStatus response for each outcome with its EXACT key set (§2.4), listCards (§6), sdkPayStatus (§9), cancelSdkPending (§5).
 // Every value is type-checked; a required key holding undefined or a key the contract does not name THROWS — never laxer than the
 // server. Replaced by the real endpoints' serializers when D4 lands.
+import { createRequire } from 'node:module';
+// the SERVER's one namespace definition (xpizza-functions/payments/sdk/order-id.js) — imported, never retyped
+const NS = createRequire(import.meta.url)('../../xpizza-functions/payments/sdk/order-id.js');
+export const SDK_ORDER_ID_RE = NS.SDK_ORDER_ID_RE;
+// the order-id NAMESPACE gate every fake server applies BEFORE its script (never laxer than production): placeSdkOrder admits only an
+// sdk_ id (intake.js: refuse(400, 'order_id_namespace')); createOrder / chargeOnlineOrder refuse ANY sdk_ id (index.js: badRequest)
+export function namespaceRefusal(ep, body) {
+  const id = body && body.order_id;
+  if (ep === 'placeSdkOrder') return NS.isSdkOrderId(id) ? null : { status: 400, json: { error: 'order_id_namespace' } };
+  if ((ep === 'createOrder' || ep === 'chargeOnlineOrder') && NS.inSdkNamespace(id)) return { status: 400, json: { error: 'Bad Request', detail: 'order_id_namespace' } };
+  return null;
+}
 const OUTCOMES = ['placed', 'declined', 'action_required', 'bank_pending', 'under_review', 'expired', 'unavailable', 'not_allowed'];
 const BUCKETS = ['retryable', 'hard', 'wrong_data', 'token_expired'];
 const BRANDS = ['visa', 'mastercard', 'amex', 'other'];

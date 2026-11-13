@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
+import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -462,6 +463,7 @@ function scripted(script) {
     const ep = Object.keys(EP).find((k) => url.startsWith(EP[k]));
     const body = init && init.body ? JSON.parse(init.body) : null;
     calls.push({ ep, body, url, headers: (init && init.headers) || {} });
+    { const nr = namespaceRefusal(ep, body); if (nr) return { status: nr.status, ok: false, json: async () => nr.json }; }   // the server's namespace, before the script
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
@@ -3038,7 +3040,7 @@ test('cart core (advisor 11-02): the store\'s INJECTED deps reach its cart path 
 const SDKF = await import('./test/fake-sdk-checkout.mjs');
 const SDK_JWT = `${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: 'u1', exp: Math.floor((NOON().getTime() + 3600e3) / 1000) })).toString('base64url')}.sig`;
 const SDK_MEMBER = () => ({ uid: 'u1', name: 'Ana Pérez', phone: '96123344', email: 'ana@x.com', idToken: SDK_JWT, lastPay: 'online' });
-const SDK_CARDS = (cards) => ({ status: 200, json: SDKF.listCards(cards || [{ card_id: 'c_v', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }]) });
+const SDK_CARDS = (cards) => ({ status: 200, json: SDKF.listCards(cards || [{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }]) });
 const SDK_AVAIL = (a = true) => ({ status: 200, json: SDKF.sdkPayStatus(a, a ? 0 : 120) });
 const SDK_R = (outcome, f) => ({ status: 200, json: SDKF.placeResp(outcome, f) });
 // the attempt the device's record holds (a status fixture answers about THAT attempt, as the server does)
@@ -3080,7 +3082,7 @@ test('S2-checkout 1 (v7 «the member\'s last card is preselected»): a member wh
   assert.equal(b.q('#cta').disabled, false, '🔴 SDKUI-1b: the primary is enabled');
   await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
   const p = b.srv.of('placeSdkOrder')[0];
-  assert.deepEqual(p && p.body && p.body.card, { kind: 'saved', card_id: 'c_v' }, '🔴 SDKUI-1b: placed with the preselected card');
+  assert.deepEqual(p && p.body && p.body.card, { kind: 'saved', card_id: 'CV4242000000000000AB' }, '🔴 SDKUI-1b: placed with the preselected card');
   const c = bootSdk({ member: { ...noLast, lastPay: 'cash' } }); await sdkCheckout(c);
   assert.equal(c.text('.paybar.pay .urow.payrow .t b'), 'Efectivo al entregar', '🔴 SDKUI-1b: a known last method (cash) still wins — v6 preselects the LAST method');
 });
@@ -3106,7 +3108,7 @@ test('S2-checkout identity (Codex r1 P1): the cards belong to the member who lis
 
 test('S2-checkout A3 (contract r3b): placeSdkOrder 409 saved_card_unavailable ⇒ the attempt released on the record, the refused card unselected, the list read again, the chooser open — nothing re-sent; an explicit choice then places with a NEW attempt (Codex r2: nothing retained blocks recovery)', async () => {
   const placedR = (body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'mastercard', last4: '2222' } });
-  const b = bootSdk({ script: { placeSdkOrder: [SDKF.savedCardUnavailable(), placedR], listCards: [SDK_CARDS(), SDK_CARDS([{ card_id: 'c_n', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }])] } });
+  const b = bootSdk({ script: { placeSdkOrder: [SDKF.savedCardUnavailable(), placedR], listCards: [SDK_CARDS(), SDK_CARDS([{ card_id: 'CN2222000000000000AB', brand: 'mastercard', last4: '2222', exp_month: 12, exp_year: 2028, expired: false }])] } });
   await sdkCheckout(b); await sdkPlace(b);
   assert.equal(b.srv.of('placeSdkOrder').length, 1, 'premise: one placement sent');
   const first = b.srv.of('placeSdkOrder')[0].body;
@@ -3118,13 +3120,13 @@ test('S2-checkout A3 (contract r3b): placeSdkOrder 409 saved_card_unavailable �
   assert.ok(b.q('#layer .sheet[aria-label="Elegí cómo pagar"]'), '🔴 SDKUI-A3: the chooser open');
   assert.ok(!/4242/.test(b.text('#layer') || ''), '🔴 SDKUI-A3: the refused card is gone from the chooser');
   const pressed = b.qa('#layer [data-act="paypick"][aria-pressed="true"]').map((e) => e.dataset.card);
-  assert.deepEqual(pressed, ['c_n'], `🔴 SDKUI-A3: the refused card is no longer the selection — the refreshed list's own (${JSON.stringify(pressed)})`);
+  assert.deepEqual(pressed, ['CN2222000000000000AB'], `🔴 SDKUI-A3: the refused card is no longer the selection — the refreshed list's own (${JSON.stringify(pressed)})`);
   assert.equal(b.srv.of('placeSdkOrder').length, 1, '🔴 SDKUI-A3: nothing re-sent on its own');
-  await b.click('#layer [data-act="paypick"][data-card="c_n"]'); await settle();
+  await b.click('#layer [data-act="paypick"][data-card="CN2222000000000000AB"]'); await settle();
   await sdkPlace(b);
   const second = b.srv.of('placeSdkOrder')[1];
   assert.ok(second, '🔴 SDKUI-A3: an explicit choice places again — no retained attempt blocks recovery');
-  assert.deepEqual(second.body.card, { kind: 'saved', card_id: 'c_n' }, '🔴 SDKUI-A3: with the chosen card');
+  assert.deepEqual(second.body.card, { kind: 'saved', card_id: 'CN2222000000000000AB' }, '🔴 SDKUI-A3: with the chosen card');
   assert.notEqual(second.body.attempt_id, first.attempt_id, '🔴 SDKUI-A3: a NEW attempt (the refused one was released)');
 });
 
@@ -3143,7 +3145,7 @@ test('S2-checkout 2: the row opens «Elegí cómo pagar»; picking «Efectivo al
   const b = bootSdk(); await sdkCheckout(b);
   await b.click('.paybar.pay [data-act="paysheet"]');
   assert.equal(b.text('#layer .sheet .topbar h2'), 'Elegí cómo pagar', '🔴 SDKUI-2: the chooser');
-  assert.ok(b.q('#layer [data-act="paypick"][data-card="c_v"][aria-pressed="true"]'), 'the selected card checked');
+  assert.ok(b.q('#layer [data-act="paypick"][data-card="CV4242000000000000AB"][aria-pressed="true"]'), 'the selected card checked');
   await b.click('#layer [data-act="paypick"][data-card="cash"]');
   assert.equal(b.q('#layer .sheet'), null, 'the sheet closes');
   assert.deepEqual([b.ui.state.flow.pay, b.text('.paybar.pay .urow.payrow .t b')], ['cash', 'Efectivo al entregar'], '🔴 SDKUI-2: cash chosen');
@@ -3165,7 +3167,7 @@ test('S2-checkout 4 → 8: «Hacer pedido» keeps the 2-s window, then the proce
   assert.equal(b.srv.of('placeSdkOrder').length, 0, 'nothing sent during the window');
   await b.click('#layer [data-act="placing-go"]'); await settle();
   const c = b.srv.of('placeSdkOrder')[0];
-  assert.deepEqual(c && c.body.card, { kind: 'saved', card_id: 'c_v' }, '🔴 SDKUI-4: the saved card by id');
+  assert.deepEqual(c && c.body.card, { kind: 'saved', card_id: 'CV4242000000000000AB' }, '🔴 SDKUI-4: the saved card by id');
   assert.equal(b.srv.of('chargeOnlineOrder').length, 0, '🔴 SDKUI-4: never the hosted charge');
   b.timers.flush(); await settle();
   const placed = b.events.find(([n]) => n === 'placed');
@@ -3209,6 +3211,21 @@ test('S2-checkout 5: «Pagar en efectivo» on the decline sheet switches (§5) �
   assert.equal(co.body.payment_method, 'cash', 'cash');
 });
 
+test('D4 F3 (UI): the cash order answered 409 previous_payment_unresolved ⇒ the OLD order\'s status; once «expired, safe» the SAME cash order goes — never an error sheet', async () => {
+  const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }],
+    createOrder: [{ status: 409, json: { error: 'previous_payment_unresolved' } }, (body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })],
+    placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })] });
+  await sdkCheckout(b); await sdkPlace(b);
+  const old = b.srv.of('placeSdkOrder')[0].body.order_id;
+  await b.click('#layer [data-act="decl-cash"]'); await settle(); b.timers.flush(); await settle();
+  b.timers.flush(); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.q('#layer .errsheet'), null, '🔴 SDKUI-F3: never an error sheet');
+  assert.ok(b.srv.of('placeSdkStatus').some((c) => new URL(c.url).searchParams.get('order_id') === old), '🔴 SDKUI-F3: the OLD order\'s status is polled');
+  const [c1, c2] = b.srv.of('createOrder').map((x) => x.body);
+  assert.ok(c2 && c2.order_id === c1.order_id && c2.replaces_order_id === old, '🔴 SDKUI-F3: once safe, the SAME cash order (replacing the old one) — no second tap');
+  assert.ok(b.events.some(([n]) => n === 'placed'), 'placed');
+});
+
 test('S2-checkout 5: «Pagar en efectivo» while the old order is not yet safe_to_switch ⇒ the processing sheet + polling; never cash', async () => {
   const b = sdkDeclined({ cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] });
   await sdkCheckout(b); await sdkPlace(b);
@@ -3224,6 +3241,39 @@ test('S2-checkout 6 / 7: an expired saved card ⇒ the gate well (add a card / c
   const u = bootSdk({ script: { sdkPayStatus: [SDK_AVAIL(false)] } });
   await sdkCheckout(u);
   assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', '🔴 SDKUI-7: the well'); assert.ok(u.q('.gate [data-act="decl-cash"]'), 'a member: cash');
+});
+
+test('D4 F5 (UI): a cached «unavailable» for this restaurant shows frame 7 at FIRST paint — before any card entry, with the availability read still in flight', async () => {
+  const storage = memStore();
+  storage.setItem('capp:rid_a:sdk_pay', JSON.stringify({ available: false, retry_after_s: 300, at: NOON().getTime() }));
+  const u = bootSdk({ storage, script: { sdkPayStatus: [() => new Promise(() => {})] } });   // the network never answers
+  await sdkCheckout(u);
+  assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', '🔴 SDKUI-F5: frame 7 from the cache, no awaited call');
+  assert.ok(new URL(u.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'the silent revalidation names the restaurant');
+});
+
+test('Codex r1 P2-6 (UI): a cached «unavailable» does not outlive its retry_after_s — at the expiry the mounted checkout revalidates and leaves frame 7 when the card path is back', async () => {
+  const storage = memStore(); let t = NOON().getTime();
+  storage.setItem('capp:rid_a:sdk_pay', JSON.stringify({ available: false, retry_after_s: 120, at: t }));
+  const u = bootSdk({ storage, mountOpts: { now: () => new Date(t) }, script: { sdkPayStatus: ['network', SDK_AVAIL(true)] } });
+  await sdkCheckout(u);
+  assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', 'premise: frame 7 from the cache (the read failed)');
+  const n0 = u.srv.of('sdkPayStatus').length;
+  t += 121e3; u.timers.flush(); await settle(); u.timers.flush(); await settle();
+  assert.ok(u.srv.of('sdkPayStatus').length > n0, '🔴 SDKUI-P2-6: the availability is read again at the expiry');
+  assert.equal(u.q('.gate'), null, '🔴 SDKUI-P2-6: frame 7 does not outlive retry_after_s');
+});
+
+test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the existing «otra cuenta» sheet; no status, no cancel, no placement under its credentials', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  assert.equal(JSON.parse(storage.getItem('capp:rid_a:pending_place')).owner, 'u1', 'premise: the SDK record is bound to its account');
+  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
+  const b2 = bootSdk({ storage, member: B, script: {} });
+  await settle(); b2.timers.flush(); await settle();
+  assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 SDKUI-R2-P1: the existing held-by-another-account sheet');
+  assert.equal(b2.srv.of('placeSdkStatus').length + b2.srv.of('cancelSdkPending').length + b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-R2-P1: nothing under B\'s credentials');
 });
 
 test('S2-checkout resume (advisor condition): a live SDK attempt on this device ⇒ the status FIRST at mount, the processing sheet — never a new placement', async () => {
@@ -3260,7 +3310,7 @@ test('S2-checkout 4: a settled outcome restarts the backoff — after a slow pen
   mode = 'declined'; b.timers.flush(); await settle();
   assert.equal(b.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined after a slow pending');
   mode = 'pending'; b.timers.ms.clear();
-  await b.click('#layer [data-act="decl-other_card"]'); await b.click('#layer [data-act="paypick"][data-card="c_v"]');
+  await b.click('#layer [data-act="decl-other_card"]'); await b.click('#layer [data-act="paypick"][data-card="CV4242000000000000AB"]');
   await tipPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
   const d = [...b.timers.ms.values()].filter((x) => x === 3000 || x === 10000);
   assert.equal(d[0], 3000, `🔴 SDKUI-poll: the new attempt polls at 3 s (${d.join(',')})`);
@@ -3278,6 +3328,50 @@ test('Codex r1 P1-4: a reload that finds the attempt PLACED (a fresh mount, no f
   assert.ok(placed, '🔴 SDKUI-reload: the placed outcome reaches the host');
   assert.ok(placed[1].order && Array.isArray(placed[1].order.lines) && placed[1].order.lines.length > 0, '🔴 SDKUI-reload: the sent order was kept at dispatch (keepSent)');
   assert.equal(placed[1].card && placed[1].card.last4, '4242', 'with its card');
+});
+
+// ── D4 F2 (UI): 409 attempt_unknown, the body the REAL placeSdkStatus core answers (status-endpoint.js over the honest RTDB model: an
+// SDK order with no attempt and no PSP-call record) — the SAME attempt re-sent after 2 s; a reload (no card inputs) ⇒ the card sheet ──
+const REAL_ATTEMPT_UNKNOWN = await (async () => {
+  const { makeHonestDb } = require('../xpizza-functions/_honest-rtdb-model.js');
+  const { placeSdkStatusCore } = require('../xpizza-functions/payments/sdk/status-endpoint.js');
+  const t = NOON().getTime(), oid = 'sdk_261026-120000-ABCDEFGH';
+  const db = makeHonestDb({ orders: { [oid]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', customer_uid: 'u1', restaurant_id: 'rid_a', total_cents: 31500, pay_deadline_at: t + 900e3 } } }, { now: () => t });
+  const r = await placeSdkStatusCore({ db, clock: () => t, verifyIdToken: async () => ({ uid: 'u1' }) }, { headers: { authorization: 'Bearer x' }, query: { order_id: oid } });
+  assert.equal(r.status, 409, 'premise: the real core answers 409 for an SDK order with no attempt');
+  return { status: r.status, json: r.body };
+})();
+test('D4 F2 (UI): attempt_unknown ⇒ the processing sheet stays; after 2 s the SAME attempt is re-sent; placed ⇒ the order', async () => {
+  const b = bootSdk({ script: { placeSdkOrder: ['network', (body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } })], placeSdkStatus: [REAL_ATTEMPT_UNKNOWN] } });
+  await sdkCheckout(b); await sdkPlace(b);
+  assert.equal(b.srv.of('placeSdkStatus').length, 1, 'premise: the status was asked');
+  assert.equal(b.text('#layer .sheet.proc h2'), 'Procesando tu pago…', '🔴 SDKUI-F2: still processing — never a decline sheet');
+  assert.ok([...b.timers.ms.values()].includes(2000), '🔴 SDKUI-F2: the first re-send waits 2 s');
+  assert.equal(b.srv.of('placeSdkOrder').length, 1, 'premise: nothing re-sent yet');
+  b.timers.flush(); await settle();
+  const [a, c] = b.srv.of('placeSdkOrder').map((x) => x.body);
+  assert.ok(c && c.order_id === a.order_id && c.attempt_id === a.attempt_id, '🔴 SDKUI-F2: the SAME order and attempt re-sent');
+  b.timers.flush(); await settle();
+  assert.ok(b.events.some(([n]) => n === 'placed'), '🔴 SDKUI-F2: placed');
+});
+test('D4 F2 / Q-B (UI): after a reload (no card inputs) attempt_unknown ⇒ the attempt settled, the card chooser open on the SAME order — nothing re-sent', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  const id = b1.srv.of('placeSdkOrder')[0].body.order_id;
+  const errs = []; const b2 = bootSdk({ storage, mountOpts: { onError: (e) => errs.push(e) }, script: { placeSdkStatus: [REAL_ATTEMPT_UNKNOWN],
+    placeSdkOrder: [(body) => SDK_R('placed', { order_id: body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' } })] } });
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  assert.deepEqual(errs, [], 'no crash');
+  assert.equal(b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-QB: nothing re-sent without the card');
+  const r = JSON.parse(storage.getItem('capp:rid_a:pending_place') || 'null');
+  assert.ok(r && r.order_id === id && r.attempt_state === 'none' && r.unresolved === false, '🔴 SDKUI-QB: the attempt settled none, the same order kept');
+  assert.ok(b2.q('#layer .paysheet, #layer [data-act="paypick"], #layer [data-act="addcard"]'), '🔴 SDKUI-QB: the card chooser is open');
+  // Codex r1 P2-3: the checkout the server order is bound to, restored from the record into the UI (this rig is the direct mount: the cart
+  // itself is the hosted shell's snapshot; the same-economics re-placement through the REAL server is capp-api-sdk's «Q-B through the REAL server»)
+  const shown = b2.text('.screen');
+  assert.ok(['Portón negro', 'Ana Pérez', '+504 9612-3344'].every((x) => shown.includes(x)), `🔴 SDKUI-QB-RESTORE: the recipient and the delivery details restored (${shown.slice(0, 160)})`);
+  // (the tip is restored by the same flowFromBody the cash switch pins; the direct mount cannot reach the tip step without the shell's cart)
 });
 
 test('Codex r1 P1-3 (UI): «Probar otra tarjeta» → «Efectivo al entregar» → «Hacer pedido» goes through the switch — never createOrder on the SDK order\'s id', async () => {

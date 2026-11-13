@@ -23849,8 +23849,8 @@
   "slice": "s2a",
   "label": "a retry mints a new order id",
   "file": "../customer-app/capp-api.js",
-  "from": "          rec = readPlace() || mintPlace(method, p);",
-  "to": "          rec = mintPlace(method, p);",
+  "from": "          rec = placeFor(method, p, 'std');",
+  "to": "          rec = mintPlace(method, p, 'std');",
   "command": [
    "node",
    "--test",
@@ -23858,7 +23858,8 @@
   ],
   "kills_with": [
    "the reloaded page resends the SAME order_id"
-  ]
+  ],
+  "repointed": "D4 F1 (110ecc04): place() reaches the live record through placeFor (the namespace rule); the mutant still mints a fresh id on every send"
  },
  {
   "id": "s2a-u09",
@@ -27408,8 +27409,8 @@
   "slice": "guest",
   "label": "orderIdForCode mints a fresh id every time (a retry is a new order)",
   "file": "../customer-app/capp-api.js",
-  "from": "const live = readPlace(); return live ? live.order_id : mintPlace(",
-  "to": "const live = null; return live ? live.order_id : mintPlace(",
+  "from": "try { return placeFor(p && p.flow && p.flow.pay === 'online'",
+  "to": "try { return mintPlace(p && p.flow && p.flow.pay === 'online'",
   "command": [
    "node",
    "--test",
@@ -27417,7 +27418,8 @@
   ],
   "kills_with": [
    "a re-verify (a retry) keeps the SAME id"
-  ]
+  ],
+  "repointed": "D4 F1 (110ecc04): orderIdForCode reads the live record through placeFor; the mutant still mints a fresh id every time"
  },
  {
   "id": "guest-21",
@@ -31264,7 +31266,7 @@
   "slice": "s4",
   "label": "place() no longer refuses a non-owner's placement (another account's retained send)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (retainedByOther()) return { kind: 'held_other_account', local: true };\n      let method = p.flow.pay === 'online' ? 'online' : 'cash';",
+  "from": "      if (retainedByOther(p)) return { kind: 'held_other_account', local: true };\n      let method = p.flow.pay === 'online' ? 'online' : 'cash';",
   "to": "      let method = p.flow.pay === 'online' ? 'online' : 'cash';",
   "command": [
    "node",
@@ -31275,7 +31277,7 @@
   "kills_with": [
    "S4-held"
   ],
-  "repointed": "S2-checkout (ee9e16c5): the same line also opens placeSdkInner — the anchor now names place()'s (placeLegacy) by its next line"
+  "repointed": "S2-checkout (ee9e16c5): the same line also opens placeSdkInner — the anchor now names place()'s (placeLegacy) by its next line · D4 r3 (db4a6410): retainedByOther takes the placement (p) for the SDK principal; still placeLegacy's check, named by its next line"
  },
  {
   "id": "s4-34",
@@ -31575,8 +31577,8 @@
   "slice": "s4",
   "label": "a guest's own retained send counts as «another account»",
   "file": "../customer-app/capp-api.js",
-  "from": "return !!rs && rs.owner !== ownerNow(); }",
-  "to": "return !!rs && rs.owner !== uidNow(); }",
+  "from": "(!!rs && rs.owner !== ownerNow())",
+  "to": "(!!rs && rs.owner !== uidNow())",
   "command": [
    "node",
    "--test",
@@ -31585,7 +31587,8 @@
   ],
   "kills_with": [
    "R2-guest-own"
-  ]
+  ],
+  "repointed": "D4 r2 (b44ef4da): retainedByOther also ORs the SDK foreign check (SDK checkout on only); the retained-send owner comparison is unchanged"
  },
  {
   "id": "s4-43",
@@ -34936,14 +34939,15 @@
   "slice": "s2ck",
   "label": "the SDK token written into the durable record",
   "file": "../customer-app/capp-api.js",
-  "from": "rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card),",
-  "to": "rec = confirmSend(rec.order_id, 'online', { sdk: true, attempt_id: attemptId, attempt_state: 'sent', sdk_token: p.card && p.card.sdk_token, card_ref: cardRef(p.card),",
+  "from": "rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: sdkPrincipal(p), attempt_id: attemptId, attempt_state: 'sent', card_ref: cardRef(p.card),",
+  "to": "rec = confirmSend(rec.order_id, 'online', { sdk: true, owner: sdkPrincipal(p), attempt_id: attemptId, attempt_state: 'sent', sdk_token: p.card && p.card.sdk_token, card_ref: cardRef(p.card),",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-api-sdk.test.mjs"
   ],
-  "kills_with": "SDK-rec: the record never holds a token or a body"
+  "kills_with": "SDK-rec: the record never holds a token or a body",
+  "repointed": "D4 r2 (b44ef4da): the record also carries owner (the principal binding); the mutant still writes the token into it"
  },
  {
   "id": "s2ck-a02",
@@ -35034,14 +35038,15 @@
   "slice": "s2ck",
   "label": "unavailable left locked",
   "file": "../customer-app/capp-api.js",
-  "from": "        case 'unavailable': settleSdk(id, 'none'); return",
-  "to": "        case 'unavailable': return",
+  "from": "        case 'unavailable': settleSdk(id, 'none'); memoSdkPay(",
+  "to": "        case 'unavailable': memoSdkPay(",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-api-sdk.test.mjs"
   ],
-  "kills_with": "SDK-unavail: no unresolved attempt"
+  "kills_with": "SDK-unavail: no unresolved attempt",
+  "repointed": "D4 F5 (2d6b6011): unavailable also memoizes the pay status; the mutant still leaves the attempt unsettled"
  },
  {
   "id": "s2ck-a10",
@@ -35092,14 +35097,15 @@
   "slice": "s2ck",
   "label": "alive() not checked before the dispatch (Codex r1 P1-1)",
   "file": "../customer-app/capp-api.js",
-  "from": "      if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };\n      if (retainedByOther())",
-  "to": "      if (retainedByOther())",
+  "from": "      if (typeof p.alive === 'function' && !p.alive()) return { kind: 'superseded' };\n      if (retainedByOther(p)) return { kind: 'held_other_account', local: true };",
+  "to": "      if (retainedByOther(p)) return { kind: 'held_other_account', local: true };",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-api-sdk.test.mjs"
   ],
-  "kills_with": "SDK-alive: no POST after teardown"
+  "kills_with": "SDK-alive: no POST after teardown",
+  "repointed": "D4 r3 (db4a6410): the post-await retainedByOther takes p; the anchor names placeSdkInner's alive() check by its next line"
  },
  {
   "id": "s2ck-r03",
@@ -35318,7 +35324,7 @@
   "slice": "s2ck",
   "label": "a reload without a flow (Codex r1 P1-4)",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4",
+  "from": "      if (!S.flow && !sdkRestore(id)) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4",
   "to": "      // Codex r1 P1-4",
   "command": [
    "node",
@@ -35329,7 +35335,8 @@
    "SDKUI-reload",
    "Cannot read properties of null (reading 'mode')"
   ],
-  "why_crash": "the mutant reproduces Codex's crash itself (render reads f.mode of a null flow) before the named assertion"
+  "why_crash": "the mutant reproduces Codex's crash itself (render reads f.mode of a null flow) before the named assertion",
+  "repointed": "D4 r1 (012a2f2e): a reload first restores the flow from the record's sdk_inputs (sdkRestore), else a fresh flow; the mutant drops the whole statement, so the reload again has no flow. The fallback branch alone (restore impossible) is unreachable from the real writer (every D4 record carries restorable sdk_inputs), so a fallback-only mutant is equivalent and is not catalogued"
  },
  {
   "id": "s2ck-u14",

@@ -7,13 +7,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { placeResp, cancelPending, noSdkOrder } from './test/fake-sdk-checkout.mjs';
+import { placeResp, cancelPending, noSdkOrder, namespaceRefusal, SDK_ORDER_ID_RE } from './test/fake-sdk-checkout.mjs';
+import { realSdkServer } from './test/real-sdk-server.mjs';
 const require = createRequire(import.meta.url);
 const C = require('./capp-checkout.js');
 const A = require('./capp-api.js');
 
 const E = { quoteOrder: 'https://fn.test/quoteOrder', createOrder: 'https://fn.test/createOrder', chargeOnlineOrder: 'https://fn.test/chargeOnlineOrder', paymentStatus: 'https://fn.test/paymentStatus',
-  placeSdkOrder: 'https://fn.test/placeSdkOrder', placeSdkStatus: 'https://fn.test/placeSdkStatus', cancelSdkPending: 'https://fn.test/cancelSdkPending', listCards: 'https://fn.test/listCards', sdkPayStatus: 'https://fn.test/sdkPayStatus' };
+  verifyCheckoutCode: 'https://fn.test/verifyCheckoutCode', placeSdkOrder: 'https://fn.test/placeSdkOrder', placeSdkStatus: 'https://fn.test/placeSdkStatus', cancelSdkPending: 'https://fn.test/cancelSdkPending', listCards: 'https://fn.test/listCards', sdkPayStatus: 'https://fn.test/sdkPayStatus' };
 const OPEN_ALL = Array.from({ length: 7 }, () => [11, 0, 22, 0]);
 const at = (h, m = 0) => new Date(2026, 9, 26, h, m, 0, 0).getTime();
 const KEY = 'capp:rid_a:pending_place';
@@ -23,6 +24,7 @@ function server(script, storage) {
   const fetch = async (url, init) => {
     const ep = Object.keys(E).filter((k) => url.startsWith(E[k])).sort((a, b) => E[b].length - E[a].length)[0];
     calls.push({ ep, url, method: (init && init.method) || 'GET', body: init && init.body ? JSON.parse(init.body) : null, headers: (init && init.headers) || {}, placeAtCall: storage.getItem(KEY) });
+    { const nr = namespaceRefusal(ep, calls[calls.length - 1].body); if (nr) return { status: nr.status, ok: false, json: async () => nr.json }; }   // the server's namespace, before the script
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`);
     if (r === 'network') throw new TypeError('Failed to fetch');
@@ -34,17 +36,18 @@ function server(script, storage) {
 let RNG = 0;
 const ANA = { uid: 'u_ana', idToken: null, getIdToken: async () => JWT };
 const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000) })}.sig`; })();
-function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false } = {}) {
+function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false, rid = 'rid_a', subtle } = {}) {
   const srv = server(script, storage); const clock = { t: at(12) };
-  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
-    fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
+  const make = () => A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
+    fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, ...(subtle ? { subtle } : {}), randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
     setInterval: () => 0, clearInterval: () => {}, member: () => member });
   return { api: make(), reload: make, srv, storage, clock };
 }
 const ITEMS = [{ id: 'margherita', name: 'Margherita', dish_id: 'd_1', qty: 1, price: 250, subtotal: 250, extras: [], extrasTotal: 0 }];
 const CTX = { restaurantId: 'rid_a', items: ITEMS, itemsText: '1x Margherita (L250)', member: null };
 const flowOf = (pay = 'online') => { const f = C.freshFlow(null); C.setPin(f, 15.5, -88, true); Object.assign(f, { details: 'Portón', name: 'Ana', phone: '99990000', pay }); C.chooseTip(f, 20); return f; };
-const SAVED = { kind: 'saved', card_id: 'c_v' };
+const GUEST_KEY = 'a'.repeat(64);   // a guest ticket always carries its phone_key (verifyCheckoutCode, Codex r4 P1)
+const SAVED = { kind: 'saved', card_id: 'CV4242000000000000AB' };
 const NEW = { kind: 'new', sdk_token: 'SDK-TOKEN-SECRET', save: true, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028 } };
 const args = (card = SAVED, extra = {}) => ({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, card, ...extra });
 const rec = (s) => JSON.parse(s.getItem(KEY) || 'null');
@@ -73,7 +76,7 @@ test('placed: the order goes live; the record is cleared; the card label comes b
   assert.deepEqual([out.kind, out.tracking_token, out.card && out.card.last4], ['placed', 'tok_abcdefgh12', '4242'], '🔴 SDK-placed');
   assert.equal(rec(storage), null, '🔴 SDK-placed: the record is cleared');
   assert.match(srv.of('placeSdkOrder')[0].headers.Authorization || '', /^Bearer \S+/, '🔴 SDK-auth: member Bearer (contract §1.1)');
-  assert.deepEqual(srv.of('placeSdkOrder')[0].body.card, { kind: 'saved', card_id: 'c_v' }, 'the saved card by id');
+  assert.deepEqual(srv.of('placeSdkOrder')[0].body.card, { kind: 'saved', card_id: 'CV4242000000000000AB' }, 'the saved card by id');
 });
 
 test('declined: the sheet\'s bucket; the record stays, the attempt FINAL; «Probar otra tarjeta» = the SAME order_id, a NEW attempt_id — across a reload', async () => {
@@ -149,8 +152,8 @@ test('guests (§1.2): the checkout ticket as X-Sherpa-Order-Ticket, bound to the
   const g = rig({ member: null, guestCardOnly: true, script: { placeSdkOrder: [(c) => ({ status: 200, json: placeResp('placed', { order_id: c.body.order_id, tracking_token: 'tok_abcdefgh12', card: { brand: 'visa', last4: '4242' }, adjust_grant: 'grant-1' }) })] } });
   const none = await g.api.placeSdk(args(NEW));
   assert.equal(none.kind, 'guest_ticket_invalid', '🔴 SDK-guest: no ticket ⇒ nothing sent'); assert.equal(g.srv.calls.length, 0);
-  const id = g.api.orderIdForCode({ flow: flowOf('online') });
-  const tk = { ticket: 'tk_1', order_id: id, expires_at: at(12, 10) };
+  const id = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });   // D4 F1: the SDK card's ticket is bound to an sdk_ id
+  const tk = { ticket: 'tk_1', order_id: id, expires_at: at(12, 10), phone: '+504 9999-0000', phone_key: GUEST_KEY };
   assert.equal((await g.api.placeSdk(args(SAVED, { checkoutTicket: tk }))).kind, 'sdk_bad_card', '🔴 SDK-guest: a saved card is never a guest\'s');
   const out = await g.api.placeSdk(args(NEW, { checkoutTicket: tk }));
   assert.equal(g.srv.of('placeSdkOrder')[0].headers['X-Sherpa-Order-Ticket'], 'tk_1', '🔴 SDK-guest: the ticket header');
@@ -169,7 +172,7 @@ test('unavailable / not_allowed / a refusal before any attempt: nothing pending 
 });
 
 test('reads: listCards (members only, Bearer) and sdkPayStatus (no auth), validated', async () => {
-  const s = rig({ script: { listCards: [{ status: 200, json: { cards: [{ card_id: 'c_v', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }] } }], sdkPayStatus: [{ status: 200, json: { available: false, retry_after_s: 60 } }] } });
+  const s = rig({ script: { listCards: [{ status: 200, json: { cards: [{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }] } }], sdkPayStatus: [{ status: 200, json: { available: false, retry_after_s: 60 } }] } });
   assert.equal((await s.api.listCards()).cards.length, 1); assert.match(s.srv.of('listCards')[0].headers.Authorization || '', /^Bearer /, '🔴 SDK-cards: Bearer');
   assert.deepEqual(await s.api.sdkPayStatus(), { available: false, retry_after_s: 60 }, 'the availability');
   assert.equal(await rig({ member: null, script: {} }).api.listCards(), null, '🔴 SDK-cards: a guest has no saved cards (no call)');
@@ -382,4 +385,442 @@ test('Codex r3 P1-2 regression: a settlement write that FAILS, a reload, a later
   const co = s.srv.of('createOrder')[0];
   assert.ok(co && co.body.order_id !== id && co.body.replaces_order_id === id, '🔴 SDK-r3-p12: a NEW replacement order');
   assert.equal(out.kind, 'placed');
+});
+
+// ── D4 client follow-ups F1 (PLAN-capp-d4-client-followups r0): the order-id NAMESPACE — the server's own regex, imported ──
+const CASH = (x = {}) => ({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, ...x });
+test('F1: an SDK placement POSTs an id in the server\'s sdk_ namespace; cash and the hosted card never send one', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)], createOrder: [OK_CASH_FN], chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  const o0 = await s.api.placeSdk(args(SAVED));
+  const posted = s.srv.of('placeSdkOrder').map((c) => c.body.order_id);
+  assert.ok(posted.length === 1 && SDK_ORDER_ID_RE.test(posted[0]), `🔴 F1-NS-SDK: ONE SDK POST, its id in the sdk_ namespace (the server regex) (${posted})`);
+  assert.equal(o0.kind, 'placed', 'the server admits it');
+  await s.api.place(CASH());
+  await s.reload().place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  const std = [...s.srv.of('createOrder'), ...s.srv.of('chargeOnlineOrder')].map((c) => c.body.order_id);
+  assert.equal(std.length, 2, 'premise: a cash send and a hosted card send');
+  assert.ok(std.every((id) => /^TA\d{6}-\d{6}-/.test(id)), `🔴 F1-NS-STD: cash / hosted send the restaurant prefix, never sdk_ (${std})`);
+});
+test('F1: a namespace MISMATCH on an UNDISPATCHED record re-mints in the tender\'s namespace (both directions); the old id is never sent', async () => {
+  const s = rig({ script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)] } });
+  const std = s.api.orderIdForCode({ flow: flowOf('cash') });
+  assert.ok(std && !std.startsWith('sdk_') && rec(s.storage).dispatched === 0, 'premise: an undispatched std identity');
+  await s.api.placeSdk(args(SAVED));
+  const sent = s.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.ok(sent !== std && SDK_ORDER_ID_RE.test(sent), `🔴 F1-REMINT: std → sdk_ before the dispatch (${std} → ${sent})`);
+  const g = rig({ member: null, guestCardOnly: true, script: { chargeOnlineOrder: [(c) => ({ status: 200, json: { checkout_url: 'https://pay.test/x', poll_token: 'pt' } })] } });
+  const id0 = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });
+  assert.match(id0, SDK_ORDER_ID_RE, 'premise: an undispatched sdk_ identity');
+  const tk = { ticket: 'tk_1', order_id: id0, expires_at: at(12, 10), phone: '+504 9999-0000', phone_key: GUEST_KEY };
+  const out = await g.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, checkoutTicket: tk });
+  assert.equal(g.srv.of('chargeOnlineOrder').length, 0, '🔴 F1-REMINT: the sdk_ id is never sent to the hosted charge');
+  assert.equal(out.kind, 'guest_ticket_invalid', '🔴 F1-REMINT: the guest\'s ticket was bound to the old id ⇒ the existing re-ask (no new mechanism)');
+  assert.ok(!rec(g.storage).order_id.startsWith('sdk_'), '🔴 F1-REMINT: the record now holds a std id');
+});
+test('F1: a DISPATCHED record is never re-minted — its id is kept and it is resolved first', async () => {
+  const s = rig({ script: { chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await s.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  const id = rec(s.storage).order_id;
+  await s.api.placeSdk(args(SAVED));
+  assert.equal(rec(s.storage) && rec(s.storage).order_id, id, '🔴 F1-NEVER-REMINT: a dispatched std record keeps its id');
+  assert.equal(s.api.orderIdForCode({ flow: flowOf('online'), sdk: true }), id, '🔴 F1-NEVER-REMINT: the guest code binds to the dispatched order, never a re-mint over it');
+  assert.equal(rec(s.storage).order_id, id, '🔴 F1-NEVER-REMINT: the dispatched record is untouched');
+  const d = rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id), (c) => PLACED(c.body.order_id)] } });
+  await d.api.placeSdk(args(SAVED));
+  const sid = rec(d.storage).order_id;
+  await d.api.placeSdk(args(NEW));
+  assert.deepEqual(d.srv.of('placeSdkOrder').map((c) => c.body.order_id), [sid, sid], '🔴 F1-NEVER-REMINT: «Probar otra tarjeta» stays on the dispatched sdk_ order');
+});
+test('F1: the guest\'s ticket id IS the dispatched id (orderIdForCode mints in the SDK namespace for the SDK card)', async () => {
+  const g = rig({ member: null, guestCardOnly: true, script: { placeSdkOrder: [(c) => PLACED(c.body.order_id)] } });
+  const id = g.api.orderIdForCode({ flow: flowOf('online'), sdk: true });
+  const out = await g.api.placeSdk(args(NEW, { checkoutTicket: { ticket: 'tk_1', order_id: id, expires_at: at(12, 10), phone: '+504 9999-0000', phone_key: GUEST_KEY } }));
+  assert.equal(out.kind, 'placed', 'premise: placed');
+  assert.equal(g.srv.of('placeSdkOrder')[0].body.order_id, id, '🔴 F1-TICKET: the ticket-bound id is the one dispatched');
+  assert.match(id, SDK_ORDER_ID_RE, '🔴 F1-TICKET: in the sdk_ namespace');
+});
+
+// ── D4 F2: 409 attempt_unknown — the REAL placeSdkStatus core (status-endpoint.js) over the honest RTDB model answers it: the order
+// exists as an SDK order, no attempt and no PSP-call record (the server journals both BEFORE any PixelPay call) ⇒ proven «no money moved» ──
+const { makeHonestDb } = require('../xpizza-functions/_honest-rtdb-model.js');
+const { placeSdkStatusCore } = require('../xpizza-functions/payments/sdk/status-endpoint.js');
+function realStatus(clock) {
+  const db = makeHonestDb({}, { now: () => clock.t });
+  const deps = { db, clock: () => clock.t, verifyIdToken: async (t) => { if (t === JWT) return { uid: 'u_ana' }; throw new Error('bad token'); } };
+  // the order the server created before the attempt was journaled (the attempt_unknown window)
+  const create = (oid) => db.ref(`orders/${oid}`).set({ payment_flow: 'sdk_auth_v1', status: 'pending_payment', customer_uid: 'u_ana', restaurant_id: 'rid_a', total_cents: 31500, pay_deadline_at: clock.t + 15 * 60e3 });
+  const answer = async (c) => { const h = c.headers || {}; const r = await placeSdkStatusCore(deps, { headers: { authorization: h.Authorization, 'x-sherpa-order-ticket': h['X-Sherpa-Order-Ticket'] }, query: { order_id: new URL(c.url).searchParams.get('order_id') } }); return { status: r.status, json: r.body }; };
+  return { db, create, answer };
+}
+test('F2: attempt_unknown (the real status core) ⇒ the SAME attempt re-sent ONCE, body identical (saved card); never a decline, never a new attempt', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, (c) => PLACED(c.body.order_id)], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  const first = await s.api.placeSdk(args(SAVED));
+  assert.equal(s.srv.of('placeSdkStatus').length, 1, 'premise: the status was asked');
+  assert.deepEqual([first.kind, first.order_id], ['sdk_resend', s.srv.of('placeSdkOrder')[0].body.order_id], '🔴 F2-RESEND-KIND: attempt_unknown ⇒ sdk_resend (never pending forever, never a decline)');
+  const out = await s.api.sdkResend(args(SAVED));
+  const [a, b] = s.srv.of('placeSdkOrder').map((c) => c.body);
+  assert.equal(s.srv.of('placeSdkOrder').length, 2, '🔴 F2-RESEND-ONCE: exactly one re-send');
+  assert.deepEqual([b.order_id, b.attempt_id], [a.order_id, a.attempt_id], '🔴 F2-SAME-ATTEMPT: the same order AND the same attempt_id');
+  assert.deepEqual(b, a, '🔴 F2-SAME-BODY: the re-sent body is the first one, byte for byte (saved card)');
+  assert.equal(out.kind, 'placed');
+});
+test('F2 + Codex r1 P2-2: attempt_unknown forever ⇒ at most 3 re-sends, then Q-B (settled none, the SAME order, a card again) — never «pending with resends:3»; a re-send without a fresh 409 sends nothing', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, 'network'], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  let out = await s.api.placeSdk(args(SAVED));
+  for (let i = 0; i < 6 && out.kind === 'sdk_resend'; i++) out = await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, 4, '🔴 F2-BOUNDED: the first send + 3 re-sends, never more');
+  assert.deepEqual([out.kind, out.order_id], ['sdk_reenter_card', s.srv.of('placeSdkOrder')[0].body.order_id], '🔴 F2-QB-BUDGET: the budget spent ⇒ Q-B on the same order, never a decline');
+  { const r = rec(s.storage); assert.ok(r && r.attempt_state === 'none' && r.unresolved === false && r.doubt === true, '🔴 F2-QB-BUDGET: settled none, the doubt kept (refusals stay held)'); }
+  const n = s.srv.of('placeSdkOrder').length;
+  await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, n, '🔴 F2-ONLY-ON-409: no fresh attempt_unknown ⇒ nothing sent');
+});
+test('F2: a 409 with any OTHER error stays the unknown it was (pending) — no re-send', async () => {
+  const s = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: [{ status: 409, json: { error: 'conflict' } }] } });
+  const out = await s.api.placeSdk(args(SAVED));
+  assert.equal(out.kind, 'sdk_pending', '🔴 F2-OTHER-409: unchanged behaviour');
+  await s.api.sdkResend(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 F2-OTHER-409: nothing re-sent');
+});
+test('F2 / Q-B (advisor 11-12): a NEW card whose token is gone (reload) ⇒ the attempt settled none, the SAME sdk_ order, the card sheet — the next card a NEW attempt_id', async () => {
+  let st = null;
+  const s = rig({ script: { placeSdkOrder: [async (c) => { await st.create(c.body.order_id); throw new TypeError('Failed to fetch'); }, (c) => PLACED(c.body.order_id)], placeSdkStatus: [(c) => st.answer(c)] } });
+  st = realStatus(s.clock);
+  assert.equal((await s.api.placeSdk(args(NEW))).kind, 'sdk_resend', 'premise: attempt_unknown');
+  const a = s.srv.of('placeSdkOrder')[0].body;
+  const api2 = s.reload();
+  assert.equal((await api2.sdkStatus(a.order_id)).kind, 'sdk_resend', 'premise: the reloaded page hears the same 409');
+  const out = await api2.sdkResend({});   // the token lived in the old page only
+  assert.deepEqual([out.kind, out.order_id], ['sdk_reenter_card', a.order_id], '🔴 F2-QB: the card sheet again, on the same order');
+  assert.equal(s.srv.of('placeSdkOrder').length, 1, '🔴 F2-QB: nothing re-sent without the card');
+  const r = rec(s.storage); assert.ok(r && r.order_id === a.order_id && r.attempt_state === 'none' && r.unresolved === false, '🔴 F2-QB: the attempt settled none, the order kept');
+  assert.equal((await api2.placeSdk(args(NEW))).kind, 'placed');
+  const b = s.srv.of('placeSdkOrder')[1].body;
+  assert.ok(b.order_id === a.order_id && b.attempt_id !== a.attempt_id, '🔴 F2-QB: the same sdk_ order, a NEW attempt_id');
+});
+
+// ── D4 F3: the cash switch — a NEW std id + replaces_order_id; the stored inputs never carry the SDK id; the server's replaces answers ──
+const switched = (cash) => rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: ['network', { status: 200, json: cancelPending(true, true) }], placeSdkStatus: [{ status: 404, json: {} }], createOrder: cash } });
+test('F3: after a switch (a reload mid-switch included) the cash order is a NEW std id replacing the sdk_ one; the stored switch inputs carry no order id', async () => {
+  const s = switched([OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.equal((await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX })).kind, 'sdk_pending', 'premise: the cancel reply was lost');
+  const sb = JSON.parse(rec(s.storage).switch_body);
+  assert.ok(!('order_id' in sb) && !('replaces_order_id' in sb), `🔴 F3-INPUTS: switch_body is inputs only (${Object.keys(sb).filter((k) => /order_id/.test(k))})`);
+  const sw = await s.reload().sdkResolve(old);
+  assert.deepEqual([sw.kind, sw.replaces], ['sdk_switched', old], 'premise: the switch completes after the reload');
+  const out = await s.reload().place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  const co = s.srv.of('createOrder')[0].body;
+  assert.ok(co.order_id !== old && !co.order_id.startsWith('sdk_') && co.replaces_order_id === old, `🔴 F3-NEW-ID: a NEW std id replacing the sdk_ order (${co.order_id} / ${co.replaces_order_id})`);
+  assert.equal(out.kind, 'placed');
+});
+test('F3: createOrder 409 previous_payment_unresolved ⇒ back to the SDK order\'s status (never an error sheet); the same cash id is sent again once it is safe', async () => {
+  const s = switched([{ status: 409, json: { error: 'previous_payment_unresolved' } }, OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX }); await s.api.sdkResolve(old);
+  const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  assert.deepEqual([out.kind, out.order_id], ['sdk_pending', old], '🔴 F3-UNRESOLVED: the SDK order\'s status again, never an error');
+  const first = s.srv.of('createOrder')[0].body.order_id;
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old })).kind, 'placed');
+  assert.equal(s.srv.of('createOrder')[1].body.order_id, first, '🔴 F3-UNRESOLVED: the SAME cash identity once safe (idempotent)');
+});
+test('F3: createOrder 503 replaces_unavailable (retryable) ⇒ the normal retry (offline), the same cash identity next', async () => {
+  const s = switched([{ status: 503, json: { error: 'replaces_unavailable', retryable: true } }, OK_CASH_FN]);
+  await s.api.placeSdk(args(SAVED));
+  const old = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(old, { flow: flowOf('cash'), ctx: CTX }); await s.api.sdkResolve(old);
+  const out = await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old });
+  assert.equal(out.kind, 'offline', '🔴 F3-503: the normal retry');
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old })).kind, 'placed');
+  const [a, b] = s.srv.of('createOrder').map((c) => c.body.order_id);
+  assert.equal(b, a, '🔴 F3-503: the same cash identity re-sent');
+});
+
+// ── D4 F5: sdkPayStatus PER RESTAURANT (advisor Q2 ruled 11-12) — the REAL sdkPayStatusCore (sdk-pay-flag.js) over the honest RTDB model:
+// the request names the restaurant; the answer is memoized per restaurant (read synchronously at first paint) ──
+const { sdkPayStatusCore } = require('../xpizza-functions/payments/sdk/sdk-pay-flag.js');
+const payFlag = (restaurants) => { const db = makeHonestDb({ platform_config: { sdk_pay: { available: true, retry_after_s: 120, restaurants } } });
+  return async (c) => { const q = new URL(c.url).searchParams.get('restaurant_id'); return { status: 200, json: await sdkPayStatusCore(db, q === null ? undefined : q) }; }; };
+test('F5: sdkPayStatus asks for THIS restaurant; two restaurants are answered and cached independently; the cache reads with no network', async () => {
+  const storage = memStorage(), flag = payFlag({ rid_a: true });
+  const a = rig({ storage, rid: 'rid_a', script: { sdkPayStatus: [flag] } }), b = rig({ storage, rid: 'rid_b', script: { sdkPayStatus: [flag] } });
+  assert.equal(a.api.sdkPayCached(), null, 'premise: nothing cached yet');
+  const ra = await a.api.sdkPayStatus(), rb = await b.api.sdkPayStatus();
+  assert.equal(new URL(a.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'rid_a', '🔴 F5-QUERY: the request carries the restaurant\'s own id');
+  assert.equal(new URL(b.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'rid_b', '🔴 F5-QUERY: …each its own');
+  assert.deepEqual([ra, rb], [{ available: true, retry_after_s: 120 }, { available: false, retry_after_s: 120 }], 'the server\'s per-restaurant answers');
+  const n = a.srv.calls.length + b.srv.calls.length;
+  assert.deepEqual([a.reload().sdkPayCached().available, b.reload().sdkPayCached().available], [true, false], '🔴 F5-PER-RID: cached per restaurant, read after a reload');
+  assert.equal(a.srv.calls.length + b.srv.calls.length, n, '🔴 F5-SYNC: the cached read makes no request');
+});
+test('F5: a placement «unavailable» flips ONLY that restaurant\'s cache, until retry_after_s — then unknown (the server decides again)', async () => {
+  const storage = memStorage(), flag = payFlag({ rid_a: true, rid_b: true });
+  const a = rig({ storage, rid: 'rid_a', script: { sdkPayStatus: [flag], placeSdkOrder: [() => R('unavailable', { retry_after_s: 60 })] } }), b = rig({ storage, rid: 'rid_b', script: { sdkPayStatus: [flag] } });
+  await a.api.sdkPayStatus(); await b.api.sdkPayStatus();
+  assert.equal((await a.api.placeSdk(args(SAVED))).kind, 'sdk_unavailable', 'premise');
+  assert.deepEqual([a.api.sdkPayCached().available, b.api.sdkPayCached().available], [false, true], '🔴 F5-FLIP: only this restaurant');
+  a.clock.t += 61e3;
+  assert.equal(a.api.sdkPayCached(), null, '🔴 F5-FLIP: past retry_after_s the cached «false» no longer decides');
+});
+
+// ── Codex capp-d4-client r1 P2-7: placement through the REAL server — intake (exact envelope, a production 20-char card_id), replay,
+// admit, finishSdk + the coordinator, the status / cancel cores — with a fake PSP that COUNTS authorizations, and 3a's fence modelled ──
+const CARD20 = 'CV4242000000000000AB';
+const SAVED20 = { kind: 'saved', card_id: CARD20 };
+const CARD20B = 'CB5555000000000000CD';
+const JWT_B = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000), b: 1 })}.sig`; })();
+const BEA = { uid: 'u_bea', idToken: null, getIdToken: async () => JWT_B };
+function realRig({ storage = memStorage(), member = ANA, guestCardOnly = false } = {}) {
+  const clock = { t: at(12) }; const who = { m: member };
+  const real = realSdkServer({ clock, members: { [JWT]: 'u_ana', [JWT_B]: 'u_bea' }, rids: ['rid_a'], cards: { u_ana: { [CARD20]: { token: 'tok_saved_1', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } }, u_bea: { [CARD20B]: { token: 'tok_saved_b', brand: 'visa', last4: '5555', exp_month: 12, exp_year: 2030 } } } });
+  const calls = [];
+  const sdkFetch = real.fetchFor(E, async (url) => { throw new Error(`unscripted ${url}`); });
+  const fetch = async (url, init) => { calls.push({ url, body: init && init.body ? JSON.parse(init.body) : null }); return sdkFetch(url, init); };
+  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },
+    fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
+    setInterval: () => 0, clearInterval: () => {}, member: () => who.m });
+  const posted = () => calls.filter((c) => c.url.startsWith(E.placeSdkOrder)).map((c) => c.body);
+  return { api: make(), reload: make, real, clock, storage, posted, calls, who };
+}
+test('P2-7: a saved card (a production 20-char card_id) places through the REAL intake + finish + coordinator — ONE authorization, at the stored total', async () => {
+  const s = realRig();
+  const out = await s.api.placeSdk(args(SAVED20));
+  assert.equal(out.kind, 'placed', `🔴 REAL-PLACED: the production intake admits the app's body (${JSON.stringify(out)})`);
+  assert.equal(s.real.authorizations(), 1, '🔴 REAL-PLACED: one authorization');
+  assert.equal(s.real.psp.calls.find((c) => c.action === 'authorize').amount_cents, 31500, 'at the stored total');
+  assert.equal(rec(s.storage), null, 'the record is cleared');
+});
+test('Codex r1 P1 (the two-hold sequence): A lost and parked before its claim; attempt_unknown; the re-send B refused (extra_not_allowed) ⇒ HELD — the customer\'s next tap never mints; A authorizes ⇒ exactly ONE authorization, ONE sdk_ id', async () => {
+  const s = realRig();
+  s.real.loseNext(); const releaseA = s.real.pauseGate();
+  const first = await s.api.placeSdk(args(SAVED20));
+  assert.equal(first.kind, 'sdk_resend', `premise: A's response lost, the order exists without an attempt ⇒ attempt_unknown (${JSON.stringify(first)})`);
+  s.real.arm({ extrasRefuseFresh: 'extra_not_allowed', extrasDenied: [{ item: 'Margherita', extra: 'Pepperoni' }] });
+  const b = await s.api.sdkResend(args(SAVED20));
+  const held = rec(s.storage);
+  await s.api.placeSdk(args(SAVED20));   // the customer taps again (the r1 defect: a NEW sdk_ id, a second hold)
+  releaseA(); await s.real.settled();
+  const fin = await s.api.sdkStatus(s.posted()[0].order_id);
+  // the money first: whatever else, ONE authorization and ONE sdk_ order
+  assert.equal(s.real.authorizations(), 1, `🔴 P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.equal(new Set(s.posted().map((x) => x.order_id)).size, 1, '🔴 P1-ONE-ID: never a second sdk_ id');
+  assert.deepEqual([b.kind, b.held], ['sdk_pending', true], `🔴 P1-HOLD: a re-send's refusal proves nothing about A — held (${JSON.stringify(b)})`);
+  assert.ok(held && held.sdk === true && held.attempt_state === 'sent' && held.doubt === true, '🔴 P1-HOLD: the attempt stays in flight, in doubt');
+  assert.equal(fin.kind, 'placed', 'A placed the order');
+});
+test('Codex r1 P2-4: a never-created order (status 404) is NOT released on a 404 — after 3 reads over 2 min the cancel; its safe answer fences the id ⇒ a NEW sdk_ id places; the old id stays dead', async () => {
+  const s = realRig();
+  s.real.arm({ extrasRefuseFresh: 'extra_not_allowed' }); s.real.loseNext();
+  const o1 = await s.api.placeSdk(args(SAVED20));
+  const old = s.posted()[0];
+  assert.equal(o1.kind, 'sdk_pending', '🔴 P2-4: refused before the create, the response lost ⇒ the 404 holds (never a release on one 404)');
+  assert.ok(rec(s.storage) && rec(s.storage).order_id === old.order_id, '🔴 P2-4: one 404 never releases');
+  s.clock.t += 61e3; assert.equal((await s.api.sdkStatus(old.order_id)).kind, 'sdk_pending', '🔴 P2-4: still held (2 reads)');
+  s.clock.t += 61e3; const o3 = await s.api.sdkStatus(old.order_id);
+  assert.deepEqual([o3.kind, o3.safe], ['sdk_expired', true], `🔴 P2-4: the window passed ⇒ the cancel's safe answer releases (${JSON.stringify(o3)})`);
+  assert.equal(rec(s.storage), null, 'released');
+  assert.equal((await s.api.placeSdk(args(SAVED20))).kind, 'placed');
+  const nu = s.posted()[1];
+  assert.ok(nu.order_id !== old.order_id && SDK_ORDER_ID_RE.test(nu.order_id), '🔴 P2-4-REMINT: a NEW sdk_ id after the release');
+  const late = await s.real.fetchFor(E, () => null)(E.placeSdkOrder, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${JWT}` }, body: JSON.stringify(old) });
+  const OE = require('../xpizza-functions/order-exists.js');
+  assert.deepEqual([late.status, await late.json()], [409, OE.orderExistsBody('closed', old.order_id)], '🔴 P2-4-FENCE (the REAL fence, PLAN-sdk-fence-r1 §2b): a late original with the old id ⇒ 409 order_exists closed');
+  assert.equal(s.real.authorizations(), 1, '🔴 P2-4: one authorization');
+});
+test('Q-B through the REAL server: the budget spent ⇒ a NEW attempt on the SAME order with the record\'s own inputs — ONE authorization', async () => {
+  const s = realRig();
+  s.real.loseNext(); const releaseA = s.real.pauseGate();
+  let out = await s.api.placeSdk(args(NEW));
+  for (let i = 0; i < 6 && out.kind === 'sdk_resend'; i++) { s.real.arm({ extrasRefuseFresh: 'extra_not_allowed' }); out = await s.api.sdkResend(args(NEW)); if (out.kind === 'sdk_pending') out = await s.api.sdkStatus(s.posted()[0].order_id); }
+  assert.equal(out.kind, 'sdk_reenter_card', `premise: Q-B (${JSON.stringify(out)})`);
+  const inputs = s.api.sdkInputs(s.posted()[0].order_id);
+  assert.ok(inputs && !('card' in inputs) && !JSON.stringify(inputs).includes('SDK-TOKEN-SECRET'), '🔴 P2-3: the stored inputs carry no card / token');
+  assert.deepEqual([inputs.lat, inputs.lng, inputs.tip_cents, inputs.expected_net_cents], [15.5, -88, 2000, 31500], '🔴 P2-3: the economics the order is bound to');
+  releaseA(); await s.real.settled();
+  const placed = await s.api.sdkStatus(s.posted()[0].order_id);
+  const again = placed.kind === 'placed' ? placed : await s.reload().placeSdk(args(NEW));
+  assert.equal(again.kind, 'placed', `the order is placed once (${JSON.stringify(again)})`);
+  assert.equal(new Set(s.posted().map((x) => x.order_id)).size, 1, '🔴 QB-REAL: one sdk_ order');
+  assert.equal(s.real.authorizations(), 1, '🔴 QB-REAL: exactly one authorization');
+});
+
+test('Codex r1 P2-5: the SDK order WINS after its cash replacement was refused previous_payment_unresolved ⇒ that never-created cash record is cleaned; not once the cash identity was re-dispatched', async () => {
+  const mk = (cash) => rig({ script: { placeSdkOrder: [(c) => DECL_OF(c.body.order_id, c.body.attempt_id)], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }],
+    createOrder: cash, placeSdkStatus: [(c) => PLACED(new URL(c.url).searchParams.get('order_id'))] } });
+  const s = mk([{ status: 409, json: { error: 'previous_payment_unresolved' } }]);
+  await s.api.placeSdk(args(SAVED)); const x = s.srv.of('placeSdkOrder')[0].body.order_id;
+  await s.api.sdkSwitchToCash(x, { flow: flowOf('cash'), ctx: CTX });
+  assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x })).kind, 'sdk_pending', 'premise: refused, back to the SDK order');
+  assert.equal(rec(s.storage).replaced_unresolved, x, 'premise: the refused cash identity is marked');
+  assert.equal((await s.api.sdkStatus(x)).kind, 'placed', 'premise: the SDK order won');
+  assert.equal(rec(s.storage), null, '🔴 P2-5: the refused, never-created cash record is gone — the next order starts fresh');
+  const n = mk([{ status: 409, json: { error: 'previous_payment_unresolved' } }, 'network']);
+  await n.api.placeSdk(args(SAVED)); const x2 = n.srv.of('placeSdkOrder')[0].body.order_id;
+  await n.api.sdkSwitchToCash(x2, { flow: flowOf('cash'), ctx: CTX });
+  await n.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x2 });
+  await n.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: x2 });   // re-dispatched: its answer lost
+  await n.api.sdkStatus(x2);
+  const kept = rec(n.storage);
+  assert.ok(kept && kept.order_id !== x2 && kept.replaced_unresolved == null, '🔴 P2-5-GUARD: a re-dispatched cash identity (fate unknown) is never dropped');
+});
+
+// ── Codex capp-d4-client r2 (advisor rulings 11-13) ──
+test('Codex r2 P1 (the account switch): A parked → B signs in → B is refused LOCALLY (no request); A back ⇒ X resolves by A\'s own status — ONE authorization, never released by B', async () => {
+  const s = realRig();
+  s.real.loseNext(); const releaseA = s.real.pauseGate();
+  assert.equal((await s.api.placeSdk(args(SAVED20))).kind, 'sdk_resend', 'premise: A\'s X parked before its claim, attempt_unknown');
+  const x = s.posted()[0].order_id;
+  s.who.m = BEA;   // the account switch
+  const n0 = s.calls.length; const outs = [];
+  for (let i = 0; i < 5; i++) { s.clock.t += 61e3; const k = (await s.api.placeSdk(args({ kind: 'saved', card_id: CARD20B }))).kind; outs.push(k); if (k === 'placed') break; }   // B taps until it places (the r2 client: Y)
+  outs.push((await s.api.sdkStatus(x)).kind, (await s.api.sdkResolve(x)).kind);
+  const n1 = s.calls.length;
+  releaseA(); await s.real.settled();
+  s.who.m = ANA;   // A is back
+  const fin = await s.api.sdkStatus(x);
+  // the money first: ONE authorization (the r2 client — B's 404 window cancels under B's credentials ⇒ releases, B places Y, A places X ⇒ 2)
+  assert.equal(s.real.authorizations(), 1, `🔴 R2-P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.ok(outs.every((k) => k === 'held_other_account'), `🔴 R2-P1-LOCAL: every B action is refused locally (${outs})`);
+  assert.equal(n1, n0, '🔴 R2-P1-LOCAL: B made no request at all');
+  assert.equal(fin.kind, 'placed', '🔴 R2-P1: X resolves through A\'s own status once A is back');
+});
+test('Codex r2 P2-3: a DISPATCHED SDK record is never dropped locally — an item refusal whose cancel failed, and an «unavailable» — kept across a reload past the local expiry; the status route survives', async () => {
+  for (const [label, script] of [['item refusal + failed cancel', { placeSdkOrder: [{ status: 409, json: { error: 'extra_not_allowed', lines: [] } }], cancelSdkPending: ['network'], placeSdkStatus: [{ status: 404, json: { error: 'not_found' } }] }],
+    ['unavailable', { placeSdkOrder: [() => R('unavailable', { retry_after_s: 120 })], placeSdkStatus: [{ status: 404, json: { error: 'not_found' } }] }]]) {
+    const s = rig({ script });
+    const o = await s.api.placeSdk(args(SAVED));
+    const id = s.srv.of('placeSdkOrder')[0].body.order_id;
+    assert.ok(o.kind !== 'placed', `premise (${label})`);
+    s.clock.t = at(22, 30);   // past the record's local expiry (the closing time), the member's token still valid
+    const api2 = s.reload();
+    assert.ok(rec(s.storage) && rec(s.storage).order_id === id, `🔴 R2-P2-3 (${label}): the record survives the local expiry`);
+    assert.equal(api2.sdkLive(), id, `🔴 R2-P2-3 (${label}): the reload finds it (its recovery route)`);
+    const r = await api2.resolveStatus(id);
+    assert.ok(s.srv.of('placeSdkStatus').length >= 1 && r.kind !== 'existing_order', `🔴 R2-P2-3 (${label}): resolved by ITS status, never the generic existing-order sheet (${r.kind})`);
+  }
+});
+test('Codex r2 P2-4 (guest): an absent guest order answers 401 (the REAL status core) — the same window; the cancel WITH the order-bound ticket fences it ⇒ safe ⇒ a NEW sdk_ id; the late original ⇒ 409 closed', async () => {
+  const s = realRig({ member: null, guestCardOnly: true });
+  const flow = flowOf('online');
+  const id = s.api.orderIdForCode({ flow, sdk: true });
+  const bodyFor = (oid) => C.orderBody(flow, { ...CTX, orderId: oid });
+  const tkFor = async (oid) => { const b = bodyFor(oid); return { ticket: await s.real.issueTicket({ phone: b.customer_phone, orderId: oid, body: b }), order_id: oid, expires_at: at(12, 14), phone: b.customer_phone, phone_key: await s.api.phoneKeyOf(b.customer_phone) }; };
+  const tk = await tkFor(id);
+  s.real.arm({ extrasRefuseFresh: 'extra_not_allowed' }); s.real.loseNext();
+  const o1 = await s.api.placeSdk(args(NEW, { flow, checkoutTicket: tk }));
+  assert.equal(o1.kind, 'sdk_pending', '🔴 R2-P2-4: the 401 holds (never a release on one 401)');
+  const old = s.posted()[0];
+  s.clock.t += 61e3; assert.equal((await s.api.sdkStatus(id, { checkoutTicket: tk })).kind, 'sdk_pending', 'still held');
+  s.clock.t += 61e3; const o3 = await s.api.sdkStatus(id, { checkoutTicket: tk });
+  assert.deepEqual([o3.kind, o3.safe], ['sdk_expired', true], `🔴 R2-P2-4: the window passed ⇒ the ticket cancel fences the absent order ⇒ safe (${JSON.stringify(o3)})`);
+  assert.ok(s.calls.some((c) => c.url.startsWith(E.cancelSdkPending)), 'the cancel was made');
+  const id2 = s.api.orderIdForCode({ flow, sdk: true });
+  assert.ok(id2 !== id && SDK_ORDER_ID_RE.test(id2), '🔴 R2-P2-4: a NEW sdk_ id');
+  assert.equal((await s.api.placeSdk(args(NEW, { flow, checkoutTicket: await tkFor(id2) }))).kind, 'placed');
+  const late = await s.real.fetchFor(E, () => null)(E.placeSdkOrder, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Sherpa-Order-Ticket': tk.ticket }, body: JSON.stringify(old) });
+  const OE = require('../xpizza-functions/order-exists.js');
+  assert.deepEqual([late.status, await late.json()], [409, OE.orderExistsBody('closed', id)], '🔴 R2-P2-4: the late original ⇒ 409 order_exists closed (the guest\'s fence)');
+  assert.equal(s.real.authorizations(), 1, '🔴 R2-P2-4: one authorization');
+});
+
+// ── Codex capp-d4-client r3 (advisor 11-13): a guest's principal is its ticket PHONE ──
+test('Codex r3 P1 (guest phone switch): A\'s original lost BEFORE the create; guest B verifies a ticket for the SAME id ⇒ B refused LOCALLY (zero requests); A\'s ticket resolves X — ONE authorization', async () => {
+  const s = realRig({ member: null, guestCardOnly: true });
+  const tkFor = async (flow, oid) => { const b = C.orderBody(flow, { ...CTX, orderId: oid }); return { ticket: await s.real.issueTicket({ phone: b.customer_phone, orderId: oid, body: b }), order_id: oid, expires_at: at(12, 14), phone: b.customer_phone, phone_key: await s.api.phoneKeyOf(b.customer_phone) }; };
+  const flowA = flowOf('online');
+  const x = s.api.orderIdForCode({ flow: flowA, sdk: true });
+  const tkA = await tkFor(flowA, x);
+  s.real.loseNext(); const releaseA = s.real.pauseGate('intake');
+  await s.api.placeSdk(args(NEW, { flow: flowA, checkoutTicket: tkA }));
+  const recA = rec(s.storage);
+  assert.ok(recA && !JSON.stringify(recA).includes(tkA.phone.replace(/\D/g, '').slice(-8)), '🔴 R3-P1-PII: the record never holds the phone (rule 20)');
+  const flowB = flowOf('online'); Object.assign(flowB, { name: 'Beto', phone: '88887777' });
+  let tkB = await tkFor(flowB, x);   // guest B, a valid ticket bound to the SAME order id
+  const n0 = s.calls.length; const outs = [];
+  for (let i = 0; i < 6; i++) {
+    s.clock.t += 61e3;
+    const k = (await s.api.placeSdk(args(NEW, { flow: flowB, checkoutTicket: tkB }))).kind; outs.push(k);
+    if (k === 'placed') break;
+    if (k === 'guest_ticket_invalid' || k === 'sdk_expired') tkB = await tkFor(flowB, s.api.orderIdForCode({ flow: flowB, sdk: true }));   // (the r2 client: B re-verifies for its new id)
+  }
+  const n1 = s.calls.length;
+  releaseA(); await s.real.settled();
+  const fin = await s.api.sdkStatus(x, { checkoutTicket: tkA });
+  assert.equal(s.real.authorizations(), 1, `🔴 R3-P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.ok(outs.every((k) => k === 'held_other_account'), `🔴 R3-P1-LOCAL: every guest-B action is refused locally (${outs})`);
+  assert.equal(n1, n0, '🔴 R3-P1-LOCAL: guest B made no request at all');
+  assert.equal(fin.kind, 'placed', '🔴 R3-P1: X resolves through A\'s own ticket');
+  assert.equal(recA.owner, `g:${tkA.phone_key}`, '🔴 R3-P1-KEY: A\'s record is bound to A\'s phone KEY');
+});
+
+// ── Codex capp-d4-client r4 (advisor 11-13): a guest ticket WITHOUT a valid phone_key fails CLOSED ──
+const FAILING_SUBTLE = { digest: async () => { throw new Error('digest unavailable'); } };
+test('Codex r4 P1 (B): guest B\'s ticket carries no phone_key (a failed derivation) ⇒ foreign to A\'s keyed record — refused LOCALLY, zero requests; ONE authorization', async () => {
+  const s = realRig({ member: null, guestCardOnly: true });
+  const tkFor = async (flow, oid, keyed = true) => { const b = C.orderBody(flow, { ...CTX, orderId: oid }); return { ticket: await s.real.issueTicket({ phone: b.customer_phone, orderId: oid, body: b }), order_id: oid, expires_at: at(12, 14), phone: b.customer_phone, phone_key: keyed ? await s.api.phoneKeyOf(b.customer_phone) : null }; };
+  const flowA = flowOf('online');
+  const x = s.api.orderIdForCode({ flow: flowA, sdk: true });
+  const tkA = await tkFor(flowA, x);
+  s.real.loseNext(); const releaseA = s.real.pauseGate('intake');
+  await s.api.placeSdk(args(NEW, { flow: flowA, checkoutTicket: tkA }));
+  const flowB = flowOf('online'); Object.assign(flowB, { name: 'Beto', phone: '88887777' });
+  let tkB = await tkFor(flowB, x, false);   // what a failed derivation handed over (the r4 client)
+  const n0 = s.calls.length; const outs = [];
+  for (let i = 0; i < 6; i++) {
+    s.clock.t += 61e3;
+    const k = (await s.api.placeSdk(args(NEW, { flow: flowB, checkoutTicket: tkB }))).kind; outs.push(k);
+    if (k === 'placed') break;
+    if (k === 'guest_ticket_invalid' || k === 'sdk_expired') tkB = await tkFor(flowB, s.api.orderIdForCode({ flow: flowB, sdk: true }), false);
+  }
+  const n1 = s.calls.length;
+  releaseA(); await s.real.settled();
+  const fin = await s.api.sdkStatus(x, { checkoutTicket: tkA });
+  assert.equal(s.real.authorizations(), 1, `🔴 R4-P1-ONE-AUTH: exactly one authorization (${s.real.authorizations()})`);
+  assert.ok(outs.every((k) => k === 'held_other_account'), `🔴 R4-P1-LOCAL: an unkeyed guest is foreign to every keyed record (${outs})`);
+  assert.equal(n1, n0, '🔴 R4-P1-LOCAL: no request');
+  assert.equal(fin.kind, 'placed', 'X resolves through A\'s own ticket');
+});
+test('Codex r4 P1 (A): a digest failure on A\'s OWN first verification ⇒ no ticket (the normal retry); a keyless ticket can never dispatch SDK — nothing recorded as sent, nothing sent', async () => {
+  const s = rig({ member: null, guestCardOnly: true, subtle: FAILING_SUBTLE, script: { verifyCheckoutCode: [{ status: 200, json: { ok: true, checkout_ticket: 'ct_' + 'a'.repeat(32) } }] } });
+  const id = s.api.orderIdForCode({ flow: flowOf('online'), sdk: true });
+  const v = await s.api.verifyCheckoutCode({ phone: '+50499990000', cartFp: 'f'.repeat(64), code: '123456', orderId: id });
+  assert.deepEqual([v.ok, v.kind, 'ticket' in v], [undefined, 'offline', false], '🔴 R4-P1-VERIFY: a failed derivation is the normal retry, never a keyless ticket');
+  const out = await s.api.placeSdk(args(NEW, { checkoutTicket: { ticket: 'ct_' + 'a'.repeat(32), order_id: id, expires_at: at(12, 10), phone: '+50499990000', phone_key: null } }));
+  assert.equal(out.kind, 'guest_ticket_invalid', '🔴 R4-P1-NODISPATCH: a keyless ticket re-verifies');
+  assert.equal(s.srv.of('placeSdkOrder').length, 0, '🔴 R4-P1-NODISPATCH: nothing sent');
+  const r = rec(s.storage); assert.ok(!r || (Number(r.dispatched) || 0) === 0 && r.sdk !== true, '🔴 R4-P1-NODISPATCH: no SDK record dispatched');
+});
+
+// ── Codex capp-d4-client r5 (advisor 11-13) ──
+test('Codex r5 P2-a: an SDK record with a MISSING or LEGACY owner (_guest) is never used or released — every entry point answers the recovery sheet, no request (a bounded, visible exit)', async () => {
+  for (const legacy of ['_guest', undefined, 'g:?']) {
+    const s = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+    await s.api.placeSdk(args(SAVED));
+    const r0 = rec(s.storage); const id = r0.order_id;
+    if (legacy === undefined) delete r0.owner; else r0.owner = legacy;
+    s.storage.setItem(KEY, JSON.stringify(r0));
+    const n0 = s.srv.calls.length;
+    const api2 = s.reload();
+    const outs = [await api2.placeSdk(args(SAVED)), await api2.place(CASH()), await api2.sdkStatus(id), await api2.sdkSwitchToCash(id, { flow: flowOf('cash'), ctx: CTX }), await api2.sdkResolve(id), await api2.sdkResend(args(SAVED))].map((o) => o.kind);
+    assert.ok(outs.every((k) => k === 'existing_order'), `🔴 R5-LEGACY (${legacy}): the recovery sheet everywhere (${outs})`);
+    assert.equal(s.srv.calls.length, n0, `🔴 R5-LEGACY (${legacy}): no request`);
+    assert.equal(rec(s.storage) && rec(s.storage).order_id, id, `🔴 R5-LEGACY (${legacy}): never released`);
+  }
+});
+test('Codex r5 P2-b: the shared SDK authority (sdkHeaders) refuses a keyless guest ticket — no status, no cancel, even with no local record', async () => {
+  const s = rig({ member: null, guestCardOnly: true, script: { placeSdkStatus: [{ status: 200, json: placeResp('bank_pending', { order_id: 'sdk_261026-120000-ABCDEFGH', attempt_id: 'x'.repeat(16) }) }], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }] } });
+  const id = 'sdk_261026-120000-ABCDEFGH';
+  const tk = { ticket: 'ct_' + 'a'.repeat(32), order_id: id, expires_at: at(12, 10), phone: '+50499990000', phone_key: null };
+  assert.equal(rec(s.storage), null, 'premise: no local record');
+  await s.api.sdkStatus(id, { checkoutTicket: tk });
+  await s.api.sdkSwitchToCash(id, { checkoutTicket: tk, flow: flowOf('online'), ctx: CTX });
+  assert.equal(s.srv.of('placeSdkStatus').length + s.srv.of('cancelSdkPending').length, 0, '🔴 R5-HEADERS: a keyless ticket authorizes nothing');
+  await s.api.sdkStatus(id, { checkoutTicket: { ...tk, phone_key: GUEST_KEY } });
+  assert.equal(s.srv.of('placeSdkStatus').length, 1, 'non-vacuity: the same ticket WITH its key is sent');
 });

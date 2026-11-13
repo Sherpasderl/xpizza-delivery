@@ -45,6 +45,7 @@
   const POLL_SDK_MS = 3000, POLL_SDK_REVIEW_MS = 15000;
   // advisor 11-08: a long bank delay never hammers the server — after the first minute of pending (20 polls at 3 s) every 10 s
   const POLL_SDK_SLOW_MS = 10000, POLL_SDK_FAST_N = 20;
+  const SDK_RESEND_MS = [2000, 5000, 10000];   // D4 F2: the backoff before each re-send of an attempt the server proved unknown (capp-api bounds the count)
   const FULL_CART = 'Tu carrito está lleno. Empezá otro carrito con el resto de tu pedido.';   // owner-approved 2026-10-24 (cart_text_too_long)
 
   // ── icons (the prototype's, one stroke, one weight) ──
@@ -808,7 +809,7 @@
       const m = member();
       return rs && m && typeof m.uid === 'string' && rs.owner === m.uid ? rs.body : null;
     }
-    const heldByOther = () => { try { return !!(sched() && api && api.retainedByOther()); } catch (_) { return false; } };
+    const heldByOther = () => { try { return !!((sched() || sdkOn()) && api && api.retainedByOther(sdkOn() ? sdkAuth() : undefined)); } catch (_) { return false; } };   // r3 P1: the guest's ticket names its principal   // D4 r2 P1: an SDK placement of another account too
     // Codex G7 r3: the retained send's slot — null whenever the record has none (an owned ASAP send keeps its tender lock, never a slot
     // lock); hasSlotLock() is the ONE predicate every consumer reads
     function lockedSlot() { const b = lockedBody(); return b && Number.isFinite(b.scheduled_for) ? b.scheduled_for : null; }
@@ -1343,7 +1344,7 @@
       const o = S.otp; if (!o || o.busy || o.state === 'locked' || o.code.length !== 6) return;
       const my = ++o.seq; o.busy = true; renderLayer();
       // contract amendment 2026-10-27: the ticket is bound to the order id this placement will send (the same id on a retry)
-      const oid = api.orderIdForCode({ flow: S.flow, sig: S.q && S.q.sig });
+      const oid = api.orderIdForCode({ flow: S.flow, sig: S.q && S.q.sig, sdk: sdkOn() && !!S.flow && S.flow.pay === 'online' });   // D4 F1: bound in the namespace that dispatches
       const r = oid ? await bounded(api.verifyCheckoutCode({ phone: o.phone, cartFp: cartFpNow(), code: o.code, orderId: oid })) : { kind: 'offline' };
       if (dead || S.otp !== o || o.seq !== my) return;   // the sheet was closed / a resend superseded it: a late success NEVER sends
       o.busy = false;
@@ -1598,7 +1599,7 @@
       if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); }
       onOutcome(out);
     }
-    const SDK_KINDS = new Set(['sdk_pending', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
+    const SDK_KINDS = new Set(['sdk_pending', 'sdk_resend', 'sdk_reenter_card', 'sdk_review', 'sdk_declined', 'sdk_expired', 'sdk_unavailable', 'sdk_not_allowed', 'sdk_bad_card', 'sdk_switched', 'sdk_card_unavailable']);
     function onOutcome(out, attempt) {
       if (out && SDK_KINDS.has(out.kind) && sdkOn()) { emit('outcome', out); onSdkOutcome(out); return; }   // Codex r2 P2: an SDK outcome from ANY entry point (send, «Ver estado»)
       emit('outcome', out);   // S7a-2 (Codex s7a2 r1 #4): every outcome reaches the host (a return handoff settles on a LATER terminal one)
@@ -1908,11 +1909,30 @@
         if (dead || gen !== SDK.gen || who !== sdkOwner(member())) return;   // an identity change since: not this member's cards
         SDK.loading = false; SDK.loaded = true; SDK.owner = who;
         SDK.cards = PCARD.cardsVm(list);
-        SDK.avail = st ? st.available : null;   // unknown ⇒ the server decides at placement (its `unavailable`)
+        if (st) sdkAvail(st.available, st.available === false ? nowMs() + st.retry_after_s * 1000 : null);   // a failed read keeps the cached answer (D4 F5); none ⇒ unknown
         if (!SDK.sel && SDK.cards.selected) SDK.sel = { kind: 'card', card_id: SDK.cards.selected };
         sdkAdopt();
         if (S.screen === 'checkout' || S.screen === 'tip') render();
       });
+    }
+    // D4 F5: the availability cached for THIS restaurant, read synchronously BEFORE the checkout's first paint — a known «unavailable» shows
+    // frame 7 at once, never after a card was entered; sdkLoad's read revalidates silently
+    function sdkSeed() {
+      if (SDK.seeded || SDK.avail !== null || SDK.loaded || !sdkOn() || typeof api.sdkPayCached !== 'function') return;
+      SDK.seeded = true;   // once per mount: after that the reads (sdkLoad) and their expiry decide
+      let c = null; try { c = api.sdkPayCached(); } catch (_) { c = null; }
+      if (c) sdkAvail(c.available, Number.isFinite(c.until) ? c.until : null);
+    }
+    // Codex r1 P2-6: a «false» carries its end (retry_after_s) into the mounted state — at that end the availability is read again
+    // (sdkLoad), so frame 7 never outlives it; a timer brings the render there even when nothing else re-renders
+    function sdkAvail(a, until) {
+      SDK.avail = a; SDK.availUntil = a === false && Number.isFinite(until) ? until : null;
+      if (SDK.availT != null) { T_.clearTimeout(SDK.availT); SDK.availT = null; }
+      if (SDK.availUntil != null) SDK.availT = T_.setTimeout(() => { SDK.availT = null; if (!dead && (S.screen === 'checkout' || S.screen === 'tip')) render(); }, Math.max(0, SDK.availUntil - nowMs()));
+    }
+    function sdkAvailExpired() {
+      if (SDK.avail !== false || SDK.availUntil == null || nowMs() < SDK.availUntil) return;
+      sdkAvail(null, null); SDK.loaded = false; SDK.loading = false;   // unknown again: sdkLoad re-reads after this render
     }
     // the method the row shows: cash, the chosen saved / new card, else the expired one (frame 6, dimmed), else none
     function sdkMethod() {
@@ -1931,7 +1951,7 @@
     // an identity change (sign-in, another member, sign-out): drop the cards, any in-flight list (gen), the selection and an adopted
     // tender — the next checkout render lists the new identity's own cards
     function sdkIdentity() {
-      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; SDK.avail = null;
+      SDK.gen++; SDK.cards = null; SDK.sel = null; SDK.owner = null; SDK.loading = false; SDK.loaded = false; sdkAvail(null, null); SDK.last = null;
       if (S.flow && S.flow.pay === 'online' && SDK.adopted) S.flow.pay = '';
       SDK.adopted = false;
     }
@@ -1981,6 +2001,27 @@
         if (!dead) onSdkOutcome(out);
       }, ms);
     }
+    // D4 F2: the server proved the attempt unknown (no authorization happened) ⇒ the SAME attempt re-sent after the backoff, from the inputs of
+    // the send this page made (SDK.last — page memory only, like the selection); none after a reload ⇒ capp-api settles it and asks for a card
+    // Codex r1 P2-3: the checkout the server order is bound to (pin, details, tip, recipient — never a card), restored from the record so the
+    // same-id retry after a reload sends the SAME economics; true when restored
+    function sdkRestore(id) {
+      let b = null; try { b = id && typeof api.sdkInputs === 'function' ? api.sdkInputs(id) : null; } catch (_) { b = null; }
+      const rf = b ? flowFromBody(b) : null;
+      if (!rf) return false;
+      rf.pay = 'online'; S.flow = rf; S.mode = rf.mode; S.flowRestored = true;
+      return true;
+    }
+    function sdkResendLater(ms) {
+      sdkStopPoll();
+      SDK.pollT = T_.setTimeout(async () => {
+        SDK.pollT = null; if (dead) return;
+        let out; try { out = await api.sdkResend({ ...(SDK.last || {}), ...sdkAuth() }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }
+        if (dead) return;
+        if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }
+        onSdkOutcome(out);
+      }, ms);
+    }
     function sdkProc(review) {
       const total = S.sendTotals && Number.isFinite(S.sendTotals.total) ? S.sendTotals.total : (totalsNow().ready ? totalsNow().total : 0);
       const m = sdkMethod();
@@ -1993,7 +2034,9 @@
       sdkStopPoll();
       if (k === 'sdk_pending') { sdkProc(SDK.proc && SDK.proc.review); sdkPollLater(out.order_id, SDK.pollN++ < POLL_SDK_FAST_N ? POLL_SDK_MS : POLL_SDK_SLOW_MS); return; }
       if (k === 'sdk_review') { sdkProc(true); sdkPollLater(out.order_id, POLL_SDK_REVIEW_MS); return; }
+      if (k === 'sdk_resend') { sdkProc(SDK.proc && SDK.proc.review); sdkResendLater(SDK_RESEND_MS[Math.min(Number(out.resends) || 0, SDK_RESEND_MS.length - 1)]); return; }
       SDK.pollN = 0;   // any settled outcome restarts the backoff
+      SDK.last = null;   // …and ends the send whose inputs a re-send would use
       if (S.layerKind === 'sdkproc') { S.layerKind = null; renderLayer(); }
       if (k === 'placed') { SDK.replaces = null; onOutcome(out); return; }
       if (k === 'sdk_declined') {
@@ -2002,9 +2045,13 @@
         if (out.bucket === 'token_expired' || out.bucket === 'hard') SDK.sel = null;   // the declined card is unselected (frame 5)
         backTo(); openLayerNoPush('sdkdecl'); return;
       }
-      if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); return; }
-      if (k === 'sdk_unavailable') { SDK.avail = false; backTo(); return; }
+      // D4 F3: the order a cash switch is replacing became safe after the cash send was refused (previous_payment_unresolved) ⇒ the SAME
+      // transition completes — that cash order goes once the checkout can send (capp-api re-sends its kept identity)
+      if (k === 'sdk_expired') { backTo('checkout'); if (!out.safe) sdkPollLater(out.order_id, POLL_SDK_MS); else if (SDK.replaces && SDK.replaces === out.order_id && S.flow && S.flow.pay === 'cash') { SDK.placeWhenReady = true; sdkPlaceIfReady(); } return; }
+      if (k === 'sdk_unavailable') { sdkAvail(false, Number.isFinite(out.retry_after_s) ? nowMs() + out.retry_after_s * 1000 : null); backTo(); return; }
       if (k === 'sdk_not_allowed' || k === 'sdk_bad_card') { backTo('checkout'); return; }
+      // D4 F2 / Q-B (advisor 11-12): the card could not be re-sent (its token gone with a reload) — nothing was charged; the same order, a card again
+      if (k === 'sdk_reenter_card') { sdkRestore(out.order_id); SDK.sel = null; backTo('checkout'); openLayer('paysheet'); return; }
       // CONTRACT A3: the card is gone / not this member's — unselected, the list read again, the chooser open (nothing was charged)
       if (k === 'sdk_card_unavailable') { SDK.sel = null; SDK.cards = null; SDK.loaded = false; SDK.loading = false; SDK.gen++; backTo('checkout'); sdkLoad(); openLayer('paysheet'); return; }
       if (k === 'sdk_switched') {
@@ -2021,6 +2068,7 @@
     // send(): the SDK card path (after the kept 2-s window); the processing sheet over the screen of the tap
     async function sdkSend(p, attempt) {
       sdkProc(false);
+      SDK.last = p;
       let out; try { out = await api.placeSdk({ ...p, onDispatch: (id) => keepSent(id) }); } catch (_) { out = { kind: 'sdk_pending', order_id: null }; }   // Codex r1 P1-4: the sent order kept for a reload
       if (dead || attempt !== attemptSeq) return;
       if (out && out.kind === 'sdk_pending' && !out.order_id) { const id = api.sdkLive(); out = id ? { ...out, order_id: id } : { kind: 'offline' }; }
@@ -2056,14 +2104,14 @@
       if (a === 'addcard-save') { sdkSaveCard(); return true; }
       if (a === 'decl-other_card') { S.layerKind = null; renderLayer(); openLayer('paysheet'); return true; }
       if (a === 'decl-cash') { sdkCash(); return true; }
-      if (a === 'sdk-retry') { SDK.loaded = false; SDK.avail = null; sdkLoad(); render(); return true; }
+      if (a === 'sdk-retry') { SDK.loaded = false; sdkAvail(null, null); sdkLoad(); render(); return true; }
       return false;
     }
     // mount: a live SDK attempt on this device ⇒ its status FIRST (advisor condition), the processing sheet meanwhile
     function sdkResume() {
       if (!sdkOn()) return;
       const id = api.sdkLive(); if (!id) return;
-      if (!S.flow) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4: a fresh mount has no flow; the outcome screens read one
+      if (!S.flow && !sdkRestore(id)) { S.flow = newFlow(); C.setMode(S.flow, S.mode); S.flow.pay = 'online'; }   // Codex r1 P1-4: a fresh mount has no flow; the outcome screens read one
       sdkProc(false);
       Promise.resolve().then(() => api.sdkResolve(id, sdkAuth())).catch(() => ({ kind: 'sdk_pending', order_id: id })).then((out) => { if (!dead) onSdkOutcome(out); });
     }
@@ -2084,6 +2132,7 @@
       const keepToast = $('toast');
       const prevFlow = $('flow'); const flowY = prevFlow ? prevFlow.scrollTop : null; const prevScreen = app.dataset.screen;
       // the S2b router: every screen inside <div class="screen"> (the prototype's mount)
+      if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) { sdkAvailExpired(); sdkSeed(); }
       const html = S.screen === 'checkout' ? checkoutHtml() : S.screen === 'tip' ? tipHtml() : S.screen === 'sending' ? sendingHtml() : S.screen === 'addcard' && sdkOn() ? sdkFormHtml() : storeHtml();
       app.innerHTML = `<div class="screen">${html}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
       app.dataset.screen = S.screen;

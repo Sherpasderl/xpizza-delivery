@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
 const require = createRequire(import.meta.url);
 const A = require('./capp-api.js');
 const C = require('./capp-checkout.js');
@@ -25,6 +26,7 @@ function server(script) {
   const calls = [];
   const fetch = async (url, init) => {
     const ep = Object.keys(E).find((k) => url.startsWith(E[k])); calls.push({ ep, body: init && init.body ? JSON.parse(init.body) : null });
+    { const nr = namespaceRefusal(ep, calls[calls.length - 1].body); if (nr) return { status: nr.status, ok: false, json: async () => nr.json }; }   // the server's namespace, before the script
     const q = script[ep] || []; const r = q.length > 1 ? q.shift() : q[0];
     if (!r) throw new Error(`unscripted ${ep}`); if (r === 'network') throw new TypeError('Failed to fetch');
     const res = typeof r === 'function' ? await r() : r;   // a function may defer its answer (an outstanding request)
