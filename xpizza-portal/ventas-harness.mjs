@@ -49,6 +49,8 @@ export function installDom() {
       },
       append: (...cs) => { for (const c of cs) { if (c && typeof c === 'object') c.parent = n; } n.children.push(...cs); },
       replaceChildren: (...cs) => { n.children = []; n.append(...cs); },
+      // the DOM's insertBefore (null ref = append) — pausas.js puts its failure box under the page's top block
+      insertBefore: (c, ref) => { if (c && typeof c === 'object') c.parent = n; const i = ref ? n.children.indexOf(ref) : -1; if (i === -1) n.children.push(c); else n.children.splice(i, 0, c); return c; },
       remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((c) => c !== n); n.parent = null; },
       setAttribute: (k, v) => { n.attrs[k] = String(v); },
       getAttribute: (k) => (k in n.attrs ? n.attrs[k] : null),

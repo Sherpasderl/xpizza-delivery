@@ -69,6 +69,8 @@
   "package-lock.json",
   "package.json",
   "pausas.js",
+  "pause-control.js",
+  "pause-control.test.mjs",
   "perf/portal.origins.json",
   "photo-contract-fake.mjs",
   "photo-flow.test.mjs",
@@ -185,8 +187,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "a9d8ad502b41ab706e1dc37b00921a4e389f53320d28c6ca51a043522c62f9be",
-   "bytes": 154561
+   "sha256": "decbd36c5fb1ed3a67f7da71fba2bc62b1e090262310739e2ab9e86fdfd57099",
+   "bytes": 154699
   }
  },
  "diff_aid": {

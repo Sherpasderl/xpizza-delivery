@@ -108,13 +108,16 @@ async function openWith(P, transforms) {
   return mods;
 }
 test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (76f3a160) — list, detail and chrome', async () => {
-  for (const f of ['branch-logic.js', 'pausas.js', 'equipos.js', 'ventas.js', 'auth-errors.js']) {
+  // COMPOSITION, ruling (a) again: P-1's «Rendimiento» (ventas.js, owner 11-13) and «Pausar» §2.1 (pausas.js → pause-control.js,
+  // verbatim) change two modules that HAVE a seam — base shell.js imports pausas.js once; the harness loads ventas.js by transform — so
+  // the ORACLE side loads their base copies and the byte-identical render proves the composed ones paint today's 1a screen (W off).
+  for (const f of ['branch-logic.js', 'equipos.js', 'auth-errors.js']) {
     assert.equal(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'), gitShow(f), `${f} unchanged since the base (the oracle composes it)`);
   }
   const differs = (f) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8') !== gitShow(f);
   const dir = dirname(fileURLToPath(import.meta.url));
   const tag = `${process.pid}.${Date.now()}`;
-  const swapAvail = differs('availability.js'), swapOps = differs('ops-dom.js');
+  const swapAvail = differs('availability.js'), swapOps = differs('ops-dom.js'), swapPausas = differs('pausas.js');
   const OPS = /from '\.\/ops-dom\.js'/g;
   const baseOf = (f) => `./__base-${f.replace(/\.js$/, '')}.${tag}.mjs`;
   const viaBaseOps = (f, src) => {
@@ -123,7 +126,7 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
     return src.replace(OPS, `from '${baseOf('ops-dom.js')}'`);
   };
   // the base copies the oracle loads: branches-view always; availability when it or ops-dom differs; pausas / equipos when ops-dom does
-  const copies = ['branches-view.js', ...(swapAvail || swapOps ? ['availability.js'] : []), ...(swapOps ? ['pausas.js', 'equipos.js'] : [])];
+  const copies = ['branches-view.js', ...(swapAvail || swapOps ? ['availability.js'] : []), ...(swapOps || swapPausas ? ['pausas.js'] : []), ...(swapOps ? ['equipos.js'] : [])];
   const written = [];
   const put = (f, src) => { const p = join(dir, baseOf(f)); writeFileSync(p, src); written.push(p); };
   if (swapOps) {
@@ -134,7 +137,7 @@ test('W OFF: the portal renders BYTE-IDENTICALLY to the base 1a implementation (
   const baseShell = gitShow('shell.js');
   for (const f of copies) assert.equal((baseShell.match(new RegExp(`from '\\./${f.replace('.', '\\.')}'`, 'g')) || []).length, 1, `premise: the base shell imports ${f} once (the seam)`);
   const asBase = { shell: () => copies.reduce((src, f) => src.replace(`from './${f}'`, `from '${baseOf(f)}'`), viaBaseOps('shell.js', baseShell)),
-  ...(differs('app.js') ? { app: () => gitShow('app.js') } : {}) };
+  ...(differs('app.js') ? { app: () => gitShow('app.js') } : {}), ...(differs('ventas.js') ? { ventas: () => gitShow('ventas.js') } : {}) };
   const e1 = E1([row('r_a'), row('r_b', { lifecycle: 'inactive', control: { state: 'inactive', paused_until: null, pause_reason: null, pause_since: null } })], { w: false,
     brands: [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [{ rid: 'r_d', brand_id: 'marca_s', lifecycle: 'draft', profile: { location_name: 'Borrador', phone: '+50433905521', hours: WEEK, prep_default_min: 20 }, location: null, pending_location: true, version: 'd.x.1.1' }] }] });
   const ids = ['viewsuc', 'navsuc', 'navsuccount', 'navpausas', 'navequipos', 'mnsuc', 'shopname', 'shopsub', 'scopewrap', 'switchmenu', 'sucbar', 'sucbartxt'];
