@@ -52,7 +52,7 @@
   "sendSites": 24,
   "fieldsWritten": 119,
   "opaqueWrites": 25,
-  "opaque": 153,
+  "opaque": 150,
   "projections": 153,
   "sentinel": 38,
   "timers": {
@@ -54728,33 +54728,9 @@
   },
   {
    "file": "xpizza-functions/catalog/firestore-fake.js",
-   "fn": "updateCallProblem",
-   "base": "data",
-   "line": 41,
-   "how": "Object.keys",
-   "rule": "server:fixtures"
-  },
-  {
-   "file": "xpizza-functions/catalog/firestore-fake.js",
-   "fn": "updateCallProblem",
-   "base": "data",
-   "line": 43,
-   "how": "Object.keys",
-   "rule": "server:fixtures"
-  },
-  {
-   "file": "xpizza-functions/catalog/firestore-fake.js",
-   "fn": "updateCallProblem",
-   "base": "data",
-   "line": 52,
-   "how": "Object.values",
-   "rule": "server:fixtures"
-  },
-  {
-   "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "updateNow",
    "base": "data",
-   "line": 147,
+   "line": 136,
    "how": "Object.entries",
    "rule": "server:fixtures"
   },
@@ -54762,7 +54738,7 @@
    "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "updateNow",
    "base": "o",
-   "line": 150,
+   "line": 139,
    "how": "computed",
    "rule": "server:fixtures"
   },
@@ -54770,7 +54746,7 @@
    "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "updateNow",
    "base": "o",
-   "line": 150,
+   "line": 139,
    "how": "computed",
    "rule": "server:fixtures"
   },
@@ -54778,7 +54754,7 @@
    "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "updateNow",
    "base": "o",
-   "line": 150,
+   "line": 139,
    "how": "computed",
    "rule": "server:fixtures"
   },
@@ -54786,7 +54762,7 @@
    "file": "xpizza-functions/catalog/firestore-fake.js",
    "fn": "updateNow",
    "base": "o",
-   "line": 150,
+   "line": 139,
    "how": "computed",
    "rule": "server:fixtures"
   },
