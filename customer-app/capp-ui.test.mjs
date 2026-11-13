@@ -3243,6 +3243,15 @@ test('S2-checkout 6 / 7: an expired saved card ⇒ the gate well (add a card / c
   assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', '🔴 SDKUI-7: the well'); assert.ok(u.q('.gate [data-act="decl-cash"]'), 'a member: cash');
 });
 
+test('D4 F5 (UI): a cached «unavailable» for this restaurant shows frame 7 at FIRST paint — before any card entry, with the availability read still in flight', async () => {
+  const storage = memStore();
+  storage.setItem('capp:rid_a:sdk_pay', JSON.stringify({ available: false, retry_after_s: 300, at: NOON().getTime() }));
+  const u = bootSdk({ storage, script: { sdkPayStatus: [() => new Promise(() => {})] } });   // the network never answers
+  await sdkCheckout(u);
+  assert.equal(u.text('.gate b'), 'El pago con tarjeta no está disponible ahora', '🔴 SDKUI-F5: frame 7 from the cache, no awaited call');
+  assert.ok(new URL(u.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'the silent revalidation names the restaurant');
+});
+
 test('S2-checkout resume (advisor condition): a live SDK attempt on this device ⇒ the status FIRST at mount, the processing sheet — never a new placement', async () => {
   const storage = memStore();
   const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });

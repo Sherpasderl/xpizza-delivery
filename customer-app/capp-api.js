@@ -807,7 +807,7 @@
           let body = null; try { body = cur && typeof cur.switch_body === 'string' ? JSON.parse(cur.switch_body) : null; } catch (_) { body = null; }
           return intent ? { kind: 'sdk_switched', replaces: id, ...(body ? { body } : {}), ...settledOf(ok) } : { kind: 'sdk_expired', order_id: id, safe: true, ...settledOf(ok) };
         }
-        case 'unavailable': settleSdk(id, 'none'); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
+        case 'unavailable': settleSdk(id, 'none'); memoSdkPay({ available: false, retry_after_s: out.retry_after_s }); return { kind: 'sdk_unavailable', order_id: id, retry_after_s: out.retry_after_s };
         case 'not_allowed': settleSdk(id, 'none'); return { kind: 'sdk_not_allowed', order_id: id, reason: out.reason };
         default: return { kind: 'sdk_pending', order_id: id };
       }
@@ -938,10 +938,23 @@
       const r = await sdkCall('GET', E.listCards, null, h);
       return !r.network && r.status === 200 && r.json && Array.isArray(r.json.cards) ? r.json : null;
     }
+    // D4 F5 (advisor Q2 ruled 11-12): THIS restaurant's availability (?restaurant_id=: the flag ∩ its allowlist entry — the placement gate),
+    // memoized PER restaurant so the checkout's first paint reads it synchronously (cached-first; the request is a silent revalidation). A
+    // cached «false» stands only until its retry_after_s — then unknown again (the server decides). An older server ignores the query
+    const SDK_PAY_KEY = `capp:${cfg.restaurantId}:sdk_pay`;
+    const memoSdkPay = (a) => writeJSON(SDK_PAY_KEY, { available: a.available, retry_after_s: a.retry_after_s, at: now() });
+    function sdkPayCached() {
+      const v = readJSON(SDK_PAY_KEY);
+      if (!v || typeof v.available !== 'boolean' || !Number.isFinite(v.at) || !Number.isInteger(v.retry_after_s)) return null;
+      if (v.available === false && now() >= v.at + v.retry_after_s * 1000) return null;
+      return { available: v.available, retry_after_s: v.retry_after_s };
+    }
     async function sdkPayStatus() {
       if (!E.sdkPayStatus) return null;
-      const r = await sdkCall('GET', E.sdkPayStatus, null, {});
-      return !r.network && r.status === 200 && r.json && typeof r.json.available === 'boolean' && Number.isInteger(r.json.retry_after_s) ? { available: r.json.available, retry_after_s: r.json.retry_after_s } : null;
+      const r = await sdkCall('GET', `${E.sdkPayStatus}?restaurant_id=${encodeURIComponent(cfg.restaurantId)}`, null, {});
+      const a = !r.network && r.status === 200 && r.json && typeof r.json.available === 'boolean' && Number.isInteger(r.json.retry_after_s) ? { available: r.json.available, retry_after_s: r.json.retry_after_s } : null;
+      if (a) memoSdkPay(a);
+      return a;
     }
     // the UI's resolver (poll / resume): a record with a pending cash switch is resolved by RE-SENDING the idempotent cancelSdkPending (Codex r4
     // P2-1: a lost cancel reply never strands it — the status of a cancelled order cannot answer the switch), through the money queue; the
@@ -1052,7 +1065,7 @@
     // the order body a card send stashed (the return restores the checkout from it)
     function stashedOrder(id) { const s = readPay(); return s && s.order_id === id && s.order && typeof s.order === 'object' ? s.order : null; }
 
-    return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
+    return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, listCards, sdkPayStatus, sdkPayCached, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
       confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
   }

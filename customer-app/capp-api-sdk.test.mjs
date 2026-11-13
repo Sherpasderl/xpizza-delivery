@@ -35,9 +35,9 @@ function server(script, storage) {
 let RNG = 0;
 const ANA = { uid: 'u_ana', idToken: null, getIdToken: async () => JWT };
 const JWT = (() => { const b = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'); return `${b({ alg: 'RS256' })}.${b({ exp: Math.floor(at(23) / 1000) })}.sig`; })();
-function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false } = {}) {
+function rig({ script, storage = memStorage(), member = ANA, guestCardOnly = false, rid = 'rid_a' } = {}) {
   const srv = server(script, storage); const clock = { t: at(12) };
-  const make = () => A.createApi({ config: { restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
+  const make = () => A.createApi({ config: { restaurantId: rid, orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: E, hours: OPEN_ALL, sdkCheckout: true, ...(guestCardOnly ? { guestCardOnly: true } : {}) },   // the app's setting under the SDK checkout
     fetch: srv.fetch, storage, now: () => clock.t, sleep: async () => {}, randomBytes: (k) => Uint8Array.from({ length: k }, () => { RNG = (RNG * 1103515245 + 12345) >>> 0; return (RNG >>> 16) & 255; }),
     setInterval: () => 0, clearInterval: () => {}, member: () => member });
   return { api: make(), reload: make, srv, storage, clock };
@@ -537,4 +537,31 @@ test('F3: createOrder 503 replaces_unavailable (retryable) ⇒ the normal retry 
   assert.equal((await s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, replacesOrderId: old })).kind, 'placed');
   const [a, b] = s.srv.of('createOrder').map((c) => c.body.order_id);
   assert.equal(b, a, '🔴 F3-503: the same cash identity re-sent');
+});
+
+// ── D4 F5: sdkPayStatus PER RESTAURANT (advisor Q2 ruled 11-12) — the REAL sdkPayStatusCore (sdk-pay-flag.js) over the honest RTDB model:
+// the request names the restaurant; the answer is memoized per restaurant (read synchronously at first paint) ──
+const { sdkPayStatusCore } = require('../xpizza-functions/payments/sdk/sdk-pay-flag.js');
+const payFlag = (restaurants) => { const db = makeHonestDb({ platform_config: { sdk_pay: { available: true, retry_after_s: 120, restaurants } } });
+  return async (c) => { const q = new URL(c.url).searchParams.get('restaurant_id'); return { status: 200, json: await sdkPayStatusCore(db, q === null ? undefined : q) }; }; };
+test('F5: sdkPayStatus asks for THIS restaurant; two restaurants are answered and cached independently; the cache reads with no network', async () => {
+  const storage = memStorage(), flag = payFlag({ rid_a: true });
+  const a = rig({ storage, rid: 'rid_a', script: { sdkPayStatus: [flag] } }), b = rig({ storage, rid: 'rid_b', script: { sdkPayStatus: [flag] } });
+  assert.equal(a.api.sdkPayCached(), null, 'premise: nothing cached yet');
+  const ra = await a.api.sdkPayStatus(), rb = await b.api.sdkPayStatus();
+  assert.equal(new URL(a.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'rid_a', '🔴 F5-QUERY: the request carries the restaurant\'s own id');
+  assert.equal(new URL(b.srv.of('sdkPayStatus')[0].url).searchParams.get('restaurant_id'), 'rid_b', '🔴 F5-QUERY: …each its own');
+  assert.deepEqual([ra, rb], [{ available: true, retry_after_s: 120 }, { available: false, retry_after_s: 120 }], 'the server\'s per-restaurant answers');
+  const n = a.srv.calls.length + b.srv.calls.length;
+  assert.deepEqual([a.reload().sdkPayCached().available, b.reload().sdkPayCached().available], [true, false], '🔴 F5-PER-RID: cached per restaurant, read after a reload');
+  assert.equal(a.srv.calls.length + b.srv.calls.length, n, '🔴 F5-SYNC: the cached read makes no request');
+});
+test('F5: a placement «unavailable» flips ONLY that restaurant\'s cache, until retry_after_s — then unknown (the server decides again)', async () => {
+  const storage = memStorage(), flag = payFlag({ rid_a: true, rid_b: true });
+  const a = rig({ storage, rid: 'rid_a', script: { sdkPayStatus: [flag], placeSdkOrder: [() => R('unavailable', { retry_after_s: 60 })] } }), b = rig({ storage, rid: 'rid_b', script: { sdkPayStatus: [flag] } });
+  await a.api.sdkPayStatus(); await b.api.sdkPayStatus();
+  assert.equal((await a.api.placeSdk(args(SAVED))).kind, 'sdk_unavailable', 'premise');
+  assert.deepEqual([a.api.sdkPayCached().available, b.api.sdkPayCached().available], [false, true], '🔴 F5-FLIP: only this restaurant');
+  a.clock.t += 61e3;
+  assert.equal(a.api.sdkPayCached(), null, '🔴 F5-FLIP: past retry_after_s the cached «false» no longer decides');
 });

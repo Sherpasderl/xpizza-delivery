@@ -1909,11 +1909,18 @@
         if (dead || gen !== SDK.gen || who !== sdkOwner(member())) return;   // an identity change since: not this member's cards
         SDK.loading = false; SDK.loaded = true; SDK.owner = who;
         SDK.cards = PCARD.cardsVm(list);
-        SDK.avail = st ? st.available : null;   // unknown ⇒ the server decides at placement (its `unavailable`)
+        SDK.avail = st ? st.available : SDK.avail;   // a failed read keeps the cached answer (D4 F5); none ⇒ unknown: the server decides at placement
         if (!SDK.sel && SDK.cards.selected) SDK.sel = { kind: 'card', card_id: SDK.cards.selected };
         sdkAdopt();
         if (S.screen === 'checkout' || S.screen === 'tip') render();
       });
+    }
+    // D4 F5: the availability cached for THIS restaurant, read synchronously BEFORE the checkout's first paint — a known «unavailable» shows
+    // frame 7 at once, never after a card was entered; sdkLoad's read revalidates silently
+    function sdkSeed() {
+      if (SDK.avail !== null || SDK.loaded || !sdkOn() || typeof api.sdkPayCached !== 'function') return;
+      let c = null; try { c = api.sdkPayCached(); } catch (_) { c = null; }
+      if (c) SDK.avail = c.available;
     }
     // the method the row shows: cash, the chosen saved / new card, else the expired one (frame 6, dimmed), else none
     function sdkMethod() {
@@ -2104,6 +2111,7 @@
       const keepToast = $('toast');
       const prevFlow = $('flow'); const flowY = prevFlow ? prevFlow.scrollTop : null; const prevScreen = app.dataset.screen;
       // the S2b router: every screen inside <div class="screen"> (the prototype's mount)
+      if ((S.screen === 'checkout' || S.screen === 'tip') && cfg.sdkCheckout === true) sdkSeed();
       const html = S.screen === 'checkout' ? checkoutHtml() : S.screen === 'tip' ? tipHtml() : S.screen === 'sending' ? sendingHtml() : S.screen === 'addcard' && sdkOn() ? sdkFormHtml() : storeHtml();
       app.innerHTML = `<div class="screen">${html}</div>${detailSkeleton()}<div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`;   // the prototype's mount (render())
       app.dataset.screen = S.screen;
