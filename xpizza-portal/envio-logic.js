@@ -419,8 +419,9 @@ export const ZONES_COPY = Object.freeze({
   capCount: null, capDraw: null,
 });
 export const zonesCopy = (k) => (typeof ZONES_COPY[k] === 'string' ? ZONES_COPY[k] : `⟦zones.${k}⟧`);
-// a zone's row line «N puntos · dentro de X km» (approved v2): X = the farthest vertex from the restaurant's pin, rounded UP to a km;
-// no pin ⇒ null (the line says only the points)
+// a zone's row line «N puntos · dentro de X km» (approved v2; advisor 11-13 ruling c): X = the farthest vertex from the PICKED restaurant's
+// pin, rounded UP to a km. Zones are PLATFORM-WIDE: this is context relative to the pin on screen, never a claim about one restaurant.
+// No pin ⇒ null (the line says only the points)
 const EARTH_KM = 6371;
 const toRad = (x) => (x * Math.PI) / 180;
 const kmBetween = (a, b) => {
