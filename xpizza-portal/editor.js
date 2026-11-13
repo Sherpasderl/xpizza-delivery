@@ -983,6 +983,8 @@ const SUBCAT_MAX = 12, SECTIONS_MAX = 30;
 const sectionsOn = (o) => !!o && o.sections === true;
 const stagedOf = (src) => (src && src.structure && Array.isArray(src.structure.staged_categories) ? src.structure.staged_categories : []);
 const sectionWriter = () => globalThis.SectionTransitions;
+// ONE representation (5f, 11-13): the staged list is PRESENT only while it holds an entry — emptied ⇒ the key is DELETED, never []
+const setStaged = (st, list) => { if (list.length) st.structure.staged_categories = list; else delete st.structure.staged_categories; };
 // the case-folded comparison for section / subsection names (§1.3 «unique case-folded»); 5f's exact fold rides in the shared module if it differs
 const sectionFold = (v) => cleanCategoryName(v).normalize('NFC').toLowerCase();
 const sectionRefusal = (code, extra) => Object.assign(new Error(code), { s4: { code, ...(extra || {}) } });
@@ -1008,7 +1010,7 @@ export function addCategory(draft, name, { after } = {}, opts = {}) {
     const anchor = after === undefined ? (declared.length ? declared[declared.length - 1] : null) : after;
     if (anchor !== null && !declared.includes(String(anchor))) throw sectionRefusal('staged_anchor_invalid');
     const id = w.categorySlug(cleanCategoryName(name), [...declared, ...stagedOf(st).map((c) => String(c.id))]);
-    st.structure.staged_categories = [...stagedOf(st), { id, name: cleanCategoryName(name), after: anchor }];
+    setStaged(st, [...stagedOf(st), { id, name: cleanCategoryName(name), after: anchor }]);
   });
 }
 // a DECLARED section: today's T1 rename (setCategoryNames, its rules unchanged); a STAGED one: its name (naming a new section is not a rename)
@@ -1030,7 +1032,7 @@ export function dropStagedCategory(draft, id, opts = {}) {
   return sectionOp(draft, opts, (st) => {
     if (catsOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_declared');
     if (!stagedOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_unknown');
-    st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(id));
+    setStaged(st, stagedOf(st).filter((c) => String(c.id) !== String(id)));
   });
 }
 // into a DECLARED section: exactly today's move (editItem); into a STAGED one: the same move, and the section is promoted into
@@ -1061,7 +1063,7 @@ function promoteStaged(draft, st, staged) {
   const ids = w.promotedOrder(now.filter((i) => !promoted.some((p) => p.id === i)), promoted);
   const byId = new Map(catsOf(st).map((c) => [String(c.id), c]));
   st.structure.categories = ids.map((i) => byId.get(String(i)) || { id: staged.id, name: staged.name });
-  st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(staged.id));
+  setStaged(st, stagedOf(st).filter((c) => String(c.id) !== String(staged.id)));
 }
 // 3(a) (advisor 11-13): a section declared in THIS draft (absent from the stored draft's categories) whose last dish leaves goes back to
 // staged — its stored entry when it had one, else anchored after the nearest section the stored draft declares — in stored order
@@ -1076,7 +1078,7 @@ function unpromote(draft, st, cat) {
   const entry = stored ? { ...clone(stored), name: c.name } : { id: c.id, name: c.name, after: declaredBefore.length ? declaredBefore[declaredBefore.length - 1] : null };
   st.structure.categories = cats.filter((x) => String(x.id) !== String(cat));
   const rank = (x) => { const k = stagedOf(draft.orig).findIndex((y) => String(y.id) === String(x.id)); return k === -1 ? Infinity : k; };
-  st.structure.staged_categories = [...stagedOf(st), entry].map((x, n) => [x, n]).sort((p, q) => (rank(p[0]) - rank(q[0])) || (p[1] - q[1])).map(([x]) => x);
+  setStaged(st, [...stagedOf(st), entry].map((x, n) => [x, n]).sort((p, q) => (rank(p[0]) - rank(q[0])) || (p[1] - q[1])).map(([x]) => x));
 }
 // the dish is its section's last: 'draft' (a section declared in this draft → 3(a)) | 'live' (→ 3(b)) | null
 function lastOfSection(draft, row) {

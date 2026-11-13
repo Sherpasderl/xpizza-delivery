@@ -184,7 +184,7 @@ test('moveItem (ON) into a STAGED section promotes it at promotedOrder\'s positi
   addCategory(d, 'Postres', { after: 'dim_sum' }, ON);
   assert.deepEqual(moveItem(d, 'rice_01', { cat: 'postres', subcat: null }, ON), { ok: true });
   const out = draftSource(d);
-  assert.equal(out.structure.categories[1].id, 'postres'); assert.deepEqual(out.structure.staged_categories, []);
+  assert.equal(out.structure.categories[1].id, 'postres'); assert.equal('staged_categories' in out.structure, false, '🔴 the last staged entry gone ⇒ the key is DELETED, never [] (5f: one representation)');
 });
 test('promotion is per SAVE (5f R4.2): two staged on one anchor promoted in ONE save land A, B (stored staged order); in two saves, B lands before A', async () => {
   const { commit } = await import('./editor.js');
@@ -216,7 +216,7 @@ test('itemCategoryProblem (ON): a STAGED section is a valid target (no subsectio
   assert.equal(itemCategoryProblem(d, 'rice_01', { cat: 'postres', subcat: null }), 'unknown', 'OFF: today\'s answer');
   assert.deepEqual(renameCategory(d, 'postres', 'Dulces', ON), { ok: true });
   assert.deepEqual(dropStagedCategory(d, 'postres', ON), { ok: true });
-  assert.deepEqual(draftSource(d).structure.staged_categories, []);
+  assert.equal('staged_categories' in draftSource(d).structure, false, '🔴 the key is DELETED, never []');
 });
 
 // ── advisor rulings 11-13 on the S4 addendum: 3(a) un-promote, 3(b) the live-section check, 6 pendingSections ──
@@ -250,7 +250,7 @@ test('3(a): removing the LAST dish of a section promoted in THIS draft un-promot
   const u = undoRemoveProduct(d, 'rice_01', r.snap, liveOrderOf(stored), ON);
   assert.equal(u.ok, true);
   assert.deepEqual(draftSource(d).structure.categories.map((c) => c.id), promoted, '«Deshacer» promotes it again, at the same place');
-  assert.deepEqual(draftSource(d).structure.staged_categories, []);
+  assert.equal('staged_categories' in draftSource(d).structure, false, '🔴 the key is DELETED, never []');
 });
 
 test('3(a): a section created AND promoted in this draft goes back to staged after the nearest section the stored draft declares', () => {
