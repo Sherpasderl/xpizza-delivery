@@ -133,7 +133,8 @@ test('contract: GET ?rid=<rid> (+ cursor), the Bearer in a header; the restauran
   const db = fakeDb(SEED); await order(db, 'XPZ-1', { at: 1000, comment: 'Muy rica' });
   const srv = server(db);
   globalThis.fetch = srv.fetch;
-  const body = await fetchRatingComments({ rid: 'x_pizza', token: tokenOf('ownerX') });
+  const body = await fetchRatingComments({ rid: 'x_pizza', token: tokenOf('ownerX') })
+    .catch((e) => assert.fail(`🔴 the real endpoint refused fetchRatingComments' request: ${e.status} ${JSON.stringify(e.body)}`));
   assert.deepEqual(body.comments, [{ comment: 'Muy rica', store: 5 }]);
   assert.deepEqual(srv.calls[0].query, { rid: 'x_pizza' }, 'exactly rid on page 1 (no cursor key)');
   assert.equal(srv.calls[0].headers.authorization, 'Bearer ownerX', 'the token rides in the header');
