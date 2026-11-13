@@ -361,6 +361,27 @@
       let v; try { v = opts.authState(); } catch (_) { v = null; }
       return v === 'guest' ? 'guest' : 'unresolved';   // a session not (yet) admitted — restoring, or an incomplete one being signed out — claims nothing
     }
+    // C-1a (D-3 r3 frame 9.1; the shell's opts.social, frozen per mount): the published rating as the FIRST store fact, the heart
+    // (a GUEST's ⇒ the sign-in; a member's slot RESERVED until C-1b; unresolved ⇒ reserved) and «Compartir» (Web Share, else the
+    // clipboard + «Enlace copiado»; neither ⇒ no button). Without opts.social (the order forms) nothing here renders
+    const SOC = opts.social && typeof opts.social === 'object' ? opts.social : null;
+    const HEART = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z"/></svg>';
+    const SHARE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v8h14v-8"/></svg>';
+    const rateFact = () => (SOC && SOC.rating ? `${SOC.rating}<span>·</span>` : '');
+    const navOf = () => (doc.defaultView && doc.defaultView.navigator) || null;
+    const canShare = () => { const n = navOf(); return !!(SOC && SOC.shareUrl && n && (typeof n.share === 'function' || (n.clipboard && typeof n.clipboard.writeText === 'function'))); };
+    const heartOff = () => (authOf() === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true" tabindex="-1"');
+    const heartBtn = (cls) => (SOC ? `<button${cls ? ` class="${cls}"` : ''} data-act="fav" aria-label="Guardar en favoritos" aria-pressed="false"${heartOff()}>${HEART}</button>` : '');
+    const shareBtn = (cls) => (canShare() ? `<button${cls ? ` class="${cls}"` : ''} data-act="share" aria-label="Compartir">${SHARE}</button>` : '');
+    function patchHeart() {
+      const g = authOf() === 'guest';
+      for (const h of app.querySelectorAll('[data-act="fav"]')) { if (g) { h.removeAttribute('style'); h.removeAttribute('aria-hidden'); h.removeAttribute('tabindex'); } else { h.setAttribute('style', 'visibility:hidden'); h.setAttribute('aria-hidden', 'true'); h.setAttribute('tabindex', '-1'); } }
+    }
+    async function shareStore() {
+      const n = navOf(); if (!n || !SOC || !SOC.shareUrl) return;
+      if (typeof n.share === 'function') { try { await n.share({ title: cfg.name || '', url: SOC.shareUrl }); } catch (_) {} return; }   // a dismissed share sheet is not an error
+      try { await n.clipboard.writeText(SOC.shareUrl); toast('Enlace copiado'); } catch (_) {}
+    }
     function pillsHtml() {
       const a = authOf();
       return cfg.promoFree === true && a && a !== 'member' ? `<div class="pills hdpills"><span class="pill deal"${a === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span></div>` : '';
@@ -369,6 +390,11 @@
       const mode = S.mode, open = isOpen();
       const ib = Number.isFinite(cfg.zoneKm) ? `<button class="infobtn" data-act="feeinfo" aria-label="Detalle del envío">${IC.info}</button>` : '';
       const feeTxt = cfg.feeFromCents != null ? `<span>· ${cfg.promoFree === true && authOf() === 'member' ? '<span class="free">Envío gratis</span>' : `Envío desde ${money(cfg.feeFromCents / 100)}`}${ib}</span>` : '';
+      if (SOC && SOC.rating) return rateFact() + (open   // C-1a (frame 9.1 phone): «★ r · Abierto · cierra …», then the delivery line
+        ? `<span><span class="dot"></span><strong>Abierto</strong></span><span>cierra ${esc(closesText())}</span>` + (mode === 'delivery'
+          ? `<span class="full">${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}</span>`
+          : `${etaTxt('pickup') ? `<span>${esc(etaTxt('pickup'))}</span>` : ''}${cfg.addr ? `<span class="mute full">Recogé en ${esc(cfg.addr)}</span>` : ''}`)
+        : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`);
       return open
         ? `<span class="full"><span class="dot"></span><strong>Abierto</strong> · cierra ${esc(closesText())}</span>` + (mode === 'delivery'
           ? `${etaTxt('delivery') ? `<span>${esc(etaTxt('delivery'))}</span>` : ''}${feeTxt}`
@@ -376,6 +402,7 @@
         : `<span class="full"><span class="dot off"></span><strong>Cerrado</strong> · ${esc(opensText())}</span>`;
     }
     function patchAuth() {
+      if (SOC) patchHeart();
       if (S.desk) { patchDeskAuth(); return; }
       const top = $('top'), info = top && top.querySelector('.info'); if (!info) return;
       const old = info.querySelector('.hdpills'), html = pillsHtml();
@@ -422,7 +449,7 @@
       let content = house.length ? `<section class="toprow" aria-label="La casa recomienda"><h2>La casa recomienda</h2><div class="cards">${house.map((it) => { const so = isSold(it); return `<div class="card${so ? ' sold-out' : ''}"><div class="ph"><button class="openimg" data-act="open" data-id="${esc(it.id)}" aria-label="Ver ${esc(it.n)}" tabindex="-1" style="border-radius:14px"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div><button class="txtbtn" data-act="open" data-id="${esc(it.id)}"><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="mute" style="font-size:14px">${so ? 'Agotado' : money(it.p)}</span></span></button></div>`; }).join('')}</div></section>` : '';
       for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2><span>${esc(s.items.length + (s.items.length === 1 ? ' plato' : ' platos'))}</span></div>${s.note ? `<div class="secnote">${esc(s.note)}</div>` : ''}${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div>${s.items.map(rowHtml).join('')}</div></section>`;
       const pill = cartPillHtml();
-      const nav = `<div class="store-nav">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span></span>'}<span></span></div>`;
+      const nav = `<div class="store-nav">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span></span>'}${SOC ? `<span class="grp">${heartBtn('iconbtn')}${shareBtn('iconbtn')}<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></span>` : '<span></span>'}</div>`;
       const hero = cfg.hero ? `<img class="hero" id="hero" src="${esc(cfg.hero)}" alt="">` : '<div class="hero" id="hero"></div>';
       const scroller = `<div class="scroller" id="scroller">${nav}<header id="top">${hero}<div class="info"><div class="idrow">${avatar}<div class="idtxt"><h1 class="brandname">${esc(cfg.name || '')}</h1>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}</div></div>${pillsHtml()}<div class="facts">${facts}</div>${closednote}
       <div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div></div></header>
@@ -436,7 +463,7 @@
     // the sticky category rail beside two-column item cards, the v6 cart aside. The SAME acts, cart and overlays as the phone page
     function deskFactsHtml() {
       const open = isOpen();
-      return (open ? `<span><span class="dot"></span><strong>Abierto</strong></span>${closesText() ? `<span>cierra ${esc(closesText())}</span>` : ''}` : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`)
+      return rateFact() + (open ? `<span><span class="dot"></span><strong>Abierto</strong></span>${closesText() ? `<span>cierra ${esc(closesText())}</span>` : ''}` : `<span><span class="dot off"></span><strong>Cerrado</strong></span><span>${esc(opensText())}</span>`)
         + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
     }
     // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
@@ -477,7 +504,7 @@
       for (const s of sections) content += `<section class="sec" id="sec-${esc(s.id)}" data-sec="${esc(s.id)}"><div class="sechead"><h2>${esc(s.name)}</h2>${s.note ? `<span>${esc(s.note)}</span>` : ''}</div>${s.pickupOnly && mode === 'delivery' ? '<div class="secflag">Solo para Pickup · cambiá a Pickup arriba para pedirlas</div>' : ''}<div class="icards">${s.items.map(deskCardHtml).join('')}</div></section>`;
       const pill = cartPillHtml();
       const chrome = typeof opts.deskChrome === 'function' ? String(opts.deskChrome() || '') : '';
-      const scroller = `<div class="scroller store-main" id="scroller"><div class="shero">${hero}</div>
+      const scroller = `<div class="scroller store-main" id="scroller"><div class="shero">${hero}${SOC ? `<span class="hbtns">${heartBtn('')}${shareBtn('')}</span>` : ''}</div>
     <div class="sinfo"><div>${cfg.kicker ? `<div class="kicker">${esc(cfg.kicker)}</div>` : ''}<h1 class="brandname">${esc(cfg.name || '')}</h1>${pillsHtml()}<div class="facts">${deskFactsHtml()}</div>${closednote}</div>
       <div class="tools"><div class="toolrow"><div class="seg" role="group" aria-label="Tipo de pedido"><button aria-pressed="${mode === 'delivery'}" data-act="mode" data-val="delivery">${IC.bike}Delivery</button><button aria-pressed="${mode === 'pickup'}" data-act="mode" data-val="pickup">${IC.bag}Pickup</button></div>${deskCellsHtml()}</div><button class="ssearch" data-act="ssearch">${IC.search}Buscar en ${esc(cfg.name || '')}</button></div></div>
     <div class="sgrid">${rail}<main class="scontent" id="content">${content}</main></div></div>`;
@@ -2177,6 +2204,8 @@
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
+      if (act === 'fav') { if (SOC && authOf() === 'guest') emit('signin', { ctx: 'favorites' }); return; }   // C-1a: a guest's heart ⇒ the sign-in
+      if (act === 'share') { shareStore(); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
       // S7a-2: the host may adopt a newer verified menu first (opts.beforeCheckout() === false ⇒ it took over: not opened here)

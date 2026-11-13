@@ -35675,5 +35675,73 @@
   "kills_with": [
    "G1-mixed"
   ]
+ },
+ {
+  "id": "c1a-01",
+  "slice": "c1a",
+  "label": "the UI invents «Nuevo en Sherpa» when the envelope served no ratings (rule 8; the plan mutant)",
+  "file": "../customer-app/capp-home.js",
+  "from": "if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return",
+  "to": "if (true) return",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T2"
+  ]
+ },
+ {
+  "id": "c1a-02",
+  "slice": "c1a",
+  "label": "Home reads the LIVE directory entry, not the per-visit frozen rating (a rating pops into a visible list)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {})",
+  "to": "...({})",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T3"
+  ]
+ },
+ {
+  "id": "c1a-03",
+  "slice": "c1a",
+  "label": "«Compartir» drawn with neither Web Share nor the clipboard (a dead button)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const canShare = () => { const n = navOf(); return !!(",
+  "to": "const canShare = () => { const n = navOf(); return true || !!(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T6"
+  ]
+ },
+ {
+  "id": "c1a-04",
+  "slice": "c1a",
+  "label": "the heart shown to a member / an unresolved session before C-1b (a heart that cannot save)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const heartOff = () => (authOf() === 'guest' ?",
+  "to": "const heartOff = () => (true ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T7"
+  ]
  }
 ]

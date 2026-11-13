@@ -4586,3 +4586,122 @@ test('S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart wit
   assert.ok(txt(S.q('#layer .cartnote')).includes('1 plato ya no está disponible'), `🔴 the existing disclosure (S3-CAPP-A2-NOTE): ${txt(S.q('#layer .cartnote'))}`);
   assert.deepEqual(J(ui1.cart.lines()).map((l) => l.key), [plain.key], 'the vanished dish is dropped; the rest is carried');
 });
+
+// ── C-1a (PLAN-capp-c1-build r0, APPROVED 11-13; D-3 r3 frames 9.1 / 9.4): the store's published rating rides the DIRECTORY (directory-2
+// `ratings`), from the REAL chain: rating nodes by the real updaters (fulfilmentUpdater → v2Updater) → the real S-B projection
+// (buildPublicStats) → the real directory allowlist (ratingsOf), placed in the real ENTRY_FIELDS order over the pinned 5f entry ──
+const DIRM = FN_REQ('./directory/directory.js'), AGG = FN_REQ('./ratings/aggregate.js'), RV2 = FN_REQ('./ratings/rating-v2.js');
+const DAY = 86400e3;
+function c1Stats(rid, { stars = [], firstServedAt = null } = {}) {
+  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, now: T0 - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: T0 - 4 * DAY + i }, o)(n); });
+  return AGG.buildPublicStats({ rid, nowMs: T0, orders: [], ratings: nodes, priceOf: () => null, firstServedAt });
+}
+// a directory-2 body: the pinned complete generation, every entry rebuilt in the real ENTRY_FIELDS order with `ratings` = ratingsOf(stats)
+function c1Body(statsBy) {
+  const b = J(SC.complete.body); b.representation_version = DIRM.REPRESENTATION_VERSION;
+  b.restaurants = b.restaurants.map((e) => Object.fromEntries(DIRM.ENTRY_FIELDS.map((k) => [k, k === 'ratings' ? DIRM.ratingsOf(statsBy[e.restaurant_id] || null) : (e[k] === undefined ? null : e[k])])));
+  return b;
+}
+const c1Resp = (statsBy) => ({ status: 200, body: c1Body(statsBy), etag: '"c1-' + Object.keys(statsBy).join('-') + '"' });
+const TEN = [5, 5, 5, 5, 5, 4, 5, 5, 4, 5];   // 10 live ratings ⇒ avg 4.8
+const RATED = () => ({ x_pizza: c1Stats('x_pizza', { stars: TEN }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 10 * DAY }) });
+test('C-1a premise: the real chain publishes x_pizza «4.8 (10)» and la_musa NEW (2 ratings, first served 10 days ago); the body carries the real directory-2 schema', () => {
+  const b = c1Body(RATED());
+  assert.deepEqual(b.restaurants[0].ratings, { rating_avg: 4.8, rating_count: 10 }, 'x_pizza: ≥ 10 ⇒ avg + count');
+  assert.deepEqual(Object.keys(b.restaurants[1].ratings), ['new_until'], 'la_musa: below 10 ⇒ only new_until');
+  assert.deepEqual(Object.keys(b.restaurants[0]), DIRM.ENTRY_FIELDS, 'the real entry schema');
+});
+const ratingText = (el) => (el ? txt(el).replace(/\s+/g, '') : null);
+test('C-1a T1 (frame 9.1 phone + 9.4): «★ 4,8 (10)» is the FIRST store fact and the FIRST item of an open home card\'s meta, then «·»', async () => {
+  const S = bootShell({ dirScript: [c1Resp(RATED())] }); await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+  try {
+    const meta = S.q('.rlist .rcard[data-rid="x_pizza"] .meta');
+    assert.ok(meta.firstElementChild && meta.firstElementChild.classList.contains('rating'), '🔴 C1-T1: the card meta starts with the rating');
+    assert.equal(ratingText(meta.firstElementChild), '4,8(10)', '🔴 C1-T1: comma decimal, exact count');
+    assert.equal(txt(meta.firstElementChild.nextElementSibling), '·', 'then the separator');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const f = S.q('.info .facts');
+    assert.ok(f.firstElementChild && f.firstElementChild.classList.contains('rating'), '🔴 C1-T1: the store facts start with the rating');
+    assert.equal(ratingText(f.firstElementChild), '4,8(10)'); assert.equal(txt(f.firstElementChild.nextElementSibling), '·');
+  } finally { S.w.close(); }
+});
+test('C-1a T1 desk (frame 9.1 desktop): the rating is the first desk fact', async () => {
+  const S = bootShell({ media: fakeMedia(true), dirScript: [c1Resp(RATED())] }); await flush(); await flush();
+  try {
+    S.click('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"]'); await flush();
+    const f = S.q('.sinfo .facts');
+    assert.ok(f && f.firstElementChild && f.firstElementChild.classList.contains('rating'), '🔴 C1-T1-desk: the first desk fact');
+    assert.equal(ratingText(f.firstElementChild), '4,8(10)');
+  } finally { S.w.close(); }
+});
+test('C-1a T2 (frame 9.1 phone right): below 10 ratings within 60 days of first serving ⇒ «Nuevo en Sherpa», no number; after 60 days ⇒ nothing at all', async () => {
+  const S = bootShell({ dirScript: [c1Resp(RATED())] }); await until(() => S.q('.rlist .rcard[data-rid="la_musa"]')); await flush();
+  try {
+    const meta = S.q('.rlist .rcard[data-rid="la_musa"] .meta');
+    assert.equal(meta && meta.firstElementChild && txt(meta.firstElementChild), 'Nuevo en Sherpa', '🔴 C1-T2: the pill first');
+    assert.ok(meta.firstElementChild.classList.contains('new') && !S.q('.rlist .rcard[data-rid="la_musa"] .rating'), '🔴 C1-T2: no number, no star');
+  } finally { S.w.close(); }
+  const old = { x_pizza: c1Stats('x_pizza', { stars: [5] }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 61 * DAY }) };
+  const O = bootShell({ dirScript: [c1Resp(old)] }); await until(() => O.q('.rlist .rcard[data-rid="la_musa"]')); await flush();
+  try {
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const card = O.q(`.rlist .rcard[data-rid="${rid}"]`);
+      assert.equal(card.querySelector('.rating, .pill.new'), null, `🔴 C1-T2: ${rid} — nothing (no pill, no empty slot)`);
+      assert.ok(!/^·/.test(txt(card.querySelector('.meta'))), `${rid}: no dangling separator`);
+    }
+  } finally { O.w.close(); }
+});
+test('C-1a T3 (no pop-in): Home visible with a stored body WITHOUT ratings → the revalidation brings ratings ⇒ the visible cards are unchanged; the next Home entry adopts them', async () => {
+  const st = memStorage({ 'capp:directory': JSON.stringify({ v: 1, body: SC.complete.body, etag: SC.complete.headers.ETag, fetched_at: T0 - 60e3 }) });
+  const S = bootShell({ storage: st, dirScript: [c1Resp(RATED())] });
+  try {
+    await flush(); await flush(); await flush();
+    assert.ok(S.dirCalls.length >= 1, 'premise: revalidated');
+    assert.equal(S.q('.rlist .rcard .rating, .rlist .rcard .pill.new'), null, '🔴 C1-T3: no rating inserted into the visible list');
+    S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(ratingText(S.q('.rlist .rcard[data-rid="x_pizza"] .meta .rating')), '4,8(10)', '🔴 C1-T3: adopted on the next Home entry');
+  } finally { S.w.close(); }
+});
+test('C-1a T5: a degraded / absent `ratings` (null) ⇒ no rating, no pill; the list renders and enters as today', async () => {
+  const S = bootShell({ dirScript: [c1Resp({})] }); await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+  try {
+    assert.equal(S.q('.rcard .rating, .rcard .pill.new'), null, '🔴 C1-T5: nothing drawn');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.equal(S.q('.info .facts .rating, .info .facts .pill.new'), null, '🔴 C1-T5: the store neither');
+  } finally { S.w.close(); }
+});
+test('C-1a T6 share (frame 9.1): Web Share with the store\'s URL; no Web Share ⇒ the clipboard + «Enlace copiado»; neither ⇒ no share button', async () => {
+  const shared = [];
+  const S = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { w.navigator.share = async (d) => { shared.push(d); }; } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    S.click('.store-nav [data-act="share"]'); await flush();
+    assert.equal(shared.length, 1, '🔴 C1-T6: navigator.share called'); assert.match(shared[0].url, /\/r\/x_pizza$/, '🔴 C1-T6: the store URL'); assert.ok(shared[0].title, 'with its name');
+  } finally { S.w.close(); }
+  const copied = [];
+  const C = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { delete w.navigator.share; Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async (t) => { copied.push(t); } }, configurable: true }); } });
+  try {
+    await until(() => C.q('.rlist .rcard[data-rid="x_pizza"]')); C.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    C.click('.store-nav [data-act="share"]'); await flush(); await flush();
+    assert.equal(copied.length, 1, '🔴 C1-T6: copied'); assert.match(copied[0], /\/r\/x_pizza$/); assert.equal(txt(C.q('#toast')), 'Enlace copiado', '🔴 C1-T6: «Enlace copiado»');
+  } finally { C.w.close(); }
+  const N = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { delete w.navigator.share; Object.defineProperty(w.navigator, 'clipboard', { value: undefined, configurable: true }); } });
+  try { await until(() => N.q('.rlist .rcard[data-rid="x_pizza"]')); N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.equal(N.q('[data-act="share"]'), null, '🔴 C1-T6: no API ⇒ no button'); } finally { N.w.close(); }
+});
+test('C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s heart opens the sign-in (ctx favorites), no request; a member\'s heart slot is RESERVED (hidden) until C-1b; unresolved ⇒ reserved', async () => {
+  const G = bootShell({ auth: 'guest', dirScript: [c1Resp(RATED())] });
+  try {
+    await until(() => G.q('.rlist .rcard[data-rid="x_pizza"]')); G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const h = G.q('.store-nav [data-act="fav"]');
+    assert.ok(h && !/visibility/.test(h.getAttribute('style') || '') && h.getAttribute('aria-label') === 'Guardar en favoritos', '🔴 C1-T7: the guest sees the heart');
+    const ev0 = G.events.length; G.click(h); await flush();
+    assert.deepEqual(G.events.slice(ev0).filter(([n]) => n === 'signin').map(([, d]) => d.ctx), ['favorites'], '🔴 C1-T7: the heart ⇒ the sign-in');
+  } finally { G.w.close(); }
+  for (const auth of ['member', 'unresolved']) {
+    const M = bootShell({ auth, dirScript: [c1Resp(RATED())] });
+    try {
+      await until(() => M.q('.rlist .rcard[data-rid="x_pizza"]')); M.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const h = M.q('.store-nav [data-act="fav"]');
+      assert.ok(h && /visibility:hidden/.test(h.getAttribute('style') || '') && h.getAttribute('aria-hidden') === 'true', `🔴 C1-T7: ${auth} ⇒ the slot reserved, hidden`);
+    } finally { M.w.close(); }
+  }
+});

@@ -538,5 +538,17 @@
  "js sherpa-client.js @s #ffffff ×1": {
   "disposition": "fixed",
   "why": "the shared update notice: a dark chip readable on both themes (§5 fixed; driver app too)"
+ },
+ "css .hbtns button | background rgba(255,255,255,.92)": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B) — the same chip on the desktop store hero (C-1a heart + share, D-3 r3 frame 9.1 .hbtns)"
+ },
+ "css .hbtns button | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6) — the same chip on the desktop store hero (C-1a heart + share, D-3 r3 frame 9.1 .hbtns)"
+ },
+ "css .hbtns button | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B) — the same chip on the desktop store hero (C-1a heart + share, D-3 r3 frame 9.1 .hbtns)"
  }
 }

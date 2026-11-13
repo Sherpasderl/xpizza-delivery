@@ -192,6 +192,8 @@
     }
 
     // ── the store mount ──
+    // the store's shareable URL: the route's own path (ids-first, D-4a) on this page's origin
+    const storeUrl = (rid) => { try { const path = CappRoutes ? CappRoutes.format({ name: 'store', rid, step: 'store' }) : null; return path && win && win.location ? win.location.origin + path : null; } catch (_) { return null; } };
     function mountStore(entry, freshBody, carried) {
       const row = dir.view().rows.find((r) => r.rid === entry.rid);
       const cfg = row && cfgOf(row.entry), e = freshBody ? { body: freshBody, state: 'fresh' } : cache.peek(entry.rid);
@@ -205,7 +207,9 @@
       const updOpts = { appUpdated: () => appUpdated, onAppUpdatedSeen: () => { appUpdated = false; } };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, ...updOpts, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
+      // C-1a: the store's social row, FROZEN per mount — the rating (CappHome's one source), the share target (the store's own URL)
+      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid) };
+      const ui = CappUI.mount(doc, { ...uo, ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
@@ -662,11 +666,20 @@
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
+    // C-1a (PLAN-capp-c1-build r0 §3, no pop-in): a Home card's rating is FROZEN for the visit — taken the first time that card is
+    // painted in this Home visit (a cold list paints each card WITH its rating in one shot); a revalidation that brings new ratings
+    // while Home stays visible inserts nothing; the next Home entry (any other tab rendered in between) adopts them
+    let homeSeen = null;
+    function seenRatingsOf(r) {
+      if (!homeSeen.has(r.rid)) homeSeen.set(r.rid, r.entry && r.entry.ratings && typeof r.entry.ratings === 'object' ? r.entry.ratings : null);
+      return homeSeen.get(r.rid);
+    }
     function vm() {
       const v = dir.view();
+      if (S.tab !== 'home') homeSeen = null; else if (!homeSeen) homeSeen = new Map();
       const rows = S.heldErr ? [] : v.rows.map((r) => {
         const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
-        return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
+        return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid, ...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {}) };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
