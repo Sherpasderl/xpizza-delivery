@@ -670,7 +670,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -894,6 +894,9 @@
     const validAge = (od) => { const t = Number(nowMs()); return !!od && Number.isFinite(od.placedAt) && od.placedAt <= t + 5 * 60e3 && t - od.placedAt < ACTIVE_MS; };
     function dropActive() { S.order = null; try { if (storage) storage.removeItem(ACTIVE_KEY); } catch (_) {} }
     // the order THIS identity may see now, or null (an expired one is dropped on the spot)
+    // C-3r G4 (v6 tabbar): the «Pedidos» dot = THIS device's active order — activeOrder()'s predicate WITHOUT its side effects (a
+    // render never stops or drops a record)
+    const liveDot = () => { const od = S.order; return !!(od && !CappOrder.FINAL.has(od.status) && validAge(od) && od.owner && od.owner === ownerNow()); };
     function activeOrder() {
       const od = S.order; if (!od || CappOrder.FINAL.has(od.status)) return null;
       if (!validAge(od)) { stopOrder(); dropActive(); return null; }

@@ -35623,5 +35623,39 @@
   "kills_with": [
    "G1-row misaligned"
   ]
+ },
+ {
+  "id": "c3r-04",
+  "slice": "c3r",
+  "label": "the phone «Pedidos» tab never shows the active-order dot (C-3r G4)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "cartN: nCart, live: liveDot(),",
+  "to": "cartN: nCart, live: false,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PED-G4"
+  ]
+ },
+ {
+  "id": "c3r-05",
+  "slice": "c3r",
+  "label": "the screen is no longer reflected in the URL (D-4a Phase 1; C-3r G3)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (path !== win.location.pathname) win.history.replaceState(",
+  "to": "if (false) win.history.replaceState(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PED-G3"
+  ]
  }
 ]

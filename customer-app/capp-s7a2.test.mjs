@@ -2267,7 +2267,7 @@ function servedCtx(rid, { drop = [] } = {}) {
 const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
 const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
   return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null } = {}) {
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2278,6 +2278,7 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
     // the fake verifyIdToken: the Firebase ID token's payload (the real writer's JWT shape, TOK) — a string user_id AND customer === true
     // (the contract; Codex Pedidos r1), else 401
     let uid = null; try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); if (pl && typeof pl.user_id === 'string' && pl.customer === true) uid = pl.user_id; } catch (_) { uid = null; }
+    if (claimless) uid = null;   // C-3r W3: a token WITHOUT the customer claim (the contract's 401)
     if (!uid) return out(401, { ok: false, reason: 'unauthenticated' });
     if (deleted.has(uid)) return out(403, { ok: false, reason: 'deleted' });
     const keys = [...url.searchParams.keys()];
@@ -2355,12 +2356,22 @@ test('Pedidos (member): the rows from getMyOrders (the real writer\'s entries) �
   } finally { S.w.close(); }
 });
 test('Pedidos: a refused / failed read (401, 403, offline) claims NO empty state; a guest gets v6\'s empty state with NO read', async () => {
-  for (const [label, opts, fbTok] of [['403 tombstone', { deleted: new Set(['u_ana']) }]]) {
+  // C-3r W3: every refusal the title names RUNS — 401 (a token without the customer claim: the server's own 401), 403 (tombstone),
+  // offline (the transport rejects)
+  const OFFLINE = { then: () => Promise.reject(new Error('network')) };
+  for (const [label, opts] of [['401 unauthenticated', { claimless: true }], ['403 tombstone', { deleted: new Set(['u_ana']) }], ['offline', { gate: OFFLINE }]]) {
     const { S, mo } = await pedidosBoot({ u_ana: {} }, opts);
-    try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.equal(mo.calls.length, 1); assert.equal(S.q('.oempty'), null, `🔴 PED-2: ${label} ⇒ never «Todavía no tenés pedidos»`); } finally { S.w.close(); }
+    try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.ok(mo.calls.length >= 1, `premise: ${label} — the read was made`); assert.equal(S.q('.oempty'), null, `🔴 PED-2: ${label} ⇒ never «Todavía no tenés pedidos»`); } finally { S.w.close(); }
   }
   const G = bootShell({ runtime: { ...RUNTIME, guestCardOnly: true } });
-  try { await flush(); G.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(txt(G.q('.oempty b')), 'Todavía no tenés pedidos', '🔴 PED-2: a guest\'s empty state (v6)'); assert.equal(txt(G.q('.oempty .primary')), 'Explorar restaurantes'); } finally { G.w.close(); }
+  try {
+    await flush(); G.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(txt(G.q('.oempty b')), 'Todavía no tenés pedidos', '🔴 PED-2: a guest\'s empty state (v6)'); assert.equal(txt(G.q('.oempty .primary')), 'Explorar restaurantes');
+    G.click('.oempty .primary'); await flush();   // C-3r W4: the empty state's CTA goes to Inicio
+    assert.equal(G.q('.tabbar [data-tab="home"]').getAttribute('aria-current'), 'true', '🔴 PED-2 W4: «Explorar restaurantes» ⇒ Inicio');
+  } finally { G.w.close(); }
+  // C-3r W2: a guest on the WIRED member transport (signed out: no persisted user, no profile) makes NO history read at all
+  const { S: W, mo: wmo } = await pedidosBoot({ u_ana: { 'XP-1': { ts: 1, restaurant: 'x_pizza', status: 'delivered', items: [] } } }, { fbOpts: { persisted: null }, storage: memStorage({}) });
+  try { W.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.equal(wmo.calls.length, 0, '🔴 PED-2 W2: a guest makes NO getMyOrders read'); assert.ok(W.q('.oempty'), 'the guest\'s empty state'); } finally { W.w.close(); }
 });
 test('Pedidos: THIS device\'s active order — its card (v6 «Orden #N · hoy · …», the sent lines) opens its live screen; it survives a reload (the local record) and a reload of /r/{rid}/pago lands on its screen; a final status drops it', async () => {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', storage = memStorage();
@@ -2398,9 +2409,42 @@ test('Pedidos: the device\'s active record is written AT placement (no live chan
     assert.ok(rec.exp - rec.order.placedAt === 24 * 3600e3, 'until final or 24 h');
   } finally { S.w.close(); }
 });
+// C-3r G4 (v6 tabbar, per the frame: the PHONE «Pedidos» tab carries the active-order dot; D-3 r3's desktop bar draws none):
+// the dot follows THIS device's active order (its local record), from the first paint after a reload; none without one
+test('C-3r G4: the phone «Pedidos» tab shows the active-order dot while this device has an active order (also after a reload); none without one; the desktop bar draws none', async () => {
+  const { ES } = fakeES(); const TOKEN = 'tok_abcdefgh12', storage = memStorage();
+  const readPublic = async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) });
+  const dot = (X) => X.q('.tabbar [data-tab="orders"] .badge.dot');
+  const N = bootShell({ storage: memStorage(), runtime: RUNTIME });
+  try { await flush(); assert.equal(dot(N), null, '🔴 PED-G4: no active order ⇒ no dot'); } finally { N.w.close(); }
+  const S = bootShell({ storage, runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic, mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: GEO_OK2 });
+  try {
+    await flush(); await placeShellCash(S); await flush(900);
+    S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(dot(S), '🔴 PED-G4: an active order on this device ⇒ the dot on «Pedidos»');
+  } finally { S.w.close(); }
+  const R = bootShell({ storage, runtime: RUNTIME });
+  try { await flush(); assert.ok(dot(R), '🔴 PED-G4: after a reload, the dot at the first paint (the local record)'); assert.equal(R.q('.desknav .badge'), null, 'the desktop bar draws no dot (D-3 r3)'); } finally { R.w.close(); }
+});
 test('Pedidos: cold link /pedidos hydrates the screen; leaving reflects the URL', async () => {
   const S = routeShell('/pedidos', { runtime: { ...RUNTIME, guestCardOnly: true } });
   try { await flush(); await flush(); assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 PED-4: /pedidos ⇒ Pedidos'); S.click('.tabbar [data-tab="home"]'); await flush(); assert.equal(new URL(S.w.location.href).pathname, '/'); } finally { S.w.close(); }
+});
+test('C-3r G3 (D-4a Phase 1 = URL REFLECTION by replaceState, no Forward): a TAP on Pedidos writes /pedidos; a past receipt opened from it, then the device Back ⇒ Pedidos again with /pedidos reflected; no Forward entry', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-G3', {});
+  const { S } = await pedidosBoot(db, { orders, routing: true, url: 'https://app.test/' });
+  try {
+    assert.equal(where(S), '/', 'premise: Inicio');
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.equal(where(S), '/pedidos', '🔴 PED-G3: the tap reflects /pedidos'); assert.equal(txt(S.q('.pagehead h1')), 'Pedidos');
+    await openPastReceipt(S, 'XP-G3');
+    assert.ok(S.q('.mk-card'), 'premise: the receipt is drawn over Pedidos (no route of its own: the URL stays /pedidos)');
+    const len = S.w.history.length;
+    S.w.history.back(); await flush(); await flush();
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 PED-G3: the device Back ⇒ Pedidos'); assert.equal(where(S), '/pedidos', '🔴 PED-G3: Back reflects /pedidos');
+    assert.ok(S.w.history.length <= len, '🔴 PED-G3: no entry was pushed for Forward (replaceState only)');
+  } finally { S.w.close(); }
 });
 test('getMyOrders client: ONLY the Row whitelist survives; a malformed row is dropped; the token rides the header of a GET', async () => {
   const A = require('./capp-signup-api.js');
@@ -3010,7 +3054,7 @@ test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the l
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', GONE) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-15: the store opens (its own disclosure)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-15: no silent «Agregado» over a shortened cart'); void st; } finally { S.w.close(); } }
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:avail:x_pizza', JSON.stringify([String(marg.dish_id)])) });
-    try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0) || true); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
+    try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0), '🔴 VP-17: nothing added to the cart (C-3r W1: no longer `|| true`)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
 });
 test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
