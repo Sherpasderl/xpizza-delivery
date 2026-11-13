@@ -35858,5 +35858,21 @@
   "kills_with": [
    "WAKE-4"
   ]
+ },
+ {
+  "id": "wake-07",
+  "slice": "wake",
+  "label": "no page-owned ceiling: a controller that never loads leaves the opaque overlay up forever (Codex r1 P2)",
+  "file": "../customer-app/capp.css",
+  "from": "pointer-events:none;opacity:1;animation:cs-cap 200ms ease-out 4000ms forwards}",
+  "to": "pointer-events:none;opacity:1}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-7"
+  ]
  }
 ]

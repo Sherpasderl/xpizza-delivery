@@ -89,3 +89,14 @@ test('WAKE-5 the boot starts the splash in the INSTALLED app (runtime.mode nativ
     assert.equal(ex, mode === 'native', `🔴 WAKE-5: ${mode} ⇒ ${mode === 'native' ? 'started (READY during the mount fades it)' : 'never started'}`);
   }
 });
+test('WAKE-7 (Codex r1 P2): the page owns an INDEPENDENT ceiling — if capp-splash.js never loads, the CSS alone fades and hides the overlay at the same 4 s (no inline script: CSP)', () => {
+  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
+  const base = css.match(/\.csplash\{[^}]*\}/)[0];
+  const m = base.match(/animation:cs-cap (\d+)ms [a-z-]+ (\d+)ms forwards/);
+  assert.ok(m, '🔴 WAKE-7: the base overlay rule (no JS-added class) carries the cap animation');
+  assert.equal(Number(m[2]), SP.CAP_MS, '🔴 WAKE-7: ONE ceiling — the CSS delay is capp-splash.js CAP_MS');
+  const kf = css.match(/@keyframes cs-cap\{[^}]*\{[^}]*\}[^}]*\{([^}]*)\}\}/);
+  assert.ok(kf && /opacity:0/.test(kf[1]) && /visibility:hidden/.test(kf[1]), '🔴 WAKE-7: the cap ends invisible AND hidden (never a lingering layer)');
+  const rm = css.match(/@media \(prefers-reduced-motion:reduce\)\{[^@]*?\}\}/)[0];
+  assert.ok(!/\.csplash\{[^}]*animation:none/.test(rm), '🔴 WAKE-7: reduced motion never disables the ceiling (only the mark\'s motion)');
+});
