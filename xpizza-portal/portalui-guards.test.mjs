@@ -22,6 +22,7 @@ import { S1_BASE, S1_FOLD } from './s1-fold.mjs';
 import { S2_BASE, S2_FOLD } from './s2-fold.mjs';
 import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
 import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
+import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -32,7 +33,18 @@ const BASE = '613f7e08';
 // lowest read, so UNSAVED and every older pin judge exactly what they judged before; the S1 test pins the layer itself on disk.
 // STRUCTURE S2 (PLAN-portal-structure-S2-ui r3) is the NEWEST layer of all, above S1: folded out at the very lowest read, so S1,
 // UNSAVED and every older pin judge exactly what they judged before; the S2 test pins the layer itself on disk.
-const portalOnDisk = (f) => readFileSync(join(DIR, f), 'utf8');
+// «Quitar del menú» (PLAN-portal-remove-product r3) is the NEWEST layer of all, above S2: folded out at the very lowest read, so S2
+// and every older pin judge exactly what they judged before; the RP test pins the layer itself on disk.
+const fileOnDisk = (f) => readFileSync(join(DIR, f), 'utf8');
+function withoutRP(f, src) {
+  let out = src;
+  for (const [now, was] of RP_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `RP hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const portalOnDisk = (f) => withoutRP(f, fileOnDisk(f));
 function withoutS2(f, src) {
   let out = src;
   for (const [now, was] of S2_FOLD[f] || []) {
@@ -408,6 +420,18 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   const inside = S1_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function extrasBaseline('));
   assert.ok(inside, 'premise: the baseline is one of the hunks');
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
+});
+
+test('«Quitar del menú»: editor.js gains exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
+  for (const f of Object.keys(RP_FOLD)) {
+    const was = execFileSync('git', ['show', `${RP_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.notEqual(withoutRP(f, fileOnDisk(f)), fileOnDisk(f), `non-vacuity: the ${f} fold changes something`);
+    assert.equal(withoutRP(f, fileOnDisk(f)), was, `${f} minus the RP hunks ≠ ${RP_BASE}`);
+    assert.notEqual(withoutRP(f, fileOnDisk(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
+  }
+  const inside = RP_FOLD['editor.js'].map(([now]) => now).find((t) => t.includes('export function removeProduct('));
+  assert.ok(inside, 'premise: the removal writer is one of the hunks');
+  assert.throws(() => withoutRP('editor.js', fileOnDisk('editor.js').replace(inside, inside.replace('all or nothing', 'all or nothingX'))), 'an edit inside a hunk breaks it');
 });
 
 test('STRUCTURE S2: app.js / editor.js / item-edit-logic.js gain exactly the named hunks — folding them out gives S2_BASE byte-for-byte', () => {

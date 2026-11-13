@@ -408,15 +408,27 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // exposure-transitions.js): applyExposureOps (an ordered op list, all or nothing, with the server's extrasCatalog switch) and the
   // drawer's ONE composition, composeDish (pure; the preview) / commitDish (strict; «Guardar»); the read-only pendingStructure (in
   // pendingCount) and attachRefusal (the writer's own dry run for X3b / category mode). No key, id or identity stamp is written.
+  // «Quitar del menú» (PLAN-portal-remove-product r3, APPROVED 11-12) — a PUBLISHED plain dish leaves as ONE unit through removeProduct
+  // (its row, order entry, photo and its OWN refs; its identity stamp claimed through mergeDeletionClaim) and comes back through
+  // undoRemoveProduct («Deshacer»); both ask the ONE predicate canRemoveProduct / canEditContent first; rebuildOrders is the ONE order
+  // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed.
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
     'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
     'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRenames', 'pendingStructure', 'pendingTexts',
-    'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'productsUsingGroup', 'rebuildOrders', 'removeAddition', 'removeChoice', 'removeProduct', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
-    'tidyItemName',
+    'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
+  // «Quitar del menú»: both writers ask the boundary first — removeProduct through the ONE predicate (which asks canEditContent),
+  // undoRemoveProduct directly
+  const rpBody = editor.slice(editor.indexOf('export function removeProduct('), editor.indexOf('export function removeProduct(') + 200);
+  assert.ok(/const p = canRemoveProduct\(draft, key, ctx\);\n  if \(!p\.enabled\) return \{ ok: false, code: p\.code \};/.test(rpBody), 'removeProduct asks the ONE predicate first');
+  const crBody = editor.slice(editor.indexOf('export function canRemoveProduct('), editor.indexOf('export function canRemoveProduct(') + 300);
+  assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return no\('not_editable'\);/.test(crBody), 'the predicate refuses when the draft is not owned for editing, or a name waits');
+  const urBody = editor.slice(editor.indexOf('export function undoRemoveProduct('), editor.indexOf('export function undoRemoveProduct(') + 200);
+  assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(urBody), 'undoRemoveProduct refuses when the draft is not owned for editing');
   const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
   // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)
   assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing, or a name waits');

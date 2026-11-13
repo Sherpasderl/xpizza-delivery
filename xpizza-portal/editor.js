@@ -239,13 +239,116 @@ export function removeAddition(draft, id, savedAdditions = new Set()) {
   const g = groupOfRow(draft.state, items[i]);
   const row = items[i];
   if (g) dropGroup(draft.state, g);
+  dropDishUnit(draft.state, row);
+  return draft;
+}
+// ONE dish unit leaves the source: its row, its item_order entry and its photos entry — shared by removeAddition and removeProduct
+// («Quitar del menú») so the two cannot drift (PLAN-portal-remove-product r3 §4.1 step 3).
+function dropDishUnit(st, row) {
+  const id = rowId(row);
+  const items = rowsOf(st, 'item');
   items.splice(items.indexOf(row), 1);
-  dropFromOrder(draft.state, id);
+  dropFromOrder(st, id);
   // DISH PHOTOS B (codex r1 #1) — its photo goes with it: a `source.photos` key with no matching item fails editCatalog's
   // validation (the amended tmp-ref rule), so an orphan here would make the next save unsavable
-  const pm = draft.state.photos && typeof draft.state.photos === 'object' ? draft.state.photos : null;
-  if (pm && Object.prototype.hasOwnProperty.call(pm, id)) { delete pm[id]; if (!Object.keys(pm).length) delete draft.state.photos; }
-  return draft;
+  const pm = st.photos && typeof st.photos === 'object' ? st.photos : null;
+  if (pm && Object.prototype.hasOwnProperty.call(pm, id)) { delete pm[id]; if (!Object.keys(pm).length) delete st.photos; }
+}
+
+// ── «Quitar del menú» (PLAN-portal-remove-product r3, APPROVED 11-12; MOCKUP-portal-remove-product.html) ──────────────────────────
+// The served live order (P-R9, 5f `liveOrder: { items, rewards }`), well-formed — without it nothing is removed or restored (Q-13:
+// never a guessed order).
+const validLiveOrder = (lo) => !!(lo && Array.isArray(lo.items) && lo.items.every((k) => typeof k === 'string') && Array.isArray(lo.rewards)
+  && lo.rewards.every((k) => typeof k === 'string'));
+// §2 — the ONE predicate (the drawer's action and both writers ask it). ctx: { on (the server's productRemoval), baseReadable
+// (state.deletionBase), liveOrder (P-R9), savedAdditions (the server's unpublished additions) }. → { show, enabled, code }: rows 1–5
+// HIDE the action (U3); row 6 (no readable base / no live order) shows it disabled with the U2 line.
+export function canRemoveProduct(draft, key, ctx = {}) {
+  const no = (code, show = false) => ({ show, enabled: false, code });
+  if (!ctx || ctx.on !== true) return no('off');
+  if (!draft || !canEditContent(draft)) return no('not_editable');
+  const row = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === key);
+  if (!row) return no('unknown_item');
+  const saved = ctx.savedAdditions instanceof Set ? ctx.savedAdditions : new Set();
+  if (isTmp(row) || typeof row.key !== 'string' || saved.has(row.key)) return no('new_item');   // a «Nuevo» dish keeps «Descartar»
+  if (isOptionRow(row) || groupOfRow(draft.state, row)) return no('has_options');                // advisor ruling (b), until S3
+  const sid = row.display && row.display.identity_id;
+  if (typeof sid !== 'string' || !sid) return no('unstamped');                                   // the server would refuse a RESET
+  if (ctx.baseReadable !== true || !validLiveOrder(ctx.liveOrder)) return no('base_unreadable', true);
+  return { show: true, enabled: true, code: null };
+}
+// §4.2 / P-R9 — the ONE order rebuild: item_order = the live order filtered to what is present, THEN the draft's additions (keys the
+// live order does not hold) in their relative order — the server's rule (add-product.js: new products go at the end); rewards = the
+// live rewards filtered to what is present, then any other entry. Pure over the source; false (nothing written) without the live order.
+export function rebuildOrders(st, liveOrder) {
+  if (!st || typeof st !== 'object' || !validLiveOrder(liveOrder)) return false;
+  const present = new Set(rowsOf(st, 'item').map(rowId).filter((k) => typeof k === 'string'));
+  st.structure = st.structure || {};
+  const liveItems = new Set(liveOrder.items);
+  const cur = Array.isArray(st.structure.item_order) ? st.structure.item_order : (st.structure.item_order = []);
+  const nextItems = [...liveOrder.items.filter((k) => present.has(k)), ...cur.filter((k) => !liveItems.has(k))];
+  cur.splice(0, cur.length, ...nextItems);
+  const rei = st.structure.redeem_eligible_items;
+  if (Array.isArray(rei) || liveOrder.rewards.length) {
+    const liveRewards = new Set(liveOrder.rewards);
+    const next = [...liveOrder.rewards.filter((k) => present.has(k)), ...(Array.isArray(rei) ? rei : []).filter((k) => !liveRewards.has(k))];
+    if (Array.isArray(rei)) rei.splice(0, rei.length, ...next); else st.structure.redeem_eligible_items = next;
+  }
+  return true;
+}
+// §4.1 — remove a PUBLISHED plain dish as one unit, all or nothing: its row, order entry and photo (dropDishUnit), its OWN entries
+// (P-R4, 5f d1309843: item_overrides[key], extras_by_item[key] — the map itself stays, B-3 — and its rewards entry), and its identity
+// stamp claimed (Ruling A). → { ok:true, snap } (P-R1's shape; the caller's stash, for «Deshacer») | { ok:false, code }.
+export function removeProduct(draft, key, ctx = {}) {
+  const p = canRemoveProduct(draft, key, ctx);
+  if (!p.enabled) return { ok: false, code: p.code };
+  const st = draft.state;
+  const row = rowsOf(st, 'item').find((r) => r && r.key === key);
+  const s = st.structure || {};
+  const ov = s.exposure && s.exposure.item_overrides && typeof s.exposure.item_overrides === 'object' ? s.exposure.item_overrides : null;
+  const ebi = s.extras_by_item && typeof s.extras_by_item === 'object' ? s.extras_by_item : null;
+  const rei = Array.isArray(s.redeem_eligible_items) ? s.redeem_eligible_items : null;
+  const order = Array.isArray(s.item_order) ? s.item_order : [];
+  const pm = st.photos && typeof st.photos === 'object' ? st.photos : null;
+  const j = order.indexOf(key), ri = rei ? rei.indexOf(key) : -1;
+  // `after` / `redeem_index` are kept in P-R1's shape but NEVER place anything: §4.2 rebuilds both orders from P-R9
+  const snap = clone({ key, identity_id: row.display.identity_id, row, after: j > 0 ? order[j - 1] : null, photo: pm && own(pm, key) ? pm[key] : null,
+    refs: { item_override: ov && own(ov, key) ? ov[key] : null, extras_by_item: ebi && own(ebi, key) ? ebi[key] : null, redeem_index: ri === -1 ? null : ri } });
+  dropDishUnit(st, row);
+  if (ov && own(ov, key)) delete ov[key];
+  if (ebi && own(ebi, key)) delete ebi[key];
+  if (ri !== -1) rei.splice(ri, 1);
+  mergeDeletionClaim(st, { add: [row.display.identity_id] });
+  rebuildOrders(st, ctx.liveOrder);
+  return { ok: true, snap };
+}
+// §4.2 — «Deshacer»: put the dish back from `snap` (the in-session stash: the row as it was just before the removal, D-2; or P-R1's
+// entry after a reload — row, photo, refs), withdraw its stamp, and rebuild both orders from the served live order (never from snap).
+export function undoRemoveProduct(draft, key, snap, liveOrder) {
+  if (!draft || !canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!validLiveOrder(liveOrder)) return { ok: false, code: 'base_unreadable' };
+  if (!snap || !snap.row || snap.row.key !== key) return { ok: false, code: 'unknown_item' };
+  const st = draft.state;
+  if (!Array.isArray(st.items)) st.items = [];
+  if (st.items.some((r) => r && r.key === key)) return { ok: false, code: 'present' };
+  // the row goes where the live order puts it among the rows (canonical items follow item_order); additions stay after it
+  const rank = (k) => { const i = liveOrder.items.indexOf(k); return i === -1 ? Infinity : i; };
+  const at = rank(key);
+  const pos = st.items.findIndex((r) => rank(rowId(r)) > at);
+  st.items.splice(pos === -1 ? st.items.length : pos, 0, clone(snap.row));
+  if (snap.photo) { if (!st.photos || typeof st.photos !== 'object') st.photos = {}; st.photos[key] = clone(snap.photo); }
+  const refs = snap.refs || {};
+  st.structure = st.structure || {};
+  if (refs.item_override != null) {
+    st.structure.exposure = st.structure.exposure || {};
+    st.structure.exposure.item_overrides = st.structure.exposure.item_overrides || {};
+    st.structure.exposure.item_overrides[key] = clone(refs.item_override);
+  }
+  if (refs.extras_by_item != null) { st.structure.extras_by_item = st.structure.extras_by_item || {}; st.structure.extras_by_item[key] = clone(refs.extras_by_item); }
+  const sid = snap.row.display && snap.row.display.identity_id;
+  if (typeof sid === 'string' && sid) mergeDeletionClaim(st, { withdraw: [sid] });
+  rebuildOrders(st, liveOrder);
+  return { ok: true };
 }
 
 // ADOPT the server's canonical source after a save: allocated keys and ids replace the temporary references, in the
@@ -1032,6 +1135,17 @@ export function mergeDeletionClaim(src, results) {
   // 'ids' (S2 §5.2 REVIEW-DELETIONS): the claim's ids, both stored shapes, sorted — the ONE place the claim is read (Ruling A)
   if (results === 'ids') { const c = src && src.deleted_ids; return [...new Set((Array.isArray(c) ? c : (c && typeof c === 'object' && Array.isArray(c.ids) ? c.ids : [])).map(String))].sort(); }
   if (results === null) { const c = src && src.deleted_ids; return Array.isArray(c) ? c.length > 0 : !!(c && typeof c === 'object' && Array.isArray(c.ids) && c.ids.length); }
+  // { add: [ids] } («Quitar del menú»: a dish's identity stamp — the dish writer has no op results) is the same union as the op results;
+  // { withdraw: [ids] } («Deshacer»): drop exactly those ids, ONE sorted array; no claim ⇒ nothing written; [] stays []
+  if (results && typeof results === 'object' && !Array.isArray(results) && Array.isArray(results.add)) return mergeDeletionClaim(src, [{ deletedIds: results.add }]);
+  if (results && typeof results === 'object' && !Array.isArray(results)) {
+    const cur = src && src.deleted_ids;
+    if (cur === undefined || !Array.isArray(results.withdraw)) return src;
+    const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);
+    const drop = new Set(results.withdraw.map(String));
+    src.deleted_ids = [...new Set(have.map(String))].filter((x) => !drop.has(x)).sort();
+    return src;
+  }
   const add = [];
   for (const r of results) for (const id of (r && Array.isArray(r.deletedIds) ? r.deletedIds : [])) add.push(String(id));
   if (!add.length) return src;
