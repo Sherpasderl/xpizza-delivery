@@ -2947,6 +2947,7 @@ test('Codex G7 r1 #1 (sign-out → guest): the guest gets a clean card-only flow
   await b.click('#cta'); await settle();
   const sub = b.q('[data-act="tip-place"]'); if (sub) { await b.click('[data-act="tipc"][data-val="0"]'); await tipPlace(b); await settle(); }
   assert.equal(heldSheet(b), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 S4-held: the local refusal');
+  assert.equal(b.text('#layer .errsheet p'), 'Entrá con esa cuenta o esperá unos minutos.', '🔴 HELDCOPY-legacy: a scheduled (non-SDK) hold keeps today\'s copy byte-identical (owner 11-13)');
   assert.deepEqual(b.qa('#layer .errsheet [data-act]').map((x) => [x.dataset.act, b.text(x)]), [['lclose', 'Entendido']], '🔴 S4-held: ONE action, «Entendido» — no retry');
   assert.deepEqual([b.srv.of('requestCheckoutCode').length, b.srv.of('createOrder').length, b.srv.of('chargeOnlineOrder').length], [0, 1, 0], '🔴 S4-held: no network call');
   assert.equal(b.storage.getItem(S4_PLACE_KEY), before, '🔴 S4-held: the record untouched');
@@ -2965,6 +2966,7 @@ test('Codex G7 r1 #1 (member B): another member gets a clean flow and the local 
   const sub = b.q('[data-act="tip-place"]'); if (sub) { await b.click('[data-act="tipc"][data-val="0"]'); await tipPlace(b); await settle(); }
   if (b.q('#layer [data-act="placing-go"]')) await b.click('#layer [data-act="placing-go"]');
   assert.equal(heldSheet(b), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 S4-held: member B is refused locally');
+  assert.equal(b.text('#layer .errsheet p'), 'Entrá con esa cuenta o esperá unos minutos.', '🔴 HELDCOPY-legacy: member B, today\'s copy byte-identical');
   assert.equal(b.srv.of('createOrder').length, 1, '🔴 S4-held: no network call'); assert.equal(b.storage.getItem(S4_PLACE_KEY), before, 'the record untouched');
   await b.click('#layer [data-act="lclose"]');
   b.storage.setItem(S4_PLACE_KEY, JSON.stringify({ ...JSON.parse(before), expires_at: 1 }));   // A's record expires
@@ -3264,7 +3266,7 @@ test('Codex r1 P2-6 (UI): a cached «unavailable» does not outlive its retry_af
   assert.equal(u.q('.gate'), null, '🔴 SDKUI-P2-6: frame 7 does not outlive retry_after_s');
 });
 
-test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the existing «otra cuenta» sheet; no status, no cancel, no placement under its credentials', async () => {
+test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the «otra cuenta» sheet, in the SDK hold\'s own copy (owner 11-13); no status, no cancel, no placement under its credentials', async () => {
   const storage = memStore();
   const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
   await sdkCheckout(b1); await sdkPlace(b1);
@@ -3272,8 +3274,26 @@ test('Codex r2 P1 (UI): another account on a device holding an SDK order ⇒ the
   const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
   const b2 = bootSdk({ storage, member: B, script: {} });
   await settle(); b2.timers.flush(); await settle();
-  assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pedido de otra cuenta confirmándose en este teléfono', '🔴 SDKUI-R2-P1: the existing held-by-another-account sheet');
+  assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pago de otra cuenta pendiente en este teléfono', '🔴 HELDCOPY-sdk: the SDK hold\'s title at mount (owner 11-13)');
+  assert.equal(b2.text('#layer .errsheet p'), 'Entrá con esa cuenta para terminarlo o cancelarlo.', '🔴 HELDCOPY-sdk: the SDK hold\'s body — never «esperá unos minutos»');
   assert.equal(b2.srv.of('placeSdkStatus').length + b2.srv.of('cancelSdkPending').length + b2.srv.of('placeSdkOrder').length, 0, '🔴 SDKUI-R2-P1: nothing under B\'s credentials');
+});
+
+test('HELDCOPY (owner 11-13): B dismisses the sheet and tries to place by card ⇒ the place-time refusal shows the SDK hold\'s copy too; nothing sent', async () => {
+  const storage = memStore();
+  const b1 = bootSdk({ storage, script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+  await sdkCheckout(b1); await sdkPlace(b1);
+  const B = { ...SDK_MEMBER(), uid: 'u2', name: 'Beto Díaz' };
+  const b2 = bootSdk({ storage, member: B, script: {} });
+  await settle(); b2.timers.flush(); await settle();
+  await b2.click('#layer [data-act="lclose"]'); await settle();
+  assert.equal(b2.q('#layer .errsheet'), null, 'premise: the mount sheet dismissed');
+  assert.equal(b2.ui.state.screen, 'checkout', 'premise: the refusal left B over «Entrega & Pago»');
+  b2.ui.cart.inc(b2.plain.key); b2.ui.render(); await settle();   // B's own cart (A's was frozen with A's order)
+  await ctaPlace(b2); await settle();
+  assert.equal(b2.text('#layer .errsheet h2'), 'Hay un pago de otra cuenta pendiente en este teléfono', '🔴 HELDCOPY-sdk-place: the place-time refusal\'s title');
+  assert.equal(b2.text('#layer .errsheet p'), 'Entrá con esa cuenta para terminarlo o cancelarlo.', '🔴 HELDCOPY-sdk-place: the place-time refusal\'s body');
+  assert.equal(b2.srv.of('placeSdkStatus').length + b2.srv.of('cancelSdkPending').length + b2.srv.of('placeSdkOrder').length, 0, 'nothing under B\'s credentials');
 });
 
 test('S2-checkout resume (advisor condition): a live SDK attempt on this device ⇒ the status FIRST at mount, the processing sheet — never a new placement', async () => {

@@ -31337,7 +31337,7 @@
   "slice": "s4",
   "label": "placeTap no longer refuses a non-owner (the guest reaches the code sheet)",
   "file": "../customer-app/capp-ui.js",
-  "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther()); return; }   // Codex G7 r1 #1 (a): before the code sheet",
+  "from": "      if (heldByOther()) { backTo('checkout'); showErr(ERR.heldOther(heldSdk())); return; }   // Codex G7 r1 #1 (a): before the code sheet",
   "to": "      // (mutant) before the code sheet",
   "command": [
    "node",
@@ -31347,7 +31347,8 @@
   ],
   "kills_with": [
    "S4-held"
-  ]
+  ],
+  "repointed": "held-sheet copy (owner 11-13): the refusal passes which hold it is (heldSdk) to the sheet; the mutant still drops placeTap's refusal"
  },
  {
   "id": "s4-38",
@@ -35574,5 +35575,306 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": "SDKUI-route: the pending switch is re-resolved"
+ },
+ {
+  "id": "c3r-01",
+  "slice": "c3r",
+  "label": "«Volver a pedir» skips the live-menu check: an option the menu no longer offers is dropped silently and the line placed without it (C-3r G2)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }",
+  "to": "if (!e) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Volver a pedir",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "VP-13"
+  ]
+ },
+ {
+  "id": "c3r-02",
+  "slice": "c3r",
+  "label": "the reorder seeds the past dish price from the LIVE menu instead of S-D's snapshot (a dish change since the order goes undisclosed; C-3r G1)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const past = ps && ps.lines[l.si], pb = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : null, live = d ? c(d.price) : 0;",
+  "to": "const pb = null, live = d ? c(d.price) : 0;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G1-dish"
+  ],
+  "repointed": "Codex C-3r r1 P2 fix: the snapshot price is pb (option-less instances only); the mutant still seeds every past price from the live menu"
+ },
+ {
+  "id": "c3r-03",
+  "slice": "c3r",
+  "label": "a price_snapshot not aligned 1:1 with the row's items is kept (a past price taken from the wrong line; C-3r G1)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": " || ps.lines.length !== items.length",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1 rowOf",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "G1-row misaligned"
+  ]
+ },
+ {
+  "id": "c3r-04",
+  "slice": "c3r",
+  "label": "the phone «Pedidos» tab never shows the active-order dot (C-3r G4)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "cartN: nCart, live: liveDot(),",
+  "to": "cartN: nCart, live: false,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PED-G4"
+  ]
+ },
+ {
+  "id": "c3r-05",
+  "slice": "c3r",
+  "label": "the screen is no longer reflected in the URL (D-4a Phase 1; C-3r G3)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (path !== win.location.pathname) win.history.replaceState(",
+  "to": "if (false) win.history.replaceState(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PED-G3"
+  ]
+ },
+ {
+  "id": "c3r-06",
+  "slice": "c3r",
+  "label": "a configuration WITH extras takes the snapshot dish price + the LIVE extras as «antes» (an invented configured past price; Codex C-3r r1 P2)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "b: pb !== null && !Object.keys(x).length ? pb : live,",
+  "to": "b: pb !== null ? pb : live,",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G1-mixed"
+  ]
+ },
+ {
+  "id": "c1a-01",
+  "slice": "c1a",
+  "label": "the UI invents «Nuevo en Sherpa» when the envelope served no ratings (rule 8; the plan mutant)",
+  "file": "../customer-app/capp-home.js",
+  "from": "if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return",
+  "to": "if (true) return",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T2"
+  ]
+ },
+ {
+  "id": "c1a-02",
+  "slice": "c1a",
+  "label": "Home reads the LIVE directory entry, not the per-visit frozen rating (a rating pops into a visible list)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {})",
+  "to": "...({})",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T3"
+  ]
+ },
+ {
+  "id": "c1a-03",
+  "slice": "c1a",
+  "label": "«Compartir» drawn with neither Web Share nor the clipboard (a dead button)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const canShare = () => { const n = navOf(); return !!(",
+  "to": "const canShare = () => { const n = navOf(); return true || !!(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T6"
+  ]
+ },
+ {
+  "id": "c1a-04",
+  "slice": "c1a",
+  "label": "the heart shown to a member / an unresolved session before C-1b (a heart that cannot save)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const heartOff = () => (authOf() === 'guest' ?",
+  "to": "const heartOff = () => (true ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T7"
+  ]
+ },
+ {
+  "id": "c1a-05",
+  "slice": "c1a",
+  "label": "the mounted store reads its rating LIVE from the directory (a revalidation during the visit changes it; T4)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()),",
+  "to": "const social = { get rating() { const rr = dir.view().rows.find((x) => x.rid === entry.rid); return CappHome.ratingHtml(rr && rr.entry && rr.entry.ratings, nowMs()); },",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1a T4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1-T4"
+  ]
+ },
+ {
+  "id": "wake-01",
+  "slice": "wake",
+  "label": "no hard cap: a stuck boot keeps the overlay on screen forever",
+  "file": "../customer-app/capp-splash.js",
+  "from": "cap = T.setTimeout(finish, CAP_MS);",
+  "to": "cap = null;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-4"
+  ]
+ },
+ {
+  "id": "wake-02",
+  "slice": "wake",
+  "label": "a READY that came before start() is ignored (the overlay waits for the cap)",
+  "file": "../customer-app/capp-splash.js",
+  "from": "if (doc.documentElement.getAttribute(READY_ATTR) === '1') finish();",
+  "to": "if (false) finish();",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-3"
+  ]
+ },
+ {
+  "id": "wake-03",
+  "slice": "wake",
+  "label": "the WEBSITE package carries the overlay (owner: native only)",
+  "file": "../platform/native/package-capp.js",
+  "from": "const WAKE = target === 'native';",
+  "to": "const WAKE = true;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-2"
+  ]
+ },
+ {
+  "id": "wake-04",
+  "slice": "wake",
+  "label": "the shell signals READY on the cold «Cargando…» line (the overlay fades over a loading screen)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!(S.tab === 'home' && !S.neutral && v.phase !== 'ready' && v.phase !== 'error')) firstReady();",
+  "to": "firstReady();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=WAKE-6",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-6"
+  ]
+ },
+ {
+  "id": "wake-05",
+  "slice": "wake",
+  "label": "the boot never starts the splash in the installed app (the overlay waits for the cap)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "root.CAPP_RUNTIME.mode === 'native' && root.CappSplash",
+  "to": "false && root.CappSplash",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-5"
+  ]
+ },
+ {
+  "id": "wake-06",
+  "slice": "wake",
+  "label": "reduced motion fades in 200 ms, not the owner's 150 ms",
+  "file": "../customer-app/capp-splash.js",
+  "from": "reduced() ? FADE_RM_MS : FADE_MS",
+  "to": "FADE_MS",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-4"
+  ]
+ },
+ {
+  "id": "wake-07",
+  "slice": "wake",
+  "label": "no page-owned ceiling: a controller that never loads leaves the opaque overlay up forever (Codex r1 P2)",
+  "file": "../customer-app/capp.css",
+  "from": "pointer-events:none;opacity:1;animation:cs-cap 200ms ease-out 4000ms forwards}",
+  "to": "pointer-events:none;opacity:1}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-7"
+  ]
  }
 ]

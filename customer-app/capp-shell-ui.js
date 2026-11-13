@@ -33,6 +33,7 @@
   function mount(doc, opts) {
     const o = opts || {};
     const CappDirectory = pick(o, 'CappDirectory', './capp-directory.js'), CappEligibility = pick(o, 'CappEligibility', './capp-eligibility.js');
+    let CappSplash = null; try { CappSplash = pick(o, 'CappSplash', './capp-splash.js'); } catch (_) { CappSplash = null; }   // the native package only
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
@@ -192,6 +193,8 @@
     }
 
     // ── the store mount ──
+    // the store's shareable URL: the route's own path (ids-first, D-4a) on this page's origin
+    const storeUrl = (rid) => { try { const path = CappRoutes ? CappRoutes.format({ name: 'store', rid, step: 'store' }) : null; return path && win && win.location ? win.location.origin + path : null; } catch (_) { return null; } };
     function mountStore(entry, freshBody, carried) {
       const row = dir.view().rows.find((r) => r.rid === entry.rid);
       const cfg = row && cfgOf(row.entry), e = freshBody ? { body: freshBody, state: 'fresh' } : cache.peek(entry.rid);
@@ -205,7 +208,9 @@
       const updOpts = { appUpdated: () => appUpdated, onAppUpdatedSeen: () => { appUpdated = false; } };   // the store's records live in the shell's storage (one device store)
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
-      const ui = CappUI.mount(doc, { ...uo, ...updOpts, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
+      // C-1a: the store's social row, FROZEN per mount — the rating (CappHome's one source), the share target (the store's own URL)
+      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid) };
+      const ui = CappUI.mount(doc, { ...uo, ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
@@ -217,7 +222,7 @@
       const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
       if (ro) {   // «Volver a pedir»: replaces the cart (v6) through the store's own restore, refused where the store refuses an edit
         S.reorder = null;
-        const r = ui.replaceCart({ ...reorderSnap(ui.menu, ro.lines, snap), rid: entry.rid });
+        const r = ui.replaceCart({ ...reorderSnap(ui.menu, ro.lines, snap, ro.ps), rid: entry.rid });
         if (r && !r.locked && !r.blocked && !r.cleared) S.reorderOpen = entry.rid;
       }
       if (entry.dish) ui.openDetail(entry.dish);
@@ -226,6 +231,7 @@
       if (ret) S.retAssoc = { rid: entry.rid, handoff: ret.handoff };
       if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => settleRet(entry.rid, out), () => {});
       pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
+      firstReady();   // «wake»: a store painted (a cold link straight into it) is a settled first screen
       return true;
     }
     // the mounted surface is NEVER remounted or re-priced while the customer is in it ([r2] ruling): a verified body enables the
@@ -662,15 +668,24 @@
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
+    // C-1a (PLAN-capp-c1-build r0 §3, no pop-in): a Home card's rating is FROZEN for the visit — taken the first time that card is
+    // painted in this Home visit (a cold list paints each card WITH its rating in one shot); a revalidation that brings new ratings
+    // while Home stays visible inserts nothing; the next Home entry (any other tab rendered in between) adopts them
+    let homeSeen = null;
+    function seenRatingsOf(r) {
+      if (!homeSeen.has(r.rid)) homeSeen.set(r.rid, r.entry && r.entry.ratings && typeof r.entry.ratings === 'object' ? r.entry.ratings : null);
+      return homeSeen.get(r.rid);
+    }
     function vm() {
       const v = dir.view();
+      if (S.tab !== 'home') homeSeen = null; else if (!homeSeen) homeSeen = new Map();
       const rows = S.heldErr ? [] : v.rows.map((r) => {
         const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
-        return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid };
+        return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid, ...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {}) };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: false, q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -686,6 +701,9 @@
       for (const r of app.querySelectorAll('.hsec')) { const h = r.querySelector('.hrow'), x = s.rows && s.rows[r.getAttribute('aria-label')]; if (h && x) h.scrollLeft = x; }
       if (s.focus) { const el = app.querySelector(s.focus); if (el) { try { el.focus({ preventScroll: true }); if (s.caret && el.setSelectionRange) el.setSelectionRange(s.caret[0], s.caret[1]); } catch (_) {} } }
     }
+    // «wake» (OWNER 11-01): the shell's ONE «first screen ready» — the native overlay fades on it (capp-splash.js); no-op elsewhere
+    let readySent = false;
+    const firstReady = () => { if (readySent) return; readySent = true; if (CappSplash) CappSplash.signalReady(doc, win); };
     function renderNow(restored) {
       if (dead || S.store) return;
       const keep = restored || (app.firstElementChild ? saveScreen() : null);
@@ -701,6 +719,8 @@
       containLayer();   // C-5 r2: a rebuilt screen behind an open sheet stays inert
       reflect();
       if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
+      // «wake»: the first SETTLED screen painted (anything but Inicio's cold «Cargando restaurantes…») ⇒ the ONE READY
+      if (!(S.tab === 'home' && !S.neutral && v.phase !== 'ready' && v.phase !== 'error')) firstReady();
     }
     // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
@@ -894,6 +914,9 @@
     const validAge = (od) => { const t = Number(nowMs()); return !!od && Number.isFinite(od.placedAt) && od.placedAt <= t + 5 * 60e3 && t - od.placedAt < ACTIVE_MS; };
     function dropActive() { S.order = null; try { if (storage) storage.removeItem(ACTIVE_KEY); } catch (_) {} }
     // the order THIS identity may see now, or null (an expired one is dropped on the spot)
+    // C-3r G4 (v6 tabbar): the «Pedidos» dot = THIS device's active order — activeOrder()'s predicate WITHOUT its side effects (a
+    // render never stops or drops a record)
+    const liveDot = () => { const od = S.order; return !!(od && !CappOrder.FINAL.has(od.status) && validAge(od) && od.owner && od.owner === ownerNow()); };
     function activeOrder() {
       const od = S.order; if (!od || CappOrder.FINAL.has(od.status)) return null;
       if (!validAge(od)) { stopOrder(); dropActive(); return null; }
@@ -1297,8 +1320,8 @@
     // one) is not rebuilt here ⇒ every line unavailable (disclosed). A present but malformed options container ⇒ that line unavailable
     function recipeOf(items, format) {
       const out = [];
-      for (const l of Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []) {
-        if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) continue;
+      (Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []).forEach((l, si) => {
+        if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) return;
         let ok = format === undefined || format === null;
         const dish = typeof l.dish_id === 'string' && l.dish_id ? l.dish_id : null;
         const options = [];
@@ -1308,13 +1331,16 @@
           else if (op && typeof op.id === 'string' && Number.isInteger(op.qty) && op.name === undefined) options.push({ by: 'id', v: op.id, n: op.qty });
           else ok = false;   // malformed ⇒ the line cannot be rebuilt faithfully
         }
-        out.push({ dish_id: ok ? dish : null, qty: l.qty, options });
-      }
+        out.push({ dish_id: ok ? dish : null, qty: l.qty, options, si });   // si: the source line (S-D's snapshot is aligned to it)
+      });
       return out;
     }
     const reorderable = (lines) => lines.some((l) => l.dish_id);
     const UNKNOWN = '\u0000';   // a key no menu serves: hydrate drops the line and COUNTS it (the one disclosure path)
-    function reorderSnap(menu, lines, prev) {
+    // C-3r G1 (advisor 11-13, option A; after Codex C-3r r1 P2): S-D's v1 snapshot proves a past price ONLY for an OPTION-LESS instance
+    // (unit = unit_cents exactly). An instance WITH extras is seeded from the live menu (no note) — never a past dish price + a live
+    // extra presented as «antes» (an invented configured price); v2 (extras_cents) makes it exact. No snapshot line ⇒ the live price
+    function reorderSnap(menu, lines, prev, ps) {
       const out = lines.map((l, i) => {
         const ex = Array.from({ length: l.qty }, () => ({}));
         let key = l.dish_id || UNKNOWN;
@@ -1328,7 +1354,8 @@
         }
         // Codex VP r1 #6: the prices on show NOW are what the customer saw — so a later change is disclosed by the cart's priceChanges()
         const d = key !== UNKNOWN ? menu.dish(key) : null, c = (v) => Math.round(Number(v) * 100);
-        const seen = d ? ex.map((x) => ({ b: c(d.price), x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
+        const past = ps && ps.lines[l.si], pb = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : null, live = d ? c(d.price) : 0;
+        const seen = d ? ex.map((x) => ({ b: pb !== null && !Object.keys(x).length ? pb : live, x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
         return { key, qty: l.qty, ex, added: i + 1, ...(seen ? { seen } : {}) };
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
@@ -1337,7 +1364,7 @@
     function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
       const lines = recipeOf(r.items, r.recipe_format); if (!reorderable(lines)) return;
-      S.reorder = { rid: r.restaurant, lines };
+      S.reorder = { rid: r.restaurant, lines, ps: r.price_snapshot || null };
       enter(r.restaurant, null);
     }
     // the tab: per store (the past rows' order), the distinct past dishes its LIVE menu still serves (a variant line ⇒ its launcher)

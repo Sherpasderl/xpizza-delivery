@@ -34,7 +34,7 @@ import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = '1d862e17';
-const CAPP_TIP = '08a0bc43';
+const CAPP_TIP = 'f8c86cfc';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -197,7 +197,8 @@ test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range 
   const changed = laneChanged(tip, ['xpizza-functions'])
     .concat(git('ls-files', '--others', '--exclude-standard', '--', 'xpizza-functions').trim().split('\n').filter(Boolean));
   const allowed = (p) => /\.test\.(m?js|cjs)$/.test(p) || /^xpizza-functions\/test\//.test(p) || /\.golden\.json$|\.expect\.json$/.test(p)
-    || p === 'xpizza-functions/tools/form-source-inventory.json' || p === 'xpizza-functions/package.json' || S2TIP_SERVER.has(p);
+    || p === 'xpizza-functions/tools/form-source-inventory.json' || p === 'xpizza-functions/package.json' || S2TIP_SERVER.has(p)
+    || p === 'xpizza-functions/tools/app-suites.js';   // the test:apps RUNNER (never shipped): its KNOWN_RED holds the rule-20 url-token guard (advisor 11-13)
   const bad = changed.filter((p) => !allowed(p));
   assert.deepEqual(bad, [], `🔴 production files changed: ${bad.join(', ')}`);
   if (changed.includes('xpizza-functions/package.json')) {

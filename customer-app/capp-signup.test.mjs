@@ -414,3 +414,25 @@ test('C-2 rateOrder: POST { order_id, …fields } with the token; 3a\'s every an
     assert.deepEqual(await b.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: f }), { ok: false, reason: 'bad_request' }, `🔴 RT-3: ${why} refused locally`);
   assert.equal(none.length, 0, '🔴 RT-3: no refusable body ever reaches the server');
 });
+
+// ── C-3r G1 (advisor 11-13): S-D's v1 price_snapshot reaches the reorder ONLY aligned 1:1 with the row's items. The row comes from the
+// REAL writers: attachCustomerAttribution (user_orders entry + reorderPriceSnapshot) → my-orders.js projectRow (the served Row) ──
+test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-version or non-integer snapshot is DROPPED (never a guessed past price)', async () => {
+  const FN = createRequire(join(ROOT, 'xpizza-functions/x.js'));
+  const CB = FN('./create-order-build.js'), MO = FN('./my-orders.js');
+  const u = { 'orders/XP-1': { status: 'new' } };
+  CB.attachCustomerAttribution(u, 'XP-1', 'u_ana', { now: 1000, total: 648, orderType: 'pickup', items_text: '2x Margherita', restaurantId: 'x_pizza', items: [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] });
+  const entry = u['user_orders/u_ana/XP-1'];
+  assert.deepEqual(entry.price_snapshot, { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, 'premise: the real writer\'s snapshot');
+  const { createSignupApi } = require('./capp-signup-api.js');
+  const served = (e) => createSignupApi({ endpoints: { getMyOrders: 'https://ep.test/getMyOrders' }, fetch: async () => ({ status: 200, json: async () => JSON.parse(JSON.stringify({ ok: true, active: [], past: [MO.projectRow('XP-1', e)], next_cursor: null })) }) })
+    .getMyOrders({ idToken: 't' }).then((r) => r.past[0]);
+  assert.deepEqual((await served(entry)).price_snapshot, { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, '🔴 G1-row: the aligned v1 snapshot is kept');
+  const bad = {
+    misaligned: { v: 1, lines: [...entry.price_snapshot.lines, { unit_cents: 100, line_cents: 100 }] },
+    v2: { ...entry.price_snapshot, v: 2 },
+    fractional: { v: 1, lines: [{ unit_cents: 299.5, line_cents: 64800 }] },
+  };
+  for (const [k, ps] of Object.entries(bad)) assert.equal((await served({ ...entry, price_snapshot: ps })).price_snapshot, undefined, `🔴 G1-row ${k}: dropped`);
+  assert.equal((await served({ ...entry, price_snapshot: undefined })).price_snapshot, undefined, 'no snapshot ⇒ none');
+});

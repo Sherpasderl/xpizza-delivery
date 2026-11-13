@@ -296,6 +296,9 @@
     const validOwner = (o) => typeof o === 'string' && o !== '' && o !== GUEST_OWNER && o !== GUEST_UNKEYED && (o.indexOf('g:') === 0 ? /^g:[0-9a-f]{64}$/.test(o) : true);
     function sdkLegacy(id) { const r = readPlace(); return !!(r && r.sdk === true && (id == null || r.order_id === id) && !validOwner(r.owner)); }
     function retainedByOther(p) { const rs = retainedSend(); return (!!rs && rs.owner !== ownerNow()) || (cfg.sdkCheckout === true && sdkForeign(null, p)); }   // the SDK check only with the SDK checkout on (the base's reads unchanged)
+    // owner 11-13: the held sheet names an SDK card hold in its own copy — read from the one placement record (an SDK record never carries a
+    // scheduled sent_body, so the two holds never overlap)
+    const heldBySdk = (p) => cfg.sdkCheckout === true && sdkForeign(null, p);
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
 
@@ -1165,7 +1168,7 @@
 
     return { quote, latestQuote, place, placeSdk, sdkResend, sdkStatus, sdkResolve, sdkSwitchToCash, sdkLive, sdkInputs, listCards, sdkPayStatus, sdkPayCached, lastTip, handleReturn, resolveExisting, resolveStatus, requestCheckoutCode, verifyCheckoutCode, orderIdForCode, phoneKeyOf, scheduleOnly, ticketValid, TICKET_TTL_MS, readPlace: readPlaceView, clearPlace, genOrderId, expiresAtOf, credsFor, stashedOrder,
       reconcile, cartFreeze, holdsLock, newGen, readStrict, writeStrict, removeStrict, hosted: HOSTED,
-      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther };
+      confirmQuote: cq, PLACE_KEY, retainedSend, retainedByOther, heldBySdk };
   }
 
   return { createApi, tokenUsable, acceptToken, tokenExpMs, TOKEN_SKEW_MS, TOKEN_MAX_AHEAD_MS, CAPP_SEND_GRACE_MS, HOSTED_CHECKOUT_MS, MAX_PLACEMENT_MS, MAX_TRIES, LOCK_INTERRUPTED_CARD };

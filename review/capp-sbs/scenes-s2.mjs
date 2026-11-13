@@ -87,6 +87,17 @@ export const S2_SCENES = [
   s2('S2adj-E-verifying', { ...placed('E'), mock: adj('mk-e') }),
   s2('S2adj-F-expired', { ...placed('F'), mock: adj('mk-f') }),
   s2('S2adj-G-declined', { ...placed('G', [{ until: 'document.querySelector("#layer [data-act]")', ms: 10000 }, { wait: 600 }]), mock: adj('mk-g') }),
+  // ── C-3r G4 (v6 tabbar): the phone «Pedidos» dot while THIS device has an active order (a real SDK placement, then home) ──
+  s2('C3r-dot-390', { ...placed('plain', [click('[data-act="order-close"]'), { wait: 400 }, { run: `(() => { const b = [...document.querySelectorAll('[data-act="tab"][data-tab="home"]')].find((x) => x.getClientRects().length); if (!b) throw new Error('no home tab'); b.click(); })()` },
+    { until: 'document.querySelector(\'.tabbar [data-tab="orders"] .badge.dot\')', ms: 10000 }, { wait: 400 }]), mock: null, note: 'real-only: the dot (10 px, the v6 rule) on «Pedidos»' }),
+  // ── D4 held-sheet copy (owner 11-13): ANOTHER account's SDK card hold on this phone. The real placement (under review ⇒ the SDK
+  // record stays) is made by u_ana; the scene then re-binds that REAL record's owner to another member and reloads — u_ana's phone now
+  // holds a foreign SDK payment ⇒ placing shows the sheet (the place-time refusal; an «under review» attempt is settled, so the mount path does not fire). Real-only (copy on the approved sheet): text fit at 390, light + dark ──
+  s2('D4-heldsheet-sdk-390', { geo: GEO, s2: { place: 'under_review' }, steps: [...toCheckout, ...place, { wait: 3000 },
+    { run: `(() => { const k = Object.keys(localStorage).find((x) => /:pending_place$/.test(x)); if (!k) throw new Error('no placement record'); const r = JSON.parse(localStorage.getItem(k)); if (r.sdk !== true) throw new Error('not an SDK record'); r.owner = 'u_bea'; localStorage.setItem(k, JSON.stringify(r)); location.reload(); })()` },
+    { wait: 2500 }, ...toCheckout, ...place,   // the reloaded phone (u_ana) taps place over u_bea's SDK record ⇒ the place-time refusal
+    { until: 'document.querySelector("#layer .errsheet h2")', ms: 20000 }, { wait: 500 }], mock: null,
+    note: '«Hay un pago de otra cuenta pendiente en este teléfono» / «Entrá con esa cuenta para terminarlo o cancelarlo.» — text fit at 390' }),
 ];
 // shared with scenes-tip.mjs (PLAN-capp-tip-step r6): the same app steps, frame clip and injections
 export { s2frame, toCheckout, click, scrollEnd, GEO, NATIVE, pinSet, place, homeReady };   // + scenes-s3.mjs (item S3): the pin, the place steps, the home wait

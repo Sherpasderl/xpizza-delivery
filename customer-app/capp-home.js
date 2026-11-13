@@ -143,7 +143,22 @@
     return { id: row.rid, name: e.name || '', kicker: e.kicker || '', logo: cfg.logo || '', logoWide: cfg.logoWide === true, hero: cfg.hero || '',
       cuisines: Array.isArray(e.cuisines) ? e.cuisines : [], etaDel: cfg.etaDel || null, etaPick: cfg.etaPick || null, pickup: e.pickup === true, cfg,
       fee: e.fee || null, promo: e.promo || null, house: Array.isArray(e.house) ? e.house : null, meals: e.meals && typeof e.meals === 'object' ? e.meals : {},
-      sections: row.view ? row.view.sections : null, menuState: row.menuState || null, gone: row.gone === true, held: row.held === true, sold: row.sold || null };
+      sections: row.view ? row.view.sections : null, menuState: row.menuState || null, gone: row.gone === true, held: row.held === true, sold: row.sold || null,
+      ratings: Object.prototype.hasOwnProperty.call(row, 'seenRatings') ? row.seenRatings : (e.ratings && typeof e.ratings === 'object' ? e.ratings : null) };   // C-1a: frozen per Home visit
+  }
+  // C-1a (D-3 r3 frames 9.1 / 9.4; PLAN-capp-c1-build r0): the store's PUBLISHED social proof, exactly as the directory serves it (the
+  // server already omitted every below-threshold field — directory.js ratingsOf; never re-derived here): «★ 4,8 (124)» when
+  // avg + count are served; «Nuevo en Sherpa» while now < new_until; otherwise nothing. ONE source: the home card and the store page
+  const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/></svg>';
+  function ratingHtml(rt, now) {
+    const r = rt && typeof rt === 'object' ? rt : null;
+    if (r && typeof r.rating_avg === 'number' && r.rating_avg >= 1 && r.rating_avg <= 5 && Number.isInteger(r.rating_count) && r.rating_count > 0) {
+      const avg = r.rating_avg.toFixed(1).replace('.', ',');   // the frame's «4,8» (one decimal, a comma — not the locale's)
+      return `<span class="rating" aria-label="${avg} de 5, ${r.rating_count} calificaciones">${STAR}${avg}<span class="n">(${r.rating_count})</span></span>`;
+    }
+    const t = now && typeof now === 'object' && typeof now.getTime === 'function' ? now.getTime() : Number(now);   // a Date (the vm's clock) or ms
+    if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return '<span class="pill new">Nuevo en Sherpa</span>';
+    return '';
   }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
@@ -240,11 +255,11 @@
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
     const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
-    const fee = feeHtml(r, auth);
+    const fee = feeHtml(r, auth), rh = ratingHtml(r.ratings, now);
     return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta"><span class="dot"></span><b>Abierto</b> · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}</span>`
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b> · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}</span>`
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -466,5 +481,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

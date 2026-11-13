@@ -256,7 +256,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -2264,9 +2264,10 @@ function servedCtx(rid, { drop = [] } = {}) {
   return { availability: 'available', attached: true, usableAsIdentity: true,
     objects: m.dishes.filter((d) => d.dish_id && !drop.includes(MPRC.itemPricingKey(d, rid))).map((d) => ({ kind: 'dish', legacyKey: MPRC.itemPricingKey(d, rid), canonicalId: String(d.dish_id) })) };
 }
+const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
 const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
   return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null } = {}) {
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2277,6 +2278,7 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
     // the fake verifyIdToken: the Firebase ID token's payload (the real writer's JWT shape, TOK) — a string user_id AND customer === true
     // (the contract; Codex Pedidos r1), else 401
     let uid = null; try { const pl = JSON.parse(Buffer.from(String(tok).split('.')[1], 'base64url').toString()); if (pl && typeof pl.user_id === 'string' && pl.customer === true) uid = pl.user_id; } catch (_) { uid = null; }
+    if (claimless) uid = null;   // C-3r W3: a token WITHOUT the customer claim (the contract's 401)
     if (!uid) return out(401, { ok: false, reason: 'unauthenticated' });
     if (deleted.has(uid)) return out(403, { ok: false, reason: 'deleted' });
     const keys = [...url.searchParams.keys()];
@@ -2295,9 +2297,10 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
     const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
     const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
     const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? withDishIds(e.items, contextFor(e.restaurant)) : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}),
-      // the approved delta: display_number read from orders/{id} for the page's rows, present only when stamped (a finite number)
-      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) });
+    // C-3r G1: the REAL row projector (my-orders.js projectRow — S-D's price_snapshot passes through verbatim) composed exactly as
+    // makeMyOrders composes it (my-orders.js:143): + the dish-id delta over its items, + display_number from orders/{id} when stamped
+    const proj = ({ id, e }) => { const row = MO_REAL.projectRow(id, e); return { ...row, items: withDishIds(row.items, contextFor(e.restaurant)),
+      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) }; };
     const R = rows.map(proj), oldest = rows[rows.length - 1];
     const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
     return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
@@ -2353,12 +2356,22 @@ test('Pedidos (member): the rows from getMyOrders (the real writer\'s entries) �
   } finally { S.w.close(); }
 });
 test('Pedidos: a refused / failed read (401, 403, offline) claims NO empty state; a guest gets v6\'s empty state with NO read', async () => {
-  for (const [label, opts, fbTok] of [['403 tombstone', { deleted: new Set(['u_ana']) }]]) {
+  // C-3r W3: every refusal the title names RUNS — 401 (a token without the customer claim: the server's own 401), 403 (tombstone),
+  // offline (the transport rejects)
+  const OFFLINE = { then: () => Promise.reject(new Error('network')) };
+  for (const [label, opts] of [['401 unauthenticated', { claimless: true }], ['403 tombstone', { deleted: new Set(['u_ana']) }], ['offline', { gate: OFFLINE }]]) {
     const { S, mo } = await pedidosBoot({ u_ana: {} }, opts);
-    try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.equal(mo.calls.length, 1); assert.equal(S.q('.oempty'), null, `🔴 PED-2: ${label} ⇒ never «Todavía no tenés pedidos»`); } finally { S.w.close(); }
+    try { S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.ok(mo.calls.length >= 1, `premise: ${label} — the read was made`); assert.equal(S.q('.oempty'), null, `🔴 PED-2: ${label} ⇒ never «Todavía no tenés pedidos»`); } finally { S.w.close(); }
   }
   const G = bootShell({ runtime: { ...RUNTIME, guestCardOnly: true } });
-  try { await flush(); G.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(txt(G.q('.oempty b')), 'Todavía no tenés pedidos', '🔴 PED-2: a guest\'s empty state (v6)'); assert.equal(txt(G.q('.oempty .primary')), 'Explorar restaurantes'); } finally { G.w.close(); }
+  try {
+    await flush(); G.click('.tabbar [data-tab="orders"]'); await flush(); assert.equal(txt(G.q('.oempty b')), 'Todavía no tenés pedidos', '🔴 PED-2: a guest\'s empty state (v6)'); assert.equal(txt(G.q('.oempty .primary')), 'Explorar restaurantes');
+    G.click('.oempty .primary'); await flush();   // C-3r W4: the empty state's CTA goes to Inicio
+    assert.equal(G.q('.tabbar [data-tab="home"]').getAttribute('aria-current'), 'true', '🔴 PED-2 W4: «Explorar restaurantes» ⇒ Inicio');
+  } finally { G.w.close(); }
+  // C-3r W2: a guest on the WIRED member transport (signed out: no persisted user, no profile) makes NO history read at all
+  const { S: W, mo: wmo } = await pedidosBoot({ u_ana: { 'XP-1': { ts: 1, restaurant: 'x_pizza', status: 'delivered', items: [] } } }, { fbOpts: { persisted: null }, storage: memStorage({}) });
+  try { W.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); assert.equal(wmo.calls.length, 0, '🔴 PED-2 W2: a guest makes NO getMyOrders read'); assert.ok(W.q('.oempty'), 'the guest\'s empty state'); } finally { W.w.close(); }
 });
 test('Pedidos: THIS device\'s active order — its card (v6 «Orden #N · hoy · …», the sent lines) opens its live screen; it survives a reload (the local record) and a reload of /r/{rid}/pago lands on its screen; a final status drops it', async () => {
   const { ES, made } = fakeES(); const TOKEN = 'tok_abcdefgh12', storage = memStorage();
@@ -2396,9 +2409,42 @@ test('Pedidos: the device\'s active record is written AT placement (no live chan
     assert.ok(rec.exp - rec.order.placedAt === 24 * 3600e3, 'until final or 24 h');
   } finally { S.w.close(); }
 });
+// C-3r G4 (v6 tabbar, per the frame: the PHONE «Pedidos» tab carries the active-order dot; D-3 r3's desktop bar draws none):
+// the dot follows THIS device's active order (its local record), from the first paint after a reload; none without one
+test('C-3r G4: the phone «Pedidos» tab shows the active-order dot while this device has an active order (also after a reload); none without one; the desktop bar draws none', async () => {
+  const { ES } = fakeES(); const TOKEN = 'tok_abcdefgh12', storage = memStorage();
+  const readPublic = async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) });
+  const dot = (X) => X.q('.tabbar [data-tab="orders"] .badge.dot');
+  const N = bootShell({ storage: memStorage(), runtime: RUNTIME });
+  try { await flush(); assert.equal(dot(N), null, '🔴 PED-G4: no active order ⇒ no dot'); } finally { N.w.close(); }
+  const S = bootShell({ storage, runtime: { ...RUNTIME, rtdbBase: 'https://rtdb.test' }, readPublic, mountExtra: { EventSource: ES }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: TOKEN })), geolocation: GEO_OK2 });
+  try {
+    await flush(); await placeShellCash(S); await flush(900);
+    S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.ok(dot(S), '🔴 PED-G4: an active order on this device ⇒ the dot on «Pedidos»');
+  } finally { S.w.close(); }
+  const R = bootShell({ storage, runtime: RUNTIME });
+  try { await flush(); assert.ok(dot(R), '🔴 PED-G4: after a reload, the dot at the first paint (the local record)'); assert.equal(R.q('.desknav .badge'), null, 'the desktop bar draws no dot (D-3 r3)'); } finally { R.w.close(); }
+});
 test('Pedidos: cold link /pedidos hydrates the screen; leaving reflects the URL', async () => {
   const S = routeShell('/pedidos', { runtime: { ...RUNTIME, guestCardOnly: true } });
   try { await flush(); await flush(); assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 PED-4: /pedidos ⇒ Pedidos'); S.click('.tabbar [data-tab="home"]'); await flush(); assert.equal(new URL(S.w.location.href).pathname, '/'); } finally { S.w.close(); }
+});
+test('C-3r G3 (D-4a Phase 1 = URL REFLECTION by replaceState, no Forward): a TAP on Pedidos writes /pedidos; a past receipt opened from it, then the device Back ⇒ Pedidos again with /pedidos reflected; no Forward entry', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-G3', {});
+  const { S } = await pedidosBoot(db, { orders, routing: true, url: 'https://app.test/' });
+  try {
+    assert.equal(where(S), '/', 'premise: Inicio');
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.equal(where(S), '/pedidos', '🔴 PED-G3: the tap reflects /pedidos'); assert.equal(txt(S.q('.pagehead h1')), 'Pedidos');
+    await openPastReceipt(S, 'XP-G3');
+    assert.ok(S.q('.mk-card'), 'premise: the receipt is drawn over Pedidos (no route of its own: the URL stays /pedidos)');
+    const len = S.w.history.length;
+    S.w.history.back(); await flush(); await flush();
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', '🔴 PED-G3: the device Back ⇒ Pedidos'); assert.equal(where(S), '/pedidos', '🔴 PED-G3: Back reflects /pedidos');
+    assert.ok(S.w.history.length <= len, '🔴 PED-G3: no entry was pushed for Forward (replaceState only)');
+  } finally { S.w.close(); }
 });
 test('getMyOrders client: ONLY the Row whitelist survives; a malformed row is dropped; the token rides the header of a GET', async () => {
   const A = require('./capp-signup-api.js');
@@ -3043,7 +3089,7 @@ test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the l
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', GONE) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-15: the store opens (its own disclosure)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-15: no silent «Agregado» over a shortened cart'); void st; } finally { S.w.close(); } }
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:avail:x_pizza', JSON.stringify([String(marg.dish_id)])) });
-    try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0) || true); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
+    try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0), '🔴 VP-17: nothing added to the cart (C-3r W1: no longer `|| true`)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
 });
 test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
@@ -3056,6 +3102,55 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
     const cents = (v) => Math.round(Number(v) * 100), b = cents(ui.menu.dish(String(marg.dish_id)).price);
     assert.deepEqual(L.seen, [{ b, x: { [moz.key]: cents(moz.price) } }, { b, x: {} }], '🔴 VP-18: seen = the live prices at the rebuild');
     assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.priceChanges())), [], 'nothing changed yet');
+  } finally { S.w.close(); }
+});
+// ── C-3r G1 (advisor 11-13, option A ruling): the frame-13 price note on «Volver a pedir» against the PAST order, from S-D's v1
+// price_snapshot (the REAL writer: attachCustomerAttribution → reorderPriceSnapshot, served by the real getMyOrders core). A v1
+// snapshot carries the DISH price only (unit_cents), so: a dish price change since the order ⇒ the note, exact from → to; an EXTRA's
+// change ⇒ no note (extras are compared at the live price — the v1 rule; v2 extras_cents upgrades it); no snapshot ⇒ no note.
+// The cart always shows and charges the live price; the note is the courtesy disclosure, never an invented past price.
+const G1_PRICE = (patch) => { const env = J(PROV.x_pizza.envelope); patch(env.menu); return env; };
+async function g1Reorder(patch, { dropSnapshot = false } = {}) {
+  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+  const e = db.u_ana['XP-V1'];
+  assert.deepEqual(J(e.price_snapshot), { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, 'premise: the real writer\'s v1 snapshot (2× Margherita L 299, Mozzarella once)');
+  if (dropSnapshot) delete e.price_snapshot;   // an entry written before S-D (the base writer) — the row carries no snapshot
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush();
+  S.release('x_pizza', G1_PRICE(patch)); await flush(); await flush(); await flush();
+  return { S, st };
+}
+const g1Changes = (S) => JSON.parse(JSON.stringify(S.ui.store().ui.cart.priceChanges())).map((c) => [c.name, c.sig ? 'extra' : 'plain', c.fromCents, c.toCents]);
+test('C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Margherita', 'plain', 29900, 30900]], '🔴 G1-dish: only the option-less configuration, exact from → to');
+    const notes = S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+    assert.deepEqual(notes, ['Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-dish: the one frame-13 line, exact');
+    assert.deepEqual(S.qa('.cline .cl-old').map((x) => x.textContent), ['L 299'], '🔴 G1-dish: the ONE struck old subtotal = unit_cents × 1');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 v1 RULE — Codex C-3r r1 P2 repro (Margherita 299→309 AND Mozzarella 50→60): never an «antes» built from the snapshot dish + a LIVE extra (it would read «antes L 359»; the configuration really cost L 349) — the extra configuration gets no note, the plain one is exact', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; m.extras.find((x) => x.name === 'Mozzarella').price = 60; });
+  try {
+    const notes = S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+    assert.ok(!notes.some((n) => /L 359|L 349|Mozzarella/.test(n)), `🔴 G1-mixed: no configured «antes» from mixed sources (${notes.join(' | ')})`);
+    assert.deepEqual(notes, ['Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-mixed: only the provable line');
+    assert.deepEqual(S.qa('.cline .cl-old').map((x) => x.textContent), ['L 299'], '🔴 G1-mixed: only the provable struck subtotal');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)', async () => {
+  const { S } = await g1Reorder((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; });
+  try {
+    assert.deepEqual(g1Changes(S), [], '🔴 G1-v1-extra: no change recorded for an extra under a v1 snapshot');
+    assert.equal(S.q('.cartnote[role="status"] .cn-l'), null, '🔴 G1-v1-extra: no note');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 (no snapshot — an entry from before S-D): the dish price changed ⇒ NO note; live prices only (never an invented past price)', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; }, { dropSnapshot: true });
+  try {
+    assert.deepEqual(g1Changes(S), [], '🔴 G1-none: no snapshot ⇒ no change recorded');
+    assert.equal(S.q('.cartnote[role="status"] .cn-l'), null, '🔴 G1-none: no note');
   } finally { S.w.close(); }
 });
 test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)', async () => {
@@ -3192,11 +3287,14 @@ test('C-6a titles: the tab follows every screen — Inicio (the directory\'s cit
   const A = bootShell(); await flush(); A.click('.tabbar [data-tab="orders"]'); await flush();
   try { assert.equal(A.w.document.title, 'Pedidos · Sherpa', '🔴 SEO-title: Pedidos'); } finally { A.w.close(); }
 });
+// DEFLAKE (advisor 11-13): the footer's legal read waits for the browser's IDLE (askLegal: requestIdleCallback, else 200 ms). A cell
+// that waits a FIXED time for it races the boot under load; these cells OWN the idle instead (held, released) — order, never time
+const heldIdle = () => { const q = []; return { q, pre: (w) => { w.matchMedia = fakeMedia(true).matchMedia; w.requestIdleCallback = (f) => { q.push(f); return q.length; }; }, run: async () => { for (const f of q.splice(0)) f({ didTimeout: false, timeRemaining: () => 50 }); await flush(); await flush(); } }; };
 test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone', async () => {
-  const st = g7Store(G7_PROFILE({ promos: true }));
-  const { S } = await pedidosBoot({}, { storage: st, runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  const st = g7Store(G7_PROFILE({ promos: true })), I = heldIdle();
+  const { S } = await pedidosBoot({}, { storage: st, runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, preMount: I.pre });
   try {
-    await new Promise((r) => setTimeout(r, 400)); await flush();
+    await I.run();   // the idle fires: the legal read lands
     const f = S.q('.home-body > footer.dfoot'); assert.ok(f, '🔴 SEO-foot: the footer, in the Inicio body');
     assert.deepEqual([...f.querySelectorAll('li')].map((x) => x.textContent), ['Ayuda', 'Términos', 'Privacidad'], '🔴 SEO-foot: the legal links once known');
     assert.equal(f.querySelector('a').getAttribute('href'), 'https://legal.test/t', 'the platform\'s own URL');
@@ -3206,30 +3304,35 @@ test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; T�
   try { assert.equal(P.q('footer.dfoot'), null, '🔴 SEO-foot: the phone renders no footer (its DOM unchanged)'); } finally { P.w.close(); }
 });
 test('C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support chat; the legal slots are reserved until they land (no shift); nothing is fetched once Inicio was left before idle; a failing storage write never loses the links; the footer is on every Inicio state', async () => {
-  const RT = { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, desk = (w) => { w.matchMedia = fakeMedia(true).matchMedia; };
-  { const { S } = await pedidosBoot({}, { runtime: RT, preMount: desk });
+  // DEFLAKE (advisor 11-13): the legal read waits for the browser's IDLE (askLegal: requestIdleCallback, else a 200 ms timer). The cell
+  // used to race it with fixed 400 ms sleeps — under load the boot's own flushes outlasted 200 ms and the read landed BEFORE the
+  // «reserved» premise was checked (3a: a different cell each run at load ~20). Now each block OWNS the idle: requestIdleCallback is
+  // held and released by the cell, so every assertion is about ORDER (before / after the idle), never about wall time.
+  const RT = { ...G7_RUNTIME, supportWhatsapp: '50497952893' };
+  { const I = heldIdle(); const { S } = await pedidosBoot({}, { runtime: RT, preMount: I.pre });
     try {
       const li = () => [...S.q('footer.dfoot').querySelectorAll('li')].map((x) => [x.textContent, x.className]);
+      assert.equal(I.q.length, 1, 'premise: the legal read is waiting for the idle');
       assert.deepEqual(li(), [['Ayuda', ''], ['Términos', 'rsv'], ['Privacidad', 'rsv']], '🔴 C6A-2: the slots reserved before the fetch (the same row composition)');
-      await new Promise((r) => setTimeout(r, 400)); await flush();
+      await I.run();
       assert.deepEqual(li(), [['Ayuda', ''], ['Términos', ''], ['Privacidad', '']], 'the real links in the same slots');
       const opened = []; S.w.open = (u) => opened.push(u);
       S.click('footer.dfoot [data-act="site-help"]'); await flush();
       assert.deepEqual(opened, ['https://wa.me/50497952893'], '🔴 C6A-1: Ayuda = the platform support chat');
     } finally { S.w.close(); } }
-  { const { S, g } = await pedidosBoot({}, { runtime: RT, preMount: desk, noFlush: true });
+  { const I = heldIdle(); const { S, g } = await pedidosBoot({}, { runtime: RT, preMount: I.pre, noFlush: true });
     const cfg = () => g.sent.filter((x) => x[0] === 'getSignupConfig').length;
     try {
-      await flush(); S.click('.desknav [data-tab="orders"]'); await flush();   // left Inicio before the idle fired
-      await new Promise((r) => setTimeout(r, 400)); await flush();
+      await flush(); S.click('.desknav [data-tab="orders"]'); await flush();   // left Inicio BEFORE the idle fired
+      await I.run();   // the idle fires now — off Inicio
       assert.equal(S.q('footer.dfoot'), null, 'premise: off Inicio');
       assert.equal(cfg(), 0, '🔴 C6A-3: nothing fetched once Inicio was left before idle');
-      S.click('.desknav [data-tab="home"]'); await flush(); await new Promise((r) => setTimeout(r, 400)); await flush();
+      S.click('.desknav [data-tab="home"]'); await flush(); await I.run();
       assert.equal(cfg(), 1, 'asked again on return — once');
     } finally { S.w.close(); } }
   { const st = g7Store(G7_PROFILE({ promos: true })); const set = st.setItem.bind(st); st.setItem = (k, v) => { if (k === 'capp:legal') throw new Error('quota'); return set(k, v); };
-    const { S } = await pedidosBoot({}, { runtime: RT, storage: st, preMount: desk });
-    try { await new Promise((r) => setTimeout(r, 400)); await flush();
+    const I = heldIdle(); const { S } = await pedidosBoot({}, { runtime: RT, storage: st, preMount: I.pre });
+    try { await I.run();
       assert.deepEqual([...S.q('footer.dfoot').querySelectorAll('a')].map((a) => a.textContent), ['Términos', 'Privacidad'], '🔴 C6A-4: a failed storage write never loses the links (kept in memory)'); } finally { S.w.close(); } }
   { const E = bootShell({ media: fakeMedia(true), dirScript: ['fail'] }); await flush(); await flush();
     try { assert.ok(E.q('.home-body footer.dfoot'), '🔴 C6A-5: the footer on Inicio\'s error state too'); } finally { E.w.close(); } }
@@ -4525,4 +4628,157 @@ test('S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart wit
   assert.deepEqual([ui1.state.screen, ui1.state.layerKind], ['store', 'cart'], '🔴 the store opens with its cart sheet (S3-CAPP-A2-CART)');
   assert.ok(txt(S.q('#layer .cartnote')).includes('1 plato ya no está disponible'), `🔴 the existing disclosure (S3-CAPP-A2-NOTE): ${txt(S.q('#layer .cartnote'))}`);
   assert.deepEqual(J(ui1.cart.lines()).map((l) => l.key), [plain.key], 'the vanished dish is dropped; the rest is carried');
+});
+
+// ── C-1a (PLAN-capp-c1-build r0, APPROVED 11-13; D-3 r3 frames 9.1 / 9.4): the store's published rating rides the DIRECTORY (directory-2
+// `ratings`), from the REAL chain: rating nodes by the real updaters (fulfilmentUpdater → v2Updater) → the real S-B projection
+// (buildPublicStats) → the real directory allowlist (ratingsOf), placed in the real ENTRY_FIELDS order over the pinned 5f entry ──
+const DIRM = FN_REQ('./directory/directory.js'), AGG = FN_REQ('./ratings/aggregate.js'), RV2 = FN_REQ('./ratings/rating-v2.js');
+const DAY = 86400e3;
+function c1Stats(rid, { stars = [], firstServedAt = null } = {}) {
+  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, now: T0 - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: T0 - 4 * DAY + i }, o)(n); });
+  return AGG.buildPublicStats({ rid, nowMs: T0, orders: [], ratings: nodes, priceOf: () => null, firstServedAt });
+}
+// a directory-2 body: the pinned complete generation, every entry rebuilt in the real ENTRY_FIELDS order with `ratings` = ratingsOf(stats)
+function c1Body(statsBy) {
+  const b = J(SC.complete.body); b.representation_version = DIRM.REPRESENTATION_VERSION;
+  b.restaurants = b.restaurants.map((e) => Object.fromEntries(DIRM.ENTRY_FIELDS.map((k) => [k, k === 'ratings' ? DIRM.ratingsOf(statsBy[e.restaurant_id] || null) : (e[k] === undefined ? null : e[k])])));
+  return b;
+}
+const c1Resp = (statsBy) => ({ status: 200, body: c1Body(statsBy), etag: '"c1-' + Object.keys(statsBy).join('-') + '"' });
+const TEN = [5, 5, 5, 5, 5, 4, 5, 5, 4, 5];   // 10 live ratings ⇒ avg 4.8
+const RATED = () => ({ x_pizza: c1Stats('x_pizza', { stars: TEN }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 10 * DAY }) });
+test('C-1a premise: the real chain publishes x_pizza «4.8 (10)» and la_musa NEW (2 ratings, first served 10 days ago); the body carries the real directory-2 schema', () => {
+  const b = c1Body(RATED());
+  assert.deepEqual(b.restaurants[0].ratings, { rating_avg: 4.8, rating_count: 10 }, 'x_pizza: ≥ 10 ⇒ avg + count');
+  assert.deepEqual(Object.keys(b.restaurants[1].ratings), ['new_until'], 'la_musa: below 10 ⇒ only new_until');
+  assert.deepEqual(Object.keys(b.restaurants[0]), DIRM.ENTRY_FIELDS, 'the real entry schema');
+});
+const ratingText = (el) => (el ? txt(el).replace(/\s+/g, '') : null);
+test('C-1a T1 (frame 9.1 phone + 9.4): «★ 4,8 (10)» is the FIRST store fact and the FIRST item of an open home card\'s meta, then «·»', async () => {
+  const S = bootShell({ dirScript: [c1Resp(RATED())] }); await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+  try {
+    const meta = S.q('.rlist .rcard[data-rid="x_pizza"] .meta');
+    assert.ok(meta.firstElementChild && meta.firstElementChild.classList.contains('rating'), '🔴 C1-T1: the card meta starts with the rating');
+    assert.equal(ratingText(meta.firstElementChild), '4,8(10)', '🔴 C1-T1: comma decimal, exact count');
+    assert.equal(txt(meta.firstElementChild.nextElementSibling), '·', 'then the separator');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const f = S.q('.info .facts');
+    assert.ok(f.firstElementChild && f.firstElementChild.classList.contains('rating'), '🔴 C1-T1: the store facts start with the rating');
+    assert.equal(ratingText(f.firstElementChild), '4,8(10)'); assert.equal(txt(f.firstElementChild.nextElementSibling), '·');
+  } finally { S.w.close(); }
+});
+test('C-1a T1 desk (frame 9.1 desktop): the rating is the first desk fact', async () => {
+  const S = bootShell({ media: fakeMedia(true), dirScript: [c1Resp(RATED())] }); await flush(); await flush();
+  try {
+    S.click('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"]'); await flush();
+    const f = S.q('.sinfo .facts');
+    assert.ok(f && f.firstElementChild && f.firstElementChild.classList.contains('rating'), '🔴 C1-T1-desk: the first desk fact');
+    assert.equal(ratingText(f.firstElementChild), '4,8(10)');
+  } finally { S.w.close(); }
+});
+test('C-1a T2 (frame 9.1 phone right): below 10 ratings within 60 days of first serving ⇒ «Nuevo en Sherpa», no number; after 60 days ⇒ nothing at all', async () => {
+  const S = bootShell({ dirScript: [c1Resp(RATED())] }); await until(() => S.q('.rlist .rcard[data-rid="la_musa"]')); await flush();
+  try {
+    const meta = S.q('.rlist .rcard[data-rid="la_musa"] .meta');
+    assert.equal(meta && meta.firstElementChild && txt(meta.firstElementChild), 'Nuevo en Sherpa', '🔴 C1-T2: the pill first');
+    assert.ok(meta.firstElementChild.classList.contains('new') && !S.q('.rlist .rcard[data-rid="la_musa"] .rating'), '🔴 C1-T2: no number, no star');
+  } finally { S.w.close(); }
+  const old = { x_pizza: c1Stats('x_pizza', { stars: [5] }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 61 * DAY }) };
+  const O = bootShell({ dirScript: [c1Resp(old)] }); await until(() => O.q('.rlist .rcard[data-rid="la_musa"]')); await flush();
+  try {
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const card = O.q(`.rlist .rcard[data-rid="${rid}"]`);
+      assert.equal(card.querySelector('.rating, .pill.new'), null, `🔴 C1-T2: ${rid} — nothing (no pill, no empty slot)`);
+      assert.ok(!/^·/.test(txt(card.querySelector('.meta'))), `${rid}: no dangling separator`);
+    }
+  } finally { O.w.close(); }
+});
+test('C-1a T3 (no pop-in): Home visible with a stored body WITHOUT ratings → the revalidation brings ratings ⇒ the visible cards are unchanged; the next Home entry adopts them', async () => {
+  const st = memStorage({ 'capp:directory': JSON.stringify({ v: 1, body: SC.complete.body, etag: SC.complete.headers.ETag, fetched_at: T0 - 60e3 }) });
+  const S = bootShell({ storage: st, dirScript: [c1Resp(RATED())] });
+  try {
+    await flush(); await flush(); await flush();
+    assert.ok(S.dirCalls.length >= 1, 'premise: revalidated');
+    assert.equal(S.q('.rlist .rcard .rating, .rlist .rcard .pill.new'), null, '🔴 C1-T3: no rating inserted into the visible list');
+    S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(ratingText(S.q('.rlist .rcard[data-rid="x_pizza"] .meta .rating')), '4,8(10)', '🔴 C1-T3: adopted on the next Home entry');
+  } finally { S.w.close(); }
+});
+test('C-1a T5: a degraded / absent `ratings` (null) ⇒ no rating, no pill; the list renders and enters as today', async () => {
+  const S = bootShell({ dirScript: [c1Resp({})] }); await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+  try {
+    assert.equal(S.q('.rcard .rating, .rcard .pill.new'), null, '🔴 C1-T5: nothing drawn');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.equal(S.q('.info .facts .rating, .info .facts .pill.new'), null, '🔴 C1-T5: the store neither');
+  } finally { S.w.close(); }
+});
+test('C-1a T6 share (frame 9.1): Web Share with the store\'s URL; no Web Share ⇒ the clipboard + «Enlace copiado»; neither ⇒ no share button', async () => {
+  const shared = [];
+  const S = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { w.navigator.share = async (d) => { shared.push(d); }; } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    S.click('.store-nav [data-act="share"]'); await flush();
+    assert.equal(shared.length, 1, '🔴 C1-T6: navigator.share called'); assert.match(shared[0].url, /\/r\/x_pizza$/, '🔴 C1-T6: the store URL'); assert.ok(shared[0].title, 'with its name');
+  } finally { S.w.close(); }
+  const copied = [];
+  const C = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { delete w.navigator.share; Object.defineProperty(w.navigator, 'clipboard', { value: { writeText: async (t) => { copied.push(t); } }, configurable: true }); } });
+  try {
+    await until(() => C.q('.rlist .rcard[data-rid="x_pizza"]')); C.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    C.click('.store-nav [data-act="share"]'); await flush(); await flush();
+    assert.equal(copied.length, 1, '🔴 C1-T6: copied'); assert.match(copied[0], /\/r\/x_pizza$/); assert.equal(txt(C.q('#toast')), 'Enlace copiado', '🔴 C1-T6: «Enlace copiado»');
+  } finally { C.w.close(); }
+  const N = bootShell({ dirScript: [c1Resp(RATED())], preMount: (w) => { delete w.navigator.share; Object.defineProperty(w.navigator, 'clipboard', { value: undefined, configurable: true }); } });
+  try { await until(() => N.q('.rlist .rcard[data-rid="x_pizza"]')); N.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.equal(N.q('[data-act="share"]'), null, '🔴 C1-T6: no API ⇒ no button'); } finally { N.w.close(); }
+});
+test('C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s heart opens the sign-in (ctx favorites), no request; a member\'s heart slot is RESERVED (hidden) until C-1b; unresolved ⇒ reserved', async () => {
+  const G = bootShell({ auth: 'guest', dirScript: [c1Resp(RATED())] });
+  try {
+    await until(() => G.q('.rlist .rcard[data-rid="x_pizza"]')); G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const h = G.q('.store-nav [data-act="fav"]');
+    assert.ok(h && !/visibility/.test(h.getAttribute('style') || '') && h.getAttribute('aria-label') === 'Guardar en favoritos', '🔴 C1-T7: the guest sees the heart');
+    const ev0 = G.events.length; G.click(h); await flush();
+    assert.deepEqual(G.events.slice(ev0).filter(([n]) => n === 'signin').map(([, d]) => d.ctx), ['favorites'], '🔴 C1-T7: the heart ⇒ the sign-in');
+  } finally { G.w.close(); }
+  for (const auth of ['member', 'unresolved']) {
+    const M = bootShell({ auth, dirScript: [c1Resp(RATED())] });
+    try {
+      await until(() => M.q('.rlist .rcard[data-rid="x_pizza"]')); M.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const h = M.q('.store-nav [data-act="fav"]');
+      assert.ok(h && /visibility:hidden/.test(h.getAttribute('style') || '') && h.getAttribute('aria-hidden') === 'true', `🔴 C1-T7: ${auth} ⇒ the slot reserved, hidden`);
+    } finally { M.w.close(); }
+  }
+});
+test('C-1a T4 (advisor 11-13): the store\'s rating is FIXED per mount — a directory revalidation that lands DURING the store visit changes nothing; the next mount adopts it', async () => {
+  const B = deferred();
+  const eleven = { x_pizza: c1Stats('x_pizza', { stars: [...TEN, 5] }), la_musa: c1Stats('la_musa', { stars: [5, 4], firstServedAt: T0 - 10 * DAY }) };
+  const S = bootShell({ dirScript: [c1Resp(RATED()), { p: B.p }] });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+    S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush();   // a revalidation starts (held)
+    assert.ok(S.dirCalls.length >= 2, 'premise: a second directory read is in flight');
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(10)', 'premise: mounted with the first body\'s rating');
+    B.resolve(c1Resp(eleven)); await flush(); await flush();
+    S.click('[data-act="mode"][data-val="pickup"]'); await flush(); S.click('[data-act="mode"][data-val="delivery"]'); await flush();   // the facts RE-RENDER mid-visit
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(10)', '🔴 C1-T4: the mounted store\'s rating did not change mid-visit (even across a re-render)');
+    S.click('.store-nav [data-act="back"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(11)', '🔴 C1-T4: the next mount adopts it');
+  } finally { S.w.close(); }
+});
+
+// ── «wake» (OWNER 11-01, DECISIONS:3308): the shell's ONE «first screen ready» (capp-splash.js signalReady) — the moment the native
+// overlay fades. Fired by the first SETTLED screen (the store list from the stored body or the network, its error frame, a store);
+// never by the cold «Cargando restaurantes…» line ──
+const readyOf = (S) => S.w.document.documentElement.getAttribute('data-capp-ready');
+test('WAKE-6: a cold boot (the directory still loading) is NOT ready; the live list painted ⇒ READY; a stored list ⇒ READY at the first paint', async () => {
+  const C = bootShell({ dirScript: ['hang'] });
+  try { await flush(); await flush(); assert.equal(readyOf(C), null, '🔴 WAKE-6: «Cargando…» is not the first screen'); } finally { C.w.close(); }
+  const L = bootShell({}); try { await until(() => L.q('.rlist .rcard')); await flush(); assert.equal(readyOf(L), '1', '🔴 WAKE-6: the live list ⇒ READY'); } finally { L.w.close(); }
+  const st = memStorage({ 'capp:directory': JSON.stringify({ v: 1, body: SC.complete.body, etag: SC.complete.headers.ETag, fetched_at: T0 - 60e3 }) });
+  const P = bootShell({ storage: st, dirScript: ['hang'] });
+  try { await flush(); assert.ok(P.q('.rlist .rcard'), 'premise: the stored list painted'); assert.equal(readyOf(P), '1', '🔴 WAKE-6: the stored list ⇒ READY (cached-first)'); } finally { P.w.close(); }
+});
+test('WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ READY (the overlay never hides the error)', async () => {
+  const E = bootShell({ dirScript: ['unavailable_503'] });
+  try { await until(() => E.q('[data-act="dir-retry"]')); await flush(); assert.equal(readyOf(E), '1', '🔴 WAKE-6b: the error frame ⇒ READY'); } finally { E.w.close(); }
 });

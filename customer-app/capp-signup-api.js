@@ -144,11 +144,19 @@
 
   // the contract's Row (NOTE-getMyOrders §3), field by field — nothing else survives
   const ORDER_ID_RE = /^[A-Za-z0-9_-]{4,64}$/, RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+  // S-D's reorder price snapshot (C-3r G1): { v:1, lines:[{ unit_cents, line_cents }] } aligned 1:1 with the row's items; anything
+  // else (another version, a length mismatch, a non-integer) ⇒ dropped — the reorder then compares at the live price (no note)
+  function snapshotOf(ps, items) {
+    if (!ps || typeof ps !== 'object' || ps.v !== 1 || !Array.isArray(ps.lines) || !Array.isArray(items) || ps.lines.length !== items.length) return null;
+    if (!ps.lines.every((l) => l && Number.isSafeInteger(l.unit_cents) && l.unit_cents >= 0 && Number.isSafeInteger(l.line_cents) && l.line_cents >= 0)) return null;
+    return { v: 1, lines: ps.lines.map((l) => ({ unit_cents: l.unit_cents, line_cents: l.line_cents })) };
+  }
   function rowOf(x) {
     if (!x || typeof x !== 'object' || typeof x.order_id !== 'string' || !ORDER_ID_RE.test(x.order_id) || !Number.isFinite(x.ts) || typeof x.restaurant !== 'string' || !RID_RE.test(x.restaurant)) return null;
     return { order_id: x.order_id, ts: x.ts, total: Number.isFinite(x.total) ? x.total : null, order_type: x.order_type === 'pickup' ? 'pickup' : x.order_type === 'delivery' ? 'delivery' : null,
       restaurant: x.restaurant, status: typeof x.status === 'string' ? x.status : null, items_text: typeof x.items_text === 'string' ? x.items_text : null, items: Array.isArray(x.items) ? x.items : [],
       ...(typeof x.recipe_format === 'string' ? { recipe_format: x.recipe_format } : {}),
+      ...(snapshotOf(x.price_snapshot, x.items) ? { price_snapshot: snapshotOf(x.price_snapshot, x.items) } : {}),   // S-D (C-3r G1): v1, aligned 1:1 with items
       ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01: 3a adds it to the whitelist
   }
   // the contract's receipt (NOTE-getMyOrders-receipt §3), field by field: lines only when EVERY line is well-formed (else null ⇒ the
