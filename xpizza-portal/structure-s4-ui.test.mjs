@@ -386,6 +386,37 @@ test('S4-F — «Crear» at the 30-section cap, and with an unnamed section (the
   assert.ok(all.d.querySelector('#namescrim.show'), 'every section unnamed: the existing «name all» flow');
 });
 
+// ── frame E: reorder — grips on the rail's sections (S2's X4 grip: drag, ↑ / ↓), never on a new one (advisor ruling 4) ──
+const grips = (p) => [...rail(p).querySelectorAll('.rrow > button.rgrip')];
+const declaredOrder = (p) => p.src().structure.categories.map((c) => c.id);
+test('E — every LIVE section in the rail has its grip (a new one none); ↓ / ↑ move it one place; the bar says «orden»', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  const ids0 = declaredOrder(p);
+  assert.equal(grips(p).length, ids0.length, '🔴 one grip per declared section');
+  const g0 = grips(p)[0];
+  assert.equal(g0.getAttribute('aria-label'), 'Mover Dim Sum'); assert.equal(g0.title, 'Arrastrá para ordenar');
+  g0.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await settle(5);
+  assert.deepEqual(declaredOrder(p), [ids0[1], ids0[0], ...ids0.slice(2)], '🔴 moved down one');
+  assert.equal(p.d.activeElement, grips(p)[1], 'focus follows the moved section');
+  assert.ok(p.d.getElementById('rbtxt').textContent.endsWith(P('barOrder')), 'the bar says «orden»');
+  grips(p)[1].dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })); await settle(5);
+  assert.deepEqual(declaredOrder(p), ids0, 'back');
+  await create(p, 'Postres');
+  assert.equal(grips(p).length, ids0.length, 'a new section has no grip');
+});
+test('E — a pointer drag on a grip drops the section where the line is (here: the end)', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  const ids0 = declaredOrder(p);
+  const g = grips(p)[0];
+  const ev = (type, y) => g.dispatchEvent(p.w.PointerEvent ? new p.w.PointerEvent(type, { bubbles: true, clientY: y, button: 0, pointerType: 'mouse' }) : Object.assign(new p.w.MouseEvent(type, { bubbles: true, clientY: y, button: 0 }), { pointerType: 'mouse' }));
+  ev('pointerdown', 0); ev('pointermove', 50);
+  assert.ok(rail(p).querySelector('.mk-dropline'), 'the drop line');
+  ev('pointerup', 50); await settle(5);
+  assert.deepEqual(declaredOrder(p), [...ids0.slice(1), ids0[0]], '🔴 dropped at the end');
+});
+
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
   assert.deepEqual(Object.keys(S4_COPY).sort(), ['barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'notAttachBody', 'notAttachLine', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'sheetSub', 'sheetSubFirst', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
 });

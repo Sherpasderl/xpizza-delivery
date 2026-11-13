@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail, s4Copy, SECTION_NAME_PROBLEM, SECTION_NAME_MAX } from './render.js';
-import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections } from './editor.js';   // STRUCTURE S4 (the drawing half)
+import { addCategory, dropStagedCategory, sectionIsNew, addSubcat, moveItem, pendingSections, reorderSections } from './editor.js';   // STRUCTURE S4 (the drawing half)
 import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
@@ -1653,8 +1653,27 @@ function railS4() {
       if (newCatRefs) { newCatRefs.cnt.textContent = `${[...v].length}/${SECTION_NAME_MAX}`; newCatRefs.create.disabled = !v.trim(); }
     }),
     onCreate: bound(createSection),
+    reorder: { move: bound((id, dir) => sectionsMove(id, dir)), drop: bound((id, idx) => sectionsDrop(id, idx)) },
     onCancel: bound(() => { newCatBox = null; paint(); const a = $('rail').querySelector('button.railadd'); if (a) a.focus(); }),
   };
+}
+// frame E — the sections' order (reorderSections, sections switch): ↑ / ↓ one place, or a drop at an index among the others; the grip
+// keeps focus; a new (staged) section is not reordered here (its place is its anchor)
+const declaredIds = () => categoriesOf().map((c) => String(c.id));
+function sectionsReorder(ids, id) {
+  if (!reorderSections(state.draft, ids, S4ON()).ok) return;
+  refreshBar(); repaintFromDraft();
+  const g = [...$('rail').querySelectorAll('button.rgrip')].find((x) => x.dataset.grip === String(id)); if (g) g.focus();
+}
+function sectionsMove(id, dir) {
+  const ids = declaredIds(); const i = ids.indexOf(String(id)); const j = i + dir;
+  if (i === -1 || j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  sectionsReorder(ids, id);
+}
+function sectionsDrop(id, idx) {
+  const others = declaredIds().filter((x) => x !== String(id));
+  sectionsReorder([...others.slice(0, idx), String(id), ...others.slice(idx)], id);
 }
 // «Crear» (frame E): the writer judges the name (T1's words for empty / long / markup; the addendum's for a taken one); the new section
 // is selected at once, its page waiting for a dish (S4-C)

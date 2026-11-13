@@ -1245,6 +1245,7 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletio
                  'createSection',   // STRUCTURE S4 (frame E): «Crear» — addCategory (sections switch), then the new section selected
                  'subCreate',       // S4-A / S4-B: «Crear subcategoría» — addSubcat (sections switch)
                  'menuMoveTo',      // E2: «Mover a…» — moveItem (sections switch; 3(a) un-promotes a draft-only section)
+                 'sectionsReorder', 'sectionsMove', 'sectionsDrop',   // frame E: the sections' order — reorderSections (sections switch)
                  // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
                  // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
                  // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
@@ -1683,7 +1684,7 @@ const ALLOWED_CONSUMERS = new Set([
   // S3: the server's name rules over the copy's choice (empty / duplicate under the synced fold) — a pure reader (cell «choiceNameProblems is a PURE reader»)
   'IE.choiceNameProblems',
   // STRUCTURE S4: a new section / dropping a new one (sections switch, canEditContent, all or nothing) and the pure «is it new» reader
-  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem',
+  'addCategory', 'dropStagedCategory', 'sectionIsNew', 'addSubcat', 'moveItem', 'reorderSections',
   'pendingSections',   // S4-G: the bar's S4 counts — a pure reader (cell «pendingSections is a PURE reader»)
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',

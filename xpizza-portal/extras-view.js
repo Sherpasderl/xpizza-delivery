@@ -141,7 +141,7 @@ export function renderExtrasPage(railHost, detailHost, model, on, { canEdit = tr
 // (extras-logic moveGroupOrder → null), which writes nothing
 function endState(btn, atEnd) { if (atEnd) { btn.setAttribute('aria-disabled', 'true'); btn.classList.add('mk-udend'); } }
 // the grip's six dots (MOCKUP x4b)
-function dots() {
+export function dots() {
   const s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
   for (const cx of [9, 15]) for (const cy of [6, 12, 18]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '1.6'); s.append(c); }
   return s;
@@ -149,17 +149,21 @@ function dots() {
 // X4 the drag on a grip: a mouse / pen drags after 4px of travel; a touch after a long press (450 ms, the phone's grip is always
 // shown); the dragged group lifts (.mk-drag, the grip .mk-gripon), ONE .mk-dropline marks where it lands; the drop → on.drop(group,
 // index among the others). A drag is not a click: the click that follows it is consumed.
-function dragOn(grip, rr, g, railHost, on) {
+// `sel` (STRUCTURE S4 reuses it on the sections rail, the subsection heads and the dishes — ONE drag): the rows (`row`), the node that lifts
+// (`lift`, inside the row; null ⇒ the row itself) and the node the line goes before at the end (`tail`); the defaults are the Extras rail's
+export function dragOn(grip, rr, g, railHost, on, sel = {}) {
+  const S = { row: '.rrow', lift: '.railitem', tail: '.railadd', ...sel };
   let st = null, eat = false;
   const mid = (n) => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; };
-  const others = () => [...railHost.querySelectorAll('.rrow')].filter((x) => x !== rr);
-  const begin = () => { st.live = true; rr.querySelector('.railitem').classList.add('mk-drag'); grip.classList.add('mk-gripon'); };
+  const others = () => [...railHost.querySelectorAll(S.row)].filter((x) => x !== rr);
+  const liftOf = () => (S.lift ? rr.querySelector(S.lift) : rr);
+  const begin = () => { st.live = true; liftOf().classList.add('mk-drag'); grip.classList.add('mk-gripon'); };
   const end = (commit) => {
     if (!st) return;
     clearTimeout(st.timer);
     const s = st; st = null;
     const ln = railHost.querySelector('.mk-dropline'); if (ln) ln.remove();
-    rr.querySelector('.railitem').classList.remove('mk-drag'); grip.classList.remove('mk-gripon');
+    liftOf().classList.remove('mk-drag'); grip.classList.remove('mk-gripon');
     if (!s.live) return;
     eat = true; setTimeout(() => { eat = false; }, 0);
     if (commit && s.idx !== undefined) on.drop(g, s.idx);
@@ -181,7 +185,7 @@ function dragOn(grip, rr, g, railHost, on) {
     const os = others(); const idx = dropIndexAt(os.map(mid), e.clientY);
     let ln = railHost.querySelector('.mk-dropline');
     if (!ln) { ln = el('div', 'mk-dropline'); ln.setAttribute('aria-hidden', 'true'); ln.append(el('span', 'mk-dropdot')); }
-    railHost.insertBefore(ln, idx < os.length ? os[idx] : railHost.querySelector('.railadd'));
+    railHost.insertBefore(ln, idx < os.length ? os[idx] : railHost.querySelector(S.tail));
     st.idx = idx;
   });
   grip.addEventListener('pointerup', () => end(true));

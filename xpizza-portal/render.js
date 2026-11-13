@@ -80,6 +80,8 @@ const el = (tag, cls, text) => {
   return n;
 };
 
+import { dragOn, dots } from './extras-view.js';   // STRUCTURE S4 (frame E): the ONE grip drag (S2's X4)
+
 // ── STRUCTURE S4 — the addendum's PROPOSED lines (MOCKUP-portal-structure-S4-addendum H3): null ⇒ «⟦s4.key⟧» on screen until the owner
 // approves them (structure-s4-ui's SHIP GATE stays red until then). Frame E's own strings are the approved base mockup's, literal.
 export const S4_COPY = Object.freeze({
@@ -94,11 +96,12 @@ export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_C
 // `s4` (STRUCTURE S4, the server's `sections` switch; absent ⇒ today's rail exactly): { staged: [{id, name}] (the new sections, after
 // the declared ones), isNew(id) (a section new in this draft: the F tag «Nueva»), box: null | { value, line } (the inline «Nueva categoría»
 // box, frame E), max, onOpen(), onInput(v), onCreate(), onCancel() }. → { input, cnt, create } (the box's live nodes: the caller updates
-// them in place while the merchant types — a rebuild under the caret would break a dead-key accent)
+// them in place while the merchant types — a rebuild under the caret would break a dead-key accent). `s4.reorder`: { move(id, ±1),
+// drop(id, index among the others) } — each LIVE section gets S2's grip (drag; ↑ / ↓), a new one none (advisor ruling 4)
 export function renderRail(railEl, groups, selectedId, onSelect, s4 = null) {
   railEl.replaceChildren();
   const isNew = s4 && typeof s4.isNew === 'function' ? s4.isNew : () => false;
-  const item = (id, name, n) => {
+  const item = (id, name, n, grip, staged = false) => {
     const b = el('button', `railitem${id === selectedId ? ' on' : ''}`);
     b.type = 'button';
     const t = el('div', 'rtext');
@@ -108,11 +111,21 @@ export function renderRail(railEl, groups, selectedId, onSelect, s4 = null) {
     const c = el('div', 'rcount', String(n));
     b.append(t, c);
     b.addEventListener('click', () => onSelect(id));
-    railEl.append(b);
+    if (staged) b.dataset.staged = '1';   // a new section: the drop line's end anchor (they follow the declared ones)
+    if (!grip) { railEl.append(b); return; }
+    const rr = el('div', 'rrow'); rr.append(b);
+    const gr = el('button', 'rgrip'); gr.type = 'button'; gr.dataset.grip = String(id);
+    gr.setAttribute('aria-label', `Mover ${name}`); gr.title = 'Arrastrá para ordenar';
+    gr.append(dots());
+    dragOn(gr, rr, id, railEl, { drop: (x, idx) => s4.reorder.drop(x, idx) }, { tail: '[data-staged], .railadd, .mk-newcat' });
+    gr.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); s4.reorder.move(id, e.key === 'ArrowUp' ? -1 : 1); } });
+    rr.append(gr);
+    railEl.append(rr);
   };
-  for (const g of groups) item(g.category.id, g.category.name, g.items.length);
+  const reorder = !!(s4 && s4.reorder);
+  for (const g of groups) item(g.category.id, g.category.name, g.items.length, reorder && !isNew(g.category.id));
   if (!s4) return null;
-  for (const c of Array.isArray(s4.staged) ? s4.staged : []) item(c.id, c.name, 0);
+  for (const c of Array.isArray(s4.staged) ? s4.staged : []) item(c.id, c.name, 0, false, true);
   if (!s4.box) {
     const a = el('button', 'railadd'); a.type = 'button';
     a.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Nueva categoría'));
