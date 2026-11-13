@@ -130,6 +130,25 @@ const DAY = 86400000;
     assert.deepStrictEqual(stale.dish_stats, good, 'after 10 min the STALE value is served at once (no vanishing field, no ETag flip)');
     assert.strictEqual(reads, 2, '… while ONE refresh runs'); await settle(s);
     assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: r, now: clock })).dish_stats, val, 'the refresh is adopted on the next call');
+    // BOUNDED staleness (advisor 11-13): a FAILED refresh keeps serving the last success, but only up to STALE_MAX past its expiry;
+    // after that the menu serves WITHOUT dish_stats until a refresh succeeds (daily stats may lag an hour, never days)
+    s = fresh(); reads = 0; now = 1000; let mode = 'ok';
+    const flaky = async () => { reads += 1; if (mode === 'down') throw new Error('down'); return good; };
+    await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock }); await settle(s);
+    mode = 'down'; now += DS.OK_TTL_MS + 1;
+    assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock })).dish_stats, good, 'expired: stale served while the refresh runs');
+    await quiet(() => settle(s));
+    assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock })).dish_stats, good, '🔴 a FAILED refresh keeps serving the last success (one blip never drops the badges)');
+    const r0 = reads; now += DS.FAIL_TTL_MS - 1; await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock });
+    assert.strictEqual(reads, r0, 'failures are retried at most once a minute');
+    now = 1000 + DS.OK_TTL_MS + DS.STALE_MAX_MS - 1; await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock }); await quiet(() => settle(s));
+    assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock })).dish_stats, good, 'still inside the staleness cap');
+    now = 1000 + DS.OK_TTL_MS + DS.STALE_MAX_MS + 1;
+    const capped = await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock }); await quiet(() => settle(s));
+    assert.ok(!('dish_stats' in capped), '🔴 past the staleness cap (60 min after expiry) the menu serves WITHOUT dish_stats — never days-old stats');
+    assert.strictEqual(DS.STALE_MAX_MS, 60 * 60 * 1000, 'the cap is 60 min');
+    mode = 'ok'; now += DS.FAIL_TTL_MS + 1; await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock }); await settle(s);
+    assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: flaky, now: clock })).dish_stats, good, 'a successful refresh restores the field');
     // failure memo: no re-read within 60 s
     s = fresh(); reads = 0; now = 1000; const f = async () => { reads += 1; throw new Error('down'); };
     await DS.withDishStats('r1', body, { ...s, read: f, now: clock }); await quiet(() => settle(s));

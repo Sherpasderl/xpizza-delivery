@@ -19,6 +19,7 @@ const { T } = require('../ratings/aggregate');
 const DISH_STATS_TIMEOUT_MS = 1500;
 const OK_TTL_MS = 10 * 60 * 1000;
 const FAIL_TTL_MS = 60 * 1000;
+const STALE_MAX_MS = 60 * 60 * 1000;   // advisor 11-13: a stale success is served at most 60 min past its expiry (stats may lag an hour, never days)
 const COUNT_MAX = 999999;
 const DISH_STATS_BYTES = 3072;
 const DISH_STATS_MAX = 8;   // set by the worst-case cell: 8 × worst case = 2,880 B, 9 = 3,235 B (> 3,072) (dish-stats-serve.test.js), never asserted untested
@@ -89,7 +90,10 @@ function startRead(rid, deps) {
   const p = withTimeout(Promise.resolve().then(() => read(rid)), deps.timeoutMs || DISH_STATS_TIMEOUT_MS)
     .then((raw) => ({ ok: true, raw }), () => ({ ok: false, raw: null }))
     .then((r) => {
-      const rec = { ...r, at: deps.now ? deps.now() : Date.now() }; (deps.memo || MEMO).set(rid, rec); inflight.delete(rid);
+      const memo = deps.memo || MEMO; const prev = memo.get(rid);
+      // a FAILED read keeps the LAST SUCCESS beside it (served while within the staleness cap); a success replaces both
+      const lastOk = r.ok ? null : (prev && prev.ok ? { raw: prev.raw, at: prev.at } : (prev && prev.lastOk) || null);
+      const rec = { ...r, at: deps.now ? deps.now() : Date.now(), ...(lastOk ? { lastOk } : {}) }; memo.set(rid, rec); inflight.delete(rid);
       if (!rec.ok) console.warn('public_menu_dish_stats_absent', JSON.stringify({ rid, reason: 'read_failed' }));
       return rec;
     });
@@ -101,7 +105,8 @@ function startRead(rid, deps) {
    - a FRESH memo (ok ≤ 10 min / failure ≤ 60 s) is served as it is (a failure ⇒ no field);
    - otherwise a background read is STARTED (deduped; bounded by its own 1.5 s deadline) and NOT awaited;
      · a STALE success memo is served meanwhile (stale-while-revalidate: the field does not vanish for one request every
-       10 min, which would flip the ETag and cost every client a 200);
+       10 min, which would flip the ETag and cost every client a 200) — and a FAILED refresh keeps it, but only up to
+       STALE_MAX (60 min) past its expiry; after that the field is omitted until a refresh succeeds (advisor 11-13);
      · with no usable memo (a cold instance, or after a failure) this response carries NO dish_stats; the next one has it.
    The ETag is computed over the body actually served, so it always reflects what was sent. */
 function memoFor(rid, deps) {
@@ -109,7 +114,9 @@ function memoFor(rid, deps) {
   const memo = (deps.memo || MEMO).get(rid);
   const fresh = memo && now - memo.at < (memo.ok ? OK_TTL_MS : FAIL_TTL_MS);
   if (!fresh) startRead(rid, deps);   // background: never awaited here
-  return memo && memo.ok ? memo : null;
+  // the newest SUCCESS (this memo, or the one a failed refresh kept), served only within OK_TTL + STALE_MAX of its read
+  const ok = memo && (memo.ok ? memo : memo.lastOk);
+  return ok && now - ok.at < OK_TTL_MS + STALE_MAX_MS ? ok : null;
 }
 
 // buildPublicMenu's hook: the body with `dish_stats` when the memo holds qualifying stats, else the body unchanged. Never throws,
@@ -126,4 +133,4 @@ async function withDishStats(rid, body, deps = {}) {
   }
 }
 
-module.exports = { withDishStats, selectDishStats, allowEntry, DISH_STATS_MAX, DISH_STATS_BYTES, DISH_STATS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, COUNT_MAX, _state: { MEMO, INFLIGHT } };
+module.exports = { withDishStats, selectDishStats, allowEntry, DISH_STATS_MAX, DISH_STATS_BYTES, DISH_STATS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, STALE_MAX_MS, COUNT_MAX, _state: { MEMO, INFLIGHT } };
