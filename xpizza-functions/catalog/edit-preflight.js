@@ -8,7 +8,7 @@
 //   4 a frozen / registry / reserved key          name_previously_used
 //   5 a section's subsection coverage            subcat_invalid
 //   6 a section / subsection left empty          section_emptied · subsection_emptied
-//   7 a section the order page does not show     category_not_renderable
+//   7 a section the order page does not show     category_not_renderable   (S4 ON: every declared category is shown, R3.1)
 // Only values that DIFFER from the live version are judged (unchanged ones are grandfathered); lengths are Unicode code
 // points. Text safety is the validator's own per-field rule (catalog/display-safety.js): the ATTRIBUTE rule for names (no
 // quotes, no angle brackets, literal or encoded), the BODY rule for descriptions. Coverage and emptiness are catalog/move-rules.js
@@ -50,6 +50,13 @@ function editPreflight({ draft, live, reservedSet = new Map(), registryTaken = n
   const items = (draft && Array.isArray(draft.items) ? draft.items : []).filter((it) => isObj(it) && isObj(it.display));
   const wasOf = (it) => (typeof it.key === 'string' && !own(it, 'ref') ? liveByKey.get(it.key) : null);
   const bad = (status, body) => ({ status, body });
+  // S4 (PLAN-structure-S4-r4 R3.1): with the sections switch ON every DECLARED category of the draft is renderable (a category S4 created
+  // and published keeps accepting moves); OFF: the frozen renderer list, as today. Form renderability is a review LABEL only.
+  let sectionsOn = false; try { sectionsOn = require('./platform-structure').structureCapabilities().sections === true; } catch (_) { sectionsOn = false; }
+  if (sectionsOn) {
+    const declared = (draft && draft.structure && Array.isArray(draft.structure.categories) ? draft.structure.categories : []).filter(isObj).map((c) => c.id);
+    renderedCategories = [...new Set([...(renderedCategories || []), ...declared])];
+  }
 
   // 1 · the minted-key syntax (additions and renames, own key included)
   { const op = RK.opaqueNameProblems({ items, activeItems: liveItems })[0]; if (op) return bad(400, at(op.key || op.ref, 'name', 'name_previously_used')); }

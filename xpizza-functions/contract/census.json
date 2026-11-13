@@ -4931,6 +4931,69 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/section-compare.js#refuse#status#0",
+   "line": 22,
+   "kind": "destructure",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/section-compare.js#judgeSubcats#items#0",
+   "line": 74,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/section-compare.js#judgeSubcats>anon#items#0",
+   "line": 79,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/section-compare.js#claimMoveProjection#items#0",
+   "line": 105,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/section-compare.js#claimMoveProjection#items#1",
+   "line": 106,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/section-compare.js#compareToActive#items#0",
+   "line": 126,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/source-accounting.js#accountAuthored#items#0",
    "line": 43,
    "kind": "member",

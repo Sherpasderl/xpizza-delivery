@@ -43,7 +43,7 @@ function rewardGroupGuard({ draftBuilt, activeBuilt, extrasCatalog }) {
 function compareToActive(rid, args0) {
   const args = { ...args0, extraRenames: require('./extra-identity').extraIdentityCapabilities().mintExtras };   // S2b §0: an extra rename (the dark switch) at every judgment site
   rewardGroupGuard(args);   // Codex #119 P2: the legacy-form reward-group guard, at every judgment site (save, publish, request)
-  if (!require('./platform-structure').structureCapabilities().choiceEdit) return AP.compareToActive(args);
+  if (!require('./platform-structure').structureCapabilities().choiceEdit) return require('./section-compare').compareToActive(args);   // S4 (S0-2): innermost
   const A = args.activeBuilt; const D = args.draftBuilt;
   const ia = groupIndexFrom(A); const id = groupIndexFrom(D);
   if (!ia.ok || !id.ok) throw new AP.AddProductError('choice_index_invalid', 'the choice groups cannot be read', { status: 409, field: 'choices' });
@@ -87,7 +87,7 @@ function compareToActive(rid, args0) {
   const restored = avi ? clone(avi) : {};
   for (const [lid, spec] of Object.entries(dvi)) if (!aItems.has(keyOfDraftId.get(String(lid)))) restored[lid] = clone(spec);   // a whole NEW group: today's rule
   if (avi || Object.keys(restored).length) Dp.structure.variant_items = restored; else delete Dp.structure.variant_items;
-  const r = AP.compareToActive({ ...args, draftBuilt: Dp });
+  const r = require('./section-compare').compareToActive({ ...args, draftBuilt: Dp });   // S4 (S0-2): innermost
 
   // (3) the activation classifier on the real pair
   choiceActivation({ rid, baseline: A, target: D, choiceEdit: true });
