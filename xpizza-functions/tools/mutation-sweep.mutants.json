@@ -32028,7 +32028,8 @@
   "command": [
    "node",
    "my-orders.test.js"
-  ]
+  ],
+  "kills_with": "a non-customer (staff) token ⇒"
  },
  {
   "id": "mo-2",
@@ -32112,7 +32113,8 @@
   "command": [
    "node",
    "my-orders.test.js"
-  ]
+  ],
+  "kills_with": "🔴 deleted_uids/"
  },
  {
   "id": "mo-9",

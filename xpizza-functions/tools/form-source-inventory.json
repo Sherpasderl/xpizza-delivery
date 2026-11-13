@@ -2810,6 +2810,7 @@
   "lib/hn-date.js",
   "manual-resolve.js",
   "materialize.js",
+  "member-auth.js",
   "menu-pricing.js",
   "merchant/_fake-db.js",
   "merchant/merchant-brand.js",
@@ -6865,6 +6866,10 @@
    "lifts": [
     "xpizza-functions/d12b-wiring.guard.test.js"
    ]
+  },
+  "member-auth.js": {
+   "pins": [],
+   "lifts": []
   },
   "menu-pricing.js": {
    "pins": [
