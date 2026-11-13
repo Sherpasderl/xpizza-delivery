@@ -194,6 +194,10 @@ test('promotion is per SAVE (5f R4.2): two staged on one anchor promoted in ONE 
   assert.equal(moveItem(one, d1, { cat: 'beta', subcat: null }, ON).ok, true);   // B first, by hand
   assert.equal(moveItem(one, d2, { cat: 'alfa', subcat: null }, ON).ok, true);
   assert.deepEqual(draftSource(one).structure.categories.slice(0, 3).map((c) => c.id), ['dim_sum', 'alfa', 'beta'], '🔴 one save: A, B whatever the move order');
+  const fwd = createDraft(clone(base));
+  assert.equal(moveItem(fwd, d1, { cat: 'alfa', subcat: null }, ON).ok, true);   // A first, then B — per-move promotion would give B, A
+  assert.equal(moveItem(fwd, d2, { cat: 'beta', subcat: null }, ON).ok, true);
+  assert.deepEqual(draftSource(fwd).structure.categories.slice(0, 3).map((c) => c.id), ['dim_sum', 'alfa', 'beta'], '🔴 one save: A, B whatever the move order (A first)');
   const two = createDraft(clone(base));
   assert.equal(moveItem(two, d1, { cat: 'alfa', subcat: null }, ON).ok, true);
   commit(two);                                                                    // the save: the stored draft now has A declared
