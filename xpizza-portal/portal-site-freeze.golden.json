@@ -79,6 +79,7 @@
   "portal-fonts.test.mjs",
   "portal-logic.js",
   "portal-look.test.mjs",
+  "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
   "portal-wiring.test.mjs",
@@ -180,8 +181,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "42f432ce900d8f904a04b95e8ad877e3668e5cbe33c9c53b9697c26f9b468573",
-   "bytes": 153383
+   "sha256": "e8cf21ae2e288b2e661b20ac07e009c11021311c5432924990f4bee3b91a961c",
+   "bytes": 153702
   }
  },
  "diff_aid": {
@@ -202,9 +203,6 @@
    "--accent-2": "#095C34",
    "--accent-ink": "#fff",
    "--accent-line": "#BEE6CE",
-   "--gold": "#8A6A12",
-   "--gold-line": "#E3D2A0",
-   "--gold-soft": "#FBF4E1",
    "--green": "#0E9F5B",
    "--green-soft": "#E7F5EC",
    "--green-line": "#BEE6CE",
@@ -214,14 +212,17 @@
    "--sky-text": "#1E4E99",
    "--sky-soft": "#E6F0FB",
    "--sky-line": "#B7D2F3",
+   "--mint-soft": "#DFF4ED",
+   "--mint-line": "#A9E0D0",
+   "--mint-text": "#0E6A55",
+   "--lav-soft": "#F0EDFB",
+   "--lav-line": "#C9C1F0",
+   "--lav-text": "#4E3DA6",
    "--red": "#D23425",
    "--red-soft": "#FCEBE9",
    "--red-line": "#EFC9C2",
    "--green-text": "#0B7C47",
    "--red-text": "#C73123",
-   "--amber": "#8A5200",
-   "--amber-soft": "#FBF0DC",
-   "--amber-line": "#EBD6A6",
    "--tint": "rgba(14,159,91,.07)",
    "--tint2": "rgba(14,159,91,.13)",
    "--rbar-bg": "#FFFFFF",
@@ -410,13 +411,13 @@
     "",
     ".ack",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".ackt b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -452,13 +453,13 @@
     "",
     ".adm-tag",
     "background",
-    "var(--gold-soft)"
+    "var(--mint-soft)"
    ],
    [
     "",
     ".adm-tag",
     "color",
-    "var(--gold)"
+    "var(--mint-text)"
    ],
    [
     "",
@@ -518,7 +519,7 @@
     "",
     ".attest .at b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -854,19 +855,19 @@
     "",
     ".cicon.warn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".cicon.warn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".cicon.warn",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1088,13 +1089,13 @@
     "",
     ".drow.big",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".drow.big",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -1280,13 +1281,13 @@
     "",
     ".envio .echip.echg",
     "background",
-    "var(--amber-soft)"
+    "var(--sky-soft)"
    ],
    [
     "",
     ".envio .echip.echg",
     "color",
-    "var(--amber)"
+    "var(--sky-text)"
    ],
    [
     "",
@@ -1436,19 +1437,19 @@
     "",
     ".envio .epill",
     "background",
-    "var(--gold-soft)"
+    "var(--mint-soft)"
    ],
    [
     "",
     ".envio .epill",
     "border-color",
-    "var(--gold-line)"
+    "var(--mint-line)"
    ],
    [
     "",
     ".envio .epill",
     "color",
-    "var(--gold)"
+    "var(--mint-text)"
    ],
    [
     "",
@@ -1736,13 +1737,13 @@
     "",
     ".eqcall b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".eqcall",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -1814,7 +1815,7 @@
     "",
     ".fh",
     "color",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
@@ -1850,7 +1851,7 @@
     "",
     ".fiscal .ackt b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -1868,13 +1869,13 @@
     "",
     ".fiscal",
     "background",
-    "var(--gold-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".fiscnote",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -2072,13 +2073,13 @@
     "",
     ".kid .rec",
     "background",
-    "var(--gold-soft)"
+    "var(--lav-soft)"
    ],
    [
     "",
     ".kid .rec",
     "color",
-    "var(--gold)"
+    "var(--lav-text)"
    ],
    [
     "",
@@ -2210,13 +2211,13 @@
     "",
     ".mgshared",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".mgshared",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -2570,13 +2571,13 @@
     "",
     ".mk-rec",
     "background",
-    "var(--gold-soft)"
+    "var(--lav-soft)"
    ],
    [
     "",
     ".mk-rec",
     "color",
-    "var(--gold)"
+    "var(--lav-text)"
    ],
    [
     "",
@@ -2972,13 +2973,13 @@
     "",
     ".opill.issue",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".opill.issue",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3032,7 +3033,7 @@
     "",
     ".ops .browmiss1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -3044,13 +3045,13 @@
     "",
     ".ops .callout b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".ops .callout",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -3236,19 +3237,19 @@
     "",
     ".ops .hmiss1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".ops .hmiss1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".ops .hmiss1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3428,7 +3429,7 @@
     "",
     ".ops .step .val.miss",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3512,19 +3513,19 @@
     "",
     ".pbanner .pbis",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pbanner .pbis",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pbanner .pbis",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3554,19 +3555,19 @@
     "",
     ".pchip.pchipon",
     "background",
-    "var(--amber-soft)"
+    "var(--tint2)"
    ],
    [
     "",
     ".pchip.pchipon",
     "border-color",
-    "var(--amber)"
+    "var(--accent)"
    ],
    [
     "",
     ".pchip.pchipon",
     "color",
-    "var(--amber)"
+    "var(--accent)"
    ],
    [
     "",
@@ -3590,13 +3591,13 @@
     "",
     ".pdelta.up",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pdelta.up",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3740,19 +3741,19 @@
     "",
     ".pill.eqwarn i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pill.eqwarn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pill.eqwarn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -3836,25 +3837,25 @@
     "",
     ".pill.twarn i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pill.twarn",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pill.twarn",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pill.twarn",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3908,25 +3909,25 @@
     "",
     ".pillstaged1b i",
     "background",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
     ".pillstaged1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pillstaged1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pillstaged1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -3950,19 +3951,19 @@
     "",
     ".pillwarn1b",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".pillwarn1b",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
     ".pillwarn1b",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -4070,7 +4071,7 @@
     "",
     ".prow .pflag",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -4100,13 +4101,13 @@
     "",
     ".prow.big",
     "background",
-    "var(--amber-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
     ".prow.big",
     "border-color",
-    "var(--amber-line)"
+    "var(--sand-line)"
    ],
    [
     "",
@@ -4262,19 +4263,19 @@
     "",
     ".recpill.recpill-on",
     "background",
-    "var(--gold-soft)"
+    "var(--lav-soft)"
    ],
    [
     "",
     ".recpill.recpill-on",
     "border-color",
-    "var(--gold-line)"
+    "var(--lav-line)"
    ],
    [
     "",
     ".recpill.recpill-on",
     "color",
-    "var(--gold)"
+    "var(--lav-text)"
    ],
    [
     "",
@@ -4394,7 +4395,7 @@
     "",
     ".scopenote",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -4406,7 +4407,7 @@
     "",
     ".seal",
     "background",
-    "var(--gold-soft)"
+    "var(--sand-soft)"
    ],
    [
     "",
@@ -4418,13 +4419,13 @@
     "",
     ".sealbadge",
     "background",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
     ".sealbadge",
     "color",
-    "#1c1608"
+    "var(--card)"
    ],
    [
     "",
@@ -4442,7 +4443,7 @@
     "",
     ".sealbody .seachg .sv b",
     "color",
-    "var(--gold)"
+    "var(--sand-text)"
    ],
    [
     "",
@@ -4454,7 +4455,7 @@
     "",
     ".sealh b",
     "color",
-    "var(--gold)"
+    "var(--ink)"
    ],
    [
     "",
@@ -4736,13 +4737,13 @@
     "",
     ".tag",
     "background",
-    "var(--amber-soft)"
+    "var(--sky-soft)"
    ],
    [
     "",
     ".tag",
     "color",
-    "var(--amber)"
+    "var(--sky-text)"
    ],
    [
     "",
@@ -5426,7 +5427,7 @@
     "",
     ".vwarn",
     "color",
-    "var(--amber)"
+    "var(--sand-text)"
    ],
    [
     "",

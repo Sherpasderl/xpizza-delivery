@@ -340,7 +340,7 @@ function cssRefusals(cssText) {
 const PINNED_LITERALS = [
   ['.thumb .cam', 'background', 'rgba(0,0,0,.5)'], ['.thumb .cam', 'color', '#fff'],
   ['.uphoto .uprm', 'background', 'rgba(0,0,0,.6)'], ['.uphoto .uprm', 'color', '#fff'],
-  ['.oav', 'color', '#fff'], ['.sealbadge', 'color', '#1c1608'],
+  ['.oav', 'color', '#fff'],   // ['.sealbadge', 'color', '#1c1608'] retired 11-13: the seal is sand + an INK badge (var(--ink) / var(--card)), owner-approved pastel chips
   ['.tog i', 'background', '#fff'], ['.motog i', 'background', '#fff'],
   ['.scrim', 'background', 'rgba(8,7,6,.6)'], ['.dscrim', 'background', 'rgba(8,7,6,.5)'],
   // DISH PHOTOS B (MOCKUP-portal-dish-photo.html, owner-approved): the upload veil + bar OVER a photo (same family as the
@@ -414,8 +414,8 @@ const PINNED_CROSSINGS = {
 // the two crossing pins that legitimately sit INSIDE a soft-ground container: proven PRESENT (not absent) as the sweep's
 // computed pair, where-string + both tokens frozen, and ≥ 4.5 (advisor ruling)
 const SOFT_PRESENT_PINS = [
-  { where: '.fiscal → .ackt (via .fiscal .ackt)', fg: 'on-dark', bg: 'gold-soft' },
-  { where: '.prow.big → .was (via .prow .was)', fg: 'mute', bg: 'amber-soft' },
+  { where: '.fiscal → .ackt (via .fiscal .ackt)', fg: 'on-dark', bg: 'sand-soft' },   // gold-soft → sand-soft (pastel chips 11-13)
+  { where: '.prow.big → .was (via .prow .was)', fg: 'mute', bg: 'sand-soft' },   // amber-soft → sand-soft (pastel chips 11-13)
 ];
 
 const tgOf = (decls) => decls.filter((d) => TEXT_GROUND.has(d.prop)).map((d) => `${d.prop}:${d.value}`).join(';');
@@ -571,9 +571,9 @@ test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows
   const g = (frag) => grammarViolations(css + '\n' + frag).violations;
   const pairsFail = (frag) => discoverSoftPairs(css + '\n' + frag).filter((p) => !(contrast(allTokens[p.fg], allTokens[p.bg]) >= 4.5));
   const REFUSED = {
-    'E1 a :root-prefixed rule': ':root .tag{color:var(--amber-soft)}',
-    'E2 a plain rule inside the dark-scheme @media': '@media(prefers-color-scheme:dark){.tag{color:var(--amber-soft)}}',
-    'E3 an indirect token swap': '.tag{--amber:var(--amber-soft)}',
+    'E1 a :root-prefixed rule': ':root .tag{color:var(--sand-soft)}',
+    'E2 a plain rule inside the dark-scheme @media': '@media(prefers-color-scheme:dark){.tag{color:var(--sand-soft)}}',
+    'E3 an indirect token swap': '.tag{--sand-text:var(--sand-soft)}',
     'E4a a hex color': '.tag{color:#FBF0DC}',
     'raw rgb()': '.tag{color:rgb(1,2,3)}',
     'a named color': '.tag{color:white}',
@@ -584,8 +584,8 @@ test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows
   };
   for (const [label, frag] of Object.entries(REFUSED)) assert.ok(g(frag).length > 0, `🔴 the grammar must refuse: ${label}`);
   // E4b — a spaced var() is MODELLED (allowed by the grammar) AND resolved by the sweep, so the 1:1 pair fails there
-  assert.deepEqual(g('.tag{color:var( --amber-soft )}'), [], 'a whitespace-varied var() is the modelled form');
-  assert.ok(pairsFail('.tag{color:var( --amber-soft )}').length > 0, '🔴 E4b: the spaced var() is RESOLVED by the sweep (amber-soft on amber-soft fails), not assumed ink');
+  assert.deepEqual(g('.tag{color:var( --sand-soft )}'), [], 'a whitespace-varied var() is the modelled form');
+  assert.ok(pairsFail('.tag{color:var( --sand-soft )}').length > 0, '🔴 E4b: the spaced var() is RESOLVED by the sweep (sand-soft on sand-soft fails), not assumed ink');
   // E5 — background:transparent / none on a descendant RETAINS the inherited soft ground
   assert.ok(pairsFail('.prow.big .psub{background:transparent;color:var(--mute2)}').length > 0, '🔴 E5: background:transparent on a descendant keeps the soft ground (checked)');
   assert.ok(pairsFail('.prow.big .psub{background:none;color:var(--mute2)}').length > 0, '🔴 A1: background:none ≡ transparent, the soft ground is kept');
@@ -642,10 +642,10 @@ test('r5 GRAMMAR refuses every new construct and codex\'s examples; allows the p
   }
   // (e) the ONE normaliser: an UPPERCASE property is the same declaration for the grammar AND the sweep
   assert.ok(g('.zzh{COLOR:#fff}').length > 0, '(e) COLOR: is normalised and refused as a hex literal');
-  assert.ok(pairsFail('.pdelta.up{COLOR:var(--amber-soft)}').length > 0, '(e) COLOR: is normalised for the SWEEP too (amber-soft on amber-soft fails)');
+  assert.ok(pairsFail('.pdelta.up{COLOR:var(--sand-soft)}').length > 0, '(e) COLOR: is normalised for the SWEEP too (sand-soft on sand-soft fails)');
   // type-only exemption PROVEN: a type-only descendant on a soft ancestor fails via the sweep's ancestor-ground resolution
-  assert.deepEqual(g('.zzt{background:var(--amber-soft)} .zzt b{color:var(--amber-soft)}'), [], 'type-only overlap is not a crossing (grammar allows it)');
-  assert.ok(pairsFail('.zzt{background:var(--amber-soft)} .zzt b{color:var(--amber-soft)}').length > 0, '🔴 type-only descendant on a soft ancestor fails via the sweep (the claim that exempts type-only overlap from crossings)');
+  assert.deepEqual(g('.zzt{background:var(--sand-soft)} .zzt b{color:var(--sand-soft)}'), [], 'type-only overlap is not a crossing (grammar allows it)');
+  assert.ok(pairsFail('.zzt{background:var(--sand-soft)} .zzt b{color:var(--sand-soft)}').length > 0, '🔴 type-only descendant on a soft ancestor fails via the sweep (the claim that exempts type-only overlap from crossings)');
   // ALLOWED: a harmless new plain chain on a unique class; background transparent/inherit/none
   assert.deepEqual(g('.zzq1 .zzr1{color:var(--ink)}'), [], 'a harmless plain chain on a unique class is allowed (no crossing)');
   assert.deepEqual(g('.zzs{background:inherit}.zzu{background:none}.zzv{background-color:transparent}'), [], 'background transparent / inherit / none stay modelled');
@@ -660,11 +660,11 @@ test('FAIL-CLOSED GUARD fires on every refused construct, and allows the out-of-
     '!important on color': '.x{color:var(--ink)!important}',
     '!important on background': '.x{background:var(--green-soft) !important}',
     'var() fallback in color': '.x{color:var(--ink, #000)}',
-    'var() fallback in background-color': '.x{background-color:var(--gold-soft,transparent)}',
+    'var() fallback in background-color': '.x{background-color:var(--sand-soft,transparent)}',
     ':is() in a color rule': '.x:is(.y){color:var(--ink)}',
     ':where() in a background rule': ':where(.x) .y{background:var(--red-soft)}',
     ':not() in a color rule': '.x:not(.y){color:var(--ink)}',
-    ':has() in a background rule': '.x:has(.y){background:var(--amber-soft)}',
+    ':has() in a background rule': '.x:has(.y){background:var(--sand-soft)}',
     '@supports': '@supports (display:grid){.x{color:var(--ink)}}',
     '@layer (block)': '@layer base{.x{color:var(--ink)}}',
     '@layer (statement)': '@layer base, theme;',
@@ -711,7 +711,7 @@ test('the discovering sweep catches the defects it exists for (fixtures)', () =>
   const failing = (extra) => discoverSoftPairs(css + '\n' + extra).filter((p) => !(contrast(allTokens[p.fg], allTokens[p.bg]) >= 4.5));
   assert.equal(failing('').length, 0, 'the shipped stylesheet is clean');
   assert.ok(failing('.newpair{color:var(--green);background:var(--green-soft)}').length > 0, 'a new same-rule sub-4.5 pair fails');
-  assert.ok(failing('.tagx{background:var(--amber-soft)} .tagx .sub{color:var(--mute2)}').length > 0, 'a descendant on an INHERITED soft ground fails');
+  assert.ok(failing('.tagx{background:var(--sand-soft)} .tagx .sub{color:var(--mute2)}').length > 0, 'a descendant on an INHERITED soft ground fails');
   assert.ok(failing('.prow.big .arr{color:var(--mute2)}').length > 0, 'reverting the .prow.big override fails (the most specific rule wins)');
   assert.ok(failing('.tag{color:var(--board)}').length > 0, 'an existing pill turned unreadable fails');
   assert.ok(failing('.zz .item{color:var(--red)} .zz .item:hover{background:var(--red-soft)}').length > 0, 'a ground-only hover over a base color below 4.5 fails (the base color is resolved, not assumed ink)');
