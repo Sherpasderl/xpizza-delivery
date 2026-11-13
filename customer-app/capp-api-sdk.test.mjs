@@ -796,3 +796,31 @@ test('Codex r4 P1 (A): a digest failure on A\'s OWN first verification ⇒ no ti
   assert.equal(s.srv.of('placeSdkOrder').length, 0, '🔴 R4-P1-NODISPATCH: nothing sent');
   const r = rec(s.storage); assert.ok(!r || (Number(r.dispatched) || 0) === 0 && r.sdk !== true, '🔴 R4-P1-NODISPATCH: no SDK record dispatched');
 });
+
+// ── Codex capp-d4-client r5 (advisor 11-13) ──
+test('Codex r5 P2-a: an SDK record with a MISSING or LEGACY owner (_guest) is never used or released — every entry point answers the recovery sheet, no request (a bounded, visible exit)', async () => {
+  for (const legacy of ['_guest', undefined, 'g:?']) {
+    const s = rig({ script: { placeSdkOrder: ['network'], placeSdkStatus: ['network'] } });
+    await s.api.placeSdk(args(SAVED));
+    const r0 = rec(s.storage); const id = r0.order_id;
+    if (legacy === undefined) delete r0.owner; else r0.owner = legacy;
+    s.storage.setItem(KEY, JSON.stringify(r0));
+    const n0 = s.srv.calls.length;
+    const api2 = s.reload();
+    const outs = [await api2.placeSdk(args(SAVED)), await api2.place(CASH()), await api2.sdkStatus(id), await api2.sdkSwitchToCash(id, { flow: flowOf('cash'), ctx: CTX }), await api2.sdkResolve(id), await api2.sdkResend(args(SAVED))].map((o) => o.kind);
+    assert.ok(outs.every((k) => k === 'existing_order'), `🔴 R5-LEGACY (${legacy}): the recovery sheet everywhere (${outs})`);
+    assert.equal(s.srv.calls.length, n0, `🔴 R5-LEGACY (${legacy}): no request`);
+    assert.equal(rec(s.storage) && rec(s.storage).order_id, id, `🔴 R5-LEGACY (${legacy}): never released`);
+  }
+});
+test('Codex r5 P2-b: the shared SDK authority (sdkHeaders) refuses a keyless guest ticket — no status, no cancel, even with no local record', async () => {
+  const s = rig({ member: null, guestCardOnly: true, script: { placeSdkStatus: [{ status: 200, json: placeResp('bank_pending', { order_id: 'sdk_261026-120000-ABCDEFGH', attempt_id: 'x'.repeat(16) }) }], cancelSdkPending: [{ status: 200, json: cancelPending(true, true) }] } });
+  const id = 'sdk_261026-120000-ABCDEFGH';
+  const tk = { ticket: 'ct_' + 'a'.repeat(32), order_id: id, expires_at: at(12, 10), phone: '+50499990000', phone_key: null };
+  assert.equal(rec(s.storage), null, 'premise: no local record');
+  await s.api.sdkStatus(id, { checkoutTicket: tk });
+  await s.api.sdkSwitchToCash(id, { checkoutTicket: tk, flow: flowOf('online'), ctx: CTX });
+  assert.equal(s.srv.of('placeSdkStatus').length + s.srv.of('cancelSdkPending').length, 0, '🔴 R5-HEADERS: a keyless ticket authorizes nothing');
+  await s.api.sdkStatus(id, { checkoutTicket: { ...tk, phone_key: GUEST_KEY } });
+  assert.equal(s.srv.of('placeSdkStatus').length, 1, 'non-vacuity: the same ticket WITH its key is sent');
+});

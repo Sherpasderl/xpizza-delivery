@@ -290,6 +290,11 @@
     // authority to send anything either (sdkHeaders ⇒ the recovery sheet), so nothing is refused that could reach the server
     function sdkForeign(id, p) { const r = readPlace(); const cur = sdkPrincipal(p); return !!(r && r.sdk === true && typeof r.owner === 'string' && cur !== null && r.owner !== cur && (id == null || r.order_id === id)); }
     const HELD_OTHER = () => ({ kind: 'held_other_account', local: true });
+    // Codex r5 P2-a: an SDK record whose owner is missing or legacy (GUEST_OWNER, an unkeyed or malformed guest key) belongs to no principal
+    // this build can prove — never used, never released; every SDK entry point answers the recovery sheet (no request): a bounded,
+    // visible exit. (No released build wrote one: the SDK owner field was born on this branch and sdkPay was never on in a release.)
+    const validOwner = (o) => typeof o === 'string' && o !== '' && o !== GUEST_OWNER && o !== GUEST_UNKEYED && (o.indexOf('g:') === 0 ? /^g:[0-9a-f]{64}$/.test(o) : true);
+    function sdkLegacy(id) { const r = readPlace(); return !!(r && r.sdk === true && (id == null || r.order_id === id) && !validOwner(r.owner)); }
     function retainedByOther(p) { const rs = retainedSend(); return (!!rs && rs.owner !== ownerNow()) || (cfg.sdkCheckout === true && sdkForeign(null, p)); }   // the SDK check only with the SDK checkout on (the base's reads unchanged)
     // the economics a placement stands behind: the cart signature (cart / mode / pin / tip / auth) and the agreed net
     const sameEconomics = (r, p) => r.body_sig === (p.sig == null ? null : String(p.sig)) && r.expected_net_cents === num(p.expectedNetCents);
@@ -573,6 +578,7 @@
     async function placeLegacy(p) {
       // Codex G7 r1 #1 / r2 (advisor (a)): another account's unresolved send (scheduled or ASAP) is on this device ⇒ refused HERE — before any gate,
       // record write or request; it places normally once that record resolves or expires
+      if (cfg.sdkCheckout === true) { const r0 = readPlace(); if (r0 && sdkLegacy(r0.order_id)) return recoverySheet(r0.order_id); }   // Codex r5 P2-a (SDK on only: the base's reads unchanged)
       if (retainedByOther(p)) return { kind: 'held_other_account', local: true };
       let method = p.flow.pay === 'online' ? 'online' : 'cash';
       // PLAN-capp-signin-required §3.2: an app GUEST (cfg.guestCardOnly, no member NOW) never maps to cash — refused before any record,
@@ -798,8 +804,8 @@
     async function sdkHeaders(p, id) {
       const m = memberOf();
       if (m) { const tok = await memberToken(m); return tok && memberOf() === m ? { Authorization: `Bearer ${tok}` } : null; }
-      const t = p && p.checkoutTicket;
-      return ticketValid(t) && (id == null || t.order_id === id) ? { 'X-Sherpa-Order-Ticket': t.ticket } : null;
+      const t = p && p.checkoutTicket;   // Codex r5 P2-b: the shared SDK authority — a guest ticket without a valid phone_key sends NOTHING
+      return ticketValid(t) && typeof t.phone_key === 'string' && KEY_RE.test(t.phone_key) && (id == null || t.order_id === id) ? { 'X-Sherpa-Order-Ticket': t.ticket } : null;
     }
     async function sdkCall(method, url, body, headers) {
       try {
@@ -851,6 +857,7 @@
     }
     // the durable-state resolver (§4): unknown stays unknown (pending) — never declined, never placed, never a new attempt
     async function sdkStatus(id, p) {
+      if (sdkLegacy(id)) return recoverySheet(id);
       if (sdkForeign(id, p)) return HELD_OTHER();
       if (!E.placeSdkStatus || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);   // no authority to read it (a lost guest ticket ⇒ §1.3 recovery)
@@ -898,7 +905,7 @@
     // THE release (advisor contract 11-12): ONLY cancelSdkPending's safe_to_switch:true ends an SDK placement this side — never a refusal,
     // a 404, a timeout, a 401 / 503 or a network error. Released ⇒ the record is gone, so the next attempt mints a NEW sdk_ id
     async function sdkRelease(id, p) {
-      if (sdkForeign(id, p) || !E.cancelSdkPending || !PC) return { ok: false };
+      if (sdkLegacy(id) || sdkForeign(id, p) || !E.cancelSdkPending || !PC) return { ok: false };
       const h = await sdkHeaders(p, id); if (!h) return { ok: false };
       const r = await sdkCall('POST', E.cancelSdkPending, { order_id: id }, h);
       if (r.network || r.status !== 200 || !r.json || PC.switchStep(r.json) !== 'cash') return { ok: false };
@@ -913,6 +920,7 @@
     }
     const sdkResend = (p) => enqueue(() => sdkResendInner(p || {}));
     async function sdkResendInner(p) {
+      { const r0 = readPlace(); if (r0 && sdkLegacy(r0.order_id)) return recoverySheet(r0.order_id); }
       if (sdkForeign(null, p)) return HELD_OTHER();
       if (!E.placeSdkOrder || !PC) return { kind: 'sdk_unavailable', local: true };
       const cur = readPlace(), id = cur ? cur.order_id : null;
@@ -939,6 +947,7 @@
     }
     const placeSdk = (p) => enqueue(() => placeSdkInner(p));
     async function placeSdkInner(p) {
+      { const r0 = readPlace(); if (r0 && sdkLegacy(r0.order_id)) return recoverySheet(r0.order_id); }   // Codex r5 P2-a
       if (retainedByOther(p)) return HELD_OTHER();   // before the token read, before any request (Codex r2 P1 / r3 P1)
       // Codex r4 P1: no SDK dispatch without a principal to bind it to — a guest whose ticket carries no valid phone_key re-verifies (the
       // normal ticket retry), and nothing is recorded or sent
@@ -998,6 +1007,7 @@
     // REMEMBERED on the record (Codex r1 P2-9) and completes when a later status says «expired, safe»
     const sdkSwitchToCash = (id, p) => enqueue(() => sdkSwitchInner(id, p));
     async function sdkSwitchInner(id, p) {
+      if (sdkLegacy(id)) return recoverySheet(id);
       if (sdkForeign(id, p)) return HELD_OTHER();
       if (!E.cancelSdkPending || !PC) return { kind: 'sdk_pending', order_id: id };
       const h = await sdkHeaders(p, id); if (!h) return recoverySheet(id);
