@@ -652,8 +652,9 @@ const photoNameOf = (key) => {
   return n || (typeof key === 'string' && key.startsWith('tmp:') ? 'Nuevo producto' : String(key));
 };
 // render.js asks per row: today's placeholder (null) unless uploads are on or the dish has a photo to show
-function rowPhoto(it, { name, open, upload }) {
-  const v = photoViewOf(rowId(it));
+function rowPhoto(it, { name, open, upload, pending }) {
+  // «Quitar del menú» (Codex HIGH r1 P3): a pending row draws the photo it had — the removal snapshot's entry, not the draft's (gone)
+  const v = pending === undefined ? photoViewOf(rowId(it)) : photoViewOf(rowId(it), { ...draftPhotos(state.draft), ...(pending ? { [rowId(it)]: pending } : {}) });
   const enabled = photo.enabled && state.platformPending !== true;   // F-2: a photo is content like a price — read-only while Sherpa updates
   if (!enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
   return { thumb: rowThumb({ view: v, name, enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
@@ -1550,7 +1551,7 @@ function paint() {
     photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
     textTagOf: rowTextTag,         // S4 (B) — «Nombre sin publicar» / «Cambios sin publicar», only with the text-edit switch on
     onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
-    pendingOf: (it) => (pend.has(rowId(it)) ? { onUndo: bound(() => undoRemoval(rowId(it))) } : null),   // «Quitar del menú» (R3)
+    pendingOf: (it) => (pend.has(rowId(it)) ? { onUndo: bound(() => undoRemoval(rowId(it))), photo: pend.get(rowId(it)).photo || null, error: undoRefused === rowId(it) ? UNDO_REFUSED : null } : null),   // «Quitar del menú» (R3): + the snapshot's photo (Codex HIGH r1 P3)
   });
   // F-2 — a Sherpa-written draft gets the calm notice INSTEAD of the reset offer; a merchant's own unpublishable draft keeps today's
   if (state.platformPending) offerPlatformNotice($('detail'));
@@ -1827,18 +1828,24 @@ function confirmRemoveProduct(key) {
   const r = removeProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
   if (!r.ok) { if (state.drawerKey === key) renderDrawer(); return; }   // the predicate moved under the open confirm: nothing written
   state.removalStash.set(key, r.snap);
+  undoRefused = null;
   if (uploader.jobOf(key)) uploader.cancel(key);
   closeDrawer();
   repaintFromDraft();
   const u = [...document.querySelectorAll('#detail .irow.mk-pend .mk-undo')].find((b) => b.dataset.k === key);
   if (u) u.focus();
 }
+// a refused «Deshacer» (Codex HIGH r1 P2: its refs no longer resolve) — the row's line, view state only (never the draft); the generic
+// refusal until the owner rules a line of its own
+let undoRefused = null;
+const UNDO_REFUSED = 'No pudimos aplicar el cambio. Recargá la página.';
 // «Deshacer» (R3): the dish back from its snapshot, its stamp withdrawn, both orders rebuilt from the served live order (§4.2)
 function undoRemoval(key) {
   const snap = pendingRemovalMap().get(key);
   if (!snap) return;
   const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder);
-  if (!r.ok) return;
+  if (!r.ok) { undoRefused = key; paint(); return; }   // nothing restored; the row says so
+  undoRefused = null;
   state.removalStash.delete(key);
   repaintFromDraft();
   const c = document.querySelector(`#detail .irow > [data-k="item::${CSS.escape(key)}"]`);
@@ -1918,6 +1925,7 @@ function resetEditFacts() {
   state.pendingRemovals = [];
   state.rewardKeys = new Set();
   state.removalStash = new Map();
+  undoRefused = null;   // a refused «Deshacer» line ends with the world
   resetExtrasLocal();
   endEditSession();
 }

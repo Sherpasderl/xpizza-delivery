@@ -253,3 +253,18 @@ test('A2 styles: «Mapa» = roadmap, no styles; «Simple» = today’s LIGHT sty
 test('the loader asks Google for Spanish labels', () => {
   assert.match(readFileSync(join(MAP, 'map.js'), 'utf8'), /language: "es"/, 'language es on the bootstrap loader');
 });
+
+// Codex HIGH r1 P2 — the embedded map joins the contrast coverage: every ring label's TEXT clears 4.5:1 on its own label box (the
+// labels carry information — «fuera de su alcance» included — they are not disabled controls), in every map style (hybrid does not
+// restyle the label boxes)
+test('map labels: every .rings .rl … text fill clears 4.5:1 on the label box (.rings .rl rect), every style', () => {
+  const css = readFileSync(join(DIR, '..', 'xpizza-portal-map', 'map.css'), 'utf8');
+  const lum = (h) => { const x = h.replace('#', ''); const c = [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+  const box = /\.rings \.rl rect\{[^}]*fill:(#[0-9A-Fa-f]{6})/.exec(css);
+  assert.ok(box, 'premise: the label box fill');
+  assert.ok(!/\.rl[^{]*rect\{[^}]*fill:/.test(css.replace(box[0], '')), 'no other rule repaints a label box (the one ground)');
+  const texts = [...css.matchAll(/([^{}]*\.rl[^{}]*text)\{[^}]*fill:(#[0-9A-Fa-f]{6})/g)].map((m) => [m[1].trim(), m[2]]);
+  assert.ok(texts.length >= 3, `premise: the label text rules (${texts.length})`);
+  for (const [sel, fill] of texts) assert.ok(ratio(fill, box[1]) >= 4.5, `${sel}: ${fill} on ${box[1]} = ${ratio(fill, box[1]).toFixed(2)}:1 ≥ 4.5`);
+});

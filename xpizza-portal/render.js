@@ -309,6 +309,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     if (ttag) nmEl.append(el('span', 'tag mk-ftag', ttag));
     info.append(nmEl);
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', pend ? 'idesc mk-pendtxt' : 'idesc', d.desc));
+    if (pend && typeof pend.error === 'string' && pend.error) info.append(el('div', 'ferr mk-ferr', pend.error));   // a refused «Deshacer» (Codex HIGH r1 P2)
     const grp = groupOf(it);
     if (grp) {
       const chips = el('div', 'ochips');
@@ -325,7 +326,7 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     const cells = [];
     if (pend) {
       // R3: greyed in place — the thumb stays (no opener), no info click, no chevron; «Deshacer» takes the chevron's place
-      const ph = photoOf(it, { name: label, open: () => {}, upload: () => {} });
+      const ph = photoOf(it, { name: label, open: () => {}, upload: () => {}, pending: pend.photo || null });   // the snapshot's photo (Codex HIGH r1 P3)
       const thumb = ph && ph.thumb ? ph.thumb : el('div', 'thumb');
       thumb.setAttribute('inert', ''); thumb.tabIndex = -1;
       cells.push(thumb);

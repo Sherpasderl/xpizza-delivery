@@ -1169,3 +1169,54 @@ test('SBS 11-13 vs MOCKUP-portal-envio-v3 A3 / A4: the limit row carries the res
   const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
   assert.ok(/\.envio \.maxfld \.sinp\{[^}]*min-width:\s*\d+px/.test(css), 'the stepper field keeps a width that fits «9.5»');
 });
+
+test('Codex HIGH r1 P1: recovery adopts the COMPLETE recovered state — admin B\'s X. Pizza 3 km lands under A\'s lost answer; A\'s next edit shows 3 → 5, never a silent 6 → 5 overwrite', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  setMax(P, '4.5'); await settle(5);                                         // A: La Musa 6 → 4.5
+  P.btn('Guardar').click(); await settle(10);
+  // B wins first with the same La Musa value AND X. Pizza 3 km (through the REAL writer); A's own POST never lands (dropped)
+  const v = await srv.version();
+  const b = await srv.handle('setDeliveryPricing', { expected_policy_version: v, bands: B3, limits: [{ rid: 'r_lm', km: 4.5 }, { rid: 'r_xp', km: 3 }] });
+  assert.equal(b.status, 200, 'premise: B saved');
+  srv.fault.post = 'drop';
+  P.btn('Guardar cambios', P.host().querySelector('[role="dialog"]')).click(); await settle(120);
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado', 'premise: the recovery judges A\'s request landed');
+  P.host().querySelector('.pick').click(); await settle();
+  const search = P.host().querySelector('.psearch input');
+  search.value = 'pizza'; search.dispatchEvent(new P.w.Event('input'));
+  search.dispatchEvent(new P.w.KeyboardEvent('keydown', { key: 'Enter' })); await settle(5);
+  assert.equal(fld(P).querySelector('.elab').textContent, 'Distancia máxima de X. Pizza', `premise: X. Pizza picked (${[...P.host().querySelectorAll('.pitem')].map((x) => x.textContent).join(' | ')})`);
+  assert.equal(maxIn(P).value, '3', 'X. Pizza shows the recovered 3 km (B\'s), not the stale table top');
+  setMax(P, '5'); await settle(5);
+  P.btn('Guardar').click(); await settle(10);
+  const t = P.host().querySelector('[role="dialog"]').textContent.replace(/\s+/g, ' ');
+  assert.ok(/X\. Pizza\s*3 km\s*5 km\s*Cambia/.test(t), `the confirm says 3 → 5 (${t.slice(0, 400)})`);
+});
+
+test('Codex HIGH r1 P2: «Descartar» drops the limit edits too — the field, the picker and the map ring back to the loaded limits; nothing pending', async () => {
+  const srv = server(); await seedLimits(srv, [{ bands: B3, limits: [{ rid: 'r_lm', km: 5 }] }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  const out = await listening(P);
+  setMax(P, '4.5'); await settle(5);
+  assert.ok(P.bar().classList.contains('show'), 'premise: a pending limit edit');
+  P.btn('Descartar', P.bar()).click(); await settle(10);
+  assert.equal(maxIn(P).value, '5', 'the field shows the stored value again');
+  assert.deepEqual(P.mods.envio._envioState.limitEdits, {}, 'no limit edit kept');
+  assert.ok(!P.bar().classList.contains('show'), 'nothing pending: navigation is not held');
+  assert.match(P.host().querySelector('.pick').textContent, /hasta 5 km/, 'the picker follows the loaded limit');
+  assert.deepEqual(out[out.length - 1][0].limit, { km: 5, capped: false, name: 'La Musa' }, 'the map ring is the loaded limit');
+});
+
+test('Codex HIGH r1 P2: the session boundary clears ALL v3 state — a dirty limit, sign-out, another admin with no cache loads cleanly', async () => {
+  const srv = server({ admins: { uAdmin: true, uOther: true } }); await seedLimits(srv, [{ bands: B3, limits: [{ rid: 'r_lm', km: 5 }] }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  setMax(P, '4.5'); await settle(5);
+  P.d.dispatchEvent(new P.w.CustomEvent('portal:auth', { detail: { uid: null } })); await settle(20);
+  const S = P.mods.envio._envioState;
+  assert.deepEqual([S.limitEdits, S.restaurants, S.branchesRaw], [{}, [], []], 'restaurants, branches and limit edits end with the session');
+  await P.signIn('uOther'); await P.open(); await settle(30);
+  assert.ok(P.mods.envio._envioState.loaded, 'the next admin\'s GET is adopted (no keepDraft from the previous session)');
+  assert.equal(maxIn(P).value, '5', 'the stored value — never the previous admin\'s edit');
+});

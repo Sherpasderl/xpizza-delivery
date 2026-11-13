@@ -26,7 +26,7 @@ html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
 .rings .rl.lim rect{stroke:#0A0A0B}
 .rings .rl.lim text{fill:#0A0A0B}
 .rings .rl.beyond rect{stroke:#D6D6D0}
-.rings .rl.beyond text{fill:#8A8A8E}
+.rings .rl.beyond text{fill:#6E6E72}   /* Codex HIGH r1 P2: AA 5.08:1 on the label box (the mockup's #8A8A8E is 3.44:1) */
 #map[data-maptype="hybrid"] .rings .ring{stroke:#5BE3A0;fill:rgba(91,227,160,.10)}
 #map[data-maptype="hybrid"] .rings .ring.rlim{stroke:#FFFFFF;fill:rgba(255,255,255,.06)}
 #map[data-maptype="hybrid"] .rings .ring.beyond{stroke:#CFCFCF;fill:none}

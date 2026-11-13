@@ -326,10 +326,29 @@ export function removeProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.liveO
 }
 // §4.2 — «Deshacer»: put the dish back from `snap` (the in-session stash: the row as it was just before the removal, D-2; or P-R1's
 // entry after a reload — row, photo, refs), withdraw its stamp, and rebuild both orders from the served live order (never from snap).
+// Codex HIGH r1 P2 — the snapshot's OWN refs must still resolve in the draft as it is NOW (an extra or a group deleted between the removal
+// and «Deshacer» would make the restored entry name what the source no longer has: the REAL save refuses the whole draft, invalid_source).
+// The server validator's rules for these fields (source-store.js): item_overrides add / deny name declared extra GROUPS, deny_extras
+// names existing extra KEYS; an extras_by_item value names either.
+function staleRefs(st, refs) {
+  const s = (st && st.structure) || {};
+  const extras = rowsOf(st || {}, 'extra');
+  const groups = new Set((Array.isArray(s.extra_categories) ? s.extra_categories : extras.map((e) => e && e.display && e.display.cat)).filter((g) => g != null).map(String));
+  const keys = new Set(extras.map((e) => e && e.key).filter((k) => typeof k === 'string'));
+  const ov = refs && refs.item_override;
+  if (ov && typeof ov === 'object') {
+    for (const g of [...(Array.isArray(ov.add) ? ov.add : []), ...(Array.isArray(ov.deny) ? ov.deny : [])]) if (!groups.has(String(g))) return true;
+    for (const k of (Array.isArray(ov.deny_extras) ? ov.deny_extras : [])) if (!keys.has(String(k))) return true;
+  }
+  const ebi = refs && refs.extras_by_item;
+  if (Array.isArray(ebi)) for (const v of ebi) if (!groups.has(String(v)) && !keys.has(String(v))) return true;
+  return false;
+}
 export function undoRemoveProduct(draft, key, snap, liveOrder) {
   if (!draft || !canEditContent(draft)) return { ok: false, code: 'not_editable' };
   if (!validLiveOrder(liveOrder)) return { ok: false, code: 'base_unreadable' };
   if (!snap || !snap.row || snap.row.key !== key) return { ok: false, code: 'unknown_item' };
+  if (staleRefs(draft.state, snap.refs)) return { ok: false, code: 'refs_stale' };   // nothing written
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
   if (st.items.some((r) => r && r.key === key)) return { ok: false, code: 'present' };
@@ -513,7 +532,11 @@ export function setPhoto(draft, id, entry) {
 export function pendingPhotos(draft) {
   const a = draftPhotos(draft); const b = origPhotos(draft);
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  return [...keys].filter((k) => JSON.stringify(a[k] || null) !== JSON.stringify(b[k] || null)).sort();
+  // «Quitar del menú» (Codex HIGH r1 P3, MOCKUP R3 «1 cambio»): a PUBLISHED dish no longer in the draft took its photo entry with it —
+  // that cleanup is the removal (pendingChanges counts it once), never also a photo change
+  const present = new Set(rowsOf((draft && draft.state) || {}, 'item').map((r) => r && r.key));
+  const gone = (k) => !present.has(k) && rowsOf((draft && draft.orig) || {}, 'item').some((r) => r && r.key === k);
+  return [...keys].filter((k) => !gone(k) && JSON.stringify(a[k] || null) !== JSON.stringify(b[k] || null)).sort();
 }
 
 // Rows whose current value is not a price. The value is HELD rather than discarded — a field that

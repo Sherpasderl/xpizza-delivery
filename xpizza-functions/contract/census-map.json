@@ -968,6 +968,7 @@
  },
  "pageFunctionExemptions": {
   "xpizza-portal/api.js#rawCall": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: the raw getDeliveryPricing / setDeliveryPricing call reads the HTTP response status only (to tell SAVED from UNKNOWN); no persisted order, no money",
+  "xpizza-portal/envio.js#settleEnvioOutcome": "portal ENVÍO (PLAN-portal-envio-v3-ui r5 §1b; Codex HIGH r1 P1) — the Sherpa-admin delivery-fee screen: a save outcome reached through the recovery GET reads that response's HTTP status (200) before adopting the pricing read whole; no persisted order, no money",
   "xpizza-portal/envio-logic.js#okHub": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: lat / lng are a branch pin's coordinates from the pricing directory (map display); no persisted order",
   "xpizza-portal/envio-logic.js#pickerEntries>anon": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: lat / lng are a branch pin's coordinates from the pricing directory (picker / map display); no persisted order",
   "xpizza-portal/envio-logic.js#classifyPost": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: reads the HTTP status of the save to classify it (saved, else UNKNOWN → a fresh GET; Codex build r1 F2); the stored value is the platform fee table, not an order",

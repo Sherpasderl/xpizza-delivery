@@ -114,6 +114,7 @@ function clearSession({ dropCache }) {
   stopMap();
   if (dropCache && S.uid) store.del(CACHE(S.uid));
   S.loaded = null; S.rows = null; S.note = null; S.entries = []; S.branchesUnavailable = false; S.pick = null;
+  S.restaurants = []; S.branchesRaw = []; S.limitEdits = {};   // Codex HIGH r1 P2: ALL v3 state ends with the session
   S.banner = null; S.attempt = null; S.phase = null; S.confirm = null; S.picker = null; S.status = 'idle'; S.floor = 0;
   closeEnvioLayer();
 }
@@ -261,6 +262,17 @@ function settleEnvioOutcome(attempt, o, recoveryRes) {
   S.confirm = null;
   switch (o) {
     case 'saved': {
+      // Codex HIGH r1 P1: a verdict reached through the RECOVERY GET adopts that read WHOLE — its bands, every branch's limit and its
+      // version, atomically (another admin's write in the same version is server truth, never overwritten later by a stale screen)
+      const rb = recoveryRes && recoveryRes.status === 200 && recoveryRes.body && typeof recoveryRes.body === 'object' && bodyVersion(recoveryRes.body) !== null ? recoveryRes.body : null;
+      if (rb) {
+        adoptBody(rb);
+        S.attempt = null; S.phase = null; S.banner = null;
+        store.set(CACHE(S.uid), cacheable(rb));
+        render();
+        toast(COPY.saved);
+        return;
+      }
       const version = attempt.expectedVersion + 1;
       raiseFloor(version);
       S.loaded = { kind: 'policy', version, bands: attempt.sentBands.map((b) => ({ ...b })) };
@@ -309,6 +321,8 @@ function discard() {
   bump();   // a late answer for a request of the dropped state is ignored (the map has its own lifetime: F6)
   S.attempt = null; S.phase = null; S.banner = null; S.confirm = null; S.note = null;
   S.rows = EL.rowsFromBands(S.loaded && S.loaded.kind === 'policy' ? S.loaded.bands : []);
+  S.limitEdits = {};   // Codex HIGH r1 P2: the limit edits go too — the field, the picker and the map follow the loaded limits again
+  refreshEntries();
   render();
 }
 
@@ -806,6 +820,7 @@ function closeBranchPicker(refocus) {
 function choose(rid) {
   S.pick = rid;
   closeBranchPicker(true);
+  paintMax();   // the field follows the picked branch's restaurant (found by Codex HIGH r1 P1's cell: it kept the previous restaurant's)
   paintMapBox();
   postRender('reset');
 }

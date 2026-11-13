@@ -15,7 +15,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { runInThisContext } from 'node:vm';
 import { installFetch, okJson, errJson, loadModules } from './ventas-harness.mjs';
 import {
-  createDraft, draftSource, mergeDeletionClaim, addProduct, setAddition, setRequiredChoice, setGroupLabel, setChoiceName, addChoice, removeAddition,
+  createDraft, draftSource, mergeDeletionClaim, addProduct, setAddition, setRequiredChoice, setGroupLabel, setChoiceName, addChoice, removeAddition, applyExposureOps,
   canRemoveProduct, removeProduct, undoRemoveProduct, rebuildOrders, removalListSource, setPhoto,
 } from './editor.js';
 
@@ -991,4 +991,73 @@ test('SBS 11-13 (R3 bar): a removal is ONE pending change — the dish\'s own it
   assert.equal(pendingCount(d, new Set()), 1, 'the bar says «1 cambio sin publicar» (MOCKUP R3)');
   undoRemoveProduct(d, 'rice_03', r.snap, liveOrderOf(src));
   assert.equal(pendingCount(d, new Set()), 0, 'undone: nothing pending');
+});
+
+test('Codex HIGH r1 P3: the pending row keeps the dish\'s photo (the removal snapshot\'s), desaturated by the approved CSS — never an empty thumb', async () => {
+  const B = await rpBackend('la_musa', { photo: 'rice_03' });
+  const p = await rpPage(B); await p.signIn();
+  await p.section('Rice');
+  const thumbOf = () => { const t = p.rowOf('rice_03').querySelector('.thumb'); return t ? { cls: t.className.replace(/\s*mk-chg/, ''), kids: [...t.querySelectorAll('img, i, span')].map((x) => x.tagName + '.' + x.className).join(',') } : null; };
+  const before = thumbOf();
+  assert.ok(before && before.kids, `premise: the live row draws the photo (${JSON.stringify(before)})`);
+  await p.remove('rice_03');
+  assert.ok(p.rowOf('rice_03').classList.contains('mk-pend'), 'premise: pending');
+  assert.deepEqual(thumbOf(), before, 'the pending row draws the SAME photo the row had (the snapshot\'s entry)');
+});
+
+test('Codex HIGH r1 P3 (R3 bar): removing a PHOTOGRAPHED dish is still ONE change — its photo cleanup is the removal, never a «· 1 foto» line', async () => {
+  const { pendingCount, pendingPhotos } = await import('./editor.js');
+  const src = live('la_musa');
+  src.photos = { rice_03: { state: 'pid', pid: 'b'.repeat(32) } };            // the dish carries a published photo (the draft map's shape)
+  const d = createDraft(src);
+  const r = removeProduct(d, 'rice_03', ON(src));
+  assert.equal(r.ok, true);
+  assert.deepEqual(pendingPhotos(d), [], 'no photo line for the removed dish');
+  assert.equal(pendingCount(d, new Set()), 1, '«1 cambio sin publicar» (MOCKUP R3)');
+  undoRemoveProduct(d, 'rice_03', r.snap, liveOrderOf(src));
+  assert.equal(pendingCount(d, new Set()), 0, 'undone: nothing pending, the photo back');
+});
+
+// Codex HIGH r1 P2 — the snapshot's refs must still resolve in the draft NOW: an extra deleted between the removal and «Deshacer» would make
+// the restored override name a key the source no longer has (the REAL editCatalog refuses the whole save, 400 invalid_source)
+async function untickedDish(src, dish) {   // the drawer's own writer unticks one extra of the dish (deny_extras), as S2's suite does
+  const IE = await import('./item-edit-logic.js');
+  const d = createDraft(src);
+  const s = IE.open(d, dish, [], { extrasAuthoring: true, extrasCatalog: true });
+  const x = src.extras.find((e) => e.display && e.display.cat === 'Salsas').key;   // dimsum_01 offers «Salsas» (structure-s2's premise)
+  IE.set(s, 'extraOn', { key: x, on: false });
+  assert.deepEqual(IE.save(d, s), { ok: true }, 'premise: the drawer writer saved the untick');
+  return { src: clone(draftSource(d)), x };
+}
+test('Codex HIGH r1 P2: «Deshacer» refuses a snapshot whose override names an extra deleted meanwhile — the draft byte-identical, never an invalid source', async () => {
+  const base = live('la_musa');
+  const { src, x } = await untickedDish(base, 'dimsum_01');
+  assert.ok(((src.structure.exposure.item_overrides.dimsum_01 || {}).deny_extras || []).includes(x), `premise: dimsum_01 denies ${x}`);
+  const d = createDraft(src);
+  const r = removeProduct(d, 'dimsum_01', ON(src));
+  assert.equal(r.ok, true);
+  assert.equal(applyExposureOps(d, [{ op: 'extra.remove', key: x }], { extrasCatalog: true }).ok, true, 'premise: the extra is deleted (the Extras writer)');
+  const before = JSON.stringify(draftSource(d));
+  const u = undoRemoveProduct(d, 'dimsum_01', r.snap, liveOrderOf(src));
+  assert.deepEqual(u, { ok: false, code: 'refs_stale' }, 'undo refuses: its override would name a deleted extra');
+  assert.equal(JSON.stringify(draftSource(d)), before, 'the draft is byte-identical');
+  const { validateSource } = req('../xpizza-functions/catalog/source-store.js');
+  assert.doesNotThrow(() => validateSource(clone(draftSource(d)), 'la_musa'), 'the draft stays a source the server accepts');
+});
+
+test('Codex HIGH r1 P2 (page): a refused «Deshacer» keeps the row pending and says so with the existing generic line — never an invalid save', async () => {
+  const B = await rpBackend('la_musa');
+  const p = await rpPage(B); await p.signIn();
+  const IE = await import('./item-edit-logic.js');
+  const draft = p.mods.app.state.draft;
+  const x = draftSource(draft).extras.find((e) => e.display && e.display.cat === 'Salsas').key;
+  const s = IE.open(draft, 'dimsum_01', [], { extrasAuthoring: true, extrasCatalog: true });   // the drawer writer, on the page's draft
+  IE.set(s, 'extraOn', { key: x, on: false });
+  assert.deepEqual(IE.save(draft, s), { ok: true }, 'premise: the untick saved');
+  await p.remove('dimsum_01');
+  assert.equal(applyExposureOps(draft, [{ op: 'extra.remove', key: x }], { extrasCatalog: true }).ok, true, 'premise: the extra is deleted');
+  await p.undo('dimsum_01');
+  const row = p.rowOf('dimsum_01');
+  assert.ok(row && row.classList.contains('mk-pend'), 'the row stays pending (nothing restored)');
+  assert.equal((row.querySelector('.ferr.mk-ferr') || {}).textContent, 'No pudimos aplicar el cambio. Recargá la página.', 'the existing generic refusal line, under the row');
 });
