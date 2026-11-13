@@ -54,6 +54,7 @@
   "envio-map-site.test.mjs",
   "envio-server-parity.test.mjs",
   "envio-view.test.mjs",
+  "envio-zones.test.mjs",
   "envio.js",
   "equipos.js",
   "exposure-transitions.js",
