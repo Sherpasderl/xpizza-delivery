@@ -89,55 +89,65 @@ const DAY = 86400000;
   }
   ok(`R3.3 worst case (200 dishes, 48-char ids, every count at 6 digits, every field, 3 pairs each): DISH_STATS_MAX = ${DS.DISH_STATS_MAX} fits ≤ ${DS.DISH_STATS_BYTES} B; N + 1 does not`);
 
-  // ── 5. never failing: deadline, rejection, dedupe, memo ──
+  // ── 5. NEVER BLOCKING (5f review, rule 7): a miss starts a background read and serves WITHOUT the field; the next call has it ──
   {
     const body = bodyOf(['AAAAAAAAAA']);
     const good = { AAAAAAAAAA: { orders_30d: 30, top_rank: 1 } };
-    // a NEVER-SETTLING read ⇒ served within the deadline + ε, without dish_stats
-    let s = fresh(); const t0 = Date.now();
-    // bounded on the TEST's clock too, so a decoration that lost its deadline FAILS here instead of hanging the suite
-    const r1 = await quiet(() => Promise.race([DS.withDishStats('r1', body, { ...s, timeoutMs: 150, read: () => new Promise(() => {}) }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('🔴 no deadline: a never-settling read hung the decoration')), 3000))]));
-    const took = Date.now() - t0;
-    assert.ok(!('dish_stats' in r1) && took < 150 + 400, `🔴 a never-settling read ⇒ served in ${took} ms, without dish_stats`);
-    // the default deadline is the plan's 1.5 s — well inside the 20 s function timeout
-    assert.strictEqual(DS.DISH_STATS_TIMEOUT_MS, 1500);
+    const settle = (s, rid = 'r1') => s.inflight.get(rid) || Promise.resolve();
+    const fast = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('🔴 the menu WAITED for the stats read')), 100))]);
+    // a cold miss: served immediately WITHOUT the key, the read runs in the background, the next call has it
+    let s = fresh(); let reads = 0; let release; const gate = new Promise((res) => { release = res; });
+    const slow = async () => { reads += 1; await gate; return good; };
+    const cold = await fast(DS.withDishStats('r1', body, { ...s, read: slow }));
+    assert.ok(!('dish_stats' in cold), '🔴 a cold miss serves the menu immediately WITHOUT dish_stats');
+    assert.strictEqual(reads, 1, 'the background read was started');
+    const second = await fast(DS.withDishStats('r1', body, { ...s, read: slow }));
+    assert.ok(!('dish_stats' in second) && reads === 1, 'a second request while it is in flight: still served at once, the read deduped');
+    release(); await settle(s);
+    const warm = await fast(DS.withDishStats('r1', body, { ...s, read: slow }));
+    assert.deepStrictEqual(warm.dish_stats, good, '🔴 the next call after the read settles HAS dish_stats (from the memo)');
+    assert.strictEqual(reads, 1, '🔴 … with no new read (the success memo)');
+    // a NEVER-SETTLING read never delays the menu; its own deadline ends it as a failure (no field, memo 60 s)
+    s = fresh(); reads = 0;
+    const hang = () => { reads += 1; return new Promise(() => {}); };
+    const h1 = await fast(DS.withDishStats('r1', body, { ...s, timeoutMs: 150, read: hang }));
+    assert.ok(!('dish_stats' in h1), '🔴 a hanging read never delays the menu');
+    await quiet(() => Promise.race([settle(s), new Promise((_, rej) => setTimeout(() => rej(new Error('🔴 no deadline: a never-settling read hung the decoration')), 3000))]));
+    assert.strictEqual(s.memo.get('r1').ok, false, 'the deadline ended the background read as a failure');
+    assert.strictEqual(DS.DISH_STATS_TIMEOUT_MS, 1500, 'the background read\'s default bound is the plan\'s 1.5 s');
     // a rejected read ⇒ omitted
     s = fresh();
-    assert.ok(!('dish_stats' in await quiet(() => DS.withDishStats('r1', body, { ...s, read: async () => { throw new Error('boom'); } }))), '🔴 a rejected read ⇒ omitted');
-    // 2 concurrent requests ⇒ 1 read
-    s = fresh(); let reads = 0; let release; const gate = new Promise((res) => { release = res; });
-    const read = async () => { reads += 1; await gate; return good; };
-    const pa = DS.withDishStats('r1', body, { ...s, read }); const pb = DS.withDishStats('r1', body, { ...s, read });
-    release(); const [a, b] = await Promise.all([pa, pb]);
-    assert.strictEqual(reads, 1, '🔴 two concurrent requests share ONE read');
-    assert.deepStrictEqual([a.dish_stats, b.dish_stats], [good, good]);
-    // success memo: 10 min
+    await DS.withDishStats('r1', body, { ...s, read: async () => { throw new Error('boom'); } }); await quiet(() => settle(s));
+    assert.ok(!('dish_stats' in await DS.withDishStats('r1', body, { ...s, read: async () => good })), '🔴 after a rejected read: omitted (the 60 s failure memo)');
+    // success memo 10 min, then STALE-WHILE-REVALIDATE: the stale value is served while ONE refresh runs
     let now = 1000; const clock = () => now;
-    s = fresh(); reads = 0; const r = async () => { reads += 1; return good; };
-    await DS.withDishStats('r1', body, { ...s, read: r, now: clock });
-    now += DS.OK_TTL_MS - 1; await DS.withDishStats('r1', body, { ...s, read: r, now: clock });
+    s = fresh(); reads = 0; let val = good; const r = async () => { reads += 1; return val; };
+    await DS.withDishStats('r1', body, { ...s, read: r, now: clock }); await settle(s);
+    now += DS.OK_TTL_MS - 1; assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: r, now: clock })).dish_stats, good);
     assert.strictEqual(reads, 1, '🔴 a success is reused for 10 min');
-    now += 2; await DS.withDishStats('r1', body, { ...s, read: r, now: clock });
-    assert.strictEqual(reads, 2, 'after 10 min it re-reads');
-    // failure memo: 60 s
+    now += 2; val = { AAAAAAAAAA: { orders_30d: 31, top_rank: 1 } };
+    const stale = await fast(DS.withDishStats('r1', body, { ...s, read: r, now: clock }));
+    assert.deepStrictEqual(stale.dish_stats, good, 'after 10 min the STALE value is served at once (no vanishing field, no ETag flip)');
+    assert.strictEqual(reads, 2, '… while ONE refresh runs'); await settle(s);
+    assert.deepStrictEqual((await DS.withDishStats('r1', body, { ...s, read: r, now: clock })).dish_stats, val, 'the refresh is adopted on the next call');
+    // failure memo: no re-read within 60 s
     s = fresh(); reads = 0; now = 1000; const f = async () => { reads += 1; throw new Error('down'); };
-    await quiet(() => DS.withDishStats('r1', body, { ...s, read: f, now: clock }));
-    now += DS.FAIL_TTL_MS - 1; const again = await quiet(() => DS.withDishStats('r1', body, { ...s, read: f, now: clock }));
-    assert.strictEqual(reads, 1, '🔴 a failure is NOT re-read within 60 s'); assert.ok(!('dish_stats' in again));
-    now += 2; await quiet(() => DS.withDishStats('r1', body, { ...s, read: f, now: clock }));
+    await DS.withDishStats('r1', body, { ...s, read: f, now: clock }); await quiet(() => settle(s));
+    now += DS.FAIL_TTL_MS - 1; await DS.withDishStats('r1', body, { ...s, read: f, now: clock });
+    assert.strictEqual(reads, 1, '🔴 a failure is NOT re-read within 60 s');
+    now += 2; await DS.withDishStats('r1', body, { ...s, read: f, now: clock }); await quiet(() => settle(s));
     assert.strictEqual(reads, 2, 'after 60 s it retries');
-    // per rid: another rid reads on its own
+    // per rid
     s = fresh(); reads = 0;
-    await DS.withDishStats('r1', body, { ...s, read: r }); await DS.withDishStats('r2', body, { ...s, read: r });
+    await DS.withDishStats('r1', body, { ...s, read: r }); await DS.withDishStats('r2', body, { ...s, read: r }); await settle(s, 'r1'); await settle(s, 'r2');
     assert.strictEqual(reads, 2, 'memo and dedupe are per rid');
     // the default reader is ONE point read of public_stats/{rid}/dish_stats
     const paths = []; const db = { ref: (p) => { paths.push(p); return { once: async () => ({ val: () => good }) }; } };
-    s = fresh(); const viaDb = await DS.withDishStats('r9', body, { ...s, rtdb: db });
+    s = fresh(); await DS.withDishStats('r9', body, { ...s, rtdb: db }); await settle(s, 'r9');
     assert.deepStrictEqual(paths, ['public_stats/r9/dish_stats'], '🔴 the default read is ONE point read of public_stats/{rid}/dish_stats');
-    assert.deepStrictEqual(viaDb.dish_stats, good);
+    assert.deepStrictEqual((await DS.withDishStats('r9', body, { ...s, rtdb: db })).dish_stats, good);
   }
-  ok('never failing: a never-settling read serves within the deadline without dish_stats; a rejection ⇒ omitted; 2 concurrent ⇒ 1 read; success memo 10 min; failure memo 60 s; per rid; ONE point read of public_stats/{rid}/dish_stats');
+  ok('NEVER BLOCKING: a cold miss serves at once without dish_stats and the next call has it; a hanging read never delays the menu (its 1.5 s bound ends it as a failure); dedupe; success memo 10 min then stale-while-revalidate; failure memo 60 s; per rid; ONE point read');
 
   console.log(`\ndish-stats-serve: OK (${n})`);
 })().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\ndish-stats-serve: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

@@ -1313,7 +1313,9 @@ function cartAdapterOf(rid, itemKeys) {
     await bootstrapIdentityStamps(db, rid, { attempt: 'dish-stats' });
     const ids = (await buildPublicMenu(db, rid, { ...deps, dishStats: { memo: new Map(), inflight: new Map(), read: async () => null } })).body.dishes.map((d) => d.dish_id);
     const doc = Object.fromEntries(ids.slice(0, 2).map((id, i) => [id, { orders_30d: 40 - i, top_rank: i + 1, pairs: [{ dishId: ids[1 - i], count: 20 }] }]));
-    const withStats = (await buildPublicMenu(db, rid, { ...deps, dishStats: { memo: new Map(), inflight: new Map(), read: async () => doc } })).body;
+    const st = { memo: new Map(), inflight: new Map(), read: async () => doc };   // non-blocking: the first call starts the read, the next serves it
+    await buildPublicMenu(db, rid, { ...deps, dishStats: st }); await (st.inflight.get(rid) || Promise.resolve());
+    const withStats = (await buildPublicMenu(db, rid, { ...deps, dishStats: st })).body;
     assert.ok(withStats.dish_stats && Object.keys(withStats.dish_stats).length === 2, `premise — ${rid}: the served 1d.4 body carries dish_stats`);
     const { fn: prepare } = livePrepareOf(rid, withStats);
     let a1, a0;

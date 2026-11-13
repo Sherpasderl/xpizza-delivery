@@ -63,16 +63,22 @@ const fresh = (read) => ({ memo: new Map(), inflight: new Map(), read });
     const doc = producerDoc(rid, ids.slice(0, 3));
     assert.ok(doc && Object.keys(doc).length === 3, `premise ${rid}: the real producer published stats for the 3 served dishes`);
     let reads = 0;
-    const out = await buildPublicMenu(db, rid, { ...base, dishStats: fresh(async (r) => { reads += 1; assert.strictEqual(r, rid); return doc; }) });
+    const st = fresh(async (r) => { reads += 1; assert.strictEqual(r, rid); return doc; });
+    // NON-BLOCKING (5f review): the cold call serves WITHOUT the key — its ETag is the no-stats ETag (it reflects what was served)
+    const cold = await buildPublicMenu(db, rid, { ...base, dishStats: st });
+    assert.ok(!('dish_stats' in cold.body), `🔴 ${rid}: a cold memo serves the menu without dish_stats (the read runs in the background)`);
+    assert.strictEqual(cold.etag, plain.etag, `🔴 ${rid}: the cold ETag is the ETag of the body actually served`);
+    await (st.inflight.get(rid) || Promise.resolve());
+    const out = await buildPublicMenu(db, rid, { ...base, dishStats: st });
     assert.deepStrictEqual(out.body.dish_stats, DS.selectDishStats(doc, out.body), `🔴 ${rid}: dish_stats served, re-allowlisted, keyed by served dish_id`);
     assert.deepStrictEqual(Object.keys(out.body.dish_stats).sort(), ids.slice(0, 3).sort(), `${rid}: exactly the producer's dishes`);
     assert.strictEqual(reads, 1, 'ONE read');
     assert.notStrictEqual(out.etag, plain.etag, '🔴 the etag changes with the stats');
-    const again = await buildPublicMenu(db, rid, { ...base, dishStats: fresh(async () => doc) });
+    const again = await buildPublicMenu(db, rid, { ...base, dishStats: st });
     assert.strictEqual(again.etag, out.etag, 'the same stats ⇒ the same etag (a 304 still matches)');
     assert.deepStrictEqual(Object.keys(out.body).filter((k) => !PUBLIC_MENU_BODY_FIELDS.includes(k)), [], 'every served key is declared');
   }
-  ok('producer → serve (both brands): the real producer\'s stats over served dish_ids are served re-allowlisted; one read; the etag moves with the stats and is stable without change; version 1d.4; declared');
+  ok('producer → serve (both brands): a cold memo serves at once without the key (ETag = the served body); after the background read the real producer\'s stats over served dish_ids are served re-allowlisted; one read; the etag moves with the stats and is stable without change; version 1d.4; declared');
 
   // ── 2. never on the wrong path, never failing the menu ──
   {
@@ -97,11 +103,13 @@ const fresh = (read) => ({ memo: new Map(), inflight: new Map(), read });
     assert.ok(err.body && err.body.dishes.length && !('dish_stats' in err.body), '🔴 a public_stats read error ⇒ the menu serves without dish_stats');
     const t0 = Date.now();
     const hang = await quiet(() => buildPublicMenu(db, rid, { ...base, dishStats: { ...fresh(() => new Promise(() => {})), timeoutMs: 200 } }));
-    assert.ok(!('dish_stats' in hang.body) && Date.now() - t0 < 200 + 2000, '🔴 a never-settling read ⇒ the menu serves within the deadline');
+    assert.ok(!('dish_stats' in hang.body) && Date.now() - t0 < 1000, `🔴 a never-settling read never delays the menu (${Date.now() - t0} ms, the read's own bound is 200 ms)`);
     // a forged / foreign / below-threshold doc: re-allowlisted, never trusted
     const forged = { ...doc, FOREIGNID00: { orders_30d: 99, top_rank: 1 } };
     forged[ids[0]] = { ...forged[ids[0]], votes: 19, up: 19, down: 0, secret: 'x' };
-    const fo = await buildPublicMenu(db, rid, { ...base, dishStats: fresh(async () => forged) });
+    const sf = fresh(async () => forged);
+    await buildPublicMenu(db, rid, { ...base, dishStats: sf }); await (sf.inflight.get(rid) || Promise.resolve());
+    const fo = await buildPublicMenu(db, rid, { ...base, dishStats: sf });
     assert.ok(!('FOREIGNID00' in fo.body.dish_stats) && !('secret' in fo.body.dish_stats[ids[0]]) && !('votes' in fo.body.dish_stats[ids[0]]), '🔴 a foreign id, a forged field and votes 19 are dropped');
     // the reconciler's comparison ignores a top-level dish_stats: no fail, no warn
     // (the bake vs the SAME published body plus a top-level dish_stats: the comparison sees nothing — it compares named collections only)

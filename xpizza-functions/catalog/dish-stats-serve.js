@@ -4,8 +4,8 @@
 // reads it ONCE per rid per instance under its own deadline and serves a re-allowlisted, capped copy as a TOP-LEVEL body field (the
 // photos precedent: a decoration that can never fail the serve). buildPublicMenu calls it on the identity-overlay branch only, after
 // the overlay APPLIED (the served dishes carry dish_id) — never on the overlayIdentity:false bake/reconciler path.
-//   NEVER FAILING (R2.10 #6): the read races a cleared 1.5 s timer (identity-overlay.js's pattern); a timeout, rejection or
-//     malformed doc ⇒ the field is omitted. In-flight DEDUPE: one shared promise per rid per instance. MEMO: a success is reused for
+//   NEVER FAILING, NEVER BLOCKING (R2.10 #6 + 5f review): the menu never awaits the read (memoFor below); the BACKGROUND read races
+//     a cleared 1.5 s timer (identity-overlay.js's pattern); a timeout, rejection or malformed doc ⇒ the field is omitted. In-flight DEDUPE: one shared promise per rid per instance. MEMO: a success is reused for
 //     10 min, a failure for 60 s (a negative cache: an outage never becomes a read storm or a 1.5 s delay on every request).
 //   RE-ALLOWLIST (never trust): only dish ids the served body carries as dish_id; up/down/votes (votes = up + down ≥ the producer's
 //     DISH_VOTES), orders_30d (≥ DISH_ORDERS), top_rank (1..TOP), pairs (≤ PAIRS_MAX, each partner another served dish_id, count ≥
@@ -79,11 +79,8 @@ function selectDishStats(raw, body) {
 const MEMO = new Map();
 const INFLIGHT = new Map();
 
-// the raw doc for rid: memo (10 min ok / 60 s failure) → in-flight dedupe → ONE bounded read. Never rejects: → { ok, raw }
-function readRaw(rid, deps) {
-  const now = deps.now ? deps.now() : Date.now();
-  const memo = (deps.memo || MEMO).get(rid);
-  if (memo && now - memo.at < (memo.ok ? OK_TTL_MS : FAIL_TTL_MS)) return Promise.resolve(memo);
+// ONE bounded background read for rid (in-flight dedupe). Never rejects; fills the memo: → { ok, raw, at }
+function startRead(rid, deps) {
   const inflight = deps.inflight || INFLIGHT;
   if (inflight.has(rid)) return inflight.get(rid);
   // the RTDB handle: deps.rtdb, else the Admin app's, resolved LAZILY inside the guarded promise (photos/edit-io.js's pattern) — so
@@ -91,17 +88,37 @@ function readRaw(rid, deps) {
   const read = deps.read || ((r) => (deps.rtdb || require('firebase-admin/database').getDatabase()).ref(`public_stats/${r}/dish_stats`).once('value').then((s) => s.val()));
   const p = withTimeout(Promise.resolve().then(() => read(rid)), deps.timeoutMs || DISH_STATS_TIMEOUT_MS)
     .then((raw) => ({ ok: true, raw }), () => ({ ok: false, raw: null }))
-    .then((r) => { const rec = { ...r, at: deps.now ? deps.now() : Date.now() }; (deps.memo || MEMO).set(rid, rec); inflight.delete(rid); return rec; });
+    .then((r) => {
+      const rec = { ...r, at: deps.now ? deps.now() : Date.now() }; (deps.memo || MEMO).set(rid, rec); inflight.delete(rid);
+      if (!rec.ok) console.warn('public_menu_dish_stats_absent', JSON.stringify({ rid, reason: 'read_failed' }));
+      return rec;
+    });
   inflight.set(rid, p);
   return p;
 }
 
-// buildPublicMenu's hook: the body with `dish_stats` when anything qualifies, else the body unchanged. Never throws.
+/* NON-BLOCKING (5f review, advisor 11-13, rule 7: no awaited network on the menu's path). The menu NEVER waits for public_stats:
+   - a FRESH memo (ok ≤ 10 min / failure ≤ 60 s) is served as it is (a failure ⇒ no field);
+   - otherwise a background read is STARTED (deduped; bounded by its own 1.5 s deadline) and NOT awaited;
+     · a STALE success memo is served meanwhile (stale-while-revalidate: the field does not vanish for one request every
+       10 min, which would flip the ETag and cost every client a 200);
+     · with no usable memo (a cold instance, or after a failure) this response carries NO dish_stats; the next one has it.
+   The ETag is computed over the body actually served, so it always reflects what was sent. */
+function memoFor(rid, deps) {
+  const now = deps.now ? deps.now() : Date.now();
+  const memo = (deps.memo || MEMO).get(rid);
+  const fresh = memo && now - memo.at < (memo.ok ? OK_TTL_MS : FAIL_TTL_MS);
+  if (!fresh) startRead(rid, deps);   // background: never awaited here
+  return memo && memo.ok ? memo : null;
+}
+
+// buildPublicMenu's hook: the body with `dish_stats` when the memo holds qualifying stats, else the body unchanged. Never throws,
+// never awaits a read.
 async function withDishStats(rid, body, deps = {}) {
   try {
-    const r = await readRaw(rid, deps);
-    if (!r.ok) { console.warn('public_menu_dish_stats_absent', JSON.stringify({ rid, reason: 'read_failed' })); return body; }
-    const ds = selectDishStats(r.raw, body);
+    const m = memoFor(rid, deps);
+    if (!m) return body;
+    const ds = selectDishStats(m.raw, body);
     return ds ? { ...body, dish_stats: ds } : body;
   } catch (e) {
     console.warn('public_menu_dish_stats_absent', JSON.stringify({ rid, reason: 'error' }));
