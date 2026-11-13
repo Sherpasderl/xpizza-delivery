@@ -174,6 +174,7 @@ async function wipe() {
   {   // the OPTION ADD transition (planned): a new option under the group — the steady reward unchanged; the new option redeems
     const cur = (await sourceRefOf(fs, 'la_musa').get()).data();
     await publish('la_musa', saved('la_musa', cur, CT.apply(cur, { op: 'option.add', launcher: PAD, ref: 'tmp:s3re-tofu-xxxx', choice: 'Tofu', price: 330 }).source));
+    await new Promise((r) => setTimeout(r, 46000));   // the intake gates' pointer TTL (catalog/menu-gates.js POINTER_TTL_MS 45 s): a NEW key is menu_updating until it lapses
     const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
     const s = await place('la_musa', 's3re_add_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
     placedOk(s, 'UNCHANGED after option add', 'cash');
@@ -185,6 +186,7 @@ async function wipe() {
     ok('OPTION ADD (la_musa): the steady reward is unchanged; the new option redeems from the picker');
   }
   await publish('la_musa', saved('la_musa', (await sourceRefOf(fs, 'la_musa').get()).data(), CT.apply((await sourceRefOf(fs, 'la_musa').get()).data(), { op: 'choice.remove', launcher: PAD, price_from: opts[1] }).source));
+  await new Promise((r) => setTimeout(r, 46000));   // the intake gates' pointer TTL (catalog/menu-gates.js POINTER_TTL_MS 45 s): until it lapses the gates price by the version before D3
   {
     const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
     const s = await place('la_musa', 's3re_d3_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
@@ -212,6 +214,7 @@ async function wipe() {
     const small = v1.items.find((i) => i.display.choice === '12 pulgadas');
     let v2 = CT.apply(v1, { op: 'option.rename', key: small.key, choice: 'Personal' }).source;
     await publish('x_pizza', saved('x_pizza', v1, v2));
+    await new Promise((r) => setTimeout(r, 46000));   // the intake gates' pointer TTL (catalog/menu-gates.js POINTER_TTL_MS 45 s): the new sized pizza's keys are menu_updating until it lapses
     const env = await servedEnv('x_pizza'); const rows = await pickerRows('x_pizza', env);
     const live = rows.find((r) => r.name === 'Pizza Doble S3 - Personal');
     assert.ok(live && live.key === small.key, `🔴 the live picker keys the renamed option by its kept key (${JSON.stringify(live)})`);
