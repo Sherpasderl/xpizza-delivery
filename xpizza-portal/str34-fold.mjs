@@ -34,6 +34,22 @@ export const STR34_FOLD = {
    "  + pendingStructure(draft).length;\n"
   ],
   [
+   "// STRUCTURE S3 (addendum B7): with `opts.choiceEdit` the new group's FIRST option is pre-marked «Recomendada» (a new group is touched and\n// needs exactly one mark); OFF ⇒ today, byte for byte\nexport function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set(), opts = {}) {\n",
+   "export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {\n"
+  ],
+  [
+   "  if (opts && opts.choiceEdit === true && refs.length) setChoiceRecommended(draft, refs[0], true);\n",
+   ""
+  ],
+  [
+   "// STRUCTURE S3 (B7, `opts.choiceEdit` only): removing the MARKED option moves the mark to the new first one — never zero\nexport function removeChoice(draft, id, ref, opts = {}) {\n",
+   "export function removeChoice(draft, id, ref) {\n"
+  ],
+  [
+   "  const rest = g.options.filter((x) => x !== o);\n  recomputeLauncher({ ...g, options: rest });\n  if (opts && opts.choiceEdit === true && Array.isArray(o.display.tags) && o.display.tags.includes('recommended') && rest.length) setChoiceRecommended(draft, rowId(rest[0]), true);\n",
+   "  recomputeLauncher({ ...g, options: g.options.filter((x) => x !== o) });\n"
+  ],
+  [
    "    if (!was) continue;   // STRUCTURE S4: a section the baseline does not have is NEW — naming it is not a rename (5f S4 §1.7)\n",
    ""
   ],
@@ -51,6 +67,44 @@ export const STR34_FOLD = {
   ],
   [
    "// STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, approved 2026-11-13) — the required choice on an EXISTING dish. The one mutator: an\n// ORDERED op list folded through 5f's choice writer (the portal's byte copy, choice-transitions.js) on ONE copy; any refusal leaves the\n// draft untouched; the removed rows' identity stamps join the deletion claim. Only with the server's switch (choiceEdit). The portal\n// never writes variant_items or a «Recomendada» tag itself while the switch is on: the server re-judges the resulting draft anyway.\nconst choiceWriter = () => globalThis.ChoiceTransitions;\nexport function applyChoiceOps(draft, ops, { choiceEdit = false } = {}) {\n  if (choiceEdit !== true) return { ok: false, code: 'choice_edit_off' };\n  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };\n  if (!choiceWriter() || typeof choiceWriter().apply !== 'function') return { ok: false, code: 'writer_unavailable' };\n  if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };\n  let cur = draft.state; const results = [];\n  try { for (const op of ops) { const r = choiceWriter().apply(cur, op); results.push(r); cur = r.source; } }\n  catch (err) { return refusedBy(err); }\n  draft.state = mergeDeletionClaim(cur, results);\n  return { ok: true };\n}\n// the S3 refusals' lines: ONLY the owner-approved one (11-12) exists; every other code waits for the Fable addendum's approved copy\nconst CHOICE_REWARD_LINE = 'Este producto se canjea con recompensas. Para mantener el premio, no se le pueden agregar opciones.';\nexport const choiceRefusalLine = (code) => (code === 'choice_on_reward_dish' ? CHOICE_REWARD_LINE : null);\n",
+   ""
+  ],
+  [
+   "// STRUCTURE S3 (UI): with `choiceEdit` the list may also carry the copy's CHOICE ops (choice.* / option.*, 5f's writer) — applied FIRST, in order\nconst isChoiceOp = (o) => !!o && typeof o.op === 'string' && /^(choice|option)\\./.test(o.op);\nexport function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, choiceEdit = false, strict = true } = {}) {\n",
+   "export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, strict = true } = {}) {\n"
+  ],
+  [
+   "  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item' && !(choiceEdit === true && isChoiceOp(o))))) return { ok: false, code: 'unknown_op' };\n  const choiceOps = ops.filter(isChoiceOp);\n  ops = ops.filter((o) => !isChoiceOp(o));\n",
+   "  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item'))) return { ok: false, code: 'unknown_op' };\n"
+  ],
+  [
+   "  if (choiceOps.length) { const c = applyChoiceOps(scratch, choiceOps, { choiceEdit: true }); if (!c.ok) return c; }\n",
+   ""
+  ]
+ ],
+ "item-edit-logic.js": [
+  [
+   "  createDraft, applyChoiceOps,\n",
+   ""
+  ],
+  [
+   "    extrasCatalog: !!(opts && opts.extrasCatalog === true), ops: [],\n    // STRUCTURE S3 (UI): the server's choiceEdit switch, and this copy's CHOICE ops in click order (5f's writer; «Guardar» replays them first)\n    choiceEdit: !!(opts && opts.choiceEdit === true), choiceOps: [] };\n",
+   "    extrasCatalog: !!(opts && opts.extrasCatalog === true), ops: [] };\n"
+  ],
+  [
+   "  if (s.choiceOps && s.choiceOps.length) out.push('choiceOps');\n",
+   ""
+  ],
+  [
+   "  // STRUCTURE S3 (addendum B2): a touched group with no «Recomendada» is HELD here — never sent to a sure 409\n  const cm = choiceModel(draft, s);\n  if (cm && cm.hold) return { ok: false, error: 'choice_hold', reason: cm.hold.reason };\n",
+   ""
+  ],
+  [
+   "  if (!commitDish(draft, s.key, e, [...s.choiceOps, ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };\n",
+   "  if (!commitDish(draft, s.key, e, s.ops, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog }).ok) return { ok: false, error: 'invalid' };\n"
+  ],
+  [
+   "}\n\n// ── STRUCTURE S3 (UI) — the required choice of a LIVE dish in this copy (MOCKUP structure-edit D / D2 / D3; S3 addendum B2 / B2b) ──────────\n// One S3 op for this copy: dry-run on a scratch draft with every op queued so far (5f's writer, all or nothing) — queued only if it applies.\nexport function choiceOp(s, op) {\n  if (!s || s.closed) return { ok: false, code: 'closed' };\n  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };\n  const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));\n  const r = applyChoiceOps(scratch, [...s.choiceOps, op], { choiceEdit: true });\n  if (!r.ok) return r;\n  s.choiceOps.push(op);\n  return { ok: true };\n}\n// the copy's choice as it would save: { label, options: [{ id, choice, price, marked, isNew }], touched, hold, removed } | null (OFF).\n// TOUCHED is the server's rule against the loaded baseline (S3-r4 §2): a new / removed group, its label, its membership, any member's\n// choice text or mark — a price alone is not. HOLD: a touched group with no mark — 'recommended_removed' when the baseline's marked\n// option left, else 'recommended_required'.\nconst isTag = (r) => !!(r && r.display && Array.isArray(r.display.tags) && r.display.tags.includes('recommended'));\nfunction groupIn(src, key) {\n  const items = (src && src.items) || [];\n  const l = items.find((i) => i && i.key === key);\n  const vi = src && src.structure && src.structure.variant_items;\n  const spec = l && l.display && vi ? vi[String(l.display.id)] : null;\n  if (!spec || !Array.isArray(spec.variantIds)) return null;\n  return { label: typeof spec.label === 'string' ? spec.label : '', members: spec.variantIds.map((v) => items.find((i) => i && i.display && (String(i.display.id) === String(v) || i.ref === v))).filter(Boolean) };\n}\nexport function choiceModel(draft, s) {\n  if (!s || !s.choiceEdit) return null;\n  const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(draft))));\n  if (s.choiceOps.length && !applyChoiceOps(scratch, s.choiceOps, { choiceEdit: true }).ok) return null;\n  const now = groupIn(draftSource(scratch), s.key);\n  const was = groupIn(draft.orig, s.key);\n  const idOf = (r) => r.key || r.ref;\n  if (!now) return { label: null, options: [], touched: !!was, hold: null, removed: !!was };\n  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: r.price, marked: isTag(r), isNew: !r.key }));\n  const wasMap = new Map((was ? was.members : []).map((r) => [idOf(r), r]));\n  const touched = !was || was.label !== now.label || was.members.length !== now.members.length\n    || now.members.some((r) => { const w = wasMap.get(idOf(r)); return !w || w.display.choice !== r.display.choice || isTag(w) !== isTag(r); });\n  const marks = options.filter((o) => o.marked).length;\n  const hold = touched && marks === 0 ? { reason: was && was.members.some((r) => isTag(r) && !now.members.some((m) => idOf(m) === idOf(r))) ? 'recommended_removed' : 'recommended_required' } : null;\n  return { label: now.label, options, touched, hold, removed: false };\n}\n// D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)\nexport function choiceRemovePlan(draft, s) {\n  const m = choiceModel(draft, s);\n  if (!m || m.removed) return null;\n  const marked = m.options.find((o) => o.marked);\n  return { priceFrom: marked ? marked.id : null, options: m.options.map((o) => ({ id: o.id, choice: o.choice, price: o.price })) };\n",
    ""
   ]
  ]

@@ -678,7 +678,9 @@ export function optionPricesEqual(draft, id) {
 
 // Ninguna ⇄ a group. ON creates the group with the given option references (2, from the caller), each at the product's
 // current price; OFF ("Ninguna") removes the options, the map entry and "sin extras" — zero residue.
-export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {
+// STRUCTURE S3 (addendum B7): with `opts.choiceEdit` the new group's FIRST option is pre-marked «Recomendada» (a new group is touched and
+// needs exactly one mark); OFF ⇒ today, byte for byte
+export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set(), opts = {}) {
   if (!canEditContent(draft)) return draft;
   const st = draft.state;
   // OFF ("Ninguna") on any NEW product — unsaved, or saved and listed as an unpublished addition (§0b.8): the product stays,
@@ -695,6 +697,7 @@ export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions
   if (!variantMap(st)) st.structure.variant_items = {};
   st.structure.variant_items[l.ref] = { label: '', variantIds: [] };
   for (const r of refs) addChoice(draft, id, r);
+  if (opts && opts.choiceEdit === true && refs.length) setChoiceRecommended(draft, refs[0], true);
   return draft;
 }
 export function setGroupLabel(draft, id, raw) {
@@ -725,7 +728,8 @@ export function addChoice(draft, id, ref, raw) {
   return draft;
 }
 // × on an unsaved option.
-export function removeChoice(draft, id, ref) {
+// STRUCTURE S3 (B7, `opts.choiceEdit` only): removing the MARKED option moves the mark to the new first one — never zero
+export function removeChoice(draft, id, ref, opts = {}) {
   if (!canEditContent(draft)) return draft;
   const l = editableLauncher(draft, id);
   const g = l && isTmp(l) ? groupOfRow(draft.state, l) : null;
@@ -735,7 +739,9 @@ export function removeChoice(draft, id, ref) {
   items.splice(items.indexOf(o), 1);
   dropFromOrder(draft.state, ref);
   g.spec.variantIds.splice(g.spec.variantIds.indexOf(ref), 1);
-  recomputeLauncher({ ...g, options: g.options.filter((x) => x !== o) });
+  const rest = g.options.filter((x) => x !== o);
+  recomputeLauncher({ ...g, options: rest });
+  if (opts && opts.choiceEdit === true && Array.isArray(o.display.tags) && o.display.tags.includes('recommended') && rest.length) setChoiceRecommended(draft, rowId(rest[0]), true);
   return draft;
 }
 function editableOption(draft, id, savedAdditions) {
@@ -1404,9 +1410,13 @@ export const choiceRefusalLine = (code) => (code === 'choice_on_reward_dish' ? C
 //   3. the copy's attach / detach ops, in order, through the writer, on the moved copy;
 //   4. the rest (text, price, photo, the checklist, «Sin extras» ON) through editItem, the checklist judged against THAT prospect.
 // → { ok: true, source } | { ok: false, code, … }. (attach / detach never remove an extra.)
-export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, strict = true } = {}) {
+// STRUCTURE S3 (UI): with `choiceEdit` the list may also carry the copy's CHOICE ops (choice.* / option.*, 5f's writer) — applied FIRST, in order
+const isChoiceOp = (o) => !!o && typeof o.op === 'string' && /^(choice|option)\./.test(o.op);
+export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, choiceEdit = false, strict = true } = {}) {
   if (strict && !canEditContent(draft)) return { ok: false, code: 'not_editable' };
-  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item'))) return { ok: false, code: 'unknown_op' };
+  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item' && !(choiceEdit === true && isChoiceOp(o))))) return { ok: false, code: 'unknown_op' };
+  const choiceOps = ops.filter(isChoiceOp);
+  ops = ops.filter((o) => !isChoiceOp(o));
   if (ops.length && extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
   if (ops.length && (!writer() || typeof writer().apply !== 'function')) return { ok: false, code: 'writer_unavailable' };
   const row = existingRow(draft.state, key);
@@ -1415,6 +1425,7 @@ export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, 
   // a scratch draft: the commit judges names against what was loaded; the preview has no rename to hold
   const scratch = createDraft(clone(draft.state));
   scratch.orig = clone(strict ? draft.orig : draft.state);
+  if (choiceOps.length) { const c = applyChoiceOps(scratch, choiceOps, { choiceEdit: true }); if (!c.ok) return c; }
   if (own(e, 'extrasPolicy') && e.extrasPolicy === null) {
     if (!editItem(scratch, key, { extrasPolicy: null }, { extrasAuthoring })) return { ok: false, code: 'invalid', field: 'extrasPolicy' };
     delete e.extrasPolicy;

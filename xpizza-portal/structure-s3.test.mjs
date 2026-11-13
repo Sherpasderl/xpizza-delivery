@@ -228,8 +228,8 @@ test('FLIP-TIME: an unmarked new sized dish saves with choiceEdit OFF (today) an
   } finally { CE.on = false; }
 });
 // FLIP GATE (advisor ruling 11-13): with choiceEdit ON the «Agregar producto» drawer marks the FIRST option of a new group «Recomendada»
-// by default (the server's choice.add rule); OFF stays byte-identical. KNOWN_RED until the S3 drawing half builds it (the flip waits on it).
-test('FLIP GATE: choiceEdit ON — a new group from «Agregar producto» gets option 1 marked before sending, and the real save accepts it', { todo: 'KNOWN_RED: built in the S3 drawing half (advisor 11-13)' }, async () => {
+// by default (the server's choice.add rule); OFF stays byte-identical. Built in the S3 drawing half (setRequiredChoice opts.choiceEdit).
+test('FLIP GATE: choiceEdit ON — a new group from «Agregar producto» gets option 1 marked before sending, and the real save accepts it', async () => {
   CE.on = true;
   try {
     const B = await backend('la_musa');

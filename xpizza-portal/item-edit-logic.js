@@ -12,6 +12,7 @@
 import {
   draftSource, choiceGroup, editItem, itemNameProblem, itemDescProblem, itemCategoryProblem, tidyItemName, parsePrice,
   draftPhotos, ITEM_NAME_MAX, ITEM_DESC_MAX, extrasBaseline, dishDenyExtras, composeDish, commitDish, attachRefusal,
+  createDraft, applyChoiceOps,
 } from './editor.js';
 import { extrasPageModel, refusalReason } from './extras-logic.js';
 
@@ -76,7 +77,9 @@ export function open(draft, key, reservedNames = null, opts = {}) {
     photoTouched: false, upload: null, closed: false, reserved, same: null, serverError: null,
     extrasAuthoring: !!(opts && opts.extrasAuthoring === true),
     // STRUCTURE S2 (§3.2): the Extras page's switch, and this copy's attach / detach ops IN CLICK ORDER (replayed as such)
-    extrasCatalog: !!(opts && opts.extrasCatalog === true), ops: [] };
+    extrasCatalog: !!(opts && opts.extrasCatalog === true), ops: [],
+    // STRUCTURE S3 (UI): the server's choiceEdit switch, and this copy's CHOICE ops in click order (5f's writer; «Guardar» replays them first)
+    choiceEdit: !!(opts && opts.choiceEdit === true), choiceOps: [] };
 }
 
 // One field of the copy. A section change clears the subsection (moving INTO one with subsections asks for a choice: no preselect).
@@ -145,6 +148,7 @@ function changed(s) {
   if (w.denyExtras.length !== was.size || w.denyExtras.some((k) => !was.has(k))) out.push('denyExtras');
   if (w.extrasNone !== b.extrasNone) out.push('extrasNone');
   if (s.ops.length) out.push('ops');
+  if (s.choiceOps && s.choiceOps.length) out.push('choiceOps');
   return out;
 }
 
@@ -404,6 +408,9 @@ export function save(draft, s) {
   if (!s || s.closed) return { ok: false, error: 'closed' };
   if (draft !== s.draft) return { ok: false, error: 'stale' };
   if (!view(draft, s).save.enabled) return { ok: false, error: 'invalid' };
+  // STRUCTURE S3 (addendum B2): a touched group with no «Recomendada» is HELD here — never sent to a sure 409
+  const cm = choiceModel(draft, s);
+  if (cm && cm.hold) return { ok: false, error: 'choice_hold', reason: cm.hold.reason };
   const ch = changed(s), w = s.work, e = {};
   if (ch.includes('name')) e.name = w.name;
   if (ch.includes('desc')) e.desc = w.desc;
@@ -417,9 +424,57 @@ export function save(draft, s) {
   if (ch.includes('denyExtras')) e.denyExtras = w.denyExtras.slice();
   if (ch.includes('extrasNone')) e.extrasPolicy = w.extrasNone ? 'none' : null;
   // STRUCTURE S2 (§3.2): ONE composition — «Sin extras» off, the move, the copy's ops, then the rest — swapped in once
-  if (!commitDish(draft, s.key, e, s.ops, { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog }).ok) return { ok: false, error: 'invalid' };
+  if (!commitDish(draft, s.key, e, [...s.choiceOps, ...s.ops], { reserved: s.reserved, extrasAuthoring: s.extrasAuthoring, extrasCatalog: s.extrasCatalog, choiceEdit: s.choiceEdit }).ok) return { ok: false, error: 'invalid' };
   s.closed = true;
   return { ok: true };
+}
+
+// ── STRUCTURE S3 (UI) — the required choice of a LIVE dish in this copy (MOCKUP structure-edit D / D2 / D3; S3 addendum B2 / B2b) ──────────
+// One S3 op for this copy: dry-run on a scratch draft with every op queued so far (5f's writer, all or nothing) — queued only if it applies.
+export function choiceOp(s, op) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(s.draft))));
+  const r = applyChoiceOps(scratch, [...s.choiceOps, op], { choiceEdit: true });
+  if (!r.ok) return r;
+  s.choiceOps.push(op);
+  return { ok: true };
+}
+// the copy's choice as it would save: { label, options: [{ id, choice, price, marked, isNew }], touched, hold, removed } | null (OFF).
+// TOUCHED is the server's rule against the loaded baseline (S3-r4 §2): a new / removed group, its label, its membership, any member's
+// choice text or mark — a price alone is not. HOLD: a touched group with no mark — 'recommended_removed' when the baseline's marked
+// option left, else 'recommended_required'.
+const isTag = (r) => !!(r && r.display && Array.isArray(r.display.tags) && r.display.tags.includes('recommended'));
+function groupIn(src, key) {
+  const items = (src && src.items) || [];
+  const l = items.find((i) => i && i.key === key);
+  const vi = src && src.structure && src.structure.variant_items;
+  const spec = l && l.display && vi ? vi[String(l.display.id)] : null;
+  if (!spec || !Array.isArray(spec.variantIds)) return null;
+  return { label: typeof spec.label === 'string' ? spec.label : '', members: spec.variantIds.map((v) => items.find((i) => i && i.display && (String(i.display.id) === String(v) || i.ref === v))).filter(Boolean) };
+}
+export function choiceModel(draft, s) {
+  if (!s || !s.choiceEdit) return null;
+  const scratch = createDraft(JSON.parse(JSON.stringify(draftSource(draft))));
+  if (s.choiceOps.length && !applyChoiceOps(scratch, s.choiceOps, { choiceEdit: true }).ok) return null;
+  const now = groupIn(draftSource(scratch), s.key);
+  const was = groupIn(draft.orig, s.key);
+  const idOf = (r) => r.key || r.ref;
+  if (!now) return { label: null, options: [], touched: !!was, hold: null, removed: !!was };
+  const options = now.members.map((r) => ({ id: idOf(r), choice: r.display.choice, price: r.price, marked: isTag(r), isNew: !r.key }));
+  const wasMap = new Map((was ? was.members : []).map((r) => [idOf(r), r]));
+  const touched = !was || was.label !== now.label || was.members.length !== now.members.length
+    || now.members.some((r) => { const w = wasMap.get(idOf(r)); return !w || w.display.choice !== r.display.choice || isTag(w) !== isTag(r); });
+  const marks = options.filter((o) => o.marked).length;
+  const hold = touched && marks === 0 ? { reason: was && was.members.some((r) => isTag(r) && !now.members.some((m) => idOf(m) === idOf(r))) ? 'recommended_removed' : 'recommended_required' } : null;
+  return { label: now.label, options, touched, hold, removed: false };
+}
+// D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)
+export function choiceRemovePlan(draft, s) {
+  const m = choiceModel(draft, s);
+  if (!m || m.removed) return null;
+  const marked = m.options.find((o) => o.marked);
+  return { priceFrom: marked ? marked.id : null, options: m.options.map((o) => ({ id: o.id, choice: o.choice, price: o.price })) };
 }
 
 // «Cancelar» / «Cerrar»: the copy goes; the draft keeps whatever it had before the drawer opened.
