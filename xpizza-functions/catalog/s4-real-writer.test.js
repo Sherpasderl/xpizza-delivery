@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const WRITER_REF = '9505f0330';   // feat/portal-structure-s3-ui (portal-ui) — replace by the repo's own xpizza-portal/editor.js once merged
+const WRITER_REF = '71720530e';   // feat/portal-structure-s3-ui (portal-ui; S4-C «add promotes» 083d76bb7 + 1c82272e1) — replace by the repo's own xpizza-portal/editor.js once merged
 const S = { sections: true };
 { const p = require.resolve('./platform-structure'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), sections: S.sections }) } }; }
 const ST = require('./section-transitions');
@@ -112,6 +112,27 @@ function serverVerdict(rid, live, stored, draft) {
     const ids = E.draftSource(d0).structure.staged_categories.map((e) => e.id);
     ok(E.moveItem(d0, 'dimsum_01', { cat: ids[1] }, ON), L);
     assert.strictEqual(serverVerdict('la_musa', LM, LM, clone(E.draftSource(d0))), 'ok', `${L}: ids ${JSON.stringify(ids)}`);
+  });
+  await cell('S4-RW-ADD-PROMOTES (S4-C): addProduct into a STAGED section promotes it — the REAL save (allocation, preflight vs stored) accepts it, the owner publish too', async (L) => {
+    const H = require('../test/_s2core-harness'); H.SW.extrasCatalog = false;
+    const quiet = async (fn) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await fn(); } finally { console.log = l; console.warn = w; } };
+    const w = H.world('la_musa', { live: LM });
+    const d0 = draftOf(LM); ok(E.addCategory(d0, 'Postres', { after: 'crudo' }, ON), `${L}: stage`);
+    const r1 = await quiet(() => w.save(clone(E.draftSource(d0))));
+    assert.strictEqual(r1.status, 200, `${L}: save 1 (staged) ${JSON.stringify(r1.body)}`);
+    const d1 = draftOf(r1.body.source); const ref = 'tmp:rwadd-0001';
+    E.addProduct(d1, { ref, cat: 'postres' }, ON); E.setAddition(d1, ref, 'name', 'Flan de Coco', ON); E.setAddition(d1, ref, 'price', '120', ON);
+    const src = clone(E.draftSource(d1));
+    assert.ok(src.structure.categories.some((c) => c.id === 'postres') && !(src.structure.staged_categories || []).some((e) => e.id === 'postres'), `${L}: the writer promoted it`);
+    const r2 = await quiet(() => w.save(src));
+    assert.strictEqual(r2.status, 200, `${L}: save 2 (the promoting addition) ${JSON.stringify(r2.body)}`);
+    const saved = r2.body.source; const ids = saved.structure.categories.map((c) => c.id);
+    assert.deepStrictEqual(ids.slice(ids.indexOf('crudo'), ids.indexOf('crudo') + 2), ['crudo', 'postres'], `${L}: promoted at its anchor`);
+    const added = saved.items.find((i) => i.display && i.display.name === 'Flan de Coco');
+    assert.ok(added && typeof added.key === 'string' && !added.ref && added.display.cat === 'postres', `${L}: allocated, in the promoted section`);
+    const { token, diff } = await w.tokenFor();
+    const pub = await quiet(() => w.ownerPublish(token, diff.largeChangeSet.map((l) => ({ key: l.key, surface: l.surface }))));   // a new dish's sanity row: today's acknowledgement
+    assert.strictEqual(pub.status, 200, `${L}: the owner publish ${JSON.stringify(pub.body)}`);
   });
   await cell('S4-RW-OFF: sections OFF → every writer op refuses sections_off (nothing written)', (L) => {
     const d = draftOf(LM); const before = JSON.stringify(E.draftSource(d));
