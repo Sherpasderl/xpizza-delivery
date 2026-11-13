@@ -4902,7 +4902,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#catOf#items#0",
-   "line": 92,
+   "line": 95,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4912,7 +4912,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#0",
-   "line": 139,
+   "line": 142,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4922,16 +4922,6 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3#items#0",
-   "line": 171,
-   "kind": "member",
-   "facts": [
-    "ITEMS"
-   ],
-   "rule": "server:catalog",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3>anon#items#0",
    "line": 174,
    "kind": "member",
    "facts": [
@@ -4941,8 +4931,18 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3>anon#items#0",
+   "line": 177,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#1",
-   "line": 182,
+   "line": 185,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5005,7 +5005,7 @@
   },
   {
    "id": "xpizza-functions/catalog/section-compare.js#compareToActive#items#0",
-   "line": 128,
+   "line": 133,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5244,8 +5244,28 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/structure-budget.js#sectionOpsOf#items#0",
+   "line": 63,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/catalog/structure-budget.js#sectionOpsOf#items#1",
+   "line": 63,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#0",
-   "line": 45,
+   "line": 90,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5255,7 +5275,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#1",
-   "line": 51,
+   "line": 96,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5265,7 +5285,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#2",
-   "line": 55,
+   "line": 100,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5275,7 +5295,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#3",
-   "line": 56,
+   "line": 101,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5285,7 +5305,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#enforce#items#0",
-   "line": 76,
+   "line": 125,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5295,7 +5315,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#enforce#items#1",
-   "line": 90,
+   "line": 140,
    "kind": "member",
    "facts": [
     "ITEMS"

@@ -116,6 +116,11 @@ function compareToActive(args) {
   const A = args.activeBuilt; const D = args.draftBuilt;
   const { newIds, declared } = judgeCategories(A, D);
   judgeAuthoredRefs(D, newIds);
+  // Q8: a LIVE rename publishes alone. The reverted copy below hides the S4 delta from today's rename_not_alone, so it is judged here, with
+  // the ONE definition of an S4 op the review uses (review-diff s4OpPresent)
+  const dNames = new Map(catsOf(D).map((c) => [c.id, c.name === undefined ? null : c.name]));
+  const renamedLive = catsOf(A).some((c) => dNames.has(c.id) && (c.name === undefined ? null : c.name) !== dNames.get(c.id));
+  if (renamedLive && require('./review-diff').s4OpPresent(A, D)) refuse('rename_not_alone', 'a section rename must be published on its own, with no other change');
 
   const Dp = clone(D);
   const dById = new Map(catsOf(D).map((c) => [c.id, c]));

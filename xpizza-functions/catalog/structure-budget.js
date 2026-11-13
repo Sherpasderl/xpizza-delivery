@@ -31,6 +31,51 @@ function opsOf(draft, active) {
   return ops;
 }
 
+// S4 (PLAN-structure-S4-r4 R2.8, R3.4) — the SECTIONS ops of one draft against the live version: one per new or renamed declared category,
+// per staged add / drop / rename / move (anchor or rank) / promote, per added or renamed subcat, per changed section order, per changed subcat
+// order (a section's), and per dish whose section, subcat or rank among the dishes both versions carry changed.
+function sectionOpsOf(draft, active) {
+  const cats = (b) => ((b.structure && Array.isArray(b.structure.categories)) ? b.structure.categories : []);
+  const staged = (b) => ((b.structure && Array.isArray(b.structure.staged_categories)) ? b.structure.staged_categories : []);
+  const subs = (c) => (c && Array.isArray(c.subcats) ? c.subcats : []);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const dc = cats(draft); const ac = cats(active); const aById = new Map(ac.map((c) => [c.id, c]));
+  const ds = staged(draft); const as = staged(active); const asById = new Map(as.map((e) => [e.id, e])); const dsIds = new Set(ds.map((e) => e.id));
+  let ops = 0;
+  for (const c of dc) {
+    const a = aById.get(c.id);
+    if (!a) { ops += 1; } else if ((a.name || null) !== (c.name || null)) ops += 1;   // new (or promoted) / renamed
+    const ls = subs(a); const nsubs = subs(c);
+    ops += nsubs.filter((x) => !ls.includes(x)).length;   // added or renamed subcats
+    const kept = ls.filter((x) => nsubs.includes(x));
+    if (!same(kept, nsubs.filter((x) => kept.includes(x)))) ops += 1;   // the subcat order
+  }
+  const commonIds = ac.map((c) => c.id).filter((id) => dc.some((c) => c.id === id));
+  if (!same(commonIds, dc.map((c) => c.id).filter((id) => commonIds.includes(id)))) ops += 1;   // the section order
+  const rankOf = (list, e) => list.filter((x) => x.after === e.after).indexOf(e);
+  for (const e of ds) {
+    const w = asById.get(e.id);
+    if (!w) { ops += 1; continue; }
+    if (w.name !== e.name) ops += 1;
+    if (w.after !== e.after || rankOf(as, w) !== rankOf(ds, e)) ops += 1;
+  }
+  for (const w of as) if (!dsIds.has(w.id) && !dc.some((c) => c.id === w.id)) ops += 1;   // dropped (a promotion counted above, once)
+  const at = new Map((active.items || []).map((i) => [i.key, i.display || {}])); const dt = new Map((draft.items || []).map((i) => [i.key, i.display || {}]));
+  const ao = ((active.structure && active.structure.item_order) || []).filter((k) => dt.has(k)); const dor = ((draft.structure && draft.structure.item_order) || []).filter((k) => at.has(k));
+  const rank = (order, t) => { const per = new Map(); const r = new Map(); for (const k of order) { const c = t.get(k).cat; const n = per.get(c) || 0; r.set(k, n); per.set(c, n + 1); } return r; };
+  const stay = (k) => at.get(k).cat === dt.get(k).cat;   // ranks compare among the dishes that kept their section (a move is its own op)
+  const ar = rank(ao.filter(stay), at); const dr = rank(dor.filter(stay), dt);
+  for (const k of ao) {
+    const a = at.get(k); const d = dt.get(k);
+    if (a.cat !== d.cat || (a.subcat == null ? null : a.subcat) !== (d.subcat == null ? null : d.subcat) || ar.get(k) !== dr.get(k)) ops += 1;
+  }
+  return ops;
+}
+function enforceSections({ draft, active, limits }) {
+  const ops = sectionOpsOf(draft, active);
+  return { ops, cap: (limits && limits.ops) || LIMITS.ops };
+}
+
 // Codex build r1 P2-8 / r2 #8 — the COMPLETE served response, bounded from above before any write, every part MEASURED from the draft:
 //   · the endpoint's composition (composeServedMenu) with what buildPublicMenu attaches after it — the version's public extras
 //     eligibility and avail_identity — and the item_keys map (identity-overlay withServedItemKeys)
@@ -69,6 +114,10 @@ function servedUpperBound(args) { const p = servedParts(args); return p.core + p
 // rid, source (the draft as it will be stored), draft / active: the built RECORDS { items, extras, structure }. Returns the measurements
 // (null when the switch is off); throws AddProductError structure_caps / structure_bytes { field }.
 function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS, photos = undefined }) {
+  // S4 (R3.4): the sections count runs BEFORE the extras-OFF exit, so both call sites cover it; alone it has the whole cap
+  let sectionsOn = false; try { sectionsOn = require('./platform-structure').structureCapabilities().sections === true; } catch (_) { sectionsOn = false; }
+  const s4 = sectionsOn ? enforceSections({ draft, active, limits }) : null;
+  if (s4 && !extrasCatalog && s4.ops > s4.cap) refuse('structure_caps', 'ops', `at most ${s4.cap} section changes in one publish (${s4.ops}) — publish part of them first`);
   if (!extrasCatalog) return null;
   const st = draft.structure || {};
   // T21 (§1.3 DERIVED-CLAIM-EXACT): under the switch compareToActive CLAIMS the two maps (they move with every attach / detach), so the
@@ -83,8 +132,9 @@ function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS, p
   for (const e of draft.extras || []) { const g = e && e.display && e.display.cat; per.set(g, (per.get(g) || 0) + 1); }
   for (const [g, c] of per) if (c > LIMITS.perGroup) throw new AddProductError('structure_caps', `at most ${LIMITS.perGroup} options in the group «${g}» (${c})`, { field: 'extras_in_group', group: g });   // its OWN field + the group (advisor 11-12); the menu-wide cap below stays 'extras'
   if ((draft.extras || []).length > LIMITS.extras) refuse('structure_caps', 'extras', `at most ${LIMITS.extras} options (${draft.extras.length})`);
-  const ops = opsOf(draft, active);
-  if (ops > LIMITS.ops) refuse('structure_caps', 'ops', `at most ${LIMITS.ops} Extras changes in one publish (${ops}) — publish part of them first`);
+  const ops = opsOf(draft, active) + (s4 ? s4.ops : 0);   // S4 R3.4: one draft, one budget
+  const cap = (limits && limits.ops) || LIMITS.ops;
+  if (ops > cap) refuse('structure_caps', 'ops', `at most ${cap} Extras${s4 ? ' and section' : ''} changes in one publish (${ops}) — publish part of them first`);
   const sourceBytes = bytes(source);
   if (sourceBytes > limits.sourceBytes) refuse('structure_bytes', 'source', `the menu would be ${Math.ceil(sourceBytes / 1024)} KiB (at most ${limits.sourceBytes / 1024})`);
   const elig = require('./extras-eligibility-store').buildEligibilityDoc({ items: draft.items, extras: draft.extras, structure: st });
@@ -95,4 +145,4 @@ function enforce({ rid, source, draft, active, extrasCatalog, limits = LIMITS, p
   return { ops, sourceBytes, eligibilityBytes, servedBytes };
 }
 
-module.exports = { enforce, opsOf, servedUpperBound, servedParts, publicUrlBound, LIMITS, HEADER_ALLOWANCE };
+module.exports = { enforce, opsOf, sectionOpsOf, servedUpperBound, servedParts, publicUrlBound, LIMITS, HEADER_ALLOWANCE };

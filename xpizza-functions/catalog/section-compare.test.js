@@ -99,6 +99,14 @@ cell('SC-RENAME-ALONE (Q8): a LIVE rename beside a new category → rename_not_a
   const r = clone(LM); r.structure.categories.find((c) => c.id === 'crudo').name = 'Crudos';
   accepted(ON(() => judge('la_musa', LM, r)), `${L}: alone`);
 });
+cell('SC-RENAME-ALONE-S4 (Q8): a LIVE rename beside ANY S4 op the reverted copy hides (section order, staged, subcats, dish order) → rename_not_alone', (L) => {
+  const rn = (d) => { d.structure.categories.find((c) => c.id === 'crudo').name = 'Crudos'; return d; };
+  const order = rn(clone(LM)); const c = order.structure.categories; [c[0], c[1]] = [c[1], c[0]];
+  const stg = rn(clone(LM)); stg.structure.staged_categories = [{ id: 'postres', name: 'Postres', after: null }];
+  const sub = rn(clone(LM)); sub.structure.categories.find((x) => x.id === 'bebidas').subcats.push('Jugos'); move(sub, 'soft_04', 'bebidas', 'Jugos');
+  const dish = rn(clone(LM)); const o = dish.structure.item_order; [o[0], o[1]] = [o[1], o[0]];
+  for (const [what, d] of Object.entries({ order, stg, sub, dish })) refused(ON(() => judge('la_musa', LM, d)), 'rename_not_alone', `${L}: ${what}`);
+});
 cell('SC-SUBCAT-ADD: a new subcat on bebidas with a member moved in → ON accepted; OFF structure_changed', (L) => {
   const d = clone(LM); d.structure.categories.find((c) => c.id === 'bebidas').subcats.push('Jugos'); move(d, 'soft_04', 'bebidas', 'Jugos');
   accepted(ON(() => judge('la_musa', LM, d)), L); refused(judge('la_musa', LM, d), 'structure_changed', L);

@@ -462,6 +462,7 @@
   "catalog/review-diff.js#reviewDiffS2S3>anon": "catalog",
   "catalog/source-accounting.js#accountAuthored": "catalog",
   "catalog/structure-budget.js#servedParts": "catalog",
+  "catalog/structure-budget.js#sectionOpsOf": "catalog",
   "catalog/structure-gate.js#judge": "catalog",
   "catalog/publish-request.js#requestPublishCore": "catalog",
   "catalog/structure-budget.js#enforce": "catalog",
