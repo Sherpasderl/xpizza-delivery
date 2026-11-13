@@ -922,7 +922,9 @@
   "payments/sdk/endpoints.js#http>anon": "payment",
   "payments/sdk/endpoints.js#makeHandlers>anon": "payment",
   "payments/sdk/replaces.js#replacesRefusal": "payment",
-  "index.js#acquireRefusal>anon": "intake"
+  "index.js#acquireRefusal>anon": "intake",
+  "payments/sdk/fence.js#guestOwnerForAbsent": "payment",
+  "payments/sdk/order-auth.js#authorizeExistingOrderAs": "payment"
  },
  "pageFunctionExemptions": {
   "xpizza-portal/api.js#rawCall": "portal ENVÍO (PLAN-portal-envio-step1 r2) — the Sherpa-admin delivery-fee screen: the raw getDeliveryPricing / setDeliveryPricing call reads the HTTP response status only (to tell SAVED from UNKNOWN); no persisted order, no money",
