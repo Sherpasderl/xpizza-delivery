@@ -83,10 +83,12 @@ function sectionLines(live, draft, appOnly) {
   out.added = dc.filter((c) => !lById.has(c.id)).map((c) => ({ id: c.id, name: c.name, app_only: appOnly }));
   const subcats = []; const subcatOrder = [];
   for (const c of dc) {
-    const ls = subsOf(lById.get(c.id)); const ds = subsOf(c); const renamed = new Map();
-    ds.forEach((x, i) => {
+    const ls = subsOf(lById.get(c.id)); const ds = subsOf(c);
+    const renamed = require('./section-compare').subcatRenames(live, draft, c.id, ls, ds);   // the judgment's own pairing (by members)
+    const oldOf = new Map([...renamed].map(([o, x]) => [x, o]));
+    ds.forEach((x) => {
       if (ls.includes(x)) return;
-      if (i < ls.length && !ds.includes(ls[i])) { renamed.set(ls[i], x); subcats.push({ cat: c.id, change: 'renamed', old: ls[i], new: x }); } else subcats.push({ cat: c.id, change: 'added', old: null, new: x });
+      if (oldOf.has(x)) subcats.push({ cat: c.id, change: 'renamed', old: oldOf.get(x), new: x }); else subcats.push({ cat: c.id, change: 'added', old: null, new: x });
     });
     const mapped = ls.map((x) => renamed.get(x) || x).filter((x) => ds.includes(x));
     if (!same(mapped, ds.filter((x) => mapped.includes(x)))) subcatOrder.push({ cat: c.id, old: ls, new: ds });

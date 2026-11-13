@@ -54,11 +54,18 @@ cell('RD-ORDER-ITEMS (Q9): two dishes swapped within a section → a row per dis
 cell('RD-SUBCATS: a subcat added and one renamed → subcats rows; a reorder → subcat_order', (L) => {
   const d = clone(LM); const b = cat(d, 'bebidas'); b.subcats = ['Refrescos', 'Cervezas', 'Jugos'];
   for (const it of d.items) if (it.display.subcat === 'Sodas') it.display.subcat = 'Refrescos';
-  item(d, 'soft_04').display.subcat = 'Jugos';
+  item(d, 'beer_08').display.subcat = 'Jugos';   // a BEER moves (a Sodas member leaving would make it no rename at all: the judgment refuses that draft)
   const s = ON(() => diffOf(LM, d)).sections;
   assert.deepStrictEqual(s.subcats, [{ cat: 'bebidas', change: 'renamed', old: 'Sodas', new: 'Refrescos' }, { cat: 'bebidas', change: 'added', old: null, new: 'Jugos' }], L);
   const r = clone(LM); cat(r, 'bebidas').subcats = ['Cervezas', 'Sodas'];
   assert.deepStrictEqual(ON(() => diffOf(LM, r)).sections.subcat_order, [{ cat: 'bebidas', old: ['Sodas', 'Cervezas'], new: ['Cervezas', 'Sodas'] }], `${L}: order`);
+});
+cell('RD-SUBCATS-RENAME-MOVE (portal-ui repro): Sodas → Refrescos with the order [Cervezas, Refrescos] → ONE renamed row and a subcat_order line', (L) => {
+  const d = clone(LM); cat(d, 'bebidas').subcats = ['Cervezas', 'Refrescos'];
+  for (const it of d.items) if (it.display.subcat === 'Sodas') it.display.subcat = 'Refrescos';
+  const s = ON(() => diffOf(LM, d)).sections;
+  assert.deepStrictEqual(s.subcats, [{ cat: 'bebidas', change: 'renamed', old: 'Sodas', new: 'Refrescos' }], L);
+  assert.deepStrictEqual(s.subcat_order, [{ cat: 'bebidas', old: ['Sodas', 'Cervezas'], new: ['Cervezas', 'Refrescos'] }], `${L}: order`);
 });
 cell('RD-STAGED (R2.6): every staged transition has its line AND changes diffHash — anchor-only and rank-only moves included', (L) => {
   const base = staged(LM, [P(), P({ id: 'cafe', name: 'Café' })]);

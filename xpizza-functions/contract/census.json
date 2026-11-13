@@ -4902,7 +4902,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#catOf#items#0",
-   "line": 95,
+   "line": 97,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4912,7 +4912,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#0",
-   "line": 142,
+   "line": 144,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4922,7 +4922,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3#items#0",
-   "line": 174,
+   "line": 176,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4932,7 +4932,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#reviewDiffS2S3>anon#items#0",
-   "line": 177,
+   "line": 179,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4942,7 +4942,7 @@
   },
   {
    "id": "xpizza-functions/catalog/review-diff.js#nameOf#items#1",
-   "line": 185,
+   "line": 187,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4964,8 +4964,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/section-compare.js#judgeSubcats#items#0",
-   "line": 76,
+   "id": "xpizza-functions/catalog/section-compare.js#subcatRenames#items#0",
+   "line": 86,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4974,8 +4974,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/catalog/section-compare.js#judgeSubcats>anon#items#0",
-   "line": 81,
+   "id": "xpizza-functions/catalog/section-compare.js#subcatRenames>anon#items#0",
+   "line": 91,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4985,7 +4985,7 @@
   },
   {
    "id": "xpizza-functions/catalog/section-compare.js#claimMoveProjection#items#0",
-   "line": 107,
+   "line": 124,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -4995,7 +4995,7 @@
   },
   {
    "id": "xpizza-functions/catalog/section-compare.js#claimMoveProjection#items#1",
-   "line": 108,
+   "line": 125,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5005,7 +5005,7 @@
   },
   {
    "id": "xpizza-functions/catalog/section-compare.js#compareToActive#items#0",
-   "line": 133,
+   "line": 150,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5245,7 +5245,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#sectionOpsOf#items#0",
-   "line": 63,
+   "line": 64,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5255,7 +5255,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#sectionOpsOf#items#1",
-   "line": 63,
+   "line": 64,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5265,7 +5265,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#0",
-   "line": 90,
+   "line": 91,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5275,7 +5275,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#1",
-   "line": 96,
+   "line": 97,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5285,16 +5285,6 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#2",
-   "line": 100,
-   "kind": "member",
-   "facts": [
-    "ITEMS"
-   ],
-   "rule": "server:catalog",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#3",
    "line": 101,
    "kind": "member",
    "facts": [
@@ -5304,8 +5294,18 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/catalog/structure-budget.js#servedParts#items#3",
+   "line": 102,
+   "kind": "member",
+   "facts": [
+    "ITEMS"
+   ],
+   "rule": "server:catalog",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/catalog/structure-budget.js#enforce#items#0",
-   "line": 125,
+   "line": 126,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -5315,7 +5315,7 @@
   },
   {
    "id": "xpizza-functions/catalog/structure-budget.js#enforce#items#1",
-   "line": 140,
+   "line": 141,
    "kind": "member",
    "facts": [
     "ITEMS"

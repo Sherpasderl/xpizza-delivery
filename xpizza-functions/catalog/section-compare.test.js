@@ -121,6 +121,16 @@ cell('SC-SUBCAT-REMOVE (Q6): Sodas removed, its members merged into Cervezas →
   for (const i of d.items) if (i.display.subcat === 'Sodas') i.display.subcat = 'Cervezas';
   refused(ON(() => judge('la_musa', LM, d)), 'subcat_removed', L);
 });
+cell('SC-SUBCAT-RENAME-MOVE (portal-ui repro, cbefd3a09): Sodas → Refrescos AND the order [Cervezas, Refrescos] in one save → accepted (paired by members, not index)', (L) => {
+  const d = clone(LM); d.structure.categories.find((c) => c.id === 'bebidas').subcats = ['Cervezas', 'Refrescos'];
+  for (const i of d.items) if (i.display.subcat === 'Sodas') i.display.subcat = 'Refrescos';
+  accepted(ON(() => judge('la_musa', LM, d)), L);
+});
+cell('SC-SUBCAT-MERGE-AMBIGUOUS: Sodas and Cervezas both rewritten to ONE new name → subcat_removed (two old names claim one new)', (L) => {
+  const d = clone(LM); d.structure.categories.find((c) => c.id === 'bebidas').subcats = ['Bebidas frías'];
+  for (const i of d.items) if (i.display.cat === 'bebidas') i.display.subcat = 'Bebidas frías';
+  refused(ON(() => judge('la_musa', LM, d)), 'subcat_removed', L);
+});
 cell('SC-SUBCAT-NAMES: ≤ 40, unique case-folded within the category', (L) => {
   const d = clone(LM); d.structure.categories.find((c) => c.id === 'bebidas').subcats.push('sodas '); move(d, 'soft_04', 'bebidas', 'sodas ');
   refused(ON(() => judge('la_musa', LM, d)), 'subcat_name_taken', `${L}: dup`);

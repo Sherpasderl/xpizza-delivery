@@ -60,8 +60,8 @@ function judgeCategories(A, D) {
   return { newIds, declared: dc.map((c) => c.id) };
 }
 
-// subcats: names ≤ 40, unique case-folded within the category, ≤ 12; a live subcat never disappears — a rename is the subcat at the SAME
-// index replaced by a new name with EVERY member that stayed in the category rewritten to it (Q3 name-as-identity, Q6 no deletes)
+// subcats: names ≤ 40, unique case-folded within the category, ≤ 12; a live subcat never disappears — a rename is a new name with EVERY
+// member that stayed in the category rewritten to it, paired by members (subcatRenames; Q3 name-as-identity, Q6 no deletes)
 function judgeSubcats(A, D, c, live) {
   const ds = Array.isArray(c.subcats) ? c.subcats : [];
   const ls = live && Array.isArray(live.subcats) ? live.subcats : [];
@@ -73,15 +73,32 @@ function judgeSubcats(A, D, c, live) {
     if (seen.has(f)) refuse('subcat_name_taken', `«${s}» is already a subsection here`, { key: c.id, field: 'subcats' });
     seen.add(f);
   }
-  const dItems = new Map(D.items.map((i) => [i.key, i]));
+  const renames = subcatRenames(A, D, c.id, ls, ds);
+  for (const x of ls) if (!ds.includes(x) && !renames.has(x)) refuse('subcat_removed', `the subsection «${x}» cannot be removed`, { key: c.id, field: 'subcats' });
+}
+
+/* The ONE subsection-rename pairing (section-compare, review-diff, structure-budget): Map(old name → new name) for a category whose live
+   subcats `ls` became `ds`. A live name x that left `ds` is RENAMED to y when every live member of x that stayed in the category now
+   carries y, a name new to the category (Q3 name-as-identity, members rewritten) — paired by MEMBERS, so a rename may also move. Two live
+   names claiming one y is ambiguous: neither is paired. A live name with NO member left in the category keeps the index rule (ds[idx], when
+   new and unclaimed). Unpaired ⇒ removed (the judgment refuses subcat_removed). */
+function subcatRenames(A, D, catId, ls, ds) {
+  const dItems = new Map((D.items || []).map((i) => [i.key, i]));
+  const fresh = ds.filter((y) => !ls.includes(y));
+  const claims = new Map(); const vacuous = [];
   ls.forEach((x, idx) => {
     if (ds.includes(x)) return;
-    const y = ds[idx];
-    const renamed = typeof y === 'string' && !ls.includes(y)
-      && A.items.filter((i) => i.display && i.display.cat === c.id && i.display.subcat === x)
-        .every((i) => { const d = dItems.get(i.key); return !d || d.display.cat !== c.id || d.display.subcat === y; });
-    if (!renamed) refuse('subcat_removed', `the subsection «${x}» cannot be removed`, { key: c.id, field: 'subcats' });
+    const stayed = (A.items || []).filter((i) => i.display && i.display.cat === catId && i.display.subcat === x)
+      .map((i) => dItems.get(i.key)).filter((d) => d && d.display && d.display.cat === catId);
+    if (!stayed.length) { vacuous.push([x, idx]); return; }
+    const y = stayed[0].display.subcat;
+    if (fresh.includes(y) && stayed.every((d) => d.display.subcat === y)) claims.set(y, [...(claims.get(y) || []), x]);
   });
+  const out = new Map();
+  for (const [y, xs] of claims) if (xs.length === 1) out.set(xs[0], y);
+  const taken = new Set([...claims.keys()]);
+  for (const [x, idx] of vacuous) { const y = ds[idx]; if (typeof y === 'string' && fresh.includes(y) && !taken.has(y)) { out.set(x, y); taken.add(y); } }
+  return out;
 }
 
 // R3.2: a NEW (non-live) category may enter no AUTHORED category reference; the derived extras maps are not guarded here (S2's claim)
@@ -139,4 +156,4 @@ function compareToActive(args) {
   return AP.compareToActive({ ...args, draftBuilt: Dp, renderedCategories });
 }
 
-module.exports = { compareToActive, CATEGORIES_MAX, SUBCATS_MAX, NAME_MAX, ID_RE };
+module.exports = { compareToActive, subcatRenames, CATEGORIES_MAX, SUBCATS_MAX, NAME_MAX, ID_RE };

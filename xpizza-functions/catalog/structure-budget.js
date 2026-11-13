@@ -47,8 +47,9 @@ function sectionOpsOf(draft, active) {
     if (!a) { ops += 1; } else if ((a.name || null) !== (c.name || null)) ops += 1;   // new (or promoted) / renamed
     const ls = subs(a); const nsubs = subs(c);
     ops += nsubs.filter((x) => !ls.includes(x)).length;   // added or renamed subcats
-    const kept = ls.filter((x) => nsubs.includes(x));
-    if (!same(kept, nsubs.filter((x) => kept.includes(x)))) ops += 1;   // the subcat order
+    const renamed = require('./section-compare').subcatRenames(active, draft, c.id, ls, nsubs);   // the judgment's own pairing (by members)
+    const kept = ls.map((x) => renamed.get(x) || x).filter((x) => nsubs.includes(x));
+    if (!same(kept, nsubs.filter((x) => kept.includes(x)))) ops += 1;   // the subcat order (a renamed subcat keeps its live place)
   }
   const commonIds = ac.map((c) => c.id).filter((id) => dc.some((c) => c.id === id));
   if (!same(commonIds, dc.map((c) => c.id).filter((id) => commonIds.includes(id)))) ops += 1;   // the section order

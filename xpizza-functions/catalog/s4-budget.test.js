@@ -39,6 +39,11 @@ cell('BUD-COUNT: each S4 change counts as R2.8 says', (L) => {
   assert.strictEqual(ops(pr, st), 2, `${L}: a promotion (1) + its dish (1)`);
   assert.strictEqual(ops(clone(LM)), 0, `${L}: nothing`);
 });
+cell('BUD-SUBCAT-RENAME-MOVE (portal-ui repro): Sodas → Refrescos + the order [Cervezas, Refrescos] → 2 ops (the rename, the subcat order) + its 4 dishes\' subcat', (L) => {
+  const d = clone(LM); d.structure.categories.find((x) => x.id === 'bebidas').subcats = ['Cervezas', 'Refrescos'];
+  for (const it of d.items) if (it.display.subcat === 'Sodas') it.display.subcat = 'Refrescos';
+  assert.strictEqual(ops(d), 6, L);
+});
 cell('BUD-OFF: sections OFF → nothing S4 is measured (extras OFF: enforce is today\'s null)', (L) => {
   const d = clone(LM); d.structure.item_order.reverse();
   assert.deepStrictEqual(run(d), { ok: null }, L);
