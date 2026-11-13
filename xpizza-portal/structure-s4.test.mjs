@@ -309,3 +309,14 @@ test('6 OFF: today\'s edits (a price, a move between live sections, a category r
   const b = createDraft(clone(base)); editItem(b, 'rice_01', { cat: 'noodles', subcat: null }); assert.deepEqual(pendingSections(b), []);
   const c = createDraft(clone(base)); renameCategory(c, 'crudo', 'Crudos', ON); assert.deepEqual(pendingSections(c), [], 'a live rename is T1\'s (pendingRenames), not S4\'s');
 });
+
+test('name clashes use 5f\'s nameFold (accents stripped, inner spaces collapsed, lowercase): «Dím  Sum» clashes with «Dim Sum» — sections AND subsections', () => {
+  const src = seed('la_musa');
+  const d = createDraft(clone(src)); const before = bytes(d);
+  assert.equal(addCategory(d, 'Dím  Sum', {}, ON).code, 'category_name_taken', '🔴 a section name equal under nameFold');
+  assert.equal(renameCategory(d, 'crudo', 'dim   súm', ON).code, 'category_name_taken');
+  assert.equal(addSubcat(d, 'bebidas', 'Sódas', dishesOf(src, 'bebidas').slice(0, 1), ON).code, 'subcat_name_taken', '🔴 a subsection name equal under nameFold');
+  assert.equal(renameSubcat(d, 'bebidas', 'Cervezas', ' SODAS ', ON).code, 'subcat_name_taken');
+  assert.equal(bytes(d), before, 'nothing written');
+  assert.equal(globalThis.SectionTransitions.nameFold('Dím  Sum'), globalThis.SectionTransitions.nameFold('dim sum'), 'premise: the module folds them equal');
+});

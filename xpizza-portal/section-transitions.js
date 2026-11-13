@@ -4,6 +4,7 @@
 //                                       trim '_'; empty → 'cat'; a digit-leading base → 'c_' + base; cut to 32 (trailing '_' trimmed);
 //                                       on collision with takenIds: '_2', '_3', … with the base cut to 32 − len(suffix). Always ≤ 32.
 //   allocateCategoryIds(names, taken)   several new categories in one save: in order, each against taken + the ids already allocated
+//   nameFold(name)                      the ONE case-fold for section names (≡ add-product normalizeName; advisor 11-13 ruling 2a)
 //   promotedOrder(categories, promoted) where staged categories land in the save that moves their first dish: `categories` is the
 //                                       candidate's order WITHOUT the ids promoted in this save; `promoted` = [{ id, after }] in the
 //                                       stored staged-array order. Each lands right after its anchor's current position (+ r, its rank
@@ -58,7 +59,11 @@
     return [...out, ...missing];
   }
 
-  const api = { categorySlug, allocateCategoryIds, promotedOrder, MAX_ID: MAX };
+  // advisor 11-13 ruling 2a — THE name folding for section / subsection names ("unique case-folded"): exactly add-product.normalizeName
+  // (NFD, combining marks stripped, lowercase, inner whitespace collapsed, trimmed); parity-pinned (section-transitions.test.js ST-FOLD)
+  function nameFold(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+  const api = { categorySlug, allocateCategoryIds, promotedOrder, nameFold, MAX_ID: MAX };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SectionTransitions = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

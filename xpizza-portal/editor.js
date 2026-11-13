@@ -985,8 +985,10 @@ const stagedOf = (src) => (src && src.structure && Array.isArray(src.structure.s
 const sectionWriter = () => globalThis.SectionTransitions;
 // ONE representation (5f, 11-13): the staged list is PRESENT only while it holds an entry — emptied ⇒ the key is DELETED, never []
 const setStaged = (st, list) => { if (list.length) st.structure.staged_categories = list; else delete st.structure.staged_categories; };
-// the case-folded comparison for section / subsection names (§1.3 «unique case-folded»); 5f's exact fold rides in the shared module if it differs
-const sectionFold = (v) => cleanCategoryName(v).normalize('NFC').toLowerCase();
+// the ONE name fold for section / subsection clashes: 5f's nameFold (≡ the server's add-product normalizeName — accents stripped, inner
+// spaces collapsed, lowercase), from the shared module; without the module the name-checking ops refuse writer_unavailable
+const foldable = () => !!sectionWriter() && typeof sectionWriter().nameFold === 'function';
+const sectionFold = (v) => { if (!foldable()) throw sectionRefusal('writer_unavailable'); return sectionWriter().nameFold(cleanCategoryName(v)); };
 const sectionRefusal = (code, extra) => Object.assign(new Error(code), { s4: { code, ...(extra || {}) } });
 function sectionOp(draft, opts, fn) {
   if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
@@ -1022,6 +1024,7 @@ export function renameCategory(draft, id, name, opts = {}) {
   const staged = stagedOf(st).find((c) => c && String(c.id) === String(id));
   if (!declared && !staged) return { ok: false, code: 'category_unknown' };
   if (categoryNameProblem(name) !== null) return { ok: false, code: 'category_name_invalid' };
+  if (!foldable()) return { ok: false, code: 'writer_unavailable' };
   if (takenNames(st, id).includes(sectionFold(name))) return { ok: false, code: 'category_name_taken' };
   if (staged) return sectionOp(draft, opts, (w) => { stagedOf(w).find((c) => String(c.id) === String(id)).name = cleanCategoryName(name); });
   const before = JSON.stringify(st);
