@@ -67,5 +67,11 @@ cell('ST-PURE: inputs never mutated', (L) => {
   assert.deepStrictEqual([c, p, t], [['x'], [{ id: 'A', after: 'x' }], ['postres']], L);
 });
 
+cell('ST-FOLD (advisor 11-13 ruling 2a): nameFold ≡ add-product normalizeName over a corpus (the ONE folding, shared with the portal)', (L) => {
+  const AP = require('./add-product');
+  const corpus = ['Dim Sum', 'dím  sum', '  DIM SUM ', 'Café', 'cafe', 'CAFÉ', 'Ñoquis', 'noquis', 'Soups & Salads', 'soups &\tsalads', 'x\ny', '寿司', '🍕 Pizza', 'Crème brûlée', 'creme brulee', 'Ã', 'İstanbul', 'ß', '', '  ', 'ﬁ', 'Ａｂｃ'];
+  for (const x of corpus) assert.strictEqual(ST.nameFold(x), AP.normalizeName(x), `${L}: ${JSON.stringify(x)}`);
+  assert.strictEqual(ST.nameFold('Dím  Sum'), ST.nameFold('dim sum'), `${L}: accents + spacing fold together`);
+});
 if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
 console.log(`OK(${n})`);

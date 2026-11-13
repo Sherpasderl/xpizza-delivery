@@ -132,16 +132,31 @@ function s4Problems({ draft, live, items, stored }) {
       if (missing.length) return { error: 'subcat_partial', key: c.id, field: 'subcats', missing };
     }
   }
-  if (!stored || !isObj(stored.structure)) return null;
+  // advisor 11-13 ruling 2b — a staged or NEW category whose name folds to another section's: typed, before validateSource
   const ST = require('./section-transitions');
+  const dStaged0 = Array.isArray(st.staged_categories) ? st.staged_categories.filter(isObj) : [];
+  const seenNames = new Map();
+  for (const c of [...cats, ...dStaged0]) {
+    if (typeof c.name !== 'string' || !c.name) continue;
+    const f = ST.nameFold(c.name); const other = seenNames.get(f);
+    if (other !== undefined) { const fresh = !liveCats.has(c.id) ? c.id : other; return { error: 'category_name_taken', key: fresh, field: 'name' }; }
+    seenNames.set(f, c.id);
+  }
+  if (!stored || !isObj(stored.structure)) return null;
   const sst = stored.structure;
   const sStaged = Array.isArray(sst.staged_categories) ? sst.staged_categories.filter(isObj) : [];
   const storedIds = new Set([...(Array.isArray(sst.categories) ? sst.categories : []).filter(isObj).map((c) => c.id), ...sStaged.map((e) => e.id)]);
   const dStaged = Array.isArray(st.staged_categories) ? st.staged_categories.filter(isObj) : [];
-  const fresh = [...cats, ...dStaged].filter((c) => !storedIds.has(c.id));   // categories order, then staged order
-  const want = ST.allocateCategoryIds(fresh.map((c) => c.name), [...storedIds]);
-  const off = fresh.findIndex((c, i) => c.id !== want[i]);
-  if (off !== -1) return { error: 'category_id_mismatch', key: fresh[off].id, field: 'cat', expected: want[off] };
+  // advisor 11-13 ruling 3 (R3.5 narrowed, order-independent): every id is unique across categories ∪ staged; each NEW id (absent from
+  // the stored draft) is disjoint from the stored ids and equals categorySlug(name, storedIds ∪ the OTHER new ids) — any creation order
+  const all = [...cats, ...dStaged];
+  const dup = all.find((c, i) => all.findIndex((x) => x.id === c.id) !== i);
+  if (dup) return { error: 'category_id_mismatch', key: dup.id, field: 'cat', reason: 'duplicate' };
+  const fresh = all.filter((c) => !storedIds.has(c.id));
+  for (const f of fresh) {
+    const want = ST.categorySlug(f.name, [...storedIds, ...fresh.filter((g) => g !== f).map((g) => g.id)]);
+    if (f.id !== want) return { error: 'category_id_mismatch', key: f.id, field: 'cat', expected: want };
+  }
   const declared = cats.map((c) => c.id);
   const promoted = sStaged.filter((e) => declared.includes(e.id));
   if (promoted.length) {

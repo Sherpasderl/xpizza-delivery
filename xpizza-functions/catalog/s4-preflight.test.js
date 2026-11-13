@@ -10,6 +10,7 @@ const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { buildSourceCandidate } = require('./candidate-validate');
 const { rendererContract } = require('./source-store');
 const PF = require('./edit-preflight');
+const ST = require('./section-transitions');
 let n = 0; const fails = [];
 function cell(label, fn) { try { fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -61,7 +62,8 @@ cell('S4PF-SLUG (R3.5): new ids are re-derived against the STORED draft; stored 
   const st = withStaged(LM, [P('postres', 'Postres')]);
   assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres', 'Dulces')]), LIVE, { stored: st }))), null, `${L}: rename keeps the id`);
   assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres', 'Postres'), P('postres_2', 'Póstres!')]), LIVE, { stored: LM }))), null, `${L}: two colliding, in order`);
-  assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres_2', 'Postres'), P('postres', 'Póstres!')]), LIVE, { stored: LM }))), 'category_id_mismatch', `${L}: swapped`);
+  // advisor 11-13 ruling 3 (R3.5 narrowed): the check is order-independent, so the swapped allocation (another creation order) is VALID
+  assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres_2', 'Postres'), P('postres', 'Póstres!')]), LIVE, { stored: LM }))), null, `${L}: swapped = another creation order, accepted`);
   assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('c_2x1', '2x1')]), LIVE, { stored: LM }))), null, `${L}: digit-leading`);
 });
 const promote = (src, ids, order) => { const s = clone(src); for (const id of ids) { const e = s.structure.staged_categories.find((x) => x.id === id); s.structure.staged_categories = s.structure.staged_categories.filter((x) => x.id !== id); s.structure.categories.push({ id, name: e.name }); } if (!s.structure.staged_categories.length) delete s.structure.staged_categories;
@@ -92,6 +94,35 @@ cell('S4PF-NO-STORED (R3.5/R4.2): publish / request pass no stored draft → slu
 cell('S4PF-OFF: none of the S4 checks run with the switch OFF (an empty new subcat is left to validateSource, as today)', (L) => {
   const e = clone(LM); cat(e, 'bebidas').subcats.push('Jugos');
   assert.notStrictEqual(err(pf(e)), 'subcat_empty', L);
+});
+
+cell('S4PF-NAME-TAKEN (ruling 2b): a staged or new-category name that folds to an existing one → typed category_name_taken BEFORE validateSource', (L) => {
+  const st = withStaged(LM, [P('dim_sum_2', 'Dím  Sum')]);
+  const r = ON(() => pf(st, LIVE, { stored: LM })); assert.deepStrictEqual([err(r), r && r.body.key], ['category_name_taken', 'dim_sum_2'], `${L}: staged`);
+  const d = clone(LM); d.structure.categories.push({ id: 'crudo_2', name: 'CRUDO' }); item(d, 'dimsum_01').display.cat = 'crudo_2';
+  assert.strictEqual(err(ON(() => pf(d, LIVE, { stored: LM }))), 'category_name_taken', `${L}: declared new`);
+  const two = withStaged(LM, [P('postres', 'Postres'), P('postres_2', 'postres ')]);
+  assert.strictEqual(err(ON(() => pf(two, LIVE, { stored: LM }))), 'category_name_taken', `${L}: two new ones`);
+  assert.notStrictEqual(err(pf(st, LIVE, { stored: LM })), 'category_name_taken', `${L}: OFF — today's path`);
+});
+cell('S4PF-SLUG-ANY-ORDER (ruling 3): each new id = categorySlug(name, stored ∪ the OTHER new ids) — any creation order; a three-way collision', (L) => {
+  const names = ['Postres!', 'postres?', 'Postres.'];
+  const perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  for (const p of perms) {
+    const ids = ST.allocateCategoryIds(p.map((i) => names[i]), [...LM.structure.categories.map((c) => c.id)]);   // a creation order
+    const list = p.map((i, k) => P(ids[k], names[i]));
+    assert.deepStrictEqual([...ids].sort(), ['postres', 'postres_2', 'postres_3'], `${L}: premise`);
+    assert.strictEqual(err(ON(() => pf(withStaged(LM, list), LIVE, { stored: LM }))), null, `${L}: creation order ${p}`);
+    // the same entries listed in a DIFFERENT order (a promotion moved one into categories first) — still accepted
+    assert.strictEqual(err(ON(() => pf(withStaged(LM, [...list].reverse()), LIVE, { stored: LM }))), null, `${L}: listed reversed, creation ${p}`);
+  }
+});
+cell('S4PF-SLUG-NEG (ruling 3): a non-slug, a duplicated new id, and an id taken by the stored draft are all category_id_mismatch', (L) => {
+  assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres_3', 'Postres')]), LIVE, { stored: LM }))), 'category_id_mismatch', `${L}: postres_3 alone`);
+  assert.strictEqual(err(ON(() => pf(withStaged(LM, [P('postres', 'Postres!'), P('postres', 'postres?')]), LIVE, { stored: LM }))), 'category_id_mismatch', `${L}: duplicate new ids`);
+  const stored = withStaged(LM, [P('postres', 'Postres')]);
+  const d = withStaged(LM, [P('postres', 'Postres'), P('postres', 'Postres?')]);
+  assert.strictEqual(err(ON(() => pf(d, LIVE, { stored }))), 'category_id_mismatch', `${L}: a new entry reusing a stored id`);
 });
 
 if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
