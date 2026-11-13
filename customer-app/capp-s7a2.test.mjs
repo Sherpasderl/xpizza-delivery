@@ -3252,11 +3252,14 @@ test('C-6a titles: the tab follows every screen — Inicio (the directory\'s cit
   const A = bootShell(); await flush(); A.click('.tabbar [data-tab="orders"]'); await flush();
   try { assert.equal(A.w.document.title, 'Pedidos · Sherpa', '🔴 SEO-title: Pedidos'); } finally { A.w.close(); }
 });
+// DEFLAKE (advisor 11-13): the footer's legal read waits for the browser's IDLE (askLegal: requestIdleCallback, else 200 ms). A cell
+// that waits a FIXED time for it races the boot under load; these cells OWN the idle instead (held, released) — order, never time
+const heldIdle = () => { const q = []; return { q, pre: (w) => { w.matchMedia = fakeMedia(true).matchMedia; w.requestIdleCallback = (f) => { q.push(f); return q.length; }; }, run: async () => { for (const f of q.splice(0)) f({ didTimeout: false, timeRemaining: () => 50 }); await flush(); await flush(); } }; };
 test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone', async () => {
-  const st = g7Store(G7_PROFILE({ promos: true }));
-  const { S } = await pedidosBoot({}, { storage: st, runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, preMount: (w) => { w.matchMedia = fakeMedia(true).matchMedia; } });
+  const st = g7Store(G7_PROFILE({ promos: true })), I = heldIdle();
+  const { S } = await pedidosBoot({}, { storage: st, runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, preMount: I.pre });
   try {
-    await new Promise((r) => setTimeout(r, 400)); await flush();
+    await I.run();   // the idle fires: the legal read lands
     const f = S.q('.home-body > footer.dfoot'); assert.ok(f, '🔴 SEO-foot: the footer, in the Inicio body');
     assert.deepEqual([...f.querySelectorAll('li')].map((x) => x.textContent), ['Ayuda', 'Términos', 'Privacidad'], '🔴 SEO-foot: the legal links once known');
     assert.equal(f.querySelector('a').getAttribute('href'), 'https://legal.test/t', 'the platform\'s own URL');
@@ -3266,30 +3269,35 @@ test('C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; T�
   try { assert.equal(P.q('footer.dfoot'), null, '🔴 SEO-foot: the phone renders no footer (its DOM unchanged)'); } finally { P.w.close(); }
 });
 test('C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support chat; the legal slots are reserved until they land (no shift); nothing is fetched once Inicio was left before idle; a failing storage write never loses the links; the footer is on every Inicio state', async () => {
-  const RT = { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, desk = (w) => { w.matchMedia = fakeMedia(true).matchMedia; };
-  { const { S } = await pedidosBoot({}, { runtime: RT, preMount: desk });
+  // DEFLAKE (advisor 11-13): the legal read waits for the browser's IDLE (askLegal: requestIdleCallback, else a 200 ms timer). The cell
+  // used to race it with fixed 400 ms sleeps — under load the boot's own flushes outlasted 200 ms and the read landed BEFORE the
+  // «reserved» premise was checked (3a: a different cell each run at load ~20). Now each block OWNS the idle: requestIdleCallback is
+  // held and released by the cell, so every assertion is about ORDER (before / after the idle), never about wall time.
+  const RT = { ...G7_RUNTIME, supportWhatsapp: '50497952893' };
+  { const I = heldIdle(); const { S } = await pedidosBoot({}, { runtime: RT, preMount: I.pre });
     try {
       const li = () => [...S.q('footer.dfoot').querySelectorAll('li')].map((x) => [x.textContent, x.className]);
+      assert.equal(I.q.length, 1, 'premise: the legal read is waiting for the idle');
       assert.deepEqual(li(), [['Ayuda', ''], ['Términos', 'rsv'], ['Privacidad', 'rsv']], '🔴 C6A-2: the slots reserved before the fetch (the same row composition)');
-      await new Promise((r) => setTimeout(r, 400)); await flush();
+      await I.run();
       assert.deepEqual(li(), [['Ayuda', ''], ['Términos', ''], ['Privacidad', '']], 'the real links in the same slots');
       const opened = []; S.w.open = (u) => opened.push(u);
       S.click('footer.dfoot [data-act="site-help"]'); await flush();
       assert.deepEqual(opened, ['https://wa.me/50497952893'], '🔴 C6A-1: Ayuda = the platform support chat');
     } finally { S.w.close(); } }
-  { const { S, g } = await pedidosBoot({}, { runtime: RT, preMount: desk, noFlush: true });
+  { const I = heldIdle(); const { S, g } = await pedidosBoot({}, { runtime: RT, preMount: I.pre, noFlush: true });
     const cfg = () => g.sent.filter((x) => x[0] === 'getSignupConfig').length;
     try {
-      await flush(); S.click('.desknav [data-tab="orders"]'); await flush();   // left Inicio before the idle fired
-      await new Promise((r) => setTimeout(r, 400)); await flush();
+      await flush(); S.click('.desknav [data-tab="orders"]'); await flush();   // left Inicio BEFORE the idle fired
+      await I.run();   // the idle fires now — off Inicio
       assert.equal(S.q('footer.dfoot'), null, 'premise: off Inicio');
       assert.equal(cfg(), 0, '🔴 C6A-3: nothing fetched once Inicio was left before idle');
-      S.click('.desknav [data-tab="home"]'); await flush(); await new Promise((r) => setTimeout(r, 400)); await flush();
+      S.click('.desknav [data-tab="home"]'); await flush(); await I.run();
       assert.equal(cfg(), 1, 'asked again on return — once');
     } finally { S.w.close(); } }
   { const st = g7Store(G7_PROFILE({ promos: true })); const set = st.setItem.bind(st); st.setItem = (k, v) => { if (k === 'capp:legal') throw new Error('quota'); return set(k, v); };
-    const { S } = await pedidosBoot({}, { runtime: RT, storage: st, preMount: desk });
-    try { await new Promise((r) => setTimeout(r, 400)); await flush();
+    const I = heldIdle(); const { S } = await pedidosBoot({}, { runtime: RT, storage: st, preMount: I.pre });
+    try { await I.run();
       assert.deepEqual([...S.q('footer.dfoot').querySelectorAll('a')].map((a) => a.textContent), ['Términos', 'Privacidad'], '🔴 C6A-4: a failed storage write never loses the links (kept in memory)'); } finally { S.w.close(); } }
   { const E = bootShell({ media: fakeMedia(true), dirScript: ['fail'] }); await flush(); await flush();
     try { assert.ok(E.q('.home-body footer.dfoot'), '🔴 C6A-5: the footer on Inicio\'s error state too'); } finally { E.w.close(); } }
