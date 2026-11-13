@@ -208,6 +208,7 @@
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
     "xpizza-functions/catalog/s4-review-diff.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/s4-staging.test.js",
@@ -666,6 +667,7 @@
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
     "xpizza-functions/catalog/s4-review-diff.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/s4-staging.test.js",
@@ -1150,6 +1152,7 @@
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
     "xpizza-functions/catalog/s4-review-diff.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/s4-staging.test.js",
@@ -1605,6 +1608,7 @@
     "xpizza-functions/catalog/s3-choice-editable.test.js",
     "xpizza-functions/catalog/s3-flow.test.js",
     "xpizza-functions/catalog/s4-preflight.test.js",
+    "xpizza-functions/catalog/s4-renderer.test.js",
     "xpizza-functions/catalog/s4-review-diff.test.js",
     "xpizza-functions/catalog/s4-sections-editable.test.js",
     "xpizza-functions/catalog/s4-staging.test.js",
@@ -2434,6 +2438,7 @@
   "xpizza-functions/tools/envlim-module-inverse.js",
   "xpizza-functions/tools/extras-baseline-audit.js",
   "xpizza-functions/tools/form-bundle-live-check.js",
+  "xpizza-functions/tools/generate-renderer-contract.js",
   "xpizza-functions/tools/identity-usable-check.js",
   "xpizza-functions/tools/keymode-module-inverse.js",
   "xpizza-functions/tools/menus-divergence-report.js",
@@ -2943,6 +2948,7 @@
   "catalog/public-photos.js",
   "catalog/publish-edited-handler.js",
   "catalog/publish-request.js",
+  "catalog/renderer-contract.generated.js",
   "catalog/reserved-keys-audit.js",
   "catalog/reserved-keys.js",
   "catalog/reset-draft.js",
@@ -3692,9 +3698,7 @@
   },
   "catalog/form-menu-source.js": {
    "pins": [],
-   "lifts": [
-    "xpizza-functions/s4sect-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "catalog/form-rebake.js": {
    "pins": [],
@@ -3817,8 +3821,7 @@
   "catalog/platform-structure.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/s3choice-wiring.guard.test.js",
-    "xpizza-functions/s4sect-wiring.guard.test.js"
+    "xpizza-functions/s3choice-wiring.guard.test.js"
    ]
   },
   "catalog/portal-reads.js": {
@@ -3905,7 +3908,8 @@
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -3914,7 +3918,8 @@
       "tools/grpid-module-inverse.js",
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     },
     {
@@ -3924,7 +3929,8 @@
       "tools/rdr-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
-      "tools/s3choice-module-inverse.js"
+      "tools/s3choice-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
@@ -3932,7 +3938,8 @@
     "xpizza-functions/catalog/publish-paths.test.js",
     "xpizza-functions/rdr-wiring.guard.test.js",
     "xpizza-functions/s2-wiring.guard.test.js",
-    "xpizza-functions/s3choice-wiring.guard.test.js"
+    "xpizza-functions/s3choice-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
   },
   "catalog/publish-request.js": {
@@ -3941,13 +3948,19 @@
      "file": "xpizza-functions/grpid-wiring.guard.test.js",
      "inverses": [
       "tools/grpid-module-inverse.js",
-      "tools/rdr-module-inverse.js"
+      "tools/rdr-module-inverse.js",
+      "tools/s4sect-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/rdr-wiring.guard.test.js"
+    "xpizza-functions/rdr-wiring.guard.test.js",
+    "xpizza-functions/s4sect-wiring.guard.test.js"
    ]
+  },
+  "catalog/renderer-contract.generated.js": {
+   "pins": [],
+   "lifts": []
   },
   "catalog/reserved-keys-audit.js": {
    "pins": [],

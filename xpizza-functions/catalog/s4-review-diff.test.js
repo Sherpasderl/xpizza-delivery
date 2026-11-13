@@ -37,7 +37,7 @@ cell('RD-OFF: sections OFF → no `sections` key even for an S4-shaped draft', (
 cell('RD-NEWCAT: a new category + a dish moved in → added [{id, name}] and the new section order', (L) => {
   const d = clone(LM); d.structure.categories.push({ id: 'postres', name: 'Postres' }); item(d, 'dimsum_01').display.cat = 'postres';
   const s = ON(() => diffOf(LM, d)).sections;
-  assert.deepStrictEqual(s.added, [{ id: 'postres', name: 'Postres' }], L);
+  assert.deepStrictEqual(s.added, [{ id: 'postres', name: 'Postres', app_only: null }], `${L}: no rid → the label is unknown (s4-renderer.test.js covers it)`);
   assert.deepStrictEqual(s.categories.order.new, [...LM.structure.categories.map((c) => c.id), 'postres'], L);
 });
 cell('RD-ORDER-SECTIONS: two live sections swapped → categories.order {old, new}', (L) => {

@@ -52,10 +52,13 @@ function reviewDiff(args) {
   const out = reviewDiffS2S3(args);
   const sections = has(args, 'sections') ? args.sections : require('./platform-structure').structureCapabilities().sections;
   if (!sections || !s4OpPresent(args.live, args.draftBuilt)) return out;
-  return { ...out, sections: sectionLines(args.live, args.draftBuilt) };
+  return { ...out, sections: sectionLines(args.live, args.draftBuilt, appOnlyOf(args.rid)) };
 }
 
 const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+// §1.6 / Q4: «Solo en la app Sherpa» — the form does NOT draw any served category (renderer contract categoriesGeneric, generated from the
+// shipped forms); null when the caller names no restaurant (never guessed). A label only.
+const appOnlyOf = (rid) => { if (typeof rid !== 'string' || !rid) return null; try { const t = require('./renderer-contract.generated'); const e = Object.prototype.hasOwnProperty.call(t, rid) ? t[rid] : null; return e && typeof e.categoriesGeneric === 'boolean' ? !e.categoriesGeneric : null; } catch (_) { return null; } };
 const catsOf = (b) => ((b && b.structure && Array.isArray(b.structure.categories)) ? b.structure.categories : []);
 const stagedOf = (b) => ((b && b.structure && Array.isArray(b.structure.staged_categories)) ? b.structure.staged_categories : []);
 const orderOf = (b) => ((b && b.structure && Array.isArray(b.structure.item_order)) ? b.structure.item_order : []);
@@ -72,12 +75,12 @@ function s4OpPresent(live, draft) {
   const [a, b] = commonOrder(live, draft);
   return !same(a, b);
 }
-function sectionLines(live, draft) {
+function sectionLines(live, draft, appOnly) {
   const { sha256 } = require('./catalog-edit');
   const lc = catsOf(live); const dc = catsOf(draft); const lById = new Map(lc.map((c) => [c.id, c]));
   const out = {};
-  if (!same(lc.map((c) => c.id), dc.map((c) => c.id))) out.categories = { order: { old: lc.map((c) => c.id), new: dc.map((c) => c.id) } };
-  out.added = dc.filter((c) => !lById.has(c.id)).map((c) => ({ id: c.id, name: c.name }));
+  if (!same(lc.map((c) => c.id), dc.map((c) => c.id))) out.categories = { order: { old: lc.map((c) => c.id), new: dc.map((c) => c.id) }, app_only: appOnly };
+  out.added = dc.filter((c) => !lById.has(c.id)).map((c) => ({ id: c.id, name: c.name, app_only: appOnly }));
   const subcats = []; const subcatOrder = [];
   for (const c of dc) {
     const ls = subsOf(lById.get(c.id)); const ds = subsOf(c); const renamed = new Map();

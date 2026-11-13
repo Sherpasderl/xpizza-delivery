@@ -49,6 +49,21 @@ const HUNKS = Object.freeze([
   "file": "catalog/edit-catalog-handler.js",
   "now": "    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined, stagedFree: require('./platform-structure').structureCapabilities().sections === true });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first\n",
   "was": "    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first\n"
+ },
+ {
+  "file": "catalog/edit-catalog-handler.js",
+  "now": "  const diff = require('./review-diff').reviewDiff({ rid, live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)\n",
+  "was": "  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)\n"
+ },
+ {
+  "file": "catalog/publish-request.js",
+  "now": "    diff = require('./review-diff').reviewDiff({ rid, live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, draft) });\n",
+  "was": "    diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords: built.extras, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, draft) });\n"
+ },
+ {
+  "file": "catalog/publish-edited-handler.js",
+  "now": "  const diff = require('./review-diff').reviewDiff({ rid, live, liveExtraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, draft) });   // S2-core §1.6: the same canonical review diff as the save, before the token re-match\n",
+  "was": "  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: draftPhotos } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, draft) });   // S2-core §1.6: the same canonical review diff as the save, before the token re-match\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
