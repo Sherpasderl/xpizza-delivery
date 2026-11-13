@@ -180,6 +180,14 @@ test('E — the hours cannot be read at the save (503 hours_unavailable): the pa
   assert.deepEqual((await srv.node()).no_delivery_zones.map((z) => z.name), ['Sector Norte', 'Sector B'], 'stored');
 });
 
+test('G — at the 8-zone cap: the card\'s hint says «8 de 8» and «Dibujar zona» says why it is off', async () => {
+  const eight = Array.from({ length: 8 }, (_, n) => ({ id: `z_aaaaaaa${n}`, name: `Sector ${n}`, points: SQ(r6(15.52 + n * 0.02), -88.02) }));
+  const p = await open(server({ policy: withZones(eight), world: world(CLOSED, CLOSED) }));
+  assert.equal(rows(p).length, 8, 'premise');
+  assert.equal(card(p).querySelector('h3 .ehint').textContent, P('capCount'), '🔴 the count at the cap');
+  assert.ok([...card(p).querySelectorAll('.efnote')].some((n) => n.textContent === P('capDraw')), 'why the action is off');
+});
+
 // THE SHIP GATE: red while ANY zones string is a placeholder
 test('SHIP GATE: no placeholder ships — every zones string is owner-approved text', () => {
   const pending = Object.entries(ZONES_COPY).filter(([, v]) => typeof v !== 'string').map(([k]) => k);

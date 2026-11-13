@@ -416,6 +416,7 @@ export const ZONES_COPY = Object.freeze({
   nameEmpty: null, nameLong: null, nameTaken: null, removeTitle: null, removeBody: null, barSuffix: null, savedBoth: null,
   lockedSaveTitle: null, lockedSaveBody: null, branchOpen: null, branchHours: null, branchesMore: null, understood: null, feesOnly: null,
   hoursSaveTitle: null, hoursSaveBody: null, refusedTitle: null, refusedBody: null, capsTitle: null, capsBody: null, reviewZone: null,
+  capCount: null, capDraw: null,
 });
 export const zonesCopy = (k) => (typeof ZONES_COPY[k] === 'string' ? ZONES_COPY[k] : `⟦zones.${k}⟧`);
 // a zone's row line «N puntos · dentro de X km» (approved v2): X = the farthest vertex from the restaurant's pin, rounded UP to a km;

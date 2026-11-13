@@ -569,7 +569,7 @@ function buildPage() {
   callout.append(ic('info'), ct);
   // ENVÍO step 2, Z1 — «Zonas sin entrega» (the approved v2 card; the addendum's server states A–C)
   const sz = el('section', 'esec envzones');
-  const zh = el('h3', null, COPY.zonesH); zh.append(el('span', 'ehint', COPY.zonesHint));
+  const zh = el('h3', null, COPY.zonesH); refs.zonesHint = el('span', 'ehint', COPY.zonesHint); zh.append(refs.zonesHint);
   refs.zonesLock = el('div');
   refs.zonesList = el('div', 'zlist');
   refs.zonesDraw = button('railadd', COPY.zonesDraw, () => {}); refs.zonesDraw.prepend(ic('plus'));
@@ -826,11 +826,14 @@ function paintZones() {
     row.append(sw, k, ren, rem);
     r.zonesList.append(row);
   }
+  // addendum G: at the cap the hint is the count («8 de 8») and «Dibujar zona» says why it is off
+  const atCap = !!(z.caps && S.zonesDraft && S.zonesDraft.length >= z.caps.zones_max);
+  r.zonesHint.textContent = atCap ? EL.zonesCopy('capCount') : COPY.zonesHint;
   r.zonesDraw.disabled = true;   // Z1: the map cannot draw yet (protocol v3)
   r.zonesNotes.replaceChildren();
   const note = (t) => r.zonesNotes.append(el('p', 'efnote', t));
   if (z.zones === null) note(EL.zonesCopy('unreadable'));
-  else { if (z.editable) note(EL.zonesCopy('editableNote')); note(EL.zonesCopy('mapUpdating')); }
+  else { if (z.editable) note(EL.zonesCopy('editableNote')); note(EL.zonesCopy(atCap ? 'capDraw' : 'mapUpdating')); }
 }
 const focusZone = (id, title) => { const row = S.refs && [...S.refs.zonesList.querySelectorAll('.zrow')].find((x) => x.dataset.zone === id); const b = row && row.querySelector(`button.ib[title="${title}"]`); if (b) b.focus(); };
 // the server's name rules, before the save (zones.js normalizeInput): trimmed, 1..name_max, unique case-folded
