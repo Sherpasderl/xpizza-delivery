@@ -35572,5 +35572,56 @@
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": "SDKUI-route: the pending switch is re-resolved"
+ },
+ {
+  "id": "c3r-01",
+  "slice": "c3r",
+  "label": "«Volver a pedir» skips the live-menu check: an option the menu no longer offers is dropped silently and the line placed without it (C-3r G2)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }",
+  "to": "if (!e) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Volver a pedir",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "VP-13"
+  ]
+ },
+ {
+  "id": "c3r-02",
+  "slice": "c3r",
+  "label": "the reorder seeds the past dish price from the LIVE menu instead of S-D's snapshot (a dish change since the order goes undisclosed; C-3r G1)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const past = ps && ps.lines[l.si], b = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : d ? c(d.price) : 0;",
+  "to": "const b = d ? c(d.price) : 0;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G1-dish"
+  ]
+ },
+ {
+  "id": "c3r-03",
+  "slice": "c3r",
+  "label": "a price_snapshot not aligned 1:1 with the row's items is kept (a past price taken from the wrong line; C-3r G1)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": " || ps.lines.length !== items.length",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-3r G1 rowOf",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "G1-row misaligned"
+  ]
  }
 ]

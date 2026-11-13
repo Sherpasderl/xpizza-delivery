@@ -2264,6 +2264,7 @@ function servedCtx(rid, { drop = [] } = {}) {
   return { availability: 'available', attached: true, usableAsIdentity: true,
     objects: m.dishes.filter((d) => d.dish_id && !drop.includes(MPRC.itemPricingKey(d, rid))).map((d) => ({ kind: 'dish', legacyKey: MPRC.itemPricingKey(d, rid), canonicalId: String(d.dish_id) })) };
 }
+const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
 const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
   return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
 function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null } = {}) {
@@ -2295,9 +2296,10 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
     const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
     const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
     const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    const proj = ({ id, e }) => ({ order_id: id, ts: e.ts, total: e.total, order_type: e.order_type, restaurant: e.restaurant, status: e.status ?? null, items_text: typeof e.items_text === 'string' ? e.items_text : null, items: Array.isArray(e.items) ? withDishIds(e.items, contextFor(e.restaurant)) : [], ...(e.recipe_format !== undefined ? { recipe_format: e.recipe_format } : {}),
-      // the approved delta: display_number read from orders/{id} for the page's rows, present only when stamped (a finite number)
-      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) });
+    // C-3r G1: the REAL row projector (my-orders.js projectRow — S-D's price_snapshot passes through verbatim) composed exactly as
+    // makeMyOrders composes it (my-orders.js:143): + the dish-id delta over its items, + display_number from orders/{id} when stamped
+    const proj = ({ id, e }) => { const row = MO_REAL.projectRow(id, e); return { ...row, items: withDishIds(row.items, contextFor(e.restaurant)),
+      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) }; };
     const R = rows.map(proj), oldest = rows[rows.length - 1];
     const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
     return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
@@ -3021,6 +3023,45 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
     const cents = (v) => Math.round(Number(v) * 100), b = cents(ui.menu.dish(String(marg.dish_id)).price);
     assert.deepEqual(L.seen, [{ b, x: { [moz.key]: cents(moz.price) } }, { b, x: {} }], '🔴 VP-18: seen = the live prices at the rebuild');
     assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.priceChanges())), [], 'nothing changed yet');
+  } finally { S.w.close(); }
+});
+// ── C-3r G1 (advisor 11-13, option A ruling): the frame-13 price note on «Volver a pedir» against the PAST order, from S-D's v1
+// price_snapshot (the REAL writer: attachCustomerAttribution → reorderPriceSnapshot, served by the real getMyOrders core). A v1
+// snapshot carries the DISH price only (unit_cents), so: a dish price change since the order ⇒ the note, exact from → to; an EXTRA's
+// change ⇒ no note (extras are compared at the live price — the v1 rule; v2 extras_cents upgrades it); no snapshot ⇒ no note.
+// The cart always shows and charges the live price; the note is the courtesy disclosure, never an invented past price.
+const G1_PRICE = (patch) => { const env = J(PROV.x_pizza.envelope); patch(env.menu); return env; };
+async function g1Reorder(patch, { dropSnapshot = false } = {}) {
+  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+  const e = db.u_ana['XP-V1'];
+  assert.deepEqual(J(e.price_snapshot), { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, 'premise: the real writer\'s v1 snapshot (2× Margherita L 299, Mozzarella once)');
+  if (dropSnapshot) delete e.price_snapshot;   // an entry written before S-D (the base writer) — the row carries no snapshot
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush();
+  S.release('x_pizza', G1_PRICE(patch)); await flush(); await flush(); await flush();
+  return { S, st };
+}
+const g1Changes = (S) => JSON.parse(JSON.stringify(S.ui.store().ui.cart.priceChanges())).map((c) => [c.name, c.sig ? 'extra' : 'plain', c.fromCents, c.toCents]);
+test('C-3r G1 v1 (dish price changed since the order): «Volver a pedir» shows the frame-13 note — one line per configuration, the EXACT past dish price → today\'s', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 29900 + 5000, 30900 + 5000], ['Margherita', 'plain', 29900, 30900]], '🔴 G1-dish: from = the snapshot\'s unit_cents (+ the live extra), to = the live price');
+    const notes = S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+    assert.deepEqual(notes, ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 359.', 'Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 G1-dish: the frame-13 note lines, exact');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)', async () => {
+  const { S } = await g1Reorder((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; });
+  try {
+    assert.deepEqual(g1Changes(S), [], '🔴 G1-v1-extra: no change recorded for an extra under a v1 snapshot');
+    assert.equal(S.q('.cartnote[role="status"] .cn-l'), null, '🔴 G1-v1-extra: no note');
+  } finally { S.w.close(); }
+});
+test('C-3r G1 (no snapshot — an entry from before S-D): the dish price changed ⇒ NO note; live prices only (never an invented past price)', async () => {
+  const { S } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; }, { dropSnapshot: true });
+  try {
+    assert.deepEqual(g1Changes(S), [], '🔴 G1-none: no snapshot ⇒ no change recorded');
+    assert.equal(S.q('.cartnote[role="status"] .cn-l'), null, '🔴 G1-none: no note');
   } finally { S.w.close(); }
 });
 test('Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)', async () => {

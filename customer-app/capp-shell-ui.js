@@ -217,7 +217,7 @@
       const ro = !carried && S.reorder && S.reorder.rid === entry.rid ? S.reorder : null;
       if (ro) {   // «Volver a pedir»: replaces the cart (v6) through the store's own restore, refused where the store refuses an edit
         S.reorder = null;
-        const r = ui.replaceCart({ ...reorderSnap(ui.menu, ro.lines, snap), rid: entry.rid });
+        const r = ui.replaceCart({ ...reorderSnap(ui.menu, ro.lines, snap, ro.ps), rid: entry.rid });
         if (r && !r.locked && !r.blocked && !r.cleared) S.reorderOpen = entry.rid;
       }
       if (entry.dish) ui.openDetail(entry.dish);
@@ -1297,8 +1297,8 @@
     // one) is not rebuilt here ⇒ every line unavailable (disclosed). A present but malformed options container ⇒ that line unavailable
     function recipeOf(items, format) {
       const out = [];
-      for (const l of Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []) {
-        if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) continue;
+      (Array.isArray(items) ? items.slice(0, RECIPE_MAX) : []).forEach((l, si) => {
+        if (!l || typeof l !== 'object' || !Number.isInteger(l.qty) || l.qty < 1 || l.qty > 50) return;
         let ok = format === undefined || format === null;
         const dish = typeof l.dish_id === 'string' && l.dish_id ? l.dish_id : null;
         const options = [];
@@ -1308,13 +1308,15 @@
           else if (op && typeof op.id === 'string' && Number.isInteger(op.qty) && op.name === undefined) options.push({ by: 'id', v: op.id, n: op.qty });
           else ok = false;   // malformed ⇒ the line cannot be rebuilt faithfully
         }
-        out.push({ dish_id: ok ? dish : null, qty: l.qty, options });
-      }
+        out.push({ dish_id: ok ? dish : null, qty: l.qty, options, si });   // si: the source line (S-D's snapshot is aligned to it)
+      });
       return out;
     }
     const reorderable = (lines) => lines.some((l) => l.dish_id);
     const UNKNOWN = '\u0000';   // a key no menu serves: hydrate drops the line and COUNTS it (the one disclosure path)
-    function reorderSnap(menu, lines, prev) {
+    // C-3r G1 (advisor 11-13, option A): the past DISH price from S-D's v1 snapshot (unit_cents, exact); extras at the live price (v1
+    // has none); no snapshot line ⇒ the live price. The cart's priceChanges() then shows frame 13 for a dish changed since the order
+    function reorderSnap(menu, lines, prev, ps) {
       const out = lines.map((l, i) => {
         const ex = Array.from({ length: l.qty }, () => ({}));
         let key = l.dish_id || UNKNOWN;
@@ -1328,7 +1330,8 @@
         }
         // Codex VP r1 #6: the prices on show NOW are what the customer saw — so a later change is disclosed by the cart's priceChanges()
         const d = key !== UNKNOWN ? menu.dish(key) : null, c = (v) => Math.round(Number(v) * 100);
-        const seen = d ? ex.map((x) => ({ b: c(d.price), x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
+        const past = ps && ps.lines[l.si], b = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : d ? c(d.price) : 0;
+        const seen = d ? ex.map((x) => ({ b, x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
         return { key, qty: l.qty, ex, added: i + 1, ...(seen ? { seen } : {}) };
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
@@ -1337,7 +1340,7 @@
     function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
       const lines = recipeOf(r.items, r.recipe_format); if (!reorderable(lines)) return;
-      S.reorder = { rid: r.restaurant, lines };
+      S.reorder = { rid: r.restaurant, lines, ps: r.price_snapshot || null };
       enter(r.restaurant, null);
     }
     // the tab: per store (the past rows' order), the distinct past dishes its LIVE menu still serves (a variant line ⇒ its launcher)
