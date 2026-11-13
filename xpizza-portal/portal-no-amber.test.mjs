@@ -55,7 +55,7 @@ function fnArgs(raw) {
   return { ch };
 }
 // rgb() / rgba() / hsl() / hsla() → [r, g, b, a] (0..1), or null when the arguments are not exactly that grammar (calc(), none, var(), a unit …)
-export function parseColourFn(name, raw) {
+function parseColourFn(name, raw) {
   const fn = name.toLowerCase(), a = fnArgs(raw); if (!a) return null;
   const alpha = a.a === undefined ? 1 : chan(a.a, 1); if (alpha === null || !Number.isFinite(alpha)) return null;
   if (fn === 'rgb' || fn === 'rgba') {
@@ -103,7 +103,7 @@ const CONTAINER_FN = new Set(['calc', 'min', 'max', 'clamp', 'linear-gradient', 
 // identifiers that are NOT colours, allowed in a colour-bearing property; any other identifier there (Mark, Highlight, a typo) fails closed
 const KEYWORDS = new Set(['none', 'transparent', 'currentcolor', 'inherit', 'initial', 'unset', 'revert', 'revert-layer', 'important', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset', 'hidden', 'thin', 'medium', 'thick', 'auto', 'to', 'top', 'bottom', 'left', 'right', 'center', 'circle', 'ellipse', 'at', 'closest-side', 'closest-corner', 'farthest-side', 'farthest-corner', 'no-repeat', 'repeat', 'repeat-x', 'repeat-y', 'space', 'round', 'cover', 'contain', 'fixed', 'scroll', 'local', 'padding-box', 'border-box', 'content-box', 'text', 'underline', 'overline', 'line-through', 'wavy', 'from-font', 'in', 'srgb', 'oklab', 'shorter', 'longer', 'increasing', 'decreasing', 'hue']);
 // a colour-bearing property: anything naming a colour, plus the shorthands that carry one (fail closed: an unknown *color* property counts)
-export const COLOUR_PROP = (p) => /colou?r/i.test(p) || /^(-webkit-)?(background(-image)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?|outline|fill|stroke|box-shadow|text-shadow|text-decoration|column-rule|filter|backdrop-filter|text-stroke|text-emphasis|mask|mask-image)$/i.test(p);
+const COLOUR_PROP = (p) => /colou?r/i.test(p) || /^(-webkit-)?(background(-image)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?|outline|fill|stroke|box-shadow|text-shadow|text-decoration|column-rule|filter|backdrop-filter|text-stroke|text-emphasis|mask|mask-image)$/i.test(p);
 
 // a balanced (…) from s[i] === '(' → [inside, indexAfter] (quotes respected), or null
 function balanced(s, i) {
@@ -242,7 +242,7 @@ const ATTR = /^(fill|stroke|color|stop-color|flood-color|lighting-color)$/i;
 const declsIn = (str) => str.split(';').map((d) => { const i = d.indexOf(':'); return i > 0 ? [d.slice(0, i).trim(), d.slice(i + 1).trim()] : null; }).filter(Boolean);
 // the explicit ALLOW list — the ONLY dynamic colour writes the guard accepts, each pinned to its file and exact call (a premise cell
 // proves each still exists exactly once, so a stale entry is red):
-export const ALLOW = Object.freeze([
+const ALLOW = Object.freeze([
   Object.freeze({ file: 'branches-view.js', at: "setAttribute('stroke', stroke)", why: 'the 1a static map path helper g(); its only two callers, in the same file, pass the literal #CFD6CC and #B9C3B5, which the hex sweep measures' }),
   Object.freeze({ file: 'photo.js', at: 'setAttribute(k, v)', why: 'icon(): writes the ICONS table, a literal object of geometry only (d / cx / cy / r / x / y / width / height / rx) — a colour key in it would be judged by the key context' }),
   Object.freeze({ file: 'ops-dom.js', at: 'setAttribute(k, String(v))', why: 'the stroke-icon helper: its specs are literal {rect}/{circle} geometry objects — a colour key in one would be judged by the key context' }),
