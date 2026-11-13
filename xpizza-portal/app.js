@@ -1293,7 +1293,7 @@ function paintCreateGroup(first) {
   const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
   const at = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
   createForm = settleForm(draftSource(state.draft), createForm);
-  const v = { ...createGroupView(state.draft, createForm), formError: createError };
+  const v = { ...createGroupView(state.draft, createForm, { sections: state.sections === true, newLabel: (n) => s4Copy('notAttachOption', { categoria: n }) }), formError: createError };
   const r = renderCreateGroup(modal, v, {
     name: bound((x) => x3Set('name', x)), row: bound((i, patch) => x3Set('row', { i, ...patch })), addRow: bound(() => x3Set('addRow')),
     removeRow: bound((i) => x3Set('removeRow', i)), mode: bound((m) => x3Set('mode', m)), cat: bound((c) => x3Set('cat', c)),

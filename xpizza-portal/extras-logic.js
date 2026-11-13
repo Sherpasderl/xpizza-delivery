@@ -6,7 +6,7 @@
 //   detail  the selected group's rows — a published extra by { key }, a new (keyless) one by { ref } with «Nuevo», a changed price
 //           marked, an extra removed in this draft still listed (greyed, «Se quita al publicar») — its count, reach and shared warning
 // Names are TEXT in S2-core (renames come with S2b).
-import { draftSource, attachRefusal } from './editor.js';
+import { draftSource, attachRefusal, sectionIsNew } from './editor.js';
 
 const groupsOf = (src) => (src && src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : []);
 const extrasOf = (src) => (src && Array.isArray(src.extras) ? src.extras.filter((e) => e && e.display) : []);
@@ -139,7 +139,9 @@ export function settleForm(src, f) {
   }
   return n;
 }
-export function createGroupView(draft, f0) {
+// `opts` (STRUCTURE S4-F, the sections switch): { sections, newLabel(name) } — a NEW section (staged, or declared in this draft) cannot take
+// a group yet (the server: section_not_attachable_yet): listed disabled with the caller's reason, never selectable
+export function createGroupView(draft, f0, opts = {}) {
   const src = draftSource(draft);
   const f = settleForm(src, f0);
   const groups = src.structure && Array.isArray(src.structure.extra_categories) ? src.structure.extra_categories.map(String) : [];
@@ -154,8 +156,12 @@ export function createGroupView(draft, f0) {
     const nDish = launchersOf(src).filter((r) => String(r.display.cat) === String(c.id)).length;
     const label = !refused ? `${c.name || String(c.id)} · ${nDish} ${nDish === 1 ? 'producto' : 'productos'}`
       : `${c.name || String(c.id)} · ${refused.code === 'exposure_option_override' ? 'un producto tiene opciones con reglas propias' : 'sin productos'}`;
+    if (opts && opts.sections === true && typeof opts.newLabel === 'function' && sectionIsNew(draft, String(c.id))) return { cat: String(c.id), label: opts.newLabel(c.name || String(c.id)), disabled: true };
     return { cat: String(c.id), label, disabled: !!refused };
   });
+  if (opts && opts.sections === true && typeof opts.newLabel === 'function') {
+    for (const c of (src.structure && Array.isArray(src.structure.staged_categories) ? src.structure.staged_categories : [])) categories.push({ cat: String(c.id), label: opts.newLabel(c.name || String(c.id)), disabled: true });
+  }
   let catNote = null;
   if (f.mode === 'cat' && f.cat) {
     const n = launchersOf(src).filter((r) => String(r.display.cat) === f.cat && attachRefusal(src, { mode: 'items', items: [r.key] })).length;

@@ -91,6 +91,7 @@ export const S4_COPY = Object.freeze({
   mismatchBody: null, partialTitle: null, partialBody: null, partialLine: null, goSection: null, notAttachTitle: null, notAttachBody: null, notAttachLine: null,
   capsCats: null, unnamedLine: null, nameAll: null,
   rowSubcat: null, subAddedRow: null, rowCatSubcat: null, rowCatNew: null, promoteRow: null, rowCatEmpty: null, neverShown: null, afterRow: null,
+  notAttachOption: null,
 });
 export const s4Copy = (k, vars = null) => (typeof S4_COPY[k] === 'string' ? S4_COPY[k].replace(/\{(\w+)\}/g, (m, v) => (vars && Object.prototype.hasOwnProperty.call(vars, v) ? String(vars[v]) : m)) : `⟦s4.${k}⟧`);
 

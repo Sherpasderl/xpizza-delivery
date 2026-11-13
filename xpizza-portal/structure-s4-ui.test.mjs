@@ -459,7 +459,7 @@ test('E — a dish row: its grip moves it within its subsection (↓); dragged p
 });
 
 test('copy: frame E\'s approved strings are literal; the addendum\'s proposed ones are ⟦s4.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S4_COPY).sort(), ['afterRow', 'barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'neverShown', 'notAttachBody', 'notAttachLine', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'promoteRow', 'rowCatEmpty', 'rowCatNew', 'rowCatSubcat', 'rowSubcat', 'sheetSub', 'sheetSubFirst', 'subAddedRow', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
+  assert.deepEqual(Object.keys(S4_COPY).sort(), ['afterRow', 'barOrder', 'barSub', 'barSubs', 'capsCats', 'createSub', 'dropBody', 'dropCat', 'dropSub', 'dropTitle', 'emptyBody', 'emptyTitle', 'firstLine', 'goSection', 'menuNote', 'mismatchBody', 'moveLine', 'nameAll', 'nameTaken', 'needOne', 'neverShown', 'notAttachBody', 'notAttachLine', 'notAttachOption', 'notAttachTitle', 'partialBody', 'partialLine', 'partialTitle', 'products', 'promoteRow', 'rowCatEmpty', 'rowCatNew', 'rowCatSubcat', 'rowSubcat', 'sheetSub', 'sheetSubFirst', 'subAddedRow', 'subCaps', 'subName', 'subNameTaken', 'subPh', 'subcatNeedsDish', 'toastBack', 'unnamedLine', 'unpromoteLine']);
 });
 
 // THE SHIP GATE: red while ANY S4 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

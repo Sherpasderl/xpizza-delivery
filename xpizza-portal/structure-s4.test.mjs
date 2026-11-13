@@ -396,3 +396,18 @@ test('stagedName is a PURE reader: the draft\'s staged name, else the loaded dra
   assert.equal(stagedName(d, id), 'Postres'); assert.equal(stagedName(d, 'dim_sum'), null, 'a declared section is not staged');
   assert.equal(JSON.stringify([d.state, d.orig]), before);
 });
+
+// S4-F first prevention (advisor 11-13 ruling 3): X3's «A toda una categoría» lists a NEW section disabled with its reason (sections ON)
+test('S4-F: X3\'s category select — a new section (staged, or declared in this draft) is a disabled option with the caller\'s reason; OFF unchanged', async () => {
+  const { createGroupView, createGroupForm } = await import('./extras-logic.js');
+  const d = createDraft(clone(seed('la_musa')));
+  addCategory(d, 'Postres', {}, ON); addCategory(d, 'Helados', {}, ON);
+  const [pid, hid] = stagedIds(d);
+  moveItem(d, 'dimsum_01', { cat: hid }, ON);   // Helados declared in this draft
+  const f = { ...createGroupForm(), mode: 'cat' };
+  const v = createGroupView(d, f, { sections: true, newLabel: (n) => `NEW:${n}` });
+  assert.deepEqual(v.categories.filter((c) => c.cat === pid || c.cat === hid).map((c) => [c.cat, c.label, c.disabled]), [[hid, 'NEW:Helados', true], [pid, 'NEW:Postres', true]], '🔴 disabled with the reason');
+  assert.ok(v.categories.filter((c) => c.cat !== pid && c.cat !== hid).every((c) => !c.label.startsWith('NEW:')), 'the live ones as today');
+  const off = createGroupView(d, f);
+  assert.equal(off.categories.some((c) => c.cat === pid), false, 'OFF: a staged section is not listed (today)');
+});
