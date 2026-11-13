@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { makeBackend, installSwitches, s4Snapshot } from './real-backend.mjs';
 
 // 5f's S4 server (feat/structure-s4-5f): switch to the repo copy once both ride one train (the MC_REF pattern)
-export const S4_REF = 'cbefd3a09';
+export const S4_REF = '290fa5baa';   // 5f 11-13: subsection renames paired by MEMBERS (section-compare.subcatRenames)
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const freq = s4Snapshot(S4_REF);
 installSwitches(freq, () => ({ sections: true }));
@@ -93,6 +93,21 @@ test('S4-E (REAL diff) — a PUBLISHED staged entry: dropped, renamed, and one p
     ['Postres', P('rowCatNew'), 'Nuevo', P('promoteRow'), false],
     [wonton, 'Dim Sum', 'Cambio', 'Dim Sum → Postres', false],
   ], '🔴 the published staged lines, one row each');
+});
+
+test('S4-E (REAL diff) — a subsection renamed AND reordered in one save (5f 290fa5baa: renames paired by members): ONE rename row + the order row', async () => {
+  const B = await makeBackend(freq, 'la_musa');
+  const d = E.createDraft(clone(B.read.source));
+  assert.equal(E.renameSubcat(d, 'bebidas', 'Sodas', 'Refrescos', ON).ok, true);
+  assert.equal(E.reorderSubcats(d, 'bebidas', ['Cervezas', 'Refrescos'], ON).ok, true);
+  globalThis.fetch = B.fetch;
+  const res = await editCatalog({ rid: 'la_musa', source: E.draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
+  assert.deepEqual(res.diff.sections.subcats, [{ cat: 'bebidas', change: 'renamed', old: 'Sodas', new: 'Refrescos' }], '🔴 accepted: the rename by its members');
+  const m = reviewModel(res.diff, ctxOf(res.source, B.read.source));
+  assert.deepEqual(rowsOf(m), [
+    ['Bebidas', P('rowSubcat'), 'Cambio', 'Sodas → Refrescos', false],
+    ['Cervezas', P('rowCatSubcat'), 'Orden', 'pasa al 1.º lugar', false],
+  ]);
 });
 
 test('S4-E (documented shape) — the published staged entry: drop / rename / anchor move / two promotions from one anchor (the second names the first); app_only marks', () => {
