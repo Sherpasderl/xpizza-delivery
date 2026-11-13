@@ -172,8 +172,25 @@ async function wipe() {
     ok('UNCHANGED + RENAME (la_musa): after an option rename the steady reward stores the same canonical + fingerprint and quotes the same; the renamed option (picked from the form) redeems as before, cash and card');
   }
   {   // the OPTION ADD transition (planned): a new option under the group — the steady reward unchanged; the new option redeems
+    // S3 D3 (advisor 11-13 (A)) — THE GATE CACHE BEHIND THE CART: let the gates' pointer entry lapse, re-read it NOW with one order
+    // (so it is fresh for the next 45 s), publish the new option, and redeem it at once — live != the gate's snapshot ⇒ 503
+    // menu_updating, nothing written, no hold; after the TTL the same reward redeems
+    await new Promise((r) => setTimeout(r, 46000));
+    { const env0b = await servedEnv('la_musa'); const rows0b = await pickerRows('la_musa', env0b); placedOk(await place('la_musa', 's3re_add_prime', 'cash', paidItems(env0b, plainPaid), redeemOf('la_musa', rows0b.find((r) => r.key === STEADY))), 'premise: the gate pointer re-read just now', 'cash'); }
     const cur = (await sourceRefOf(fs, 'la_musa').get()).data();
     await publish('la_musa', saved('la_musa', cur, CT.apply(cur, { op: 'option.add', launcher: PAD, ref: 'tmp:s3re-tofu-xxxx', choice: 'Tofu', price: 330 }).source));
+    {
+      const envE = await servedEnv('la_musa'); const rowsE = await pickerRows('la_musa', envE); const tofuE = rowsE.find((r) => /Tofu$/.test(r.name));
+      assert.ok(tofuE, 'premise: the served menu already offers the new option');
+      const heldE = await reserved('la_musa');
+      for (const [oid, method] of [['s3re_add_early_cash', 'cash'], ['s3re_add_early_card', 'online']]) {
+        const e = await place('la_musa', oid, method, paidItems(envE, plainPaid), redeemOf('la_musa', tofuE));
+        assert.deepStrictEqual([e.status, e.json && e.json.error, e.json && e.json.retryable], [503, 'menu_updating', true], `🔴 BEHIND ${method}: the gate cache behind the cart ⇒ 503 menu_updating (${e.text.slice(0, 160)})`);
+        assert.strictEqual(await order(oid), null, `🔴 BEHIND ${method}: no order written`);
+        assert.strictEqual(await reserved('la_musa'), heldE, `🔴 BEHIND ${method}: no hold taken`);
+      }
+      ok('BEHIND (la_musa): a reward on an option newer than the gate\'s cached snapshot is 503 menu_updating on cash and card, no order, no hold');
+    }
     await new Promise((r) => setTimeout(r, 46000));   // the intake gates' pointer TTL (catalog/menu-gates.js POINTER_TTL_MS 45 s): a NEW key is menu_updating until it lapses
     const env = await servedEnv('la_musa'); const rows = await pickerRows('la_musa', env); const items = paidItems(env, plainPaid);
     const s = await place('la_musa', 's3re_add_steady', 'cash', items, redeemOf('la_musa', rows.find((r) => r.key === STEADY)));
@@ -183,7 +200,8 @@ async function wipe() {
     assert.ok(tofu, 'premise: the new option is a reward row');
     const t = await place('la_musa', 's3re_add_tofu', 'cash', items, redeemOf('la_musa', tofu));
     placedOk(t, 'ADD: the new option redeems', 'cash');
-    ok('OPTION ADD (la_musa): the steady reward is unchanged; the new option redeems from the picker');
+    placedOk(await place('la_musa', 's3re_add_tofu_card', 'online', items, redeemOf('la_musa', tofu)), 'ADD: the new option redeems by card after the refresh', 'online');
+    ok('OPTION ADD (la_musa): the steady reward is unchanged; the new option redeems from the picker (cash + card) once the gate refreshed');
   }
   await publish('la_musa', saved('la_musa', (await sourceRefOf(fs, 'la_musa').get()).data(), CT.apply((await sourceRefOf(fs, 'la_musa').get()).data(), { op: 'choice.remove', launcher: PAD, price_from: opts[1] }).source));
   await new Promise((r) => setTimeout(r, 46000));   // the intake gates' pointer TTL (catalog/menu-gates.js POINTER_TTL_MS 45 s): until it lapses the gates price by the version before D3
@@ -197,8 +215,13 @@ async function wipe() {
     assert.strictEqual(stale.status, 409, `🔴 D3 STALE: a reward naming a removed option is refused (${stale.text.slice(0, 160)})`);
     assert.strictEqual(await order('s3re_d3_stale'), null, '🔴 D3 STALE: no order written');
     assert.strictEqual(await reserved('la_musa'), held, '🔴 D3 STALE: no hold taken');
+    assert.deepStrictEqual([stale.json && stale.json.error, stale.json && stale.json.retryable], ['menu_changed', false], `🔴 D3 STALE: the refusal is menu_changed, not a retry (${stale.text.slice(0, 160)})`);
+    const staleC = await place('la_musa', 's3re_d3_stale_card', 'online', items, redeemOf('la_musa', optRow0));
+    assert.deepStrictEqual([staleC.status, staleC.json && staleC.json.error], [409, 'menu_changed'], `🔴 D3 STALE card: a fresh card issuance naming a removed option is 409 menu_changed (${staleC.text.slice(0, 160)})`);
+    assert.strictEqual(await order('s3re_d3_stale_card'), null, '🔴 D3 STALE card: no order written');
+    assert.strictEqual(await reserved('la_musa'), held, '🔴 D3 STALE card: no hold taken');
     assert.ok(rows.some((r) => r.key === PAD) && !rows.some((r) => opts.includes(r.key)), 'D3: the picker offers the plain dish, no removed option');
-    ok('UNCHANGED + D3 STALE (la_musa): after D3 the steady reward is unchanged; a stale reward naming a removed option is 409 with no order and no hold');
+    ok('UNCHANGED + D3 STALE (la_musa): after D3 the steady reward is unchanged; a stale reward naming a removed option is 409 menu_changed (cash + card) with no order and no hold');
   }
 
   // ── 4: x_pizza, a NEW sized 12" pizza (Q3) whose option is renamed ──
