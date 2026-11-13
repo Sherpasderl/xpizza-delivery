@@ -1385,6 +1385,10 @@ const LISTENERS = {
   "ieOptTrash::click":            ['bound', [], 'S3 D \u2014 an option\u2019s trash, into the working copy (option.remove, or a new option\u2019s add op dropped); the drawer re-lays out'],
   "ieAddOption::click":           ['bound', [], 'S3 D \u2014 «Agregar opción», into the working copy (option.add with a fresh tmp: ref); the drawer re-lays out'],
   "ieChoiceDone::click":          ['bound', [], 'S3 D \u2014 «Listo»: closes the editor (view state); the copy keeps its ops'],
+  "ieQuitChoice::click":          ['bound', [], 'S3 D3 \u2014 «Quitar elección»: opens the in-drawer confirm; the press writes nothing'],
+  "cfCancel::click":              ['bound', [], 'S3 D3 \u2014 «Cancelar»: closes the confirm; the copy keeps its choice'],
+  "cfPick::change":               ['bound', [], 'S3 B2b \u2014 the price that stays: the card\u2019s own pick (view state) and its action turns on'],
+  "cfQuit::click":                ['bound', [], 'S3 D3 \u2014 «Quitar elección» (confirmed): IE.choiceRemove queues choice.remove with price_from in the WORKING COPY; the drawer re-lays out (one price, editable)'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
@@ -1643,6 +1647,8 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.detachRefusal',
   // S3: the required choice's model over the copy's ops (the writer applied to a scratch draft) — a pure reader (cell «choiceModel is a PURE reader»)
   'IE.choiceModel',
+  // S3 D3: the price that stays when the choice goes (the marked option, or null ⇒ the card asks) — a pure reader (cell «choiceRemovePlan is a PURE reader»)
+  'IE.choiceRemovePlan',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

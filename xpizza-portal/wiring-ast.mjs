@@ -145,6 +145,8 @@ export const ALLOWED_CONSUMERS = new Set([
   'IE.detachRefusal',
   // S3: the required choice's model over the copy's ops (the writer applied to a scratch draft) — a pure reader (cell «choiceModel is a PURE reader»)
   'IE.choiceModel',
+  // S3 D3: the price that stays when the choice goes — a pure reader (cell «choiceRemovePlan is a PURE reader»)
+  'IE.choiceRemovePlan',
   // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
   'extrasOutcomeCtx',
   // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)

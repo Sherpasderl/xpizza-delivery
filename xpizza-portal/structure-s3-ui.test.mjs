@@ -126,8 +126,59 @@ test('«Listo» folds the editor back to the read card; the edits stay in the dr
   assert.equal(p.btn('Guardar').disabled, false, 'still unsaved');
 });
 
+const cf = (p) => p.drawer().querySelector('.mk-cfscrim .mk-cf');
+const cfBtn = (p, t) => [...cf(p).querySelectorAll('.mk-cfa button')].find((b) => b.textContent === t);
+
+test('D3 — «Quitar elección» on a MARKED group: the approved card (title, the recommended price sentence), «Cancelar» holds focus; confirming leaves one price, editable', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  pill(rows(p)[1]).click(); await settle(5);
+  gf(p, 'Quitar elección').click(); await settle(5);
+  const c = cf(p);
+  assert.equal(c.getAttribute('role'), 'dialog'); assert.equal(c.getAttribute('aria-modal'), 'true');
+  assert.equal(c.querySelector('h3').textContent, '¿Quitar la elección Proteína?');
+  assert.equal(c.querySelector('p').textContent, 'Pad Thai queda con un solo precio: L 342, el de la opción recomendada. Podés cambiarlo antes de publicar.');
+  assert.equal(c.querySelector('.mk-pf'), null, 'a marked group: no list');
+  assert.deepEqual([...c.querySelectorAll('.mk-cfa button')].map((b) => b.textContent), ['Cancelar', 'Quitar elección']);
+  assert.equal(p.d.activeElement, cfBtn(p, 'Cancelar'));
+  assert.ok(cfBtn(p, 'Quitar elección').classList.contains('mk-quiet-danger'));
+  cfBtn(p, 'Quitar elección').click(); await settle(5);
+  assert.equal(cf(p), null);
+  assert.equal(reqCard(p), null, '🔴 the choice is gone from the drawer');
+  const pr = p.fld('Precio').querySelector('input[aria-label="Precio"]');
+  assert.equal(pr.value, '342', 'the recommended option\'s price, editable');
+  p.type(pr, '355'); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const dish = p.src().items.find((i) => i.key === PAD);
+  assert.equal(dish.price, 355); assert.equal(p.src().structure.variant_items[String(dish.display.id)], undefined);
+});
+
+test('B2b — «Quitar elección» with ZERO marks: the pick list (radiogroup), the action off with its title until a row is picked; «Cancelar» keeps the choice', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  gf(p, 'Quitar elección').click(); await settle(5);
+  let c = cf(p);
+  assert.equal(c.querySelector('p').textContent, P('removePick'));
+  const pf = c.querySelector('.mk-pf');
+  assert.equal(pf.getAttribute('role'), 'radiogroup'); assert.equal(pf.getAttribute('aria-label'), P('pickAria'));
+  const opt = [...pf.querySelectorAll('label.optrow')];
+  assert.deepEqual(opt.map((l) => [l.querySelector('.ogname').textContent, l.querySelector('.mk-rp').textContent]), [['Sin Proteína', 'L 307'], ['Pollo', 'L 342'], ['Camarones', 'L 414']]);
+  assert.ok(opt.every((l) => l.querySelector('input[type=radio]').checked === false), 'none picked');
+  const go = cfBtn(p, 'Quitar elección');
+  assert.equal(go.disabled, true); assert.equal(go.title, P('pickTitle'));
+  cfBtn(p, 'Cancelar').click(); await settle(5);
+  assert.equal(cf(p), null); assert.ok(ge(p), 'the editor stays');
+  gf(p, 'Quitar elección').click(); await settle(5);
+  c = cf(p);
+  const r2 = [...c.querySelectorAll('label.optrow')][2];
+  r2.querySelector('input').click(); await settle(5);
+  assert.ok(r2.classList.contains('sel')); assert.equal(cfBtn(p, 'Quitar elección').disabled, false);
+  cfBtn(p, 'Quitar elección').click(); await settle(5);
+  assert.equal(p.fld('Precio').querySelector('input[aria-label="Precio"]').value, '414', 'the picked price');
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['recRemoved', 'recRequired', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

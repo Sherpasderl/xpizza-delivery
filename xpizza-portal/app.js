@@ -2047,6 +2047,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   R.choice = { s, key, ge, after: last, add: ieAddOption, sub, card, line: null };
   const gf = mk('div', 'mk-gf');
   const ieQuitChoice = document.createElement('button'); ieQuitChoice.type = 'button'; ieQuitChoice.className = 'btn ghost mk-quiet-danger sm'; ieQuitChoice.textContent = 'Quitar elección';
+  ieQuitChoice.addEventListener('click', bound(() => openChoiceRemove(s, ieQuitChoice)));
   focusKey(ieQuitChoice, 'ie-cg-quit');
   const ieChoiceDone = document.createElement('button'); ieChoiceDone.type = 'button'; ieChoiceDone.className = 'btn sm'; ieChoiceDone.textContent = 'Listo';
   ieChoiceDone.addEventListener('click', bound(() => { choiceEditing.delete(s.id); relayout(); refocus(['ie-cg-pen']); }));
@@ -2054,6 +2055,85 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
   card.append(ge, gf);
   syncChoice(R);
   return card;
+}
+// D3 «Quitar elección» (MOCKUP-portal-structure-edit :1857, owner-approved) + the addendum's B2b: the in-drawer confirm (the
+// unsaved-edits card's scrim, inert background, Tab ring and Esc). A MARKED group keeps the recommended option's price (the approved
+// sentence); with NO mark the card lists the options and «Quitar elección» waits for a pick. «Cancelar» holds focus. Confirming queues
+// choice.remove with that price_from in the copy: the dish shows one price, editable before publish.
+function openChoiceRemove(s, from) {
+  const plan = IE.choiceRemovePlan(state.draft, s);
+  const cm = IE.choiceModel(state.draft, s);
+  const d = $('drawer');
+  if (!plan || !cm || d.querySelector('.mk-cfscrim')) return;
+  const mkEl = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const dish = IE.view(state.draft, s).fields.name;
+  const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
+  let pick = plan.priceFrom;
+  const scrim = mkEl('div', 'mk-cfscrim');
+  const cfCard = mkEl('div', 'mk-cf');
+  cfCard.setAttribute('role', 'dialog'); cfCard.setAttribute('aria-modal', 'true');
+  cfCard.setAttribute('aria-labelledby', 'mk-cf-t'); cfCard.setAttribute('aria-describedby', 'mk-cf-d');
+  const h = mkEl('h3', null, `¿Quitar la elección ${label}?`); h.id = 'mk-cf-t';
+  const marked = plan.options.find((o) => o.id === plan.priceFrom);
+  const p = mkEl('p', null, marked ? `${dish} queda con un solo precio: L ${marked.price}, el de la opción recomendada. Podés cambiarlo antes de publicar.` : IE.s3Copy('removePick')); p.id = 'mk-cf-d';
+  const acts = mkEl('div', 'mk-cfa');
+  const cfCancel = document.createElement('button'); cfCancel.className = 'btn ghost'; cfCancel.type = 'button'; cfCancel.textContent = 'Cancelar';
+  const cfQuit = document.createElement('button'); cfQuit.className = 'btn ghost mk-quiet-danger'; cfQuit.type = 'button'; cfQuit.textContent = 'Quitar elección';
+  const ring = [cfCancel, cfQuit];
+  cfCard.append(h, p);
+  if (!marked) {
+    const pf = mkEl('div', 'mk-pf'); pf.setAttribute('role', 'radiogroup'); pf.setAttribute('aria-label', IE.s3Copy('pickAria'));
+    const name = `mk-pf-${s.id}`;
+    const radios = [];
+    for (const o of plan.options) {
+      const row = mkEl('label', 'optrow mk-pfrow');
+      const cfPick = document.createElement('input'); cfPick.type = 'radio'; cfPick.name = name;
+      cfPick.addEventListener('change', bound(() => {
+        pick = o.id;
+        for (const r of radios) r.row.classList.toggle('sel', r.id === pick);
+        cfQuit.disabled = false; cfQuit.removeAttribute('title');
+      }));
+      row.append(cfPick, mkEl('span', 'ogname', o.choice), mkEl('span', 'mk-rp', `L ${o.price}`));
+      pf.append(row); radios.push({ id: o.id, row }); ring.splice(ring.length - 1, 0, cfPick);
+    }
+    cfCard.append(pf);
+    cfQuit.disabled = true; cfQuit.title = IE.s3Copy('pickTitle');
+  }
+  acts.append(cfCancel, cfQuit);
+  cfCard.append(acts);
+  scrim.append(cfCard);
+  const inerted = [];
+  for (const el of [...d.children, ...document.body.children]) {
+    if (el === d || el.hasAttribute('inert')) continue;
+    el.setAttribute('inert', ''); inerted.push(el);
+  }
+  const close = () => {
+    if (activeConfirm === close) activeConfirm = null;
+    scrim.remove();
+    for (const el of inerted) el.removeAttribute('inert');
+    document.removeEventListener('keydown', cfKey, true);
+  };
+  const dismiss = () => { close(); if (from && from.isConnected) from.focus(); };
+  const cfKey = bound((e) => {
+    if (e.key === 'Escape') { e.preventDefault(); dismiss(); return; }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const live = ring.filter((x) => !x.disabled);
+      const at = live.indexOf(document.activeElement);
+      const to = e.shiftKey ? (at <= 0 ? live.length - 1 : at - 1) : (at === live.length - 1 ? 0 : at + 1);
+      live[to].focus();
+    }
+  });
+  cfCancel.addEventListener('click', bound(() => dismiss()));
+  cfQuit.addEventListener('click', bound(() => {
+    if (!pick) return;
+    close();
+    if (IE.choiceRemove(s, pick).ok) { choiceEditing.delete(s.id); renderDrawer(); holdDrawerForRename(); refocus(['ie-price']); }
+  }));
+  d.append(scrim);
+  document.addEventListener('keydown', cfKey, true);
+  activeConfirm = close;
+  cfCancel.focus();
 }
 // the editor's live parts, after every keystroke: the naming line (the dish's typed name), and B2's line — quiet while the merchant
 // edits, the refusal style once «Guardar» held; gone the moment a pill is on

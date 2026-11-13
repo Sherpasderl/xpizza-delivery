@@ -475,8 +475,24 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 }
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
-export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null });
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null });
 export const s3Copy = (k) => (typeof S3_COPY[k] === 'string' ? S3_COPY[k] : `⟦s3.${k}⟧`);
+// D3 «Quitar elección» (confirmed): the copy becomes a PLAIN dish — choice.remove with the picked price_from is queued (dry-run as
+// every op), the Precio field shows that price and stays editable (UI-r0 :81: «Guardar» replays the removal, then the typed price);
+// option prices typed before are moot (their options leave the menu) and go back to the base
+export function choiceRemove(s, priceFrom) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  const plan = choiceRemovePlan(s.draft, s);
+  const pick = plan && plan.options.find((o) => o.id === priceFrom);
+  if (!pick) return { ok: false, code: 'choice_price_from_invalid' };
+  const r = choiceOp(s, { op: 'choice.remove', launcher: s.key, price_from: priceFrom });
+  if (!r.ok) return r;
+  s.group = false;
+  s.same = null;
+  s.work.optionPrices = { ...s.base.optionPrices };
+  s.work.price = Number.isInteger(pick.price) ? String(pick.price) : '';
+  return { ok: true };
+}
 // a NEW option's trash: it was never saved, so its add op goes — with every op that names it (its rename, its mark)
 export function choiceDropNew(s, ref) {
   if (!s || s.closed) return { ok: false, code: 'closed' };

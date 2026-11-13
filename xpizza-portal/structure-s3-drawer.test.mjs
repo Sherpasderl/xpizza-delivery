@@ -162,3 +162,33 @@ test('choiceModel is a PURE reader (the wiring guards rule it so): a deep-frozen
   assert.equal(m.options.length, 4, 'premise: the model read the ops');
   assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
 });
+
+test('D3: choiceRemove turns the copy into a plain dish — «Precio» shows the picked price, editable; «Guardar» writes the removal then the typed price', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  const opts = membersOf(draftSource(d), PAD);
+  IE.set(s, 'optionPrice', { key: opts[0].key, raw: '999' });                 // an option price typed before: moot once the choice goes
+  assert.equal(IE.choiceRemove(s, 'nope').ok, false, 'price_from must be one of the group\'s options');
+  assert.equal(IE.choiceRemove(s, opts[1].key).ok, true);
+  let v = IE.view(d, s);
+  assert.equal(v.options, null, '🔴 no option rows: the dish has one price');
+  assert.equal(v.fields.price, String(opts[1].price), 'the picked price, in the Precio field');
+  IE.set(s, 'price', '360');
+  v = IE.view(d, s);
+  assert.equal(v.save.enabled, true);
+  assert.deepEqual(IE.save(d, s), { ok: true });
+  const dish = draftSource(d).items.find((i) => i.key === PAD);
+  assert.equal(dish.price, 360, 'the typed price wins, after the removal');
+  assert.equal(draftSource(d).structure.variant_items[String(dish.display.id)], undefined, "the group is gone");
+});
+
+test('choiceRemovePlan is a PURE reader (the wiring guards rule it so): a deep-frozen draft source and copy ops, byte-identical after', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, PAD, null, ON);
+  IE.choiceOp(s, { op: 'choice.recommended', launcher: PAD, option: membersOf(draftSource(d), PAD)[2].key });
+  const freeze = (o) => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
+  const before = JSON.stringify([draftSource(d), d.orig, s.choiceOps]);
+  freeze(draftSource(d)); freeze(d.orig); freeze(s.choiceOps);
+  assert.equal(IE.choiceRemovePlan(d, s).priceFrom, membersOf(draftSource(d), PAD)[2].key, 'premise: the plan read the ops');
+  assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
+});
