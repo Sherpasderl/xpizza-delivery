@@ -429,12 +429,16 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // STRUCTURE S3 (PLAN-portal-structure-S3-ui r0, APPROVED 11-13) — the required choice on an EXISTING dish writes ONLY through 5f's
   // choice writer (the byte copy choice-transitions.js): applyChoiceOps (an ordered op list, all or nothing, with the server's choiceEdit
   // switch; its removals' stamps through mergeDeletionClaim) and the pure choiceRefusalLine (the owner-approved reward line). No new key.
+  // STRUCTURE S4 — the «S4 portal writer» (PLAN-portal-structure-S4-writer r0, APPROVED 11-13): addCategory (staged; its id is 5f's
+  // categorySlug), renameCategory (a declared one through T1's setCategoryNames), dropStagedCategory, moveItem (a declared target through
+  // editItem; a staged one promoted at 5f's promotedOrder), addSubcat / renameSubcat, reorderSections / reorderSubcats / reorderItems —
+  // each all or nothing, refused without the server's sections switch, then when the draft is not owned for editing. No key is written.
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
-    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addCategory', 'addChoice', 'addProduct', 'addSubcat', 'adopt', 'applyChoiceOps', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'choiceRefusalLine', 'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'dropStagedCategory', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'moveItem', 'optionGroups', 'optionParentId',
     'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
-    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'renameCategory', 'renameSubcat', 'reorderItems', 'reorderSections', 'reorderSubcats', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
     'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
     'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');

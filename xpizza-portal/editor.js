@@ -874,6 +874,7 @@ export function pendingRenames(draft) {
   const out = [];
   for (const cat of catsOf(draft.state)) {
     const was = orig.find((c) => c && cat && String(c.id) === String(cat.id));
+    if (!was) continue;   // STRUCTURE S4: a section the baseline does not have is NEW — naming it is not a rename (5f S4 §1.7)
     const from = catNameOf(was), to = catNameOf(cat);
     if (from !== to) out.push({ id: String(cat.id), from, to });
   }
@@ -945,10 +946,12 @@ export function itemDescProblem(draft, key, raw) {
 }
 // 'unknown' | 'subcat_required' | 'section_empty' | 'subsection_empty' | null — the target must be a section the page shows,
 // one of ITS subsections when it has any (chosen, never preselected), and the move may not leave a section or subsection empty.
-export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
+// STRUCTURE S4 (`opts.sections === true` only): a STAGED section (a new one, still empty) is a valid target, with no subsection.
+export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}, opts = {}) {
   const row = existingRow(draft.state, key);
   if (!row) return 'unknown';
-  const target = catsOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  let target = catsOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!target && sectionsOn(opts)) { const sc = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat)); if (sc) target = { id: sc.id }; }
   if (!target) return 'unknown';
   const subs = Array.isArray(target.subcats) ? target.subcats.map(String) : [];
   if (subs.length && !subs.includes(subcat == null ? '' : String(subcat))) return 'subcat_required';
@@ -960,6 +963,151 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
   if (typeof d.subcat === 'string' && (String(d.cat) !== String(cat) || d.subcat !== nextSub)
       && !products.some((r) => String(r.display.cat) === String(d.cat) && r.display.subcat === d.subcat)) return 'subsection_empty';
   return null;
+}
+
+// ── STRUCTURE S4 — the «S4 portal writer» (PLAN-portal-structure-S4-writer-r0, approved 2026-11-13; 5f's PLAN-structure-S4-r4 §R2.9) ───
+// Sections: create (STAGED until a dish is in it), rename, drop a staged one, move a dish (promoting a staged target), subsections
+// (atomic membership), and the three reorders. Every mutator is ALL OR NOTHING on one copy, refused `sections_off` unless the server's
+// switch (getEditableCatalog `sections`) is `=== true`, then `not_editable`. The new id and the promotion position are NOT computed here:
+// they are 5f's categorySlug / promotedOrder (section-transitions.js, synced byte for byte into the portal); without it → writer_unavailable.
+// The server re-judges every resulting draft; the codes below are for the portal's own panels.
+const SUBCAT_MAX = 12, SECTIONS_MAX = 30;
+const sectionsOn = (o) => !!o && o.sections === true;
+const stagedOf = (src) => (src && src.structure && Array.isArray(src.structure.staged_categories) ? src.structure.staged_categories : []);
+const sectionWriter = () => globalThis.SectionTransitions;
+// the case-folded comparison for section / subsection names (§1.3 «unique case-folded»); 5f's exact fold rides in the shared module if it differs
+const sectionFold = (v) => cleanCategoryName(v).normalize('NFC').toLowerCase();
+const sectionRefusal = (code, extra) => Object.assign(new Error(code), { s4: { code, ...(extra || {}) } });
+function sectionOp(draft, opts, fn) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const work = clone(draft.state);
+  try { fn(work); } catch (e) { if (e && e.s4) return { ok: false, ...e.s4 }; throw e; }
+  draft.state = work;
+  return { ok: true };
+}
+const isPermutation = (next, was) => Array.isArray(next) && next.length === was.length && new Set(next.map(String)).size === next.length
+  && was.every((x) => next.map(String).includes(String(x)));
+const takenNames = (st, exceptId = null) => [...catsOf(st), ...stagedOf(st)].filter((c) => c && String(c.id) !== String(exceptId)).map((c) => sectionFold(c.name || ''));
+export function addCategory(draft, name, { after } = {}, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const w = sectionWriter();
+    if (!w || typeof w.categorySlug !== 'function') throw sectionRefusal('writer_unavailable');
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('category_name_invalid');
+    if (takenNames(st).includes(sectionFold(name))) throw sectionRefusal('category_name_taken');
+    if (catsOf(st).length + stagedOf(st).length >= SECTIONS_MAX) throw sectionRefusal('structure_caps');
+    const declared = catsOf(st).map((c) => String(c.id));
+    const anchor = after === undefined ? (declared.length ? declared[declared.length - 1] : null) : after;
+    if (anchor !== null && !declared.includes(String(anchor))) throw sectionRefusal('staged_anchor_invalid');
+    const id = w.categorySlug(cleanCategoryName(name), [...declared, ...stagedOf(st).map((c) => String(c.id))]);
+    st.structure.staged_categories = [...stagedOf(st), { id, name: cleanCategoryName(name), after: anchor }];
+  });
+}
+// a DECLARED section: today's T1 rename (setCategoryNames, its rules unchanged); a STAGED one: its name (naming a new section is not a rename)
+export function renameCategory(draft, id, name, opts = {}) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const st = draft.state;
+  const declared = catsOf(st).find((c) => c && String(c.id) === String(id));
+  const staged = stagedOf(st).find((c) => c && String(c.id) === String(id));
+  if (!declared && !staged) return { ok: false, code: 'category_unknown' };
+  if (categoryNameProblem(name) !== null) return { ok: false, code: 'category_name_invalid' };
+  if (takenNames(st, id).includes(sectionFold(name))) return { ok: false, code: 'category_name_taken' };
+  if (staged) return sectionOp(draft, opts, (w) => { stagedOf(w).find((c) => String(c.id) === String(id)).name = cleanCategoryName(name); });
+  const before = JSON.stringify(st);
+  setCategoryNames(draft, [[id, name]]);
+  return JSON.stringify(draft.state) === before && catNameOf(declared) !== cleanCategoryName(name) ? { ok: false, code: 'not_renamable' } : { ok: true };
+}
+export function dropStagedCategory(draft, id, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    if (catsOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_declared');
+    if (!stagedOf(st).some((c) => c && String(c.id) === String(id))) throw sectionRefusal('category_unknown');
+    st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(id));
+  });
+}
+// into a DECLARED section: exactly today's move (editItem); into a STAGED one: the same move, and the section is promoted into
+// `categories` at promotedOrder's position, its staged entry dropped — one op
+export function moveItem(draft, key, { cat, subcat = null } = {}, opts = {}) {
+  if (!sectionsOn(opts)) return { ok: false, code: 'sections_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  const problem = itemCategoryProblem(draft, key, { cat, subcat }, opts);
+  if (problem !== null) return { ok: false, code: problem };
+  const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
+  if (!staged) return editItem(draft, key, { cat, subcat }) ? { ok: true } : { ok: false, code: 'invalid' };
+  return sectionOp(draft, opts, (st) => {
+    const w = sectionWriter();
+    if (!w || typeof w.promotedOrder !== 'function') throw sectionRefusal('writer_unavailable');
+    // per SAVE (5f R4.2): every staged section of the STORED draft (draft.orig) promoted since — this one included — is placed together,
+    // ranked in the stored staged order, on the candidate's order without them; one created in this draft simply lands after its anchor
+    const now = catsOf(st).map((c) => String(c.id));
+    const origStaged = stagedOf(draft.orig).map((c) => ({ id: String(c.id), after: c.after == null ? null : String(c.after) }));
+    const fromStored = origStaged.some((c) => c.id === String(staged.id));
+    const promoted = fromStored ? origStaged.filter((c) => c.id === String(staged.id) || now.includes(c.id)) : [{ id: String(staged.id), after: staged.after }];
+    const ids = w.promotedOrder(now.filter((i) => !promoted.some((p) => p.id === i)), promoted);
+    const byId = new Map(catsOf(st).map((c) => [String(c.id), c]));
+    st.structure.categories = ids.map((i) => byId.get(String(i)) || { id: staged.id, name: staged.name });
+    st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(staged.id));
+    const row = existingRow(st, key);
+    writeMove([row, ...membersOf(st, row)], staged.id, null);
+  });
+}
+// a new subsection takes ≥ 1 member in the same op; the FIRST one of an ungrouped section takes every dish of it (5f R2.5)
+export function addSubcat(draft, cat, name, members, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    if (!c) throw sectionRefusal('category_unknown');
+    const subs = Array.isArray(c.subcats) ? c.subcats : [];
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('subcat_name_invalid');
+    if (subs.some((x) => sectionFold(x) === sectionFold(name))) throw sectionRefusal('subcat_name_taken');
+    if (subs.length >= SUBCAT_MAX) throw sectionRefusal('structure_caps');
+    const keys = Array.isArray(members) ? members.map(String) : [];
+    if (!keys.length) throw sectionRefusal('subcat_empty');
+    const rows = keys.map((k) => existingRow(st, k));
+    if (new Set(keys).size !== keys.length || rows.some((r) => !r || String(r.display.cat) !== String(cat))) throw sectionRefusal('subcat_member_invalid');
+    const dishes = rowsOf(st, 'item').filter((r) => r && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+    if (!subs.length) { const missing = dishes.map((r) => r.key).filter((k) => !keys.includes(k)); if (missing.length) throw sectionRefusal('subcat_partial', { missing }); }
+    const left = (sub) => dishes.some((r) => r.display.subcat === sub && !keys.includes(r.key));
+    if (subs.some((sub) => rows.some((r) => r.display.subcat === sub) && !left(sub))) throw sectionRefusal('subsection_empty');
+    const nm = cleanCategoryName(name);
+    c.subcats = [...subs, nm];
+    for (const r of rows) for (const m of [r, ...membersOf(st, r)]) m.display.subcat = nm;
+  });
+}
+// the name AND every member's display.subcat (options too), nothing else
+export function renameSubcat(draft, cat, old, name, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    const subs = c && Array.isArray(c.subcats) ? c.subcats : [];
+    const j = subs.indexOf(old);
+    if (j === -1) throw sectionRefusal('subcat_unknown');
+    if (categoryNameProblem(name) !== null) throw sectionRefusal('subcat_name_invalid');
+    if (subs.some((x, i) => i !== j && sectionFold(x) === sectionFold(name))) throw sectionRefusal('subcat_name_taken');
+    const nm = cleanCategoryName(name);
+    subs[j] = nm;
+    for (const r of rowsOf(st, 'item')) if (r && r.display && String(r.display.cat) === String(cat) && r.display.subcat === old) r.display.subcat = nm;
+  });
+}
+export function reorderSections(draft, ids, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const cats = catsOf(st);
+    if (!isPermutation(ids, cats.map((c) => String(c.id)))) throw sectionRefusal('not_permutation');
+    st.structure.categories = ids.map((i) => cats.find((c) => String(c.id) === String(i)));
+  });
+}
+export function reorderSubcats(draft, cat, names, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const c = catsOf(st).find((x) => x && String(x.id) === String(cat));
+    if (!c || !Array.isArray(c.subcats)) throw sectionRefusal('category_unknown');
+    if (!isPermutation(names, c.subcats)) throw sectionRefusal('not_permutation');
+    c.subcats = names.map(String);
+  });
+}
+export function reorderItems(draft, keys, opts = {}) {
+  return sectionOp(draft, opts, (st) => {
+    const order = st.structure && Array.isArray(st.structure.item_order) ? st.structure.item_order : [];
+    if (!isPermutation(keys, order)) throw sectionRefusal('not_permutation');
+    st.structure.item_order = keys.map((k) => order.find((o) => String(o) === String(k)));
+  });
 }
 
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
