@@ -51,7 +51,7 @@ function fakeDb() {
     };
     return api;
   };
-  const T = { cold: new Set(), pause: new Map() };   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
+  const T = { cold: new Set(), pause: new Map(), txs: [] };   // txs: every transaction ATTEMPT (path), committed or not   // cold: a path whose NEXT transaction first sees null; pause: path → async fn run before the commit
   const ref = (p = '') => ({
     get: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
     once: async () => { reads.push({ kind: 'get', path: p }); return snapOf(get(p)); },
@@ -59,6 +59,7 @@ function fakeDb() {
     update: async (m) => { for (const [k, v] of Object.entries(m)) { writes.push(p ? `${p}/${k}` : k); set(p ? `${p}/${k}` : k, v); } },
     orderByChild: (c) => query(p, c),
     transaction: async (fn) => {
+      T.txs.push(p);
       let seen = T.cold.has(p) ? null : (clone(get(p)) ?? null); T.cold.delete(p);
       for (let i = 0; i < 25; i++) {
         const next = fn(clone(seen));
@@ -206,6 +207,12 @@ const deleteA = (db, at) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { ui
     const h2 = harness(d2); const rd = await h2.read(`tok-${A}`);
     assert.strictEqual(rd.body.favorites.length, FAV_MAX); assert.strictEqual(rd.body.more, true); assert.strictEqual(rd.body.favorites[0], many[FAV_MAX + 1], 'the newest first');
     assert.strictEqual((await h2.fav(`tok-${A}`, 'x_pizza', true)).code, 409, 'a legacy oversized node refuses an add');
+    // Codex build r1 P2: a rid AMONG the newest FAV_MAX + 1 must not exempt an oversized node — a repeated `on` is refused BEFORE the
+    // parent transaction (which would download every child)
+    d2.T.txs.length = 0;
+    const again = await h2.fav(`tok-${A}`, many[FAV_MAX + 1], true);
+    assert.deepStrictEqual([again.code, again.body], [409, { ok: false, reason: 'too_many' }], '🔴 an oversized node refuses even an on of a favorite it holds (no exemption by `has`)');
+    assert.deepStrictEqual(d2.T.txs, [], '🔴 the oversized node is never handed to the parent transaction');
     assert.strictEqual((await h2.fav(`tok-${A}`, many[0], false)).code, 200, 'and can shrink');
   }
   ok(`the cap: exactly FAV_MAX (${FAV_MAX}) even under two concurrent adds; the refusal pre-check is ONE bounded createdAt query; a legacy oversized node reads the newest ${FAV_MAX} + more:true, refuses adds, can shrink`);
@@ -267,6 +274,11 @@ const deleteA = (db, at) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { ui
     const up = favUpdater({ op: 'off', rid: 'x_pizza', now: 1 }, out);
     assert.strictEqual(up(null), null, 'cold null ⇒ a no-op VALUE, never an abort'); assert.strictEqual(up({ _deleted: 1 }), undefined, 'an OBSERVED fence ⇒ abort');
     assert.strictEqual(out.outcome, 'fenced');
+    // a MALFORMED non-object node (a legacy scalar) is normalized to {} — an `on` writes exactly { rid: { createdAt } }, never a spread
+    const d5 = fakeDb(); seedRestaurants(d5); d5.set(`user_favorites/${A}`, 'legacy-scalar');
+    r = await harness(d5).fav(`tok-${A}`, 'x_pizza', true);
+    assert.strictEqual(r.code, 200);
+    assert.deepStrictEqual(Object.keys(d5.get(`user_favorites/${A}`)), ['x_pizza'], '🔴 a malformed (non-object) node is normalized to {} — exactly { x_pizza }, nothing spread from the old value');
   }
   ok('cold cache: off and on never abort on a cold null — off re-runs and removes, on keeps unseen siblings; an absent node: on creates, off no-ops; an OBSERVED fence aborts');
 

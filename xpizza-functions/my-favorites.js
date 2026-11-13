@@ -105,7 +105,10 @@ function makeMyFavorites({ getDatabase, getAuth, checkRateLimit, now = () => Dat
         if (!(await db.ref(`restaurants/${rid}/identity`).once('value')).exists()) return res.status(404).json({ ok: false, reason: 'unknown_restaurant' });
         const pre = await bounded(db, uid); let count = 0; let has = false;
         pre.forEach((c) => { if (c.key === FENCE) return; if (RID_RE.test(c.key)) count += 1; if (c.key === rid) has = true; });
-        if (!has && count >= FAV_MAX) return res.status(409).json({ ok: false, reason: 'too_many' });
+        // an OVERSIZED node (> FAV_MAX: a legacy owner-direct write) is refused BEFORE the parent transaction, even for a favorite it
+        // already holds (Codex build r1 P2: `has` must not exempt it — the transaction would download every child); at exactly FAV_MAX an
+        // `on` of a held favorite stays an idempotent 200
+        if (count > FAV_MAX || (!has && count >= FAV_MAX)) return res.status(409).json({ ok: false, reason: 'too_many' });
       }
       const out = {};
       await db.ref(`user_favorites/${uid}`).transaction(favUpdater({ op, rid, now: now() }, out));
