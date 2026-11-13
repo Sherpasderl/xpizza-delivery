@@ -1129,3 +1129,19 @@ test('§1e directory_changed (the REAL writer): a branch deregistered between th
   assert.ok(P.btn('Recargar'), '«Recargar» offered');
   assert.equal((await srv.node()).restaurants, undefined, 'nothing was written');
 });
+
+test('§1b recovery WITH limits (the REAL writer commits, the answer is lost): the fresh GET finds the requested { rid, km } → «Envío guardado», never a second POST', async () => {
+  const srv = server();
+  await seedLimits(srv, [{ bands: B3 }]);
+  const P = await page({ srv }); await P.signIn(); await P.open(); await settle(5);
+  setMax(P, '4.5'); await settle(5);
+  P.btn('Guardar').click(); await settle(10);
+  const c0 = srv.commits;
+  srv.fault.post = 'after503';                                            // committed, then the transport fails
+  P.btn('Guardar cambios', P.host().querySelector('[role="dialog"]')).click(); await settle(120);
+  assert.equal(srv.commits - c0, 1, 'premise: the write really landed');
+  assert.equal((await srv.node()).restaurants.r_lm.max_km, 4.5);
+  assert.equal(srv.posts.length, 1, 'never a second POST');
+  assert.equal(P.d.getElementById('opstoast').textContent, 'Envío guardado', 'the recovery judged the requested limit: saved');
+  assert.equal(maxIn(P).value, '4.5', 'the field shows the stored value');
+});
