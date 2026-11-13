@@ -183,6 +183,14 @@ export async function getSalesStats({ rid, from, to, granularity, compare, token
   return apiFetch('getSalesStats', { rid, token, assertLive, params: { from, to, granularity, compare } });
 }
 
+// ── P-1 «Calificaciones» — the anonymous rating comments (S-A(d) getMerchantRatingComments) ──────────────
+// → { ok, comments: [{ comment, store }], cursor }. The rid travels as `rid` in params, NEVER through the
+// `rid` argument: buildRequest spells that one restaurantId=, which this endpoint refuses (400). An absent
+// cursor is page 1 (params skips it).
+export async function fetchRatingComments({ rid, cursor, token, assertLive }) {
+  return apiFetch('getMerchantRatingComments', { token, assertLive, params: { rid, cursor } });
+}
+
 // THE TEXT/BLOB PATH. readResponse parses JSON only; a CSV export is text, so it gets its own reader
 // with the SAME failure typing (a non-2xx still becomes an ApiError from its JSON error body).
 export async function readTextResponse(res) {

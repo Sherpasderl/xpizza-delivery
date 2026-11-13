@@ -29,6 +29,8 @@
   "branches-1b-life.test.mjs",
   "branches-1b.test.mjs",
   "branches-view.js",
+  "calificaciones-logic.js",
+  "calificaciones.test.mjs",
   "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
