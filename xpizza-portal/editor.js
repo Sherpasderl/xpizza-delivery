@@ -277,6 +277,8 @@ export function canRemoveProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.li
   const sid = row.display && row.display.identity_id;
   if (typeof sid !== 'string' || !sid) return no('unstamped');                                   // the server would refuse a RESET
   if (ctx.baseReadable !== true || !validLiveOrder(liveOrder)) return no('base_unreadable', true);
+  // STRUCTURE S4 3(b) (advisor 11-13; sections ON only): never a round trip to the server's section_emptied for a LIVE section
+  if (ctx.sections === true && lastOfSection(draft, row) === 'live') return no('section_empty', true);
   return { show: true, enabled: true, code: null };
 }
 // §4.2 / P-R9 — the ONE order rebuild: item_order = the live order filtered to what is present, THEN the draft's additions (keys the
@@ -316,7 +318,9 @@ export function removeProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.liveO
   // `after` / `redeem_index` are kept in P-R1's shape but NEVER place anything: §4.2 rebuilds both orders from P-R9
   const snap = clone({ key, identity_id: row.display.identity_id, row, after: j > 0 ? order[j - 1] : null, photo: pm && own(pm, key) ? pm[key] : null,
     refs: { item_override: ov && own(ov, key) ? ov[key] : null, extras_by_item: ebi && own(ebi, key) ? ebi[key] : null, redeem_index: ri === -1 ? null : ri } });
+  const lastDraft = ctx && ctx.sections === true && lastOfSection(draft, row) === 'draft' ? row.display.cat : null;   // STRUCTURE S4 3(a)
   dropDishUnit(st, row);
+  if (lastDraft !== null) unpromote(draft, st, lastDraft);
   if (ov && own(ov, key)) delete ov[key];
   if (ebi && own(ebi, key)) delete ebi[key];
   if (ri !== -1) rei.splice(ri, 1);
@@ -344,7 +348,7 @@ function staleRefs(st, refs) {
   if (Array.isArray(ebi)) for (const v of ebi) if (!groups.has(String(v)) && !keys.has(String(v))) return true;
   return false;
 }
-export function undoRemoveProduct(draft, key, snap, liveOrder) {
+export function undoRemoveProduct(draft, key, snap, liveOrder, opts = {}) {
   if (!draft || !canEditContent(draft)) return { ok: false, code: 'not_editable' };
   if (!validLiveOrder(liveOrder)) return { ok: false, code: 'base_unreadable' };
   if (!snap || !snap.row || snap.row.key !== key) return { ok: false, code: 'unknown_item' };
@@ -352,6 +356,9 @@ export function undoRemoveProduct(draft, key, snap, liveOrder) {
   const st = draft.state;
   if (!Array.isArray(st.items)) st.items = [];
   if (st.items.some((r) => r && r.key === key)) return { ok: false, code: 'present' };
+  // STRUCTURE S4 3(a): the dish's section went back to staged with it — «Deshacer» promotes it again (sections ON only)
+  const backTo = sectionsOn(opts) && snap.row.display ? stagedOf(st).find((c) => c && String(c.id) === String(snap.row.display.cat)) : null;
+  if (backTo && (!sectionWriter() || typeof sectionWriter().promotedOrder !== 'function')) return { ok: false, code: 'writer_unavailable' };
   // the row goes where the live order puts it among the rows (canonical items follow item_order); additions stay after it
   const rank = (k) => { const i = liveOrder.items.indexOf(k); return i === -1 ? Infinity : i; };
   const at = rank(key);
@@ -369,6 +376,7 @@ export function undoRemoveProduct(draft, key, snap, liveOrder) {
   const sid = snap.row.display && snap.row.display.identity_id;
   if (typeof sid === 'string' && sid) mergeDeletionClaim(st, { withdraw: [sid] });
   rebuildOrders(st, liveOrder);
+  if (backTo) promoteStaged(draft, st, backTo);
   return { ok: true };
 }
 // ── the READ side app.js paints from (§3.3 / §9) — pure readers; every row they hand back is a COPY, so nothing the caller keeps
@@ -503,7 +511,7 @@ function foldNewGroups(draft, entries, saved) {
 // drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
   + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)
-  + pendingStructure(draft).length;
+  + pendingStructure(draft).length + pendingSections(draft).length;
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -1035,21 +1043,47 @@ export function moveItem(draft, key, { cat, subcat = null } = {}, opts = {}) {
   const staged = stagedOf(draft.state).find((c) => c && String(c.id) === String(cat));
   if (!staged) return editItem(draft, key, { cat, subcat }) ? { ok: true } : { ok: false, code: 'invalid' };
   return sectionOp(draft, opts, (st) => {
-    const w = sectionWriter();
-    if (!w || typeof w.promotedOrder !== 'function') throw sectionRefusal('writer_unavailable');
-    // per SAVE (5f R4.2): every staged section of the STORED draft (draft.orig) promoted since — this one included — is placed together,
-    // ranked in the stored staged order, on the candidate's order without them; one created in this draft simply lands after its anchor
-    const now = catsOf(st).map((c) => String(c.id));
-    const origStaged = stagedOf(draft.orig).map((c) => ({ id: String(c.id), after: c.after == null ? null : String(c.after) }));
-    const fromStored = origStaged.some((c) => c.id === String(staged.id));
-    const promoted = fromStored ? origStaged.filter((c) => c.id === String(staged.id) || now.includes(c.id)) : [{ id: String(staged.id), after: staged.after }];
-    const ids = w.promotedOrder(now.filter((i) => !promoted.some((p) => p.id === i)), promoted);
-    const byId = new Map(catsOf(st).map((c) => [String(c.id), c]));
-    st.structure.categories = ids.map((i) => byId.get(String(i)) || { id: staged.id, name: staged.name });
-    st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(staged.id));
+    promoteStaged(draft, st, staged);
     const row = existingRow(st, key);
     writeMove([row, ...membersOf(st, row)], staged.id, null);
   });
+}
+// promote one staged section into `st` (a working copy of draft.state) — per SAVE (5f R4.2): every staged section of the STORED draft
+// (draft.orig) promoted since, this one included, is placed together, ranked in the stored staged order, on the candidate's order
+// without them; one created in this draft simply lands after its anchor. Throws writer_unavailable without 5f's module.
+function promoteStaged(draft, st, staged) {
+  const w = sectionWriter();
+  if (!w || typeof w.promotedOrder !== 'function') throw sectionRefusal('writer_unavailable');
+  const now = catsOf(st).map((c) => String(c.id));
+  const origStaged = stagedOf(draft.orig).map((c) => ({ id: String(c.id), after: c.after == null ? null : String(c.after) }));
+  const fromStored = origStaged.some((c) => c.id === String(staged.id));
+  const promoted = fromStored ? origStaged.filter((c) => c.id === String(staged.id) || now.includes(c.id)) : [{ id: String(staged.id), after: staged.after }];
+  const ids = w.promotedOrder(now.filter((i) => !promoted.some((p) => p.id === i)), promoted);
+  const byId = new Map(catsOf(st).map((c) => [String(c.id), c]));
+  st.structure.categories = ids.map((i) => byId.get(String(i)) || { id: staged.id, name: staged.name });
+  st.structure.staged_categories = stagedOf(st).filter((c) => String(c.id) !== String(staged.id));
+}
+// 3(a) (advisor 11-13): a section declared in THIS draft (absent from the stored draft's categories) whose last dish leaves goes back to
+// staged — its stored entry when it had one, else anchored after the nearest section the stored draft declares — in stored order
+const draftOnlySection = (draft, cat) => !catsOf(draft.orig).some((c) => c && String(c.id) === String(cat));
+function unpromote(draft, st, cat) {
+  const cats = catsOf(st);
+  const i = cats.findIndex((c) => String(c.id) === String(cat));
+  if (i === -1) return;
+  const c = cats[i];
+  const stored = stagedOf(draft.orig).find((x) => String(x.id) === String(cat));
+  const declaredBefore = cats.slice(0, i).map((x) => String(x.id)).filter((id) => !draftOnlySection(draft, id));
+  const entry = stored ? { ...clone(stored), name: c.name } : { id: c.id, name: c.name, after: declaredBefore.length ? declaredBefore[declaredBefore.length - 1] : null };
+  st.structure.categories = cats.filter((x) => String(x.id) !== String(cat));
+  const rank = (x) => { const k = stagedOf(draft.orig).findIndex((y) => String(y.id) === String(x.id)); return k === -1 ? Infinity : k; };
+  st.structure.staged_categories = [...stagedOf(st), entry].map((x, n) => [x, n]).sort((p, q) => (rank(p[0]) - rank(q[0])) || (p[1] - q[1])).map(([x]) => x);
+}
+// the dish is its section's last: 'draft' (a section declared in this draft → 3(a)) | 'live' (→ 3(b)) | null
+function lastOfSection(draft, row) {
+  const cat = row && row.display ? row.display.cat : undefined;
+  const others = rowsOf(draft.state, 'item').filter((r) => r && r !== row && !isOptionRow(r) && r.display && String(r.display.cat) === String(cat));
+  if (others.length) return null;
+  return draftOnlySection(draft, cat) ? 'draft' : 'live';
 }
 // a new subsection takes ≥ 1 member in the same op; the FIRST one of an ungrouped section takes every dish of it (5f R2.5)
 export function addSubcat(draft, cat, name, members, opts = {}) {
@@ -1108,6 +1142,48 @@ export function reorderItems(draft, keys, opts = {}) {
     if (!isPermutation(keys, order)) throw sectionRefusal('not_permutation');
     st.structure.item_order = keys.map((k) => order.find((o) => String(o) === String(k)));
   });
+}
+
+// STRUCTURE S4 6 (advisor 11-13) — the sections changes the bar counts («· 1 categoría» / «· 1 subcategoría» / «· orden»), draft vs the
+// stored baseline: a section NEW to the declared list (a promotion included), STAGED, its staged NAME, DROPPED; a subsection NEW or
+// RENAMED (in a section both have); the ORDER of sections / subsections / dishes when the same members moved. Names of LIVE sections are
+// T1's (pendingRenames). Today's edits never change any of these, so the count is unchanged with the switch off.
+export function pendingSections(draft) {
+  const out = [];
+  const ids = (cs) => cs.map((c) => String(c.id));
+  const ca = catsOf(draft.orig), cb = catsOf(draft.state), ia = ids(ca), ib = ids(cb);
+  const sa = stagedOf(draft.orig), sb = stagedOf(draft.state);
+  for (const id of ib) if (!ia.includes(id)) out.push({ kind: 'category', id, change: 'new' });
+  for (const c of sb) {
+    const was = sa.find((x) => String(x.id) === String(c.id));
+    if (!was) out.push({ kind: 'category', id: String(c.id), change: 'staged' });
+    else if (was.name !== c.name) out.push({ kind: 'category', id: String(c.id), change: 'name' });
+  }
+  for (const c of sa) if (!sb.some((x) => String(x.id) === String(c.id)) && !ib.includes(String(c.id))) out.push({ kind: 'category', id: String(c.id), change: 'drop' });
+  const subsOf = (c) => (c && Array.isArray(c.subcats) ? c.subcats.map(String) : []);
+  const sameSet = (x, y) => x.length === y.length && x.every((v) => y.includes(v));
+  for (const c of cb) {
+    const was = ca.find((x) => String(x.id) === String(c.id));
+    if (!was) continue;
+    const a = subsOf(was), b = subsOf(c);
+    const added = b.filter((v) => !a.includes(v)).length, gone = a.filter((v) => !b.includes(v)).length;
+    for (let n = 0; n < Math.min(added, gone); n++) out.push({ kind: 'subcat', cat: String(c.id), change: 'rename' });
+    for (let n = Math.min(added, gone); n < added; n++) out.push({ kind: 'subcat', cat: String(c.id), change: 'new' });
+  }
+  const common = ib.filter((id) => ia.includes(id));
+  if (common.join('\u0000') !== ia.filter((id) => ib.includes(id)).join('\u0000')) out.push({ kind: 'order', what: 'sections' });
+  for (const c of cb) {
+    const was = ca.find((x) => String(x.id) === String(c.id));
+    if (!was) continue;
+    // a renamed subsection keeps its place for the order comparison: the k-th name gone maps to the k-th name added
+    const b = subsOf(c), gone = subsOf(was).filter((v) => !b.includes(v)), added = b.filter((v) => !subsOf(was).includes(v));
+    const a = subsOf(was).map((v) => (gone.includes(v) && gone.indexOf(v) < added.length ? added[gone.indexOf(v)] : v));
+    if (a.length && sameSet(a, b) && a.join('\u0000') !== b.join('\u0000')) out.push({ kind: 'order', what: 'subcats', cat: String(c.id) });
+  }
+  const oa = (draft.orig && draft.orig.structure && Array.isArray(draft.orig.structure.item_order)) ? draft.orig.structure.item_order.map(String) : [];
+  const ob = (draft.state && draft.state.structure && Array.isArray(draft.state.structure.item_order)) ? draft.state.structure.item_order.map(String) : [];
+  if (sameSet(oa, ob) && oa.join('\u0000') !== ob.join('\u0000')) out.push({ kind: 'order', what: 'items' });
+  return out;
 }
 
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,

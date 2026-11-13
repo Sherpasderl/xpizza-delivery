@@ -8,6 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { removeProduct, undoRemoveProduct, canRemoveProduct, pendingRenames, pendingSections, pendingCount, commit, setItemPrice } from './editor.js';
 import { createDraft, draftSource, editItem, itemCategoryProblem, addCategory, renameCategory, dropStagedCategory, moveItem, addSubcat,
   renameSubcat, reorderSections, reorderSubcats, reorderItems } from './editor.js';
 
@@ -213,4 +214,95 @@ test('itemCategoryProblem (ON): a STAGED section is a valid target (no subsectio
   assert.deepEqual(renameCategory(d, 'postres', 'Dulces', ON), { ok: true });
   assert.deepEqual(dropStagedCategory(d, 'postres', ON), { ok: true });
   assert.deepEqual(draftSource(d).structure.staged_categories, []);
+});
+
+// ── advisor rulings 11-13 on the S4 addendum: 3(a) un-promote, 3(b) the live-section check, 6 pendingSections ──
+// stamps as remove-product.test.mjs's pure cells set them (the real bootstrap's shape: one per row)
+const stamped = (rid) => { const x = seed(rid); for (const it of x.items) it.display.identity_id = `sid_${it.key}`; return x; };
+const liveOrderOf = (x) => ({ items: [...x.structure.item_order], rewards: [...(x.structure.redeem_eligible_items || [])] });
+const RM = (x, extra = {}) => ({ on: true, baseReadable: true, liveOrder: liveOrderOf(x), sections: true, ...extra });
+const withStaged = (src, names) => { const d = createDraft(clone(src)); for (const [n, after] of names) addCategory(d, n, { after }, ON); return draftSource(d); };
+
+test('pendingRenames: a section promoted in this draft is NEW, never a rename — editing stays open after a promotion', () => {
+  const base = withStaged(seed('la_musa'), [['Alfa', 'dim_sum']]);
+  const d = createDraft(clone(base));
+  assert.equal(moveItem(d, 'rice_01', { cat: 'alfa', subcat: null }, ON).ok, true);
+  assert.deepEqual(pendingRenames(d), [], '🔴 no rename for a section the baseline lacks');
+  assert.equal(moveItem(d, 'rice_02', { cat: 'noodles', subcat: null }, ON).ok, true, 'content edits continue');
+});
+
+test('3(a): removing the LAST dish of a section promoted in THIS draft un-promotes it in the same op — back to staged, its stored anchor; «Deshacer» promotes it again', () => {
+  const base = stamped('la_musa');
+  const stored = withStaged(base, [['Alfa', 'dim_sum']]);
+  const d = createDraft(clone(stored));
+  assert.equal(moveItem(d, 'rice_01', { cat: 'alfa', subcat: null }, ON).ok, true);
+  const promoted = draftSource(d).structure.categories.map((c) => c.id);
+  assert.ok(canRemoveProduct(d, 'rice_01', RM(stored)).enabled, 'the action is offered: the section is draft-only');
+  const r = removeProduct(d, 'rice_01', RM(stored));
+  assert.equal(r.ok, true);
+  const out = draftSource(d);
+  assert.ok(!out.structure.categories.some((c) => c.id === 'alfa'), '🔴 un-promoted: no longer declared');
+  assert.deepEqual(out.structure.staged_categories, stored.structure.staged_categories, '🔴 back to staged exactly as stored (id, name, anchor)');
+  assert.ok(!out.items.some((i) => i.key === 'rice_01'), 'the dish is removed');
+  const u = undoRemoveProduct(d, 'rice_01', r.snap, liveOrderOf(stored), ON);
+  assert.equal(u.ok, true);
+  assert.deepEqual(draftSource(d).structure.categories.map((c) => c.id), promoted, '«Deshacer» promotes it again, at the same place');
+  assert.deepEqual(draftSource(d).structure.staged_categories, []);
+});
+
+test('3(a): a section created AND promoted in this draft goes back to staged after the nearest section the stored draft declares', () => {
+  const base = stamped('la_musa');
+  const d = createDraft(clone(base));
+  addCategory(d, 'Gamma', { after: 'crudo' }, ON);
+  assert.equal(moveItem(d, 'rice_01', { cat: 'gamma', subcat: null }, ON).ok, true);
+  assert.equal(removeProduct(d, 'rice_01', RM(base)).ok, true);
+  assert.deepEqual(draftSource(d).structure.staged_categories, [{ id: 'gamma', name: 'Gamma', after: 'crudo' }]);
+});
+
+test('3(b): the LAST dish of a LIVE section — with the sections switch ON the action is shown disabled with section_empty; OFF it is today\'s (enabled)', () => {
+  const base = stamped('la_musa');
+  const d = createDraft(clone(base));
+  const [x, y, z] = dishesOf(base, 'crudo');
+  assert.equal(removeProduct(d, x, RM(base)).ok, true);
+  assert.equal(removeProduct(d, y, RM(base)).ok, true);
+  assert.deepEqual(canRemoveProduct(d, z, RM(base)), { show: true, enabled: false, code: 'section_empty' }, '🔴 ON: never a round trip to section_emptied');
+  const before = bytes(d);
+  assert.deepEqual(removeProduct(d, z, RM(base)), { ok: false, code: 'section_empty' }, 'the writer refuses too, nothing written');
+  assert.equal(bytes(d), before);
+  const { sections, ...off } = RM(base);
+  assert.deepEqual(canRemoveProduct(d, z, off), { show: true, enabled: true, code: null }, 'OFF: today, byte for byte');
+  assert.ok(canRemoveProduct(d, dishesOf(base, 'rice')[0], RM(base)).enabled, 'a section with other dishes: offered');
+});
+
+test('6: pendingSections — new / staged / dropped / renamed-staged sections, new / renamed subsections, section · subsection · dish order; counted by pendingCount', () => {
+  const base = seed('la_musa');
+  const d = createDraft(clone(base));
+  assert.deepEqual(pendingSections(d), []);
+  const n0 = pendingCount(d);
+  addCategory(d, 'Postres', {}, ON);
+  assert.deepEqual(pendingSections(d), [{ kind: 'category', id: 'postres', change: 'staged' }]);
+  assert.equal(pendingCount(d), n0 + 1, '🔴 the bar sees it');
+  addSubcat(d, 'dim_sum', 'Al vapor', dishesOf(base, 'dim_sum'), ON);
+  renameSubcat(d, 'bebidas', 'Sodas', 'Refrescos', ON);
+  const ids = base.structure.categories.map((c) => c.id);
+  reorderSections(d, [ids[1], ids[0], ...ids.slice(2)], ON);
+  reorderSubcats(d, 'bebidas', ['Cervezas', 'Refrescos'], ON);
+  const o = draftSource(d).structure.item_order; reorderItems(d, [o[1], o[0], ...o.slice(2)], ON);
+  assert.deepEqual(pendingSections(d), [
+    { kind: 'category', id: 'postres', change: 'staged' },
+    { kind: 'subcat', cat: 'dim_sum', change: 'new' }, { kind: 'subcat', cat: 'bebidas', change: 'rename' },
+    { kind: 'order', what: 'sections' }, { kind: 'order', what: 'subcats', cat: 'bebidas' }, { kind: 'order', what: 'items' }]);
+  // a stored staged entry renamed, another dropped; a promotion counts as a NEW section
+  const stored = withStaged(base, [['Alfa', 'dim_sum'], ['Beta', 'dim_sum'], ['Gama', 'rice']]);
+  const e = createDraft(clone(stored));
+  renameCategory(e, 'alfa', 'Alfas', ON); dropStagedCategory(e, 'beta', ON);
+  moveItem(e, 'rice_01', { cat: 'gama', subcat: null }, ON);
+  assert.deepEqual(pendingSections(e), [{ kind: 'category', id: 'gama', change: 'new' }, { kind: 'category', id: 'alfa', change: 'name' }, { kind: 'category', id: 'beta', change: 'drop' }]);
+});
+
+test('6 OFF: today\'s edits (a price, a move between live sections, a category rename) add NOTHING to pendingSections', () => {
+  const base = seed('la_musa');
+  const a = createDraft(clone(base)); setItemPrice(a, 'rice_01', '999'); assert.deepEqual(pendingSections(a), []);
+  const b = createDraft(clone(base)); editItem(b, 'rice_01', { cat: 'noodles', subcat: null }); assert.deepEqual(pendingSections(b), []);
+  const c = createDraft(clone(base)); renameCategory(c, 'crudo', 'Crudos', ON); assert.deepEqual(pendingSections(c), [], 'a live rename is T1\'s (pendingRenames), not S4\'s');
 });
