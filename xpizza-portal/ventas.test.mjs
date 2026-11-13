@@ -99,7 +99,7 @@ test('🔴 OWNER: the nav appears; getSalesStats is called only on opening, for 
   assert.strictEqual(s[0].auth, 'Bearer TK-test', 'the bearer rides in the header');
   assert.ok(!/TK-test/.test(s[0].url), '…never in the URL');
   const text = textOf(byId.get('viewventas'));
-  for (const want of ['Ventas', 'Cómo se está vendiendo X. Pizza en el período que elijas.', 'L 38,146', '158', 'L 241', '12.4%', '8.2%', '1.9%', 'vs. período anterior', 'Resumen diario (CSV)', 'Pedidos (CSV)']) {
+  for (const want of ['Rendimiento', 'Ventas', 'Cómo le va a tu restaurante: ventas y lo que dicen tus clientes.', 'L 38,146', '158', 'L 241', '12.4%', '8.2%', '1.9%', 'vs. período anterior', 'Resumen diario (CSV)', 'Pedidos (CSV)']) {
     assert.ok(text.includes(want), `rendered: ${want}`);
   }
   assert.ok(!text.includes('Datos de ejemplo'), 'the mockup\'s sample-data note is dropped (owner deviation 2)');

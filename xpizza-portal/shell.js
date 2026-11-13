@@ -477,7 +477,13 @@ function markNav(view) {
   }
 }
 export function goto(view, opts = {}) {
-  if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
+  // «Rendimiento» (owner 11-13, map Q4): today's 'ventas' entry point and the aliases land on its page, the tab named first
+  // (ventas.js; an unregistered tab is Ventas)
+  if (view === 'ventas' || view === 'rendimiento' || view === 'calificaciones') {
+    document.dispatchEvent(new CustomEvent('portal:rend-tab', { detail: { tab: view === 'calificaciones' ? 'calificaciones' : 'ventas' } }));
+    $('navventas').click(); return;
+  }
+  if (view === 'menu') { $('navprod').click(); return; }   // ventas.js owns menu + Rendimiento
   const reg = REG.find((r) => r.id === view);
   if (reg && !canOffer(reg)) { $('navprod').click(); return; }   // not offered on this page → the default view
   if (reg && reg.mounted) return;   // codex follow-up r1: already showing → no second mount

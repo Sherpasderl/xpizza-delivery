@@ -43,6 +43,7 @@ const S = {
   epoch: 0,           // bumped on auth / restaurant change: a late answer for an ended context is dropped
   gen: 0,             // bumped per stats request: only the newest answer paints
   view: 'menu',
+  tab: 'ventas',       // «Rendimiento»'s open tab (Ventas by default)
   preset: '7d', custom: null, customDraft: { from: '', to: '' }, customErr: '',
   compare: null,      // null = the period's default (defaultCompare)
   metric: 'sales',
@@ -72,8 +73,26 @@ function setGate(owner) {
   if (!owner) showView('menu');
 }
 
+// ── «Rendimiento» (owner 11-13, map Q4): today's Ventas page under ONE entry with text tabs (MOCKUP-portal-map.html s-rend). Ventas
+// is the first tab and the default; another tab registers its pane (Calificaciones when its approved view lands). At most three tabs.
+const REND_MAX = 3;
+const REND_TABS = [];
+export function registerRendTab({ id, label, mount, unmount } = {}) {
+  if (typeof id !== 'string' || !id || id === 'ventas' || REND_TABS.some((t) => t.id === id)) throw new Error('registerRendTab: bad or duplicate id');
+  if (typeof label !== 'string' || !label || typeof mount !== 'function') throw new Error('registerRendTab: a label and mount() are required');
+  if (REND_TABS.length + 1 >= REND_MAX) throw new Error('registerRendTab: at most three tabs');
+  REND_TABS.push({ id, label, mount, unmount: typeof unmount === 'function' ? unmount : () => {} });
+}
+const tabOf = (id) => REND_TABS.find((t) => t.id === id) || null;
+// shell.js goto('calificaciones' | 'rendimiento' | 'ventas') names the tab first; an unknown or unregistered tab is Ventas
+let wantTab = null;
+document.addEventListener('portal:rend-tab', (e) => { wantTab = e && e.detail ? e.detail.tab : null; });
+
 function showView(view) {
   if (view === 'ventas' && !S.rid) return;                       // never without the owner proof
+  if (S.tab !== 'ventas' && tabOf(S.tab)) tabOf(S.tab).unmount();
+  S.tab = view === 'ventas' && wantTab && tabOf(wantTab) ? wantTab : 'ventas';
+  wantTab = null;
   S.view = view;
   const v = view === 'ventas';
   $('viewmenu').classList.toggle('hidden', v);
@@ -85,7 +104,24 @@ function showView(view) {
     n.classList.toggle('on', on);
     if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   }
-  if (v) { buildPage(); load(); }
+  if (v) { buildPage(); if (S.tab === 'ventas') load(); else showTab(S.tab); }
+}
+function showTab(id) {
+  if (!refs || !refs.tabs) return;
+  const prev = S.tab;
+  if (prev !== id && prev !== 'ventas' && tabOf(prev)) tabOf(prev).unmount();
+  S.tab = tabOf(id) ? id : 'ventas';
+  for (const [tid, b] of refs.tabs) {
+    const on = tid === S.tab;
+    b.classList.toggle('on', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  }
+  const sales = S.tab === 'ventas';
+  for (const n of [refs.acts, refs.note, refs.period, refs.body]) n.classList.toggle('hidden', !sales);
+  refs.pane.classList.toggle('hidden', sales);
+  refs.pane.replaceChildren();
+  if (sales) { if (prev !== 'ventas') load(); }
+  else tabOf(S.tab).mount(refs.pane);
 }
 
 document.addEventListener('portal:auth', (e) => {
@@ -196,9 +232,9 @@ function buildPage() {
   const main = $('viewventas');
   const head = el('div', 'vhead');
   const titles = el('div');
-  const h1 = el('h1', null, 'Ventas');
+  const h1 = el('h1', null, 'Rendimiento');
   h1.id = 'vtitle';
-  const lede = el('p', 'lede');
+  const lede = el('p', 'lede', 'Cómo le va a tu restaurante: ventas y lo que dicen tus clientes.');
   titles.append(h1, lede);
   const acts = el('div', 'vacts');
   const daily = el('button', 'btn');
@@ -246,9 +282,22 @@ function buildPage() {
   right.append(rl, custom, sl, sel);
   period.append(presets, right);
 
+  const tabbar = el('nav', 'ttabs');
+  tabbar.setAttribute('aria-label', 'Secciones de Rendimiento');
+  const tabs = new Map();
+  for (const t of [{ id: 'ventas', label: 'Ventas' }, ...REND_TABS]) {
+    const b = el('button', 'ttab', t.label);
+    b.type = 'button';
+    b.addEventListener('click', () => { if (S.tab !== t.id) showTab(t.id); });
+    tabs.set(t.id, b);
+    tabbar.append(b);
+  }
   const body = el('div');
-  main.replaceChildren(head, note, period, body);
-  refs = { lede, daily, orders, note, presetBtns, rl, custom, from, to, cerr, sel, body };
+  const pane = el('div', 'hidden');   // another tab's pane (its own classes); empty and hidden on Ventas
+  main.replaceChildren(head, tabbar, note, period, body, pane);
+  refs = { lede, daily, orders, note, presetBtns, rl, custom, from, to, cerr, sel, body, acts, period, tabs, pane };
+  for (const [tid, b] of tabs) { const on = tid === S.tab; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); }
+  if (S.tab !== 'ventas') { for (const n of [acts, note, period, body]) n.classList.add('hidden'); pane.classList.remove('hidden'); }
   paintHeader();
 }
 
@@ -274,8 +323,6 @@ function applyCustom() {
 function paintHeader() {
   if (!refs) return;
   const range = currentRange();
-  const name = ($('shopname') && $('shopname').textContent) || '';
-  refs.lede.textContent = `Cómo se está vendiendo ${name && name !== '—' ? name : 'tu local'} en el período que elijas.`;
   for (const [key, b] of Object.entries(refs.presetBtns)) {
     b.classList.toggle('vpon', key === S.preset);
     b.setAttribute('aria-pressed', key === S.preset ? 'true' : 'false');

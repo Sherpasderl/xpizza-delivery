@@ -964,6 +964,13 @@
   .vcsvnote{font-size:13px;color:var(--mute);margin:-12px 0 16px}
   .verr{color:var(--red-text)}
   .vperiod{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+  /* «Rendimiento» (owner 11-13, map Q4): the text tabs exactly as MOCKUP-portal-map.html draws them (.ttabs / .ttab). The mockup
+     sets header → tabs 22 px (16 px ≤ 920 px) and tabs → the filters 20 px; .vhead keeps its 24 px bottom margin, so the tabs pull up */
+  .ttabs{display:flex;gap:26px;margin:-2px 0 20px;border-bottom:1px solid var(--line)}
+  .ttab{position:relative;padding:0 1px 12px;background:none;border:none;font-family:var(--disp);font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:var(--mute);cursor:pointer;line-height:1.3;white-space:nowrap;border-radius:4px 4px 0 0;transition:color .18s}
+  .ttab:hover,.ttab.on{color:var(--ink)}
+  .ttab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink);border-radius:1px}
+  @media(max-width:920px){.ttabs{gap:22px;margin-top:-8px}}
   .vpresets{display:flex;flex-wrap:wrap;gap:6px}
   .vpre{padding:8px 14px;border-radius:999px;font-size:12.5px;cursor:pointer;min-height:44px;background:var(--card);color:var(--mute);border:1px solid var(--line);font-weight:600;font-family:inherit}
   .vpre.vpon{background:var(--tint2);color:var(--accent);border-color:var(--accent);font-weight:650}

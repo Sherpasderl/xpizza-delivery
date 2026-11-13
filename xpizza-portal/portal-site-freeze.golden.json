@@ -155,8 +155,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "db3f139e379552051a47b435d5f6a0eaeae11aa8f09092a172d84eb4358f0011",
-   "bytes": 14955
+   "sha256": "4e0b451b53e7e62456a16f8ca9ce27095554af83a5d9f8ec89a816d195b4bc2e",
+   "bytes": 14965
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -183,8 +183,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "e8cf21ae2e288b2e661b20ac07e009c11021311c5432924990f4bee3b91a961c",
-   "bytes": 153702
+   "sha256": "a9d8ad502b41ab706e1dc37b00921a4e389f53320d28c6ca51a043522c62f9be",
+   "bytes": 154561
   }
  },
  "diff_aid": {
@@ -5076,6 +5076,30 @@
     ".tslot:hover",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".ttab",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".ttab",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".ttab.on::after",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".ttab:hover,.ttab.on",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
