@@ -190,10 +190,16 @@ const wipe = async () => {
            again and a fresh identity is minted on publish; for a slug brand the retired id keeps the slug reserved,
            so it is refused (re-adding would otherwise save and then fail every publish with identity_slug_retired);
          • an uncertified target left the identity LIVE with its key row — refused for both. */
+      const oldRow = (await keysColOf(db, rid, 'dish').doc(encodeKey(added.key)).get()).data();
       const again = await save(rid, withAdds(rid, await draft(rid), [added.display.name]));
       if (targetCertified && rid === 'x_pizza') assert.strictEqual(again.status, 200, `${tag}: the name is free again: ${JSON.stringify(again.body).slice(0, 200)}`);
-      else assert.deepStrictEqual([again.status, again.body.error], [400, 'name_previously_used'], `${tag}: the name stays taken after a rollback`);
-      ok(`${tag}: rollback → identity ${targetCertified ? 'RETIRED' : 'stays LIVE'} (§0b.2) → the KDS list drops the product (re-stamped) → the source keeps it as an unpublished addition → "Quitar" → a price publish succeeds → re-adding the name: ${targetCertified && rid === 'x_pizza' ? 'free again (key row deleted)' : 'refused'}`);
+      else if (MINT_ON) {   // MINT ON (owner 2026-11-09: a re-added name is a NEW product with a fresh id): it saves under a FRESH opaque key; the old key's registry row is untouched
+        assert.strictEqual(again.status, 200, `${tag}: a re-added name saves with MINT on (${JSON.stringify(again.body).slice(0, 200)})`);
+        const row = again.body.source.items.find((i) => i.display && i.display.name === added.display.name);
+        assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== added.key, `${tag}: under a fresh i_ key, never the old one (${row && row.key})`);
+        assert.deepStrictEqual((await keysColOf(db, rid, 'dish').doc(encodeKey(added.key)).get()).data(), oldRow, `${tag}: the old key's registry row stays`);
+      } else assert.deepStrictEqual([again.status, again.body.error], [400, 'name_previously_used'], `${tag}: the name stays taken after a rollback`);
+      ok(`${tag}: rollback → identity ${targetCertified ? 'RETIRED' : 'stays LIVE'} (§0b.2) → the KDS list drops the product (re-stamped) → the source keeps it as an unpublished addition → "Quitar" → a price publish succeeds → re-adding the name: ${targetCertified && rid === 'x_pizza' ? 'free again (key row deleted)' : MINT_ON ? 'a fresh i_ key (MINT on), the old row kept' : 'refused'}`);
     }
   }
 
