@@ -249,6 +249,11 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       assert.ok(body.deletionClaim && Array.isArray(body.deletionClaim.ids), `${c.name}: deletionClaim shape`);
       delete body.extrasCatalog; delete body.deletionBase; delete body.deletionClaim; declared.body.add(`${c.name}: extrasCatalog / deletionBase / deletionClaim (S2-core)`);
     }
+    // S3 B1 (declared): the choice-edit switch (shipped OFF), always stated like extrasCatalog
+    if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'choiceEdit'))) {
+      assert.strictEqual(body.choiceEdit, false, `${c.name}: choiceEdit:false (S3 B1, shipped OFF)`);
+      delete body.choiceEdit; declared.body.add(`${c.name}: choiceEdit (S3 B1)`);
+    }
     // S2-5 (declared, switch ON): the restaurant's reserved names — asserted EQUAL to the stored docs at the call, then dropped
     if (/getEditableCatalog/.test(c.name) && c.status === 200 && body && !(g.body && Object.prototype.hasOwnProperty.call(g.body, 'reservedNames'))) {
       const rid = c.name.split(':')[0];
