@@ -57,15 +57,18 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   const web = show('customer-app/shell.html').toString('utf8');
   const { scripts, sheets, assets } = P.shellFiles(web, (r) => show(`customer-app/${r}`).toString('utf8'));
   assert.strictEqual(P.ENTRY, 'index.html', 'Capacitor\'s entry'); assert.ok(!B.files.has('shell.html'), 'the shell is packaged AS index.html (one file)');
-  const want = [...scripts, ...sheets, ...assets, 'capp-boot.js', 'capp-runtime.js', P.ENTRY, 'build-manifest.json',
+  const want = [...scripts, ...sheets, ...assets, 'capp-boot.js', 'capp-splash.js', 'capp-runtime.js', P.ENTRY, 'build-manifest.json',   // capp-splash.js: the opening animation, NATIVE only (OWNER 11-01)
     ...Object.keys(LOCK.files).map((f) => `vendor/firebasejs/${LOCK.version}/${f}`)].sort();
   assert.deepStrictEqual([...B.files.keys()].sort(), want);
   for (const k of B.files.keys()) assert.ok(!/\.test\.|fixtures\/|MOCKUP|netlify\.toml|node_modules/.test(k), `🔴 not runtime: ${k}`);
   assert.ok(!/capp-shell-ui\.js/.test(show('customer-app/index.html').toString('utf8')) && /<script src="capp-shell-ui\.js">/.test(txt(P.ENTRY)), 'the entry is the SHELL (it loads capp-shell-ui.js), never the web single-store index.html');
   assert.ok(assets.includes('fonts/OFL.txt') && assets.filter((a) => a.endsWith('.woff2')).length === 4, 'the four fonts and their licence');
-  for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js']) assert.ok(B.files.get(f).equals(show(`customer-app/${f}`)), `${f} is byte-identical to the committed source`);
+  for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js', 'capp-splash.js']) assert.ok(B.files.get(f).equals(show(`customer-app/${f}`)), `${f} is byte-identical to the committed source`);
   const s = txt(P.ENTRY);
-  assert.strictEqual(s.replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '').replace('<script src="capp-runtime.js"></script>\n<script src="capp-boot.js"></script>\n', ''), web, 'the packaged shell = the web shell + ONLY the stamp, the CSP and the two boot scripts');
+  // the NATIVE page also carries the opening animation (OWNER 11-01): its controller before the boot + its overlay right after #app — ONCE each
+  const WAKE_RE = /<div class="csplash" id="csplash"[\s\S]*?<\/svg><\/div>/;
+  assert.strictEqual((s.match(new RegExp(WAKE_RE.source, 'g')) || []).length, 1, 'the native page carries the opening overlay exactly once');
+  assert.strictEqual(s.replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n/, '').replace(WAKE_RE, '').replace('<script src="capp-runtime.js"></script>\n<script src="capp-splash.js"></script>\n<script src="capp-boot.js"></script>\n', ''), web, 'the packaged shell = the web shell + ONLY the stamp, the CSP and the two boot scripts');
   assert.ok(s.indexOf('Content-Security-Policy') < s.indexOf('<script'), 'the CSP precedes every script');
   ok(`exactly ${want.length} files: shell.html's ${scripts.length} scripts + ${sheets.length} stylesheets + ${assets.length} font assets, the boot, the config, the 2 SDK files, the manifest — all byte-identical to the commit; www/index.html = the web shell.html + stamp + CSP + boot only`);
 }
@@ -162,7 +165,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
 {
   const page = txt(P.ENTRY);
   const srcs = [...page.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-  assert.deepStrictEqual(srcs.slice(-3), ['capp-shell-ui.js', 'capp-runtime.js', 'capp-boot.js'], 'the boot runs last, after the config');
+  assert.deepStrictEqual(srcs.slice(-4), ['capp-shell-ui.js', 'capp-runtime.js', 'capp-splash.js', 'capp-boot.js'], 'the boot runs last, after the config and the opening animation\'s controller (native)');
   for (const f of srcs) assert.ok(B.files.has(f), `index.html loads a packaged file: ${f}`);
   const dom = new JSDOM(page.replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, ''), { runScripts: 'outside-only', pretendToBeVisual: true, url: 'capacitor://localhost/index.html' });
   const w = dom.window; let requests = 0;
@@ -197,8 +200,10 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.ok(wi.indexOf('<base href="/">') > -1 && wi.indexOf('<base href="/">') < firstRel, '🔴 web: <base> precedes every relative reference');
   assert.equal(Wb.files.get('_redirects').toString('utf8'), '/* /index.html 200\n', 'the non-forced rewrite');
   assert.ok(!/<base /.test(B.files.get(P.ENTRY).toString('utf8')) && !B.files.has('_redirects'), 'native: no <base>, no _redirects');
-  const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace('<base href="/">\n', '');
-  assert.strictEqual(strip(Wb.files.get(P.ENTRY)), strip(B.files.get(P.ENTRY)), 'the entry pages differ only inside the stamp block');
+  // + the ONE native-only difference: the opening animation's overlay (OWNER 11-01: the installed app only, never the website)
+  const strip = (b) => b.toString('utf8').replace(/<!-- sherpa-stamp:begin -->[\s\S]*?<!-- sherpa-stamp:end -->\n/, '').replace('<base href="/">\n', '').replace(/<div class="csplash" id="csplash"[\s\S]*?<\/svg><\/div>/, '');
+  assert.ok(!/csplash/.test(Wb.files.get(P.ENTRY).toString('utf8')) && /csplash/.test(B.files.get(P.ENTRY).toString('utf8')), 'the opening overlay: native page only');
+  assert.strictEqual(strip(Wb.files.get(P.ENTRY)), strip(B.files.get(P.ENTRY)), 'the entry pages differ only inside the stamp block (+ the native opening overlay)');
   const Pv = P.build({ sha: HEAD, target: 'web', env: 'deploy-preview', flags: BASE_FLAGS });
   const pid = mod.exports.readIdentity(new JSDOM(Pv.files.get(P.ENTRY).toString('utf8')).window.document);
   assert.strictEqual(pid.env, 'deploy-preview', 'a preview stamps its environment (heartbeats off by design)');

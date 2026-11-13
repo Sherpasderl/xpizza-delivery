@@ -138,6 +138,17 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   const shell = readText('shell.html');
   const { scripts, sheets, assets } = shellFiles(shell, readText);
   for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js']) files.set(f, S(`${APP}/${f}`));
+  // the opening animation «wake» (OWNER 11-01, DECISIONS:3308): the INSTALLED app only — never the website. D-1 keeps ONE file set for
+  // both targets, so the controller (capp-splash.js) is packaged in both and stays inert on the web (capp-boot.js starts it only when
+  // runtime.mode is native); only the NATIVE page carries the overlay — its markup from the SAME file at the commit, never re-typed
+  const WAKE = target === 'native';
+  const splashSrc = S(`${APP}/capp-splash.js`); files.set('capp-splash.js', splashSrc);
+  let splashHtml = '';
+  if (WAKE) {
+    const m = { exports: {} }; new Function('module', 'exports', 'self', splashSrc.toString('utf8'))(m, m.exports, undefined);
+    splashHtml = m.exports.markupHtml();
+    if (!/^<div class="csplash" id="csplash"/.test(splashHtml)) throw new Error('capp-splash.js markupHtml() is not the overlay');
+  }
 
   // the vendored SDK: hash-checked, ONE asserted rewrite
   const sdkDir = `vendor/firebasejs/${lock.version}/`;
@@ -165,7 +176,13 @@ function build({ sha, flags = [], root = ROOT, show, target = 'native', env } = 
   let html = shell;
   const lastScript = '<script src="capp-shell-ui.js"></script>';
   if (html.split(lastScript).length !== 2) throw new Error('shell.html must load capp-shell-ui.js exactly once');
-  html = html.replace(lastScript, `${lastScript}\n${BOOT.map((b) => `<script src="${b}"></script>`).join('\n')}`);
+  const boot = [BOOT[0], 'capp-splash.js', ...BOOT.slice(1)];   // the splash controller BEFORE the boot (it hears READY); inert on the web
+  html = html.replace(lastScript, `${lastScript}\n${boot.map((b) => `<script src="${b}"></script>`).join('\n')}`);
+  if (WAKE) {   // the overlay paints with the FIRST frame: right after #app, before every script
+    const appDiv = '<div class="app" id="app"></div>';
+    if (html.split(appDiv).length !== 2) throw new Error('shell.html must carry the #app root exactly once');
+    html = html.replace(appDiv, appDiv + splashHtml);
+  }
   const styles = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
   if (styles.length !== 1) throw new Error('shell.html must carry exactly one <style> block (its hash is in the CSP)');
   const styleHash = `sha256-${crypto.createHash('sha256').update(styles[0][1], 'utf8').digest('base64')}`;

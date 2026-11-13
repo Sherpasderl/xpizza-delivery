@@ -1384,3 +1384,30 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
    at 2.6:1; the dim is on the tile + chevron only and the text reads in --mute at full opacity (≥ 4.5:1 in both themes) */
 .urow.payrow.dim .bb,.urow.payrow.dim .chev{opacity:.6}
 .urow.payrow.dim .t b{color:var(--mute)}
+/* ── the opening animation «wake» (OWNER 11-01, DECISIONS:3308; MOCKUP-capp-splash-animation.html Variant A) — the INSTALLED app only:
+   the native package writes the overlay (capp-splash.js) right after #app; the website never has it. The same background + mark (104 px)
+   as the native splash, so the switch is invisible; the needle settles north, the ring breathes, a quiet halo once; at READY the
+   overlay fades (capp-splash.js adds .exit, then .gone). Transform + opacity only; pointer-events:none throughout. Colours = the
+   native splash palettes (platform/native/brand-assets.js PALETTE, guarded by capp-splash.test.mjs) */
+.csplash{--cs-bg:#8EC0FF;--cs-m1:#14306B;--cs-m2:#FFFFFF;position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;background:var(--cs-bg);pointer-events:none;opacity:1}
+@media (prefers-color-scheme:dark){.csplash{--cs-bg:#0D1B3E;--cs-m1:#8EC0FF;--cs-m2:#FFFFFF}}
+.csplash .mark{width:104px;height:104px;overflow:visible}
+.csplash .ring{fill:none;stroke:var(--cs-m1);stroke-width:3.4;stroke-linecap:round}
+.csplash .north{fill:var(--cs-m2)}
+.csplash .south{fill:var(--cs-m1)}
+.csplash .pivot{fill:var(--cs-bg)}
+.csplash .needle{transform-origin:24px 24px}
+.csplash .halo{fill:none;stroke:var(--cs-m1);stroke-width:1.2;opacity:0;transform-origin:24px 24px}
+@keyframes a-settle{0%{transform:rotate(-14deg)}100%{transform:rotate(0deg)}}
+@keyframes a-ring{0%{transform:scale(1)}55%{transform:scale(1.025)}100%{transform:scale(1)}}
+@keyframes a-halo{0%{transform:scale(1);opacity:0}30%{opacity:.35}100%{transform:scale(1.55);opacity:0}}
+@keyframes a-pivot{0%{opacity:0}100%{opacity:1}}
+.csplash .needle{animation:a-settle 720ms cubic-bezier(.16,1,.3,1) 160ms both}
+.csplash .ringg{transform-origin:24px 24px;animation:a-ring 900ms cubic-bezier(.4,0,.2,1) 120ms both}
+.csplash .halo{animation:a-halo 900ms cubic-bezier(.2,.6,.3,1) 380ms both}
+.csplash .pivot{animation:a-pivot 240ms ease-out 760ms both}
+.csplash.exit{transition:opacity 200ms ease-out;opacity:0}
+.csplash.exit .needle,.csplash.exit .ringg,.csplash.exit .halo,.csplash.exit .pivot{animation-play-state:paused}
+.csplash.exit .needle{animation:none;transform:rotate(0);transition:transform 200ms ease-out}
+.csplash.gone{display:none}
+@media (prefers-reduced-motion:reduce){.csplash .needle,.csplash .ringg,.csplash .halo,.csplash .pivot{animation:none!important}.csplash.exit{transition-duration:150ms}}

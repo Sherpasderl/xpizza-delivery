@@ -256,7 +256,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -4729,4 +4729,21 @@ test('C-1a T4 (advisor 11-13): the store\'s rating is FIXED per mount — a dire
     S.click('.store-nav [data-act="back"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
     assert.equal(ratingText(S.q('.info .facts .rating')), '4,8(11)', '🔴 C1-T4: the next mount adopts it');
   } finally { S.w.close(); }
+});
+
+// ── «wake» (OWNER 11-01, DECISIONS:3308): the shell's ONE «first screen ready» (capp-splash.js signalReady) — the moment the native
+// overlay fades. Fired by the first SETTLED screen (the store list from the stored body or the network, its error frame, a store);
+// never by the cold «Cargando restaurantes…» line ──
+const readyOf = (S) => S.w.document.documentElement.getAttribute('data-capp-ready');
+test('WAKE-6: a cold boot (the directory still loading) is NOT ready; the live list painted ⇒ READY; a stored list ⇒ READY at the first paint', async () => {
+  const C = bootShell({ dirScript: ['hang'] });
+  try { await flush(); await flush(); assert.equal(readyOf(C), null, '🔴 WAKE-6: «Cargando…» is not the first screen'); } finally { C.w.close(); }
+  const L = bootShell({}); try { await until(() => L.q('.rlist .rcard')); await flush(); assert.equal(readyOf(L), '1', '🔴 WAKE-6: the live list ⇒ READY'); } finally { L.w.close(); }
+  const st = memStorage({ 'capp:directory': JSON.stringify({ v: 1, body: SC.complete.body, etag: SC.complete.headers.ETag, fetched_at: T0 - 60e3 }) });
+  const P = bootShell({ storage: st, dirScript: ['hang'] });
+  try { await flush(); assert.ok(P.q('.rlist .rcard'), 'premise: the stored list painted'); assert.equal(readyOf(P), '1', '🔴 WAKE-6: the stored list ⇒ READY (cached-first)'); } finally { P.w.close(); }
+});
+test('WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ READY (the overlay never hides the error)', async () => {
+  const E = bootShell({ dirScript: ['unavailable_503'] });
+  try { await until(() => E.q('[data-act="dir-retry"]')); await flush(); assert.equal(readyOf(E), '1', '🔴 WAKE-6b: the error frame ⇒ READY'); } finally { E.w.close(); }
 });

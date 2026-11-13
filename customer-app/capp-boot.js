@@ -28,6 +28,8 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.CappBoot = api;
+    // the opening animation «wake» (OWNER 11-01): the INSTALLED app only — started BEFORE the mount, so a READY during it is heard
+    if (root.CAPP_RUNTIME && root.document && root.CAPP_RUNTIME.mode === 'native' && root.CappSplash) { try { root.CappSplash.start({ doc: root.document, win: root }); } catch (_) {} }
     if (root.CAPP_RUNTIME && root.document) root.CappBoot.instance = api.boot(root.document, { runtime: root.CAPP_RUNTIME });
   }
 })(typeof self !== 'undefined' ? self : this, function () {

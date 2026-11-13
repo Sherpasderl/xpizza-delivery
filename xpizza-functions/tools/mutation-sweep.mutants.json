@@ -35760,5 +35760,102 @@
   "kills_with": [
    "C1-T4"
   ]
+ },
+ {
+  "id": "wake-01",
+  "slice": "wake",
+  "label": "no hard cap: a stuck boot keeps the overlay on screen forever",
+  "file": "../customer-app/capp-splash.js",
+  "from": "cap = T.setTimeout(finish, CAP_MS);",
+  "to": "cap = null;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-4"
+  ]
+ },
+ {
+  "id": "wake-02",
+  "slice": "wake",
+  "label": "a READY that came before start() is ignored (the overlay waits for the cap)",
+  "file": "../customer-app/capp-splash.js",
+  "from": "if (doc.documentElement.getAttribute(READY_ATTR) === '1') finish();",
+  "to": "if (false) finish();",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-3"
+  ]
+ },
+ {
+  "id": "wake-03",
+  "slice": "wake",
+  "label": "the WEBSITE package carries the overlay (owner: native only)",
+  "file": "../platform/native/package-capp.js",
+  "from": "const WAKE = target === 'native';",
+  "to": "const WAKE = true;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-2"
+  ]
+ },
+ {
+  "id": "wake-04",
+  "slice": "wake",
+  "label": "the shell signals READY on the cold «Cargando…» line (the overlay fades over a loading screen)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!(S.tab === 'home' && !S.neutral && v.phase !== 'ready' && v.phase !== 'error')) firstReady();",
+  "to": "firstReady();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=WAKE-6",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-6"
+  ]
+ },
+ {
+  "id": "wake-05",
+  "slice": "wake",
+  "label": "the boot never starts the splash in the installed app (the overlay waits for the cap)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "root.CAPP_RUNTIME.mode === 'native' && root.CappSplash",
+  "to": "false && root.CappSplash",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-5"
+  ]
+ },
+ {
+  "id": "wake-06",
+  "slice": "wake",
+  "label": "reduced motion fades in 200 ms, not the owner's 150 ms",
+  "file": "../customer-app/capp-splash.js",
+  "from": "reduced() ? FADE_RM_MS : FADE_MS",
+  "to": "FADE_MS",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-4"
+  ]
  }
 ]

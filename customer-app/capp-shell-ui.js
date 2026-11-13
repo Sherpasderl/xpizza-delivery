@@ -33,6 +33,7 @@
   function mount(doc, opts) {
     const o = opts || {};
     const CappDirectory = pick(o, 'CappDirectory', './capp-directory.js'), CappEligibility = pick(o, 'CappEligibility', './capp-eligibility.js');
+    let CappSplash = null; try { CappSplash = pick(o, 'CappSplash', './capp-splash.js'); } catch (_) { CappSplash = null; }   // the native package only
     const CappMenuCache = pick(o, 'CappMenuCache', './capp-menu-cache.js'), CappMenu = pick(o, 'CappMenu', './capp-menu.js');
     const CappUI = pick(o, 'CappUI', './capp-ui.js'), CappShell = pick(o, 'CappShell', './capp-shell.js');
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
@@ -230,6 +231,7 @@
       if (ret) S.retAssoc = { rid: entry.rid, handoff: ret.handoff };
       if (ret && ui.returning && typeof ui.returning.then === 'function') ui.returning.then((out) => settleRet(entry.rid, out), () => {});
       pollAvail(); availTimer = T.setInterval(pollAvail, AVAIL_EVERY_MS);
+      firstReady();   // «wake»: a store painted (a cold link straight into it) is a settled first screen
       return true;
     }
     // the mounted surface is NEVER remounted or re-priced while the customer is in it ([r2] ruling): a verified body enables the
@@ -699,6 +701,9 @@
       for (const r of app.querySelectorAll('.hsec')) { const h = r.querySelector('.hrow'), x = s.rows && s.rows[r.getAttribute('aria-label')]; if (h && x) h.scrollLeft = x; }
       if (s.focus) { const el = app.querySelector(s.focus); if (el) { try { el.focus({ preventScroll: true }); if (s.caret && el.setSelectionRange) el.setSelectionRange(s.caret[0], s.caret[1]); } catch (_) {} } }
     }
+    // «wake» (OWNER 11-01): the shell's ONE «first screen ready» — the native overlay fades on it (capp-splash.js); no-op elsewhere
+    let readySent = false;
+    const firstReady = () => { if (readySent) return; readySent = true; if (CappSplash) CappSplash.signalReady(doc, win); };
     function renderNow(restored) {
       if (dead || S.store) return;
       const keep = restored || (app.firstElementChild ? saveScreen() : null);
@@ -714,6 +719,8 @@
       containLayer();   // C-5 r2: a rebuilt screen behind an open sheet stays inert
       reflect();
       if (S.tab === 'home' && !S.store && !S.neutral) { askLegal(); rowArrows(); askRateNudge(); }
+      // «wake»: the first SETTLED screen painted (anything but Inicio's cold «Cargando restaurantes…») ⇒ the ONE READY
+      if (!(S.tab === 'home' && !S.neutral && v.phase !== 'ready' && v.phase !== 'error')) firstReady();
     }
     // ── «PEDIDO RECIBIDO» (v6 orderHtml via CappOrder; owner 2026-11-01: build what v6 draws) ──
     // A placed order leaves «Enviando» for this SHELL screen: the store mount is left (Inicio under it, so back ⇒ Inicio), the order
