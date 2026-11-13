@@ -213,7 +213,7 @@
   .modal.sm{max-width:400px}
   .mh{padding:22px 24px 16px;border-bottom:1px solid var(--line2)}
   .mt{font-family:var(--disp);font-size:23px;font-weight:800;letter-spacing:-.03em}
-  .ms{color:var(--mute);font-size:12.5px;margin-top:4px}
+  .ms{color:var(--mute);font-size:12.5px;margin-top:4px;text-wrap:pretty}   /* rule 16b (SBS r2): no «vivo.» alone at 390 px */
   .mb{padding:18px 24px;overflow:auto}
   .dl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute2);font-weight:750;margin:18px 0 9px}.dl:first-child{margin-top:0}
   .drow{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;font-size:13px;background:var(--board-2)}
@@ -624,7 +624,7 @@
   .mk-rec{font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--gold-soft);border:1px solid var(--gold-line);color:var(--gold);white-space:nowrap;margin-left:8px;vertical-align:1px}
   .mk-gsame{margin:8px 14px 0}
   .mk-gsub{padding:7px 14px 11px;font-size:12px;color:var(--mute2);line-height:1.45}
-  .mk-ferr{display:flex;align-items:flex-start;gap:6px}
+  .mk-ferr{display:flex;align-items:flex-start;gap:6px;text-wrap:pretty}   /* rule 16b: no orphaned last word («página.») at 390 px */
   .tag.mk-ftag{font-weight:650;letter-spacing:0;white-space:nowrap}
   /* S2 §3.3: a NEW extra in the drawer's card — its name over the approved grey line (rule 16b: the line wraps under the name, never beside it) */
   .mk-xnmcol{display:flex;flex-direction:column;gap:2px;min-width:0}
@@ -658,7 +658,11 @@
   #xcreate .mopt .moname{min-height:38px}   /* MOCKUP frame X: the trash is a plain icon button (the UA border reset) */
   /* B «Agregar grupo de extras» (MOCKUP frame B): the dish action, the sheet's rows, the quiet «Crealo en Extras» line */
   /* X2b REVIEW-DELETIONS (MOCKUP x2): the deletion list — the review's .brow rows, the group at the end */
+  .mk-dels{display:flex;flex-direction:column;gap:0;margin-top:12px}   /* the mockup's (SBS r2) */
+  .mk-dels .brow{margin-bottom:8px}
   .mk-dels .brow .bsec{margin-left:auto;font-size:12px;white-space:nowrap}
+  .mk-dels .brow.gone .bnm{text-decoration:none;font-weight:500}   /* .brow.rem .bnm already gives it --mute */   /* «Un extra que ya no está en el menú» is not struck (MOCKUP x2b) */
+  #xcf-line{margin-top:12px}
   .mk-bscrim{cursor:pointer;z-index:30}   /* over the drawer (26): the sheet opens FROM it (SBS 11-12 vs MOCKUP b) */
   #xattach .optrow .ogname{display:flex;flex-direction:column;gap:2px}
   #xattach .optrow .ogname .ogsub{font-weight:400}
@@ -702,14 +706,21 @@
   .rail > .mk-ferr{padding:0 13px 8px 37px}   /* MOCKUP frame X: a new («Nuevo») row */
   /* «Agregar extra»: the inline new row — X3's name field (.moname) in the list row; R6's lines under it, aligned to the name */
   .mk-xnew .nm{flex-wrap:nowrap}
-  .mk-xnew .mk-xname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}
-  .mk-xnew .mk-xname:focus{outline:none;border-color:var(--accent)}
+  .mk-xname{flex:1;min-width:0;background:var(--board-2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink);font-family:inherit}
+  .mk-xname:focus{outline:none;border-color:var(--accent)}
+  /* SBS r2: a saved «Nuevo» row keeps its name editable — the same field as the inline row (it showed the browser's bare input) */
+  .irow.mk-xrow:not(.mk-xnew) .nm{min-width:0}
+  .irow.mk-xrow:not(.mk-xnew) .mk-xname{max-width:280px}
   .mk-xnewlines{display:flex;flex-direction:column;gap:2px;padding:0 20px 10px}
+  #xrows-unread{padding:10px 20px 8px}   /* P2-9's once-above-the-rows line: inside the detail's padding, off the shared box (SBS r2, rule 16b) */
   .mk-xrowline{padding:0 20px 10px}   /* a row's own line (a «Nuevo» row's empty name, or the server's line FIX-EXTRA brought) */   /* aligned to the row's own padding (SBS 11-12) */
   /* rule 16b (SBS 11-12, 390 px): the Extras detail's head — the group name on its own line, then its count and «Agregar extra»;
      the button never breaks its label */
   #xdetail .dhead .dright .btn{white-space:nowrap}
   @media(max-width:560px){#xdetail .dhead{flex-wrap:wrap;row-gap:6px}#xdetail .dhead .dtitle{flex:1 1 100%}}
+  /* rule 16b (SBS r2, 390 px): the list's 84 px price box clipped an empty extra's «Sin precio» to «Sin pr» */
+  @media(max-width:560px){#xdetail .irow > .price{width:112px}#xdetail .price input:placeholder-shown{font-size:13px;font-weight:650}
+    .irow.mk-xrow:not(.mk-xnew) .nm{flex-wrap:wrap;row-gap:4px}.irow.mk-xrow:not(.mk-xnew) .mk-xname{flex:1 1 100%;max-width:none}}   /* the «Nuevo» row's name field on its own line, the tag under it */
   .mk-xnewlines:empty{display:none}
   .irow.mk-xgone{opacity:.45}
   .mk-xgone-p{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:650}
@@ -762,9 +773,14 @@
   .sealbody .seachg:last-of-type{border-bottom:0}
   .sealbody .seachg .sn{color:var(--ink);font-weight:600}
   .sealbody .seachg .sv .was{color:var(--mute);text-decoration:line-through}.sealbody .seachg .sv b{color:var(--gold)}
+  /* rule 16b (SBS r2): a price / «Nombre en factura» row drew «was→now» with no space; the mockups' «was → now», the new value as <b> */
+  .sealbody .seachg .sv .arr{margin:0 .35em}
   .attest{display:flex;align-items:flex-start;gap:11px;padding:13px 16px;border-top:1px solid var(--gold-line);cursor:pointer}
   .attest input{margin-top:2px;width:18px;height:18px;accent-color:var(--gold);flex:none}
   .attest .at{font-size:12.5px;color:var(--on-dark);line-height:1.5}.attest .at b{color:var(--gold)}
+  /* rule 16b (SBS r2, 390 px): no «factura.» / «fiscal.» alone on a line; a short value («L 15 · nuevo», «L 50 → L 55») never splits —
+     only a rename («was → now») may wrap */
+  .sealbody p,.attest .at{text-wrap:pretty}.sealbody .seachg .sv:not(:has(.now)){white-space:nowrap}.sealbody .seachg .sn{min-width:0}
 
   /* publish in-flight + spinner */
   .spin{width:15px;height:15px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
@@ -789,6 +805,7 @@
   .cicon.info{color:var(--accent);background:var(--tint2);border-color:var(--accent-line)}
   .conflict h3{font-family:var(--disp);font-size:20px;font-weight:800;letter-spacing:-.03em}
   .conflict p{font-size:13px;color:var(--mute);margin-top:7px;line-height:1.55;max-width:38ch;margin-left:auto;margin-right:auto}
+  .conflict h3{text-wrap:balance}.conflict p{text-wrap:pretty}   /* rule 16b (SBS r2): no «por favor.» / «borrador» left alone on the last line */
 
   /* tiny dev control to preview the money-path states in the mock */
   .demobar{position:fixed;left:12px;bottom:12px;z-index:50;display:flex;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:7px 10px;box-shadow:var(--shadow);font-size:11px}
