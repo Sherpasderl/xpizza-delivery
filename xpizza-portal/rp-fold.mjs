@@ -20,6 +20,10 @@ export const RP_FOLD = {
   [
    "  // { add: [ids] } («Quitar del menú»: a dish's identity stamp — the dish writer has no op results) is the same union as the op results;\n  // { withdraw: [ids] } («Deshacer»): drop exactly those ids, ONE sorted array; no claim ⇒ nothing written; [] stays []\n  if (results && typeof results === 'object' && !Array.isArray(results) && Array.isArray(results.add)) return mergeDeletionClaim(src, [{ deletedIds: results.add }]);\n  if (results && typeof results === 'object' && !Array.isArray(results)) {\n    const cur = src && src.deleted_ids;\n    if (cur === undefined || !Array.isArray(results.withdraw)) return src;\n    const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);\n    const drop = new Set(results.withdraw.map(String));\n    src.deleted_ids = [...new Set(have.map(String))].filter((x) => !drop.has(x)).sort();\n    return src;\n  }\n",
    ""
+  ],
+  [
+   "  // «Quitar del menú» (SBS 11-13, MOCKUP R3 «1 cambio»): a PUBLISHED dish no longer in the draft took its own entry with it — that is the\n  // removal (pendingChanges counts it once), never also a «dish» structure change\n  const gone = (k) => !docOrder.includes(k) && rowsOf(draft.orig || {}, 'item').some((r) => r && r.key === k);\n  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (!gone(k) && own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });\n",
+   "  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });\n"
   ]
  ],
  "extras-view.js": [

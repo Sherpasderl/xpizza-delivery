@@ -979,3 +979,16 @@ test('T13 R1 (real read): a «Nuevo» dish keeps «Descartar» — its drawer ca
   assert.ok(p.drawer().classList.contains('show'), 'premise: the saved addition\'s drawer opened');
   assert.equal(p.drawer().querySelector('.mk-rmact'), null, 'a saved addition keeps Descartar, no Quitar del menú');
 });
+
+test('SBS 11-13 (R3 bar): a removal is ONE pending change — the dish\'s own item_overrides entry leaves with it, never a second «dish» structure change', async () => {
+  const { pendingCount, pendingStructure } = await import('./editor.js');
+  const src = live('la_musa');
+  assert.ok(src.structure.exposure.item_overrides.rice_03, 'premise: rice_03 carries its own override');
+  const d = createDraft(src);
+  const r = removeProduct(d, 'rice_03', ON(src));
+  assert.equal(r.ok, true);
+  assert.deepEqual(pendingStructure(d), [], 'no «dish» structure line for the removed dish\'s own entry');
+  assert.equal(pendingCount(d, new Set()), 1, 'the bar says «1 cambio sin publicar» (MOCKUP R3)');
+  undoRemoveProduct(d, 'rice_03', r.snap, liveOrderOf(src));
+  assert.equal(pendingCount(d, new Set()), 0, 'undone: nothing pending');
+});

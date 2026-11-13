@@ -1215,7 +1215,10 @@ export function pendingStructure(draft) {
   const own2 = (ov) => { if (!ov || typeof ov !== 'object') return '{}'; const r = {}; for (const k of Object.keys(ov).sort()) if (k !== 'deny_extras') r[k] = ov[k]; return JSON.stringify(r); };
   const keys = new Set([...Object.keys(oa), ...Object.keys(ob)]);
   const docOrder = rowsOf(draft.state, 'item').map((r) => r && r.key);
-  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });
+  // «Quitar del menú» (SBS 11-13, MOCKUP R3 «1 cambio»): a PUBLISHED dish no longer in the draft took its own entry with it — that is the
+  // removal (pendingChanges counts it once), never also a «dish» structure change
+  const gone = (k) => !docOrder.includes(k) && rowsOf(draft.orig || {}, 'item').some((r) => r && r.key === k);
+  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (!gone(k) && own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });
   return out;
 }
 // §2 item 5b — may a NEW group be offered there? Decided by the WRITER itself: a dry run of group.create with that destination on
