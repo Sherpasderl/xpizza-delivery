@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyD3liveModule } = require('./tools/d3live-modu
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/group-intake.js', 'catalog/menu-gates.js'], 'the owned files (train R8: index.js + pixelpay-hosted-charge.js are untouched)');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
+  const disk = fs.readFileSync(path.join(__dirname, f), 'utf8'); const src = require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, disk);   // the file on disk, minus S2b's s2bext (merged later on the train: train/portal-structure merge 4)
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyD3liveModule(f, src), b, `🔴 ${f} minus the d3live hunks is not ${BASE}:${f}`);

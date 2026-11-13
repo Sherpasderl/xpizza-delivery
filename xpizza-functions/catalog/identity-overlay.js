@@ -85,7 +85,7 @@ function decorate(records, rid, map, field, keyById = null) {
 
 /* Apply identity to a served bundle body. Never throws. Returns { body, applied, reason } — the
    caller serves `body` whatever happens, and `applied` exists for a diagnostic, not a decision. */
-async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS, keyById = null } = {}) {
+async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TIMEOUT_MS, keyById = null, extraKeyById = null } = {}) {
   try {
     if (!body || typeof body !== 'object') return { body, applied: false, reason: 'no_body' };
     const dishes = Array.isArray(body.dishes) ? body.dishes : null;
@@ -93,7 +93,7 @@ async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TI
     if (!dishes && !extras) return { body, applied: false, reason: 'nothing_to_enrich' };
 
     const dishKeys = dishes ? dishes.map((r) => keyOfServed(rid, r, keyById)).filter(Boolean) : [];
-    const extraKeys = extras ? extras.map((r) => keyOf(rid, r)).filter(Boolean) : [];
+    const extraKeys = extras ? extras.map((r) => keyOfServed(rid, r, extraKeyById)).filter(Boolean) : [];   // S2b §2.5: by the ACTUAL key
 
     const [dishMap, extraMap] = await withTimeout(Promise.all([
       dishKeys.length ? lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys }) : Promise.resolve(new Map()),
@@ -102,7 +102,7 @@ async function applyIdentityToServedBody(db, rid, body, { timeoutMs = OVERLAY_TI
 
     const next = { ...body };
     if (dishes) next.dishes = decorate(dishes, rid, dishMap, 'dish_id', keyById);
-    if (extras) next.extras = decorate(extras, rid, extraMap, 'extra_id');
+    if (extras) next.extras = decorate(extras, rid, extraMap, 'extra_id', extraKeyById);
     const resolved = dishMap.size + extraMap.size;
     return { body: next, applied: resolved > 0, reason: resolved > 0 ? 'ok' : 'no_identities' };
   } catch (e) {

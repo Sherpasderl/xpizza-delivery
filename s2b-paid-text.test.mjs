@@ -1,0 +1,207 @@
+// S2b (PLAN-structure-S2b-r3 §2.6, Codex r2 P1-3) — the PAID kitchen text. When a resolved line carries an AFFECTED extra (its key is
+// label-required: a minted reuse or a rename), the server derives the order's items_text with its OWN byte copy of the capp serializer
+// (catalog/capp-serialize.js) from the client's lines and the server LABELS, and refuses a client text that differs —
+// items_text_mismatch (409) — judged inside resolveLines (every intake, before any fingerprint, reservation, charge or write) when the
+// body carries an items_text. A cart with no affected extra, and a quote body with no items_text, are today's path. Real publish → the real pricing tables; the honest body is
+// the REAL capp (adaptMenu → createCart → serialize) over the REAL endpoint body; the kitchen's REAL renderItems (extracted from
+// xpizza-kitchen/index.html) and the REAL handheld orderView read the accepted text.
+// Run: node --test s2b-paid-text.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const require = createRequire(import.meta.url);
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const F = (p) => require(join(ROOT, 'xpizza-functions', p));
+const { adaptMenu } = require('./customer-app/capp-menu.js');
+const { createCart } = require('./customer-app/capp-cart.js');
+const { serialize } = require('./customer-app/capp-serialize.js');
+const { makeDb } = F('catalog/firestore-fake.js');
+const { publishVersion } = F('catalog/catalog-publish.js');
+const { buildSourceCandidate } = F('catalog/candidate-validate.js');
+const { buildPublicMenu } = F('catalog/public-menu.js');
+const { buildSourceFromCode } = F('tools/seed-source-store.js');
+const { createCatalogReader } = F('catalog/catalog.js');
+const { createPricingResolver } = F('catalog/pricing-tables.js');
+const CF = F('catalog/catalog-firestore.js');
+const { resolveLines, resolutionRefusal } = F('catalog/resolve-lines.js');
+const { orderView } = await import(pathToFileURL(join(ROOT, 'xpizza-handheld/model.js')).href);
+
+function extractFn(src, name) {
+  const i = src.indexOf(`function ${name}(`);
+  assert.ok(i >= 0, `premise: ${name} exists in the shipped source`);
+  let depth = 0; let j = src.indexOf('{', i);
+  for (; j < src.length; j++) { if (src[j] === '{') depth++; else if (src[j] === '}' && --depth === 0) break; }
+  return src.slice(i, j + 1);
+}
+const kdsSrc = readFileSync(join(ROOT, 'xpizza-kitchen/index.html'), 'utf8');
+const kdsRender = new Function(`${extractFn(kdsSrc, 'escapeHtml')}\n${extractFn(kdsSrc, 'renderItems')}\nreturn renderItems;`)();
+
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const quiet = async (f) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await f(); } finally { console.log = l; console.warn = w; } };
+const MK = 'i_aaaaaaaaaabt';
+// [0] renamed (key kept), [1] retired-and-reused under a minted key
+function recorded(rid) {
+  const s = clone(buildSourceFromCode(rid));
+  const r = s.extras[0]; const oldR = r.display.name; r.display.name = 'Renombrado S2b';
+  const m = s.extras[1]; const old = m.key; const oldM = m.display.name;
+  if (rid === 'la_musa') m.display.id = MK;
+  if (Array.isArray(s.structure.extra_order)) s.structure.extra_order = s.structure.extra_order.map((k) => (k === old ? MK : k));
+  for (const f of ['extras_by_category', 'extras_by_item']) if (s.structure[f]) for (const v of Object.values(s.structure[f])) if (Array.isArray(v)) { const i = v.indexOf(old); if (i >= 0) v[i] = MK; }
+  if (Array.isArray(s.structure.redeem_eligible_extras)) s.structure.redeem_eligible_extras = s.structure.redeem_eligible_extras.map((k) => (k === old ? MK : k));
+  m.key = MK; m.display.name = 'Reusado S2b';
+  s.frozen_extra_keys = { [r.key]: { display_id: String(r.display.id), field: 'name' }, [MK]: { display_id: String(m.display.id), minted: true, reuses: old } };
+  return { s, renamed: r, minted: m, oldR, oldM };
+}
+const inputOf = (rid, src) => { const { inputs, built } = buildSourceCandidate(rid, src);
+  return { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'pt', ...(built.key_mode == null ? {} : { key_mode: built.key_mode }), ...(built.frozen_keys == null ? {} : { frozen_keys: built.frozen_keys }), ...(built.frozen_extra_keys == null ? {} : { frozen_extra_keys: built.frozen_extra_keys }) }; };
+async function served(rid, src) {
+  const db = makeDb(); await quiet(() => publishVersion(db, rid, inputOf(rid, src), { expected: { activeVersionId: null } }));
+  const m = await quiet(() => buildPublicMenu(db, rid, { known: new Set(['x_pizza', 'la_musa']), isActive: async () => true }));
+  const reader = createCatalogReader({ getRestaurantDocs: (r) => CF.getRestaurantDocs(db, r) });
+  const tables = await quiet(() => createPricingResolver({ reader, alarm: () => {} }).getPricingTables(rid));
+  return { menu: adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: clone(m.body) }), tables, body: m.body };
+}
+// the honest capp body: a dish with BOTH affected extras ×2, the same dish with the minted one ×1, and a plain dish
+function honest(menu, keys) {
+  const ex = (k) => menu.extras.find((e) => e.extra_key === k);
+  const d = menu.dishes.find((x) => !x.launcher && keys.every((k) => menu.extrasFor(x.key).some((e) => e.extra_key === k)));
+  assert.ok(d, 'premise: a dish offers both affected extras');
+  const p = menu.dishes.find((x) => !x.launcher && x.key !== d.key);
+  const c = createCart(menu); c.add(d.key, keys.map((k) => ex(k).key), 2); c.add(d.key, [ex(keys[1]).key], 1); c.inc(p.key);
+  return serialize(c, menu);
+}
+// one dish with ONE affected extra (one configuration)
+function honest1(menu, key) {
+  const ex = menu.extras.find((e) => e.extra_key === key);
+  const d = menu.dishes.find((x) => !x.launcher && menu.extrasFor(x.key).some((e) => e.extra_key === key));
+  const c = createCart(menu); c.add(d.key, [ex.key], 1);
+  return serialize(c, menu);
+}
+// the REAL intake judgment: resolveLines (both order intakes call it on the resolution line) and its HTTP refusal
+const judge = (rid, body, tables) => { const r = resolveLines(rid, clone(body), tables); return r.ok ? null : resolutionRefusal(r); };
+const MISMATCH = { status: 409, body: { error: 'items_text_mismatch' } };
+
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`PT-HONEST ${rid}: the honest capp text is accepted; the real KDS and handheld show both labels`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    assert.equal(judge(rid, body, tables), null);
+    const { items_text: _t, ...quote } = body;   // a quote body without items_text is not judged
+    assert.equal(judge(rid, { ...quote, items: quote.items.map((l) => ({ ...l, extras: l.extras.map((e) => ({ ...e, name: 'viejo' })) })) }, tables), null);
+    const kds = kdsRender(body.items_text);
+    assert.ok(kds.includes('Renombrado S2b') && kds.includes('Reusado S2b'), 'the KDS shows both labels');
+    const mods = orderView({ id: 'o1', items_text: body.items_text }).items.map((i) => i.mod).join(' / ');
+    assert.ok(mods.includes('Renombrado S2b') && mods.includes('Reusado S2b'), `the handheld shows both labels (${mods})`);
+  });
+  test(`PT-STALE ${rid}: a paid MINTED and a paid RENAMED extra with a stale client name → items_text_mismatch`, async () => {
+    const { s, renamed, oldR, oldM } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    for (const [label, stale] of [['minted', oldM], ['renamed', oldR]]) {
+      const b = clone(body); const from = label === 'minted' ? 'Reusado S2b' : 'Renombrado S2b';
+      b.items_text = b.items_text.split(from).join(stale);
+      for (const it of b.items) for (const e of it.extras) if (e.name === from) e.name = stale;   // the line's own name stale too: the derivation reads the LABEL
+      assert.notEqual(b.items_text, body.items_text, 'premise: the text changed');
+      assert.deepEqual(judge(rid, b, tables), MISMATCH, `${label}: refused`);
+    }
+  });
+  test(`PT-NONE ${rid}: a cart with no affected extra is today's path — no derivation, no refusal (any client text)`, async () => {
+    const { menu, tables } = await served(rid, buildSourceFromCode(rid));
+    const d = menu.dishes.find((x) => !x.launcher && menu.extrasFor(x.key).length);
+    const c = createCart(menu); c.add(d.key, [menu.extrasFor(d.key)[0].key], 1);
+    const body = serialize(c, menu); body.items_text = 'lo que sea';
+    assert.equal(judge(rid, body, tables), null);
+  });
+}
+test('PT-WIRING: both order intakes judge the paid text on the resolution line (resolveLines → resolutionRefusal), before any money step', () => {
+  const src = readFileSync(join(ROOT, 'xpizza-functions/index.js'), 'utf8').split('\n');
+  const hits = src.filter((l) => l.includes('{ const rl = RL.resolveLines(restaurantId, body, pricingTables); if (!rl.ok) { const rf = RL.resolutionRefusal(rl); return res.status(rf.status).json(rf.body); }'));
+  assert.equal(hits.length, 2, 'createOrder + chargeOnlineOrder');
+  const rl = readFileSync(join(ROOT, 'xpizza-functions/catalog/resolve-lines.js'), 'utf8');
+  const fn = rl.slice(rl.indexOf('function resolveLines('), rl.indexOf('function labelGap('));
+  const stamp = fn.indexOf('for (const [line, key] of stamps) line[PRICING_KEY_STAMP] = key;'); const pt = fn.indexOf("require('./paid-text').paidTextRefusal(rid, body, tables)");
+  assert.ok(stamp > 0 && pt > stamp && pt < fn.indexOf('return { ok: true };', stamp), 'resolveLines judges the paid text AFTER stamping the server identities (Codex S2b r1 P1-3), before it answers ok');
+});
+// PT-REPRESENT (Codex S2b r1 P1-3): the text is built from the RESOLVED identities and quantities — a body the app's serializer cannot
+// represent faithfully is refused: a line quantity other than 1, extras the app could not have keyed (no id / extra_id), a line price
+// that is not the server's
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`PT-REPRESENT ${rid}: qty 5 under a «1x» text, two distinct extras with no app key, a client price — each items_text_mismatch`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    assert.equal(judge(rid, body, tables), null, 'premise: the honest body is accepted');
+    const q5 = clone(body); q5.items[0].qty = 5;
+    assert.deepStrictEqual(judge(rid, q5, tables), MISMATCH, 'qty 5');
+    const nokey = clone(body); for (const e of nokey.items[0].extras) { delete e.id; delete e.extra_id; }
+    assert.deepStrictEqual(judge(rid, nokey, tables), MISMATCH, 'extras with no app key');
+    const one = honest1(menu, MK); assert.equal(judge(rid, one, tables), null, 'premise: a one-extra honest body is accepted');
+    const oneNoKey = clone(one); for (const it of oneNoKey.items) for (const e of it.extras) { delete e.id; delete e.extra_id; }
+    assert.deepStrictEqual(judge(rid, oneNoKey, tables), MISMATCH, 'a lone extra with no app key (nothing else to disagree with)');
+    const price = clone(body); const dk = price.items[0].name; const old = price.items[0].price;   // EVERY line of that dish and EVERY group of its text, consistently
+    for (const it of price.items) if (it.name === dk) it.price = old + 1;
+    price.items_text = price.items_text.split(`${dk} (L${old})`).join(`${dk} (L${old + 1})`);
+    assert.deepStrictEqual(judge(rid, price, tables), MISMATCH, 'a line price that is not the server\'s');
+  });
+}
+// Codex S2b r2 P1-3: (a) a prototype-less instance map — an extra_id "__proto__" can never make a charged extra vanish from the text;
+// (b) RULED: the restrictions apply ONLY to lines that carry an affected extra — every other line keeps today's handling; (c) one app key
+// for two server identities across lines (an unkeyed renamed extra beside a minted one keyed "null") is refused
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`PT-R2 ${rid}: __proto__ app key refused; unaffected lines (qty 5, no app key, shared app keys) keep today; unkeyed + "null" app keys refused`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { menu, tables } = await served(rid, s);
+    const body = honest(menu, [renamed.key, MK]);
+    const one = honest1(menu, MK); const proto = clone(one);
+    for (const it of proto.items) for (const e of it.extras) e.extra_id = '__proto__';
+    proto.items_text = proto.items_text.replace(' [Reusado S2b]', '');   // the text a vanished extra would leave
+    assert.deepStrictEqual(judge(rid, proto, tables), MISMATCH, '(a) a charged extra keyed "__proto__" never vanishes from the derived text');
+    // (b) the honest affected cart + unaffected lines today's text cannot be re-derived from
+    const other = menu.dishes.find((x) => !x.launcher && !body.items.some((l) => l.name === x.name));
+    const mixed = clone(body);
+    mixed.items.push({ id: other.id, name: other.name, dish_id: other.dish_id, qty: 5, price: other.price, subtotal: other.price * 5, extras: [], extrasTotal: 0 });
+    const plainEx = menu.extras.find((e) => !e.extra_key && menu.extrasFor(other.key).some((x) => x.key === e.key));
+    if (plainEx) mixed.items.push({ id: other.id, name: other.name, dish_id: other.dish_id, qty: 1, price: other.price, subtotal: other.price + plainEx.price, extras: [{ name: plainEx.name, qty: 1 }, { name: plainEx.name, qty: 1, extra_id: 'shared' }], extrasTotal: plainEx.price * 2 });
+    mixed.items_text = `${mixed.items_text} | 5x ${other.name} (L${other.price})`;
+    assert.equal(judge(rid, mixed, tables), null, `(b) unaffected lines keep today's handling (${JSON.stringify(judge(rid, mixed, tables))})`);
+    // (c) two lines of one dish: the renamed extra with NO app key, the minted one keyed "null"; the text names the minted label twice
+    const d = menu.dishes.find((x) => !x.launcher && menu.extrasFor(x.key).some((e) => e.extra_key === MK) && menu.extrasFor(x.key).some((e) => e.extra_key === renamed.key));
+    const L = (ek, extra) => ({ ...(d.item_key && String(d.id) !== d.item_key ? {} : { id: d.id }), name: d.name, dish_id: d.dish_id, qty: 1, price: d.price, extras: [{ name: ek === MK ? 'Reusado S2b' : 'Renombrado S2b', qty: 1, instance: 0, extra_key: ek, ...extra }], ...(d.item_key ? { item_key: d.item_key } : {}) });
+    const nul = { items: [L(renamed.key, {}), L(MK, { extra_id: 'null', id: 'null' })], items_text: `2x ${d.name} (L${d.price}) [Reusado S2b]` };
+    assert.deepStrictEqual(judge(rid, nul, tables), MISMATCH, '(c) an unkeyed affected extra beside one keyed "null"');
+  });
+}
+// SERVED-ID (§2.5): the identity overlay decorates an affected extra by its ACTUAL key — the renamed (x_pizza: its name is no longer
+// its key) and the minted extra carry their extra_id on the served body
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`SERVED-ID ${rid}: the renamed and the minted extra carry extra_id (the overlay reads the served extra_keys map)`, async () => {
+    const { s, renamed, minted } = recorded(rid);
+    const { body } = await served(rid, s);
+    const byId = new Map(body.extras.map((e) => [String(e.id), e]));
+    for (const x of [renamed, minted]) { const e = byId.get(String(x.display.id)); assert.ok(e && typeof e.extra_id === 'string' && e.extra_id, `${x.display.name}: extra_id ${e && e.extra_id}`); }
+  });
+}
+// KDS-FREE (§4, rewards-redeem-intake.js prepareRedemption): a REDEEMED affected extra's free kitchen line is named by the server LABEL,
+// never the client's redeem name; any other free item keeps today's name (the client's sanitized name, or its id)
+for (const rid of ['x_pizza', 'la_musa']) {
+  test(`KDS-FREE ${rid}: freeLineLabel gives the label for an affected extra, null otherwise (today's name)`, async () => {
+    const { s, renamed } = recorded(rid);
+    const { tables } = await served(rid, s);
+    const { freeLineLabel } = F('catalog/paid-text.js');
+    assert.deepEqual([freeLineLabel(tables, MK), freeLineLabel(tables, renamed.key)], ['Reusado S2b', 'Renombrado S2b']);
+    const plain = s.extras[2].key;
+    assert.equal(freeLineLabel(tables, plain), null, 'an unaffected extra: today\'s name');
+    const { tables: t0 } = await served(rid, buildSourceFromCode(rid));
+    assert.equal(freeLineLabel(t0, s.extras[0].key), null, 'no affected extra at all: today');
+  });
+}
+test('KDS-FREE wiring: prepareRedemption names each free line by freeLineLabel first, else today\'s name', () => {
+  const src = readFileSync(join(ROOT, 'xpizza-functions/rewards-redeem-intake.js'), 'utf8');
+  const fn = src.slice(src.indexOf('async function prepareRedemption('), src.indexOf('const appends = freeItems.map('));
+  assert.ok(fn.includes("name: require('./catalog/paid-text').freeLineLabel(tables, fi.item_id) != null ? sanitizeName(require('./catalog/paid-text').freeLineLabel(tables, fi.item_id), 80) : (nameMap[fi.item_id] || sanitizeName(fi.item_id, 80)),"), 'the free line reads the label');
+});

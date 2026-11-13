@@ -63,6 +63,7 @@
     "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
+    "s2b-forms-retired.test.mjs",
     "s3-rewards.test.mjs",
     "s3-served.test.mjs",
     "s5-baseline.golden.test.mjs",
@@ -132,6 +133,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -184,6 +186,15 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-admission.test.js",
+    "xpizza-functions/catalog/s2b-alloc.test.js",
+    "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
+    "xpizza-functions/catalog/s2b-save.test.js",
+    "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -427,6 +438,7 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
+    "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
     "xpizza-functions/test/s3-rewards-endpoints.emulator.test.js",
@@ -490,6 +502,7 @@
     "form-harness-clock.test.mjs",
     "group-picker-golden.test.mjs",
     "group-picker-lamusa.test.mjs",
+    "s2b-forms-retired.test.mjs",
     "stage-race.test.mjs",
     "whole-flow.test.mjs",
     "xpizza-functions/a1-wiring.guard.test.js",
@@ -542,6 +555,7 @@
     "xpizza-functions/catalog/extras-intake.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -587,6 +601,14 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-admission.test.js",
+    "xpizza-functions/catalog/s2b-alloc.test.js",
+    "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
+    "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -797,6 +819,7 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
+    "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
     "xpizza-functions/test/s3a-envio.emulator.test.js",
     "xpizza-functions/test/s3b-return.emulator.test.js",
@@ -896,6 +919,7 @@
     "reorder-price-snapshot-reader.test.mjs",
     "reorder-whole-page.test.mjs",
     "s2-stash-cleanup.test.mjs",
+    "s2b-forms-retired.test.mjs",
     "s3-rewards.test.mjs",
     "s3-served.test.mjs",
     "s5-baseline.golden.test.mjs",
@@ -965,6 +989,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -1016,6 +1041,15 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-admission.test.js",
+    "xpizza-functions/catalog/s2b-alloc.test.js",
+    "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
+    "xpizza-functions/catalog/s2b-save.test.js",
+    "xpizza-functions/catalog/s2b-writer.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -1259,6 +1293,7 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
+    "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
     "xpizza-functions/test/s3-rewards-endpoints.emulator.test.js",
@@ -1318,6 +1353,7 @@
     "picker-extras-combos.test.mjs",
     "picker-extras-money.test.mjs",
     "picker-extras.test.mjs",
+    "s2b-forms-retired.test.mjs",
     "stage-race.test.mjs",
     "whole-flow.test.mjs",
     "xpizza-functions/a1-wiring.guard.test.js",
@@ -1371,6 +1407,7 @@
     "xpizza-functions/catalog/extras-projection.test.js",
     "xpizza-functions/catalog/form-data-path.test.js",
     "xpizza-functions/catalog/form-rebake.test.js",
+    "xpizza-functions/catalog/frozen-extra-keys.test.js",
     "xpizza-functions/catalog/frozen-keys-handler.test.js",
     "xpizza-functions/catalog/frozen-keys.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -1417,6 +1454,14 @@
     "xpizza-functions/catalog/s1-portal-reads.test.js",
     "xpizza-functions/catalog/s2-portal-reads.test.js",
     "xpizza-functions/catalog/s2-preflight-handler.test.js",
+    "xpizza-functions/catalog/s2b-admission.test.js",
+    "xpizza-functions/catalog/s2b-alloc.test.js",
+    "xpizza-functions/catalog/s2b-build.test.js",
+    "xpizza-functions/catalog/s2b-labels.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle.test.js",
+    "xpizza-functions/catalog/s2b-resolve.test.js",
+    "xpizza-functions/catalog/s2b-save.test.js",
     "xpizza-functions/catalog/s2core-compare.test.js",
     "xpizza-functions/catalog/s2core-editable.test.js",
     "xpizza-functions/catalog/s2core-flow.test.js",
@@ -1631,6 +1676,7 @@
     "xpizza-functions/test/reserved-keys-rename-flip.emulator.test.js",
     "xpizza-functions/test/resolve-lines.emulator.test.js",
     "xpizza-functions/test/s2-portal-claim.emulator.test.js",
+    "xpizza-functions/test/s2b-intake.emulator.test.js",
     "xpizza-functions/test/s2core.emulator.test.js",
     "xpizza-functions/test/s2tip.emulator.test.js",
     "xpizza-functions/test/s3a-envio.emulator.test.js",
@@ -1677,6 +1723,7 @@
     "avail-key.test.mjs",
     "customer-app/capp-readers.test.mjs",
     "d4b-availability.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -2093,6 +2140,7 @@
     "capp-s0prod-config.test.mjs",
     "customer-app/capp-api.test.mjs",
     "customer-app/capp-price-notice-copy.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/catalog-kds-parity.test.mjs",
     "xpizza-functions/form-bundle-splice.test.js",
     "xpizza-functions/kds-ticket-names.test.js",
@@ -2131,11 +2179,14 @@
   "xpizza-functions/catalog/catalog-publish.js",
   "xpizza-functions/catalog/choice-activation.js",
   "xpizza-functions/catalog/choice-compare.js",
+  "xpizza-functions/catalog/client-retired.js",
   "xpizza-functions/catalog/context-source.js",
   "xpizza-functions/catalog/context-writer.js",
   "xpizza-functions/catalog/display-safety.js",
   "xpizza-functions/catalog/draft-assess.js",
   "xpizza-functions/catalog/edit-catalog-handler.js",
+  "xpizza-functions/catalog/extra-identity.js",
+  "xpizza-functions/catalog/extras-allocate.js",
   "xpizza-functions/catalog/form-menu-source.js",
   "xpizza-functions/catalog/frozen-keys.js",
   "xpizza-functions/catalog/generate-form-bundle.js",
@@ -2649,11 +2700,16 @@
   "catalog/choice-compare.js",
   "catalog/choice-rollback.js",
   "catalog/choice-transitions.js",
+  "catalog/client-retired.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
   "catalog/exposure-source.js",
   "catalog/exposure-transitions.js",
+  "catalog/extra-identity.js",
+  "catalog/extra-key-intake.js",
+  "catalog/extra-key-overlay.js",
+  "catalog/extra-labels.js",
   "catalog/extras-allocate.js",
   "catalog/extras-consequences.js",
   "catalog/extras-eligibility-store.js",
@@ -2665,6 +2721,7 @@
   "catalog/firestore-fake.js",
   "catalog/form-menu-source.js",
   "catalog/form-rebake.js",
+  "catalog/frozen-extra-keys.js",
   "catalog/frozen-keys.js",
   "catalog/group-intake.js",
   "catalog/identity-grace.js",
@@ -2680,6 +2737,7 @@
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
   "catalog/move-rules.js",
+  "catalog/paid-text.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
   "catalog/platform-removal.js",
@@ -3153,13 +3211,15 @@
      "file": "xpizza-functions/catalog/identity-integrity-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
-      "tools/s1d-module-inverse.js"
+      "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     }
    ],
@@ -3181,6 +3241,7 @@
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     },
@@ -3194,6 +3255,7 @@
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     },
@@ -3203,6 +3265,7 @@
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     },
@@ -3215,6 +3278,7 @@
       "tools/reservedkeys-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     },
@@ -3223,6 +3287,7 @@
      "inverses": [
       "tools/s1d-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     }
@@ -3277,6 +3342,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/client-retired.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/draft-assess.js": {
    "pins": [],
    "lifts": []
@@ -3290,6 +3359,7 @@
       "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
@@ -3310,6 +3380,22 @@
    "lifts": []
   },
   "catalog/exposure-transitions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-identity.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-key-intake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-key-overlay.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/extra-labels.js": {
    "pins": [],
    "lifts": []
   },
@@ -3354,6 +3440,10 @@
    "lifts": []
   },
   "catalog/form-rebake.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/frozen-extra-keys.js": {
    "pins": [],
    "lifts": []
   },
@@ -3447,6 +3537,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/paid-text.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/pickup-backstop.js": {
    "pins": [],
    "lifts": []
@@ -3500,6 +3594,7 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3509,6 +3604,7 @@
       "tools/keymode-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3516,6 +3612,7 @@
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/s1d-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     }
@@ -3535,6 +3632,7 @@
       "tools/rdr-module-inverse.js",
       "tools/reservedkeys-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
@@ -3544,6 +3642,7 @@
      "inverses": [
       "tools/grpid-module-inverse.js",
       "tools/rdr-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
     },
@@ -3552,6 +3651,7 @@
      "inverses": [
       "tools/grpid-module-inverse.js",
       "tools/rdr-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js",
       "tools/s3choice-module-inverse.js"
      ]
@@ -3593,6 +3693,7 @@
   "catalog/resolve-lines.js": {
    "pins": [],
    "lifts": [
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/resolvelines-wiring.guard.test.js"
    ]
   },
@@ -3652,6 +3753,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3663,6 +3765,7 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3672,6 +3775,7 @@
       "tools/formbake-module-inverse.js",
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
@@ -3682,12 +3786,14 @@
       "tools/frozenkeys-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/pmdisplay-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s2core-wiring.guard.test.js",
      "inverses": [
+      "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
      ]
     }
@@ -4023,6 +4129,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4086,6 +4193,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4152,6 +4260,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4202,6 +4311,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
@@ -4247,6 +4357,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4309,6 +4420,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4348,6 +4460,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -4362,6 +4475,7 @@
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     },
@@ -4408,6 +4522,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4462,6 +4577,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4485,6 +4601,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     },
@@ -4518,6 +4635,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4560,6 +4678,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4602,6 +4721,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4622,7 +4742,8 @@
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
-      "tools/s1srv-module-inverse.js"
+      "tools/s1srv-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
@@ -4667,6 +4788,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4716,6 +4838,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4757,6 +4880,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4811,6 +4935,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4867,6 +4992,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4921,6 +5047,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -4953,6 +5080,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -4977,6 +5105,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -4993,6 +5122,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -5038,6 +5168,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5083,6 +5214,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5127,6 +5259,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5188,6 +5321,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5222,6 +5356,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -5259,6 +5394,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5288,6 +5424,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -5339,6 +5476,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5392,6 +5530,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5442,6 +5581,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5497,6 +5637,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5556,6 +5697,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5585,6 +5727,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -5597,6 +5740,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     },
@@ -5609,6 +5753,7 @@
       "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -5642,6 +5787,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
@@ -5684,6 +5830,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/sb-inverse.js",
@@ -5725,6 +5872,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5769,6 +5917,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3b-inverse.js",
       "tools/s3c-inverse.js",
@@ -5812,6 +5961,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3c-inverse.js",
       "tools/s4hours-inverse.js",
@@ -5848,6 +5998,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5898,6 +6049,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -5946,6 +6098,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s4hours-inverse.js",
       "tools/s5r-inverse.js",
@@ -5971,6 +6124,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -5991,6 +6145,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -6010,6 +6165,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sdkpay-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
@@ -6056,6 +6212,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6111,6 +6268,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6173,6 +6331,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6222,6 +6381,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6255,6 +6415,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/tippref-inverse.js",
       "tools/zones-module-inverse.js"
      ]
@@ -6311,6 +6472,7 @@
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/sdkpay-module-inverse.js",
@@ -6383,6 +6545,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6434,6 +6597,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6493,6 +6657,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6540,6 +6705,7 @@
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2app-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-inverse.js",
       "tools/s3a-inverse.js",
       "tools/s3b-inverse.js",
@@ -6561,12 +6727,14 @@
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/s1srv-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     }
    ],
    "lifts": [
     "charge-boundary.test.mjs",
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/attribution-refire.test.js",
     "xpizza-functions/catalog/charge-inputs.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
@@ -6576,6 +6744,7 @@
     "xpizza-functions/catalog/reorder-catalog.test.js",
     "xpizza-functions/catalog/restaurant-registry.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
+    "xpizza-functions/catalog/s2b-admission.test.js",
     "xpizza-functions/catalog/text-version.test.js",
     "xpizza-functions/charge-gate-placement.test.js",
     "xpizza-functions/confirm-retired.test.js",
@@ -6689,7 +6858,8 @@
       "tools/keymode-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
@@ -6701,19 +6871,22 @@
       "tools/price-sync-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     },
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
       "tools/s1d-module-inverse.js",
-      "tools/s2-module-inverse.js"
+      "tools/s2-module-inverse.js",
+      "tools/s2bext-module-inverse.js"
      ]
     }
    ],
    "lifts": [
-    "xpizza-functions/keymode-wiring.guard.test.js"
+    "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "merchant/_fake-db.js": {
@@ -7234,6 +7407,7 @@
    "pins": [],
    "lifts": [
     "xpizza-functions/catalog/publish-request-consequences.test.js",
+    "xpizza-functions/catalog/s2b-lifecycle-real.test.js",
     "xpizza-functions/catalog/s2core-three-path.test.js",
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/stats/stats-guard.test.js",
@@ -7302,7 +7476,8 @@
   "quote-token.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/quote-token.test.js"
+    "xpizza-functions/quote-token.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
   },
   "ratings/aggregate-producer.js": {
@@ -7435,6 +7610,7 @@
       "tools/a1-inverse.js",
       "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -7445,14 +7621,17 @@
       "tools/a1-inverse.js",
       "tools/kdsnames-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/s2bext-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
    ],
    "lifts": [
+    "s2b-paid-text.test.mjs",
     "xpizza-functions/kdsnames-wiring.guard.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
+    "xpizza-functions/s2bext-wiring.guard.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
   },

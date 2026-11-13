@@ -12,6 +12,7 @@
 //                      { mode: 'none' } } — appended to the one group order; the extras go in as the allocator's input
 //   group.order        { order } — a permutation of extra_categories; extra_order (when authored) re-derived group-major (§2.3)
 //   extra.add          { group, ref, name, price }
+//   extra.rename       { key, name } — S2b: the display name only (the key kept); judged server-side (the name rules, the dark switch)
 //   extra.remove       { key } | { ref } — the row, its extra_order entry, every exposure reference, its redeem_eligible_extras
 //                      entry; returns its identity for the reviewed deletion claim (none for a never-published addition)
 // Normalization (touched entries only — untouched legacy data stays byte for byte): empty add / deny / deny_extras arrays go;
@@ -137,6 +138,13 @@
         break;
       }
       case 'extra.add': needGroup(op.group); s.extras.push(newExtra(op.group, op)); break;
+      case 'extra.rename': {   // S2b (PLAN-structure-S2b-r3 §0): the display name only — the key, the display id, the group and the price are kept
+        const x = s.extras.find((e) => e.key === op.key);
+        if (!x) fail('unknown_extra', `no option ${JSON.stringify(op.key)}`, { key: op.key });
+        if (typeof op.name !== 'string' || !op.name.trim()) fail('addition_malformed', 'an option needs a name', { key: op.key, field: 'name' });
+        x.display = { ...x.display, name: op.name };
+        break;
+      }
       case 'extra.remove': {
         const i = s.extras.findIndex((e) => (op.key !== undefined ? e.key === op.key : (typeof e.key !== 'string' && e.ref === op.ref)));
         if (i < 0) fail('unknown_extra', `no option ${JSON.stringify(op.key !== undefined ? op.key : op.ref)}`, { key: op.key, ref: op.ref });

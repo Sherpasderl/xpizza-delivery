@@ -44,7 +44,7 @@ async function resetDraftToLiveCore({ db, authorize, readActiveVersionId, previe
     try { photoMap = PS.resetMapFromActive(await readActivePhotos(rid, versionId)); } catch (e) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
   }
 
-  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
+  const projected = canonicalize({ ...candidateSource(rid, { items: preview.items, extras: preview.extras, structure: preview.structure, key_mode: preview.record && preview.record.key_mode, frozen_keys: preview.record && preview.record.frozen_keys, frozen_extra_keys: preview.record && preview.record.frozen_extra_keys }), deleted_ids: null, ...(photoMap ? { photos: photoMap } : {}) });
   try {
     validateSource(projected, rid);
   } catch (e) {

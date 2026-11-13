@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyGrpidModule } = require('./tools/grpid-module
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/draft-assess.js', 'catalog/edit-catalog-handler.js', 'catalog/publish-edited-handler.js', 'catalog/publish-request.js'], 'the owned files');
 for (const f of FILES) {
-  const src = require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, require('./tools/rdr-module-inverse').unapplyRdrModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))));   // the file on disk; train/portal-structure (5f): S3's s3choice + «Quitar del menú» (rdr) are the NEWEST layers, peeled first (D4 innermost: it owns none of these files)
+  const src = require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, require('./tools/rdr-module-inverse').unapplyRdrModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8')))));   // the file on disk; train/portal-structure (5f): S2b's s2bext, S3's s3choice + «Quitar del menú» (rdr) are the NEWEST layers, peeled first (D4 innermost: it owns none of these files)
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyGrpidModule(f, src), b, `🔴 ${f} minus the grpid hunks is not ${BASE}:${f}`);

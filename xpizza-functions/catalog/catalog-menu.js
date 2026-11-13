@@ -181,7 +181,7 @@ async function readVersionMenu(db, restaurantId, versionId) {
     await coded('catalog_incomplete', () => assertComplete(record, menuTable, extraTable, where));
 
     const identity = versionIdentity(restaurantId, versionId, record, built);
-    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }) };   // S0: the version's key mode, when it has one
+    return { items: built.items, extras: built.extras, variants: built.variants, structure: built.structure, identity, ...require('./catalog-firestore').keyModeField(record.key_mode, where), ...(record.frozen_keys == null ? {} : { frozenKeys: record.frozen_keys }), ...(record.frozen_extra_keys == null ? {} : { frozenExtraKeys: record.frozen_extra_keys }) };   // S0: the version's key mode, when it has one
   });
 }
 

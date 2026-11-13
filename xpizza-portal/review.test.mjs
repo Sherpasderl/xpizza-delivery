@@ -1315,8 +1315,11 @@ test('S2 §5.2 — 🔴 EVERY S2 server refusal lands on a designed panel — de
   // wired (503); the live pointer unreadable while persisting a claim (deleted_ids_no_baseline)
   const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'structure_unexplained', 'deleted_ids_malformed', 'unknown_op',
     'add_product_unavailable', 'deleted_ids_no_baseline', ...codes.filter((c) => c.startsWith('identity_partition_'))]);
+  // train/portal-structure (S2b merged): the server's own word — a refusal raised with { status: 503 } is retryable (MINT's
+  // mint_unavailable, raised by S2b's extras allocator too) and lands on its designed RETRY panel (pinned below by name)
+  const TRANSIENT = new Set([...src.matchAll(/refuse\('([a-z_]+)'[^;]*?status:\s*503/g)].map((m) => m[1]));
   for (const c of codes) {
-    if (GENERIC_BY_DESIGN.has(c)) continue;
+    if (GENERIC_BY_DESIGN.has(c) || TRANSIENT.has(c)) continue;
     const o = outcomeFor(xErr(c, 409, { field: 'extras' }), 'edit', EXTRA_CTX);
     assert.strictEqual(o.generic, false, `${c} lands on a designed panel`);
     assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is deterministic — RETRY would be refused again`);

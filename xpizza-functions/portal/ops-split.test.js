@@ -90,6 +90,8 @@ const EXPECTED = [
   'portal/branch-lifecycle-core.js', 'portal/branch-phone.js', 'brands/brand-store.js', 'brands/brand-projection.js',
   /* S4 C′: branch-ops.js now requires the ONE hours grammar (hours7Errors MOVED there, re-exported); a pure leaf, no requires */
   'schedule/hours-grammar.js',
+  'catalog/extra-key-intake.js',   // S2b P2-5: the one resolved extra identity, loaded with extra-labels (pure)
+  'catalog/extra-labels.js',   // S2b §4 (B5): readVersionDocs writes the affected extras' labels + markers; a pure module (menu-pricing read lazily, already in the closure)
   'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
   'delivery/delivery-pricing.js', 'delivery/limits.js', 'delivery/zones.js',   // envío restaurant limit r5 §5: Sucursales' effective app limit (pure readers of the one policy read)
 ].sort();

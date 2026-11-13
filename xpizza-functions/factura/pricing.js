@@ -43,7 +43,7 @@ function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionI
     const extras = Array.isArray(it.extras) ? it.extras : [];
     const extraNames = [];
     for (const ex of extras) {
-      const ename = ex && ex.name;
+      const ename = ex && typeof ex[Symbol.for('xpizza.d4.pricingKeyStamp')] === 'string' && ex[Symbol.for('xpizza.d4.pricingKeyStamp')] ? ex[Symbol.for('xpizza.d4.pricingKeyStamp')] : ex && ex.name;   // S2b P2-5: the stamped server identity (menu-pricing PRICING_KEY_STAMP), as pricing reads it
       if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
         return { items: null, error: `unknown extra: ${String(ename).slice(0, 40)}` };
       }
@@ -52,7 +52,7 @@ function pricedLineItems(items, menuPrices, extraPrices, labels = null, versionI
         return { items: null, error: `invalid price for extra ${ename}` };
       }
       lineGrossCents += eprice * 100;
-      extraNames.push(ename);
+      { const XL = require('../catalog/extra-labels'); const lab = XL.extraLabelOf(labels, ename); if (!lab && XL.extraLabelRequired(labels, ename)) return { items: null, error: 'labels_unavailable' }; extraNames.push(lab || ename); }   // S2b §4: an affected extra is described by its label
     }
     const label = labels && typeof labels[name] === 'string' ? labels[name] : (OPAQUE_SYNTAX.test(name) ? null : name);
     if (label === null) return { items: null, error: 'labels_unavailable' };

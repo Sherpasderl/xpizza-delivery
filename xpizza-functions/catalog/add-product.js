@@ -420,7 +420,7 @@ const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'wee
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras']; function keepClearedMaps(structure, activeStructure) { return activeStructure && activeStructure.extras_by_item !== undefined && structure && structure.extras_by_item === undefined ? { ...structure, extras_by_item: {} } : structure; } function clearedMapsFor(structure, activeStructure, productRemoval) { const a = activeStructure && activeStructure.extras_by_item; return productRemoval || (isObj(a) && !Object.keys(a).length) ? keepClearedMaps(structure, activeStructure) : structure; }   // A-2 (Codex remove r2): a {} already published stays the clear whatever the switch — «Quitar del menú» (Codex remove-refs r1 P2-1, RULED): a derived extras_by_item that EMPTIES is an explicit clear `{}` (the forms keep an ABSENT map in force) — compared and published as `{}` while the active carries the map; sticky
 
-function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, extrasCatalog = false, productRemoval = false }) {
+function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false, textEdit = false, extrasCatalog = false, productRemoval = false, extraRenames = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
   const draft = new Map(draftBuilt.items.map((it) => [it.key, it]));
   const declared = deletedIds instanceof Set ? deletedIds : new Set(Array.isArray(deletedIds) ? deletedIds : []);
@@ -499,7 +499,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
       if (typeof stamp === 'string' && stamp && !declared.has(stamp)) refuse('existing_extra_removed', `the option ${JSON.stringify(k)} can only leave through the reviewed removal`, { key: k });
       continue;
     }
-    if (!sameJson(without(de.get(k).display, ['price']), without(a.display, ['price']))) refuse('extras_changed', `the option ${JSON.stringify(k)} can only have its price changed here`, { key: k });
+    if (!sameJson(without(de.get(k).display, extraRenames ? ['price', 'name'] : ['price']), without(a.display, extraRenames ? ['price', 'name'] : ['price']))) refuse('extras_changed', `the option ${JSON.stringify(k)} can only have its price changed here`, { key: k });
   }
   if (extrasCatalog) extrasCatalogClaims({ draftBuilt, activeBuilt, ae, de });
 
@@ -545,7 +545,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
    an unknown field), an unknown field on an existing item or extra row, an unknown top-level field, or a key-mode change. An
    UNAUTHORED structure field stays skipped (it is derived from code; a code change must not refuse every save). */
 const HANDLED_STRUCTURE = new Set([...ALWAYS_COMPARED, ...COMPARED_WHEN_AUTHORED, 'item_order']);
-const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos']);   // frozen_keys / photos: their own rules
+const HANDLED_TOP = new Set(['items', 'extras', 'structure', 'key_mode', 'frozen_keys', 'photos', 'frozen_extra_keys']);   // frozen_keys / photos: their own rules
 function accountResidual({ draftBuilt, activeBuilt, authored }) {
   const residual = (path) => refuse('structure_unexplained', `this change is not one the menu editor can make (${path})`, { field: path });
   const ds = draftBuilt.structure || {}; const as = activeBuilt.structure || {};

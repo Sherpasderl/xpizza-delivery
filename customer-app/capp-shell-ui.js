@@ -1321,7 +1321,7 @@
         if (l.dish_id) {
           const offered = menu.extrasFor(l.dish_id);
           for (const op of l.options) {
-            const e = offered.find((x) => (op.by === 'name' ? x.name === op.v : String(x.id) === op.v));   // strictly by the recorded kind
+            const e = offered.find((x) => (x.extra_key ? x.extra_key === op.v : (op.by === 'name' ? x.name === op.v : String(x.id) === op.v)));   // strictly by the recorded kind · S2b §5: by the KEY when the menu serves extra_keys (never rebound by name)
             if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }   // an option the menu no longer offers / cannot carry ⇒ unavailable
             for (let k = 0; k < op.n; k++) ex[k][e.key] = 1;
           }

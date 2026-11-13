@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyRdrModule } = require('./tools/rdr-module-inv
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/draft-assess.js', 'catalog/edit-catalog-handler.js', 'catalog/publish-edited-handler.js', 'catalog/publish-request.js'], 'the owned files');
 for (const f of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, f), 'utf8'); const src = require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, disk);   // the file on disk, minus S3's s3choice (merged later on the train: train/portal-structure merge 3)
+  const disk = fs.readFileSync(path.join(__dirname, f), 'utf8'); const src = require('./tools/s3choice-module-inverse').unapplyS3choiceModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, disk));   // the file on disk, minus S2b's s2bext and S3's s3choice (merged later on the train: merges 4 and 3)
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyRdrModule(f, src), b, `🔴 ${f} minus the rdr hunks is not ${BASE}:${f}`);

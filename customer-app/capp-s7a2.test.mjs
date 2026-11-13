@@ -2883,6 +2883,41 @@ test('Volver a pedir — the pill REPLACES that store\'s cart with the order (sa
     assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => l.key), [String(marg.dish_id)], 'the stored cart is the reorder');
   } finally { S.w.close(); }
 });
+// S2b (PLAN-structure-S2b-r3 §5; Codex r1 P2-6) — with the served extra_keys map, a stored option is matched by its KEY, never by name: a RENAMED
+// extra (its key kept) is rebuilt under its new name; a RETIRED key is never rebound to a new extra that reuses its name (dropped, disclosed).
+// The recipe comes from the REAL writer (placeReal → attachCustomerAttribution → normalizeReorderItems: { name: 'Mozzarella', count: 1 }).
+async function againWithEnvelope(mutate) {
+  const saved = PROV.x_pizza.envelope; const env = JSON.parse(JSON.stringify(saved)); mutate(env.menu); PROV.x_pizza.envelope = env;
+  return { restore: () => { PROV.x_pizza.envelope = saved; } };
+}
+test('Volver a pedir — S2b: a RENAMED extra (its key kept, the served extra_keys map) is rebuilt by its key under its new name', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const { restore } = await againWithEnvelope((m) => { const moz = m.extras.find((e) => e.name === 'Mozzarella'); m.extra_keys = Object.fromEntries(m.extras.map((e) => [String(e.id), e === moz ? 'Mozzarella' : e.name])); moz.name = 'Mozzarella Fresca'; });
+  try {
+    const { S } = await againBoot();
+    try {
+      S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+      S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+      const ui = S.ui.store().ui;
+      const moz = ui.menu.extrasFor(String(marg.dish_id)).find((e) => e.extra_key === 'Mozzarella');
+      assert.ok(moz && moz.name === 'Mozzarella Fresca', 'premise: the renamed extra is offered under its new name with its kept key');
+      assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.lines().map((l) => [l.key, l.qty, l.ex]))), [[String(marg.dish_id), 2, [{ [moz.key]: 1 }, {}]]], '🔴 S2B-REORDER-RENAMED: rebuilt by its key');
+    } finally { S.w.close(); }
+  } finally { restore(); }
+});
+test('Volver a pedir — S2b: a RETIRED key is never rebound to a new extra that reuses its name — the line is dropped and disclosed', async () => {
+  const { restore } = await againWithEnvelope((m) => { const moz = m.extras.find((e) => e.name === 'Mozzarella'); m.extra_keys = Object.fromEntries(m.extras.map((e) => [String(e.id), e === moz ? 'i_aaaaaaaaaabt' : e.name])); });
+  try {
+    const { S } = await againBoot();
+    try {
+      S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+      S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+      const ui = S.ui.store().ui;
+      assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.lines())), [], '🔴 S2B-REORDER-NO-REBIND: the stored Mozzarella (a retired key) is not the new «Mozzarella»');
+      assert.equal(txt(S.q('.cartnote')), '2 platos ya no están disponibles', '🔴 S2B-REORDER-NO-REBIND: disclosed (the line was 2× Margherita)');
+    } finally { S.w.close(); }
+  } finally { restore(); }
+});
 test('Volver a pedir — MIXED nulls within one order: the resolvable line is rebuilt, the null one is dropped AND disclosed («1 plato ya no está disponible»)', async () => {
   const db = {}, orders = {};
   const { o, e } = placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 86400e3 });

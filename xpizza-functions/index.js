@@ -774,7 +774,7 @@ createOrderApp.all('*', async (req, res) => {
      ONLY when the order already exists (the idempotency branch below answers it before any write); otherwise it is NEW
      payable work → 426 with ZERO mutation. */
   const clientHdr = CF.readClientHeaders(req);
-  CF.logClientVersion('createOrder', clientHdr);
+  CF.logClientVersion('createOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)
   const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
   let floorAdmittedBelow = false;
   if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) {
@@ -1529,7 +1529,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      reuse); it must then also be classified `reuse` below, and acquire refuses any fresh issuance for it (refuseFresh).
      Everything else is NEW payable work → 426 here, before pricing, bookkeeping, the reserve or any write. */
   const clientHdr = CF.readClientHeaders(req);
-  CF.logClientVersion('chargeOnlineOrder', clientHdr);
+  CF.logClientVersion('chargeOnlineOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)
   const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
   const floorBelow = CF.isBelowFloor(clientHdr, 'orders', ordersFloor);
   if (floorBelow && !(await CF.liveCheckoutProbe(getDatabase(), (req.body || {}).order_id, Date.now())).admit) {
@@ -7358,7 +7358,7 @@ exports.quoteOrder = onRequest(
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
       // P-SELFUPDATE §5 — log line + floor: a below-floor quote is refused 426 before the limiter or any pricing.
       const clientHdr = CF.readClientHeaders(req);
-      CF.logClientVersion('quoteOrder', clientHdr);
+      CF.logClientVersion('quoteOrder', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)
       const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
       if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) return CF.updateRequired(res, 'orders', ordersFloor);
       const body = req.body || {};
@@ -7424,7 +7424,7 @@ exports.quoteRedemption = onRequest(
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
       // P-SELFUPDATE §5 — log line + floor: a below-floor quote is refused 426 before any read or pricing.
       const clientHdr = CF.readClientHeaders(req);
-      CF.logClientVersion('quoteRedemption', clientHdr);
+      CF.logClientVersion('quoteRedemption', clientHdr); { const rc = require('./catalog/client-retired').retiredClientRefusal(clientHdr); if (rc) return res.status(rc.status).json(rc.body); }   // S2b §6: the admission gate (ON only)
       const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
       if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) return CF.updateRequired(res, 'orders', ordersFloor);
       const body = req.body || {};
