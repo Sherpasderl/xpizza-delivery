@@ -270,9 +270,9 @@ test('B3 — every choice facet is ONE «Estructura» row from the real save; th
     const rows = m.structure.map((r) => [r.name, r.sub, r.kind, r.parts.join(' '), !!r.appOnly]);
     const beerName = src.items.find((i) => i.key === BEER).display.name;
     assert.deepEqual(rows, [
-      [beerName, [`cat:${src.items.find((i) => i.key === BEER).display.cat}`, src.items.find((i) => i.key === BEER).display.subcat].filter(Boolean).join(' \u00b7 '), 'Nuevo', P3('revLauncher'), true],
+      [beerName, [`cat:${src.items.find((i) => i.key === BEER).display.cat}`, src.items.find((i) => i.key === BEER).display.subcat].filter(Boolean).join(' \u00b7 '), 'Nuevo', P3('revLauncher'), false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Cambio', 'Proteína → Proteína a elegir', false],
-      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', 'Tofu · L 330', true],
+      ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', 'Tofu · L 330', false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Quitado', 'Camarones', false],
       ['Pad Thai · Proteína', 'Elección requerida', 'Nuevo', P3('revRecNew'), false],
     ], '🔴 one row per facet');
@@ -292,7 +292,7 @@ test('B3 — every choice facet is ONE «Estructura» row from the real save; th
   } finally { CE.on = false; }
 });
 
-test('B3 render — a renamed choice draws was → now as separate spans; a new option carries «Solo en la app Sherpa»', async () => {
+test('B3 render — a renamed choice draws was → now as separate spans; a new option carries NO app-only mark (5f: choicesGeneric)', async () => {
   const { renderReview } = await import('./review.js');
   const { JSDOM } = freq('jsdom');
   const w = new JSDOM('<!doctype html><div id="r"></div>').window;
@@ -308,7 +308,7 @@ test('B3 render — a renamed choice draws was → now as separate spans; a new 
     assert.deepEqual([...rs[0].querySelectorAll('.pval > span')].map((x) => [x.className, x.textContent]),
       [['bchip chg', 'Cambio'], ['was', 'Proteína'], ['arr', '→'], ['now', 'Proteína a elegir']], '🔴 F\'s was → now');
     assert.deepEqual([...rs[1].querySelectorAll('.pval > span')].map((x) => [x.className, x.textContent]),
-      [['bchip add', 'Nuevo'], ['now plain', 'Tofu · L 330'], ['mk-apponly', 'Solo en la app Sherpa']]);
+      [['bchip add', 'Nuevo'], ['now plain', 'Tofu · L 330']], 'no app-only mark on a choice row (5f: choicesGeneric)');
     assert.equal(rs[0].querySelector('.pname').textContent, 'Pad Thai · Proteína');
   } finally { globalThis.document = prev; }
 });

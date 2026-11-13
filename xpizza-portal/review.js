@@ -185,14 +185,14 @@ function choiceRowsOf(d, names = {}) {
     const removed = c.members && Array.isArray(c.members.removed) ? c.members.removed : [];
     if (c.became === 'launcher') {
       const ps = added.map((k) => addedPrice.get(k)).filter((x) => Number.isInteger(x));
-      row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c, true);
+      row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c);
       continue;
     }
     if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.get(c.launcher) })], c); continue; }
     const head = `${dish} \u00b7 ${lb && lb.old != null ? lb.old : labelOf(c.launcher) || ''}`;
     const REQ = 'Elección requerida';
     if (lb) row(head, REQ, 'Cambio', [lb.old, '\u2192', lb.new], c);
-    for (const k of added) row(head, REQ, 'Nuevo', [`${choiceOf(k)} \u00b7 L ${addedPrice.get(k)}`], c, true);
+    for (const k of added) row(head, REQ, 'Nuevo', [`${choiceOf(k)} \u00b7 L ${addedPrice.get(k)}`], c);
     for (const k of removed) row(head, REQ, 'Quitado', [choiceOf(k)], c);
     if (c.recommended && typeof c.recommended === 'object') {
       const was = (c.recommended.old || []).map(choiceOf).join(', '); const now = (c.recommended.new || []).map(choiceOf).join(', ');

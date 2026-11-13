@@ -2561,7 +2561,7 @@ function choiceEditorCard(s, key, cm, { mk, header, relayout, R }) {
       relayout(); refocus(['ie-cg-add']);
     }));
     row.append(ieOptName, pr, ieRecPill, ieOptTrash);
-    if (o.isNew) row.append(mk('span', 'mk-apponly', 'Solo en la app Sherpa'));
+    // no «Solo en la app Sherpa» on a choice / option (5f 11-13: both order forms render choices generically — choicesGeneric)
     ge.append(row);
     if (!o.isNew) R.opts.push({ key: o.id, row, cnt: mk('span', 'mk-cnt'), pi: ieOptPrice });
     nameRows.push({ id: o.id, row, input: ieOptName, line: null });
@@ -2893,7 +2893,6 @@ function renderEditDrawer(d, it, keepScroll) {
           const row = mk('div', 'mk-dopt');
           const dn = mk('span', 'mk-dn', o.choice);
           if (o.marked) dn.append(mk('span', 'mk-rec', 'Recomendada'));
-          if (o.isNew) dn.append(mk('span', 'mk-apponly', 'Solo en la app Sherpa'));
           const pr = o.isNew ? o.price : parsePrice(work.has(o.id) ? work.get(o.id) : o.price);
           row.append(dn, mk('span', 'dp', Number.isInteger(pr) && pr > 0 ? `L ${pr}` : ''));
           block.append(row);

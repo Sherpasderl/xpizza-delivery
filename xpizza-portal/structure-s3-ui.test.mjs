@@ -69,7 +69,7 @@ test('B2 — «Agregar opción» adds a new row (app-only mark, focused name); t
   const before = JSON.stringify(p.src());
   ge(p).querySelector('.mgadd').click(); await settle(5);
   const nw = rows(p)[3];
-  assert.ok(nw.classList.contains('chg')); assert.equal(nw.querySelector('.mk-apponly').textContent, 'Solo en la app Sherpa');
+  assert.ok(nw.classList.contains('chg')); assert.equal(nw.querySelector('.mk-apponly'), null, 'no app-only mark on an option (5f: choices render generically)');
   assert.equal(p.d.activeElement, nw.querySelector('input.moname'), 'the caret lands in the new name');
   p.type(nw.querySelector('input.moname'), 'Tofu'); p.type(nw.querySelector('.mopr input'), '330'); await settle(5);
   const line = recline(p);
@@ -227,7 +227,7 @@ test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the
   const card = reqCard(p);
   assert.equal(card.querySelector('.mk-gtn').textContent, 'Porción');
   assert.deepEqual([...card.querySelectorAll('.mk-dopt .dp')].map((x) => x.textContent), [`L ${price}`, 'L 480']);
-  assert.equal(card.querySelectorAll('.mk-dopt .mk-apponly').length, 2, 'both options sell in the app only until published');
+  assert.equal(card.querySelectorAll('.mk-dopt .mk-apponly').length, 0, 'no app-only mark on a choice (5f: both forms render choices generically)');
   p.btn('Guardar').click(); await settle(10);
   const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
   const ids = src.structure.variant_items[String(dish.display.id)].variantIds;
