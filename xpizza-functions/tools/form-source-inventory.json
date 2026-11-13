@@ -4497,6 +4497,7 @@
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4623,6 +4624,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4765,6 +4767,7 @@
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -5098,6 +5101,7 @@
       "tools/envlim-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5141,6 +5145,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5157,6 +5162,12 @@
       "tools/sb-inverse.js",
       "tools/sd-inverse.js",
       "tools/tippref-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/memberreads-wiring.guard.test.js",
+     "inverses": [
+      "tools/memberreads-module-inverse.js"
      ]
     },
     {
@@ -5374,6 +5385,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5747,6 +5759,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -5762,6 +5775,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -5774,6 +5788,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -6184,6 +6199,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6434,6 +6450,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6749,6 +6766,7 @@
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
