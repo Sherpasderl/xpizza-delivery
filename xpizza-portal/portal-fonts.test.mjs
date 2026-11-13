@@ -143,3 +143,22 @@ test('the trace-ratified preconnect set (perf/portal.origins.json)', () => {
   for (const o of rec.admitted) assert.ok(['T2', 'T4'].some((t) => rec.states[t].runs.every((r) => r.origins.some((x) => x.origin === o && x.beforeMarker))), `${o}: admitted only on T2/T4 evidence before the marker, every repeat`);
   assert.ok(!/AIza/.test(read('perf/portal.origins.json')), 'the record carries no api key');
 });
+
+// advisor 11-13 (Figtree r0 Q1): the dish-photo preview card mirrors the CUSTOMER ORDER PAGE truthfully, its type included (DM Sans / Playfair,
+// beside the .phoprice gold that portal-no-amber exempts), and the section ids read in monospace. These are the ONLY font-family literals
+// outside the --disp / --body tokens: a deliberate exemption, pinned so no font sweep «fixes» it. Revisit when the old forms retire or the
+// owner answers the gold question.
+test('the font-family literals outside the tokens are EXACTLY the preview card\'s and .secnmid\'s (the deliberate exemption)', () => {
+  const css = read('styles.css');
+  const lits = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const fam = /font-family:\s*([^;}]+)/.exec(m[2]);
+    if (fam && !/var\(--(disp|body)\)|^inherit$/.test(fam[1].trim())) lits.push([m[1].trim(), fam[1].trim()]);
+  }
+  assert.deepEqual(lits, [
+    ['.secnmid', 'ui-monospace,SFMono-Regular,Menlo,monospace'],
+    ['.phoname', "'DM Sans',system-ui,sans-serif"],
+    ['.phoname.phoh', "'Playfair Display',Georgia,serif"],
+    ['.phoprice', "'DM Sans',system-ui,sans-serif"],
+  ], '🔴 the only literal families: the preview card (the customer page\'s type) and the section ids');
+});
