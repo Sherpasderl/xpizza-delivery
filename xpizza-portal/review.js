@@ -792,7 +792,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const v = el('span', 'sv');
       v.append(el('span', 'was', shown(r.was)));
       v.append(el('span', 'arr', '→'));
-      v.append(el('span', 'now', shown(r.now)));
+      v.append(el('b', 'now', shown(r.now)));   // the mockups' «was → <b>now</b>» (SBS r2): the seal's own b rule colours it
       c.append(v);
       body.append(c);
     }
@@ -803,7 +803,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const v = el('span', 'sv');
       v.append(el('span', 'was', String(r.was)));
       v.append(el('span', 'arr', '→'));
-      v.append(el('span', 'now', String(r.now)));
+      v.append(el('b', 'now', String(r.now)));
       c.append(v);
       body.append(c);
     }

@@ -26,6 +26,10 @@ export const S2_FOLD = {
    ""
   ],
   [
+   "    if (showOutcome(outcomeFor(failed, 'edit'))) $('scrim').classList.add('show');\n",
+   "    showOutcome(outcomeFor(failed, 'edit'));\n    $('scrim').classList.add('show');\n"
+  ],
+  [
    "  // X4 (MOCKUP x4) — «1 cambio sin publicar · 1 grupo»: the groups that moved, by the review's own «Orden» rule\n  const go = n > 0 && state.draft ? groupOrders(state.draft) : null;\n  const nGroups = go ? movedGroups(go.was, go.now).length : 0;\n  if (nGroups) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nGroups} ${nGroups === 1 ? 'grupo' : 'grupos'}`; $('rbtxt').append(sfx); }\n",
    ""
   ],
@@ -118,8 +122,8 @@ export const S2_FOLD = {
    "    // by key.\n    if (res && res.source) {\n      adopt(state.draft, res.source);\n"
   ],
   [
-   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));\n",
-   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n"
+   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');\n",
+   "      // whichever call produced it. The generic durable panel catches anything unmapped.\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n      $('scrim').classList.add('show');\n"
   ],
   [
    "$('review').addEventListener('click', () => leaveExtras(openReviewFlow));   // S2 §3.5: the Extras page's local editors first (a complete row commits; a dirty one asks)\n",
@@ -138,20 +142,28 @@ export const S2_FOLD = {
    "    if (gen !== opGeneration) return;\n    if (res && res.source) {\n      adopt(state.draft, res.source);\n"
   ],
   [
-   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));\n",
-   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n"
+   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');\n",
+   "  } catch (e) {\n      if (gen !== opGeneration) return;      // a stale failure must not paint over the current world\n      showOutcome(outcomeFor(e, 'edit'));\n      $('scrim').classList.add('show');\n"
   ],
   [
    "// STRUCTURE S2 §5.2 REVIEW-DELETIONS (frame X2b): the published menu moved under a removal claim. (1) re-read getEditableCatalog's\n// deletionBase / deletionClaim ONLY (generation + rid checked; the draft kept); (2) show the FULL list from that read; (3) «Confirmar y seguir»\n// resends the SAME request (the owner's save, or the manager's send) acknowledged, with the fresh base; (4) the review from the server's\n// fresh diff. «Cancelar» keeps the draft. A second refusal lands here again — never a loop of silent resends.\nasync function reviewDeletions(outcome) {\n  releaseEditLock(state.reviewLock);\n  state.reviewLock = null;\n  $('scrim').classList.remove('show');\n  clearReview();\n  reviewAck = false;\n  const rid = state.draftRid, gen = opGeneration;\n  let fresh = null;\n  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }\n  if (gen !== opGeneration || rid !== state.draftRid) return;   // another world now\n  const base = fresh && fresh.deletionBase;\n  const read = !!(base && typeof base.version === 'string' && base.version && Number.isInteger(base.generation));\n  // Codex r1 P1-1: the fresh baseline is the SHEET's until «Confirmar y seguir» — «Cancelar» keeps the previous one (an unreviewed save never\n  // carries a base the merchant did not confirm the deletion list against)\n  const freshBase = read ? { version: base.version, generation: base.generation } : null;\n  const served = read && fresh.deletionClaim && Array.isArray(fresh.deletionClaim.ids) ? fresh.deletionClaim.ids : [];\n  const ids = [...served, ...(Array.isArray(outcome.existingIds) ? outcome.existingIds : []), ...mergeDeletionClaim(draftSource(state.draft), 'ids')];\n  openDeletionsReview({\n    rows: deletionRows(state.draft, ids),\n    line: read ? null : 'No pudimos leer el menú publicado. Recargá la página.',\n    onCancel: () => { reviewAck = false; },\n    onGo: bound(() => { if (freshBase) state.deletionBase = freshBase; reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),\n  });\n}\n// P-6 (plan r3 §3.3, Codex r2 #5): after a save is adopted, the view state keyed by a NEW extra's ref follows it to its allocated key —\n// ONLY through the save answer's extraRefs (rekeyId); a ref the map does not name is DROPPED (its price is already in the adopted source).\n// Covers the FIX-EXTRA row line and the focused detail field's restore key (data-k), so the repaint keeps focus on the SAME row.\nfunction rekeyK(k, extraRefs) {   // a detail field's restore key ('{\"ref\":…}' or 'xnm:{\"ref\":…}') → its keyed price field, or null (dropped)\n  if (typeof k !== 'string') return k;\n  const pre = k.startsWith('xnm:') ? 'xnm:' : '';\n  let id = null;\n  try { id = JSON.parse(k.slice(pre.length)); } catch (_) { return k; }   // not an extra row's field\n  if (!id || typeof id !== 'object' || typeof id.ref !== 'string') return k;\n  const next = rekeyId(id, extraRefs);\n  return next ? JSON.stringify(next) : null;   // a keyed row has no name field: its price\n}\nfunction adoptExtraRefs(extraRefs) {\n  for (const ref of Object.keys(extraRefs && typeof extraRefs === 'object' ? extraRefs : {})) {   // a held price text follows its row to the key (P2-8)\n    const from = extraPriceK({ ref });\n    if (!state.rawPrice.has(from)) continue;\n    const v = String(state.rawPrice.get(from));\n    state.rawPrice.delete(from); const next = rekeyId({ ref }, extraRefs); if (next) state.rawPrice.set(extraPriceK(next), v);\n  }\n  if (extrasRowError) { const id = rekeyId(extrasRowError.id, extraRefs); extrasRowError = id ? { id, text: extrasRowError.text } : null; }\n  if (xFocusK) xFocusK = rekeyK(xFocusK, extraRefs);\n  const ae = document.activeElement;\n  if (!ae || !ae.dataset || typeof ae.dataset.k !== 'string' || !$('xdetail') || !$('xdetail').contains(ae)) return;\n  const k = rekeyK(ae.dataset.k, extraRefs);\n  if (k) ae.dataset.k = k; else delete ae.dataset.k;\n}\n",
    ""
   ],
   [
-   "  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return; }\n",
+   "// Returns true when it painted a panel in the review modal (the caller shows the modal), false when it handed off to the X2b recovery\n// sheet — which closes the review: re-showing it would stack two dialogs (SBS round 2, the real browser).\n",
+   ""
+  ],
+  [
+   "  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return false; }\n",
    ""
   ],
   [
    "      return;\n    }\n    if (id === PUBLISH_ACTIONS.FIX_EXTRA) {\n      // STRUCTURE S2 §5.2 — an EXTRA needs a correction: the «Extras» tab, that extra's group, its row with the server's line under it\n      // (focus: a new row's name, a published row's price); extras_group_empty → the group the server named, its «Agregar extra» row open\n      $('scrim').classList.remove('show');\n      clearReview();\n      const ctx = extrasOutcomeCtx(state.draft);\n      const named = outcome.target && ctx.isExtra(outcome.target) ? outcome.target : null;\n      const g = outcome.group || (named ? ctx.groupOf(named) : null);\n      if (g) extrasGroup = g;\n      extraAdd = null; extraAddK = null;\n      extrasRowError = named ? { id: outcome.targetIs === 'ref' ? { ref: named } : { key: named }, text: outcome.detail } : null;\n      prodTab = 'xpage';\n      paint(); syncUi();\n      if (outcome.code === 'extras_group_empty' && outcome.group) { addOpen(); return; }\n      if (extrasRowError) {\n        const k = JSON.stringify(extrasRowError.id);\n        const all = [...$('xdetail').querySelectorAll('[data-k]')];\n        const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);\n        if (ctl) ctl.focus();\n      }\n",
    ""
+  ],
+  [
+   "  }));\n  return true;\n",
+   "  }));\n"
   ],
   [
    "    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0) + (localDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note) · S2 §3.5: the Extras page's local editors\n",
@@ -342,6 +354,14 @@ export const S2_FOLD = {
   [
    "      if (r.surface === 'extra' && r.name != null) {\n        c.append(el('span', 'sn', extraName(r)));\n        const v = el('span', 'sv');\n        v.append(el('span', 'was', shown(r.was)), ' \\u2192 ', el('b', null, shown(r.now)));\n        c.append(v);\n        body.append(c);\n        continue;\n      }\n",
    ""
+  ],
+  [
+   "      v.append(el('b', 'now', shown(r.now)));   // the mockups' «was → <b>now</b>» (SBS r2): the seal's own b rule colours it\n",
+   "      v.append(el('span', 'now', shown(r.now)));\n"
+  ],
+  [
+   "      v.append(el('b', 'now', String(r.now)));\n",
+   "      v.append(el('span', 'now', String(r.now)));\n"
   ],
   [
    "    const added = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface !== 'extra');   // the new PRODUCTS\n",

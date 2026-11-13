@@ -1055,8 +1055,7 @@ async function resetToLive(rid, expectedRevision) {
   if (failed && failed.code === 'platform_changes_pending') {
     state.platformPending = true;
     paint(); refreshBar();
-    showOutcome(outcomeFor(failed, 'edit'));
-    $('scrim').classList.add('show');
+    if (showOutcome(outcomeFor(failed, 'edit'))) $('scrim').classList.add('show');
     syncUi();
     return;
   }
@@ -2904,8 +2903,7 @@ async function openReviewFlow() {
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));
-      $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
@@ -3197,8 +3195,7 @@ async function sendToOwnerFlow() {
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
   } catch (e) {
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)));
-      $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);
     releaseEditLock(lock);                   // nothing stays live: no review holds the draft on this path
@@ -3280,9 +3277,11 @@ async function rereadSections() {
   if (gen !== opGeneration || rid !== state.draftRid || !fresh || !Array.isArray(fresh.renderedCategories)) return;
   state.renderedCategories = fresh.renderedCategories.filter((c) => typeof c === 'string');
 }
+// Returns true when it painted a panel in the review modal (the caller shows the modal), false when it handed off to the X2b recovery
+// sheet — which closes the review: re-showing it would stack two dialogs (SBS round 2, the real browser).
 function showOutcome(outcome) {
   outcome = productRefusal(outcome);
-  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return; }
+  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return false; }
   // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
   // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
   releaseEditLock(state.reviewLock);
@@ -3392,6 +3391,7 @@ function showOutcome(outcome) {
     // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id
     // the state machine emits is handled above; this is the guard for one it does not emit yet.
   }));
+  return true;
 }
 // 🔴 AN ACKNOWLEDGEMENT IS A PERSON'S SIGNATURE, so it cannot outlive the person. Owner A ticks
 // Autorizo, signs out, owner B signs in on the same browser — without this, A's tick publishes under

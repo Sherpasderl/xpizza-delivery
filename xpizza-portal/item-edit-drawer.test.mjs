@@ -2205,6 +2205,8 @@ for (const who of ['owner', 'manager']) {
         await review();
         assert.equal(B.statuses[before], 409, 'premise: the REAL server refuses the changed claim on the moved base');
         assert.ok(x2b(p), 'the recovery sheet');
+        // SBS round 2 (the real browser): the refused save's catch re-showed the review UNDER the sheet — two dialogs at once
+        assert.equal(p.d.getElementById('scrim').classList.contains('show'), false, 'ONE dialog: the review is closed under the recovery sheet');
         const [cancel, go] = [...x2b(p).querySelectorAll('.mf button')];
         if (path === 'confirm') {
           go.click(); await settle(150);
@@ -2228,6 +2230,7 @@ for (const who of ['owner', 'manager']) {
           await review();
           assert.equal(B.statuses.at(-1), 409, 'the REAL server refuses it again');
           assert.ok(x2b(p), 'the sheet again — never a silent resend');
+          assert.equal(p.d.getElementById('scrim').classList.contains('show'), false, 'ONE dialog again: the review is closed under the sheet');
           assert.equal(p.n('catalogRequestPublish').length, asked, 'nothing more reached the owner');
         }
       } finally { S2_SERVER.on = false; }
