@@ -1453,16 +1453,21 @@ function d2Paint(focusK) {
   const mb = mk('div', 'mb mscroll mk-form');
   const ex = mk('div', 'gexplain'); ex.append(mk('b', null, 'Elección requerida.'), document.createTextNode(' El cliente elige 1. El precio del producto pasa a ser el de la opción elegida.'));
   const fName = mk('div', 'fld');
-  const lr = mk('div', 'mk-lrow'); const lab = mk('label', null, 'Nombre de la elección'); lab.htmlFor = 'xch-name'; lr.append(lab);
+  // the approved D2 field (MOCKUP-portal-structure-edit gn-d2 / S3 addendum gn-sd2): «n/40» beside the label, the server's cap (label_too_long)
+  const cnt = mk('span', 'mk-cnt'); cnt.setAttribute('aria-live', 'polite');
+  const lr = mk('div', 'mk-lrow'); const lab = mk('label', null, 'Nombre de la elección'); lab.htmlFor = 'xch-name'; lr.append(lab, cnt);
   const d2Name = document.createElement('input');
   d2Name.className = 'mgname-in'; d2Name.id = 'xch-name'; d2Name.type = 'text'; d2Name.value = p.label; d2Name.placeholder = 'Ej. Tamaño, Término, Porción'; d2Name.dataset.k = 'd2:name';
+  d2Name.maxLength = IE.CHOICE_LABEL_MAX;
+  const count = () => { cnt.textContent = `${[...d2Name.value].length}/${IE.CHOICE_LABEL_MAX}`; };
+  count();
   fName.append(lr, d2Name);
   const fOpts = mk('div', 'fld');
   const lr2 = mk('div', 'mk-lrow'); lr2.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'precio por opción'));
   const grp = mk('div', 'mk-mgroup');
   const d2Go = document.createElement('button'); d2Go.type = 'button'; d2Go.className = 'btn accent'; d2Go.textContent = 'Agregar elección'; d2Go.dataset.k = 'd2:add';
   const sync = () => { d2Go.disabled = !d2Ready(p); };
-  d2Name.addEventListener('input', bound(() => { p.label = d2Name.value; sync(); }));
+  d2Name.addEventListener('input', bound(() => { p.label = d2Name.value; count(); sync(); }));
   const few = p.rows.length <= 2;
   p.rows.forEach((r, i) => {
     const row = mk('div', 'mopt');
@@ -2696,7 +2701,7 @@ function syncChoice(R) {
     slot.line.textContent = IE.s3Copy(key);
     slot.input.setAttribute('aria-invalid', 'true'); slot.input.setAttribute('aria-describedby', lineId);
   };
-  fieldLine(c.label, np.label && held ? 'labelRequired' : null, `ie-cg-err-${c.s.id}`);
+  fieldLine(c.label, np.label === 'long' ? 'labelTooLong' : np.label && held ? 'labelRequired' : null, `ie-cg-err-${c.s.id}`);   // too long: at once (5f label_too_long)
   c.rows.forEach((r, i) => { const pr = np.options[r.id]; fieldLine(r, pr === 'duplicate' ? 'dupName' : pr === 'empty' && held ? 'optNameRequired' : null, `ie-cg-err-${c.s.id}-${i}`); });
   const named = !np.label && !Object.keys(np.options).length;
   if (!cm.hold) { if (named && held) choiceHeld = null; if (c.line) { c.line.remove(); c.line = null; } return; }

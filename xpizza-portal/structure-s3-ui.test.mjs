@@ -209,7 +209,10 @@ test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the
   const nm = m.querySelector('input.mgname-in');
   assert.equal(nm.placeholder, 'Ej. Tamaño, Término, Porción');
   assert.equal(m.querySelector(`label[for="${nm.id}"]`).textContent, 'Nombre de la elección');
-  assert.equal(m.querySelectorAll('.fld .mk-lrow .mk-cnt')[0].textContent, 'precio por opción');
+  const [nCnt, oCnt] = m.querySelectorAll('.fld .mk-lrow .mk-cnt');
+  assert.equal(nCnt.textContent, `${[...nm.value].length}/40`, '🔴 the name counts «n/40» (the approved frame gn-d2)'); assert.equal(nCnt.getAttribute('aria-live'), 'polite');
+  assert.equal(nm.maxLength, 40, 'the server\'s cap (5f label_too_long)');
+  assert.equal(oCnt.textContent, 'precio por opción');
   assert.equal(sRows(p).length, 2);
   assert.equal(sRows(p)[0].querySelector('.mopr input').value, price, 'the dish\'s price passes to the first option');
   assert.equal(sRows(p)[0].querySelector('.recpill').getAttribute('aria-pressed'), 'true');
@@ -217,6 +220,7 @@ test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the
   assert.equal(m.querySelector('.mk-note').lastChild.textContent, `Sichuan Spicy Wonton cuesta L ${price} hoy; esa es la opción recomendada al crear la elección. Ajustá cada precio antes de guardar.`);
   assert.equal(sBtn(p, 'Agregar elección').disabled, true, 'incomplete: off');
   p.type(nm, 'Porción');
+  assert.equal(nCnt.textContent, '7/40', '🔴 the count follows the name');
   p.type(sRows(p)[0].querySelector('input.moname'), 'Seis');
   p.type(sRows(p)[1].querySelector('input.moname'), 'Doce');
   p.type(sRows(p)[1].querySelector('.mopr input'), '480');
@@ -285,6 +289,18 @@ test('B7 — a new dish\'s group: option 1 pre-marked + the quiet line; a pill i
 });
 
 const lineAfter = (el) => { const n = el.nextElementSibling; return n && n.classList.contains('ferr') ? n : null; };
+test('a group label over 40 (5f label_too_long, counted as the server counts): its line at ONCE under the name; «Guardar» holds; 40 clears it', async () => {
+  const p = await page({ read: ON });
+  await editing(p);
+  const before = JSON.stringify(p.src());
+  p.type(ge(p).querySelector('input.mgname-in'), 'P'.repeat(41)); await settle(5);
+  const l = lineAfter(ge(p).querySelector('input.mgname-in'));
+  assert.ok(l, '🔴 a label over 40: its line at once'); assert.equal(l.textContent, P('labelTooLong'));
+  p.btn('Guardar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '🔴 held: nothing written');
+  p.type(ge(p).querySelector('input.mgname-in'), 'P'.repeat(40)); await settle(5);
+  assert.equal(lineAfter(ge(p).querySelector('input.mgname-in')), null, '40 passes (the server\'s limit)');
+});
 test('names before saving — a duplicate (the server\'s fold) shows its line LIVE under the later option; empty names show once «Guardar» holds; each clears as it is fixed', async () => {
   const p = await page({ read: ON });
   await editing(p);
@@ -361,7 +377,7 @@ test('a STALE press (the draft changed under the open editor): the approved «No
 });
 
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
-  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'revLauncher', 'revPlain', 'revRecChanged', 'revRecNew', 'tooFew']);
+  assert.deepEqual(Object.keys(S3_COPY).sort(), ['b7Line', 'dupName', 'indexInvalid', 'labelRequired', 'labelTooLong', 'nameNeedsNewId', 'optNameRequired', 'pickAria', 'pickTitle', 'priceFromInvalid', 'recMany', 'recRemoved', 'recRequired', 'removePick', 'revLauncher', 'revPlain', 'revRecChanged', 'revRecNew', 'tooFew']);
 });
 
 // THE SHIP GATE: red while ANY S3 string is a placeholder — the branch cannot ride a train before the owner approves the addendum's copy

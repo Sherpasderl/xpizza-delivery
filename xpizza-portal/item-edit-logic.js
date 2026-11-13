@@ -478,7 +478,8 @@ export function choiceUpdateNew(s, ref, patch = {}) {
 }
 // ── the S3 addendum's PROPOSED lines (MOCKUP-portal-structure-S3-addendum H2 / B6): null ⇒ «⟦s3.key⟧» on screen until the owner approves
 // the addendum's copy — structure-s3-ui's SHIP GATE stays red until then. Panel D's own strings are the approved base mockup's, literal.
-export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, optNameRequired: null, dupName: null,
+export const CHOICE_LABEL_MAX = 40;   // the server's group-label cap (choice-compare LABEL_MAX = section-compare NAME_MAX); the D2 sheet counts «n/40»
+export const S3_COPY = Object.freeze({ recRequired: null, recRemoved: null, tooFew: null, removePick: null, pickTitle: null, pickAria: null, b7Line: null, labelRequired: null, labelTooLong: null, optNameRequired: null, dupName: null,
   recMany: null, priceFromInvalid: null, indexInvalid: null, nameNeedsNewId: null,
   revLauncher: null, revPlain: null, revRecChanged: null, revRecNew: null });
 // an approved line may name its data as {token}s (the review rows: {nombre}, {n}, {min}, {precio}, {old}, {new}); a placeholder shows none
@@ -492,7 +493,9 @@ export function choiceNameProblems(draft, s) {
   const m = choiceModel(draft, s);
   if (!m || m.removed || m.label === null) return m ? { label: null, options: {} } : null;
   const fold = nameFoldOf();
-  const out = { label: tidyItemName(m.label || '') ? null : 'empty', options: {} };
+  // label_too_long (5f 66b2b0239): a label NEW or CHANGED over 40 code points, counted raw as the server counts it; a live label left as
+  // it is is not re-judged
+  const out = { label: !tidyItemName(m.label || '') ? 'empty' : m.labelChanged && chars(m.label) > CHOICE_LABEL_MAX ? 'long' : null, options: {} };
   const seen = new Set();
   for (const o of m.options) {
     const c = tidyItemName(String(o.choice || ''));
@@ -581,7 +584,7 @@ export function choiceModel(draft, s) {
     || now.members.some((r) => { const w = wasMap.get(idOf(r)); return !w || w.display.choice !== r.display.choice || isTag(w) !== isTag(r); });
   const marks = options.filter((o) => o.marked).length;
   const hold = touched && marks === 0 ? { reason: was && was.members.some((r) => isTag(r) && !now.members.some((m) => idOf(m) === idOf(r))) ? 'recommended_removed' : 'recommended_required' } : null;
-  return { label: now.label, options, touched, hold, removed: false };
+  return { label: now.label, labelChanged: !was || was.label !== now.label, options, touched, hold, removed: false };
 }
 // D3 «Quitar elección»: the price that stays — the marked option by default; with no mark the card ASKS (priceFrom null) (addendum B2b)
 export function choiceRemovePlan(draft, s) {
@@ -653,6 +656,7 @@ export function refusalLine(body) {
     choice_duplicate: ['options', s3Copy('dupName')],
     choice_label_required: ['options', s3Copy('optNameRequired')],
     label_required: ['options', s3Copy('labelRequired')],
+    label_too_long: ['options', s3Copy('labelTooLong')],   // 5f 66b2b0239 (Q-A): a group label over 40
     choice_price_from_invalid: ['options', s3Copy('priceFromInvalid')],
     choice_index_invalid: ['foot', s3Copy('indexInvalid')],   // nothing in the drawer fixes it: the footer, beside «Guardar» (B6)
     name_needs_new_id: ['options', s3Copy('nameNeedsNewId')],

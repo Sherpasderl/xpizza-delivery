@@ -163,7 +163,8 @@ function structureRowsOf(d, names = {}) {
 // STRUCTURE S3 (addendum B3) — the server's `choices` rows (choice-activation choiceRows, token-bound) in «Estructura»: a dish that
 // gained its choice (ONE «Nuevo» row) or lost it (ONE «Quitado» row); otherwise one row per facet under «{dish} · {choice}» — the label
 // (was → now), each option added («Nuevo», app-only) or removed («Quitado»), the «Recomendada» change. Names from the draft (the server
-// names rows by key); the addendum's proposed lines are ⟦s3.key⟧ until approved.
+// names rows by key); the addendum's proposed lines are ⟦s3.key⟧ until approved. «Solo en la app Sherpa» is the diff's OWN row.app_only
+// (5f 437ce1ef4: a gained / lost choice and a new option, = !choicesGeneric); a label, a removal or a «Recomendada» row never carries it.
 function choiceRowsOf(d, names = {}) {
   const cs = Array.isArray(d.choices) ? d.choices : [];
   const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);
@@ -185,14 +186,14 @@ function choiceRowsOf(d, names = {}) {
     const removed = c.members && Array.isArray(c.members.removed) ? c.members.removed : [];
     if (c.became === 'launcher') {
       const ps = added.map((k) => addedPrice.get(k)).filter((x) => Number.isInteger(x));
-      row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c);
+      row(dish, place, 'Nuevo', [s3Copy('revLauncher', { nombre: lb ? lb.new : '', n: added.length, min: ps.length ? Math.min(...ps) : '' })], c, c.app_only === true);
       continue;
     }
-    if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.get(c.launcher) })], c); continue; }
+    if (c.became === 'plain') { row(dish, place, 'Quitado', [s3Copy('revPlain', { nombre: lb ? lb.old : '', precio: newPrice.get(c.launcher) })], c, c.app_only === true); continue; }
     const head = `${dish} \u00b7 ${lb && lb.old != null ? lb.old : labelOf(c.launcher) || ''}`;
     const REQ = 'Elección requerida';
     if (lb) row(head, REQ, 'Cambio', [lb.old, '\u2192', lb.new], c);
-    for (const k of added) row(head, REQ, 'Nuevo', [`${choiceOf(k)} \u00b7 L ${addedPrice.get(k)}`], c);
+    for (const k of added) row(head, REQ, 'Nuevo', [`${choiceOf(k)} \u00b7 L ${addedPrice.get(k)}`], c, c.app_only === true);
     for (const k of removed) row(head, REQ, 'Quitado', [choiceOf(k)], c);
     if (c.recommended && typeof c.recommended === 'object') {
       const was = (c.recommended.old || []).map(choiceOf).join(', '); const now = (c.recommended.new || []).map(choiceOf).join(', ');

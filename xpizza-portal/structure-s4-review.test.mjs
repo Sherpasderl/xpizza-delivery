@@ -10,10 +10,16 @@ import { readFileSync } from 'node:fs';
 import { makeBackend, installSwitches, s4Snapshot } from './real-backend.mjs';
 
 // 5f's S4 server (feat/structure-s4-5f): switch to the repo copy once both ride one train (the MC_REF pattern)
-export const S4_REF = '290fa5baa';   // 5f 11-13: subsection renames paired by MEMBERS (section-compare.subcatRenames)
+export const S4_REF = '3f8017d02';   // 5f 11-13 tip: subcat renames by MEMBERS (290fa5baa) + choicesGeneric → row.app_only (437ce1ef4) + label_too_long (66b2b0239)
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const freq = s4Snapshot(S4_REF);
-installSwitches(freq, () => ({ sections: true }));
+const SW = { choiceEdit: false, choicesGeneric: null };
+installSwitches(freq, () => ({ sections: true, choiceEdit: SW.choiceEdit }));
+// the GENERATED renderer contract, as it reads once a form stops rendering choices generically (choicesGeneric false — the state the old
+// forms were in before the shared picker shipped): the server DERIVES app_only from it (review-diff withChoiceAppOnly); null = as shipped
+{ const p = freq.resolve('./catalog/renderer-contract.generated'); const real = freq('./catalog/renderer-contract.generated');
+  const ex = { ...real }; Object.defineProperty(ex, 'la_musa', { enumerable: true, get: () => (SW.choicesGeneric === null ? real.la_musa : { ...real.la_musa, choicesGeneric: SW.choicesGeneric }) });
+  freq.cache[p] = { id: p, filename: p, loaded: true, exports: ex }; }
 for (const f of ['extras-eligibility.js', 'exposure-transitions.js', 'choice-transitions.js', 'section-transitions.js']) runInThisContext(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'));
 const E = await import('./editor.js');
 const { editCatalog } = await import('./api.js');
@@ -108,6 +114,64 @@ test('S4-E (REAL diff) — a subsection renamed AND reordered in one save (5f 29
     ['Bebidas', P('rowSubcat'), 'Cambio', 'Sodas → Refrescos', false],
     ['Cervezas', P('rowCatSubcat'), 'Orden', 'pasa al 1.º lugar', false],
   ], '🔴 the reorder survives a same-save rename');
+});
+
+// S3 × Q-B (5f 437ce1ef4): «Solo en la app Sherpa» on a choice facet follows the diff's OWN row.app_only — a dish gaining its choice and a
+// new option carry it; a label, a removed option and a «Recomendada» row never do (no portal rule)
+const choiceFacets = (m) => m.structure.filter((r) => r.src && typeof r.src.launcher === 'string').map((r) => [r.kind, r.parts.join(' ').startsWith('⟦s3.') ? r.parts.join(' ') : r.kind === 'Cambio' && r.parts.includes('→') ? 'label' : 'option', !!r.appOnly]);
+async function choiceSave(generic) {
+  SW.choiceEdit = true; SW.choicesGeneric = generic;
+  try {
+    const B = await makeBackend(freq, 'la_musa');
+    const d = E.createDraft(clone(B.read.source));
+    const src = E.draftSource(d);
+    const l = src.items.find((i) => i.key === 'noodle_01');
+    const members = src.structure.variant_items[String(l.display.id)].variantIds.map((id) => src.items.find((i) => String(i.display.id) === String(id) || i.ref === id).key);
+    const BEER = src.items.find((i) => /^beer_/.test(i.key) && i.display.variantOf == null).key;
+    const r = E.applyChoiceOps(d, [
+      { op: 'choice.label', launcher: 'noodle_01', label: 'Proteína a elegir' },
+      { op: 'option.add', launcher: 'noodle_01', ref: 'tmp:nnnnnnnn', choice: 'Tofu', price: 330 },
+      { op: 'option.remove', key: members[2] },
+      { op: 'choice.recommended', launcher: 'noodle_01', option: members[1] },
+      { op: 'choice.add', key: BEER, label: 'Tamaño', options: [{ ref: 'tmp:aaaaaaaa', choice: 'Botella' }, { ref: 'tmp:bbbbbbbb', choice: 'Cubeta', price: 480 }] },
+    ], { choiceEdit: true });
+    assert.equal(r.ok, true, `premise: the ops apply ${JSON.stringify(r)}`);
+    globalThis.fetch = B.fetch;
+    const res = await editCatalog({ rid: 'la_musa', source: E.draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase });
+    return { res, m: reviewModel(res.diff, ctxOf(res.source, B.read.source)) };
+  } finally { SW.choiceEdit = false; SW.choicesGeneric = null; }
+}
+test('S3 × Q-B (REAL diff, 5f 437ce1ef4) — a form that cannot render choices: «Solo en la app Sherpa» on the new choice and the new option ONLY', async () => {
+  const { res, m } = await choiceSave(false);
+  assert.deepEqual(res.diff.choices.map((c) => [!!c.became, c.app_only === undefined ? 'absent' : c.app_only]), [[true, true], [false, true]], 'premise: the server marks the gained choice and the row with a new option');
+  assert.deepEqual(choiceFacets(m), [
+    ['Nuevo', '⟦s3.revLauncher⟧', true],
+    ['Cambio', 'label', false],
+    ['Nuevo', 'option', true],
+    ['Quitado', 'option', false],
+    ['Nuevo', '⟦s3.revRecNew⟧', false],
+  ], '🔴 the app-only mark follows row.app_only: the gained choice and the NEW option; never the label, the removal or the mark');
+});
+test('S3 × Q-B (REAL diff, as shipped: both forms render choices generically) — no «Solo en la app Sherpa» on any choice facet', async () => {
+  const { res, m } = await choiceSave(null);
+  assert.ok(res.diff.choices.every((c) => c.app_only !== true), 'premise: as shipped, the server marks nothing');
+  assert.ok(choiceFacets(m).length === 5 && choiceFacets(m).every((f) => f[2] === false), '🔴 as shipped: no app-only mark on a choice facet');
+});
+// S3 × Q-A (5f 66b2b0239): a group label over 40 is the server's label_too_long — its line lands on the choice's card
+test('S3 × Q-A (REAL refusal) — a 41-character group label: the server refuses label_too_long; the drawer line is the card\'s ⟦s3.labelTooLong⟧', async () => {
+  SW.choiceEdit = true;
+  try {
+    const IE = await import('./item-edit-logic.js');
+    const B = await makeBackend(freq, 'la_musa');
+    const d = E.createDraft(clone(B.read.source));
+    assert.equal(E.applyChoiceOps(d, [{ op: 'choice.label', launcher: 'noodle_01', label: 'P'.repeat(41) }], { choiceEdit: true }).ok, true, 'premise: the shared transitions take it (the cap is the server compare)');
+    globalThis.fetch = B.fetch;
+    let err = null;
+    try { await editCatalog({ rid: 'la_musa', source: E.draftSource(d), baseSourceUpdateTime: B.read.sourceUpdateTime, token: async () => 't', loadedBase: B.read.deletionBase }); } catch (e) { err = e; }
+    assert.ok(err && err.body && err.body.error === 'label_too_long', `premise: the REAL server refuses ${err && JSON.stringify(err.body)}`);
+    const line = IE.refusalLine(err.body);
+    assert.deepEqual(line && [line.code, line.field, line.message], ['label_too_long', 'options', '\u27e6s3.labelTooLong\u27e7'], '🔴 label_too_long lands on the choice card');
+  } finally { SW.choiceEdit = false; }
 });
 
 test('S4-E (documented shape) — the published staged entry: drop / rename / anchor move / two promotions from one anchor (the second names the first); app_only marks', () => {
