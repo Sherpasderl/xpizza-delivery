@@ -45,7 +45,7 @@ export function mountBranches(root, ctx) {
       const meta = el('div', 'cmeta');
       const m = (label, value) => { const s = el('span', null, `${label} `); s.append(el('b', null, value)); return s; };
       meta.append(
-        m('Radio', `${L.kmText(b.readonly && b.readonly.radius_km)} km`),
+        m('Radio', `${L.kmText(B.appKm(b))} km`),   // ENVÍO v3 §3b: the app's maximum distance
         m('Preparación', L.validPrep(b.editable && b.editable.prep_default_min) ? `${b.editable.prep_default_min} min` : 'Falta'),
         m('Equipos', String(Number.isInteger(b.devices) ? b.devices : 0)),
         m('Último pedido de hoy', L.lastOrderText(b.last_order_today)),
@@ -101,7 +101,7 @@ export function mountBranches(root, ctx) {
     datos.append(roField('Nombre de la sucursal', b.name));
     // Zona de entrega (schematic; radius exact, read-only)
     const zona = section('Zona de entrega', 'Solo lectura');
-    zona.append(mapFor(b.readonly && b.readonly.radius_km));
+    zona.append(mapFor(B.appKm(b)));
     // Horario
     const horario = section('Horario por día', 'Solo lectura');
     const hours = el('div', 'hoursro');
@@ -310,7 +310,7 @@ export function mountBranches(root, ctx) {
   }
   function zona1b(b) {
     const s = sec1b('Zona de entrega', hintLock('Definida por Sherpa'));
-    const radius = isObj(b.location) && Number.isFinite(b.location.zone_radius_km) ? b.location.zone_radius_km : (b.readonly && b.readonly.radius_km);
+    const radius = B.appKm(b);   // ENVÍO v3 §3b: the app's maximum distance (zone_radius_km stays in the read model for the legacy forms)
     const m = mapFor(radius);
     const svgEl = m.querySelector('svg'); if (svgEl) svgEl.setAttribute('aria-label', 'Mapa con el pin de la sucursal y su zona de entrega, solo lectura');
     const badge = el('span', 'sherpa1b'); badge.append(lockSvg(), document.createTextNode('Solo lectura'));
