@@ -75,7 +75,8 @@ function reader({ deadlineMs } = {}) {
     st.fail = true;
     assert.deepStrictEqual(await issuesOf('la_musa', g), { unclassifiable: true }, '🔴 RR-FAILSAFE a failed live read ⇒ unclassifiable');
     st.fail = false; st.hang = true; const t0 = Date.now();
-    assert.deepStrictEqual(await issuesOf('la_musa', g), { unclassifiable: true }, '🔴 RR-FAILSAFE a hung live read ⇒ unclassifiable');
+    const hung = await Promise.race([issuesOf('la_musa', g), new Promise((r) => { const t = setTimeout(() => r('UNBOUNDED'), 2000); })]);
+    assert.deepStrictEqual(hung, { unclassifiable: true }, '🔴 RR-FAILSAFE a hung live read ⇒ unclassifiable, within the gate deadline');
     assert.ok(Date.now() - t0 < 1000, 'RR-FAILSAFE the live read is bounded by the gate deadline');
     st.hang = false;
     const reads = st.reads;
@@ -101,11 +102,23 @@ function reader({ deadlineMs } = {}) {
     const root = {};
     const db = { ref: () => ({ async once() { return { val: () => null }; }, async transaction() { throw new Error('no CAS expected'); }, async update() { throw new Error('no write expected'); } }) };
     const PENDING = { order_id: 'O1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', total: 299, total_cents: 29900 };
-    const acq = (menu) => acquireHostedAttempt(db, 'O1', PENDING, 'fp', 1e9, [], () => 'A', () => 'T', null, false, false, menu);
+    const acq = async (menu) => { try { return await acquireHostedAttempt(db, 'O1', PENDING, 'fp', 1e9, [], () => 'A', () => 'T', null, false, false, menu); } catch (e) { return { threw: String(e && e.message) }; } };
     assert.deepStrictEqual(await acq('removed'), { outcome: 'conflict', reason: 'menu_changed' }, '🔴 RR-ACQUIRE a fresh issuance armed as removed ⇒ menu_changed, before the CAS');
     assert.deepStrictEqual(await acq(true), { outcome: 'conflict', reason: 'menu_updating' }, 'RR-ACQUIRE armed true ⇒ menu_updating (today)');
     void root;
   }
   ok('RR-ACQUIRE: acquireHostedAttempt refuses a fresh issuance with menu_changed when armed as removed, menu_updating when armed true');
+  /* RR-WIRE: the card handler (index.js, chargeOnlineOrder) arms the guard AS DECIDED — 'removed' unless a key is unclassifiable
+     (true wins) — and answers acquire's menu_changed with the same 409, BEFORE its menu_updating branch */
+  {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    const ARM = "if (gd.armMenu) menuArmed = (menuArmed === true || gd.armMenu === true) ? true : gd.armMenu;";
+    assert.strictEqual(src.split(ARM).length - 1, 1, '🔴 RR-WIRE the card handler arms the menu guard as decided (removed unless unclassifiable)');
+    const ANS = "if (acq.reason === 'menu_changed') { console.warn(`chargeOnlineOrder: ${orderId} — 409 menu_changed (a removed reward; menu guard)`); const mc = require('./catalog/reward-removed').menuChangedRefusal(); return res.status(mc.status).json({ ...mc.body }); } if (acq.reason === 'menu_updating') {";
+    assert.strictEqual(src.split(ANS).length - 1, 1, '🔴 RR-WIRE the card handler answers acquire\'s menu_changed with the 409, before menu_updating');
+    const at = src.indexOf(ARM); const acqAt = src.indexOf('acq = await acquireHostedAttempt(', at);
+    assert.ok(at > 0 && acqAt > at && /menuArmed, choic/.test(src.slice(acqAt, acqAt + 400)), '🔴 RR-WIRE the armed value reaches acquireHostedAttempt as menuRefuseFresh');
+  }
+  ok('RR-WIRE: the card handler arms the guard as decided and answers acquire\'s menu_changed with the 409');
   console.log(`\nreward-removed: OK (${n})`);
 })().catch((e) => { console.error('reward-removed FAILED:', e); process.exit(1); });

@@ -6077,6 +6077,7 @@
     "xpizza-functions/catalog/identity-shadow.test.js",
     "xpizza-functions/catalog/reorder-catalog.test.js",
     "xpizza-functions/catalog/restaurant-registry.test.js",
+    "xpizza-functions/catalog/reward-removed.test.js",
     "xpizza-functions/catalog/text-version.test.js",
     "xpizza-functions/charge-gate-placement.test.js",
     "xpizza-functions/contract/census.negative.test.js",
