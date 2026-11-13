@@ -177,6 +177,78 @@ test('B2b — «Quitar elección» with ZERO marks: the pick list (radiogroup), 
   assert.equal(p.fld('Precio').querySelector('input[aria-label="Precio"]').value, '414', 'the picked price');
 });
 
+const PLAIN = 'dimsum_01';   // «Sichuan Spicy Wonton»: one price, no choice
+const d2Act = (p) => [...p.drawer().querySelectorAll('.mk-adds button.railadd')].find((b) => b.textContent === 'Agregar elección requerida');
+const sheet = (p) => p.d.querySelector('#xchoice.show .modal');
+const sRows = (p) => [...sheet(p).querySelectorAll('.mk-mgroup > .mopt')];
+const sBtn = (p, t) => [...sheet(p).querySelectorAll('.mf button')].find((b) => b.textContent === t);
+
+test('D2 — the dish\'s second action «Agregar elección requerida»: only with choiceEdit, only on a plain dish', async () => {
+  const off = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true }) });
+  await off.signIn(); await off.open(PLAIN);
+  assert.equal(d2Act(off), undefined, 'OFF: no action');
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PAD);
+  assert.equal(d2Act(p), undefined, 'a dish with a choice: no action');
+  await p.open(PLAIN);
+  const a = d2Act(p);
+  assert.ok(a, 'a plain dish: the action'); assert.ok(a.classList.contains('mk-railq'), 'the quiet action');
+});
+
+test('D2 — the sheet EXACT to the frame: title, subline, the explain line, the name, the options (the first prefilled with the dish\'s price and «Recomendada»), the note; «Agregar elección» off until complete; on add the Precio field gives way to the choice', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  const price = String(p.src().items.find((i) => i.key === PLAIN).price);
+  d2Act(p).click(); await settle(5);
+  const m = sheet(p);
+  assert.ok(m, 'the sheet opened');
+  assert.equal(m.querySelector('.mh .mt').textContent, 'Agregar elección requerida');
+  assert.equal(m.querySelector('.mh .ms').textContent, 'Para Sichuan Spicy Wonton · hoy tiene un solo precio');
+  assert.equal(m.querySelector('.mb .gexplain').textContent, 'Elección requerida. El cliente elige 1. El precio del producto pasa a ser el de la opción elegida.');
+  assert.equal(m.querySelector('.mb .gexplain b').textContent, 'Elección requerida.');
+  const nm = m.querySelector('input.mgname-in');
+  assert.equal(nm.placeholder, 'Ej. Tamaño, Término, Porción');
+  assert.equal(m.querySelector(`label[for="${nm.id}"]`).textContent, 'Nombre de la elección');
+  assert.equal(m.querySelectorAll('.fld .mk-lrow .mk-cnt')[0].textContent, 'precio por opción');
+  assert.equal(sRows(p).length, 2);
+  assert.equal(sRows(p)[0].querySelector('.mopr input').value, price, 'the dish\'s price passes to the first option');
+  assert.equal(sRows(p)[0].querySelector('.recpill').getAttribute('aria-pressed'), 'true');
+  assert.equal(m.querySelector('.mk-note b').textContent, 'El precio actual pasa a la primera opción');
+  assert.equal(m.querySelector('.mk-note').lastChild.textContent, `Sichuan Spicy Wonton cuesta L ${price} hoy; esa es la opción recomendada al crear la elección. Ajustá cada precio antes de guardar.`);
+  assert.equal(sBtn(p, 'Agregar elección').disabled, true, 'incomplete: off');
+  p.type(nm, 'Porción');
+  p.type(sRows(p)[0].querySelector('input.moname'), 'Seis');
+  p.type(sRows(p)[1].querySelector('input.moname'), 'Doce');
+  p.type(sRows(p)[1].querySelector('.mopr input'), '480');
+  assert.equal(sBtn(p, 'Agregar elección').disabled, false);
+  sBtn(p, 'Agregar elección').click(); await settle(5);
+  assert.equal(sheet(p), null, 'closed');
+  assert.equal(p.fld('Precio'), undefined, '🔴 the Precio field gave way to the choice');
+  const card = reqCard(p);
+  assert.equal(card.querySelector('.mk-gtn').textContent, 'Porción');
+  assert.deepEqual([...card.querySelectorAll('.mk-dopt .dp')].map((x) => x.textContent), [`L ${price}`, 'L 480']);
+  assert.equal(card.querySelectorAll('.mk-dopt .mk-apponly').length, 2, 'both options sell in the app only until published');
+  p.btn('Guardar').click(); await settle(10);
+  const src = p.src(); const dish = src.items.find((i) => i.key === PLAIN);
+  const ids = src.structure.variant_items[String(dish.display.id)].variantIds;
+  const mem = ids.map((v) => src.items.find((i) => i.ref === v || String(i.display.id) === String(v)));
+  assert.deepEqual(mem.map((x) => [x.display.choice, x.price, (x.display.tags || []).includes('recommended')]), [['Seis', Number(price), true], ['Doce', 480, false]]);
+});
+
+test('D2 — «Cancelar» records nothing; the trash is off at two options; «Agregar opción» adds a row', async () => {
+  const p = await page({ read: ON });
+  await p.signIn(); await p.open(PLAIN);
+  d2Act(p).click(); await settle(5);
+  assert.ok(sRows(p).every((r) => r.querySelector('.model').disabled), 'two rows: no trash');
+  sheet(p).querySelector('.mgadd').click(); await settle(5);
+  assert.equal(sRows(p).length, 3); assert.equal(p.d.activeElement, sRows(p)[2].querySelector('input.moname'));
+  assert.ok(sRows(p).every((r) => !r.querySelector('.model').disabled));
+  sBtn(p, 'Cancelar').click(); await settle(5);
+  assert.equal(sheet(p), null);
+  assert.equal(p.btn('Guardar').disabled, true, 'nothing recorded');
+  assert.ok(p.fld('Precio'), 'the dish keeps its one price');
+});
+
 test('copy: panel D\'s approved strings are literal; the addendum\'s proposed lines are ⟦s3.key⟧ placeholders', () => {
   assert.deepEqual(Object.keys(S3_COPY).sort(), ['pickAria', 'pickTitle', 'recRemoved', 'recRequired', 'removePick', 'tooFew']);
 });

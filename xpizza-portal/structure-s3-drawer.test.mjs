@@ -192,3 +192,34 @@ test('choiceRemovePlan is a PURE reader (the wiring guards rule it so): a deep-f
   assert.equal(IE.choiceRemovePlan(d, s).priceFrom, membersOf(draftSource(d), PAD)[2].key, 'premise: the plan read the ops');
   assert.equal(JSON.stringify([draftSource(d), d.orig, s.choiceOps]), before);
 });
+
+test('D2: choiceAdd gives a PLAIN dish its required choice in the copy — the marked option is «Recomendada»; the Precio field gives way; «Guardar» writes what CT.apply writes', () => {
+  const src = seed('la_musa');
+  const d = createDraft(clone(src));
+  const PLAIN = 'dimsum_01';
+  const s = IE.open(d, PLAIN, null, ON);
+  IE.set(s, 'price', '275');                                                     // a price typed before: the first option takes it
+  const opts = [{ ref: ref('a'), choice: 'Seis', price: 275 }, { ref: ref('b'), choice: 'Doce', price: 480 }];
+  assert.equal(IE.choiceAdd(s, { label: '', options: opts, marked: 0 }).ok, false, 'no name: refused locally (the server would refuse choice_label_required)');
+  assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts.slice(0, 1), marked: 0 }).ok, false, 'one option: choices_too_few');
+  assert.equal(IE.choiceAdd(s, { label: 'Porción', options: opts, marked: 1 }).ok, true);
+  const m = IE.choiceModel(d, s);
+  assert.deepEqual(m.options.map((o) => [o.choice, o.price, o.marked, o.isNew]), [['Seis', 275, false, true], ['Doce', 480, true, true]]);
+  assert.equal(m.hold, null);
+  assert.equal(s.work.price, s.base.price, 'the dish\'s own price edit is folded into the first option');
+  assert.deepEqual(IE.save(d, s), { ok: true });
+  let want = CT.apply(clone(src), { op: 'choice.add', key: PLAIN, label: 'Porción', options: opts }).source;
+  want = CT.apply(want, { op: 'choice.recommended', launcher: PLAIN, option: ref('b') }).source;
+  assert.equal(JSON.stringify(membersOf(draftSource(d), PLAIN)), JSON.stringify(membersOf(want, PLAIN)), '🔴 the server writer\'s output');
+});
+
+test('after D2, a new option\'s trash edits the choice.add op itself (two left ⇒ refused by the writer); a mark on it goes with it', () => {
+  const d = createDraft(clone(seed('la_musa')));
+  const s = IE.open(d, 'dimsum_01', null, ON);
+  const o = [ref('a'), ref('b'), ref('c')].map((r, i) => ({ ref: r, choice: `O${i}`, price: 100 + i }));
+  IE.choiceAdd(s, { label: 'Porción', options: o, marked: 2 });
+  assert.equal(IE.choiceDropNew(s, ref('c')).ok, true);
+  assert.deepEqual(s.choiceOps.map((x) => x.op), ['choice.add'], 'the mark on the dropped option went with it');
+  assert.deepEqual(s.choiceOps[0].options.map((x) => x.ref), [ref('a'), ref('b')]);
+  assert.equal(IE.choiceDropNew(s, ref('b')).code, 'choices_too_few', '🔴 two left: the writer refuses');
+});

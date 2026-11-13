@@ -1400,6 +1400,115 @@ function bPaint(first) {
   if (back) back.focus();
 }
 
+// STRUCTURE S3 D2 — «Agregar elección requerida» (MOCKUP-portal-structure-edit D2, owner-approved; B5: the primary is «Agregar
+// elección»): the dish's own sheet (#xchoice, the attach sheet's modal). The dish's price passes to the first option, «Recomendada»
+// (the writer's rule); the merchant names the choice and each option. TYPING edits the sheet's state in place (no rebuild under the
+// caret); a structural press (add a row, trash, pill, the flag) repaints and returns the caret by its data-k. «Agregar elección» is
+// on once the choice and every option have a name and a price: then IE.choiceAdd records it in the COPY (never the draft).
+let choicePick = null;
+const d2Ready = (p) => !!p.label.trim() && p.rows.length >= 2 && p.rows.every((r) => r.choice.trim() && parsePrice(r.price) !== null);
+function d2Focusables() { return [...$('xchoice').querySelectorAll('input, button')].filter((x) => !x.disabled); }
+function d2Key(e) {
+  if (!choicePick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); d2Close(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = d2Focusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function d2Scrim(e) { if (e.target === $('xchoice')) d2Close(true); }
+function d2Open(s, action) {
+  const v = IE.view(state.draft, s);
+  choicePick = { s, action, dish: v.fields.name, price: v.fields.price, label: '', marked: 0,
+    rows: [{ ref: tmpRef(), choice: '', price: v.fields.price }, { ref: tmpRef(), choice: '', price: '' }] };
+  $('xchoice').classList.add('show');
+  document.addEventListener('keydown', d2Key, true); $('xchoice').addEventListener('click', d2Scrim);
+  d2Paint('d2:name');
+}
+function d2Close(refocusAction) {
+  const p = choicePick; choicePick = null;
+  $('xchoice').classList.remove('show'); $('xchoice').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', d2Key, true); $('xchoice').removeEventListener('click', d2Scrim);
+  if (refocusAction && p && p.action && p.action.isConnected) p.action.focus();
+}
+function d2Paint(focusK) {
+  const p = choicePick;
+  if (!p) return;
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const modal = $('xchoice').querySelector('.modal');
+  const mh = mk('div', 'mh'); const t = mk('div', 'mt', 'Agregar elección requerida'); t.id = 'xch-t';
+  mh.append(t, mk('div', 'ms', `Para ${p.dish} · hoy tiene un solo precio`));
+  const mb = mk('div', 'mb mscroll mk-form');
+  const ex = mk('div', 'gexplain'); ex.append(mk('b', null, 'Elección requerida.'), document.createTextNode(' El cliente elige 1. El precio del producto pasa a ser el de la opción elegida.'));
+  const fName = mk('div', 'fld');
+  const lr = mk('div', 'mk-lrow'); const lab = mk('label', null, 'Nombre de la elección'); lab.htmlFor = 'xch-name'; lr.append(lab);
+  const d2Name = document.createElement('input');
+  d2Name.className = 'mgname-in'; d2Name.id = 'xch-name'; d2Name.type = 'text'; d2Name.value = p.label; d2Name.placeholder = 'Ej. Tamaño, Término, Porción'; d2Name.dataset.k = 'd2:name';
+  fName.append(lr, d2Name);
+  const fOpts = mk('div', 'fld');
+  const lr2 = mk('div', 'mk-lrow'); lr2.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', 'precio por opción'));
+  const grp = mk('div', 'mk-mgroup');
+  const d2Go = document.createElement('button'); d2Go.type = 'button'; d2Go.className = 'btn accent'; d2Go.textContent = 'Agregar elección'; d2Go.dataset.k = 'd2:add';
+  const sync = () => { d2Go.disabled = !d2Ready(p); };
+  d2Name.addEventListener('input', bound(() => { p.label = d2Name.value; sync(); }));
+  const few = p.rows.length <= 2;
+  p.rows.forEach((r, i) => {
+    const row = mk('div', 'mopt');
+    const d2OptName = document.createElement('input');
+    d2OptName.className = 'moname'; d2OptName.type = 'text'; d2OptName.value = r.choice; d2OptName.dataset.k = `d2:opt:${r.ref}`;
+    d2OptName.setAttribute('aria-label', 'Nombre de la opción'); d2OptName.placeholder = 'Nombre de la opción';
+    d2OptName.addEventListener('input', bound(() => { r.choice = d2OptName.value; sync(); }));
+    const pr = mk('span', 'mopr');
+    const d2OptPrice = document.createElement('input');
+    d2OptPrice.type = 'text'; d2OptPrice.inputMode = 'numeric'; d2OptPrice.setAttribute('aria-label', 'Precio'); d2OptPrice.value = r.price; d2OptPrice.dataset.k = `d2:pr:${r.ref}`;
+    d2OptPrice.addEventListener('input', bound(() => { r.price = d2OptPrice.value; p.same = false; sync(); }));
+    pr.append(mk('span', 'mc', 'L'), d2OptPrice);
+    const d2RecPill = document.createElement('button'); d2RecPill.type = 'button'; d2RecPill.className = 'recpill'; d2RecPill.classList.toggle('recpill-on', p.marked === i);
+    d2RecPill.textContent = 'Recomendada'; d2RecPill.setAttribute('aria-pressed', String(p.marked === i)); d2RecPill.dataset.k = `d2:rec:${r.ref}`;
+    d2RecPill.addEventListener('click', bound(() => { p.marked = i; d2Paint(`d2:rec:${r.ref}`); }));
+    const d2OptTrash = document.createElement('button'); d2OptTrash.type = 'button'; d2OptTrash.className = 'model'; d2OptTrash.dataset.k = `d2:rm:${r.ref}`;
+    d2OptTrash.setAttribute('aria-label', `Quitar ${r.choice.trim() || 'opción'}`); d2OptTrash.append(svgTrashIcon());
+    if (few) { d2OptTrash.disabled = true; d2OptTrash.title = IE.s3Copy('tooFew'); }
+    d2OptTrash.addEventListener('click', bound(() => {
+      p.rows.splice(i, 1);
+      if (p.marked === i) p.marked = 0; else if (p.marked > i) p.marked -= 1;
+      d2Paint('d2:more');
+    }));
+    row.append(d2OptName, pr, d2RecPill, d2OptTrash);
+    grp.append(row);
+  });
+  const d2More = document.createElement('button'); d2More.type = 'button'; d2More.className = 'mgadd'; d2More.dataset.k = 'd2:more';
+  d2More.append(svgPlusIcon(), document.createTextNode('Agregar opción'));
+  d2More.addEventListener('click', bound(() => { const r = { ref: tmpRef(), choice: '', price: '' }; p.rows.push(r); d2Paint(`d2:opt:${r.ref}`); }));
+  const flag = mk('label', 'mgflag');
+  const d2Same = document.createElement('input'); d2Same.type = 'checkbox'; d2Same.checked = p.same === true; d2Same.dataset.k = 'd2:same';
+  // «Mismo precio para todas» (the drawer's rule): on → every option takes the cheapest usable price
+  d2Same.addEventListener('change', bound(() => {
+    p.same = d2Same.checked;
+    if (p.same) { const ps = p.rows.map((r) => parsePrice(r.price)).filter((x) => x !== null); if (ps.length) { const v = String(Math.min(...ps)); for (const r of p.rows) r.price = v; } }
+    d2Paint('d2:same');
+  }));
+  flag.append(d2Same, document.createTextNode('Mismo precio para todas'));
+  fOpts.append(lr2, grp, d2More, flag);
+  const note = mk('div', 'mk-note');
+  note.append(mk('b', null, 'El precio actual pasa a la primera opción'), document.createTextNode(`${p.dish} cuesta L ${p.price} hoy; esa es la opción recomendada al crear la elección. Ajustá cada precio antes de guardar.`));
+  mb.append(ex, fName, fOpts, note);
+  const mf = mk('div', 'mf');
+  const d2Cancel = document.createElement('button'); d2Cancel.type = 'button'; d2Cancel.className = 'btn ghost'; d2Cancel.textContent = 'Cancelar'; d2Cancel.dataset.k = 'd2:cancel';
+  d2Cancel.addEventListener('click', bound(() => d2Close(true)));
+  d2Go.addEventListener('click', bound(() => {
+    if (!d2Ready(p)) return;
+    const r = IE.choiceAdd(p.s, { label: p.label.trim(), marked: p.marked, options: p.rows.map((x) => ({ ref: x.ref, choice: x.choice.trim(), price: parsePrice(x.price) })) });
+    if (!r.ok) return;
+    d2Close(false);
+    renderDrawer(); holdDrawerForRename(); refocus(['ie-fold::req']);
+  }));
+  mf.append(d2Cancel, d2Go);
+  sync();
+  modal.replaceChildren(mh, mb, mf);
+  const back = [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === focusK);
+  if (back && !back.disabled) back.focus();
+}
+
 // rule 16b (SBS 11-12): a card's subtitle wraps BETWEEN its « · » parts, never inside one — «en 4 pro…» hid the count once «Editar en
 // Extras» shared the header line at 390 px, and a free wrap would orphan a word («en 4 / productos»)
 function setSegs(host, text) {
@@ -2250,8 +2359,11 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fSub);
   }
 
+  // STRUCTURE S3: with choiceEdit the COPY says whether the dish has a choice now (D2 adds one, D3 removes it); without it, today's
+  const cm0 = s.choiceEdit ? IE.choiceModel(state.draft, s) : null;
+  const hasChoice = cm0 ? cm0.label !== null && !cm0.removed : !!v0.options;
   // a plain product: its price, as today (a product with a required choice prices its options, in «Opciones» below)
-  if (!v0.options) {
+  if (!hasChoice) {
     const fPr = mk('div', 'fld pr');
     fPr.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
     const iePrice = document.createElement('input');
@@ -2269,7 +2381,7 @@ function renderEditDrawer(d, it, keepScroll) {
   const ex = v0.extras;
   // S2 (Codex S2 UI r1 P2-5): with the server's Extras page the field stays for a dish with ZERO groups — its «Agregar grupo de extras»
   // is the only way to attach one
-  if (v0.options || ex.show || state.extrasCatalog === true) {
+  if (hasChoice || ex.show || state.extrasCatalog === true || !!cm0) {
     const fOpc = mk('div', 'fld');
     const lrO = mk('div', 'mk-lrow');
     lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', state.extrasCatalog === true ? 'El orden de los grupos se define en Extras' : 'en el orden que las ve el cliente'));   // mockup v3 (owner 11-11): the order is set on the Extras page — once that page exists
@@ -2312,13 +2424,13 @@ function renderEditDrawer(d, it, keepScroll) {
     }
     // STRUCTURE S3 (MOCKUP panel D + the S3 addendum B2): with the server's choiceEdit switch the card reads the copy's choice (its
     // pending ops applied) and carries the pencil; the pencil opens the editor IN the card. Without it, S1's card exactly.
-    const cm = s.choiceEdit ? IE.choiceModel(state.draft, s) : null;
-    if (cm && !cm.removed && choiceEditing.has(s.id)) {
+    const cm = cm0 && hasChoice ? cm0 : null;
+    if (cm && choiceEditing.has(s.id)) {
       const card = choiceEditorCard(s, key, cm, { mk, header, relayout, R });
       R.optBlock = card;
       errSlot(card, 'options');
       box.append(card);
-    } else if (cm && !cm.removed && v0.options) {
+    } else if (cm) {
       const label = cm.label && cm.label.trim() ? cm.label : 'Elección';
       const open = !folded('req');
       const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
@@ -2332,7 +2444,7 @@ function renderEditDrawer(d, it, keepScroll) {
       // R1 ends with S3: the prices are edited in the editor; the read card names each option, its mark, its price (frame A)
       if (open) {
         const block = mk('div', 'mk-gb');
-        const work = new Map(v0.options.map((o) => [o.key, o.price]));
+        const work = new Map((v0.options || []).map((o) => [o.key, o.price]));   // a choice added in this copy (D2) has no live rows
         for (const o of cm.options) {
           const row = mk('div', 'mk-dopt');
           const dn = mk('span', 'mk-dn', o.choice);
@@ -2347,7 +2459,7 @@ function renderEditDrawer(d, it, keepScroll) {
       R.optBlock = card;
       errSlot(card, 'options');
       box.append(card);
-    } else if (v0.options) {
+    } else if (!cm0 && v0.options) {
       const g = choiceGroup(state.draft, key);
       const label = (g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección';
       const open = !folded('req');
@@ -2480,16 +2592,27 @@ function renderEditDrawer(d, it, keepScroll) {
     }
     // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;
     // off with the writer's line when the COPY refuses an attach (the X3b predicate)
-    if (state.extrasCatalog === true) {
+    // STRUCTURE S3 D2: the dish's second action, «Agregar elección requerida» (quiet), on a plain dish with the server's choiceEdit
+    const d2 = !!cm0 && !hasChoice && !cm0.removed;
+    if (state.extrasCatalog === true || d2) {
       const adds = mk('div', 'mk-adds');
-      const sheet = IE.attachSheet(state.draft, s);
-      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
-      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
-      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
-      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
-      focusKey(ieAddGroup, 'ie-badd');
-      adds.append(ieAddGroup);
-      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      if (state.extrasCatalog === true) {
+        const sheet = IE.attachSheet(state.draft, s);
+        const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
+        ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
+        lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
+        ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
+        focusKey(ieAddGroup, 'ie-badd');
+        adds.append(ieAddGroup);
+        if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      }
+      if (d2) {
+        const ieAddChoice = document.createElement('button'); ieAddChoice.type = 'button'; ieAddChoice.className = 'railadd mk-railq';
+        ieAddChoice.append(svgPlusIcon(), document.createTextNode('Agregar elección requerida'));
+        ieAddChoice.addEventListener('click', bound(() => d2Open(s, ieAddChoice)));
+        focusKey(ieAddChoice, 'ie-d2');
+        adds.append(ieAddChoice);
+      }
       box.append(adds);
     }
     fOpc.append(lrO, box);

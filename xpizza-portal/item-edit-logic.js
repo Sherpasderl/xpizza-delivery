@@ -493,12 +493,33 @@ export function choiceRemove(s, priceFrom) {
   s.work.price = Number.isInteger(pick.price) ? String(pick.price) : '';
   return { ok: true };
 }
+// D2 «Agregar elección» (the sheet): a PLAIN dish gains its required choice in the copy — choice.add (the writer marks the FIRST
+// option), then choice.recommended when the sheet's mark is another row; both dry-run as one. The sheet prefilled the first option
+// with the dish's price (a typed one included), so the copy's own price edit is folded in and goes back to the base. A name is
+// required here (the server refuses an unnamed choice: choice_label_required); the option count is the writer's (choices_too_few).
+export function choiceAdd(s, { label, options, marked = 0 } = {}) {
+  if (!s || s.closed) return { ok: false, code: 'closed' };
+  if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
+  if (typeof label !== 'string' || !label.trim()) return { ok: false, code: 'choice_label_required' };
+  const opts = Array.isArray(options) ? options.map((o) => ({ ref: o.ref, choice: o.choice, price: o.price })) : [];
+  const add = { op: 'choice.add', key: s.key, label, options: opts };
+  const next = [...s.choiceOps, add];
+  if (Number.isInteger(marked) && marked > 0 && opts[marked]) next.push({ op: 'choice.recommended', launcher: s.key, option: opts[marked].ref });
+  const r = tryOps(s, next);
+  if (!r.ok) return r;
+  s.choiceOps = next;
+  s.work.price = s.base.price;
+  return { ok: true };
+}
 // a NEW option's trash: it was never saved, so its add op goes — with every op that names it (its rename, its mark)
 export function choiceDropNew(s, ref) {
   if (!s || s.closed) return { ok: false, code: 'closed' };
   if (!s.choiceEdit) return { ok: false, code: 'choice_edit_off' };
-  if (!s.choiceOps.some((op) => op.op === 'option.add' && op.ref === ref)) return { ok: false, code: 'choice_option_missing' };
-  const next = s.choiceOps.filter((op) => !(op.op === 'option.add' && op.ref === ref) && !(op.op === 'choice.recommended' && op.option === ref) && !(op.op === 'option.rename' && op.key === ref));
+  const inAdd = (op) => op.op === 'choice.add' && Array.isArray(op.options) && op.options.some((o) => o.ref === ref);
+  if (!s.choiceOps.some((op) => (op.op === 'option.add' && op.ref === ref) || inAdd(op))) return { ok: false, code: 'choice_option_missing' };
+  // an option of a choice ADDED in this copy (D2) leaves that op's list (the writer keeps ≥ 2); one added to a live group drops its op
+  const next = s.choiceOps.filter((op) => !(op.op === 'option.add' && op.ref === ref) && !(op.op === 'choice.recommended' && op.option === ref) && !(op.op === 'option.rename' && op.key === ref))
+    .map((op) => (inAdd(op) ? { ...op, options: op.options.filter((o) => o.ref !== ref) } : op));
   const r = tryOps(s, next);
   if (!r.ok) return r;
   s.choiceOps = next;

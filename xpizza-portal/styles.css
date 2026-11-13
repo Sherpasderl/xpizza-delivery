@@ -746,6 +746,10 @@
   .mk-gfoot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:baseline;gap:4px 10px;padding:6px 14px 10px}
   .mk-adds{display:flex;flex-direction:column;gap:2px}
   .mk-adds .railadd{margin-top:2px}
+  /* STRUCTURE S3 D2: the dish's second action, quiet (the mockup's .railadd.quiet; its own class: no colour crossing with .railadd) */
+  .mk-adds .mk-railq{border-color:transparent;color:var(--accent);padding:8px 11px;margin-top:0}
+  .mk-adds .mk-railq:hover{background:var(--tint)}
+  #xchoice .mb .gexplain{border:1px solid var(--line2);border-radius:10px;padding:11px 13px;margin-top:8px}
   .optrow.have{opacity:.55;cursor:default}
   .mk-ogn{margin-left:auto;font-size:12px;color:var(--mute2);flex:none;max-width:42%;text-align:right;line-height:1.4}   /* rule 16b: wraps inside the row at 390 px (it ran past the edge) */
   .mk-nogroup{font-size:12.5px;color:var(--mute);margin:2px 0 0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
