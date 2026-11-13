@@ -4820,3 +4820,24 @@ test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLA
   assert.ok(rawPromos.length > 0, 'premise: the raw writer emits a promo');
   assert.ok(rawPromos.every((p) => !('basis' in p)), '🔴 bridge EXPIRED: the pinned writer emits the marker itself — drop the overlay');
 });
+
+// ── G-C (NOTE-capp-3-gaps-vs-frames; advisor 11-13): the DESK filter row is the phone's set in D-3 r3 f1a's order — «Abierto ahora ·
+// Pickup · Menos de 30 min» + a 4th chip whose label follows the viewer: a member's «Envío gratis» (the rule-10 predicate — never
+// today), else «Envío desde L {the LOWEST priced fee}» filtering to the stores at that floor. The phone keeps v6's chips exactly ──
+const chipLabels = (html) => [...dom(html).querySelectorAll('.fchip')].map((b) => b.textContent.trim());
+const withFees = (fees) => { const b = J(SC.complete.body); for (const e of b.restaurants) if (fees[e.restaurant_id] !== undefined) e.fee = fees[e.restaurant_id]; return b; };
+test('G-C1 (f1a): the desk guest\'s filter row — Abierto ahora · Pickup · Menos de 30 min · «Envío desde L 45» (the lowest priced fee); the phone keeps v6\'s three', () => {
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: true, auth: 'guest' }))), ['Abierto ahora', 'Pickup', 'Menos de 30 min', 'Envío desde L 45'], '🔴 G-C1: the desk row (f1a)');
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: false, auth: 'guest' }))), ['Abierto ahora', 'Pickup', 'Menos de 30 min'], 'the phone: v6 exactly (no fee chip for a guest)');
+});
+test('G-C2: the fee chip is COMPUTED — the lowest priced fee labels it, and pressing it keeps only the stores at that floor; no priced fee ⇒ no chip', () => {
+  const rows = rowsOf(withFees({ la_musa: { state: 'priced', from_cents: 3500 } }));
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: true, rows }))).at(-1), 'Envío desde L 35', '🔴 G-C2: the label is the real minimum');
+  const d = dom(CappHome.homeHtml(VM({ desk: true, rows, filters: new Set(['fee']) })));
+  assert.equal(d.querySelector('.fchip[data-val="fee"]').getAttribute('aria-pressed'), 'true', 'premise: pressed');
+  assert.deepEqual([...d.querySelectorAll('.hsec[aria-label="Todos los restaurantes"] .rcard')].map((c) => c.dataset.rid), ['la_musa'], '🔴 G-C2: only the store at the floor');
+  const ph = dom(CappHome.homeHtml(VM({ desk: false, rows, filters: new Set(['fee']) })));   // pressed on the desk, then the window narrowed
+  assert.deepEqual([...ph.querySelectorAll('.hsec[aria-label="Todos los restaurantes"] .rcard')].map((c) => c.dataset.rid).sort(), ['la_musa', 'x_pizza'], '🔴 G-C2: no HIDDEN filter — the phone has no fee chip, so it filters nothing there');
+  const none = rowsOf(withFees({ x_pizza: { state: 'none' }, la_musa: { state: 'none' } }));
+  assert.ok(!chipLabels(CappHome.homeHtml(VM({ desk: true, rows: none }))).some((l) => /Envío/.test(l)), '🔴 G-C2: no priced fee ⇒ no fee chip');
+});

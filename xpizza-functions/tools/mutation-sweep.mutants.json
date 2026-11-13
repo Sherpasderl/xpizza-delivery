@@ -36209,5 +36209,73 @@
   "kills_with": [
    "DA3: priced — the aside never carries the guest line"
   ]
+ },
+ {
+  "id": "gc-01",
+  "slice": "gc",
+  "label": "the desk filter row keeps the phone's order and set (no f1a fee chip)",
+  "file": "../customer-app/capp-home.js",
+  "from": "const chips = (vm.desk ? [cOpen, cPick, cFast, cFree[3] ? cFree : cFee] : [cOpen, cFree, cPick, cFast])",
+  "to": "const chips = ([cOpen, cFree, cPick, cFast])",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C1: the desk row"
+  ]
+ },
+ {
+  "id": "gc-02",
+  "slice": "gc",
+  "label": "the fee chip labelled by the HIGHEST priced fee, not the floor",
+  "file": "../customer-app/capp-home.js",
+  "from": "const floor = live.filter(priced).reduce((m, r) => Math.min(m, r.fee.from_cents), Infinity)",
+  "to": "const floor = live.filter(priced).reduce((m, r) => Math.max(m, r.fee.from_cents), -Infinity)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: the label is the real minimum"
+  ]
+ },
+ {
+  "id": "gc-03",
+  "slice": "gc",
+  "label": "the pressed fee chip filters nothing",
+  "file": "../customer-app/capp-home.js",
+  "from": "&& (!F.has('fee') || !vm.desk || atFloor(r)));",
+  "to": "&& true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: only the store at the floor"
+  ]
+ },
+ {
+  "id": "gc-04",
+  "slice": "gc",
+  "label": "the fee filter stays applied on the phone, where it has no chip (a hidden filter)",
+  "file": "../customer-app/capp-home.js",
+  "from": "&& (!F.has('fee') || !vm.desk || atFloor(r)));",
+  "to": "&& (!F.has('fee') || atFloor(r)));",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: no HIDDEN filter"
+  ]
  }
 ]

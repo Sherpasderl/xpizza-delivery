@@ -318,9 +318,11 @@
     }
     if (vm.outOfZone) return page(emptyHtml('pin', 'Ningún restaurante entrega en esta dirección', 'Probá otra dirección o recogé en tienda.', ['addr', 'Cambiar dirección']));   // frame 4
     const live = all.filter((r) => !r.gone);
+    // G-C (D-3 r3 f1a; advisor 11-13): the floor of the PRICED fees — the desk guest's 4th chip «Envío desde L {floor}», a fact, not a claim
+    const floor = live.filter(priced).reduce((m, r) => Math.min(m, r.fee.from_cents), Infinity), atFloor = (r) => priced(r) && r.fee.from_cents === floor;
     const cuisine = vm.cuisine || '', F = vm.filters;
     const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.promoAuth))
-      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)));
+      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)) && (!F.has('fee') || !vm.desk || atFloor(r)));   // the fee chip is the desk's: never a hidden filter on the phone
     const notes = [];
     // MOCKUP-capp-native-store-update state 1 A (owner: both A + B; A hidden by the customer until the next day): the INSTALLED app
     // has a newer store build — first in the Inicio body
@@ -330,8 +332,12 @@
     const tax = vm.platform && Array.isArray(vm.platform.cuisines) ? vm.platform.cuisines : [];
     const cuisineIds = tax.filter((x) => CUIS[x.id] && live.some((r) => r.cuisines.includes(x.id)));
     const cuisRow = cuisineIds.length ? `<div class="cuisrow" role="group" aria-label="Tipo de comida"><button class="cuis" aria-pressed="${!cuisine}" data-act="cuisine" data-val="">${CUIS.todo.icon}<span>Todo</span></button>${cuisineIds.map((x) => `<button class="cuis" aria-pressed="${cuisine === x.id}" data-act="cuisine" data-val="${esc(x.id)}">${CUIS[x.id].icon}<span>${esc(x.label)}</span></button>`).join('')}</div>` : '';
-    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))],
-      ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)]].filter((x) => x[3]);   // only chips the data supports
+    const cOpen = ['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], cFree = ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))];
+    const cPick = ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], cFast = ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)];
+    // the phone: v6's chips in v6's order; the desk (G-C, f1a): the same set in the frame's order, the 4th slot following the viewer —
+    // the member's «Envío gratis» where the rule-10 predicate holds, else the guest's «Envío desde L {floor}»
+    const cFee = ['fee', Number.isFinite(floor) ? `Envío desde ${money(floor / 100)}` : '', IC.bike, Number.isFinite(floor)];
+    const chips = (vm.desk ? [cOpen, cPick, cFast, cFree[3] ? cFree : cFee] : [cOpen, cFree, cPick, cFast]).filter((x) => x[3]);   // only chips the data supports
     const fchips = chips.length ? `<div class="fchips" role="group" aria-label="Filtros">${chips.map(([k, l, ic]) => `<button class="fchip" aria-pressed="${F.has(k)}" data-act="filter" data-val="${k}">${ic}${l}</button>`).join('')}</div>` : '';
     const open = (r) => !r.gone && isOpen(r.cfg, vm.now);
     const featured = vis.map((r, i) => [r, i]).sort((a, b) => (open(b[0]) - open(a[0])) || (a[1] - b[1])).map(([r]) => r).slice(0, 10);
