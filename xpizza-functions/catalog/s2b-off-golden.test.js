@@ -27,7 +27,7 @@ const R = (rel) => require(path.join(FN, rel));
 const SW = { on: false };
 if (fs.existsSync(path.join(FN, 'catalog/extra-identity.js'))) { const p = require.resolve(path.join(FN, 'catalog/extra-identity')); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, extraIdentityCapabilities: () => ({ mintExtras: SW.on }) } }; }
 const APP = (rel) => require(path.join(FN, '..', 'customer-app', rel));
-const { makeDb } = R('catalog/firestore-fake');
+const { makeDb } = require('./firestore-fake');   // the TEST DOUBLE is the tip's, for the capture too (it is not the subject; a batch commits at ONE time, as Firestore does — 5f 11-13)
 const MP = R('menu-pricing');
 const { makeRtdbMirror } = R('catalog/mirror-rtdb');
 const { createSnapshotFallback } = R('catalog/snapshot-fallback');

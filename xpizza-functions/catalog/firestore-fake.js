@@ -36,16 +36,18 @@ function makeDb() {
   let clock = 1757000000000;
   let autoId = 0;
   const tick = () => Timestamp.fromMillis((clock += 1000));
+  let pinned = null;                 // a WriteBatch commit's ONE commit time (every write and serverTimestamp in it), else null
+  const stamp = () => pinned || tick();
   // serverTimestamp() sentinels resolve on write, exactly as the server does — publishVersion's lease
   // depends on reading one back as a real Timestamp.
   const resolve = (v) => {
-    if (v instanceof FieldValue) return tick();
+    if (v instanceof FieldValue) return stamp();
     if (v instanceof Timestamp) return v;
     if (Array.isArray(v)) return v.map(resolve);
     if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = resolve(v[k]); return o; }
     return v;
   };
-  const put = (path, data) => { docs.set(path, { data: resolve(data), updateTime: tick() }); };
+  const put = (path, data) => { docs.set(path, { data: resolve(data), updateTime: stamp() }); };
   const snapOf = (path) => {
     const held = docs.get(path);
     return {
@@ -92,7 +94,12 @@ function makeDb() {
          · the precondition must be a real Timestamp (the SDK's type; a caller passing a string is a bug production would hit);
          · a top-level key REPLACES that field; a DOTTED key is a field path — it sets the nested field and keeps its siblings
            (creating intermediate maps), exactly as Firestore's update(); every other field is kept. */
-      update: async (data, opts) => {
+      update: async (data, opts) => updateNow(path, data, opts),
+      delete: async () => { docs.delete(path); },
+    };
+  }
+  // update()'s body, SYNCHRONOUS so a WriteBatch can apply all its writes with no await between them (see batch.commit)
+  function updateNow(path, data, opts) {
         const held = docs.get(path);
         if (held === undefined) { const e = new Error(`not_found: ${path}`); e.code = 5; throw e; }
         const want = opts && opts.lastUpdateTime;
@@ -114,9 +121,6 @@ function makeDb() {
         }
         put(path, next);
         return { writeTime: docs.get(path).updateTime };
-      },
-      delete: async () => { docs.delete(path); },
-    };
   }
   function colRef(path) {
     /* 🔴 EQUALITY QUERIES, because D4's registry writer guard asks "is a live id already claiming this
@@ -175,14 +179,47 @@ function makeDb() {
   }
   return {
     collection: (c) => colRef(c),
+    /* 🔴 A WriteBatch IS ATOMIC IN FIRESTORE, so it is atomic here (advisor 11-13; editCatalogCore commits the draft and the
+       high-water mark in ONE batch, edit-catalog-handler.js:405). commit() applies every write SYNCHRONOUSLY — no await between
+       them, so nothing else interleaves — and on the first refusal restores the documents exactly as they were before the
+       commit, then rethrows it: every write lands, or none does. The writes share ONE commit time (serverTimestamp included),
+       returned per write as WriteResult.writeTime. Refusals are Firestore's: update() on a missing doc → 5, a stale
+       lastUpdateTime → 9 (updateNow); create() over an existing doc → 6 ALREADY_EXISTS. At the call, like the SDK: an
+       update needs at least one field and a Timestamp precondition; the field/value varargs form is not modelled and is
+       refused rather than misread. */
     batch: () => {
       const ops = [];
-      return {
-        set: (ref, d) => ops.push(() => ref.set(d)),
-        create: (ref, d) => ops.push(() => ref.create(d)),
-        delete: (ref) => ops.push(() => ref.delete()),
-        commit: async () => { for (const op of ops) await op(); },
+      const self = {
+        set: (ref, d) => { ops.push(() => put(ref.path, d)); return self; },
+        create: (ref, d) => {
+          ops.push(() => {
+            if (docs.has(ref.path)) { const e = new Error(`6 ALREADY_EXISTS: entity already exists: path=/${ref.path}`); e.code = 6; throw e; }
+            put(ref.path, d);
+          });
+          return self;
+        },
+        update: (ref, data, ...rest) => {
+          if (typeof data === 'string' || rest.length > 1) throw new TypeError('firestore-fake: batch.update(ref, field, value, …) — the field/value form is not modelled');
+          if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) throw new Error('firestore-fake: batch.update needs at least one field to update (as the SDK)');
+          const opts = rest[0];
+          if (opts && opts.lastUpdateTime !== undefined && !(opts.lastUpdateTime instanceof Timestamp)) throw new TypeError('firestore-fake: update() precondition lastUpdateTime must be a Timestamp');
+          ops.push(() => updateNow(ref.path, data, opts));
+          return self;
+        },
+        delete: (ref) => { ops.push(() => { docs.delete(ref.path); }); return self; },
+        commit: async () => {
+          const before = new Map(docs);
+          pinned = tick();
+          try {
+            for (const op of ops) op();
+            return ops.map(() => ({ writeTime: pinned }));
+          } catch (e) {
+            docs.clear(); for (const [k, v] of before) docs.set(k, v);
+            throw e;
+          } finally { pinned = null; }
+        },
       };
+      return self;
     },
     runTransaction: async (fn) => fn({
       get: (ref) => ref.get(),      // a query ref answers .get() too — see colRef's query()

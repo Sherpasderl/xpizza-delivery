@@ -48,8 +48,8 @@ function saveDb(rid) {
   });
   return { state, collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
 }
-const save = async (rid, source, ids, { live = activeOf(rid), photos = null, stored = null } = {}) => { const db = saveDb(rid); if (stored) db.state.source.data = clone(stored); const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt: async () => live, ...(photos ? { photos } : {}) },
-  { restaurantId: rid, source: ids ? { ...source, deleted_ids: { ids } } : source, baseSourceUpdateTime: T0, ...(ids ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}); return { r, saved: db.state.source.data, db }; };
+const save = async (rid, source, ids, { live = activeOf(rid), photos = null, stored = null, shape = 'object' } = {}) => { const db = saveDb(rid); if (stored) db.state.source.data = clone(stored); const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt: async () => live, ...(photos ? { photos } : {}) },
+  { restaurantId: rid, source: ids ? (shape === 'portal' ? PORTAL.mergeDeletionClaim(clone(source), [{ deletedIds: ids }]) : { ...source, deleted_ids: { ids } }) : source, baseSourceUpdateTime: T0, ...(ids ? { deleted_ids_loaded_base: { version: ACTIVE, generation: 0 } } : {}) }, {}); return { r, saved: db.state.source.data, db }; };
 function removed(src, key) {
   const s = clone(src);
   s.items = s.items.filter((i) => i.key !== key);
@@ -66,7 +66,9 @@ const editor = (rid, source, extra = {}) => getEditableCatalogCore({ db: { ref: 
 { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
 const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
 
+let PORTAL = null;   // the portal's ONE claim writer (xpizza-portal/editor.js mergeDeletionClaim) — it sends `deleted_ids` as a sorted ARRAY
 (async () => {
+  PORTAL = await import(require('url').pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-portal', 'editor.js')).href);
   await cell('PR5-OFF: switch OFF — removing a dish named in an override is today\'s structure_changed; the editor read carries no removal fields', async (L) => {
     const { r } = await save('x_pizza', removed(base('x_pizza'), 'Nutella'), [stamp('x_pizza', 'Nutella')]);
     assert.deepStrictEqual([r.status, r.body.error], [400, 'structure_changed'], `${L}: ${show(r)}`);
@@ -114,6 +116,28 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
       const undeclared = { ...d, deleted_ids: { ids: [] } };
       assert.deepStrictEqual(catalogDiff(live, draft, removalDiffOptions(live, undeclared)).renamed.map((x) => x.from), ['noodle_02'], `${L}: an undeclared removal still pairs`);
     });
+  });
+  await cell('CLAIM-SHAPE: removalDiffOptions reads the claim in BOTH shapes the save accepts — the portal\'s ARRAY (mergeDeletionClaim) and the stored { ids }', async (L) => {
+    const rid = 'la_musa'; const src = base(rid); const live = builtOf(src, rid);
+    const portal = PORTAL.mergeDeletionClaim(removed(src, 'noodle_02'), [{ deletedIds: [stamp(rid, 'noodle_02')] }]);
+    assert.ok(Array.isArray(portal.deleted_ids), `${L}: premise — the portal's writer sends an ARRAY (${JSON.stringify(portal.deleted_ids)})`);
+    const stored = { ...removed(src, 'noodle_02'), deleted_ids: { ids: [stamp(rid, 'noodle_02')], base_version: ACTIVE, base_generation: 0 } };
+    await ON(async () => {
+      const a = removalDiffOptions(live, portal); const o = removalDiffOptions(live, stored);
+      assert.deepStrictEqual([a && [...a.declared], o && [...o.declared]], [['noodle_02'], ['noodle_02']], `${L}: CLAIM-ARRAY — both shapes declare the removal`);
+      assert.strictEqual(removalDiffOptions(live, { ...portal, deleted_ids: [] }), null, `${L}: an empty array declares nothing`);
+      assert.strictEqual(removalDiffOptions(live, { ...portal, deleted_ids: 'x' }), null, `${L}: a malformed claim declares nothing (the save refuses it)`);
+    });
+  });
+  await cell('CLAIM-ONE-RULE: catalog/deletion-claim.claimIds IS the save\'s own declaredIds rule (edit-catalog-handler), over every shape', (L) => {
+    const src = fs.readFileSync(path.join(__dirname, 'edit-catalog-handler.js'), 'utf8');
+    const m = src.match(/const declaredIds = (\(next\.deleted_ids && typeof next\.deleted_ids === 'object' && !Array\.isArray\(next\.deleted_ids\)\)\n\s*\? next\.deleted_ids\.ids\n\s*: next\.deleted_ids);/);
+    assert.ok(m, `${L}: premise — the save's declaredIds rule is where it was`);
+    const handlerRule = new Function('next', `return ${m[1]};`);   // eslint-disable-line no-new-func
+    const { claimIds } = require('./deletion-claim');
+    for (const v of [['a', 'b'], [], { ids: ['a'] }, { ids: 'x' }, {}, null, undefined, 'x', 0, { ids: ['a'], base_version: 'v', base_generation: 1 }]) {
+      assert.deepStrictEqual(claimIds(v), handlerRule({ deleted_ids: v }), `${L}: ${JSON.stringify(v)}`);
+    }
   });
   await cell('PR3-WIRING: the save, the owner publish and the manager request diff with the SAME option (the token re-matches)', () => {
     for (const f of ['edit-catalog-handler.js', 'publish-edited-handler.js', 'publish-request.js']) {
@@ -274,6 +298,18 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 200)}`;
     });
     const { r } = await save(rid, draft, [stamp(rid, 'rice_03')], { photos, stored });
     assert.deepStrictEqual([r.status, r.body.error], [409, 'photo_change_disabled'], `${L}: OFF — today (${show(r)})`);
+  });
+  await cell('B5-PORTAL: the same removal with the claim AS THE PORTAL SENDS IT (mergeDeletionClaim\'s ARRAY) — its photo may leave with uploads disabled (ON), the claim is stored normalized', async (L) => {
+    const rid = 'la_musa'; const pid = 'b'.repeat(32);
+    const stored = base(rid); stored.photos = { rice_03: { state: 'pid', pid } };
+    const photos = { enabled: async () => false, readActive: async () => PS.versionPhotosDoc({ rice_03: { state: 'pid', pid } }, (p) => `https://cdn.test/${p}.jpg`).entries, attach: async () => ({ ok: true }) };
+    const draft = removed(stored, 'rice_03'); delete draft.photos;
+    await ON(async () => {
+      const { r, saved } = await save(rid, draft, [stamp(rid, 'rice_03')], { photos, stored, shape: 'portal' });
+      assert.strictEqual(r.status, 200, `${L}: CLAIM-PORTAL — ${show(r)}`);
+      assert.deepStrictEqual(r.body.diff.removed.map((x) => x.key), ['rice_03'], `${L}: «Quitado»`);
+      assert.deepStrictEqual(saved.deleted_ids && saved.deleted_ids.ids, [stamp(rid, 'rice_03')], `${L}: stored as { ids, … }`);
+    });
   });
   if (fails.length) { console.error(`remove-product-server FAILED ${fails.length} cell(s): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`remove-product-server: OK (${n})`);
