@@ -192,7 +192,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const o = await pick(w, [line(K2, 2)]);
     assert.ok(OP.isServerOfferCtx(o), L);
     assert.strictEqual(OP.isServerOfferCtx(JSON.parse(JSON.stringify(o))), false, `${L}: a copy`);
-    assert.deepStrictEqual(Object.keys(o).sort(), ['discount_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], L);
+    assert.deepStrictEqual(Object.keys(o).sort(), ['caps', 'discount_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], L);
     assert.deepStrictEqual([o.offer_id, o.rev, o.name], [id, w.live()[id].rev, 'Oferta'], L);
   });
   await cell('OP-MALFORMED: a corrupt mirror (not an object / a bad id / a missing rev / a bad schedule) applies nothing and never throws', async (L) => {

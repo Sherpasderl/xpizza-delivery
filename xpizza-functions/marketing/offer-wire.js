@@ -6,6 +6,7 @@
 // Reads (rule 7):
 //   · platform_config/marketing: per-instance cache ≤ 60 s (3a Q9, ruled); an unreadable config ⇒ OFF and NOT cached.
 //   · marketing_live/{rid}: ONE read; quotes cached per instance ≤ 60 s, placement reads FRESH (Q6: a pause is honoured at once).
+//   · the chosen offer's marketing_usage/{offerId}: ONE fresh point read (only when an offer would apply) — a capped offer is skipped.
 //   · a card retry of an EXISTING order reuses the offer frozen on it (orders/{id}/offer, one point read, only when offers are on):
 //     the order's economics are fixed at its first placement, never re-priced by a later mirror (promo §10 «frozen economics»).
 // Scope (5f ruling, reported): offers apply to SHERPA APP orders only — the legacy order forms are frozen (rule 40) and show no offer.
@@ -14,6 +15,8 @@
 const CFG = require('./config');
 const OP = require('./offer-price');
 const P = require('../delivery/delivery-pricing');
+const OU = require('./offer-usage');
+const OM_LIVE_MAX = require('./offer-model').LIMITS.live_max;
 
 const TTL_MS = 60000;
 let cfgCache = null;                 // { at, v }
@@ -64,7 +67,14 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
     if (!offer) {
       if (dq && dq.grandfathered) return dq;             // a live issued checkout priced with no offer stays without one
       const live = await mirrorOf(db, rid, nowMs, { cached: !placement });
-      offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward });
+      // step 2: the chosen offer's usage, read FRESH (one point read, only when an offer would apply); a capped one is skipped and the
+      // next best tried — so a quote never keeps offering what the placement's hold must refuse (no offer_changed loop)
+      const excluded = new Set();
+      for (let i = 0; i <= OM_LIVE_MAX; i += 1) {
+        offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, excluded });
+        if (!offer || !OU.capReached((await db.ref(`marketing_usage/${offer.offer_id}`).once('value')).val(), offer, nowMs)) break;
+        excluded.add(offer.offer_id); offer = null;
+      }
     }
     if (!offer) return dq;
     const c = waivedCtx(ctx, offer);

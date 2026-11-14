@@ -161,6 +161,44 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.strictEqual(rec.desc_rebaja_cents, orderBreakdownCents(410, RID).subtotal_cents - orderBreakdownCents(349, RID).subtotal_cents, L);
   });
 
+  await cell('MW-EARN: rewards are earned on the PAID food (ruling 2) — the earn trigger\'s own computeEarn over the RECORDED subtotal of a discounted points order', async (L) => {
+    const { computeEarn } = require('../rewards-core');
+    const LM = 'la_musa'; const LMENU = { pad_thai: 260, rice_white: 40 };
+    const w = await world({ rid: LM, brand: 'lm', menu: LMENU });
+    await w.publish({ type: 'lps', params: { off_cents: 10000, min_cents: 20000 } });
+    const LT = { restaurantId: LM, menu: LMENU, extras: {} };
+    const items = [{ id: 'pad_thai', qty: 2, extras: [] }];
+    const total = computeServerTotal(items, LM, LT).total;   // L 520
+    const dq = await OW.withOffer({ db: w.db, rid: LM, items, tables: LT, baseTotalL: total, dq: null, app: true, nowMs: NOW + 3600000, placement: true, log: quiet });
+    const recorded = DW.withDelivery(dq, OP.foodBreakdown(total, LM, OW.offerOf(dq)));
+    assert.strictEqual(recorded.subtotal_cents, 52000 - 10000, `${L}: premise — the recorded subtotal is the paid food`);
+    const order = { items, subtotal_cents: recorded.subtotal_cents };   // the fields rewards-earn.js:55 reads
+    assert.deepStrictEqual(computeEarn({ items: order.items, subtotalCents: Number(order.subtotal_cents), restaurantId: LM }), computeEarn({ items, subtotalCents: 42000, restaurantId: LM }), L);
+    assert.notDeepStrictEqual(computeEarn({ items, subtotalCents: 42000, restaurantId: LM }), computeEarn({ items, subtotalCents: 52000, restaurantId: LM }), `${L}: non-vacuity — the gross would earn differently`);
+  });
+
+  await cell('MW-CAPPED: an offer at its cap is skipped by the quote AND the placement — the next best applies (no offer_changed loop); none left ⇒ full price', async (L) => {
+    const OU = require('./offer-usage');
+    const w = await xworld();
+    await w.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
+    await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    const items = [line('Pepperoni', 2)];
+    const first = await place(w, items, null);
+    assert.strictEqual(first.offer.discount_cents, 8000, `${L}: premise — the better offer first`);
+    assert.ok((await OU.holdCounters(w.db, first.offer, { salesCents: 36000, nowMs: NOW + 3600000 })).ok, `${L}: premise — its one use held`);
+    OW._resetCaches();
+    const { q } = await quote(w, items);
+    assert.strictEqual(q.components.offer_discount_cents, 5000, `${L}: the quote skips the capped offer`);
+    const p = await place(w, items, q.quote_token);
+    assert.deepStrictEqual([p.gate.refuse, p.offer.discount_cents, p.recorded.total_cents], [null, 5000, 44000 - 5000], `${L}: the placement agrees`);
+    const w2 = await xworld(); const only = await w2.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
+    const o = await place(w2, items, null);
+    assert.strictEqual(o.offer.offer_id, only, 'premise');
+    await OU.holdCounters(w2.db, o.offer, { salesCents: 36000, nowMs: NOW + 3600000 });
+    OW._resetCaches();
+    assert.strictEqual((await place(w2, items, null)).offer, null, `${L}: none left ⇒ full price`);
+  });
+
   FINISHED = true;
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`offer-wire: OK (${n})`);

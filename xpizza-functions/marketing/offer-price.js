@@ -54,7 +54,10 @@ function entryOf(id, e) {
     params = { never: true };   // phase 1: audience 'new' only, and no admission-safe «new customer» fact exists (Q5)
   }
   if (!params) return null;
-  return { id, rev: e.rev, type: e.type, name: e.name, audience: e.audience, params, schedule: { start, end, days: s.days, window } };
+  const cp = e.caps, capOk = (v, hi) => v == null || (Number.isSafeInteger(v) && v >= 1 && v <= hi);
+  if (!isObj(cp) || typeof cp.weekly !== 'boolean' || !capOk(cp.redemptions, 1e6) || !capOk(cp.spend_cents, OM.LIMITS.cents_max)) return null;   // the caps the usage hold enforces (step 2)
+  const caps = Object.freeze({ redemptions: cp.redemptions == null ? null : cp.redemptions, spend_cents: cp.spend_cents == null ? null : cp.spend_cents, weekly: cp.weekly });
+  return { id, rev: e.rev, type: e.type, name: e.name, audience: e.audience, params, caps, schedule: { start, end, days: s.days, window } };
 }
 
 // Is the offer live at `nowMs` (HN)? start ≤ now < end, and the HN minute-of-week inside one of its weekly intervals.
@@ -107,7 +110,7 @@ const SERVER_OFFER = new WeakSet();
 const isServerOfferCtx = (o) => !!o && typeof o === 'object' && SERVER_OFFER.has(o);
 const mint = (o) => { SERVER_OFFER.add(Object.freeze(o)); return o; };
 
-function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null }) {
+function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null, excluded = null }) {
   if (!cfg || cfg.offers_enabled !== true) return null;
   if (reward) return null;
   if (!isObj(live) || !Array.isArray(items) || !items.length) return null;
@@ -117,6 +120,7 @@ function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, del
   const f = { food, delivery: isServerDeliveryCtx(deliveryContext) ? deliveryContext : null, units: () => (units === undefined ? (units = dishUnitsOf(items, rid, tables, baseTotalL)) : units) };
   let best = null;
   for (const id of Object.keys(live).sort()) {
+    if (excluded && excluded.has(id)) continue;   // step 2: an offer whose cap is reached (offer-wire reads its usage) is not a candidate
     const c = entryOf(id, live[id]);
     if (!c || !liveAt(c, nowMs)) continue;
     const s = savingOf(c, f);
@@ -125,7 +129,7 @@ function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, del
     if (!best || total > best.total) best = { c, s, total };   // ids ascending: a tie keeps the smallest
   }
   if (!best) return null;
-  return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents });
+  return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents, caps: best.c.caps });
 }
 
 // ── the ONE food breakdown with an offer (the core, both recorded-total sites and the factura read it) ───────────────────────────
@@ -144,8 +148,8 @@ function foodBreakdown(totalL, rid, offer) {
   return { ...paid, desc_rebaja_cents: gross.subtotal_cents - paid.subtotal_cents };
 }
 // The order's frozen fact (PLAN §1.9): what applied, by whom funded — never the mirror's params.
-const frozenOf = (offer) => ({ offer_id: offer.offer_id, rev: offer.rev, type: offer.type, name: offer.name, discount_cents: offer.discount_cents,
-  waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant' });
+const frozenOf = (offer, held = null) => ({ offer_id: offer.offer_id, rev: offer.rev, type: offer.type, name: offer.name, discount_cents: offer.discount_cents,
+  waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant', ...(held ? { usage: 'held', usage_week: held.week, usage_sales_cents: held.salesCents } : {}) });   // step 2: the usage the order holds (cash: written WITH the order)
 
 // A STORED order's frozen offer re-entered as a server ctx (offer-wire storedOfferOf validates the record first) — the card retry path.
 const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'envio']);

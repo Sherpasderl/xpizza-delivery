@@ -274,6 +274,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
@@ -683,6 +684,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
@@ -1148,6 +1150,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
@@ -1558,6 +1561,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
@@ -2843,6 +2847,7 @@
   "marketing/functions.js",
   "marketing/offer-model.js",
   "marketing/offer-price.js",
+  "marketing/offer-usage.js",
   "marketing/offer-wire.js",
   "marketing/offers-core.js",
   "materialize.js",
@@ -6978,6 +6983,10 @@
    "lifts": []
   },
   "marketing/offer-price.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/offer-usage.js": {
    "pins": [],
    "lifts": []
   },
