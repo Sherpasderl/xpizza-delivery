@@ -137,6 +137,7 @@ test('an unknown or Sherpa-side reason is the neutral «No disponible», never e
   const v = (e) => AL.eligibilityView(e).state;
   assert.equal(v({ eligible: true, rating: 4.8, rating_count: 40, reasons: [] }), 'eligible');
   assert.equal(v({ eligible: true, rating: 4.8, rating_count: 40, reasons: ['paused_heavy'] }), 'unavailable', 'an unknown reason is «No disponible», never eligible');
+  assert.equal(v({ eligible: true, rating: 4.8, rating_count: 40, reasons: ['rating_below'] }), 'unavailable', 'a contradictory verdict is not eligible');
   assert.equal(v({ eligible: false, rating: 4.8, rating_count: 40, reasons: ['paused_heavy'] }), 'unavailable', 'an unknown refusal reason is not guessed');
   assert.equal(v({ eligible: false, rating: null, rating_count: 0, reasons: ['not_enough_ratings', 'paused_heavy'] }), 'unavailable', 'one unknown reason among known ones');
   assert.equal(v({ eligible: false, rating: null, rating_count: 0, reasons: ['config_unavailable'] }), 'unavailable', 'a Sherpa config gap is not the restaurant\'s fault');
