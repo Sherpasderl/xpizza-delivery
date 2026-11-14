@@ -36413,5 +36413,21 @@
   "kills_with": [
    "VC-P2: the tick reads the injected now"
   ]
+ },
+ {
+  "id": "vc-10",
+  "slice": "vc",
+  "label": "a shell window a cell left open is NOT closed at its end (late responses render into later cells)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try { x.w.close(); } catch (_) {} } VC = null;",
+  "to": "afterEach(() => { VC = null;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "VC-L: a shell left open"
+  ]
  }
 ]

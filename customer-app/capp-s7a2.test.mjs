@@ -248,7 +248,7 @@ function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }
 // (pedidosBoot, realAuthHome, enterOnPresentation, …). A chunk's diff is names added here; no cell line changes (the assertion
 // inventory stays identical by construction). Step 9 flips the default and deletes this list.
 let VC = null, CLOCK_DEFAULT = false, CUR = null;
-const VC_BOOTED = new Set(), RAN = new Set();   // the cells that booted the shell on the virtual clock / that ran (VC-M's evidence)
+const VC_BOOTED = new Set(), RAN = new Set(), SHELLS = [];   // SHELLS: every shell window a cell booted (the leak guard)   // the cells that booted the shell on the virtual clock / that ran (VC-M's evidence)
 const VIRTUAL = new Set([
   // chunk 1 (file order 1–46: directory, Inicio, Buscar, shell, location, browse-only, frames 10/11, return, Codex s7a2 r1, G2, stamp, G6)
   'contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators',
@@ -393,7 +393,8 @@ const VIRTUAL = new Set([
   'store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
-afterEach(() => { VC = null; CLOCK_DEFAULT = false; });
+// a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
+afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try { x.w.close(); } catch (_) {} } VC = null; CLOCK_DEFAULT = false; });
 const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
@@ -401,7 +402,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
-  const w = dom.window;
+  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; return cl(); }; }
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
   // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
@@ -5054,4 +5055,13 @@ test('VC-M every name in the VIRTUAL migration list is a cell of this file (exac
   assert.ok(shouldBoot.length >= 27, `premise: chunk 1 boots the shell in 27 cells (${shouldBoot.length})`);
   assert.deepEqual(shouldBoot.filter((n) => RAN.has(n) && !VC_BOOTED.has(n)), [],   // the cells that ran this run (a filtered run checks its own)
     '🔴 VC-M: a listed cell booted on the REAL clock');
+});
+
+// the leak hunt (advisor 11-13): a cell that leaves its shell window OPEN keeps it rendering on late responses after the cell ended
+// (100 cells did — «D-2 mount» and «G7 decision 7» were seen re-rendering during later cells). Runs LAST: no earlier cell's shell
+// is still open
+test('VC-L no shell window outlives the cell that booted it (late responses never render into a later cell)', () => {
+  const open = SHELLS.filter((x) => !x.closed).map((x) => x.cell);
+  assert.ok(SHELLS.length > 0, 'premise: shells were booted');
+  assert.deepEqual([...new Set(open)].filter((c) => c !== CUR), [], '🔴 VC-L: a shell left open by an earlier cell');
 });
