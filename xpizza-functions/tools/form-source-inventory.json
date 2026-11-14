@@ -2813,6 +2813,7 @@
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
   "manual-resolve.js",
+  "marketing/push-policy.js",
   "materialize.js",
   "member-auth.js",
   "menu-pricing.js",
@@ -6859,6 +6860,10 @@
    ]
   },
   "manual-resolve.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/push-policy.js": {
    "pins": [],
    "lifts": []
   },

@@ -258,6 +258,7 @@
   "claim-order.js": "R17",
   "my-orders.js": "R17",
   "my-favorites.js": "R17",
+  "customer-push.js": "R17",
   "my-last-tip.js": "R17",
   "claim-prefill.js": "R17",
   "factura/build-record.js": "R10",
@@ -1786,6 +1787,15 @@
   }
  },
  "opaqueWriteResolutions": [
+  {
+   "file": "xpizza-functions/customer-push.js",
+   "fn": "writePrefs",
+   "how": "dynamic-root-path",
+   "detail": "*/*",
+   "fields": [],
+   "reason": "PLAN-3a-capp-push-tokens: `${PREFS}/${uid}` with PREFS = 'customer_push_prefs' — the person's push prefs { pedidos, promociones, at } (server-only), never an /orders path",
+   "count": 1
+  },
   {
    "file": "xpizza-functions/catalog/capp-serialize.js",
    "fn": "serialize>anon",
