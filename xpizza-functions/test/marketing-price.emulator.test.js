@@ -213,7 +213,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   {
     const pauseAll = async () => { for (const [id, e] of Object.entries((await rtdb.ref(`marketing_live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id); };
     await pauseAll();
-    await publish(THIRD, { type: 'envio', params: { min_cents: 0 } });
+    await publish(THIRD, { type: 'envio', params: {} });   // no minimum = absent (3a b62765981)
     const { cart, s } = cartOf(THIRD);
     await clean(); offerCaches();
     const q = await quote(THIRD, s.items);

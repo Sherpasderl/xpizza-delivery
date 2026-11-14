@@ -27,7 +27,7 @@ const SET = { offers_enabled: true, anuncio_enabled: false, collections_enabled:
     assert.deepStrictEqual([dry.ok, dry.dry_run, fake.get(CFG.PATH)], [true, true, null], 'a dry run writes nothing');
     const w1 = await CFG.writeMarketingConfig(db, { expected: 0, config: SET, actor: 'cli:op', now: 5 });
     assert.deepStrictEqual(w1, { ok: true, policy_version: 1 }, 'create at expected 0');
-    assert.deepStrictEqual(await CFG.readMarketingConfig(db), { policy_version: 1, ...SET }, 'the reader returns exactly what was written');
+    assert.deepStrictEqual(await CFG.readMarketingConfig(db), { policy_version: 1, ...SET, thresholds: { ...SET.thresholds, paused_max_h_30d: 4 } }, 'the reader returns what was written, «not paused-heavy» defaulted to 4 h (advisor 11-14: the merit bar)');
     ok('create (expected 0) after a dry run that wrote nothing; read back exactly');
     const stale = await CFG.writeMarketingConfig(db, { expected: 0, config: { ...SET, anuncio_enabled: true }, actor: 'cli:op', now: 6 });
     assert.deepStrictEqual(stale, { ok: false, code: 'superseded', current: 1 }, 'a stale expected ⇒ superseded');

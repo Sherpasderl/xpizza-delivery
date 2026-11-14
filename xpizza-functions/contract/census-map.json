@@ -852,6 +852,8 @@
   "marketing/offer-model.js#paramsOf": "marketing",
   "marketing/offer-model.js#dishesOf": "marketing",
   "marketing/offer-model.js#resolveCats": "marketing",
+  "ratings/_rtdb-fake.js#get>anon": "fixtures",
+  "ratings/_rtdb-fake.js#set": "fixtures",
   "marketing/offers-core.js#resolveDishes": "marketing",
   "marketing/offers-core.js#settleMirrors": "marketing",
   "marketing/offers-core.js#settleMirrors>anon": "marketing",
@@ -1815,6 +1817,15 @@
   }
  },
  "opaqueWriteResolutions": [
+  {
+   "file": "xpizza-functions/marketing/anuncio-core.js",
+   "fn": "recordAnuncioDays",
+   "how": "dynamic-root-path",
+   "detail": "*/*/days/*",
+   "fields": [],
+   "reason": "PLAN-3a-marketing-server §4.4: recordAnuncioDays' path is always `anuncio_bookings/<rid>/<bookingId>/days/<YYYY-MM-DD>` (the week's slot names the booking) — the Anuncio's shown / hidden day record, never an /orders path",
+   "count": 1
+  },
   {
    "file": "xpizza-functions/catalog/capp-serialize.js",
    "fn": "serialize>anon",

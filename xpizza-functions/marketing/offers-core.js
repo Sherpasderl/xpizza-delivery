@@ -2,7 +2,7 @@
 // PLAN-3a-marketing-server r0 §3 (advisor APPROVED 2026-11-14; steps 1–2) — the portal «Marketing» OFFER endpoints' decisions.
 // Thin HTTPS wrappers live in marketing/functions.js; every decision is here, dependency-injected.
 //
-//   getMarketing            GET  ?rid=                                        marketing.read → { switches, offers }
+//   getMarketing            GET  ?rid=                                        marketing.read → { switches, offers, bookings }
 //   marketingOfferSave      POST { rid, offer_id?, expected_rev, offer }      marketing.edit → create (expected_rev 0) / edit
 //   marketingOfferSetState  POST { rid, offer_id, to, expected_rev }          marketing.edit → publish / pause / resume / end
 //   marketingOfferRepeat    POST { rid, offer_id }                            marketing.edit → a new draft from an ended offer
@@ -25,6 +25,7 @@ const { isBrandId } = require('../brands/brand-model');
 const { verifiedContext, accessFor } = require('../portal/ops-core');   // the portal's ONE token check + rid → access (503 / 403)
 const CFG = require('./config');
 const OM = require('./offer-model');
+const AM = require('./anuncio-model');
 
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { error: 'unavailable', retryable: true });
@@ -222,10 +223,19 @@ async function getMarketingCore(deps, req) {
   if (a.fail) return a.fail;
   const cfg = await CFG.readMarketingConfig(db);
   const switches = CFG.switchesOf(cfg);   // ALWAYS stated; a failed / malformed config read states all three OFF
-  if (!switches.offers_enabled) return reply(200, { ok: true, switches, offers: [] });
-  let all, live;
-  try { [all, live] = await Promise.all([val(db, offersPath(a.access.brandId)), val(db, livePath(rid))]); } catch (_) { return UNAVAILABLE(); }
+  if (!switches.offers_enabled && !switches.anuncio_enabled) return reply(200, { ok: true, switches, offers: [], bookings: [] });
+  let all, live, booked;
+  try {
+    [all, live, booked] = await Promise.all([
+      switches.offers_enabled ? val(db, offersPath(a.access.brandId)) : null, switches.offers_enabled ? val(db, livePath(rid)) : null,
+      switches.anuncio_enabled ? val(db, `anuncio_bookings/${rid}`) : null]);
+  } catch (_) { return UNAVAILABLE(); }
   const t = now();
+  // this branch's Anuncio bookings (≤ 12): the derived status, the price agreed, the deadline, the days not shown — no charge field exists
+  const bookings = Object.entries(isObj(booked) ? booked : {})
+    .filter(([id, b]) => AM.BOOKING_ID_RE.test(id) && isObj(b) && AM.WEEK_RE.test(String(b.week)))
+    .map(([id, b]) => ({ id, week: b.week, status: AM.bookingStatus(b, t), price_cents: b.price_cents, cancel_deadline: b.cancel_deadline, hidden_days: AM.hiddenDays(b) }))
+    .sort((x, y) => (x.week < y.week ? 1 : x.week > y.week ? -1 : 0));
   const offers = Object.entries(isObj(all) ? all : {})
     .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.branches.includes(rid))
     .map(([id, rec]) => {
@@ -234,7 +244,7 @@ async function getMarketingCore(deps, req) {
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
     .sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
-  return reply(200, { ok: true, switches, offers });
+  return reply(200, { ok: true, switches, offers, bookings });
 }
 
 // the shared head of every write: method, anchor rid, auth (marketing.edit), the switch → { ctx, access, body } | { fail }
@@ -334,6 +344,10 @@ async function marketingOfferSetStateCore(deps, req) {
     const live = await liveProblem(deps, body.offer_id, value);
     if (live) return live;
   }
+  // PAUSE / END (advisor 11-14, 5f's price-plan review): the price path loses the offer BEFORE its record says so. A failed removal is
+  // a 503 with the record unchanged (still active, still applied — consistent); never a paused / ended record whose mirror still prices.
+  // A lost CAS after the removal leaves an active record with no mirror: never applied, reported as live_drift, healed by the next write.
+  if (body.to !== 'active' && MOVES[pre.state].includes(body.to) && !(await unmirror(db, body.offer_id, value.branches))) return UNAVAILABLE();
   const w = await casWrite(db, path, body.expected_rev, (cur, d) => {
     if (cur === null) { d.why = 'not_found'; return undefined; }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
@@ -381,4 +395,4 @@ async function marketingOfferRepeatCore(deps, req) {
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
 
-module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId };
+module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)

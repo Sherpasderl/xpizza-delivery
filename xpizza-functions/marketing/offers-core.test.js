@@ -94,7 +94,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const { fake, deps } = await setup({ switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false } });
       const before = clone(fake.get(''));
       const r = await get(deps, `t-${OWNER}`, 'tb_centro');
-      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, offers: [] }], 'OFF: the read states three falses and no list');
+      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, offers: [], bookings: [] }], 'OFF: the read states three falses and no list');
       const s = await save(deps, `t-${OWNER}`, { offer: offer() });
       assert.deepStrictEqual([s.status, s.body.error], [409, 'offers_disabled'], 'OFF: a save is refused offers_disabled');
       assert.deepStrictEqual(fake.get(''), before, 'OFF: nothing written');
@@ -152,6 +152,13 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ schedule: { start: NOW + DAY, end: NOW, days: [1] } }, 'bad_schedule'],
         [{ schedule: { start: NOW + DAY, days: [1], window: { from: 600, to: 600 } } }, 'bad_schedule'],
         [{ caps: { redemptions: 0, weekly: false } }, 'bad_caps'],
+        // money (advisor 11-14): whole lempiras, positive; absent = none — never a 0 sentinel
+        [{ type: 'pct', params: { pct: 10, max_cents: 0 } }, 'bad_params'],
+        [{ type: 'pct', params: { pct: 10, max_cents: 5050 } }, 'bad_params'],
+        [{ type: 'lps', params: { off_cents: 5050, min_cents: 30000 } }, 'bad_params'],
+        [{ type: 'envio', params: { min_cents: 0 } }, 'bad_params'],
+        [{ type: 'nuevos', params: { off_cents: 99 }, audience: 'new' }, 'bad_params'],
+        [{ caps: { redemptions: 5, spend_cents: 75050, weekly: false } }, 'bad_caps'],
         [{ extra: 1 }, 'bad_shape'],
       ];
       for (const [o, reason] of bad) {
@@ -160,7 +167,11 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       }
       const both = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], items: [K1], free_per_order: 1 } }) });
       assert.deepStrictEqual([both.status, both.body.reason], [400, 'bad_params'], 'the builder sends items OR cats, never both (items are the server\'s)');
-      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, items xor cats');
+      for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }], [{ type: 'envio', params: {} }, {}]]) {
+        const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
+        assert.deepStrictEqual([r.status, r.body.offer && r.body.offer.params], [200, want], `money: ${JSON.stringify(o.params)} ⇒ stored ${JSON.stringify(want)} (absent = none)`);
+      }
+      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
     }
 
     // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
@@ -228,6 +239,22 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('publish needs a future start; unknown offer 404');
     }
 
+    // ── 4b. pause / end remove the price path's entry FIRST (advisor 11-14): a failed removal never leaves a paused offer priced ──
+    {
+      const { fake, deps } = await setup();
+      const a = await published(deps, { branches: ['tb_centro', 'tb_sur'] });
+      fake.failReads.add(`marketing_live/tb_sur/${a.id}`);   // the removal on one branch fails (an outage)
+      const r = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 });
+      assert.strictEqual(r.status, 503, 'a failed removal ⇒ 503');
+      const rec = fake.get(`marketing_offers/tb/${a.id}`);
+      assert.ok(!(rec.state !== 'active' && fake.get(`marketing_live/tb_sur/${a.id}`)), 'a failed unmirror never leaves a paused / ended offer live on the price path');
+      assert.deepStrictEqual([rec.state, rec.rev], ['active', 2], 'the record is unchanged (still active — consistent with its mirror)');
+      fake.failReads.clear();
+      const ok2 = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'ended', expected_rev: 2 });
+      assert.deepStrictEqual([ok2.status, mirrored(fake)], [200, []], 'retried: ended, no mirror anywhere');
+      ok('pause / end: the mirror goes first — a failed removal is a 503 with the record still active, never a paused offer still priced');
+    }
+
     // ── 5. the live-edit allowlist (caps up, end later) ──
     {
       const { fake, deps } = await setup();
@@ -265,7 +292,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       void k2sat;
       ok('overlap across the week boundary (Saturday night into Sunday)');
       for (let i = 0; i < 5; i++) await published(deps, { name: `Pct ${i}`, type: 'pct', params: { pct: 10 } });
-      const eleventh = await created(deps, { name: 'Once', type: 'envio', params: { min_cents: 0 } });
+      const eleventh = await created(deps, { name: 'Once', type: 'envio', params: {} });   // no minimum = the field absent
       const t = await move(deps, `t-${OWNER}`, { offer_id: eleventh.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([t.status, t.body.error], [409, 'too_many_live'], 'the 11th live offer on a branch ⇒ too_many_live');
       ok('MAX_LIVE: 10 scheduled+live offers per branch');
@@ -318,7 +345,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const fin = await published(deps, { name: 'Corta', type: 'pct', params: { pct: 20 }, schedule: { start: NOW + DAY, end: NOW + 2 * DAY, days: [0, 1, 2, 3, 4, 5, 6] } });
       const rp = await C.marketingOfferRepeatCore(deps2, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: fin.id }));
       assert.strictEqual(rp.status, 200, 'an offer ended BY ITS SCHEDULE repeats');
-      assert.deepStrictEqual([rp.body.offer.state, rp.body.offer.repeated_from, rp.body.offer.schedule.start, rp.body.offer.schedule.end, rp.body.offer.params], ['draft', fin.id, null, null, { pct: 20, max_cents: 0 }], 'repeat: a draft, same set-up, dates cleared');
+      assert.deepStrictEqual([rp.body.offer.state, rp.body.offer.repeated_from, rp.body.offer.schedule.start, rp.body.offer.schedule.end, rp.body.offer.params], ['draft', fin.id, null, null, { pct: 20 }], 'repeat: a draft, same set-up, dates cleared');
       ok('repeat: from an ended offer only, dates cleared');
       const { fake: f2, deps: d2 } = await setup();
       const old = await created(d2, { name: 'Vieja' });

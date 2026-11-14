@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-capp-member-reads (1)+(2) — the test-only INVERSE of 3a's index.js additions on train asm9 (base 604e96ab5; rebuilt there from asm8 b6f6b82b1, where index.js is byte-identical): the
-// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) and the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), and the portal «Marketing» offer exports (78e241bed), all pure insertions inside checkout's
+// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) and the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), and the portal «Marketing» offer exports (78e241bed) + the Anuncio exports (5ea3340e9), all pure insertions inside checkout's
 // endpoints block. Generated from each commit's own `git show -U0 <commit> -- index.js` (added lines only); unapplying both returns
 // index.js to 604e96ab5 byte-for-byte (memberreads-wiring.guard). Composed into the index.js fold chains of the wiring guards that pin
 // index.js to a fixed train revision (the s2bext / s1srv pattern; advisor ruling 2026-11-13, option 2): inside each s1srv call (as the s1srv layer's
@@ -26,6 +26,13 @@ const HUNKS = Object.freeze([
   "label": "marketing steps 1–2: getMarketing + the three offer write exports",
   "file": "index.js",
   "now": "// PLAN-3a-marketing-server steps 1–2: the portal «Marketing» offer endpoints (marketing/functions.js; dark until platform_config/marketing.offers_enabled)\nexports.getMarketing = require('./marketing/functions').getMarketing; exports.marketingOfferSave = require('./marketing/functions').marketingOfferSave; exports.marketingOfferSetState = require('./marketing/functions').marketingOfferSetState; exports.marketingOfferRepeat = require('./marketing/functions').marketingOfferRepeat;\n",
+  "was": ""
+ },
+ {
+  "commit": "5ea3340e9",
+  "label": "marketing step 3: the three Anuncio exports",
+  "file": "index.js",
+  "now": "exports.getAnuncioWeeks = require('./marketing/functions').getAnuncioWeeks; exports.anuncioBook = require('./marketing/functions').anuncioBook; exports.anuncioCancel = require('./marketing/functions').anuncioCancel;   // PLAN-3a-marketing-server step 3: the «Anuncio» (dark until anuncio_enabled)\n",
   "was": ""
  }
 ]);

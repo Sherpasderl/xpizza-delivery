@@ -99,15 +99,15 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.ok(await pick(w, [line(K2, 2)]), `${L}: premise — applies without a reward`);
     assert.strictEqual(await pick(w, [line(K2, 2)], { reward: { ok: true, model: 'add_free', freeItems: [] } }), null, L);
   });
-  await cell('OP-PCT: pct of the GROSS food, floored to a WHOLE lempira (Q1); an explicit max caps it; the 3a-stored max 0 is refused (Q2)', async (L) => {
+  await cell('OP-PCT: pct of the GROSS food, floored to a WHOLE lempira (Q1); an explicit max caps it; an ABSENT max = no max (Q2; 3a stores {pct} only since b62765981)', async (L) => {
     const w = await world(); await w.publish({ type: 'pct', params: { pct: 15, max_cents: 100000 } });
     // L 370 × 15 % = 55.50 → L 55
     assert.deepStrictEqual(brief(await pick(w, [line(K1), line(K2)])), { type: 'pct', discount_cents: 5500, waived_envio_cents: 0 }, `${L}: floored`);
     const w2 = await world(); await w2.publish({ type: 'pct', params: { pct: 50, max_cents: 10000 } });
     assert.deepStrictEqual(brief(await pick(w2, [line(K2, 2)])), { type: 'pct', discount_cents: 10000, waived_envio_cents: 0 }, `${L}: L 220 capped at L 100`);
     const w3 = await world(); await w3.publish({ type: 'pct', params: { pct: 20 } });
-    assert.strictEqual(w3.live()[Object.keys(w3.live())[0]].params.max_cents, 0, `${L}: premise — 3a stores an absent max as 0`);
-    assert.strictEqual(await pick(w3, [line(K2, 2)]), null, `${L}: max_cents 0 is malformed (advisor Q2) ⇒ not applied`);
+    assert.ok(!('max_cents' in w3.live()[Object.keys(w3.live())[0]].params), `${L}: premise — 3a stores no max as ABSENT`);
+    assert.deepStrictEqual(brief(await pick(w3, [line(K2, 2)])), { type: 'pct', discount_cents: 8800, waived_envio_cents: 0 }, `${L}: no max ⇒ 20 % of L 440 uncapped`);
   });
   await cell('OP-LPS: food ≥ min ⇒ off; one lempira under ⇒ nothing', async (L) => {
     const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 37000 } });
@@ -116,9 +116,15 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const w2 = await world(); await w2.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 37100 } });
     assert.strictEqual(await pick(w2, [line(K1), line(K2)]), null, `${L}: L 370 < L 371`);
   });
-  await cell('OP-WHOLE: a cents field that is not whole lempiras (3a accepts 4550 today) ⇒ the entry is malformed, never applied (Q1b)', async (L) => {
-    const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 4550, min_cents: 20000 } });
-    assert.strictEqual(await pick(w, [line(K2, 2)]), null, L);
+  await cell('OP-WHOLE: a money field that is not a positive whole lempira (0, or centavos — 3a\'s writer refuses both since b62765981) in the mirror ⇒ the entry is malformed, never applied (Q1b, Q2)', async (L) => {
+    const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    const p = await world(); const pid = await p.publish({ type: 'pct', params: { pct: 20, max_cents: 10000 } });
+    const good = w.live()[id]; const gp = p.live()[pid];
+    for (const [k, live] of [['off 4550', { [id]: { ...good, params: { ...good.params, off_cents: 4550 } } }], ['off 0', { [id]: { ...good, params: { ...good.params, off_cents: 0 } } }],
+      ['min 20050', { [id]: { ...good, params: { ...good.params, min_cents: 20050 } } }], ['pct max 0', { [pid]: { ...gp, params: { ...gp.params, max_cents: 0 } } }], ['pct max 4550', { [pid]: { ...gp, params: { ...gp.params, max_cents: 4550 } } }]]) {
+      assert.strictEqual(OP.offerFor({ cfg: await w.cfg(), live, nowMs: NOW + HOUR, items: [line(K2, 2)], rid: 'tb_centro', tables: TABLES, baseTotalL: 440 }), null, `${L}: ${k}`);
+    }
+    assert.ok(await pick(w, [line(K2, 2)]) && await pick(p, [line(K2, 2)]), `${L}: control — the real writer's records apply`);
   });
   await cell('OP-BOGO: the eligible units sorted dearest first, every 2nd unit free up to free_per_order (Q4); extras are paid', async (L) => {
     const w = await world(); await w.publish({ type: 'bogo', params: { items: [K1, K2], free_per_order: 1 } });
@@ -149,7 +155,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const w = await world();
     await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     await w.publish({ type: 'pct', params: { pct: 20, max_cents: 100000 } });
-    await w.publish({ type: 'envio', params: { min_cents: 0 } });
+    await w.publish({ type: 'envio', params: {} });   // no minimum = absent (b62765981)
     assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio() })), { type: 'pct', discount_cents: 8800, waived_envio_cents: 0 }, `${L}: L 88 beats L 60 and L 50`);
     assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio({ free: true }) })), { type: 'pct', discount_cents: 8800, waived_envio_cents: 0 }, `${L}: Sherpa's promo + the food offer`);
     const t = await world();
