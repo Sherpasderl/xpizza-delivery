@@ -13,6 +13,10 @@
 //                              { fee:{state:'priced',from_cents}|{state:'none'|'invalid'}, promo:{free_delivery,label}|null,
 //                                coverage_km:number|null }                           (throw ⇒ fee unavailable, partial)
 // house ids are served UNFILTERED (no catalog dependency; the client MenuCache drops ids its loaded menu lacks).
+//   offerFlag(rid)           → catalog/offers-serve offerFlagOf (3a) {offers:[…]} | null  (throw ⇒ absent; never partial)
+// THE ONE-SCHEMA EXCEPTION (advisor 11-14): `offer` is the only entry key that may be ABSENT — added after the allowlist, and only when
+// marketing offers are on and the store has a live offer, so with offers off the body and its ETag stay byte-identical (no null key, no
+// representation bump). Shape { offers: [{ type, pct?, off_cents?, min_cents? }] } ≤ OFFER_MAX, re-allowlisted field by field here.
 const crypto = require('crypto');
 const { SERVED_FIELDS, pickPresentation } = require('./presentation-shape');
 const { toPublicSchedule } = require('../schedule/schedule-only');   // the SAME public schedule shape schedule_only serves
@@ -25,6 +29,8 @@ const ENTRY_FIELDS = Object.freeze(['restaurant_id', 'name', 'kicker', 'unit', '
 const BODY_FIELDS = Object.freeze(['representation_version', 'complete', 'platform', 'restaurants', 'unavailable']);
 const FEE_STATES = new Set(['priced', 'none', 'invalid', 'unavailable']);
 
+const OFFER_MAX = 10;
+const amountOk = (v) => v === undefined || (Number.isSafeInteger(v) && v >= 0);   // pct / off_cents / min_cents: absent, or a whole number
 const isStr = (v) => typeof v === 'string' && v.length > 0;
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
@@ -46,6 +52,19 @@ function feeOf(f) {
 function promoOf(p) {
   if (!p || typeof p !== 'object') return null;
   return { free_delivery: p.free_delivery === true, label: typeof p.label === 'string' && p.label.length ? p.label : null };
+}
+
+// the store's offer hint, field by field (the flag's own shape, never trusted blind) ⇒ { offers } | null
+function offerOf(flag) {
+  if (!flag || typeof flag !== 'object' || !Array.isArray(flag.offers)) return null;
+  const offers = [];
+  for (const o of flag.offers.slice(0, OFFER_MAX)) {
+    if (!o || typeof o !== 'object' || !isStr(o.type)) return null;
+    if (!amountOk(o.pct) || !amountOk(o.off_cents) || !amountOk(o.min_cents)) return null;
+    offers.push({ type: o.type, ...(o.pct !== undefined ? { pct: o.pct } : {}), ...(o.off_cents !== undefined ? { off_cents: o.off_cents } : {}),
+      ...(o.min_cents !== undefined ? { min_cents: o.min_cents } : {}) });
+  }
+  return offers.length ? { offers } : null;
 }
 
 // S-B step 4 (advisor ruling 2026-11-02, directory only): the store's PUBLISHED social proof from public_stats/{rid} (the S-B producer's
@@ -99,6 +118,11 @@ async function buildEntry(rid, identity, deps) {
   row.degraded = [...new Set(degraded)].sort();
   const out = {};
   for (const k of ENTRY_FIELDS) out[k] = row[k] === undefined ? null : row[k];   // ONE schema: every allowlisted key, nothing else
+  if (typeof deps.offerFlag === 'function') {   // …except the offer hint: present only when on (see the header)
+    let offer = null;
+    try { offer = offerOf(deps.offerFlag(rid)); } catch (_) { offer = null; }
+    if (offer) out.offer = offer;
+  }
   return { row: out, partial };
 }
 

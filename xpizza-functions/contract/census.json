@@ -7259,7 +7259,7 @@
   },
   {
    "id": "xpizza-functions/directory/directory.js#identityFields#hub_lat#0",
-   "line": 37,
+   "line": 43,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -7269,7 +7269,7 @@
   },
   {
    "id": "xpizza-functions/directory/directory.js#identityFields#hub_lng#0",
-   "line": 38,
+   "line": 44,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -7279,7 +7279,7 @@
   },
   {
    "id": "xpizza-functions/directory/directory.js#sendJson#status#0",
-   "line": 143,
+   "line": 167,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -7292,7 +7292,7 @@
   },
   {
    "id": "xpizza-functions/directory/directory.js#handleDirectory#status#0",
-   "line": 150,
+   "line": 174,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -7305,7 +7305,7 @@
   },
   {
    "id": "xpizza-functions/directory/directory.js#handleDirectory#status#1",
-   "line": 155,
+   "line": 179,
    "kind": "member",
    "facts": [
     "STATUS",
