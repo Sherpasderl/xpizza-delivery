@@ -1,0 +1,111 @@
+// The REAL server set-up the Ofertas tests share (marketing-logic.test.mjs, marketing.test.mjs): 3a's offer cores at the PINNED
+// ref (git-archived by ref-tree.mjs), production's transaction semantics, membership by the REAL roster writer, menus by the REAL
+// catalog mirror writer, the switches by the REAL config writer. `backend({ extra })` routes the page's other calls (the shell's
+// getMyBranches …) to `extra(fn, body)` — never to a hand-built marketing reply.
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ML from './marketing-logic.js';
+import { getMarketingRaw, offerSaveRaw, offerSetStateRaw } from './api.js';
+import { refTree } from './ref-tree.mjs';
+
+// ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+export const REF = 'b62765981defcc37066ad3d9196b71005fdd924b';
+export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
+  'offer-model.js': 'd1f1349ad05c6b4112fd150e6e28e62831208f4b',
+  'offers-core.js': '26ad91b6dd2d94a139ec3bc13679cc2877e6b817',
+  'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
+  'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
+};
+export const DIR = dirname(fileURLToPath(import.meta.url));
+export const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
+export const rq = refTree(REF);
+export const OM = rq('./marketing/offer-model');
+export const C = rq('./marketing/offers-core');
+export const CFG = rq('./marketing/config');
+const { createFakeDb } = rq('./merchant/_fake-db');
+const R = rq('./access/roster');
+const { makeRtdbMirror } = rq('./catalog/mirror-rtdb');
+const { makeRtdbMirrorReader } = rq('./catalog/snapshot-fallback');
+const { buildMenu } = rq('./catalog/catalog-menu');
+export const { isBrandId } = rq('./brands/brand-model');
+
+// ── the real backend (3a's offers-core.test.js set-up, the same real writers) ─────────────────────────────────────────────────
+export const NOW = Date.UTC(2026, 10, 16, 18);   // Mon 16 Nov 2026 12:00 HN
+export const DAY = 86400000;
+export const OWNER = 'ownerMk01', MGR = 'mgrMk0001';
+const TOK = { [`t-${OWNER}`]: { uid: OWNER }, [`t-${MGR}`]: { uid: MGR } };
+export const K1 = 'i_aaaaaaaaaaaa', K2 = 'i_bbbbbbbbbbbb', K3 = 'i_cccccccccccc';
+const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
+const versionMenu = (rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
+  { exists: true, data: () => ({ categories: cats.map((id) => ({ id })), item_order: rows.map((r) => r[0]) }) }, 'test');
+function prodDb(fake) {   // production's transaction semantics (the SDK's uncached first run sees null)
+  return { ref(p = '') {
+    const r = fake.ref(p);
+    return { ...r, get: () => r.once(), async transaction(fn) {
+      for (const pp of fake.failReads) if (String(p).startsWith(pp)) throw new Error(`injected failure: ${p}`);
+      const cold = fn(null);
+      if (cold === undefined) return { committed: false, snapshot: { val: () => null } };
+      if (fake.get(p) === null) { fake.put(p, cold); return { committed: true, snapshot: { val: () => fake.get(p) } }; }
+      return r.transaction(fn);
+    } };
+  } };
+}
+export async function backend({ offers = true, extra = null } = {}) {
+  const fake = createFakeDb({
+    brands: { tb: { name: 'Tercera', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } },
+    restaurants: Object.fromEntries(['tb_centro', 'tb_sur'].map((rid) => [rid, { identity: { brand_id: 'tb', name: rid, active: true, version: 1 } }])),
+  });
+  const db = prodDb(fake);
+  const roster = async (actor, op) => assert.equal((await R.mutateRoster({ db: fake, now: () => 1 }, 'tb', actor, op)).ok, true, `premise: roster ${op.type}`);
+  await roster({ kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@tb.hn' } });
+  await roster({ kind: 'owner', uid: OWNER }, { type: 'grant_manager', uid: MGR, rids: ['tb_centro'] });
+  const mirror = makeRtdbMirror(db);
+  for (const rid of ['tb_centro', 'tb_sur']) await mirror(rid, { version: 'v1', seq: 1, rid, menu: { [K1]: 150, [K2]: 220, ...(rid === 'tb_centro' ? { [K3]: 90 } : {}) }, extras: {} });
+  const setSwitch = async (on, expected) => assert.equal((await CFG.writeMarketingConfig(db, { expected, actor: 'cli:op', now: 1,
+    config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } })).ok, true, 'premise: the config writer');
+  await setSwitch(offers, 0);
+  const CATALOG = { tb_centro: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], tb_sur: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas']] };
+  const CATS = { tb_centro: ['pizzas', 'bebidas'], tb_sur: ['pizzas'] };
+  const deps = { db, verifyIdToken: async (t) => { if (!TOK[t]) throw new Error('bad token'); return TOK[t]; }, now: () => NOW,
+    readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async (rid) => versionMenu(CATALOG[rid], CATS[rid]) };
+  const CORES = { getMarketing: C.getMarketingCore, marketingOfferSave: C.marketingOfferSaveCore, marketingOfferSetState: C.marketingOfferSetStateCore, marketingOfferRepeat: C.marketingOfferRepeatCore };
+  const calls = [];
+  const net = { down: false };
+  globalThis.fetch = async (url, opts) => {   // the portal's request, unchanged, into the real core (functions.js handler: status + json)
+    if (net.down) throw new TypeError('Failed to fetch');
+    const u = new URL(String(url));
+    const fn = u.pathname.split('/').pop();
+    const body = opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : undefined;
+    const auth = opts && opts.headers && opts.headers.Authorization;
+    calls.push({ fn, query: Object.fromEntries(u.searchParams), body, method: opts.method });
+    if (!CORES[fn]) { const x = extra ? await extra(fn, body) : null; if (x) return x; }
+    let out;
+    try { out = await CORES[fn](deps, { method: opts.method, query: Object.fromEntries(u.searchParams), body, get: (h) => (h === 'authorization' ? auth : undefined) }); }
+    catch (_) { out = { status: 500, body: { error: 'error' } }; }
+    const text = JSON.stringify(out.body);
+    return { status: out.status, ok: out.status >= 200 && out.status < 300, json: async () => JSON.parse(text) };
+  };
+  const token = async () => `t-${OWNER}`;
+  return { fake, deps, calls, net, setSwitch, token };
+}
+export const RID = 'tb_centro';
+export const read = async (b, rid = RID) => getMarketingRaw({ rid, token: b.token });
+export const form = (o = {}) => ({ ...ML.emptyForm(o.type || 'pct'), name: 'Martes de pizza', pct: 20, branches: [RID], start: NOW + DAY, end: NOW + 30 * DAY, days: [2], window: { from: 1080, to: 1320 }, ...o });
+export const authored = (f) => { const r = ML.offerFromForm(f); assert.equal(r.ok, true, `premise: the form is valid (${JSON.stringify(r.errors)})`); return r.offer; };
+export async function create(b, f) {
+  const offer = authored(f);
+  const res = await offerSaveRaw({ rid: RID, expectedRev: 0, offer, token: b.token });
+  const c = ML.classifyWrite({ op: 'create' }, res);
+  assert.equal(c.outcome, 'saved', `premise: created (${JSON.stringify(res.body)})`);
+  return c.offer;
+}
+export async function publish(b, f) {
+  const d = await create(b, f);
+  const res = await offerSetStateRaw({ rid: RID, offerId: d.id, to: 'active', expectedRev: 1, token: b.token });
+  const c = ML.classifyWrite({ op: 'state', offerId: d.id, expectedRev: 1, to: 'active' }, res);
+  assert.equal(c.outcome, 'saved', `premise: published (${JSON.stringify(res.body)})`);
+  return c.offer;
+}
+export const one = async (b, id) => ML.readModel((await read(b)).body).offers.find((o) => o.id === id);

@@ -476,6 +476,29 @@ test('registerView: hidden while membership_writes_enabled is off; shown (Negoci
   assert.equal(textOf(r2.nav), 'Equipo de trabajo');
 });
 
+test('requestNavRefresh: a view whose visibility input changed in the background is re-judged on the NEXT navigation, never under the user', async () => {
+  installStorage();
+  const P = page({ e1: E1([branch('r_a')]) });
+  const mods = await loadModules();
+  const flag = { on: false };
+  mods.shell.registerView({ id: 'marketing', group: 'Negocio', label: 'Marketing', visible: () => flag.on, mount: () => {}, unmount: () => {}, canLeave: () => true });
+  await signIn('uOwner0301');
+  const [r] = mods.shell._registered;
+  assert.ok(hasClass(r.nav, 'hidden'), 'premise: hidden while the input is off');
+  flag.on = true;
+  mods.shell.requestNavRefresh();
+  assert.ok(hasClass(r.nav, 'hidden'), 'requested: nothing moves under the user yet');
+  mods.shell.goto('suc');
+  assert.ok(!hasClass(r.nav, 'hidden') && !hasClass(r.mn, 'hidden'), 'the next navigation applies it (desktop + mobile)');
+  flag.on = false;
+  mods.shell.requestNavRefresh();
+  P.byId.get('navprod').click();
+  assert.ok(hasClass(r.nav, 'hidden'), '…and through the built-in nav handlers too (leaveOps)');
+  flag.on = true;
+  P.byId.get('navprod').click();
+  assert.ok(hasClass(r.nav, 'hidden'), 'without a request, a navigation does not re-judge (no extra work, no surprise)');
+});
+
 test('registerView: an optional icon (one SVG path d) is drawn like the built-ins; absent → label only; anything else refused', async () => {
   installStorage();
   page({ e1: { ...E1([branch('r_a')]), membership_writes_enabled: true } });

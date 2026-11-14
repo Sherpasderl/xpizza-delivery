@@ -104,7 +104,7 @@ test('every module the portal ships is reachable from an entry page (index.html,
 // against the real server, before anything imports it. Each entry names its gate; nothing else may ship unreachable.
 // APPROVED by the advisor 11-14 on one condition: the DRAWING commit that wires a module removes its entry here.
 const AWAITING_SCREENS = Object.freeze({
-  'marketing-logic.js': 'Marketing «Ofertas» (advisor 11-14): its screens wait for the owner\'s approval of MOCKUP-portal-marketing v5',
+  // 'marketing-logic.js' left 11-14: MOCKUP-portal-marketing v5 owner-approved; marketing.js (O1) wires it
   'anuncio-logic.js': 'Marketing «Anuncio» (advisor 11-14): DARK — no charge exists until the restaurant ledger + the Pagos statement do; screens wait for MOCKUP-portal-marketing v5',
 });
 

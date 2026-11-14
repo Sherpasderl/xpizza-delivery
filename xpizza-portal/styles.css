@@ -18,6 +18,8 @@
     /* MOCKUP-pastel-chips (owner 2026-11-12, no amber): sand = caution, sky = pending / unpublished */
     --sand-text:#7A4A24; --sand-soft:#F7EEE5; --sand-line:#E6D2BE; --sky-text:#1E4E99; --sky-soft:#E6F0FB; --sky-line:#B7D2F3;
     --mint-soft:#DFF4ED; --mint-line:#A9E0D0; --mint-text:#0E6A55; --lav-soft:#F0EDFB; --lav-line:#C9C1F0; --lav-text:#4E3DA6;   /* mint = Sherpa-only · lavender = Recomendada (owner-approved pastel chips 11-12) */
+    --v-teal:#0E8C86; --v-mint:#10AD82; --v-sky:#2F7BE6; --v-lav:#7C5CF0; --v-rose:#E8407A; --on-vivid:#000000;   /* MOCKUP-portal-marketing v5 (owner 11-14): the offer cards' SATURATED pastels — «Crear campaña» + the empty state only (scoped override of calm UI) */
+    --vt-mint:#D3F5E8; --vt-mint-ink:#075C45; --vt-sky:#DBE9FF; --vt-sky-ink:#153F9E; --vt-lav:#E7E0FF; --vt-lav-ink:#4A2FB3; --vt-rose:#FFE0EA; --vt-rose-ink:#A3214E; --vt-teal:#D1F0F2; --vt-teal-ink:#0A5E5B;
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
     /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
     --green-text:#0B7C47; --red-text:#C73123;
@@ -38,6 +40,8 @@
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
+    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B;   /* v5 offer cards, dark */
+    --vt-mint:#0E3A30; --vt-mint-ink:#8FF0CF; --vt-sky:#122A52; --vt-sky-ink:#9DC3FF; --vt-lav:#271C55; --vt-lav-ink:#C6B6FF; --vt-rose:#3F1529; --vt-rose-ink:#FFA9C4; --vt-teal:#0C3537; --vt-teal-ink:#8EE6E2;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
@@ -52,6 +56,8 @@
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
+    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B;   /* v5 offer cards, dark */
+    --vt-mint:#0E3A30; --vt-mint-ink:#8FF0CF; --vt-sky:#122A52; --vt-sky-ink:#9DC3FF; --vt-lav:#271C55; --vt-lav-ink:#C6B6FF; --vt-rose:#3F1529; --vt-rose-ink:#FFA9C4; --vt-teal:#0C3537; --vt-teal-ink:#8EE6E2;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
@@ -1268,6 +1274,108 @@
   .teamv .tsent b{color:var(--green-text)}
   .teamv .rmbody{font-size:13.5px;line-height:1.5}
   @media(max-width:920px){.teamv .frow{grid-template-columns:1fr}}
+  /* ── MOCKUP-portal-marketing v5 (OWNER-APPROVED 11-14) — «Marketing» › Ofertas, slice O1 (marketing.js): the tabs, the Campañas list,
+     the empty state, the «Crear campaña» offer cards. Declarations are the mockup's FINAL cascade (its v2…v5 layers merged by
+     review-portal/marketing/css-cascade.py); the CLASS NAMES are mk5-* (the mockup's .vpre / .on / .menu / .st / .none … already style
+     other screens here — the colour grammar forbids a crossing), the status dot and the card glow are REAL elements (no colour on a
+     pseudo-element), and the cards' per-tone custom properties are spelled out per tone. ABSENT by SOURCE_GATE (marketing.js): the
+     Ventas column (the grid drops its 92 px track), the summary figures, the period pill. ── */
+  .mktv{min-width:0}
+  .mk5-tabs{display:flex;gap:26px;margin-top:22px;border-bottom:1px solid var(--line)}
+  .mk5-tab{position:relative;padding:0 1px 12px;background:none;border:none;font-family:var(--disp);font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:var(--mute);cursor:pointer;line-height:1.3;white-space:nowrap;border-radius:4px 4px 0 0;transition:color .18s}
+  .mk5-tab:hover{color:var(--ink)}
+  .mk5-tab.mk5-on{color:var(--ink);border-bottom:2px solid var(--ink);margin-bottom:-1px;padding-bottom:11px}
+  .mk5-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px;margin-top:20px}
+  .mk5-filt{display:flex;flex-wrap:wrap;gap:8px;min-width:0;align-items:center}
+  .mk5-kebab{position:relative}
+  .mk5-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px 8px 14px;border-radius:999px;font-size:12.5px;cursor:pointer;min-height:40px;background:var(--board-2);color:var(--ink);border:1px solid transparent;font-weight:600;font-family:inherit;white-space:nowrap}
+  .mk5-pill:hover{border-color:var(--line)}
+  .mk5-pill svg{width:14px;height:14px;stroke:var(--mute);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .mk5-pill.mk5-chosen{background:var(--ink);color:var(--board);border-color:var(--ink)}
+  .mk5-pill.mk5-chosen svg{stroke:var(--board)}
+  .mk5-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:220px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:6px;display:none;z-index:9}
+  .mk5-menu.mk5-open{display:block}
+  .mk5-menu.mk5-list{left:0;right:auto;min-width:200px}
+  .mk5-opt{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);border-radius:8px;cursor:pointer;text-align:left}
+  .mk5-opt:hover{background:var(--board-2)}
+  .mk5-opt.mk5-danger{color:var(--red-text)}
+  .mk5-count{margin-left:auto;font-size:11px;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);min-width:22px;height:22px;padding:0 7px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:650;font-variant-numeric:tabular-nums}
+  .mk5-sect{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:36px}
+  .mk5-sect h2{font-family:var(--disp);font-size:18px;font-weight:750;letter-spacing:-.025em;line-height:1.3}
+  .mk5-list{margin-top:10px}
+  .mk5-lh{display:grid;grid-template-columns:30px minmax(0,2.8fr) 132px minmax(0,1.5fr) 96px;gap:14px;align-items:center;padding:0 0 10px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--mute2)}
+  .mk5-row{display:grid;grid-template-columns:30px minmax(0,2.8fr) 132px minmax(0,1.5fr) 96px;gap:14px;align-items:center;padding:0;border-bottom:1px solid var(--line2);min-height:62px}
+  .mk5-ico{width:30px;height:30px;border-radius:50%;color:var(--mute);background:var(--board-2);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .mk5-ico svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .mk5-c1{min-width:0;display:flex;align-items:center;gap:8px}
+  .mk5-lnk{font-size:14.5px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;text-decoration-color:var(--mute2);line-height:1.35;min-width:0;max-width:100%}
+  .mk5-br{font-size:13px;color:var(--mute2);white-space:nowrap}
+  .mk5-st{display:inline-flex;align-items:center;font-size:14px;font-weight:500;color:var(--ink);white-space:nowrap;line-height:1.35}
+  .mk5-dot{width:8px;height:8px;border-radius:50%;background:var(--mute2);margin-right:8px;flex:none}
+  .mk5-dot.mk5-activa{background:var(--mint-text)}
+  .mk5-dot.mk5-prog{background:var(--sky-text)}
+  .mk5-dot.mk5-pausa{background:var(--sand-text)}
+  .mk5-dot.mk5-borr{background:var(--lav-text)}
+  .mk5-c3{min-width:0;font-size:14px;color:var(--mute);line-height:1.35}
+  .mk5-faint{color:var(--mute2);font-weight:500}
+  .mk5-c5{display:flex;gap:8px;justify-content:flex-end}
+  .mk5-act{display:inline-flex;align-items:center;gap:5px;background:none;border:none;padding:6px 8px;margin-right:-8px;font:inherit;font-size:13px;font-weight:600;color:var(--mute);cursor:pointer;border-radius:8px;white-space:nowrap;min-height:36px}
+  .mk5-act:hover{color:var(--ink);background:var(--board-2)}
+  .mk5-act svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .mk5-empty{margin-top:26px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .mk5-empty h2{font-family:var(--disp);font-size:20px;font-weight:800;letter-spacing:-.03em;text-wrap:balance}
+  .mk5-empty p{color:var(--mute);font-size:13.5px;line-height:1.55;max-width:62ch}
+  .mk5-v5{min-width:0}
+  .mk5-osect{margin-top:44px;min-width:0}
+  .mk5-osect h2{font-family:var(--disp);font-size:25px;font-weight:800;letter-spacing:-.035em;line-height:1.15;text-wrap:balance}
+  .mk5-olede{color:var(--mute);font-size:14.5px;margin-top:6px;max-width:60ch;line-height:1.5;text-wrap:pretty}
+  .mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}
+  .mk5-card{position:relative;grid-column:span 2;display:flex;flex-direction:column;padding:22px;border-radius:22px;color:var(--ink);cursor:pointer;min-width:0;overflow:hidden;transition:transform .18s,box-shadow .18s;text-align:left}
+  .mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:span 3}
+  .mk5-card:hover{transform:translateY(-3px);box-shadow:0 28px 44px -30px rgba(11,27,43,.5)}
+  .mk5-card:focus-visible{outline:none;box-shadow:var(--focus)}
+  .mk5-glow{position:absolute;right:-56px;top:-56px;width:176px;height:176px;border-radius:50%;opacity:.16;pointer-events:none}
+  .mk5-cico{position:relative;z-index:1;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+  .mk5-cico svg{width:27px;height:27px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .mk5-ccat{position:relative;z-index:1;margin-top:20px;font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;line-height:1.3}
+  .mk5-card h3{font-family:var(--disp);font-size:21px;font-weight:800;letter-spacing:-.03em;line-height:1.15;margin-top:6px;text-wrap:balance}
+  .mk5-cline{font-size:13.5px;line-height:1.5;color:var(--mute);margin-top:8px;text-wrap:pretty;flex:1 0 auto}
+  .mk5-ben{display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-size:13px;font-weight:650;line-height:1.45;text-wrap:pretty}
+  .mk5-ben svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;margin-top:2px}
+  .mk5-cbtn{margin-top:18px;align-self:flex-start;display:inline-flex;align-items:center;min-height:42px;padding:0 20px;border-radius:12px;font-weight:750;font-size:13.5px}
+  /* AA (advisor 11-14, a RECORDED DEVIATION from v5's white): the CTA text + the icon glyph are DARK INK on the vivid fill, fills as
+     drawn — --on-vivid #000000 light (the only ink clearing sky 5.10 / teal 5.11 / lav 4.65; v5's #0B1B2B gives 4.23 / 4.24 / 3.85),
+     #0B1B2B dark (≥ 5.6 on every tone). The text colour sits on the SAME rule as its fill, so the AA sweep judges the real pair.
+     The five tones: each element carries its own tone class (a tone on the card that coloured its children would be a crossing) */
+  .mk5-bg-mint{background:var(--vt-mint)}.mk5-vv-mint{background:var(--v-mint);color:var(--on-vivid)}.mk5-ink-mint{color:var(--vt-mint-ink)}
+  .mk5-bg-sky{background:var(--vt-sky)}.mk5-vv-sky{background:var(--v-sky);color:var(--on-vivid)}.mk5-ink-sky{color:var(--vt-sky-ink)}
+  .mk5-bg-rose{background:var(--vt-rose)}.mk5-vv-rose{background:var(--v-rose);color:var(--on-vivid)}.mk5-ink-rose{color:var(--vt-rose-ink)}
+  .mk5-bg-teal{background:var(--vt-teal)}.mk5-vv-teal{background:var(--v-teal);color:var(--on-vivid)}.mk5-ink-teal{color:var(--vt-teal-ink)}
+  .mk5-bg-lav{background:var(--vt-lav)}.mk5-vv-lav{background:var(--v-lav);color:var(--on-vivid)}.mk5-ink-lav{color:var(--vt-lav-ink)}
+  .mk5-how{display:inline-flex;align-items:center;gap:6px;margin-top:18px;padding:0;background:none;border:none;font:inherit;font-size:13px;font-weight:650;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .mk5-howbox{margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--board-2);display:flex;flex-direction:column;gap:8px}
+  .mk5-howp{text-wrap:pretty;font-size:13px;line-height:1.55;color:var(--mute)}
+  .mk5-howp b{color:var(--ink);font-weight:700}
+  @media(max-width:920px){
+    .mk5-tabs{gap:22px;margin-top:16px}
+    .mk5-sect{margin-top:30px}
+    .mk5-lh{display:none}
+    .mk5-row{grid-template-columns:30px minmax(0,1fr) auto;gap:4px 12px;padding:14px 0;min-height:0}
+    .mk5-ico{grid-row:1/3;align-self:start}
+    .mk5-c1{grid-column:2;display:block;line-height:1.35;text-wrap:balance}
+    .mk5-lnk{display:inline;text-wrap:balance}
+    .mk5-br{display:block;margin:2px 0 0}
+    .mk5-c2{grid-column:3;justify-self:end;align-self:start;grid-row:1}
+    .mk5-c2 .mk5-st{font-size:13.5px}
+    .mk5-c3{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline;font-size:13px}
+    .mk5-c5{display:none}
+    .mk5-osect{margin-top:36px}
+    .mk5-osect h2{font-size:22px}
+    .mk5-ogrid{grid-template-columns:1fr;gap:14px;margin-top:18px}
+    .mk5-card,.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:auto;padding:20px 18px}
+    .mk5-cbtn{width:100%;align-self:stretch;justify-content:center;min-height:46px}
+  }
+  .mk5-tab,.mk5-pill,.mk5-act,.mk5-how,.mk5-opt{cursor:pointer}   /* Marketing O1's clicked controls — the pointer guard reads single-compound rules */
   /* ── PLAN-portal-team-invites T-d · the owner's publish-request banner (pubreq.js), mockup v8 D1 ── */
   #pubreq{margin-top:22px}
   .pbanner{display:flex;align-items:center;gap:14px;padding:13px 16px 13px 14px;border:1px solid var(--line);background:var(--card);border-radius:14px;flex-wrap:wrap;box-shadow:var(--shadow)}
