@@ -577,5 +577,5 @@ async function revokeBranchDeviceCore(deps, req) {
 module.exports = {
   getBranchDevicesCore, revokeBranchDeviceCore, isLinked, linkedCount, AUTO_PAUSE, pauseAtVersion,
   getMyBranchesCore, updateBranchCore, setBranchPauseCore, getBranchAvailabilityCore, setBranchAvailabilityCore,
-  controlOf, pauseSpecOf, projectMenu, verifiedContext, OPS_CAPS, okVersion, VERSION_LIMIT,
+  controlOf, pauseSpecOf, projectMenu, verifiedContext, accessFor, OPS_CAPS, okVersion, VERSION_LIMIT,
 };

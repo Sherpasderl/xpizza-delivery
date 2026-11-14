@@ -43,6 +43,8 @@ const CAPABILITIES = Object.freeze({
   'team.invite':         { owner: true },                                         // only the owner invites / revokes / sets roles
   'team.revoke':         { owner: true, owner_retired: true },                   // cleanup (revoke / cancel an invite / list) survives the last location retiring
   'brand.settings':      { owner: true },
+  'marketing.read':      { owner: true, owner_retired: true, manager: true },     // PLAN-3a-marketing-server §3.1: stats.read's columns
+  'marketing.edit':      { owner: true },                                         // Q1 (advisor 11-14): restaurant-funded discounts are money → owner only
 });
 const CAP_NAMES = Object.freeze(Object.keys(CAPABILITIES));
 // ORCHESTRATION O1b T1 (plan r3.2 §3, PLAN-orch-o1b r3): a STAGED branch (materialized, not yet opened) — pairing, its team, its

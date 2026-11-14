@@ -65,10 +65,18 @@ test('T1 member / retired / unknown capsFor are byte-identical to acf32fc8 (gold
   const keys = ['owner', 'manager', 'manager_menu', 'dispatcher', 'staff'];
   for (let mask = 0; mask < 1 << keys.length; mask++) {
     const facts = Object.fromEntries(keys.map((k, i) => [k, !!(mask & (1 << i))]));
-    for (const st of ['member', 'retired', 'unknown']) assert.deepStrictEqual(M.capsFor(facts, st), BASE.capsFor(facts, st), `golden ${st} ${JSON.stringify(facts)}`);
+    for (const st of ['member', 'retired', 'unknown']) {
+      // PLAN-3a-marketing-server §3.1 (advisor 11-14): the table is acf32fc8's EXACTLY plus the two marketing capabilities, each granted
+      // to exactly its declared columns — every older capability byte-identical, nothing else added
+      const caps = M.capsFor(facts, st);
+      assert.deepStrictEqual(caps.filter((c) => !MARKETING_CAPS.includes(c)), BASE.capsFor(facts, st), `golden ${st} ${JSON.stringify(facts)}`);
+      const mk = [...(st === 'member' && (facts.owner || facts.manager) ? ['marketing.read'] : []), ...(st === 'retired' && facts.owner ? ['marketing.read'] : []), ...(st === 'member' && facts.owner ? ['marketing.edit'] : [])];
+      assert.deepStrictEqual(caps.filter((c) => MARKETING_CAPS.includes(c)).sort(), [...new Set(mk)].sort(), `marketing caps ${st} ${JSON.stringify(facts)}`);
+    }
   }
-  assert.deepStrictEqual(M.CAP_NAMES, BASE.CAP_NAMES, 'the location capability table is unchanged');
+  assert.deepStrictEqual(M.CAP_NAMES, [...BASE.CAP_NAMES, ...MARKETING_CAPS], 'the location capability table is acf32fc8 + the two marketing capabilities, nothing else');
 });
+const MARKETING_CAPS = Object.freeze(['marketing.read', 'marketing.edit']);
 
 test('T1 resolveAccess + myLocations list a staged branch for its owner and its manager', async () => {
   const db = createFakeDb(fixture());

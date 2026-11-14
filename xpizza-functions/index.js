@@ -7875,4 +7875,6 @@ exports.createSupportTicket = onRequest(
 );
 // S-A1: rateOrder's dish votes resolve through the ONE resolver (the expression getMyOrders and the live displayLabel path use)
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
+// PLAN-3a-marketing-server steps 1–2: the portal «Marketing» offer endpoints (marketing/functions.js; dark until platform_config/marketing.offers_enabled)
+exports.getMarketing = require('./marketing/functions').getMarketing; exports.marketingOfferSave = require('./marketing/functions').marketingOfferSave; exports.marketingOfferSetState = require('./marketing/functions').marketingOfferSetState; exports.marketingOfferRepeat = require('./marketing/functions').marketingOfferRepeat;
 /* checkout:end endpoints */
