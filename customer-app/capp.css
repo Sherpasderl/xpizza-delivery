@@ -890,7 +890,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .pill{display:inline-flex;align-items:center;gap:5px;min-height:22px;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:600;line-height:1.2;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .pill svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .pill.pop{background:var(--pop-bg);color:var(--pop)}
-.pill.rec{background:var(--pop-bg);color:var(--pop)}   /* D-3 r3 9.1 «N % lo recomienda» (dish-stats (2)) */
+.pill.recp{background:var(--pop-bg);color:var(--pop)}   /* D-3 r3 9.1 «N % lo recomienda» (dish-stats (2)) — NOT .rec (v6's «Recomendado» label on the pay option: uppercase, spaced; owed SBS 11-14) */
 /* D-3 r3 9.5 «Suelen pedirse juntos» (dish-stats (2b)), the mockup's rules verbatim + the served photo filling its well */
 .upsell{padding:12px 20px 4px;border-top:1px solid var(--line)}
 .upsell h3{font:600 14px/1.2 var(--sans);margin-bottom:10px}
@@ -898,9 +898,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .ucard{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--bg);color:var(--ink);text-align:left}
 .ucard .ph{position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--surf)}
 .ucard .ph img{width:100%;height:100%;object-fit:cover;display:block}
-.ucard .ph .qty-add-btn{width:30px;height:30px;font-size:18px;right:6px;bottom:6px}
-.ucard .nm{font-size:13px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ucard .pr{font-size:13px;font-weight:600;margin-top:0}
+.ucard .ph .qty-add-btn{position:absolute;width:30px;height:30px;font-size:18px;right:6px;bottom:6px}   /* owed SBS 11-14: the base .qty-add-btn has no position (the thumb gives it) */
+.ucard .nm{font-size:13px;font-weight:600;line-height:1.25;min-height:2.5em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}   /* owed SBS 11-14 (16b over the mockup's ellipsis): a 2-line clamp, 2 lines reserved on EVERY card */
+.ucard .pr{display:block;font-size:13px;font-weight:600;margin-top:0}
 .row .txtbtn > .pills{margin-top:4px}   /* 9.1: the phone row's pills, under the price */
 .pill.deal{background:var(--deal-bg);color:var(--deal)}
 .pill.value{background:var(--value-bg);color:var(--value)}

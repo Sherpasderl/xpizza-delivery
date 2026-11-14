@@ -294,7 +294,7 @@
     // pill's slot hidden (rule 8: never a visible badge on it; frame 12: a dish that sells out mid-visit never changes its row's height)
     const REC_MIN = 80;
     const recOf = (it) => { const s = it && it.dish && menu.dishStats ? menu.dishStats[it.dish] : null; if (!s || !Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null; const n = Math.round((100 * s.up) / s.votes); return n >= REC_MIN ? n : null; };
-    const recPill = (it, sold) => { const n = recOf(it); return n === null ? '' : `<span class="pill rec"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>${n} % lo recomienda</span>`; };
+    const recPill = (it, sold) => { const n = recOf(it); return n === null ? '' : `<span class="pill recp"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>${n} % lo recomienda</span>`; };
     // D-3 r3 9.1 «Más pedido» (dish-stats (2a)): the producer's top_rank (the store's top 3 by 30-day orders), FIRST in the pills;
     // a sold-out dish keeps the slot hidden (as «N %»)
     const popPill = (it, sold) => { const s = it && it.dish && menu.dishStats ? menu.dishStats[it.dish] : null; return s && s.top_rank ? `<span class="pill pop"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>Más pedido</span>` : ''; };

@@ -37042,8 +37042,8 @@
   "slice": "dish-stats",
   "label": "the badge VISIBLE on a sold-out dish (rule 8)",
   "file": "../customer-app/capp-ui.js",
-  "from": "<span class=\"pill rec\"${sold ? ' style=",
-  "to": "<span class=\"pill rec\"${false ? ' style=",
+  "from": "<span class=\"pill recp\"${sold ? ' style=",
+  "to": "<span class=\"pill recp\"${false ? ' style=",
   "command": [
    "node",
    "--test",
@@ -37222,6 +37222,57 @@
   ],
   "kills_with": [
    "DS-UPS: a launcher partner is never upsold"
+  ]
+ },
+ {
+  "id": "rec-05",
+  "slice": "dish-stats",
+  "label": "the recommend pill takes v6's «Recomendado» .rec style again (uppercase, spaced, indented — owed SBS 11-14)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span class=\"pill recp\"${sold",
+  "to": "<span class=\"pill recp rec\"${sold",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=REC3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC3"
+  ]
+ },
+ {
+  "id": "ups-08",
+  "slice": "dish-stats",
+  "label": "the upsell «+» left unpositioned (it falls to the photo's top-left — owed SBS 11-14)",
+  "file": "../customer-app/capp.css",
+  "from": ".ucard .ph .qty-add-btn{position:absolute;width:30px;",
+  "to": ".ucard .ph .qty-add-btn{width:30px;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=UPS6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "«+» at the photo"
+  ]
+ },
+ {
+  "id": "ups-09",
+  "slice": "dish-stats",
+  "label": "the upsell name back to a one-line ellipsis (hides meaning, 16b)",
+  "file": "../customer-app/capp.css",
+  "from": "min-height:2.5em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}",
+  "to": "min-height:2.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=UPS6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "the name may wrap"
   ]
  }
 ]

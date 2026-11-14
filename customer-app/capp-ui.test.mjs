@@ -3984,7 +3984,7 @@ test('DA3 rule 10 in the aside: no free-delivery claim without the predicate (gu
 });
 
 // ── PLAN-capp-dish-stats r0 (2), the «%» badge (advisor 11-14: (c) now; «Más pedido» + the upsell wait for 3a's pricing-resolver context):
-// D-3 r3 9.1 draws «97 % lo recomienda» (.pill.rec) in the dish's pills — the phone row after the price, the desk card beside its
+// D-3 r3 9.1 draws «97 % lo recomienda» (.pill.recp) in the dish's pills — the phone row after the price, the desk card beside its
 // tag. N = round(100 × up / votes) from the served dish_stats (the producer's ≥ 20 votes); shown only at N ≥ 80 (advisor, rule 8). The
 // fixture is 3a's real chain (fixtures/dish-stats): dish A 19/20 (95 %) in stats_a, 23/24 (96 %) in stats_b; dish B 15/20 (75 %) ──
 const DSX = JSON.parse(readFileSync(join(HERE, 'fixtures/dish-stats/dish-stats.json'), 'utf8'));
@@ -3995,29 +3995,39 @@ test('dish-stats (2) REC1 (9.1): «N % lo recomienda» in the dish\'s pills — 
     const where = mount.view ? 'desk' : 'phone';
     const b = boot('x_pizza', { envelope: dsEnv('stats_a'), mount });
     const a = keyOfDish(b, DSX.ratings.dish_a), bb = keyOfDish(b, DSX.ratings.dish_b), c = keyOfDish(b, DSX.ratings.dish_c);
-    const pill = b.q(`#dish-${a} .pills .pill.rec`);
+    const pill = b.q(`#dish-${a} .pills .pill.recp`);
     assert.ok(pill, `🔴 DS-REC1: the badge (${where})`);
     assert.equal(pill.textContent, '95 % lo recomienda', `🔴 DS-REC1: round(100 × 19 / 20) (${where})`);
     if (!mount.view) assert.ok(b.q(`#dish-${a} .prrow + .pills`), 'the phone: after the price (9.1)');
-    assert.equal(b.q(`#dish-${bb} .pill.rec`), null, `🔴 DS-REC1: 75 % is no recommendation (${where})`);
-    assert.equal(b.q(`#dish-${c} .pill.rec`), null, `🔴 DS-REC1: no stats (below the producer's 20 votes) ⇒ no badge (${where})`);
-    assert.equal(boot('x_pizza', { envelope: dsEnv('plain'), mount }).q('.pill.rec'), null, `🔴 DS-REC1: no dish_stats ⇒ no badge anywhere (${where})`);
+    assert.equal(b.q(`#dish-${bb} .pill.recp`), null, `🔴 DS-REC1: 75 % is no recommendation (${where})`);
+    assert.equal(b.q(`#dish-${c} .pill.recp`), null, `🔴 DS-REC1: no stats (below the producer's 20 votes) ⇒ no badge (${where})`);
+    assert.equal(boot('x_pizza', { envelope: dsEnv('plain'), mount }).q('.pill.recp'), null, `🔴 DS-REC1: no dish_stats ⇒ no badge anywhere (${where})`);
   }
   const b2 = boot('x_pizza', { envelope: dsEnv('stats_b') });
-  assert.equal(b2.q(`#dish-${keyOfDish(b2, DSX.ratings.dish_a)} .pill.rec`).textContent, '96 % lo recomienda', '🔴 DS-REC1: 23 / 24 rounds to 96');
+  assert.equal(b2.q(`#dish-${keyOfDish(b2, DSX.ratings.dish_a)} .pill.recp`).textContent, '96 % lo recomienda', '🔴 DS-REC1: 23 / 24 rounds to 96');
 });
 test('dish-stats (2) REC2 (rule 8 + frame 12): a dish SOLD OUT keeps the badge\'s slot but never shows it (no visible badge on a sold-out dish; the row never changes height mid-visit)', () => {
   const sold = new Set();
   const b = boot('x_pizza', { envelope: dsEnv('stats_a'), unavailable: sold });
   const a = keyOfDish(b, DSX.ratings.dish_a);
-  assert.ok(b.q(`#dish-${a} .pill.rec`) && b.q(`#dish-${a} .pill.rec`).getAttribute('aria-hidden') !== 'true', 'premise: shown while orderable');
+  assert.ok(b.q(`#dish-${a} .pill.recp`) && b.q(`#dish-${a} .pill.recp`).getAttribute('aria-hidden') !== 'true', 'premise: shown while orderable');
   sold.add(a); b.ui.render();
-  const p = b.q(`#dish-${a} .pill.rec`);
+  const p = b.q(`#dish-${a} .pill.recp`);
   assert.ok(p, '🔴 DS-REC2: the slot is kept (the row keeps its height)');
   assert.equal(p.getAttribute('aria-hidden'), 'true', '🔴 DS-REC2: hidden from assistive tech');
   assert.equal(b.w.getComputedStyle(p).visibility, 'hidden', '🔴 DS-REC2: never visible on a sold-out dish');
 });
 
+// owed SBS 11-14 (rule 16b, advisor GO): the recommend pill is styled EXACTLY like «Más pedido» — the shot showed it UPPERCASE,
+// letter-spaced, indented on its own line (a class collision with v6's «Recomendado» .rec label); the computed style decides
+test('dish-stats (2) REC3 (9.1, 16b): «N % lo recomienda» is styled like «Más pedido» — sentence case, no letter-spacing, no indent, the same pill', () => {
+  const b = boot('x_pizza', { envelope: dsEnv('xp_orders') }), O = DSX.orders;
+  const row = b.q(`#dish-${keyOfDish(b, O.a)} .pills`), pop = row.querySelector('.pill.pop'), rec = row.querySelector('.pill:not(.pop)');
+  assert.ok(pop && rec && rec.textContent === '95 % lo recomienda', 'premise: both pills in ONE .pills row');
+  const cs = (e) => { const c = b.w.getComputedStyle(e); return { textTransform: c.textTransform, letterSpacing: c.letterSpacing, marginLeft: c.marginLeft, display: c.display, fontSize: c.fontSize, fontWeight: c.fontWeight }; };
+  assert.deepEqual(cs(rec), cs(pop), '🔴 DS-REC3: the recommend pill computes the same text style as «Más pedido»');
+  assert.equal(b.w.getComputedStyle(rec).textTransform, 'none', '🔴 DS-REC3: sentence case');
+});
 // ── dish-stats (2a/2b) (advisor 11-14: 3a's provisionContext ⇒ REAL orders' dish_qty through createOrder's dishQtyOf ⇒ the producer):
 // D-3 r3 9.1 «Más pedido» (.pill.pop, before «N %») where the dish holds a top_rank; 9.5 «Suelen pedirse juntos» (cart only): the
 // union of the cart dishes' pairs ranked by count, ON THE LIVE MENU orderable, not sold, under L 100, not in the cart — at most 3, the
@@ -4057,6 +4067,21 @@ test('dish-stats (2b) UPS1 (9.5): the cart sheet\'s «Suelen pedirse juntos» = 
   assert.deepEqual(upsellCards(b).map((c) => c[0]), want, '🔴 DS-UPS: no reflow while the sheet is open (Q3, rule 7)');
   b.click('#layer [data-act="cartclose"]'); b.click('#cart-bar');
   assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.toña, L.salva].map((d) => lmKey(b, d)), '🔴 DS-UPS: the next open leaves out what the cart now holds');
+});
+// owed SBS 11-14 (advisor GO): the card's «+» overlaps the photo's bottom-right corner (it sat top-left: the base .qty-add-btn has no
+// position — the store's thumb gives it), and a long name is CLAMPED to 2 lines with the 2-line height reserved on EVERY card (16b beats
+// the mockup's ellipsis; the row stays even), the price on its own line
+test('dish-stats (2b) UPS6 (9.5, 16b): the «+» pinned to the photo\'s bottom-right; the name a 2-line clamp, 2 lines reserved on every card; the price its own line', () => {
+  const b = lmCart(); b.click('#cart-bar');
+  const cards = b.qa('#layer .upsell .ucard'); assert.equal(cards.length, 3, 'premise: three cards');
+  for (const c of cards) {
+    const add = b.w.getComputedStyle(c.querySelector('.ph .qty-add-btn')), nm = b.w.getComputedStyle(c.querySelector('.nm')), pr = b.w.getComputedStyle(c.querySelector('.pr'));
+    assert.deepEqual([add.position, add.right, add.bottom], ['absolute', '6px', '6px'], '🔴 DS-UPS6: «+» at the photo\'s bottom-right');
+    assert.equal(nm.whiteSpace === 'nowrap', false, '🔴 DS-UPS6: the name may wrap (never a one-line ellipsis)');
+    assert.equal(parseFloat(nm.minHeight), 2 * 1.25 * parseFloat(nm.fontSize), '🔴 DS-UPS6: two lines reserved on every card (line-height 1.25)');
+    assert.equal(nm.getPropertyValue('-webkit-line-clamp'), '2', '🔴 DS-UPS6: at most two lines');
+    assert.equal(pr.display, 'block', 'the price on its own line');
+  }
 });
 test('dish-stats (2b) UPS2: no stats ⇒ no section; a SOLD partner and one whose LIVE price rose to L 100+ since the daily publish are left out', () => {
   const plain = boot('la_musa', { envelope: dsEnv('lm_plain') }); plain.ui.cart.inc(keyOfDish(plain, DSX.la_musa.main)); plain.ui.render(); plain.click('#cart-bar');
