@@ -2,7 +2,7 @@
 // (pinned to the REAL 5f handler's output), the client directory store, Inicio / Buscar from the real served envelopes, and the
 // shell driven through the REAL shell.html + modules in jsdom.
 // Run: node --test customer-app/capp-s7a2.test.mjs
-import { test, afterEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import { createClock } from './test-clock.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -244,12 +244,66 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
 // PLAN-capp-virtual-clock r0: a cell booted with bootShell({ clock: true }) runs on the VIRTUAL clock VC — flush(ms) = drain, advance
 // ms virtual, drain; until() spends a virtual budget. Every other cell keeps the real-sleep flush until its chunk migrates
-let VC = null;
-afterEach(() => { VC = null; });
+// MIGRATION (chunks): the cells NAMED in VIRTUAL boot on the virtual clock by default — bootShell and every helper that wraps it
+// (pedidosBoot, realAuthHome, enterOnPresentation, …). A chunk's diff is names added here; no cell line changes (the assertion
+// inventory stays identical by construction). Step 9 flips the default and deletes this list.
+let VC = null, CLOCK_DEFAULT = false, CUR = null;
+const VC_BOOTED = new Set(), RAN = new Set();   // the cells that booted the shell on the virtual clock / that ran (VC-M's evidence)
+const VIRTUAL = new Set([
+  // chunk 1 (file order 1–46: directory, Inicio, Buscar, shell, location, browse-only, frames 10/11, return, Codex s7a2 r1, G2, stamp, G6)
+  'contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators',
+  'directory: cold ⇒ loading; a complete 200 lists, verifies (enterable), and is stored with its validator',
+  'directory: a stored body < 24 h paints at boot as PRESENTATION (listed, never enterable); ≥ 24 h, future > 5 min, or a partial ⇒ discarded',
+  'directory: revalidation sends the stored etag; a matching 304 verifies; a 304 naming another etag ⇒ re-fetched WITHOUT a validator',
+  'directory: a complete body omitting a shown store TOMBSTONES it in place (disabled, same slot) until the next visit; it is never enterable',
+  'directory: a PARTIAL verifies what it lists; an omitted store is held (never tombstoned); the stored body is not overwritten; the partial note',
+  'directory: 503 / offline change nothing; with nothing to show ⇒ the error phase (frame 7); a later success clears it',
+  'directory: eligibility expires on its own clock (60 s) — a verified row reverts to held without any new response',
+  'Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y para pedir hoy», open first then directory order',
+  'Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks is dropped); absent ⇒ catalog-tag fallback; [] ⇒ hidden',
+  'Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price',
+  'Inicio states: 1 loading line · 7 error · 2 zero · 3 B all closed (2nd sentence only while scheduling is live) · 9 partial · 4 out of zone',
+  'coverage: frame 4 only when EVERY store answers «outside»; an unknown coverage is never counted as outside',
+  'Buscar: dish hits are the DISPLAYED items (a launcher «desde L min», never a raw variant child), directory → section → item order, capped at 12',
+  'Buscar: «No encontramos» ONLY when every menu answered; a partial shows its note (frame 8); pending menus show «Buscando platos…» (frame 6)',
+  'shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)',
+  'shell: ONE cache — Buscar reuses Inicio\'s in-flight requests (no duplicate), and the search fills in as they land',
+  'shell: a tap on a PRESENTATION row is HELD (pressed) and opens the moment the verification lands; an eligible row opens at once',
+  'shell: a held tap whose directory read FAILS shows frame 7; «Reintentar» re-reads',
+  'shell: a Buscar dish result opens THAT dish\'s sheet in its store; Back returns to Buscar with the query',
+  'shell: a TOMBSTONED row stays in its slot, disabled; a tap does nothing; it leaves on the next visit to Inicio',
+  'shell location: «Entregar en» → «Usar mi ubicación actual» → the soft-ask (first time) → allowed ⇒ the GPS fix is the CONFIRMED guest location, persisted',
+  'shell location: denied ⇒ the drawn «Ubicación desactivada · Activar» row and NO location (no fallback pin); the pin editor\'s «Cancelar» changes nothing',
+  'shell location: the guest location drives frame 4 (every store outside) and SEEDS the store\'s checkout pin',
+  'browse-only: a store entered on its STORED menu has every ordering control inert (the existing disabled attribute); a forced tap changes nothing',
+  'browse-only: the verified IDENTICAL menu turns the controls live IN PLACE — the same nodes, no re-render; ordering works',
+  'browse-only: a CHANGED menu keeps the surface (its prices) while the customer is in it; at checkout entry it is adopted and the cart discloses the change (frame 13) BEFORE the quote',
+  'frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING',
+  'frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again',
+  'return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)',
+  'Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount',
+  'Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes ordering — browse-only, revalidated, live in place when FRESH',
+  'Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed',
+  'Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails',
+  'Codex s7a2 r1 #6: frame 13 discloses PER CONFIGURATION — two changed configurations of one dish ⇒ two lines, each with its own unit prices',
+  'Codex s7a2 r1 #7: an UNPRICED fee never carries a promotional claim — no «Envío gratis» for a member, no guest pill / tag, no «Envío gratis» chip',
+  'Codex s7a2 r1 #8: ADJACENT tombstones keep their slots — [A,B,C,D] then complete [A,D] shows A,B(gone),C(gone),D; the next visit shows A,D',
+  'Codex s7a2 r1 #9: never «No encontramos» over an incomplete DIRECTORY — cold ⇒ «Buscando platos…»; error or partial ⇒ the partial note',
+  'G2 §4c device marker: the full E.164 + a hint (never a token); last 4 for display; malformed never stored; only forget() clears it',
+  'G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host',
+  'Codex guest r1 #3: with the guest flag ABSENT the Cuenta tab is exactly the S7a-2 behaviour — a host event, Inicio stays, the DOM unchanged',
+  'stamp: shell.html is stamped as orders-app; on the stamped shell SherpaClient is LIVE and the shell\'s createOrder carries X-Client-Deployment: orders-app',
+  'G6 flag-absent: no runtime.signup ⇒ «Entrá o creá tu cuenta» is the HOST\'s \'signin\' event, as before — no SDK load, no sheet layer',
+  'G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a verified existing account ⇒ member, the device marker + the profile cache; an ordinary sign-out clears the cache, keeps the marker',
+  'G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid\'s cache is never used',
+  'Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the MOUNTED checkout: its next send carries no member token',
+]);
+beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
+afterEach(() => { VC = null; CLOCK_DEFAULT = false; });
 const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = false } = {}) {
+function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = CLOCK_DEFAULT } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
@@ -273,7 +327,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
   // clock: true ⇒ the shell's timers AND its app time are the virtual clock (a cell moving S.clock.t forward is a wall-clock jump)
-  if (vclock) VC = createClock(now ? now.t : T0);
+  if (vclock) { VC = createClock(now ? now.t : T0); VC_BOOTED.add(CUR); }
   const clock = vclock ? { get t() { return VC.now(); }, set t(v) { VC.jump(v); } } : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
     auth: { state: () => auth }, geolocation, search, timers: vclock ? VC : { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vclock ? { timeout: (ms) => new Promise((r) => VC.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
@@ -4886,4 +4940,19 @@ test('VC-H1 bootShell({ clock: true }): the desk→phone switch fires at EXACTLY
     await flush(SET - 1); assert.ok(S.q('#app').classList.contains('desk'), '🔴 VC-H1: settle − 1 ⇒ still the desk');
     await flush(1); assert.ok(!S.q('#app').classList.contains('desk'), '🔴 VC-H1: at the settle ⇒ the phone, exactly');
   } finally { S.w.close(); }
+});
+// the migration list names REAL cells only — a typo would silently leave a cell on the real clock
+test('VC-M every name in the VIRTUAL migration list is a cell of this file (exactly once)', () => {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const names = [...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'/gm)].map((m) => m[1].replace(/\\(.)/g, '$1'));
+  const missing = [...VIRTUAL].filter((n) => names.filter((x) => x === n).length !== 1);
+  assert.deepEqual(missing, [], '🔴 VC-M: a VIRTUAL name that is not exactly one cell');
+  assert.ok(VIRTUAL.size >= 46, 'premise: chunk 1 listed');
+  // every listed cell that boots the shell (directly or through a helper) DID boot on the virtual clock this run
+  const bodies = new Map([...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'([\s\S]*?)(?=^(?:test\(|function |async function |const |let |\/\/)|(?![\s\S]))/gm)].map((m) => [m[1].replace(/\\(.)/g, '$1'), m[2]]));   // a body ends at the next TOP-LEVEL statement
+  const BOOTS = /\b(bootShell|pedidosBoot|realAuthHome|enterOnPresentation|promoStore|deskStore|tokenBoot)\(/;
+  const shouldBoot = [...VIRTUAL].filter((n) => BOOTS.test(bodies.get(n) || ''));
+  assert.ok(shouldBoot.length >= 27, `premise: chunk 1 boots the shell in 27 cells (${shouldBoot.length})`);
+  assert.deepEqual(shouldBoot.filter((n) => RAN.has(n) && !VC_BOOTED.has(n)), [],   // the cells that ran this run (a filtered run checks its own)
+    '🔴 VC-M: a listed cell booted on the REAL clock');
 });
