@@ -2857,6 +2857,7 @@
   "marketing/config.js",
   "marketing/functions.js",
   "marketing/offer-model.js",
+  "marketing/offer-rules.js",
   "marketing/offers-core.js",
   "materialize.js",
   "member-auth.js",
@@ -6946,6 +6947,10 @@
    "lifts": []
   },
   "marketing/offer-model.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/offer-rules.js": {
    "pins": [],
    "lifts": []
   },
