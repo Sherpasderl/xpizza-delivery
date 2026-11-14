@@ -58,6 +58,20 @@ const HUNKS = Object.freeze([
   "file": "catalog/public-menu.js",
   "now": "\n  /* PLAN-3a-capp-member-reads (3) — DISH_STATS, last, and only where it can be joined: on the endpoint's overlay branch AFTER the\n     overlay applied (the served dishes carry dish_id). Never on the overlayIdentity:false bake / reconciler path (stats move daily: a\n     baked copy would freeze them). withDishStats never throws and never blocks past its own 1.5 s deadline. */\n  if (deps.overlayIdentity !== false && enriched.applied) body = await require('./dish-stats-serve').withDishStats(restaurantId, body, deps.dishStats || {});\n\n  // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's\n",
   "was": "\n  // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's\n"
+ },
+ {
+  "commit": "d688d8378",
+  "label": "capp offers Q1: catalog/public-menu.js hunk 1/2",
+  "file": "catalog/public-menu.js",
+  "now": "  offers: { type: 'array' },        /* PLAN-3a-capp-offers-read Q1: a decoration (catalog/offers-serve.js), ABSENT when offers are off — never required */\n",
+  "was": ""
+ },
+ {
+  "commit": "d688d8378",
+  "label": "capp offers Q1: catalog/public-menu.js hunk 2/2",
+  "file": "catalog/public-menu.js",
+  "now": "  /* PLAN-3a-capp-offers-read Q1 — OFFERS, on the same branch and for the same reason (they move by the minute: a baked copy would freeze\n     them). No representation bump (advisor Q-A): absent when off, so the body and the ETag are unchanged; on, the body moves the ETag. */\n  if (deps.overlayIdentity !== false) body = await require('./offers-serve').withOffers(restaurantId, body, deps.offers || {});\n",
+  "was": ""
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
