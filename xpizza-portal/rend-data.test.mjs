@@ -155,8 +155,8 @@ test('cached-first: the cached body paints at once WITH ITS OWN stamp; an unchan
   assert.deepEqual(first.log.map((x) => [x.ev, x.source]), [['paint', 'network']], 'no cache yet: one paint, from the network');
   const again = ui();
   const r = await RD.loadStats({ uid: 'uA', rids: ['r_a'], range: VL.rangeFor('14d', TODAY), compare: 'previous', token, api: API, cache, now: () => T2, ui: again });
-  assert.equal(r.source, 'cache+same');
   assert.deepEqual(again.log.map((x) => x.ev), ['paint', 'stamp'], 'an unchanged revalidate never swaps the body');
+  assert.equal(r.source, 'cache+same');
   assert.equal(again.log[0].source, 'cache');
   assert.equal(again.log[0].freshAt, T1, 'the cached paint carries its own stamp (a live day: as fresh as its FETCH, never «now»)');
   assert.equal(again.log[1].freshAt, T2, 'the revalidate moves the stamp to the new fetch');
