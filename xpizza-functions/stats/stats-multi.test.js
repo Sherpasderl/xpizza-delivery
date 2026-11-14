@@ -49,6 +49,7 @@ async function world() {
   add(F.cashOrder({ rid: 'r_b', pm: 'cash', now: at('2026-10-15', 12), phone: '88880001', totalCents: 99900 }));
   add(F.cashOrder({ rid: 'r_b', pm: 'card_delivery', now: at('2026-10-16', 12), phone: '88880007', totalCents: 4500 }));
   add(F.cashOrder({ rid: 'r_b', pm: 'cash', now: at(TODAY, 9), phone: '88880008', totalCents: 2200 }));
+  add(F.cashOrder({ rid: 'r_b', pm: 'cash', now: at('2026-10-12', 13), phone: '88880006', totalCents: 5100 }));   // r_b inside the comparison window (MS-LIVE-COMPARE)
   const fs = makeDb(); const rtdb = makeRtdb(orders);
   await J.runStatsRollup({ rtdb, fsdb: fs, keyer, listRestaurants: async () => ['r_a', 'r_b'], log: () => {} }, { nowMs: NOW, mode: 'range', from: '2026-09-25', to: '2026-10-19', commit: true });
   return { fs, rtdb };
@@ -110,6 +111,7 @@ const both = (o = {}) => ({ restaurantIds: 'r_a,r_b', ...H, compare: 'none', ...
     const r = await c(both({ from: '2026-10-15', to: TODAY, compare: 'previous' }), 'both');
     const [a, b] = await Promise.all(['r_a', 'r_b'].map((rid) => c({ restaurantId: rid, from: '2026-10-15', to: TODAY, compare: 'previous' }, 'both')));
     assert.strictEqual(r.body.kpis.sales_cents, a.body.kpis.sales_cents + b.body.kpis.sales_cents, `${L}: period`);
+    assert.ok(b.body.comparison.kpis.sales_cents > 0, `${L}: premise — r_b sold in the comparison window`);
     assert.strictEqual(r.body.comparison.kpis.sales_cents, a.body.comparison.kpis.sales_cents + b.body.comparison.kpis.sales_cents, `${L}: comparison`);
     assert.ok(r.body.days.some((d) => d.computed_at === 'live'), `${L}: today is live`);
     assert.ok(r.body.deltas && 'sales_pct' in r.body.deltas, `${L}: deltas`);
