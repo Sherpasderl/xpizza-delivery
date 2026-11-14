@@ -41,6 +41,7 @@ async function readOffers(rid, deps) {
   const live = (await db.ref(`marketing_live/${rid}`).once('value')).val();
   return { on: true, live };
 }
+const SW = require('../marketing/switch-memo');
 const SM = require('./serve-memo').createServeMemo({ okTtlMs: OK_TTL_MS, failTtlMs: FAIL_TTL_MS, staleMaxMs: STALE_MAX_MS, timeoutMs: OFFERS_TIMEOUT_MS,
   timeoutError: 'offers_timeout', absentLog: 'public_menu_offers_absent', defaultRead: readOffers });
 
@@ -68,8 +69,9 @@ function selectOffers(raw, nowMs) {
 // buildPublicMenu's hook: the body with `offers` when the memo holds served offers, else the body unchanged. Never throws, never awaits.
 async function withOffers(rid, body, deps = {}) {
   try {
+    const on = SW.switchOn('offers_enabled', deps);   // the switch fails CLOSED on its own short path (Codex r1 P1-3); always asked first
     const m = SM.memoFor(rid, deps);
-    if (!m) return body;
+    if (!m || !on) return body;
     const offers = selectOffers(m.raw, deps.now ? deps.now() : Date.now());
     return offers ? { ...body, offers } : body;
   } catch (e) {
@@ -102,8 +104,9 @@ function flagOf(raw, nowMs) {
 }
 function offerFlagOf(rid, deps = {}) {
   try {
+    const on = SW.switchOn('offers_enabled', deps);
     const m = SM.memoFor(rid, deps);
-    return m ? flagOf(m.raw, deps.now ? deps.now() : Date.now()) : null;
+    return m && on ? flagOf(m.raw, deps.now ? deps.now() : Date.now()) : null;
   } catch (_) { return null; }
 }
 

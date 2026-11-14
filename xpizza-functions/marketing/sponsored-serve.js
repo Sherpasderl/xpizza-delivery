@@ -34,6 +34,7 @@ async function readSponsored(week, deps) {
     val(`restaurants/${rid}/identity`), val(`order_control/${rid}/current`)]);
   return { on: true, week, rid, booking, stats, identity, control, thresholds: cfg.thresholds };
 }
+const SW = require('./switch-memo');
 const SM = require('../catalog/serve-memo').createServeMemo({ okTtlMs: OK_TTL_MS, failTtlMs: FAIL_TTL_MS, staleMaxMs: STALE_MAX_MS,
   timeoutMs: SPONSORED_TIMEOUT_MS, timeoutError: 'sponsored_timeout', absentLog: 'directory_sponsored_absent', defaultRead: readSponsored });
 
@@ -50,8 +51,10 @@ function sponsoredFrom(raw, nowMs) {
 function sponsoredOf(deps = {}) {
   try {
     const nowMs = deps.now ? deps.now() : Date.now();
+    const on = SW.switchOn('anuncio_enabled', deps);   // the switch fails CLOSED on its own short path (Codex r1 P1-3); always asked first
     const m = SM.memoFor(AM.weekOf(nowMs), deps);
-    return m ? sponsoredFrom(m.raw, nowMs) : null;
+    if (!m || !on) return null;
+    return sponsoredFrom(m.raw, nowMs);
   } catch (_) { return null; }
 }
 

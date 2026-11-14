@@ -10,6 +10,7 @@ const A = require('./anuncio-core');
 const AM = require('./anuncio-model');
 const OC = require('../portal/ops-core');
 const S = require('./sponsored-serve');
+const SW = require('./switch-memo');
 
 let n = 0; let FINISHED = false;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -21,9 +22,9 @@ const W = 'W2027-03-08', W2 = 'W2027-03-15';
 const MON_NOON = at('2027-03-08', 12);         // inside W, inside 11:00–22:00
 const book = async (db, tok, rid, week) => { const r = await A.anuncioBookCore(depsAt(db, BOOK_AT), req(tok, { rid, week })); assert.strictEqual(r.status, 200, `premise: ${rid} books ${week} (${JSON.stringify(r.body)})`); return r.body.booking; };
 // the read as the directory calls it, with the memo settled (sponsoredOf never awaits: the first call starts the read)
-async function served(db, t, memo = new Map()) {
+async function served(db, t, memo = new Map(), sw = {}) {   // memo + sw: one instance's decoration memo and switch memo
   const inflight = new Map();
-  const d = { rtdb: db, memo, inflight, now: () => t };
+  const d = { rtdb: db, memo, inflight, switchState: sw, now: () => t };
   S.sponsoredOf(d);
   await quiet(() => Promise.all([...inflight.values()]));
   return S.sponsoredOf(d);
@@ -60,6 +61,25 @@ const H24 = { sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY, thu: ALL_D
       assert.strictEqual(await served(db, MON_NOON), null, 'a malformed config ⇒ off ⇒ nothing');
       ok('the Anuncio off (or a malformed config) with an active booking ⇒ null');
     }
+
+    // ── 2b. Codex r1 P1-3: a WARM instance (its memo fresh, holding the sponsor) — the Anuncio turned OFF, or the switch read failing,
+    //        ⇒ null at the next switch read, whatever the memo holds ──
+    for (const how of ['turned off', 'switch read fails']) {
+      const db = await world();
+      await eligible(db, 'tb_centro');
+      await book(db, `t-${OWNER}`, 'tb_centro', W);
+      const memo = new Map(); const sw = {};
+      assert.deepStrictEqual(await served(db, MON_NOON, memo, sw), { rid: 'tb_centro' }, 'premise: a warm instance sponsors');
+      let rdb = db;
+      if (how === 'turned off') assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 })).ok, true, 'premise: off');
+      else rdb = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); } } : db.ref(p)) };
+      const t1 = MON_NOON + SW.SWITCH_TTL_MS;
+      const r = await served(rdb, t1, memo, sw);
+      const m = [...memo.values()][0];
+      assert.ok(m.ok && t1 - m.at < S.OK_TTL_MS && m.raw.on === true, 'premise: the memo is still FRESH and still holds «on»');
+      assert.strictEqual(r, null, `WARM memo, the Anuncio ${how} ⇒ null at the next switch read`);
+    }
+    ok('a WARM instance: the Anuncio turned off, or the switch read failing, ⇒ null at the next switch read, whatever the memo holds');
 
     // ── 3. no booking this week (only next week's) ⇒ null ──
     {
@@ -124,9 +144,9 @@ const H24 = { sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY, thu: ALL_D
       await book(db, `t-${OWNER}`, 'tb_centro', W);
       await book(db, `t-${OTHER}`, 'zt_uno', W2);
       const monStart = AM.weekBounds(W2).start;
-      const memo = new Map();
-      assert.deepStrictEqual(await served(db, monStart - 1, memo), { rid: 'tb_centro' }, 'Sun 14 Mar 23:59:59.999 HN ⇒ this week\'s sponsor');
-      const d = { rtdb: db, memo, inflight: new Map(), now: () => monStart };
+      const memo = new Map(); const sw = {};
+      assert.deepStrictEqual(await served(db, monStart - 1, memo, sw), { rid: 'tb_centro' }, 'Sun 14 Mar 23:59:59.999 HN ⇒ this week\'s sponsor');
+      const d = { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => monStart };
       assert.strictEqual(S.sponsoredOf(d), null, 'Mon 00:00 HN, 1 ms later: never last week\'s sponsor (the memo is per week)');
       await quiet(() => Promise.all([...d.inflight.values()]));
       assert.deepStrictEqual(S.sponsoredOf(d), { rid: 'zt_uno' }, 'and the new week\'s sponsor once its read lands');
@@ -137,7 +157,7 @@ const H24 = { sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY, thu: ALL_D
     {
       const db = await world();
       for (const [why, read] of [['an outage', async () => { throw new Error('down'); }], ['a timeout', () => new Promise(() => {})], ['a malformed read', async () => 'garbage']]) {
-        const d = { rtdb: db, memo: new Map(), inflight: new Map(), now: () => MON_NOON, read, timeoutMs: 20 };
+        const d = { rtdb: db, memo: new Map(), inflight: new Map(), switchState: {}, now: () => MON_NOON, read, timeoutMs: 20 };
         assert.strictEqual(S.sponsoredOf(d), null, `${why}: the cold call ⇒ null`);
         await quiet(() => Promise.all([...d.inflight.values()]));
         assert.strictEqual(S.sponsoredOf(d), null, `${why} ⇒ null`);
