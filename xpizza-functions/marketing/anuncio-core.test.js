@@ -172,6 +172,14 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       assert.deepStrictEqual([re.status, re.body.error], [409, 'already_cancelled'], 'a repeated cancel ⇒ already_cancelled');
       assert.deepStrictEqual(db.get(`anuncio_slots/${W}`), { rid: 'zt_uno', booking_id: z.body.booking.id }, 'the other restaurant\'s slot is untouched');
       ok('a repeated cancel never frees the slot another restaurant now holds');
+      // the slot step itself: a RESERVED booking whose week's slot names a DIFFERENT booking (another restaurant's, e.g. after an
+      // operator repair) — cancelling it cancels the record and leaves that slot exactly as it is
+      const b2 = (await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: 'W2027-03-15' })).body.booking;
+      db.set('anuncio_slots/W2027-03-15', { rid: 'zt_uno', booking_id: z.body.booking.id });
+      const c2 = await cancel(db, `t-${OWNER}`, { rid: 'tb_centro', booking_id: b2.id });
+      assert.strictEqual(c2.status, 200, 'premise: the reserved booking cancels');
+      assert.deepStrictEqual(db.get('anuncio_slots/W2027-03-15'), { rid: 'zt_uno', booking_id: z.body.booking.id }, 'a slot naming ANOTHER booking is never freed by this cancel');
+      ok('cancel frees a slot only while it still names this booking');
     }
 
     // ── 5. the hidden-day recorder inside the REAL producer run ──
