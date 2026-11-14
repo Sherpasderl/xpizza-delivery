@@ -385,3 +385,32 @@ test('O2a: the one-line block reason under «Revisar y programar» — the first
   assert.equal(block({ items: ['i_m'], branches: [] }), 'Para revisar, elegí al menos una sucursal.');
   assert.equal(block({ type: 'pct', pct: 15, max: '' }), 'Para revisar, poné el descuento máximo por pedido.', 'pct requires its maximum here (v2 item 3; stricter than the server)');
 });
+
+// Codex r1 P1-1 / P1-2 (advisor 11-14): the record a lost reply made is found by what was KNOWN before the write — never a lookalike
+test('findCreated: a KNOWN identical draft is never taken for the new one; two identical NEW drafts ⇒ UNKNOWN, never a continue', async () => {
+  const b = await backend();
+  const f = form({ name: 'Gemela' });
+  const old = await create(b, f);                      // already there before the write (the branch read saw it)
+  const made = await create(b, f);                     // the write whose reply was lost: the SAME authored offer
+  const body = (await read(b)).body;
+  const r = ML.classifyRecovery({ op: 'create', sent: authored(f), known: [old.id] }, body);
+  assert.equal(r.outcome, 'saved', 'the known draft is never taken for the new one');
+  assert.equal(r.offer.id, made.id, 'it continues THE record the write made');
+  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(f), known: [] }, body).outcome, 'unknown', 'two identical new drafts ⇒ UNKNOWN, never a continue');
+  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(form({ name: 'Otra' })), known: [] }, body).outcome, 'not_landed', 'nothing like it ⇒ not landed (a retry is safe)');
+  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(f) }, body).outcome, 'reread', 'without known ids the list alone decides nothing');
+});
+test('findCreated (repeat): by repeated_from — a KNOWN earlier copy is never taken; two new copies ⇒ UNKNOWN', async () => {
+  const b = await backend();
+  const src = await publish(b, form({ name: 'Origen', start: NOW }));
+  const end = await offerSetStateRaw({ rid: RID, offerId: src.id, to: 'ended', expectedRev: src.rev, token: b.token });
+  assert.equal(end.status, 200, 'premise: ended');
+  const rep = async () => ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid: RID, offerId: src.id, token: b.token })).offer;
+  const first = await rep();
+  const second = await rep();
+  const body = (await read(b)).body;
+  const r = ML.classifyRecovery({ op: 'repeat', sourceId: src.id, known: [src.id, first.id] }, body);
+  assert.equal(r.outcome, 'saved', 'the known copy is never taken for the new one (repeat)');
+  assert.equal(r.offer.id, second.id);
+  assert.equal(ML.classifyRecovery({ op: 'repeat', sourceId: src.id, known: [src.id] }, body).outcome, 'unknown', 'two new copies ⇒ UNKNOWN');
+});
