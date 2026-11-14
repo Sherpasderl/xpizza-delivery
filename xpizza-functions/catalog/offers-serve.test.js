@@ -62,9 +62,11 @@ async function live(deps, o) {
 async function served(fs, db, { at = NOW, memo = new Map(), sw = {}, read } = {}) {
   const inflight = new Map();
   const o = { rtdb: db, memo, inflight, now: () => at, switchState: sw, ...(read ? { read } : {}) };   // sw: the switch memo (marketing/switch-memo), per instance
-  await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  const trigger = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));   // the response that TRIGGERS the reads (Codex r2)
   await Promise.all([...inflight.values()]);
-  return quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  const r = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  r.trigger = trigger;
+  return r;
 }
 const { canonicalJson } = require('./canonical-json');   // public-menu.js's own (line 31)
 const etagOf = (rid, body) => `"${crypto.createHash('sha256').update(`${rid} ${REPRESENTATION_VERSION} ${canonicalJson(body)}`).digest('hex')}"`;
@@ -118,8 +120,12 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const memo = new Map(); const sw = {};
       assert.strictEqual((await served(fs, db, { memo, sw })).body.offers.length, 1, 'premise: a warm instance serves the offer');
       assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 })).ok, true, 'premise: the owner turned offers off');
+      const early = await served(fs, db, { memo, sw, at: NOW + SW.REFRESH_AT_MS - 1 });
+      assert.strictEqual(early.trigger.body.offers.length, 1, 'the accepted bound: before the switch refreshes (< REFRESH_AT) the last ON stands');
       const t1 = NOW + SW.SWITCH_TTL_MS;
+      assert.strictEqual(sw.rec.at, NOW, 'premise: no refresh started before REFRESH_AT — the ON read is from NOW, so at t1 it is exactly SWITCH_TTL old');
       const off = await served(fs, db, { memo, sw, at: t1 });
+      assert.ok(!('offers' in off.trigger.body), 'WARM memo, the switch ON read EXPIRED (hard, at SWITCH_TTL) ⇒ the TRIGGERING response is already absent');
       assert.ok(memo.get(RID).ok && t1 - memo.get(RID).at < OS.OK_TTL_MS && memo.get(RID).raw.on === true, 'premise: the decoration memo is still FRESH and still holds «on»');
       assert.ok(!('offers' in off.body), 'WARM memo, offers turned OFF ⇒ absent at the next switch read (the memo notwithstanding)');
     }
@@ -130,6 +136,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.strictEqual((await served(fs, db, { memo, sw })).body.offers.length, 1, 'premise: a warm instance serves the offer');
       const down = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); }, get: async () => { throw new Error('config down'); } } : db.ref(p)) };
       const r = await served(fs, down, { memo, sw, at: NOW + SW.SWITCH_TTL_MS });
+      assert.ok(!('offers' in r.trigger.body), 'WARM memo, the switch read EXPIRED ⇒ the TRIGGERING response is absent (never a stale «on» while refreshing)');
       assert.ok(!('offers' in r.body), 'WARM memo, the switch read FAILS ⇒ absent (fail-closed), never the stale «on»');
       ok('a WARM instance: offers turned OFF, or the switch read failing, ⇒ absent at the next switch read, whatever the decoration memo holds');
     }
@@ -203,7 +210,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.strictEqual(first.body.offers.length, 1, 'premise: served');
       assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: id, to: 'paused_owner', expected_rev: 2 }))).status, 200);
       assert.strictEqual(db.get(`marketing_live/${RID}/${id}`) ?? null, null, 'paused ⇒ the PRICE PATH\'s mirror has no entry: never priced');
-      const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => NOW + 30 * 1000 } }));
+      const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => NOW + 5 * 1000 } }));   // inside the switch TTL (this cell is the DATA memo's staleness)
       assert.strictEqual(within.body.offers.length, 1, 'within the 60 s memo the menu may still show it — the accepted staleness (the quote refuses)');
       const after = await served(fs, db, { memo, sw, at: NOW + 61 * 1000 });
       assert.ok(!('offers' in after.body), 'past the memo the menu drops it');

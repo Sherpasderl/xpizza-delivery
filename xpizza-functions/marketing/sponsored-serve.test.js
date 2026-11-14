@@ -25,10 +25,11 @@ const book = async (db, tok, rid, week) => { const r = await A.anuncioBookCore(d
 async function served(db, t, memo = new Map(), sw = {}) {   // memo + sw: one instance's decoration memo and switch memo
   const inflight = new Map();
   const d = { rtdb: db, memo, inflight, switchState: sw, now: () => t };
-  S.sponsoredOf(d);
+  TRIGGER = S.sponsoredOf(d);   // the response that TRIGGERS the reads (Codex r2), kept for the cells
   await quiet(() => Promise.all([...inflight.values()]));
   return S.sponsoredOf(d);
 }
+let TRIGGER;
 // the portal pause core's deps as production wires them (timestamp = the server time; a fresh op id per write)
 let ops = 0;
 const pauseDeps = (db, t) => ({ db, verifyIdToken, now: () => t, timestamp: () => t, newOpId: () => `op_sp${String(++ops).padStart(4, '0')}` });
@@ -75,6 +76,7 @@ const H24 = { sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY, thu: ALL_D
       else rdb = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); } } : db.ref(p)) };
       const t1 = MON_NOON + SW.SWITCH_TTL_MS;
       const r = await served(rdb, t1, memo, sw);
+      assert.strictEqual(TRIGGER, null, `WARM memo, the switch ON read EXPIRED (hard, at SWITCH_TTL) ⇒ the TRIGGERING response is already null (${how})`);
       const m = [...memo.values()][0];
       assert.ok(m.ok && t1 - m.at < S.OK_TTL_MS && m.raw.on === true, 'premise: the memo is still FRESH and still holds «on»');
       assert.strictEqual(r, null, `WARM memo, the Anuncio ${how} ⇒ null at the next switch read`);
