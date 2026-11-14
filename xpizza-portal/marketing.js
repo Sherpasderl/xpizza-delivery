@@ -303,7 +303,7 @@ function emptyState() {
 // ── the builder (marketing-builder.js, O2) ───────────────────────────────────────────────────────────────────────────────────
 function builderCtx() {
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChangeType: () => { S.tab = 'create'; render(); } };
+    brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onChangeType: () => { S.tab = 'create'; render(); } };
 }
 function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) openBuilder(S.host, builderCtx(), opts); }
 function onRowAction(a, id) {
@@ -316,7 +316,7 @@ function onRowAction(a, id) {
   if ((a === 'pause' || a === 'resume' || a === 'end') && can('marketing.edit') && S.ohost) mountDetail(S.ohost, detailCtx(o), { act: a });
 }
 function editOffer(o) { if (can('marketing.edit') && S.host && !builderOpen()) openEditor(S.host, { ...builderCtx(), onDone: () => load() }, o); }
-function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen()) openRepeater(S.host, { ...builderCtx(), onDone: () => load(), onChanged: () => load() }, o); }
+function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen()) openRepeater(S.host, { ...builderCtx(), onDone: () => load() }, o); }
 
 // ── O3 · the offer detail (marketing-detail.js) ────────────────────────────────────────────────────────────────────────────────
 function detailCtx(o) {

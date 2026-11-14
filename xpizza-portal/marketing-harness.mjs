@@ -79,7 +79,10 @@ export async function backend({ offers = true, extra = null, ref = REF } = {}) {
     readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async (rid) => versionMenu(buildMenu, CATALOG[rid], CATS[rid]) };
   const CORES = { getMarketing: C.getMarketingCore, marketingOfferSave: C.marketingOfferSaveCore, marketingOfferSetState: C.marketingOfferSetStateCore, marketingOfferRepeat: C.marketingOfferRepeatCore };
   const calls = [];
-  const net = { down: false };
+  // net.down: nothing reaches the server · net.lose = ['fn', …]: the listed calls RUN in the real core, then their replies are lost —
+  // strictly in order (only the head is armed; each one shot) ·
+  // net.hold = { fn, until: Promise }: that call's reply waits for `until` (one shot) — a write still in flight while the page moves on
+  const net = { down: false, lose: [], hold: null };
   globalThis.fetch = async (url, opts) => {   // the portal's request, unchanged, into the real core (functions.js handler: status + json)
     if (net.down) throw new TypeError('Failed to fetch');
     const u = new URL(String(url));
@@ -91,6 +94,8 @@ export async function backend({ offers = true, extra = null, ref = REF } = {}) {
     let out;
     try { out = await CORES[fn](deps, { method: opts.method, query: Object.fromEntries(u.searchParams), body, get: (h) => (h === 'authorization' ? auth : undefined) }); }
     catch (_) { out = { status: 500, body: { error: 'error' } }; }
+    if (net.hold && net.hold.fn === fn) { const h = net.hold; net.hold = null; await h.until; }
+    if (net.lose[0] === fn) { net.lose.shift(); throw new TypeError('Failed to fetch'); }   // strictly in order: only the head is armed
     const text = JSON.stringify(out.body);
     return { status: out.status, ok: out.status >= 200 && out.status < 300, json: async () => JSON.parse(text) };
   };

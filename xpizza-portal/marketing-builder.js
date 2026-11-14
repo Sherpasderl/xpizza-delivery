@@ -10,6 +10,7 @@ import { getEditableCatalogRaw, offerRepeatRaw, offerSaveRaw, offerSetStateRaw, 
 import { el, svg } from './ops-dom.js';
 import { groupByCategory } from './render.js';
 import * as ML from './marketing-logic.js';
+import { focusKey, layered, trapTab, focusFirst } from './marketing-focus.js';
 
 const X = 'M6 6l12 12M18 6L6 18', DOWN = 'M6 9l6 6 6-6', CHECK = 'M5 12l5 5L20 7', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
 const PREV = 'M15 18l-6-6 6-6', NEXT = 'M9 6l6 6-6 6', SPARK = 'M12 3v4M12 17v4M3 12h4M17 12h4', PLUS = 'M12 5v14M5 12h14', ARR = 'M5 12h14M13 6l6 6-6 6';
@@ -48,12 +49,30 @@ const REFUSAL_WORD = Object.freeze({
 
 const now = () => (B.ctx && typeof B.ctx.now === 'function' ? B.ctx.now() : Date.now());
 const B = { open: false, host: null, ctx: null, mode: 'new', offer: null, form: null, nameAuto: true, row: null, pvOpen: false, dp: null,
-  review: false, busy: false, err: null, menu: null, layer: null, picking: false };
+  review: false, busy: false, err: null, menu: null, layer: null, picking: false,
+  gen: 0, blocked: false, opener: null, fx: { levels: [], stack: [] } };
+// Codex r1 P1-4: every write is bound to the dialog OPENING it started in (B.gen moves on every open / close) and to the restaurant
+// context it captured — a reply that comes back to another opening only refreshes the list (stale()), never the dialog on screen.
+const stale = (ctx) => { if (ctx && ctx.onChanged) ctx.onChanged(); };
+const safe = (p) => p.catch(() => ({ outcome: 'unknown' }));   // a thrown recovery is an UNKNOWN, never a stuck «busy»
+// the offer ids the branch shows BEFORE a create / repeat: what lets a lost reply find the ONE record it made (ML.findCreated)
+async function knownIds(rid, token) {
+  try {
+    const r = await getMarketingRaw({ rid, token });
+    const m = r && !r.transport && r.status === 200 ? ML.readModel(r.body) : null;
+    return m && m.kind === 'ok' ? m.offers.map((o) => o.id) : null;
+  } catch (_) { return null; }
+}
+function opened(host, ctx) {   // the shared part of every opening
+  B.gen += 1; B.blocked = false; B.fx = { levels: [], stack: [] };
+  B.opener = typeof document !== 'undefined' ? document.activeElement : null;
+  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+}
 
 // ── open / close ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // ctx: { branches: [{ rid, name, address }], brandName, token, toast(text), onDone() } · type: an offer type · offer: a draft to continue
 export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
-  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  opened(host, ctx);
   if (offer) { B.mode = 'draft'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.custom = isCustom(B.form.window); }
   else {
     B.mode = 'new'; B.offer = null;
@@ -67,12 +86,16 @@ export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
   const x = B.layer.querySelector('.mk5b-x'); if (x && x.focus) x.focus();
 }
 export function closeBuilder() {
+  B.gen += 1;
   B.open = false; B.dp = null;
   if (B.layer) B.layer.remove();
   B.layer = null;
+  const o = B.opener; B.opener = null;
+  if (o && o.isConnected && typeof o.focus === 'function') o.focus();   // focus goes back to what opened the dialog
 }
 export const builderOpen = () => B.open;
 document.addEventListener('keydown', (e) => {
+  if (B.open && e.key === 'Tab') { trapTab(e, topDialog()); return; }
   if (!B.open || e.key !== 'Escape') return;
   if (B.dp) { B.dp = null; render(); return; }            // Esc closes the calendar first
   if (B.review) { B.review = false; render(); return; }   // then the review sheet
@@ -84,9 +107,10 @@ async function loadMenu() {
   if (B.form.type !== 'bogo') return;
   const rid = (B.form.branches[0]) || (B.ctx.branches[0] && B.ctx.branches[0].rid);
   B.menu = { state: 'loading', items: [], cats: [] };
+  const g = B.gen;
   let res;
   try { res = await getEditableCatalogRaw({ rid, token: B.ctx.token }); } catch (_) { res = { transport: true }; }
-  if (!B.open) return;
+  if (!B.open || B.gen !== g) return;
   if (!res || res.transport || res.status !== 200 || !res.body || !res.body.source) { B.menu = { state: 'error', items: [], cats: [] }; render(); return; }
   const groups = groupByCategory(res.body.source);
   const items = []; const cats = [];
@@ -106,8 +130,10 @@ function words() {
 }
 
 // ── render ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const topDialog = () => { const d = B.layer ? B.layer.querySelectorAll('[role="dialog"]') : []; return d.length ? d[d.length - 1] : null; };
 function render() {
   if (!B.layer) return;
+  const fk = focusKey(B.layer);
   const w = words();
   const scrim = el('div', 'mk5b-scrim');
   scrim.addEventListener('click', (e) => { if (e.target === scrim) closeBuilder(); });
@@ -127,6 +153,7 @@ function render() {
   if (B.dp) kids.push(datePopover());
   if (B.review) kids.push(reviewSheet(w));
   B.layer.replaceChildren(...kids);
+  layered(B.fx, B.layer, fk, ['main', ...(B.review ? ['review'] : []), ...(B.dp ? ['dp'] : [])], topDialog);   // Codex r1 P2-7
 }
 
 function formCol(w) {
@@ -347,11 +374,11 @@ function nameBody() {
 function foot(w) {
   const ft = el('div', 'mk5b-foot');
   const fine = el('p', 'mk5b-fine', `${w.cost.lead} `); if (w.cost.ceiling) fine.append(el('span', 'mk5b-nb', w.cost.ceiling));
-  const go = el('button', 'mk5b-go', 'Revisar y programar'); go.type = 'button'; go.disabled = !!w.block || B.busy;
-  go.addEventListener('click', () => { if (!w.block) { B.review = true; B.err = null; render(); } });
+  const go = el('button', 'mk5b-go', 'Revisar y programar'); go.type = 'button'; go.disabled = !!w.block || B.busy || B.blocked;
+  go.addEventListener('click', () => { if (!w.block && !B.blocked) { B.review = true; B.err = null; render(); } });
   ft.append(fine, go);
   if (w.block) ft.append(el('div', 'mk5b-block', w.block));
-  const dr = el('button', 'mk5b-draft', 'Guardar borrador'); dr.type = 'button'; dr.disabled = B.busy;
+  const dr = el('button', 'mk5b-draft', 'Guardar borrador'); dr.type = 'button'; dr.disabled = B.busy || B.blocked;
   dr.addEventListener('click', () => saveDraft());
   ft.append(dr);
   return ft;
@@ -422,7 +449,7 @@ function datePopover() {
   const pop = el('div', 'mk5b-dpop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', dp.which === 'start' ? 'Elegir la fecha de inicio' : 'Elegir la fecha de fin');
   pop.style.left = `${Math.max(16, dp.x)}px`; pop.style.top = `${dp.top}px`;
   const today = hnDay0(now());
-  const min = dp.which === 'end' ? Math.max(today, B.form.start || today, B.mode === 'edit' && E.prev && E.prev.end !== null ? hnDay0(E.prev.end) : 0) : today;   // edit: Fin later only
+  const min = dp.which === 'end' ? Math.max(today, B.form.start ? hnDay0(B.form.start) : today, B.mode === 'edit' && E.prev && E.prev.end !== null ? hnDay0(E.prev.end) : 0) : today;   // edit: Fin later only
   const hd = el('div', 'mk5b-dphd');
   const prev = el('button', 'mk5b-dpnav'); prev.type = 'button'; prev.setAttribute('aria-label', 'Mes anterior'); prev.append(svg(PREV));
   const [ty, tm] = ymd(min);
@@ -491,7 +518,7 @@ function reviewSheet(w) {
   if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); mb.append(e); }
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', () => { B.review = false; render(); });
-  const ok = el('button', 'mk5r-ok', 'Programar oferta'); ok.type = 'button'; ok.disabled = B.busy; ok.addEventListener('click', () => program());
+  const ok = el('button', 'mk5r-ok', 'Programar oferta'); ok.type = 'button'; ok.disabled = B.busy || B.blocked; ok.addEventListener('click', () => program());
   mf.append(back, ok);
   m.append(mh, mb, mf);
   scrim.append(m);
@@ -499,52 +526,60 @@ function reviewSheet(w) {
 }
 
 const rid0 = () => B.form.branches[0];
-const reread = () => getMarketingRaw({ rid: rid0(), token: B.ctx.token });
 function wordOf(c) {
   if (c.outcome === 'unknown') return 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.';
   const f = REFUSAL_WORD[c.reason] || REFUSAL_WORD[c.field] || REFUSAL_WORD[c.code];   // a bad_request carries its reason (start_past …)
   return f ? f(c) : 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.';
 }
 // create (or save the draft being continued) → the saved offer | a refusal / unknown worded on the sheet
-async function saveForm() {
+async function saveForm(g) {
   // «start today» means NOW: a start earlier than a minute from now (today's 00:00, or a dialog left open) is sent as now + 1 min —
   // the server refuses a past start (start_past)
   const soon = Math.ceil((now() + 60000) / 60000) * 60000;
   if (Number.isSafeInteger(B.form.start) && B.form.start < soon) B.form.start = soon;
   const r = ML.offerFromForm(B.form);
   if (!r.ok) return { outcome: 'refused', code: 'invalid' };
+  const rid = rid0(), token = B.ctx.token, rr = () => getMarketingRaw({ rid, token });
   if (B.mode === 'draft' && B.offer) {
-    const a = { op: 'save', offerId: B.offer.id, expectedRev: B.offer.rev };
-    return ML.settleWrite(a, () => offerSaveRaw({ rid: rid0(), offerId: B.offer.id, expectedRev: B.offer.rev, offer: r.offer, token: B.ctx.token }), reread);
+    const o = B.offer;
+    return safe(ML.settleWrite({ op: 'save', offerId: o.id, expectedRev: o.rev, sent: r.offer, prev: o }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }), rr));
   }
-  return ML.settleWrite({ op: 'create' }, () => offerSaveRaw({ rid: rid0(), expectedRev: 0, offer: r.offer, token: B.ctx.token }), reread);
+  // a create: read the branch first, so a lost reply finds THE draft it made (Codex r1 P1-1) — never a second offer
+  const known = await knownIds(rid, token);
+  if (B.gen !== g) return { outcome: 'stale' };
+  const c = await safe(ML.settleWrite({ op: 'create', sent: r.offer, ...(known ? { known } : {}) }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, token }), rr));
+  return c.outcome === 'reread' ? { outcome: 'unknown' } : c;   // no `known`: the list alone can't tell which record is ours
 }
+// a create whose outcome stays UNKNOWN blocks every create control of this opening (a retry could make a second offer)
+function failed(s) { B.busy = false; if (s.outcome === 'unknown' && !B.offer) B.blocked = true; B.err = wordOf(s); }
 async function program() {
-  if (B.busy) return;
+  if (B.busy || B.blocked) return;
+  const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token;
   B.busy = true; B.err = null; render();
-  const s = await saveForm();
-  if (!B.open) return;
-  if (s.outcome !== 'saved') { B.busy = false; B.err = wordOf(s); render(); return; }
+  const s = await saveForm(g);
+  if (B.gen !== g) { stale(ctx); return; }
+  if (s.outcome !== 'saved') { failed(s); render(); return; }
   B.offer = s.offer; B.mode = 'draft';
   const a = { op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' };
-  const p = await ML.settleWrite(a, () => offerSetStateRaw({ rid: rid0(), offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token: B.ctx.token }), reread);
-  if (!B.open) return;
+  const p = await safe(ML.settleWrite(a, () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), () => getMarketingRaw({ rid, token })));
+  if (B.gen !== g) { stale(ctx); return; }
   B.busy = false;
   if (p.outcome !== 'saved') { B.err = wordOf(p); render(); return; }   // the draft stays saved; the sheet says why it isn't live
   closeBuilder();
-  B.ctx.toast(programmedToast(p.offer));
-  B.ctx.onDone && B.ctx.onDone();
+  ctx.toast(programmedToast(p.offer));
+  ctx.onDone && ctx.onDone();
 }
 async function saveDraft() {
-  if (B.busy) return;
+  if (B.busy || B.blocked) return;
+  const g = B.gen, ctx = B.ctx;
   B.busy = true; render();
-  const s = await saveForm();
-  if (!B.open) return;
+  const s = await saveForm(g);
+  if (B.gen !== g) { stale(ctx); return; }
+  if (s.outcome !== 'saved') { failed(s); B.review = true; render(); return; }
   B.busy = false;
-  if (s.outcome !== 'saved') { B.review = true; B.err = wordOf(s); render(); return; }
   closeBuilder();
-  B.ctx.toast('Borrador guardado');
-  B.ctx.onDone && B.ctx.onDone();
+  ctx.toast('Borrador guardado');
+  ctx.onDone && ctx.onDone();
 }
 // v5's «Oferta programada. Empieza hoy a las 21:00.» — worded from the SAVED offer's own schedule (today / another day; a window or not)
 export function programmedToast(o, at = now()) {
@@ -564,7 +599,7 @@ const LOCK = [{ tag: 'rect', x: 5, y: 11, width: 14, height: 10, rx: 2 }, 'M8 11
 const EDIT_LEDE = 'Mientras está activa podés subir los topes y cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.';
 const E = { prev: null };
 export function openEditor(host, ctx, offer) {
-  B.host = host; B.ctx = ctx; B.open = true; B.row = 'caps'; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  opened(host, ctx); B.row = 'caps';
   B.mode = 'edit'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.menu = null; B.custom = isCustom(B.form.window);
   E.prev = ML.formFromOffer(offer);
   B.layer = el('div', 'mk5b-layer');
@@ -634,7 +669,7 @@ function editScheduleBody(w) {
   const al = el('div', 'mk5b-albl'); al.append(el('b', null, 'Sin fecha de fin'), el('span', null, 'Queda activa hasta que la pausés o la termines'));
   const tog = el('button', `mk5b-tog${noEnd ? '' : ' mk5b-togoff'}`); tog.type = 'button'; tog.setAttribute('role', 'switch'); tog.setAttribute('aria-checked', noEnd ? 'true' : 'false'); tog.setAttribute('aria-label', 'Sin fecha de fin');
   tog.append(el('i', 'mk5b-knob'));
-  tog.addEventListener('click', () => upd(noEnd ? { end: E.prev.end, weekly: false } : { end: null, weekly: true }));   // as the builder (v5 item 8)
+  tog.addEventListener('click', () => upd({ end: noEnd ? E.prev.end : null, weekly: E.prev.weekly }));   // Codex r1 P2-5: the weekly flag is server-LOCKED on a live offer (until asm10) — the end alone moves
   if (noEnd && E.prev.end === null) tog.disabled = true;   // an offer that never had an end cannot be given one (an EARLIER end)
   av.append(al, tog);
   out.push(av);
@@ -659,15 +694,16 @@ async function saveEdit() {
   if (B.busy || editProblem()) return;
   const r = ML.offerFromForm(B.form);
   if (!r.ok) return;
+  const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token;
   B.busy = true; B.err = null; render();
-  const a = { op: 'save', offerId: B.offer.id, expectedRev: B.offer.rev };
-  const s = await ML.settleWrite(a, () => offerSaveRaw({ rid: rid0(), offerId: B.offer.id, expectedRev: B.offer.rev, offer: r.offer, token: B.ctx.token }), reread);
-  if (!B.open) return;
+  const a = { op: 'save', offerId: o.id, expectedRev: o.rev, sent: r.offer, prev: o };   // Codex r1 P1-3: recovery's context
+  const s = await safe(ML.settleWrite(a, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }), () => getMarketingRaw({ rid, token })));
+  if (B.gen !== g) { stale(ctx); return; }
   B.busy = false;
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
   closeBuilder();
-  B.ctx.toast('Cambios guardados');
-  B.ctx.onDone && B.ctx.onDone();
+  ctx.toast('Cambios guardados');
+  ctx.onDone && ctx.onDone();
 }
 
 // ── O3 · «Repetir «…»» (v5 repScrim): the same offer, days, hours and branches — only NEW dates. The writes: the server's repeat
@@ -675,7 +711,7 @@ async function saveEdit() {
 // that saved but did not publish stays in «Borradores» (the sheet says why); a retry continues THAT draft, never a second repeat.
 const R = { draft: null };
 export function openRepeater(host, ctx, offer) {
-  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  opened(host, ctx);
   B.mode = 'repeat'; B.offer = offer; B.nameAuto = false; B.menu = null; R.draft = null;
   const s = offer.schedule || {};
   const len = Number.isSafeInteger(s.start) && Number.isSafeInteger(s.end) ? hnDay0(s.end) - hnDay0(s.start) : 7 * DAY;   // the same length as before
@@ -707,35 +743,40 @@ function repeatSheet(w) {
   if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); mb.append(e); }
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', closeBuilder);
-  const ok = el('button', 'mk5r-ok', 'Programar'); ok.type = 'button'; ok.disabled = B.busy || !(B.form.end > B.form.start); ok.addEventListener('click', () => repeatGo());
+  const ok = el('button', 'mk5r-ok', 'Programar'); ok.type = 'button'; ok.disabled = B.busy || B.blocked || !(B.form.end > B.form.start); ok.addEventListener('click', () => repeatGo());
   mf.append(back, ok);
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;
 }
 async function repeatGo() {
-  if (B.busy) return;
+  if (B.busy || B.blocked) return;
   B.busy = true; B.err = null; render();
-  const src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token;
-  const live = () => B.open && B.offer === src && B.ctx === ctx;   // still THIS sheet (not closed / reopened mid-write)
+  const g = B.gen, src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token;
+  const live = () => B.gen === g;   // still THIS opening (not closed / reopened mid-write)
   const rr = () => getMarketingRaw({ rid, token });
   if (!R.draft) {
-    const r1 = ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid, offerId: src.id, token }));
-    if (!live()) return;
-    if (r1.outcome !== 'saved') { B.busy = false; B.err = wordOf(r1); render(); if (r1.outcome === 'unknown' && ctx.onChanged) ctx.onChanged(); return; }
+    // read the branch first, so a lost reply finds THE copy it made by repeated_from (Codex r1 P1-2) — never a second copy
+    const known = await knownIds(rid, token);
+    if (!live()) { stale(ctx); return; }
+    const att = { op: 'repeat', sourceId: src.id, ...(known ? { known } : {}) };
+    let r1 = await safe(ML.settleWrite(att, () => offerRepeatRaw({ rid, offerId: src.id, token }), rr));
+    if (r1.outcome === 'reread') r1 = { outcome: 'unknown' };
+    if (!live()) { stale(ctx); return; }
+    if (r1.outcome !== 'saved') { B.busy = false; if (r1.outcome === 'unknown') B.blocked = true; B.err = wordOf(r1); render(); stale(ctx); return; }
     R.draft = r1.offer;
   }
   const soon = Math.ceil((now() + 60000) / 60000) * 60000;
   const a = ML.offerFromForm({ ...ML.formFromOffer(R.draft), start: Math.max(B.form.start, soon), end: B.form.end });
   if (!a.ok) { B.busy = false; B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
   const d = R.draft;
-  const s = await ML.settleWrite({ op: 'save', offerId: d.id, expectedRev: d.rev, sent: a.offer, prev: d },
-    () => offerSaveRaw({ rid, offerId: d.id, expectedRev: d.rev, offer: a.offer, token }), rr);
-  if (!live()) return;
+  const s = await safe(ML.settleWrite({ op: 'save', offerId: d.id, expectedRev: d.rev, sent: a.offer, prev: d },
+    () => offerSaveRaw({ rid, offerId: d.id, expectedRev: d.rev, offer: a.offer, token }), rr));
+  if (!live()) { stale(ctx); return; }
   if (s.outcome !== 'saved') { B.busy = false; B.err = wordOf(s); render(); if (ctx.onChanged) ctx.onChanged(); return; }   // the copy stays a draft
   R.draft = s.offer;
-  const p = await ML.settleWrite({ op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' },
-    () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), rr);
-  if (!live()) return;
+  const p = await safe(ML.settleWrite({ op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' },
+    () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), rr));
+  if (!live()) { stale(ctx); return; }
   B.busy = false;
   if (p.outcome !== 'saved') { B.err = wordOf(p); render(); if (ctx.onChanged) ctx.onChanged(); return; }
   closeBuilder();

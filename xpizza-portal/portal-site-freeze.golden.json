@@ -65,6 +65,7 @@
   "item-edit.test.mjs",
   "marketing-builder.js",
   "marketing-detail.js",
+  "marketing-focus.js",
   "marketing-harness.mjs",
   "marketing-logic.js",
   "marketing-logic.test.mjs",

@@ -590,3 +590,169 @@ test('O3 a manager (marketing.read only): the detail reads — no Editar, no Pau
   assert.equal(p.host().querySelector('h1').textContent, 'Almuerzo');
   for (const sel of ['.mk5d-acts', '.mk5d-kebab', '.mk5d-strip']) assert.equal(p.host().querySelector(sel), null, `${sel}: none for a reader`);
 });
+
+// ═══ Codex r1 (0596ebae9..1df9351c0) — every write survives a lost reply, a closed dialog, a rerender ═════════════════════════════
+const offersNamed = (b, name) => Object.values(b.fake.get('marketing_offers/tb') || {}).filter((r) => r.name === name);
+const LPS = 'L 50 en pedidos desde L 300';
+async function toReview(p) { dlg(p).querySelector('.mk5b-go').click(); await settle(); return p.host().querySelector('.mk5r-modal'); }
+
+test('R1 a create whose reply is LOST: the fresh read finds THE draft it made and publishes it — never a second offer', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  b.net.lose = ['marketingOfferSave'];
+  p.btn('Programar oferta', sh).click(); await settle(200);
+  assert.equal(offersNamed(b, LPS).length, 1, 'ONE offer');
+  assert.equal(offersNamed(b, LPS)[0].state, 'active', 'the recovered draft was published');
+  assert.equal(dlg(p), null);
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Oferta programada. Empieza hoy.');
+});
+
+test('R1 a create whose reply is lost AND whose re-read fails: UNKNOWN — the sheet says so and every create control is off (no second offer)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  b.net.lose = ['marketingOfferSave', 'getMarketing'];
+  p.btn('Programar oferta', sh).click(); await settle(200);
+  const s2 = p.host().querySelector('.mk5r-modal');
+  assert.equal(s2.querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
+  assert.ok(p.btn('Programar oferta', s2).disabled, 'create blocked until resolved');
+  p.btn('Volver', s2).click(); await settle();
+  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, '«Revisar y programar» blocked too');
+  assert.ok(p.btn('Guardar borrador', dlg(p)).disabled, '«Guardar borrador» blocked too');
+  assert.equal(offersNamed(b, LPS).length, 1, 'still ONE offer');
+});
+
+test('R2 a repeat whose reply is LOST: the copy is found by repeated_from and published — never a second copy; lost + unreadable ⇒ blocked', async () => {
+  for (const lose of [['marketingOfferRepeat'], ['marketingOfferRepeat', 'getMarketing']]) {
+    const b = await world();
+    const o = await publish(b, LIVE());
+    await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    await openDetail(p, 'Almuerzo');
+    (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+    b.net.lose = [...lose];
+    p.btn('Programar', sheet(p)).click(); await settle(220);
+    assert.equal(stored(b, 'Almuerzo').length, 2, `${lose.join('+')}: the original + ONE copy`);
+    if (lose.length === 1) {
+      assert.equal(sheet(p), null, 'the found copy went on: the sheet closes');
+      assert.equal(toastText(p), 'Campaña programada para el lun 16 nov');
+      assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'active').length, 1, 'the found copy is live');
+    } else {
+      assert.equal(sheet(p).querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
+      assert.ok(p.btn('Programar', sheet(p)).disabled, 'repeat blocked until resolved');
+    }
+  }
+});
+
+test('R3 an edit whose reply is LOST: recovery has what it needs (sent / prev) — «Cambios guardados», never a stuck «busy»', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  const capIn = () => rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
+  capIn().value = '150'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
+  b.net.lose = ['marketingOfferSave'];
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(200);
+  assert.equal(dlg(p), null, 'recovered as saved: the dialog closes');
+  assert.equal(toastText(p), 'Cambios guardados');
+  assert.equal(stored(b, 'Almuerzo')[0].caps.redemptions, 150);
+});
+
+test('R4 a write still in flight when its dialog closes never touches the NEXT dialog (bound to its own opening)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) };
+  p.btn('Programar oferta', sh).click(); await settle(40);
+  const esc = () => p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  esc(); await settle(); esc(); await settle();
+  assert.equal(dlg(p), null, 'premise: A closed mid-write');
+  await openCard(p, 'envio');
+  release(); await settle(250);
+  const d = dlg(p);
+  assert.ok(d, 'B is still open');
+  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Envío gratis', 'B keeps its own offer');
+  assert.equal(p.mods['marketing-builder']._builderState.offer, null, 'A\'s reply did not become B\'s offer');
+  assert.equal(offersNamed(b, LPS)[0].state, 'draft', 'A stopped at its save: not published behind the merchant\'s back');
+  assert.notEqual(toastText(p), 'Oferta programada. Empieza hoy.');
+});
+
+test('R6 the end calendar compares DAYS: a draft starting today 12:01 HN may end today', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Hoy mismo', start: NOW + 60000, end: NOW + 5 * DAY }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  p.mods.marketing.clock.now = () => NOW;
+  p.btn('Acciones', rowNamed(p, 'Hoy mismo')).click(); await settle();
+  rowNamed(p, 'Hoy mismo').querySelector('[data-act="continue"]').click(); await settle(80);
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  p.host().querySelector('.mk5b-dpbtn[data-dp="end"]').click(); await settle();
+  const today = [...p.host().querySelectorAll('.mk5b-dpop .mk5b-dpd')].find((x) => x.querySelector('.mk5b-dnum').textContent === '16');
+  assert.equal(today.disabled, false, 'today is a valid end (23:59:59.999 HN is after 12:01)');
+  assert.equal([...p.host().querySelectorAll('.mk5b-dpop .mk5b-dpd')].find((x) => x.querySelector('.mk5b-dnum').textContent === '15').disabled, true, 'yesterday is not');
+});
+
+test('R5 Editar: «Sin fecha de fin» keeps the offer\'s weekly flag (a server-locked field) — removing the end SAVES through the real core', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  rowEl(p, 'sch').querySelector('.mk5b-tog').click(); await settle();
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
+  assert.equal(dlg(p), null, 'saved');
+  const r = stored(b, 'Almuerzo')[0];
+  assert.equal(r.schedule.end ?? null, null, 'the end removed');
+  assert.equal(r.caps.weekly, false, 'weekly untouched');
+});
+
+test('R7 focus: a rerender keeps it on the same control; a sheet takes it, traps Tab, and gives it back on close', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const hdr = rowEl(p, 'aud').querySelector('.mk5b-rowh');
+  hdr.focus(); hdr.click(); await settle();
+  assert.equal(p.d.activeElement.closest('.mk5b-row') && p.d.activeElement.closest('.mk5b-row').dataset.row, 'aud', 'still on «Clientes» after the rerender (not BODY)');
+  const go = dlg(p).querySelector('.mk5b-go');
+  go.focus(); go.click(); await settle();
+  const m = p.host().querySelector('.mk5r-modal');
+  assert.ok(m.contains(p.d.activeElement), 'the sheet takes focus');
+  const f = [...m.querySelectorAll('button:not([disabled])')];
+  f[f.length - 1].focus();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(p.d.activeElement, f[0], 'Tab past the last control wraps to the first (trapped)');
+  f[0].focus();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+  assert.equal(p.d.activeElement, f[f.length - 1], 'Shift+Tab wraps back');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  assert.ok(p.d.activeElement.classList.contains('mk5b-go'), 'closing gives focus back to «Revisar y programar»');
+});
+
+test('R7 focus on the detail: the end sheet takes focus, traps it, and returns it to «Más acciones» on «Volver»', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  const k = p.host().querySelector('.mk5d-more1'); k.focus(); k.click(); await settle();
+  p.host().querySelector('.mk5d-kebab [data-act="end"]').click(); await settle();
+  const m = sheet(p);
+  assert.ok(m.contains(p.d.activeElement), 'the end sheet takes focus');
+  const f = [...m.querySelectorAll('button:not([disabled])')];
+  f[f.length - 1].focus();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(p.d.activeElement, f[0], 'trapped');
+  p.btn('Volver', m).click(); await settle();
+  assert.ok(p.d.activeElement.classList.contains('mk5d-more1'), 'focus back on «Más acciones»');
+});

@@ -224,11 +224,12 @@ export function refusalOf(status, b) {
 
 // After an UNKNOWN: the FRESH read decides → saved | not_landed | conflict | unknown. attempt (as above) plus, for a save, `sent` (the
 // authored offer) and `prev` (the server offer the edit started from); for a state move, `from` (the stored state it started from).
-// A create / repeat has no id to look for: the list itself is the truth (`reread`).
+// A create / repeat has no id to look for: with `known` (the offer ids read BEFORE the write) the fresh read finds the record it
+// made (findCreated); without it the list itself is the truth (`reread`).
 export function classifyRecovery(attempt, readBody) {
   const m = readModel(readBody);
   if (m.kind !== 'ok') return { outcome: 'unknown' };
-  if (attempt.op === 'create' || attempt.op === 'repeat') return { outcome: 'reread' };
+  if (attempt.op === 'create' || attempt.op === 'repeat') return Array.isArray(attempt.known) ? findCreated(attempt, m.offers) : { outcome: 'reread' };
   const o = m.offers.find((x) => x.id === attempt.offerId);
   if (!o) return { outcome: 'conflict' };
   if (o.rev === attempt.expectedRev) return { outcome: 'not_landed', offer: o };
@@ -240,6 +241,17 @@ export function classifyRecovery(attempt, readBody) {
   if (same(authored(o), authored(attempt.sent))) return { outcome: 'saved', offer: o };
   if (attempt.prev && same(authored(o), authored(attempt.prev))) return { outcome: 'not_landed', offer: o };   // landed, then undone
   return { outcome: 'conflict', offer: o };
+}
+// After an UNKNOWN create / repeat: the new record is a rev-1 draft NOT among `known` (the ids read just before the write) that is
+// the one we asked for — a create: the authored offer we sent; a repeat: repeated_from = the source (offers-core marketingOfferRepeat).
+// none → not_landed (a retry is safe) · exactly one → saved (continue THAT record) · more → unknown (never guess which).
+export function findCreated(attempt, offers) {
+  const known = new Set(attempt.known);
+  const authored = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
+  const fresh = offers.filter((o) => !known.has(o.id) && o.rev === 1 && o.state === 'draft');
+  const hits = attempt.op === 'repeat' ? fresh.filter((o) => o.repeated_from === attempt.sourceId) : fresh.filter((o) => same(authored(o), authored(attempt.sent)));
+  if (!hits.length) return { outcome: 'not_landed' };
+  return hits.length === 1 ? { outcome: 'saved', offer: hits[0] } : { outcome: 'unknown' };
 }
 const pk = (o) => (o.type === 'bogo' && Array.isArray(o.params.cats) ? { cats: o.params.cats, free_per_order: o.params.free_per_order } : o.params);
 const sched = (s) => ({ start: s.start ?? null, end: s.end ?? null, days: s.days, window: s.window ?? null });

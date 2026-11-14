@@ -8,6 +8,7 @@
 import { offerSetStateRaw, getMarketingRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
+import { focusKey, layered, trapTab } from './marketing-focus.js';
 
 const BACK = 'M15 18l-6-6 6-6';
 const PAUSE = [{ tag: 'rect', x: 6, y: 5, width: 4, height: 14, rx: 1 }, { tag: 'rect', x: 14, y: 5, width: 4, height: 14, rx: 1 }];
@@ -49,18 +50,22 @@ export function setup(o, ctx = {}) {
 // s-home: «Pausar» / «Reanudar» in place, «Terminar» opens the same sheet); the host empties when it is done. «Repetir» is the
 // builder's repeat sheet (marketing-builder.js openRepeater: it shares the portal calendar).
 
-const D = { host: null, ctx: null, offer: null, only: false, more: false, menu: false, sheet: null, busy: false, err: null };
+const D = { host: null, ctx: null, offer: null, only: false, more: false, menu: false, sheet: null, busy: false, err: null, gen: 0, fx: { levels: [], stack: [] } };
 export function mountDetail(host, ctx, opts = {}) {
+  D.gen += 1; D.fx = { levels: [], stack: [] };
   D.host = host; D.ctx = ctx; D.offer = ctx.offer; D.only = !!opts.act; D.more = false; D.menu = false; D.sheet = null; D.busy = false; D.err = null;
   if (opts.act === 'pause' || opts.act === 'resume') { move(opts.act); return; }   // busy first: an empty list-mode render would close the host
   if (opts.act === 'end') D.sheet = 'end';
   render();
 }
-export function unmountDetail() { if (D.host) D.host.replaceChildren(); D.host = null; D.ctx = null; D.offer = null; D.sheet = null; D.only = false; }
+export function unmountDetail() { D.gen += 1; if (D.host) D.host.replaceChildren(); D.host = null; D.ctx = null; D.offer = null; D.sheet = null; D.only = false; }
 export const detailOpen = () => !!D.host;
 // a fresh list read: the page follows the offer's new rev (never mid-write)
 export function refreshDetail(o) { if (D.host && !D.only && !D.busy && o && D.offer && o.id === D.offer.id) { D.offer = o; render(); } }
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && D.host && D.sheet && !D.busy) closeSheet(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && D.host && D.sheet) { trapTab(e, D.host.querySelector('.mk5r-modal')); return; }   // Codex r1 P2-7
+  if (e.key === 'Escape' && D.host && D.sheet && !D.busy) closeSheet();
+});
 function closeSheet() { D.sheet = null; D.err = null; render(); }
 document.addEventListener('click', (e) => {   // a click outside the ⋯ menu closes it
   if (!D.host || !D.menu) return;
@@ -70,6 +75,13 @@ document.addEventListener('click', (e) => {   // a click outside the ⋯ menu cl
 
 function render() {
   if (!D.host) return;
+  const fk = focusKey(D.host);
+  paint();
+  if (!D.host) return;
+  // the page keeps focus across a redraw; the sheet takes it, and gives it back to what opened it (Codex r1 P2-7)
+  layered(D.fx, D.host, fk, D.only ? (D.sheet ? ['page', 'sheet'] : ['page']) : ['page', ...(D.sheet ? ['sheet'] : [])], () => D.host.querySelector('.mk5r-modal') || D.host);
+}
+function paint() {
   const o = D.offer;
   if (D.only) {   // the list's row move: its refusal + its sheet only; nothing left ⇒ done
     const out = [];
@@ -141,7 +153,7 @@ function actions(o) {
       const b = el('button', a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt'); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.act = a;
       if (a === 'end') b.append(svg(...STOP));
       b.append(document.createTextNode(word));
-      b.addEventListener('click', () => { D.menu = false; D.err = null; if (a === 'end') { D.sheet = 'end'; render(); } else D.ctx.onRepeat(o); });
+      b.addEventListener('click', () => { D.menu = false; D.err = null; t.focus(); if (a === 'end') { D.sheet = 'end'; render(); } else D.ctx.onRepeat(o); });   // the sheet hands focus back to «Más acciones»
       m.append(b);
     }
     k.append(t, m); box.append(k);
@@ -154,7 +166,6 @@ function errRow(closable) {
   if (closable) { const c = el('button', 'mk5d-errx', 'Cerrar'); c.type = 'button'; c.addEventListener('click', () => { D.err = null; render(); }); e.append(c); }
   return e;
 }
-const reread = () => getMarketingRaw({ rid: D.ctx.rid, token: D.ctx.token });
 function errWord(c) {
   if (c.outcome === 'unknown') return 'No sabemos si se guardó. Volvé a la lista antes de intentar de nuevo.';
   return 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.';
@@ -162,12 +173,13 @@ function errWord(c) {
 // pause / resume / end: ONE state move through settleWrite
 export async function move(kind) {
   if (D.busy) return;
-  const o = D.offer;
+  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token;
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
   const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to, from: o.state };
-  const r = await ML.settleWrite(a, () => offerSetStateRaw({ rid: D.ctx.rid, offerId: o.id, to, expectedRev: o.rev, token: D.ctx.token }), reread);
-  if (!D.host) return;
+  const r = await ML.settleWrite(a, () => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, token }), () => getMarketingRaw({ rid, token }))
+    .catch(() => ({ outcome: 'unknown' }));
+  if (!D.host || D.gen !== g) { if (ctx.onChanged) ctx.onChanged(); return; }   // bound to the view it started in
   D.busy = false;
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
