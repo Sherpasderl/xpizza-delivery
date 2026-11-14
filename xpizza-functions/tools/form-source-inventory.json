@@ -273,6 +273,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -310,6 +311,7 @@
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
+    "xpizza-functions/ratings/aggregate-producer.test.js",
     "xpizza-functions/recognized-entry.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/resolvelines-wiring.guard.test.js",
@@ -678,6 +680,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -705,6 +708,7 @@
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
+    "xpizza-functions/ratings/aggregate-producer.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
@@ -1139,6 +1143,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1176,6 +1181,7 @@
     "xpizza-functions/profile-named.test.js",
     "xpizza-functions/pselfupdate-wrapper-lint.test.js",
     "xpizza-functions/quote-order.test.js",
+    "xpizza-functions/ratings/aggregate-producer.test.js",
     "xpizza-functions/recognized-entry.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/resolvelines-wiring.guard.test.js",
@@ -1545,6 +1551,7 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1572,6 +1579,7 @@
     "xpizza-functions/portal/portal-split.test.js",
     "xpizza-functions/portal/sucursales-limit.test.js",
     "xpizza-functions/portalui-wiring.guard.test.js",
+    "xpizza-functions/ratings/aggregate-producer.test.js",
     "xpizza-functions/release-race-wiring.guard.test.js",
     "xpizza-functions/s1a-wiring.guard.test.js",
     "xpizza-functions/s1b-wiring.guard.test.js",
@@ -2246,12 +2254,14 @@
   "xpizza-functions/delivery/pricing-admin-core.js",
   "xpizza-functions/directory/directory-deps.js",
   "xpizza-functions/index.js",
+  "xpizza-functions/marketing/anuncio-core.js",
   "xpizza-functions/marketing/offers-core.js",
   "xpizza-functions/menu-extract.mjs",
   "xpizza-functions/portal/branch-lifecycle-core.js",
   "xpizza-functions/portal/functions.js",
   "xpizza-functions/portal/ops-core.js",
   "xpizza-functions/portal/ops-functions.js",
+  "xpizza-functions/ratings/aggregate-producer.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
@@ -2822,6 +2832,8 @@
   "lib/emulator-endpoint.js",
   "lib/hn-date.js",
   "manual-resolve.js",
+  "marketing/anuncio-core.js",
+  "marketing/anuncio-model.js",
   "marketing/config.js",
   "marketing/functions.js",
   "marketing/offer-model.js",
@@ -2947,6 +2959,7 @@
   "prep-stats.js",
   "quote-issue.js",
   "quote-token.js",
+  "ratings/_rtdb-fake.js",
   "ratings/aggregate-producer.js",
   "ratings/aggregate.js",
   "ratings/dish-qty.js",
@@ -6875,6 +6888,14 @@
    "pins": [],
    "lifts": []
   },
+  "marketing/anuncio-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/anuncio-model.js": {
+   "pins": [],
+   "lifts": []
+  },
   "marketing/config.js": {
    "pins": [],
    "lifts": []
@@ -7566,6 +7587,10 @@
     "xpizza-functions/quote-token.test.js",
     "xpizza-functions/s2bext-wiring.guard.test.js"
    ]
+  },
+  "ratings/_rtdb-fake.js": {
+   "pins": [],
+   "lifts": []
   },
   "ratings/aggregate-producer.js": {
    "pins": [],
