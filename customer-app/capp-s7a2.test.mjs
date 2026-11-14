@@ -6,6 +6,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import { createClock } from './test-clock.mjs';
 import { placeRealWith } from './test/place-real.mjs';
 import { refLoader } from './test/ref-require.mjs';
+import { fakeRtdb } from './test/fake-rtdb.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -2261,8 +2262,6 @@ test('store-update r2 (round trip): «Abrir App Store» records the store; the N
 // (else 400); one bounded page (limit 1–50, default 20) newest first with an opaque base64url {ts,id} cursor; the Row WHITELIST; active =
 // a status outside {cancelled, delivered, completed}. Entries come from the REAL writer (create-order-build.attachCustomerAttribution) ──
 const { attachCustomerAttribution } = FN_REQ('./create-order-build');
-const TERMINAL = new Set(['cancelled', 'delivered', 'completed']);
-const MO_ID_RE = /^[A-Za-z0-9_-]{4,64}$/;
 function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items_text = '1x Margherita (L250)', items = [{ name: 'Margherita', qty: 1 }], restaurantId = 'x_pizza', status = 'new' }) {
   const u = { [`orders/${orderId}`]: { status } };
   attachCustomerAttribution(u, orderId, uid, { now: ts, total, orderType, items_text, restaurantId, items, tables: null });   // the REAL writer
@@ -2270,25 +2269,21 @@ function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items
 }
 // the RECEIPT detail mode = 3a's REAL projector (advisor 11-14): my-orders.js projectReceipt, loaded from the PINNED 3a ref with every
 // file it requires from that same commit (test/ref-require.mjs) — not yet in this base. The ref is the ONE 3a ref that also produced
-// fixtures/c3r-v2 (its handler's receipts): the pin cell («C-3r v2 RCPT-PIN») holds both to the same blob. Replaces the hand-copied replica
-const MO3A_REF = '30fc29c9f77913a0dfeb70c2c15446221789b6d3', MO3A_BLOB = '32e89fdd661bc99c2ce6e3c266b8e2025a9a26e8';
+// fixtures/c3r-v2 (its handler's receipts) — feat/my-orders-3a = snapshot-v2-3a + rider-first-name-3a: the pin cell («C-3r v2 RCPT-PIN») holds both to the same blob. Replaces the hand-copied replica
+const MO3A_REF = '544732baa6ab200cd70892d4f3ffe0dc6948278a', MO3A_BLOB = '534c0b1b5785a9179605ba6ff07e2692a1d26aa5';
 const MO3A = refLoader(ROOT, MO3A_REF);
-const { projectReceipt } = MO3A.require('xpizza-functions/my-orders.js');
+const MOL = MO3A.require('xpizza-functions/my-orders.js'), { projectReceipt } = MOL;   // ONE 3a ref (feat/my-orders-3a): the receipt AND the list handler
 // «Volver a pedir» (getMyOrders' approved delta): each recipe line gains dish_id = the store's canonical dish id for its stored key,
 // from the REAL resolver (canonical-binding identityMap) over a D4-a context — here built from the SERVED menu (each dish's legacy key
 // by the real itemPricingKey → its served dish_id); no context ⇒ null on every line (the server's own rule)
-const CBND = FN_REQ('./catalog/canonical-binding'), MPRC = FN_REQ('./menu-pricing');
+const MPRC = FN_REQ('./menu-pricing');
 function servedCtx(rid, { drop = [] } = {}) {
   const m = PROV[rid].envelope.menu;
   return { availability: 'available', attached: true, usableAsIdentity: true,
     objects: m.dishes.filter((d) => d.dish_id && !drop.includes(MPRC.itemPricingKey(d, rid))).map((d) => ({ kind: 'dish', legacyKey: MPRC.itemPricingKey(d, rid), canonicalId: String(d.dish_id) })) };
 }
-const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
-const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
-  return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
 function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false, receipts = {} } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
-  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
     const url = new URL(u, 'https://fn.test'); calls.push({ url: url.toString(), headers: i.headers || {}, method: i.method || 'GET', body: i.body });
     const out = (status, json) => ({ status, json: async () => json });
@@ -2312,17 +2307,16 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
       return g ? g.then(() => res) : res;
     }
-    let limit = 20; if (url.searchParams.has('limit')) { const n = Number(url.searchParams.get('limit')); if (!Number.isInteger(n) || n < 1 || n > 50) return out(400, { ok: false, reason: 'bad_request' }); limit = n; }
-    let cur = null; if (url.searchParams.has('cursor')) { try { cur = JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url').toString()); } catch (_) { cur = null; } if (!cur || !Number.isFinite(cur.ts) || typeof cur.id !== 'string' || !MO_ID_RE.test(cur.id)) return out(400, { ok: false, reason: 'bad_request' }); }
-    const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
-    const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
-    const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    // C-3r G1: the REAL row projector (my-orders.js projectRow — S-D's price_snapshot passes through verbatim) composed exactly as
-    // makeMyOrders composes it (my-orders.js:143): + the dish-id delta over its items, + display_number from orders/{id} when stamped
-    const proj = ({ id, e }) => { const row = MO_REAL.projectRow(id, e); return { ...row, items: withDishIds(row.items, contextFor(e.restaurant)),
-      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) }; };
-    const R = rows.map(proj), oldest = rows[rows.length - 1];
-    const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
+    // the LIST mode = 3a's REAL getMyOrders handler (advisor 11-14, C-2 rider name, source (a)): makeMyOrders from the pinned 3a ref, on
+    // an RTDB holding THIS fake's stores (user_orders = db, orders = orders) — its query (orderByChild ts / endBefore / limitToLast), its
+    // projectRow + dish ids + display_number + the rider's first name (fnOf: owner re-checked) — no hand-composed copy. The checks above
+    // stay in front (the contract's 400 / 401 / 403); the stand-ins are the token check (verifyIdToken → the claims decoded above) and
+    // the rate limiter (always allowed)
+    const r = { status: null, body: null };
+    const resx = { set() { return resx; }, status(c) { r.status = c; return resx; }, json(b) { r.body = JSON.parse(JSON.stringify(b)); return resx; } };
+    const { getMyOrders } = MOL.makeMyOrders({ getDatabase: () => fakeRtdb({ user_orders: db, orders }), getAuth: () => ({ verifyIdToken: async () => ({ uid, customer: true }) }),
+      checkRateLimit: async () => ({ allowed: true }), resolveContext: async (rid) => contextFor(rid) });
+    const res = getMyOrders({ method: 'GET', query: Object.fromEntries(url.searchParams), body: {}, get: (h) => (String(h).toLowerCase() === 'x-firebase-id-token' ? tok : undefined) }, resx).then(() => out(r.status, r.body));
     return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
   };
   return { handler, calls, rx };
@@ -4087,6 +4081,66 @@ test('C-2 the send diff (capp-rate): a first rating sends only what is set; an e
   assert.deepEqual(R.fieldsToSend(ini, { ...R.fromRating(ini), dishes: { a: -1 } }, ['a']), { dishes: { hidden: -1, a: -1 } }, '🔴 RD-1: the WHOLE map, the unshown vote kept');
   assert.deepEqual(R.fieldsToSend(ini, { ...R.fromRating(ini), delivery: null, comment: ' Riquísima ' }, ['a']), { delivery: null, comment: 'Riquísima' }, 'a cleared thumb ⇒ null; the comment trimmed');
   assert.deepEqual(R.dishesOf(['a', 'a', 'b', 'c', 'z'], (id) => ({ a: 'Pizza', c: 'Pan' })[id] || null), [{ id: 'a', name: 'Pizza' }, { id: 'c', name: 'Pan' }], '🔴 RD-2: distinct, nameable only');
+});
+// ── C-2 rider name (advisor 11-14; owner-approved copy «Tu repartidor, {Nombre}»): the rider's FIRST name from the order's Pedidos ROW
+// (source (a): no extra read, no pop-in). Real pieces end to end: the order (place-real), the name SNAPSHOTTED by 3a's REAL
+// writeDeliveryAttribution (the delivery CAS winner copies driver_accounts/<uid>/first_name, normalized) and served by 3a's REAL
+// getMyOrders list handler (non-null ONLY for a fulfilled delivery whose order is the caller's) — both from feat/my-orders-3a ──
+const DATTR = MO3A.require('xpizza-functions/driver-attribution.js');
+async function stampRider(orders, id, driverUid, firstName) {   // driver_accounts/<uid>/first_name = what Central typed (server-written)
+  const accts = firstName === undefined ? {} : { [driverUid]: { first_name: firstName } };
+  const w = await DATTR.writeDeliveryAttribution(fakeRtdb({ orders, driver_accounts: accts }), id, driverUid);
+  assert.equal(w.written, true, 'premise: the delivery CAS winner wrote the attribution');
+  return w;
+}
+async function riderSheet(id, setup) {
+  const rate = ratingServer(), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', id, { ts: T0 - 3600e3 });
+  await setup({ db, orders });
+  rate.own(id, 'u_ana', []); rate.fulfil(id, T0 - 3600e3);
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await until(() => S.q(`.orow .rate-go[data-oid="${id}"]`));
+  S.click(`.orow .rate-go[data-oid="${id}"]`); await until(() => S.q('#layer .rate'));
+  const del = S.q('#layer [data-act="rate-del"]'), row = del && del.closest('.rrow2');
+  return { S, line: row ? txt(row.querySelector('.t')) : null, orders };
+}
+test('C-2 rider name: a delivered DELIVERY whose rider has a first name ⇒ «Tu repartidor, María José» (the snapshot, never the cascade\'s display name)', async () => {
+  const { S, line, orders } = await riderSheet('XP-N1', async ({ orders }) => { const w = await stampRider(orders, 'XP-N1', 'drv_1', '  María   José '); assert.equal(w.first, 'María José', 'premise: the writer\'s normalized snapshot'); });
+  try {
+    assert.equal(orders['XP-N1'].delivered_by_first_name, 'María José', 'premise: stamped on the order');
+    assert.equal(line, 'Tu repartidor, María José', '🔴 RN-1: the rider\'s first name, as served');
+  } finally { S.w.close(); }
+});
+test('C-2 rider name: no first name on the rider\'s account (the writer stamps none) ⇒ the fallback «Tu repartidor de Sherpa»', async () => {
+  const { S, line, orders } = await riderSheet('XP-N2', async ({ orders }) => { await stampRider(orders, 'XP-N2', 'drv_2', undefined); });
+  try {
+    assert.equal(orders['XP-N2'].delivered_by_first_name, undefined, 'premise: nothing stamped');
+    assert.equal(line, 'Tu repartidor de Sherpa', '🔴 RN-FALLBACK: null ⇒ the fallback, never «Tu repartidor, »');
+  } finally { S.w.close(); }
+});
+test('C-2 rider name: only a FULFILLED DELIVERY row carries a name — a cancelled delivery and a pickup that were stamped come back without one (the real list handler + the client\'s rowOf), the delivered control keeps it', async () => {
+  // a cancelled order has no «Valorar» (the sheet is unreachable), so this cell reads the list as the app parses it
+  const A = require('./capp-signup-api.js'), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-N3', { ts: T0 - 3 * 3600e3 }); placeReal(db, orders, 'u_ana', 'XP-N5', { ts: T0 - 2 * 3600e3, type: 'pickup' }); placeReal(db, orders, 'u_ana', 'XP-N6', { ts: T0 - 3600e3 });
+  for (const [id, drv, n] of [['XP-N3', 'drv_3', 'Luis'], ['XP-N5', 'drv_5', 'Rosa'], ['XP-N6', 'drv_6', 'Ana']]) await stampRider(orders, id, drv, n);
+  orders['XP-N3'].status = 'cancelled'; db.u_ana['XP-N3'].status = 'cancelled';
+  const r = await myOrdersServer(db, { orders, contextFor: AGAIN_CTX }).handler('https://fn.test/getMyOrders?context=platform', { method: 'GET', headers: { 'x-firebase-id-token': TOK('u_ana') } });
+  const j = await r.json(); assert.equal(r.status, 200);
+  const rows = Object.fromEntries(j.past.map(A.rowOf).filter(Boolean).map((x) => [x.order_id, x.driver_first_name === undefined ? null : x.driver_first_name]));
+  assert.deepEqual(rows, { 'XP-N6': 'Ana', 'XP-N5': null, 'XP-N3': null }, '🔴 RN-NOTDELIVERED: the name rides a fulfilled delivery row only');
+});
+test('C-2 rider name: ANOTHER member\'s order (the history entry points at an order whose customer_uid is not the caller\'s) never leaks its rider\'s name', async () => {
+  const { S, line } = await riderSheet('XP-N4', async ({ orders }) => { await stampRider(orders, 'XP-N4', 'drv_4', 'Carla'); orders['XP-N4'].customer_uid = 'u_bea'; });
+  try { assert.equal(line, 'Tu repartidor de Sherpa', '🔴 RN-OWNER: no other member\'s rider name'); } finally { S.w.close(); }
+});
+test('C-2 rider name (presenter): the name is HTML-escaped (the sheet never renders markup from the row), and a pickup has no rider line at all', () => {
+  const R = require('./capp-rate.js'), d = new JSDOM('<!doctype html><div id="x"></div>').window.document;
+  const vm = (o) => ({ storeName: 'S', num: null, dishes: [], delivery: true, driverName: null, value: R.fromRating(null), initial: null, editable: true, sending: false, error: null, ...o });
+  d.getElementById('x').innerHTML = R.sheetHtml(vm({ driverName: '<img src=x onerror=alert(1)>Ana' }));
+  assert.equal(d.querySelector('#x img'), null, '🔴 RN-ESC: no markup from the name');
+  assert.ok([...d.querySelectorAll('.rrow2 .t')].some((t) => t.textContent === 'Tu repartidor, <img src=x onerror=alert(1)>Ana'), '🔴 RN-ESC: shown as text');
+  d.getElementById('x').innerHTML = R.sheetHtml(vm({ delivery: false, driverName: 'Ana' }));
+  assert.ok(!/Tu repartidor/.test(d.getElementById('x').textContent), 'a pickup: no rider line');
 });
 test('C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the delivery thumbs exist only for a delivery)', async () => {
   const rate = ratingServer(), db = {}, orders = {};

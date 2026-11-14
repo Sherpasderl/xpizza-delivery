@@ -170,7 +170,10 @@
     return { order_id: x.order_id, ts: x.ts, total: Number.isFinite(x.total) ? x.total : null, order_type: x.order_type === 'pickup' ? 'pickup' : x.order_type === 'delivery' ? 'delivery' : null,
       restaurant: x.restaurant, status: typeof x.status === 'string' ? x.status : null, items_text: typeof x.items_text === 'string' ? x.items_text : null, items: Array.isArray(x.items) ? x.items : [],
       ...(typeof x.recipe_format === 'string' ? { recipe_format: x.recipe_format } : {}),
-      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01: 3a adds it to the whitelist
+      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),   // advisor 11-01: 3a adds it to the whitelist
+      // C-2 rider name (3a (5) 5c): the rider's FIRST name, snapshotted at delivery — the server's normFirstName already holds it to one
+      // first name (≤ 24, letters first); the client keeps only a bounded string and renders it escaped. Absent / anything else ⇒ dropped
+      ...(typeof x.driver_first_name === 'string' && x.driver_first_name.trim() && x.driver_first_name.length <= 24 ? { driver_first_name: x.driver_first_name.trim() } : {}) };
   }
   // the contract's receipt (NOTE-getMyOrders-receipt §3), field by field: lines only when EVERY line is well-formed (else null ⇒ the
   // items_text lines), totals = the present integer keys only (never 0-filled), the tender as cash / card with no digits, the address

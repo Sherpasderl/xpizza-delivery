@@ -37078,8 +37078,8 @@
   "slice": "c3r-v2",
   "label": "R3.2: a LIST row still carries the snapshot (not receipt-only)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01",
-  "to": "      ...(x.price_snapshot ? { price_snapshot: x.price_snapshot } : {}), ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01",
+  "from": "      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),   // advisor 11-01",
+  "to": "      ...(x.price_snapshot ? { price_snapshot: x.price_snapshot } : {}), ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),   // advisor 11-01",
   "command": [
    "node",
    "--test",
@@ -37122,6 +37122,23 @@
   ],
   "kills_with": [
    "C3R-V2-LM: the configured unit"
+  ]
+ },
+ {
+  "id": "rn-01",
+  "slice": "c2-rider-name",
+  "label": "the null fallback dropped (a nameless delivery reads «Tu repartidor, »)",
+  "file": "../customer-app/capp-rate.js",
+  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, ${esc(vm.driverName)}` : 'Tu repartidor de Sherpa'}</span>",
+  "to": "<span class=\"t\">Tu repartidor, ${esc(vm.driverName || '')}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-2 rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-FALLBACK"
   ]
  }
 ]

@@ -1168,13 +1168,16 @@
       })));
     }
     // what the sheet needs of an order: its store (names its dishes from the store's own menu), number, mode, purchased dish ids
+    // C-2 rider name (advisor 11-14, source (a)): the rider's first name comes ONLY from the order's Pedidos ROW (getMyOrders already sent
+    // it — no extra read, no pop-in); any other path (the live order, the nudge) without that row ⇒ none (the sheet's fallback)
     function rateCtxOf(oid) {
       const od = S.order;
-      if (od && od.order_id === oid) return { oid, rid: od.rid, num: od.display_number || null, mode: od.mode, dishIds: (od.lines || []).map((l) => l && l.dish_id) };
       const rd = S.ordersRead, row = rd && rd.past ? rd.past.concat(rd.active).find((r) => r.order_id === oid) : null;
-      if (row) return { oid, rid: row.restaurant, num: row.display_number || null, mode: row.order_type === 'pickup' ? 'pickup' : 'delivery', dishIds: (row.items || []).map((l) => l && l.dish_id) };
+      const driver = row && typeof row.driver_first_name === 'string' ? row.driver_first_name : null;
+      if (od && od.order_id === oid) return { oid, rid: od.rid, num: od.display_number || null, mode: od.mode, dishIds: (od.lines || []).map((l) => l && l.dish_id), driver };
+      if (row) return { oid, rid: row.restaurant, num: row.display_number || null, mode: row.order_type === 'pickup' ? 'pickup' : 'delivery', dishIds: (row.items || []).map((l) => l && l.dish_id), driver };
       const c = rateCandidate();
-      return c && c.order_id === oid ? { oid, rid: c.rid, num: c.num || null, mode: c.mode, dishIds: c.dish_ids || [] } : null;
+      return c && c.order_id === oid ? { oid, rid: c.rid, num: c.num || null, mode: c.mode, dishIds: c.dish_ids || [], driver: null } : null;
     }
     async function openRate(oid, { nudge = false } = {}) {
       const uid = rateUid(), ctx = rateCtxOf(oid); if (!uid || !ctx) return false;
@@ -1193,7 +1196,7 @@
       const h = doc.getElementById('rate-h'); if (h) h.focus();
       return true;
     }
-    const rateVm = () => ({ storeName: S.rate.storeName, num: S.rate.ctx.num, dishes: S.rate.dishes, delivery: S.rate.ctx.mode === 'delivery', value: S.rate.value, initial: S.rate.initial, editable: S.rate.editable, sending: S.rate.sending, error: S.rate.error, note: S.rate.note || null });
+    const rateVm = () => ({ storeName: S.rate.storeName, num: S.rate.ctx.num, dishes: S.rate.dishes, delivery: S.rate.ctx.mode === 'delivery', driverName: S.rate.ctx.driver || null, value: S.rate.value, initial: S.rate.initial, editable: S.rate.editable, sending: S.rate.sending, error: S.rate.error, note: S.rate.note || null });
     // a tap re-renders the sheet and keeps focus on the same control (the comment keeps its caret)
     function rerenderRate() {
       const ae = doc.activeElement, ds = ae && ae.dataset ? { act: ae.dataset.act, id: ae.dataset.id, val: ae.dataset.val, field: ae.dataset.field } : null;
