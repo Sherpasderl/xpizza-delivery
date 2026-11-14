@@ -170,6 +170,9 @@ function normalize(out) {
   // PLAN-3a-capp-member-reads (3) — the representation marker advanced 1d.3 → 1d.4 AFTER this base (the body may carry dish_stats).
   // PEELED like an inverse layer, asserted first: SERVED must be exactly 1d.4 with NO dish_stats in its body (this harness passes no
   // stats reader, so the decoration is omitted), then the marker reads as the base's 1d.3; every other SERVED byte stays pinned.
+  // Codex capp-offers r1 P2 (documented): this bump is dish-stats' APPROVED 1d.3 → 1d.4, and it is the ONLY reason every ETag moves
+  // between the base and this head. The offers decoration adds NO bump (PLAN-3a-capp-offers-read Q-A; offers-serve.test.js pins
+  // REPRESENTATION_VERSION) and, OFF, adds no byte: with the marker peeled, every SERVED body below is the base's, byte for byte.
   for (const [label, set] of [['OFF', now], ['ON', on]]) if (set) for (const rid of Object.keys(set)) if (set[rid].SERVED) {
     assert.strictEqual(set[rid].SERVED.representation_version, '1d.4', `🔴 ${label} ${rid} SERVED: the (3) peel expects 1d.4`);
     assert.ok(!('dish_stats' in set[rid].SERVED.body), `🔴 ${label} ${rid} SERVED: no dish_stats without a stats reader`);

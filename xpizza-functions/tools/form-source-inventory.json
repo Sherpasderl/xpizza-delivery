@@ -2862,6 +2862,7 @@
   "marketing/offer-model.js",
   "marketing/offers-core.js",
   "marketing/sponsored-serve.js",
+  "marketing/switch-memo.js",
   "materialize.js",
   "member-auth.js",
   "menu-pricing.js",
@@ -6958,6 +6959,10 @@
    "lifts": []
   },
   "marketing/sponsored-serve.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/switch-memo.js": {
    "pins": [],
    "lifts": []
   },

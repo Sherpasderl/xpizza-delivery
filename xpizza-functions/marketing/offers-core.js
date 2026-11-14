@@ -233,7 +233,7 @@ async function getMarketingCore(deps, req) {
   const t = now();
   // this branch's Anuncio bookings (≤ 12): the derived status, the price agreed, the deadline, the days not shown — no charge field exists
   const bookings = Object.entries(isObj(booked) ? booked : {})
-    .filter(([id, b]) => AM.BOOKING_ID_RE.test(id) && isObj(b) && AM.WEEK_RE.test(String(b.week)))
+    .filter(([id, b]) => AM.BOOKING_ID_RE.test(id) && isObj(b) && b.void !== true && AM.WEEK_RE.test(String(b.week)))   // a void (a released orphan's marker) is never listed
     .map(([id, b]) => ({ id, week: b.week, status: AM.bookingStatus(b, t), price_cents: b.price_cents, cancel_deadline: b.cancel_deadline, hidden_days: AM.hiddenDays(b) }))
     .sort((x, y) => (x.week < y.week ? 1 : x.week > y.week ? -1 : 0));
   const offers = Object.entries(isObj(all) ? all : {})

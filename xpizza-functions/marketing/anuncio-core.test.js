@@ -138,6 +138,59 @@ const cancel = (db, tok, body, t = BOOK_AT) => A.anuncioCancelCore(depsAt(db, t)
       ok('the race: two simultaneous books ⇒ exactly one wins; the loser\'s slot is released');
     }
 
+    // ── 3c. Codex capp-offers r1 P1-1: a cleanup never deletes a slot whose booking a CONCURRENT request repaired ──
+    {
+      const db = await world();
+      await eligible(db, 'tb_centro'); await eligible(db, 'zt_uno');
+      let calls = 0; let bRes = null;
+      const orig = db.ref;
+      db.ref = (p) => { const r = orig(p);
+        if (p === 'anuncio_bookings/tb_centro') { const tx = r.transaction; r.transaction = async (fn) => {
+          if (++calls === 1) { bRes = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: W }); throw new Error('A: the record write failed'); }   // B repairs A's slot first
+          return tx(fn); }; }
+        return r; };
+      const aRes = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: W });
+      db.ref = orig;
+      assert.strictEqual(bRes.status, 200, `premise: the concurrent request B repaired A's slot and booked (${JSON.stringify(bRes.body)})`);
+      assert.deepStrictEqual([aRes.status, aRes.body.error], [503, 'unavailable'], 'A: its record write failed ⇒ 503 retryable');
+      assert.deepStrictEqual(db.get(`anuncio_slots/${W}`), { rid: 'tb_centro', booking_id: bRes.body.booking.id }, 'A\'s cleanup kept the slot B\'s booking holds');
+      assert.strictEqual((await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: W })).body.error, 'week_taken', 'another restaurant can NOT take the booked week');
+      ok('a cleanup never deletes a slot whose booking a concurrent request repaired (the week stays held)');
+    }
+
+    // ── 3d. Codex capp-offers r1 P1-2: a FAILED cap-refusal cleanup is never swallowed, and the orphan slot is reconciled by a retry
+    //        AND by the weeks read ──
+    for (const via of ['a retry', 'the weeks read']) {
+      const db = await world();
+      await eligible(db, 'zt_uno');
+      const WK = AM.bookableWeeks(BOOK_AT);
+      assert.strictEqual((await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[0] })).status, 200, 'premise: W0 held');
+      let failed = false;
+      const orig = db.ref;
+      db.ref = (p) => { const r = orig(p);
+        if (/^anuncio_slots\//.test(p)) { const tx = r.transaction; r.transaction = async (fn) => {
+          const cur = db.get(p);   // ONE release fails BEFORE it applies (an outage): a transaction that would clear an existing slot
+          if (!failed && cur != null && fn(JSON.parse(JSON.stringify(cur))) === null) { failed = true; throw new Error('the slot release failed'); }
+          return tx(fn); }; }
+        return r; };
+      const [ra, rb] = await Promise.all([book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[1] }), book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[2] })]);
+      db.ref = orig;
+      assert.ok(failed, 'premise: one release failed');
+      const [won, lost, lostWeek] = ra.status === 200 ? [ra, rb, WK[2]] : [rb, ra, WK[1]];
+      assert.strictEqual(won.status, 200, 'premise: one of the race wins');
+      assert.deepStrictEqual([lost.status, lost.body.error, lost.body.retryable], [503, 'unavailable', true], 'a refusal whose cleanup FAILED ⇒ 503 retryable — never a swallowed 409 promising a repair');
+      ok(`(${via}) a failed cap-refusal cleanup ⇒ 503 retryable, not a swallowed cap_reached`);
+      if (via === 'a retry') {
+        const again = await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: lostWeek });
+        assert.strictEqual(again.body.error, 'cap_reached', 'the healthy retry is refused by the cap…');
+      } else {
+        const wk = await weeks(db, `t-${OTHER}`, 'zt_uno');
+        assert.notStrictEqual(wk.body.weeks.find((x) => x.week === lostWeek).state, 'mine', 'the weeks read never shows the orphan as «mine»');
+      }
+      assert.strictEqual(db.get(`anuncio_slots/${lostWeek}`) ?? null, null, `…and ${via} reconciled the orphan slot (no record ⇒ released)`);
+      ok(`(${via}) the orphan slot of a failed cleanup is reconciled — the week is free for others`);
+    }
+
     // ── 4. cancel: before / at / after the deadline; frees only its own slot ──
     {
       const db = await world();

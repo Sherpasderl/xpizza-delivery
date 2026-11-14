@@ -42,6 +42,34 @@ async function eligibilityOf(db, rid, cfg) {
   return { eligible: r.ok, rating: r.rating, rating_count: r.count, reasons: r.reasons };
 }
 
+// THE orphan cleanup (Codex capp-offers r1 P1-1 / P1-2): a slot naming booking `id` of this rid with no live record is released ONLY
+// after `id` is VOIDED on the branch's bookings node — create-only, the SAME node a repair creates the record on, so the two linearize:
+// a concurrent repair that created `id` first keeps the slot ('kept'); a repair after the void finds it and refuses (retryable). Then the
+// slot is cleared only while it still names `id`. Idempotent (a void stays void); a failure THROWS (the caller answers 503 — never a
+// swallowed error). A void is a cancelled record with `void: true` (never counted, never listed; pruned with the cancelled ones).
+const isVoid = (b) => isObj(b) && b.void === true;
+async function releaseOrphan(db, rid, week, id, t) {
+  let real = false;
+  await db.ref(bookingsPath(rid)).transaction((cur) => {
+    const all = isObj(cur) ? cur : {};
+    const x = all[id];
+    real = x != null && !isVoid(x);
+    if (x != null) return undefined;   // a real record (kept) or already void
+    return { ...all, [id]: { v: 1, rid, week, state: 'cancelled', void: true, booked_at: t, cancelled_at: t } };
+  });
+  if (real) return 'kept';
+  let out = 'kept';
+  await db.ref(slotPath(week)).transaction((cur) => {
+    if (cur === null) { out = 'released'; return null; }
+    if (isObj(cur) && cur.rid === rid && cur.booking_id === id) { out = 'released'; return null; }
+    out = 'kept'; return undefined;
+  });
+  return out;
+}
+// this rid's own slot whose record is absent or void ⇒ its booking id (an orphan), else null
+const orphanOf = (slot, rid, mine) => (isObj(slot) && slot.rid === rid && AM.BOOKING_ID_RE.test(String(slot.booking_id))
+  && (!isObj(mine) || mine[slot.booking_id] == null || isVoid(mine[slot.booking_id])) ? slot.booking_id : null);
+
 // ── getAnuncioWeeks ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 async function getAnuncioWeeksCore(deps, req) {
   const { db, now = () => Date.now() } = deps;
@@ -58,6 +86,14 @@ async function getAnuncioWeeksCore(deps, req) {
   try {
     [slots, eligibility, mine] = await Promise.all([Promise.all(weeks.map((w) => val(db, slotPath(w)))), eligibilityOf(db, rid, on.cfg), val(db, bookingsPath(rid))]);
   } catch (_) { return UNAVAILABLE(); }
+  // this branch's orphan slots (a crashed or failed cleanup) are reconciled here — durably, never shown as «mine» (P1-2)
+  for (let i = 0; i < weeks.length; i++) {
+    const id = orphanOf(slots[i], rid, mine);
+    if (!id) continue;
+    let r;
+    try { r = await releaseOrphan(db, rid, weeks[i], id, t); } catch (_) { return UNAVAILABLE(); }
+    if (r === 'released') slots[i] = null;
+  }
   return reply(200, { ok: true, price_cents: on.cfg.anuncio_price_cents, eligibility,
     weeks: weeks.map((w, i) => ({ week: w, starts_at: AM.weekBounds(w).start, cancel_until: AM.cancelDeadline(w),
       state: !isObj(slots[i]) ? (AM.capProblem(mine, w) ? 'capped' : 'free') : slots[i].rid === rid ? 'mine' : 'taken' })) });
@@ -81,12 +117,19 @@ async function anuncioBookCore(deps, req) {
   try { [elig, mine] = await Promise.all([eligibilityOf(db, body.rid, on.cfg), val(db, bookingsPath(body.rid))]); } catch (_) { return UNAVAILABLE(); }
   if (!elig.eligible) return reply(409, { error: 'not_eligible', reasons: elig.reasons });
   const pruneOf = (all) => Object.entries(all).filter(([, b]) => isObj(b)).filter(([, b]) => { const st = AM.bookingStatus(b, t); return (st === 'ended' || st === 'cancelled') && Number.isSafeInteger(b.booked_at) && t - AM.weekBounds(b.week).end > AM.BOOKING_RETAIN_MS; }).map(([id]) => id);
-  const full = (all) => Object.values(all).filter(isObj).length - pruneOf(all).length >= AM.BOOKINGS_MAX;
+  const full = (all) => Object.values(all).filter((b) => isObj(b) && !isVoid(b)).length - pruneOf(all).filter((id) => !isVoid(all[id])).length >= AM.BOOKINGS_MAX;
   const capped = (all) => reply(409, { error: 'cap_reached', next_week: AM.nextCapWeek(all, t) });
   const mineNow = isObj(mine) ? mine : {};
-  // the cheap pre-checks, before the slot is touched (the record transaction below decides on the CURRENT node)
-  if (full(mineNow)) return reply(409, { error: 'too_many_bookings' });
-  if (AM.capProblem(mineNow, body.week)) return capped(mineNow);
+  // the cheap pre-checks, before the slot is touched (the record transaction below decides on the CURRENT node). This week's own ORPHAN
+  // slot (no record, or a void one) is reconciled FIRST when the book is refused anyway, or when it is void — a retry never leaves it (P1-2)
+  let slotNow;
+  try { slotNow = await val(db, slotPath(body.week)); } catch (_) { return UNAVAILABLE(); }
+  const orphan = orphanOf(slotNow, body.rid, mineNow);
+  const refusal = full(mineNow) ? reply(409, { error: 'too_many_bookings' }) : AM.capProblem(mineNow, body.week) ? capped(mineNow) : null;
+  if (orphan && (refusal || isVoid(mineNow[orphan]))) {
+    try { await releaseOrphan(db, body.rid, body.week, orphan, t); } catch (_) { return UNAVAILABLE(); }
+  }
+  if (refusal) return refusal;
   // THE slot: ONE transaction, create-if-absent. Another restaurant's ⇒ week_taken. This rid's own slot with no booking record (a crash
   // between the slot and the record) ⇒ the record is written under the slot's booking id (repair, idempotent); with one ⇒ already_booked.
   let last = null;
@@ -116,7 +159,7 @@ async function anuncioBookCore(deps, req) {
       const d = { why: null, all: null };
       rlast = d;
       const all = isObj(cur) ? cur : {};
-      if (all[bookingId] != null) { d.why = 'already_booked'; return undefined; }
+      if (all[bookingId] != null) { d.why = isVoid(all[bookingId]) ? 'voided' : 'already_booked'; return undefined; }
       if (full(all)) { d.why = 'too_many_bookings'; return undefined; }
       if (AM.capProblem(all, body.week)) { d.why = 'cap_reached'; d.all = all; return undefined; }
       d.why = 'write';
@@ -128,9 +171,11 @@ async function anuncioBookCore(deps, req) {
   const rwhy = rlast && rlast.why;
   if (rwhy === 'write' && rec && rec.committed) return reply(200, { ok: true, booking: { id: bookingId, ...record, status: AM.bookingStatus(record, t) } });
   if (rwhy === 'already_booked') return reply(409, { error: 'already_booked', booking_id: bookingId });
-  // refused (or failed) after THIS call wrote the slot ⇒ release it, only while it still names this call's booking id
+  if (rwhy === 'voided') return UNAVAILABLE();   // a reconciler voided this id between the slot and the record: a retry books afresh
+  // refused (or failed) after THIS call wrote the slot ⇒ THE orphan cleanup: never deletes a slot whose booking a concurrent request
+  // repaired (P1-1); a failed cleanup is a 503 — the retry and the weeks read reconcile it (P1-2), never swallowed
   if (last.why === 'write') {
-    try { await db.ref(slotPath(body.week)).transaction((cur) => (cur === null ? null : isObj(cur) && cur.booking_id === proposed ? null : undefined)); } catch (_) { /* reads as mine; a re-book repairs it */ }
+    try { await releaseOrphan(db, body.rid, body.week, proposed, t); } catch (_) { return UNAVAILABLE(); }
   }
   if (rwhy === 'cap_reached') return capped(rlast.all);
   if (rwhy === 'too_many_bookings') return reply(409, { error: 'too_many_bookings' });
@@ -198,4 +243,4 @@ async function recordAnuncioDays(db, rid, closedDays, publishedStats) {
   return written;
 }
 
-module.exports = { getAnuncioWeeksCore, anuncioBookCore, anuncioCancelCore, recordAnuncioDays, newBookingId };
+module.exports = { getAnuncioWeeksCore, anuncioBookCore, anuncioCancelCore, recordAnuncioDays, newBookingId, releaseOrphan, isVoid };

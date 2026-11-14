@@ -81,6 +81,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.ok(!('offers' in off.body), 'OFF: no offers key');
       assert.deepStrictEqual([off.body, off.etag], [undecorated.body, undecorated.etag], 'OFF: body + ETag byte-identical to the undecorated serve');
       assert.strictEqual(off.etag, etagOf(RID, off.body), 'premise: the ETag is over rid + representation + the canonical body (public-menu.js)');
+      assert.strictEqual(REPRESENTATION_VERSION, '1d.4', 'offers add NO representation bump (Q-A): the base→head ETag move is dish-stats\' approved 1d.3 → 1d.4 (s2b-off-golden peels it)');
       ok('OFF: the key is absent and the body + ETag are byte-identical to the undecorated menu');
     }
 
