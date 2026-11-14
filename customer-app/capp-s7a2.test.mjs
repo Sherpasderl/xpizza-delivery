@@ -4,6 +4,7 @@
 // Run: node --test customer-app/capp-s7a2.test.mjs
 import { test, beforeEach, afterEach } from 'node:test';
 import { createClock } from './test-clock.mjs';
+import { placeRealWith } from './test/place-real.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -2267,7 +2268,8 @@ function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items
   return u[`user_orders/${uid}/${orderId}`];
 }
 // the RECEIPT detail mode, as 3a's my-orders.js@75eed212 (APPROVED) projects it — verbatim logic: priced lines only when every one is
-// well-formed, present integer totals only, the tender cash / card (never a reference), the address for a delivery only
+// well-formed, present integer totals only, the tender cash / card (never a reference), the address for a delivery only; + 3a's (4)
+// step 1 (my-orders.js@268de114f :94, R3.2): the entry's price_snapshot passes through VERBATIM (the reorder reads it from here)
 const RCPT_TOTALS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
 const RCPT_TENDER = { cash: 'cash', card_delivery: 'card', online: 'card' };
 function projectReceipt(id, entry, o) {
@@ -2278,7 +2280,8 @@ function projectReceipt(id, entry, o) {
   const method = RCPT_TENDER[o.payment_method] || null, type = str(o.order_type);
   return { order_id: id, ...(Number.isFinite(o.display_number) ? { display_number: o.display_number } : {}), ts: num(entry.ts), restaurant: str(entry.restaurant), order_type: type, status: str(o.status),
     lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
-    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}) };
+    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}),
+    ...(entry.price_snapshot !== undefined ? { price_snapshot: entry.price_snapshot } : {}) };
 }
 // «Volver a pedir» (getMyOrders' approved delta): each recipe line gains dish_id = the store's canonical dish id for its stored key,
 // from the REAL resolver (canonical-binding identityMap) over a D4-a context — here built from the SERVED menu (each dish's legacy key
@@ -2292,7 +2295,7 @@ function servedCtx(rid, { drop = [] } = {}) {
 const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
 const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
   return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false } = {}) {
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false, receipts = {} } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
@@ -2312,7 +2315,8 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       const id = url.searchParams.get('order_id');
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
       const entry = (db[uid] || {})[id], order = orders[id];
-      const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
+      // C-3r v2: a receipt PRODUCED by 3a's real handler (fixtures/c3r-v2) is served verbatim for its own order id (still owner-gated)
+      const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : receipts[id] ? out(receipts[id].status, JSON.parse(JSON.stringify(receipts[id].body))) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
       if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => VC.setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency (on the cell's virtual clock — step 9: every shell cell has one)
       const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
       return g ? g.then(() => res) : res;
@@ -2687,27 +2691,8 @@ test('Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — 
 // from the REAL intake chain, as 3a's own cells build them: storedCtx (a minted envío ctx) → DW.withDelivery → pricedLineItems (x_pizza's
 // factura lines) → buildCreateOrderUpdates → attachCustomerAttribution
 const RC = { P: FN_REQ('./delivery/delivery-pricing'), DW: FN_REQ('./delivery/delivery-wire'), FP: FN_REQ('./factura/pricing'), MP: FN_REQ('./menu-pricing'), CB: FN_REQ('./create-order-build'), MZ: FN_REQ('./materialize') };
-function placeReal(db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number } = {}) {
-  const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, promo_discount_cents: promo, ...(tip ? { tip_cents: tip } : {}) }) : null;   // Codex rcpt r1 #2: promo EXPLICIT (an absent key ⇒ storedCtx null ⇒ no envío / tip)
-  const bd = RC.DW.withDelivery({ ctx }, { total_cents: 64800, subtotal_cents: 56348, tax_cents: 8452 });
-  const body = rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
-  const fp = rid === 'x_pizza' ? RC.FP.pricedLineItems(body, RC.MP.MENU_BY_RESTAURANT.x_pizza, RC.MP.EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
-  const u = RC.CB.buildCreateOrderUpdates({ orderId: id, orderType: type, now: ts, trackingToken: 'tk_' + id, total: bd.total_cents / 100, lat: type === 'delivery' ? 14.07 : null, lng: type === 'delivery' ? -87.19 : null,
-    fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text, notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira, Tegucigalpa', address_details: 'casa azul', address_area: 'Palmira' } : { pickup_time: 'asap' }) },
-    hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid, priceBreakdown: bd, facturaPriced: fp, cashTenderedCents: pay === 'cash' ? 100000 : null });
-  RC.CB.attachCustomerAttribution(u, id, uid, { now: ts, total: bd.total_cents / 100, orderType: type, items_text, restaurantId: rid, items: body });
-  // Codex rcpt r1 #2: the fixture's economics, asserted BEFORE anything renders (the base 648.00 + envío 40 + tip − promo)
-  if (type === 'delivery') assert.deepEqual([bd.subtotal_cents, bd.delivery_cents, bd.tip_cents || 0, bd.promo_discount_cents, bd.total_cents], [56348, 4000, tip, promo, 64800 + 4000 + tip - promo], 'premise: the real breakdown');
-  else assert.equal(bd.total_cents, 64800, 'premise: a pickup carries no envío');
-  // the ONLINE card charge: the same pending record + the REAL confirm patch (buildMaterializeUpdates), field paths applied in place
-  if (pay === 'online') { const mz = RC.MZ.buildMaterializeUpdates({ orderId: id, order: { ...u[`orders/${id}`] }, trackingToken: 'tk_' + id, now: ts + 1, restaurant: rid, paymentMethod: 'online' });
-    for (const [k, v] of Object.entries(mz)) { const m = k.match(/^orders\/([^/]+)\/([^/]+)$/); if (m && m[1] === id) u[`orders/${id}`][m[2]] = v; else if (k === `user_orders/${uid}/${id}`) u[k] = v; } }
-  const o = u[`orders/${id}`], e = u[`user_orders/${uid}/${id}`];
-  o.status = status; e.status = status;   // the status trigger keeps the entry in step (P3)
-  if (display_number) o.display_number = display_number;
-  (db[uid] = db[uid] || {})[id] = e; orders[id] = o;
-  return { o, e, bd };
-}
+// the real placement — test/place-real.mjs (one source with the C-3r v2 fixture generator); this file's functions tree
+function placeReal(db, orders, uid, id, o) { return placeRealWith(RC, T0, db, orders, uid, id, o); }
 const rrows = (R) => R.qa('.receipt .rbody .rrow, .receipt2 .rrow').map(txt);
 async function openPastReceipt(S, oid) {
   S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
@@ -2911,7 +2896,7 @@ async function againBoot(extra = {}) {
   placeReal(db, orders, 'u_ana', 'LM-V2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: '1x Pad Thai (L210)' });
   const st = extra.storage || g7Store(G7_PROFILE({ promos: true }));
   if (extra.seed) extra.seed(st);
-  const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}) });
+  const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}), ...(extra.receipts ? { receipts: extra.receipts } : {}), ...(extra.rgate ? { rgate: extra.rgate } : {}) });
   return { S, mo, fb, st, orders, db };
 }
 test('Volver a pedir — by data: the eligible store\'s row has the pill, the all-null store\'s has none; the tabs appear; «Volver a pedir» lists ONLY the eligible store with its past dish (live menu)', async () => {
@@ -3100,15 +3085,15 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
 // change ⇒ no note (extras are compared at the live price — the v1 rule; v2 extras_cents upgrades it); no snapshot ⇒ no note.
 // The cart always shows and charges the live price; the note is the courtesy disclosure, never an invented past price.
 const G1_PRICE = (patch) => { const env = J(PROV.x_pizza.envelope); patch(env.menu); return env; };
-async function g1Reorder(patch, { dropSnapshot = false } = {}) {
-  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+async function g1Reorder(patch, { dropSnapshot = false, receipts } = {}) {
+  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok'), ...(receipts ? { receipts } : {}) });
   const e = db.u_ana['XP-V1'];
   assert.deepEqual(J(e.price_snapshot), { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, 'premise: the real writer\'s v1 snapshot (2× Margherita L 299, Mozzarella once)');
   if (dropSnapshot) delete e.price_snapshot;   // an entry written before S-D (the base writer) — the row carries no snapshot
   S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
   S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush();
   S.release('x_pizza', G1_PRICE(patch)); await flush(); await flush(); await flush();
-  return { S, st };
+  return { S, st, db };
 }
 const g1Changes = (S) => JSON.parse(JSON.stringify(S.ui.store().ui.cart.priceChanges())).map((c) => [c.name, c.sig ? 'extra' : 'plain', c.fromCents, c.toCents]);
 test('C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1', async () => {
@@ -4921,4 +4906,123 @@ test('VC-L no shell window outlives the cell that booted it (late responses neve
   const open = SHELLS.filter((x) => !x.closed).map((x) => x.cell);
   assert.ok(SHELLS.length > 0, 'premise: shells were booted');
   assert.deepEqual([...new Set(open)].filter((c) => c !== CUR), [], '🔴 VC-L: a shell left open by an earlier cell');
+});
+
+// ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / R4.3 / §4.3; advisor 11-14): the reorder reads the snapshot from the RECEIPT through
+// readReceipt (cached + de-duplicated; prefetched rows make the tap request-free) under a 1.5 s deadline; ONE owner / generation /
+// navigation check runs before applying EITHER outcome (a late success and a late fallback are both dropped). A v2 snapshot carries the
+// committed per-extra prices: the frame-13 note is exact for a configuration WITH extras too (component-wise, §4.3). The receipt here is
+// 3a's REAL handler's (fixtures/c3r-v2/gen-c3r-v2.mjs at feat/snapshot-v2-3a), served verbatim for its own order ──
+const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8')).scenarios['XP-V1'];
+const V2R = { 'XP-V1': C3V2.receipt };
+const pvNotes = (S) => S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+const recipeOfEntry = (e) => J(e.items).map((l) => ({ key: l.key, qty: l.qty, ...(l.options ? { options: l.options } : {}) }));
+test('C-3r v2 §4.3 (3a\'s real v2 receipt): an EXTRA\'s price changed since the order ⇒ the frame-13 note for the configuration WITH it, exact (299 + 50 → 299 + 60); the plain one unchanged', async () => {
+  const { S } = await g1Reorder((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; }, { receipts: V2R });
+  try {
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 35900]], '🔴 C3R-V2-EXTRA: the configured unit from the receipt\'s committed prices');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 359.'], '🔴 C3R-V2-EXTRA: the one frame-13 line, exact');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 §4.3 — the Codex C-3r r1 P2 case, now PROVABLE: Margherita 299→309 AND Mozzarella 50→60 ⇒ BOTH configurations noted, each exact (L 349 → L 369; L 299 → L 309)', async () => {
+  const { S, db } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; m.extras.find((x) => x.name === 'Mozzarella').price = 60; }, { receipts: V2R });
+  try {
+    assert.deepEqual(recipeOfEntry(db.u_ana['XP-V1']), recipeOfEntry(C3V2), 'premise: the receipt\'s snapshot is aligned with THIS row\'s recipe (same order, same lines)');
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 36900], ['Margherita', 'plain', 29900, 30900]], '🔴 C3R-V2-BOTH: both configurations, each from its committed components');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 369.', 'Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 C3R-V2-BOTH: the two frame-13 lines');
+  } finally { S.w.close(); }
+});
+// R4.3's race cells: the receipt is HELD (one gate per order id — the prefetch and the tap share the in-flight read)
+async function raceBoot(extra = {}) {
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  const b = await againBoot({ rgate: (id) => gate(id).p, ...extra });
+  b.S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  return { ...b, gate };
+}
+const tapReorder = async (S, oid) => { S.click(`.orow [data-act="reorder"][data-oid="${oid}"]`); await flush(); };
+test('C-3r v2 R4.3 race — SIGN-OUT during the receipt await ⇒ nothing applied: no store entered, no cart written', async () => {
+  const { S, fb, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    assert.equal(S.ui.store(), null, 'premise: the tap waits on the receipt');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE sign-out: no store entered');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE sign-out: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — an ACCOUNT SWITCH (A → B) during the await ⇒ A\'s order never reaches B', async () => {
+  const { S, fb, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bea'); await flush(); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE switch: no store entered for B');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE switch: A\'s order is not in any cart');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — NAVIGATION away during the await ⇒ no forced store entry', async () => {
+  const { S, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE navigation: the customer stays where they went');
+    assert.ok(S.q('.tabbar [data-tab="home"][aria-current="page"], .tabbar [data-tab="home"].on, .tabbar [data-tab="home"][aria-selected="true"]') || S.q('.rlist, .hsec'), 'premise: on Inicio');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y ⇒ only Y applies, even when X\'s receipt resolves LAST', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });
+  placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 3 * 86400e3 });
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  const { S } = await pedidosBoot(db, { orders, storage: g7Store(G7_PROFILE({ promos: true })), contextFor: AGAIN_CTX, envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok'), receipts: V2R, rgate: (id) => gate(id).p });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await tapReorder(S, 'XP-V3');   // X: a v1 receipt (no extra prices)
+    await tapReorder(S, 'XP-V1');   // Y: 3a's v2 receipt
+    gate('XP-V1').resolve(); await flush(); await flush();
+    S.release('x_pizza', G1_PRICE((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; })); await flush(); await flush(); await flush();
+    gate('XP-V3').resolve(); await flush(); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', 'premise: Y entered its store');
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 35900]], '🔴 C3R-V2-RACE second: Y\'s v2 snapshot stands — X\'s late receipt changed nothing');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 — TIMEOUT (1.5 s): the reorder proceeds at live prices WITHOUT a historical note (never blocked)', async () => {
+  const { S } = await raceBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+  try {
+    await tapReorder(S, 'XP-V1');
+    assert.equal(S.ui.store(), null, 'premise: waiting');
+    await flush(1600);
+    S.release('x_pizza', G1_PRICE((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; })); await flush(); await flush(); await flush();   // the store's menu lands
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-TIMEOUT: the deadline releases the reorder');
+    assert.deepEqual(pvNotes(S), [], '🔴 C3R-V2-TIMEOUT: no snapshot ⇒ no historical note');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 — SIGN-OUT during the TIMEOUT ⇒ the fallback is dropped too (the check guards BOTH outcomes)', async () => {
+  const { S, fb, st } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush();
+    await flush(1600); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-TIMEOUT-SIGNOUT: no store entered after the deadline');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-TIMEOUT-SIGNOUT: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y; X\'s receipt resolves FIRST (Y still pending) ⇒ X is dropped (an older tap) — no store opens for it; Y then enters', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });
+  placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 3 * 86400e3 });
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  // the store's menu is AVAILABLE (as a cached menu usually is): an applied continuation mounts the store at once — nothing masks it
+  const { S } = await pedidosBoot(db, { orders, storage: g7Store(G7_PROFILE({ promos: true })), contextFor: AGAIN_CTX, receipts: V2R, rgate: (id) => gate(id).p });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await tapReorder(S, 'XP-V3');   // X
+    await tapReorder(S, 'XP-V1');   // Y
+    gate('XP-V3').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE older: X (an older tap) never enters, though its receipt landed first');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-RACE older: Y (the latest tap) enters');
+  } finally { S.w.close(); }
 });

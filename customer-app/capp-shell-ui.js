@@ -364,7 +364,7 @@
     }
     // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
     //    the member's Cuenta stays the host's event, byte for byte) ──
-    let suApi = null;
+    let suApi = null, suMod = null;   // suMod: the signup-api MODULE (C-3r v2: its snapshotOf, the reorder's alignment check)
     const promosOv = { uid: null, v: null };   // frame 1b: the optimistic value while setPromos is in flight
     let signingOut = false;
     const phoneShown = (ph) => { const P = typeof CappPhone !== 'undefined' ? CappPhone : (o.CappPhone || null); const raw = String(ph || ''); if (!raw || !P) return raw;
@@ -413,6 +413,7 @@
     function startAuth() {
       if (!SU || fbAuth || dead) return;
       const CappAuthFirebase = pick(o, 'CappAuthFirebase', './capp-auth-firebase.js'), CappAuthState = pick(o, 'CappAuthState', './capp-auth-state.js'), CappSignup = pick(o, 'CappSignup', './capp-signup.js'), CappSignupApi = pick(o, 'CappSignupApi', './capp-signup-api.js');
+      suMod = CappSignupApi;
       fbAuth = CappAuthFirebase.createFirebaseAuth({ config: SU.firebase, loadSdk: o.loadSdk });
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
@@ -1341,32 +1342,56 @@
     const UNKNOWN = '\u0000';   // a key no menu serves: hydrate drops the line and COUNTS it (the one disclosure path)
     // C-3r G1 (advisor 11-13, option A; after Codex C-3r r1 P2): S-D's v1 snapshot proves a past price ONLY for an OPTION-LESS instance
     // (unit = unit_cents exactly). An instance WITH extras is seeded from the live menu (no note) — never a past dish price + a live
-    // extra presented as «antes» (an invented configured price); v2 (extras_cents) makes it exact. No snapshot line ⇒ the live price
+    // extra presented as «antes» (an invented configured price). C-3r v2 (3a's (4), §4.3): a v2 line carries each extra's committed
+    // per-unit cents by the recipe option key (extras:[{ k, c }]) ⇒ an instance WITH extras is exact too, component-wise; an option with
+    // no matching k ⇒ that instance is seeded live (never a partial past). No snapshot line ⇒ the live price
     function reorderSnap(menu, lines, prev, ps) {
       const out = lines.map((l, i) => {
-        const ex = Array.from({ length: l.qty }, () => ({}));
+        const ex = Array.from({ length: l.qty }, () => ({})), optOf = {};
         let key = l.dish_id || UNKNOWN;
         if (l.dish_id) {
           const offered = menu.extrasFor(l.dish_id);
           for (const op of l.options) {
             const e = offered.find((x) => (op.by === 'name' ? x.name === op.v : String(x.id) === op.v));   // strictly by the recorded kind
             if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }   // an option the menu no longer offers / cannot carry ⇒ unavailable
+            optOf[e.key] = op.v;   // the menu extra → its recipe option key (the v2 snapshot's k)
             for (let k = 0; k < op.n; k++) ex[k][e.key] = 1;
           }
         }
         // Codex VP r1 #6: the prices on show NOW are what the customer saw — so a later change is disclosed by the cart's priceChanges()
         const d = key !== UNKNOWN ? menu.dish(key) : null, c = (v) => Math.round(Number(v) * 100);
         const past = ps && ps.lines[l.si], pb = past && Number.isSafeInteger(past.unit_cents) ? past.unit_cents : null, live = d ? c(d.price) : 0;
-        const seen = d ? ex.map((x) => ({ b: pb !== null && !Object.keys(x).length ? pb : live, x: Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)])) })) : undefined;
+        const pex = past && ps.v === 2 ? new Map((past.extras || []).map((e) => [e.k, e.c])) : null;   // v2: the committed extra cents by k
+        const liveX = (x) => Object.fromEntries(Object.keys(x).map((k) => [k, c(menu.extra(k).price)]));
+        const seenOf = (x) => {
+          const ks = Object.keys(x);
+          if (pb === null) return { b: live, x: liveX(x) };
+          if (!ks.length) return { b: pb, x: {} };
+          if (pex && ks.every((k) => pex.has(optOf[k]))) return { b: pb, x: Object.fromEntries(ks.map((k) => [k, pex.get(optOf[k])])) };   // v2: exact
+          return { b: live, x: liveX(x) };   // v1 (or an unmatched option): the configuration is seeded live — no invented «antes»
+        };
+        const seen = d ? ex.map(seenOf) : undefined;
         return { key, qty: l.qty, ex, added: i + 1, ...(seen ? { seen } : {}) };
       });
       return { v: 2, lines: out, ...(prev && (prev.mode === 'pickup' || prev.mode === 'delivery') ? { mode: prev.mode } : {}) };
     }
     function pastRow(oid) { const rd = S.ordersRead && S.ordersRead.who === ownerNow() ? S.ordersRead : null; return rd ? rd.past.find((r) => r.order_id === oid) || null : null; }
-    function reorder(oid) {
+    // C-3r v2 (PLAN-3a-capp-member-reads R3.2 / R4.3): the snapshot is RECEIPT-ONLY — read through readReceipt (cached, de-duplicated; a
+    // prefetched receipt makes the tap request-free) under its own deadline; a failure or timeout ⇒ live prices WITHOUT a historical note
+    // (never blocked). ONE check runs before applying EITHER outcome: the same tap generation, the same owner and member, the same auth
+    // user, and the customer still where they tapped (no other tab, no store opened) — a late success and a late fallback both drop
+    const RECEIPT_WAIT_MS = 1500;
+    let reorderGen = 0;
+    const withDeadline = (p, ms) => new Promise((res) => { const h = T.setTimeout(() => res(null), ms); Promise.resolve(p).then((v) => { T.clearTimeout(h); res(v); }, () => { T.clearTimeout(h); res(null); }); });
+    async function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
       const lines = recipeOf(r.items, r.recipe_format); if (!reorderable(lines)) return;
-      S.reorder = { rid: r.restaurant, lines, ps: r.price_snapshot || null };
+      const gen = ++reorderGen, who = ownerNow(), uid = S.member && S.member.uid, tab = S.tab;
+      const rc = await withDeadline(readReceipt(oid), RECEIPT_WAIT_MS);
+      const cur = auth && auth.user ? auth.user() : null;
+      if (dead || gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid || S.tab !== tab || S.store) return;
+      const ps = rc && suMod && typeof suMod.snapshotOf === 'function' ? suMod.snapshotOf(rc.price_snapshot, r.items) : null;
+      S.reorder = { rid: r.restaurant, lines, ps };
       enter(r.restaurant, null);
     }
     // the tab: per store (the past rows' order), the distinct past dishes its LIVE menu still serves (a variant line ⇒ its launcher)

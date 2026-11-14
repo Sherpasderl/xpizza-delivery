@@ -144,19 +144,32 @@
 
   // the contract's Row (NOTE-getMyOrders §3), field by field — nothing else survives
   const ORDER_ID_RE = /^[A-Za-z0-9_-]{4,64}$/, RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
-  // S-D's reorder price snapshot (C-3r G1): { v:1, lines:[{ unit_cents, line_cents }] } aligned 1:1 with the row's items; anything
-  // else (another version, a length mismatch, a non-integer) ⇒ dropped — the reorder then compares at the live price (no note)
+  // the reorder price snapshot (C-3r; PLAN-3a-capp-member-reads R2.7 / R3.2): RECEIPT-ONLY (the list row never carries it). S-D's v1
+  // { v:1, lines:[{ unit_cents, line_cents }] } or (4)'s v2 — each line ALSO `extras: [{ k, c }]` (k = the recipe option key VERBATIM, a
+  // value never a key; c = the committed per-unit cents; ABSENT = no extras, RTDB drops an empty array). snapShape checks the snapshot
+  // alone (the receipt has no items); snapshotOf also requires it ALIGNED 1:1 with the row's items. Anything else (another version, a
+  // non-integer, a negative, extras not an entry array) ⇒ null — the reorder then shows live prices without a historical note
+  const cents0 = (v) => Number.isSafeInteger(v) && v >= 0;
+  function snapShape(ps) {
+    if (!ps || typeof ps !== 'object' || (ps.v !== 1 && ps.v !== 2) || !Array.isArray(ps.lines) || !ps.lines.length) return null;
+    const lines = [];
+    for (const l of ps.lines) {
+      if (!l || typeof l !== 'object' || !cents0(l.unit_cents) || !cents0(l.line_cents)) return null;
+      if (ps.v === 1 || l.extras === undefined) { lines.push({ unit_cents: l.unit_cents, line_cents: l.line_cents }); continue; }
+      if (!Array.isArray(l.extras) || !l.extras.every((e) => e && typeof e === 'object' && typeof e.k === 'string' && e.k && cents0(e.c))) return null;
+      lines.push({ unit_cents: l.unit_cents, line_cents: l.line_cents, extras: l.extras.map((e) => ({ k: e.k, c: e.c })) });
+    }
+    return { v: ps.v, lines };
+  }
   function snapshotOf(ps, items) {
-    if (!ps || typeof ps !== 'object' || ps.v !== 1 || !Array.isArray(ps.lines) || !Array.isArray(items) || ps.lines.length !== items.length) return null;
-    if (!ps.lines.every((l) => l && Number.isSafeInteger(l.unit_cents) && l.unit_cents >= 0 && Number.isSafeInteger(l.line_cents) && l.line_cents >= 0)) return null;
-    return { v: 1, lines: ps.lines.map((l) => ({ unit_cents: l.unit_cents, line_cents: l.line_cents })) };
+    const s = snapShape(ps);
+    return s && Array.isArray(items) && s.lines.length === items.length ? s : null;
   }
   function rowOf(x) {
     if (!x || typeof x !== 'object' || typeof x.order_id !== 'string' || !ORDER_ID_RE.test(x.order_id) || !Number.isFinite(x.ts) || typeof x.restaurant !== 'string' || !RID_RE.test(x.restaurant)) return null;
     return { order_id: x.order_id, ts: x.ts, total: Number.isFinite(x.total) ? x.total : null, order_type: x.order_type === 'pickup' ? 'pickup' : x.order_type === 'delivery' ? 'delivery' : null,
       restaurant: x.restaurant, status: typeof x.status === 'string' ? x.status : null, items_text: typeof x.items_text === 'string' ? x.items_text : null, items: Array.isArray(x.items) ? x.items : [],
       ...(typeof x.recipe_format === 'string' ? { recipe_format: x.recipe_format } : {}),
-      ...(snapshotOf(x.price_snapshot, x.items) ? { price_snapshot: snapshotOf(x.price_snapshot, x.items) } : {}),   // S-D (C-3r G1): v1, aligned 1:1 with items
       ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01: 3a adds it to the whitelist
   }
   // the contract's receipt (NOTE-getMyOrders-receipt §3), field by field: lines only when EVERY line is well-formed (else null ⇒ the
@@ -175,7 +188,8 @@
     return { order_id: x.order_id, ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),
       ts: Number.isFinite(x.ts) ? x.ts : null, restaurant: x.restaurant, order_type: type, status: str(x.status), lines, items_text: str(x.items_text), totals,
       tender: { method, ...(method === 'cash' && isInt(tn.cash_tendered_cents) ? { cash_tendered_cents: tn.cash_tendered_cents } : {}) },
-      ...(a ? { address: { detected: str(a.detected), details: str(a.details), area: str(a.area) } } : {}) };
+      ...(a ? { address: { detected: str(a.detected), details: str(a.details), area: str(a.area) } } : {}),
+      ...(snapShape(x.price_snapshot) ? { price_snapshot: snapShape(x.price_snapshot) } : {}) };   // C-3r v2: the reorder's snapshot (receipt-only)
   }
   // C-2: getMyRating's 200 body, field by field (the S-A(d) contract) — a malformed body is a failure, never a guess
   const ts = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
@@ -211,5 +225,5 @@
     if ('dishes' in f) { const d = f.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return false; const ids = Object.keys(d); if (ids.length > DISHES_MAX || ids.some((k) => !dishIdOk(k) || !thumbOk(d[k]))) return false; }
     return true;
   }
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, myRatingOf, dishIdOk, RTDB_KEY_UNSAFE };
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, snapshotOf, myRatingOf, dishIdOk, RTDB_KEY_UNSAFE };
 });

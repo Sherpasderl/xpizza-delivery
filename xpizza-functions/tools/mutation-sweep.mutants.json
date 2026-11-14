@@ -35611,16 +35611,16 @@
   "slice": "c3r",
   "label": "a price_snapshot not aligned 1:1 with the row's items is kept (a past price taken from the wrong line; C-3r G1)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": " || ps.lines.length !== items.length",
-  "to": "",
+  "from": "return s && Array.isArray(items) && s.lines.length === items.length ? s : null;",
+  "to": "return s && Array.isArray(items) ? s : null;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=C-3r G1 rowOf",
+   "--test-name-pattern=^C-3r v2",
    "../customer-app/capp-signup.test.mjs"
   ],
   "kills_with": [
-   "G1-row misaligned"
+   "C3R-V2-ALIGN"
   ]
  },
  {
@@ -35662,12 +35662,12 @@
   "slice": "c3r",
   "label": "a configuration WITH extras takes the snapshot dish price + the LIVE extras as «antes» (an invented configured past price; Codex C-3r r1 P2)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "b: pb !== null && !Object.keys(x).length ? pb : live,",
-  "to": "b: pb !== null ? pb : live,",
+  "from": "return { b: live, x: liveX(x) };   // v1 (or an unmatched option)",
+  "to": "return { b: pb, x: liveX(x) };   // v1 (or an unmatched option)",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=C-3r G1",
+   "--test-name-pattern=^C-3r (v2|G1)",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
@@ -36967,6 +36967,144 @@
   ],
   "kills_with": [
    "WAKE-8"
+  ]
+ },
+ {
+  "id": "c3v2-01",
+  "slice": "c3r-v2",
+  "label": "R4.3: the check guards only the SUCCESS path (a late fallback applies unchecked)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid || S.tab !== tab || S.store) return;",
+  "to": "if (rc && (dead || gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid || S.tab !== tab || S.store)) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-TIMEOUT-SIGNOUT"
+  ]
+ },
+ {
+  "id": "c3v2-02",
+  "slice": "c3r-v2",
+  "label": "R4.3: no tap generation (an older reorder whose receipt lands first applies)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== reorderGen || ownerNow()",
+  "to": "if (dead || ownerNow()",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE older"
+  ]
+ },
+ {
+  "id": "c3v2-03",
+  "slice": "c3r-v2",
+  "label": "R4.3: no navigation check (a forced store entry after the customer left Pedidos)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "cur.uid !== uid || S.tab !== tab || S.store) return;",
+  "to": "cur.uid !== uid || S.store) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE navigation"
+  ]
+ },
+ {
+  "id": "c3v2-04",
+  "slice": "c3r-v2",
+  "label": "R4.3: no owner / member / auth check (a signed-out or switched session gets the order)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid ||",
+  "to": "gen !== reorderGen ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE sign-out",
+   "C3R-V2-RACE switch"
+  ]
+ },
+ {
+  "id": "c3v2-05",
+  "slice": "c3r-v2",
+  "label": "§4.3: the v2 extra cents ignored (a configuration WITH extras seeded live: no exact note)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (pex && ks.every((k) => pex.has(optOf[k])))",
+  "to": "if (false && pex && ks.every((k) => pex.has(optOf[k])))",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-EXTRA",
+   "C3R-V2-BOTH"
+  ]
+ },
+ {
+  "id": "c3v2-06",
+  "slice": "c3r-v2",
+  "label": "R3.2: the receipt drops its price_snapshot",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "...(snapShape(x.price_snapshot) ? { price_snapshot: snapShape(x.price_snapshot) } : {}) };",
+  "to": "};",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RCPT"
+  ]
+ },
+ {
+  "id": "c3v2-07",
+  "slice": "c3r-v2",
+  "label": "R3.2: a LIST row still carries the snapshot (not receipt-only)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01",
+  "to": "      ...(x.price_snapshot ? { price_snapshot: x.price_snapshot } : {}), ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}) };   // advisor 11-01",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-LIST"
+  ]
+ },
+ {
+  "id": "c3v2-08",
+  "slice": "c3r-v2",
+  "label": "the snapshot used without the 1:1 alignment with the row's items",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "return s && Array.isArray(items) && s.lines.length === items.length ? s : null;",
+  "to": "return s;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-ALIGN"
   ]
  }
 ]

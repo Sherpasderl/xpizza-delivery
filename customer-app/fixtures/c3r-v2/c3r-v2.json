@@ -1,0 +1,97 @@
+{
+ "source": {
+  "commit": "268de114f155d886c3af83ca2cf59bef911fe7dd",
+  "blobs": {
+   "create-order-build.js": "a5647c78b1ecffd9cf51ca4472c3aa890a440f0e",
+   "reorder-normalize.js": "2a53ac21f06b8c547ae5d458f68427adcd3c2f2b",
+   "my-orders.js": "f24aaa6bc06c80b2add97b324afbbdbf0379809c",
+   "member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607",
+   "menu-pricing.js": "bfb1bc924d1a33521638fbb5463d2c5883060549",
+   "factura/pricing.js": "88532bfa3fe9f09a2b6573e01013806a69399ae5"
+  }
+ },
+ "scenarios": {
+  "XP-V1": {
+   "items": [
+    {
+     "key": "Margherita",
+     "qty": 2,
+     "options": [
+      {
+       "name": "Mozzarella",
+       "count": 1
+      }
+     ]
+    }
+   ],
+   "price_snapshot": {
+    "v": 2,
+    "lines": [
+     {
+      "unit_cents": 29900,
+      "line_cents": 64800,
+      "extras": [
+       {
+        "k": "Mozzarella",
+        "c": 5000
+       }
+      ]
+     }
+    ]
+   },
+   "receipt": {
+    "status": 200,
+    "body": {
+     "ok": true,
+     "receipt": {
+      "order_id": "XP-V1",
+      "ts": 1792458300000,
+      "restaurant": "x_pizza",
+      "order_type": "delivery",
+      "status": "delivered",
+      "lines": [
+       {
+        "qty": 2,
+        "description": "Margherita (+Mozzarella)",
+        "line_cents": 64800
+       }
+      ],
+      "items_text": "2x Margherita (L324) [+ 1x Mozzarella]",
+      "totals": {
+       "subtotal_cents": 56348,
+       "tax_cents": 8452,
+       "delivery_cents": 4000,
+       "promo_discount_cents": 0,
+       "total_cents": 68800
+      },
+      "tender": {
+       "method": "cash",
+       "cash_tendered_cents": 100000
+      },
+      "address": {
+       "detected": "Col. Palmira, Tegucigalpa",
+       "details": "casa azul",
+       "area": "Palmira"
+      },
+      "price_snapshot": {
+       "v": 2,
+       "lines": [
+        {
+         "unit_cents": 29900,
+         "line_cents": 64800,
+         "extras": [
+          {
+           "k": "Mozzarella",
+           "c": 5000
+          }
+         ]
+        }
+       ]
+      }
+     }
+    }
+   }
+  }
+ },
+ "scenarios_sha256": "1bdd55b6fb83d47e759af7de647a80db83f8a1f8795f7bf35e60cc7f583b9870"
+}
