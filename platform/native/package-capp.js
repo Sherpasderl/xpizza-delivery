@@ -100,7 +100,7 @@ function shellFiles(shellHtml, readText) {
     if (/^(data:|https?:)/.test(u)) throw new Error(`${css} references a non-local asset: ${u}`);
     assets.add(u);
   }
-  if ([...assets].some((a) => a.startsWith('fonts/'))) assets.add('fonts/OFL.txt');   // the fonts' licence travels with them
+  for (const dir of new Set([...assets].filter((a) => /^fonts[\w-]*\//.test(a)).map((a) => a.split('/')[0]))) assets.add(`${dir}/OFL.txt`);   // each font folder's licence travels with it (fonts-figtree/, 11-14)
   return { scripts, sheets, assets: [...assets].sort() };
 }
 

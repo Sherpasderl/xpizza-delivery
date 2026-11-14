@@ -36270,5 +36270,53 @@
   "kills_with": [
    "R20-URL"
   ]
+ },
+ {
+  "id": "fig-01",
+  "slice": "capp-figtree",
+  "label": "the shell page drops its one Figtree preload",
+  "file": "../customer-app/shell.html",
+  "from": "<link rel=\"preload\" href=\"fonts-figtree/figtree-latin.8330490a01.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-PRELOAD"
+  ]
+ },
+ {
+  "id": "fig-02",
+  "slice": "capp-figtree",
+  "label": "the hashed Figtree files no longer cached immutably (the old /fonts/* path)",
+  "file": "../customer-app/netlify.toml",
+  "from": "for = \"/fonts-figtree/*\"",
+  "to": "for = \"/fonts/*\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-CACHE"
+  ]
+ },
+ {
+  "id": "fig-03",
+  "slice": "capp-figtree",
+  "label": "the Figtree stack loses its metric-matched fallbacks (a swap reflow on a cold load)",
+  "file": "../customer-app/capp.css",
+  "from": "--fig:'Figtree','Figtree Fallback','Figtree Fallback Roboto',ui-sans-serif",
+  "to": "--fig:'Figtree',ui-sans-serif",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-STACK"
+  ]
  }
 ]
