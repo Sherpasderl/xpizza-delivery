@@ -226,6 +226,36 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E5: the offer paused between quote and order ⇒ 409 offer_changed, nothing written');
 
+  // ── E7 / E8. the payment fingerprints with an offer (advisor 11-14: a cell for EACH) ──
+  {
+    const { orderFingerprint } = require('../pixelpay-charge');
+    const live = (await rtdb.ref('marketing_live/x_pizza').get()).val() || {};
+    if (!Object.keys(live).length) await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    const { cart, s } = cartOf('x_pizza');
+    const gross = cart.subtotalCents(); const d = Math.floor((gross * 20) / 10000) * 100;
+    // E7 cash: the fingerprint stays on the GROSS food (computed before the offer, stable across retries) — a retry of the SAME order
+    // with the offer applied is still recognised as the same order (idempotent, nothing re-written, one order)
+    await clean(); offerCaches();
+    const q = await quote('x_pizza', s.items);
+    const cb = bodyOf('x_pizza', 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); assert.strictEqual((await post(app.createOrder, cb)).status, 200, 'E7 premise: placed with the offer');
+    const first = await order(cb.order_id);
+    assert.strictEqual(first.offer.discount_cents, d, 'E7 premise: the offer applied');
+    await clean(); const again = await post(app.createOrder, cb);
+    assert.deepStrictEqual([again.status, again.json && again.json.idempotent], [200, true], `🔴 E7: the cash retry is the SAME order (${again.text.slice(0, 160)})`);
+    assert.deepStrictEqual(await order(cb.order_id), first, 'E7: nothing re-written');
+    // E8 card: the fingerprint binds the DISCOUNTED net (what is charged), never the gross
+    await clean(); offerCaches(); CHARGED.length = 0;
+    const qk = await quote('x_pizza', s.items);
+    const kb = bodyOf('x_pizza', 'online', s, { quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents });
+    await clean(); const k = await post(app.chargeOnlineOrder, kb);
+    assert.ok(k.status === 200 && CHARGED.length === 1, `E8 premise: card issued (${k.text.slice(0, 160)})`);
+    const po = await order(kb.order_id);
+    assert.strictEqual(po.payment_fingerprint, orderFingerprint(kb.order_id, gross - d + FEE, po.items_text, ''), '🔴 E8: the card fingerprint binds the discounted net');
+    assert.notStrictEqual(po.payment_fingerprint, orderFingerprint(kb.order_id, gross + FEE, po.items_text, ''), 'E8: never the gross');
+  }
+  ok('E7 cash retry with an offer = the same order (gross fingerprint); E8 the card fingerprint binds the discounted net');
+
   // ── E6. a legacy-form order ⇒ no offer ──
   {
     const { s } = cartOf(THIRD);

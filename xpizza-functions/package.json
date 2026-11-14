@@ -226,6 +226,7 @@
     "test:branch-ops": "node tools/emulator-run.js --only firestore,database,auth --project demo-xpizza \"node test/portal-ops.emulator.test.js\"",
     "test:capp-a1": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/capp-a1-equivalence.emulator.test.js\"",
     "test:driver-ledger": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-ledger.emulator.test.js\"",
+    "test:marketing-off-golden": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/marketing-off.golden.emulator.test.js\"",
     "test:marketing-price": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/marketing-price.emulator.test.js\"",
     "test:capp-s1-money": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/capp-s1-money.emulator.test.js\"",
     "test:s3a-envio": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s3a-envio.emulator.test.js\"",
