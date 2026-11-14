@@ -37,6 +37,7 @@ export function rangeFor(preset, today, custom = null) {
     case 'today': return { from: today, to: today };
     case 'yesterday': { const y = addDays(today, -1); return { from: y, to: y }; }
     case '7d': return { from: addDays(today, -6), to: today };
+    case '14d': return { from: addDays(today, -13), to: today };   // «Rendimiento» (REND_PRESETS)
     case '30d': return { from: addDays(today, -29), to: today };
     case 'month': return { from: `${today.slice(0, 8)}01`, to: today };
     case 'custom': return custom;
@@ -272,4 +273,32 @@ export function ventasMessage(kind, code) {
     BadRequest: ['Ese período no es válido', 'Elegí otras fechas.'],
     Unavailable: ['No pudimos cargar las ventas', 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.'],
   }[kind] || ['Algo salió mal', 'Probá de nuevo en un momento.'];
+}
+
+// ── «Rendimiento» · Ventas (PLAN-portal-rendimiento-r0, advisor ACCEPTED 11-14) — ADDITIVE: the shipped page keeps PRESETS / viewModel ──
+// Q2: exactly the mockup's set (MOCKUP-portal-map s-rend :866-867), «Últimos 14 días» by default; «Ayer» / «Este mes» stay reachable
+// through «Personalizado».
+export const REND_PRESETS = [['today', 'Hoy'], ['7d', 'Últimos 7 días'], ['14d', 'Últimos 14 días'], ['30d', 'Últimos 30 días'], ['custom', 'Personalizado']];
+export const REND_DEFAULT_PRESET = '14d';
+// Q3: «Productos más vendidos» counts UNITS (the server's items[].qty, stats-api.js:135-137) — never «Pedidos» (no per-product order
+// count exists; an honest label, no new aggregate)
+export const TOP_QTY_LABEL = 'Vendidos';
+
+// The same «nothing to show» rule viewModel applies (its `empty`), for a body the screen has not modelled yet
+export function bodyEmpty(b) {
+  const k = (b && b.kpis) || {}, ca = (b && b.cancellations) || {};
+  return !(k.orders > 0) && !((ca.cancelled && ca.cancelled.orders) || (ca.refunded && ca.refunded.orders) || (ca.refund_pending && ca.refund_pending.orders));
+}
+// A stats answer → the tab's STATE: { state: 'ok' | 'empty' | 'unavailable' | 'denied' | 'error', missing: [YYYY-MM-DD] }.
+// `missing` (days the server has not computed, never zero-filled) rides WITH data — the note, not a replacement for it. A 503
+// (incl. «Todas» refused as a whole: one branch down ⇒ no total at all) is `unavailable` (retryable); 401 / 403 `denied`.
+export function statsState(res) {
+  if (!res || res.error) {
+    const st = res && res.error ? res.error.status : 0;
+    return { state: st === 503 || st === 0 ? 'unavailable' : st === 401 || st === 403 ? 'denied' : 'error', missing: [] };
+  }
+  const b = res.body;
+  if (!b || typeof b !== 'object' || !b.kpis) return { state: 'error', missing: [] };
+  const missing = Array.isArray(b.missing_days) ? b.missing_days.filter(isDate) : [];
+  return { state: bodyEmpty(b) ? 'empty' : 'ok', missing };
 }
