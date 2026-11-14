@@ -99,8 +99,17 @@ const mains = lm.envelope.menu.dishes.filter((d) => d.price >= 100 && d.dish_id 
 const LM = { main: mains[0].dish_id, main2: mains.find((d) => d.dish_id !== mains[0].dish_id).dish_id, toña: 'beer_04', coca: 'soft_01', sprite: 'soft_03', agua: 'soft_04', salva: 'beer_07' };
 S.lm_plain = { etag: lm.etag, envelope: lm.envelope };
 if (etag(lm.envelope) !== lm.etag) throw new Error('premise: the ETag formula reproduces la_musa\'s served ETag');
-{ const s = await served([], { rid: 'la_musa', base: lm.envelope, orders: await ordersOf('la_musa', lm.envelope, [[[LM.main, LM.toña], 17], [[LM.main, LM.coca], 16], [[LM.main, LM.sprite], 15], [[LM.main, LM.salva], 15], [[LM.main, LM.agua], 14], [[LM.main2, LM.sprite], 18], [[LM.main2, LM.agua], 16]]) });
+const LM_ORDERS = [[[LM.main, LM.toña], 17], [[LM.main, LM.coca], 16], [[LM.main, LM.sprite], 15], [[LM.main, LM.salva], 15], [[LM.main, LM.agua], 14], [[LM.main2, LM.sprite], 18], [[LM.main2, LM.agua], 16]];
+{ const s = await served([], { rid: 'la_musa', base: lm.envelope, orders: await ordersOf('la_musa', lm.envelope, LM_ORDERS) });
   S.lm_pairs = { etag: etag(s.envelope), envelope: s.envelope, produced: s.doc_dish_stats }; }
+// owed SBS 11-14 (advisor): the LONG-NAME upsell card — la_musa published through the REAL path with soft_04 (Agua) renamed by 3a's
+// provisionBrand inputTransform (the real candidate, the real publishVersion — no clone), the SAME co-orders as lm_pairs: main2's pairs
+// are Sprite + this drink, so its upsell row carries a name long enough for the 2-line clamp (16b)
+const LONG_NAME = 'Limonada de hierbabuena con jengibre';
+{ const lml = await quiet(() => provisionBrand('la_musa', { inputTransform: (input) => ({ ...input, items: input.items.map((it) => (it.key === LM.agua ? { ...it, display: { ...it.display, name: LONG_NAME } } : it)) }) }));
+  if (!JSON.stringify(lml.envelope.menu).includes(LONG_NAME) || JSON.stringify(lm.envelope.menu).includes(LONG_NAME)) throw new Error('premise: the long name is served by the transformed publish only');
+  const s = await served([], { rid: 'la_musa', base: lml.envelope, orders: await ordersOf('la_musa', lml.envelope, LM_ORDERS) });
+  S.lm_pairs_long = { etag: etag(s.envelope), envelope: s.envelope, produced: s.doc_dish_stats, long_name: LONG_NAME }; }
 out.la_musa = LM;
 const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 out.scenarios_sha256 = createHash('sha256').update(canon(out.scenarios)).digest('hex');

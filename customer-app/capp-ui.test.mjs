@@ -4120,3 +4120,17 @@ test('dish-stats (2b) UPS5: a partner that became a CHOICE item on the live menu
   b.click('#cart-bar');
   assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.toña, L.salva].map((d) => keyOfDish(b, d)), '🔴 DS-UPS: a launcher partner is never upsold');
 });
+// owed SBS 11-14 (advisor): the LONG-NAME upsell card through the REAL publish — 3a's provisionBrand inputTransform (2759d0f4c) renames
+// la_musa soft_04 in the real candidate; the fixture's other scenarios are byte-identical to the 9ca6e61b7 generation
+test('dish-stats (2b) UPS7 (16b): a long-named pair (published through the real path) reaches the upsell row, whole, in the 2-line clamped name', () => {
+  assert.equal(DSX.source.commit, '2759d0f4ce1d796d0552977ce585e63392725c6d', 'the producing commit: 3a feat/capp-offers-3a (provisionBrand inputTransform)');
+  const { execFileSync } = require('node:child_process');
+  assert.equal(execFileSync('git', ['rev-parse', `${DSX.source.commit}:xpizza-functions/contract/capp/capture.mjs`], { cwd: ROOT, encoding: 'utf8' }).trim(), DSX.source.blobs['contract/capp/capture.mjs'], '🔴 UPS7: the generator\'s capture.mjs is the pinned blob');
+  const L = DSX.scenarios.lm_pairs_long, LONG = L.long_name;
+  assert.ok(LONG.length > 30 && JSON.stringify(L.envelope.menu).includes(LONG) && !JSON.stringify(DSX.scenarios.lm_pairs.envelope.menu).includes(LONG), 'premise: only the transformed publish serves it');
+  const b = boot('la_musa', { envelope: J(L.envelope) }); b.ui.cart.inc(lmKey(b, DSX.la_musa.main2)); b.ui.render(); b.click('#cart-bar');
+  const names = [...b.qa('#layer .upsell .ucard .nm')].map((n) => n.textContent);
+  assert.ok(names.includes(LONG), `🔴 UPS7: the long name is the card's whole text (the clamp is CSS, never a cut string): ${names.join(' | ')}`);
+  const nm = [...b.qa('#layer .upsell .ucard .nm')].find((n) => n.textContent === LONG);
+  assert.equal(b.w.getComputedStyle(nm).getPropertyValue('-webkit-line-clamp'), '2', 'clamped to two lines');
+});

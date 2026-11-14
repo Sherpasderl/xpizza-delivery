@@ -1,10 +1,10 @@
 {
  "source": {
-  "commit": "9ca6e61b700bac81cfbddb3b5b53460541d79e77",
+  "commit": "2759d0f4ce1d796d0552977ce585e63392725c6d",
   "blobs": {
-   "contract/capp/capture.mjs": "d2f148cc4814e88ccb1ac43acc1457646015e89d",
-   "catalog/dish-stats-serve.js": "747fa2661c3e98d3221ff8ded1284fd85f3dbeaa",
-   "catalog/public-menu.js": "d317b4fb034a43c92c85513b23a8a969aaccdc03",
+   "contract/capp/capture.mjs": "b9a2ab451596aa7e4a32ec6be651b4d5fb55a1e7",
+   "catalog/dish-stats-serve.js": "e9c35036da0ed00369e1a1a18f893a41ed5cb5f0",
+   "catalog/public-menu.js": "6c07ae214b6788102e78f371abcc78cf955074c9",
    "catalog/canonical-json.js": "22afd7fef05a24ec66ecd4568916bd606a3609d7",
    "ratings/aggregate.js": "6890eff51e58c4f41d0ae7920c8b6998f9a666da",
    "ratings/rating-v2.js": "57e2024a2349d5b03c969c28cdf1d07b93e00a40",
@@ -4451,6 +4451,1113 @@
      "orders_30d": 30
     }
    }
+  },
+  "lm_pairs_long": {
+   "etag": "\"0c9328a588fa65a1cc1c02826c8d06ad5079d0ee5a49b9c9c8ed2305aa45f5d6\"",
+   "envelope": {
+    "rid": "la_musa",
+    "representation_version": "1d.4",
+    "menu": {
+     "dishes": [
+      {
+       "id": "dimsum_01",
+       "cat": "dim_sum",
+       "name": "Sichuan Spicy Wonton",
+       "price": 249,
+       "desc": "Wonton de cerdo, aceite de chili, vinagre Chinkiang y soya",
+       "tags": [
+        "chefs_pick",
+        "most_ordered"
+       ],
+       "color": "#A8814E",
+       "emoji": "🥟",
+       "reward_icon": "dumpling",
+       "dish_id": "dimsum_01"
+      },
+      {
+       "id": "dimsum_02",
+       "cat": "dim_sum",
+       "name": "Pork Belly Buns",
+       "price": 248,
+       "desc": "Bao al vapor, panceta braseada, hoisin, daikon encurtido",
+       "tags": [
+        "must_try"
+       ],
+       "color": "#A8814E",
+       "emoji": "🥟",
+       "reward_icon": "dumpling",
+       "dish_id": "dimsum_02"
+      },
+      {
+       "id": "dimsum_03",
+       "cat": "dim_sum",
+       "name": "Shrimp Dumplings",
+       "price": 286,
+       "desc": "Dumplings al vapor, camaron, hongo shiitake, sésamo, soya con jengibre",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🥟",
+       "reward_icon": "dumpling",
+       "dish_id": "dimsum_03"
+      },
+      {
+       "id": "dimsum_04",
+       "cat": "dim_sum",
+       "name": "Fried Wontons",
+       "price": 288,
+       "desc": "Wonton frito de cerdo, hongos shiitake, salsa sweet chili",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🥟",
+       "reward_icon": "dumpling",
+       "dish_id": "dimsum_04"
+      },
+      {
+       "id": "dimsum_05",
+       "cat": "dim_sum",
+       "name": "Shrimp Tempura Buns",
+       "price": 260,
+       "desc": "Bao al vapor, tempura crocante, sriracha mayo",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🥟",
+       "reward_icon": "dumpling",
+       "dish_id": "dimsum_05"
+      },
+      {
+       "id": "starter_01",
+       "cat": "starters",
+       "name": "Korean BBQ Wings",
+       "price": 262,
+       "desc": "Glaseadas con gochujang, sésamo, cebollín, kewpie",
+       "tags": [
+        "crowd_favourite"
+       ],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_01"
+      },
+      {
+       "id": "starter_02",
+       "cat": "starters",
+       "name": "Chorizo Parrillero",
+       "price": 252,
+       "desc": "A la parrilla, mostaza dijon",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_02"
+      },
+      {
+       "id": "starter_03",
+       "cat": "starters",
+       "name": "Costillitas Chinas",
+       "price": 265,
+       "desc": "Costillas de cerdo glaseadas, hoisin, cinco especias, sésamo",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_03"
+      },
+      {
+       "id": "starter_04",
+       "cat": "starters",
+       "name": "Camaron Que Se Duerme",
+       "price": 378,
+       "desc": "A la parrilla, aji amarillo",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_04"
+      },
+      {
+       "id": "starter_05",
+       "cat": "starters",
+       "name": "Camaron Asiatico",
+       "price": 413,
+       "desc": "Camarones salteados, frijol negro, ajo, chile",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_05"
+      },
+      {
+       "id": "starter_06",
+       "cat": "starters",
+       "name": "Spicy Camaron Tempura",
+       "price": 409,
+       "desc": "Camarones tempura crocantes, mayo picante, cítricos",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍢",
+       "reward_icon": "skewer",
+       "dish_id": "starter_06"
+      },
+      {
+       "id": "special_01",
+       "cat": "house_specials",
+       "name": "Cantonese Lobster Tail",
+       "price": 588,
+       "desc": "Langosta al wok, jengibre, cebollín, salsa de ostras, crispy garlic",
+       "tags": [
+        "signature_special"
+       ],
+       "color": "#B61218",
+       "emoji": "✦",
+       "reward_icon": "star",
+       "dish_id": "special_01"
+      },
+      {
+       "id": "special_02",
+       "cat": "house_specials",
+       "name": "Tuna Tartare",
+       "price": 478,
+       "desc": "Atún yellowfin, aceite de sésamo, aguacate, jengibre, chips wonton",
+       "tags": [
+        "must_try"
+       ],
+       "color": "#B61218",
+       "emoji": "✦",
+       "reward_icon": "star",
+       "dish_id": "special_02"
+      },
+      {
+       "id": "special_04",
+       "cat": "house_specials",
+       "name": "Asado de Tira",
+       "price": 624,
+       "desc": "Costilla corta braseada, adobo asiático, ají amarillo",
+       "tags": [],
+       "color": "#B61218",
+       "emoji": "✦",
+       "reward_icon": "star",
+       "dish_id": "special_04"
+      },
+      {
+       "id": "special_05",
+       "cat": "house_specials",
+       "name": "Filete La Muse",
+       "price": 384,
+       "desc": "Filete sellado, mantequilla miso, jengibre encurtido, microverdes",
+       "tags": [],
+       "color": "#B61218",
+       "emoji": "✦",
+       "reward_icon": "star",
+       "dish_id": "special_05"
+      },
+      {
+       "id": "crudo_01",
+       "cat": "crudo",
+       "name": "Tuna Crudo",
+       "price": 452,
+       "desc": "Atún laminado, leche de tigre, ají amarillo, microverdes",
+       "tags": [
+        "must_try"
+       ],
+       "color": "#2D5447",
+       "emoji": "🐟",
+       "reward_icon": "fish",
+       "dish_id": "crudo_01"
+      },
+      {
+       "id": "crudo_02",
+       "cat": "crudo",
+       "name": "Ceviche Peruano",
+       "price": 346,
+       "desc": "Pescado fresco, leche de tigre, cebolla morada, camote, choclo",
+       "tags": [],
+       "color": "#2D5447",
+       "emoji": "🐟",
+       "reward_icon": "fish",
+       "dish_id": "crudo_02"
+      },
+      {
+       "id": "crudo_03",
+       "cat": "crudo",
+       "name": "Ceviche de Camaron",
+       "price": 337,
+       "desc": "Camarones tigre, leche de tigre, ají amarillo, pepino",
+       "tags": [],
+       "color": "#2D5447",
+       "emoji": "🐟",
+       "reward_icon": "fish",
+       "dish_id": "crudo_03"
+      },
+      {
+       "id": "noodle_01",
+       "cat": "noodles",
+       "name": "Pad Thai",
+       "price": 414,
+       "desc": "Fideos wok, tamarindo, maní, brotes, huevo",
+       "tags": [
+        "most_ordered"
+       ],
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_01"
+      },
+      {
+       "id": "noodle_01_sin",
+       "cat": "noodles",
+       "name": "Pad Thai - Sin Proteína",
+       "price": 307,
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "variantOf": "noodle_01",
+       "choice": "Sin Proteína",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_01_sin"
+      },
+      {
+       "id": "noodle_01_pollo",
+       "cat": "noodles",
+       "name": "Pad Thai - Pollo",
+       "price": 342,
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "variantOf": "noodle_01",
+       "choice": "Pollo",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_01_pollo"
+      },
+      {
+       "id": "noodle_01_camaron",
+       "cat": "noodles",
+       "name": "Pad Thai - Camarones",
+       "price": 414,
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "variantOf": "noodle_01",
+       "choice": "Camarones",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_01_camaron"
+      },
+      {
+       "id": "noodle_02",
+       "cat": "noodles",
+       "name": "Broccoli Beef",
+       "price": 492,
+       "desc": "Res tierna, brócoli, salsa de ostras y jengibre",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_02"
+      },
+      {
+       "id": "noodle_03",
+       "cat": "noodles",
+       "name": "Hunan Chicken",
+       "price": 340,
+       "desc": "Pollo salteado, chiles secos, frijol negro, bok choy",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🍜",
+       "reward_icon": "noodle",
+       "dish_id": "noodle_03"
+      },
+      {
+       "id": "rice_01",
+       "cat": "rice",
+       "name": "General Tso Chicken",
+       "price": 270,
+       "desc": "Pollo crocante al wok, salsa Tso dulce-picante, sésamo, arroz jazmín",
+       "tags": [
+        "most_ordered"
+       ],
+       "color": "#A8814E",
+       "emoji": "🍚",
+       "reward_icon": "rice",
+       "dish_id": "rice_01"
+      },
+      {
+       "id": "rice_02",
+       "cat": "rice",
+       "name": "Mongolian Beef",
+       "price": 456,
+       "desc": "Res al wok, hoisin, jengibre, cebollín, arroz",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🍚",
+       "reward_icon": "rice",
+       "dish_id": "rice_02"
+      },
+      {
+       "id": "rice_03",
+       "cat": "rice",
+       "name": "Chicken Fried Rice",
+       "price": 448,
+       "desc": "Arroz jazmín al wok, huevo, vegetales, salsa de ostras",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🍚",
+       "reward_icon": "rice",
+       "dish_id": "rice_03"
+      },
+      {
+       "id": "rice_04",
+       "cat": "rice",
+       "name": "Broccoli Chicken",
+       "price": 392,
+       "desc": "lascas de pollo, brócoli salteado, salsa de ostras preparada",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🍚",
+       "reward_icon": "rice",
+       "dish_id": "rice_04"
+      },
+      {
+       "id": "rice_05",
+       "cat": "rice",
+       "name": "Lap Cheong",
+       "price": 292,
+       "desc": "longaniza china, arroz blanco, arvejas chinas salteadas",
+       "tags": [],
+       "color": "#A8814E",
+       "emoji": "🍚",
+       "reward_icon": "rice",
+       "dish_id": "rice_05"
+      },
+      {
+       "id": "soup_01",
+       "cat": "soups_salads",
+       "name": "Cantonese Noodle Soup",
+       "price": 255,
+       "desc": "Caldo de huesos, fideos de huevo, char siu, bok choy",
+       "tags": [],
+       "color": "#2D5447",
+       "emoji": "🥣",
+       "reward_icon": "soup",
+       "dish_id": "soup_01"
+      },
+      {
+       "id": "soup_02",
+       "cat": "soups_salads",
+       "name": "Wonton Soup",
+       "price": 288,
+       "desc": "Wonton de cerdo y camarón, caldo de la casa, jengibre, cebollín",
+       "tags": [],
+       "color": "#2D5447",
+       "emoji": "🥣",
+       "reward_icon": "soup",
+       "dish_id": "soup_02"
+      },
+      {
+       "id": "soup_03",
+       "cat": "soups_salads",
+       "name": "Sunomono Salad",
+       "price": 192,
+       "desc": "Pepino japonés, wakame, sésamo, vinagre de arroz",
+       "tags": [],
+       "color": "#2D5447",
+       "emoji": "🥣",
+       "reward_icon": "soup",
+       "dish_id": "soup_03"
+      },
+      {
+       "id": "beer_01",
+       "cat": "bebidas",
+       "name": "Corona",
+       "price": 102,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_01"
+      },
+      {
+       "id": "beer_02",
+       "cat": "bebidas",
+       "name": "Miller Draft",
+       "price": 102,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_02"
+      },
+      {
+       "id": "beer_03",
+       "cat": "bebidas",
+       "name": "Miller Lite",
+       "price": 102,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_03"
+      },
+      {
+       "id": "beer_04",
+       "cat": "bebidas",
+       "name": "Toña",
+       "price": 98,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_04"
+      },
+      {
+       "id": "beer_05",
+       "cat": "bebidas",
+       "name": "Michelob Ultra",
+       "price": 102,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_05"
+      },
+      {
+       "id": "beer_06",
+       "cat": "bebidas",
+       "name": "Coors Light",
+       "price": 102,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_06"
+      },
+      {
+       "id": "beer_07",
+       "cat": "bebidas",
+       "name": "Salvavida",
+       "price": 81,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_07"
+      },
+      {
+       "id": "beer_08",
+       "cat": "bebidas",
+       "name": "Imperial",
+       "price": 81,
+       "desc": "",
+       "tags": [],
+       "color": "#13100E",
+       "emoji": "🍺",
+       "subcat": "Cervezas",
+       "dish_id": "beer_08"
+      },
+      {
+       "id": "soft_01",
+       "cat": "bebidas",
+       "name": "Coca Cola",
+       "price": 40,
+       "desc": "",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🥤",
+       "subcat": "Sodas",
+       "reward_icon": "glass",
+       "dish_id": "soft_01"
+      },
+      {
+       "id": "soft_02",
+       "cat": "bebidas",
+       "name": "Coca Cola Zero",
+       "price": 40,
+       "desc": "",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🥤",
+       "subcat": "Sodas",
+       "reward_icon": "glass",
+       "dish_id": "soft_02"
+      },
+      {
+       "id": "soft_03",
+       "cat": "bebidas",
+       "name": "Sprite",
+       "price": 40,
+       "desc": "",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🥤",
+       "subcat": "Sodas",
+       "reward_icon": "glass",
+       "dish_id": "soft_03"
+      },
+      {
+       "id": "soft_04",
+       "cat": "bebidas",
+       "name": "Limonada de hierbabuena con jengibre",
+       "price": 40,
+       "desc": "",
+       "tags": [],
+       "color": "#8A7B6B",
+       "emoji": "🥤",
+       "subcat": "Sodas",
+       "reward_icon": "glass",
+       "dish_id": "soft_04"
+      }
+     ],
+     "extras": [
+      {
+       "id": "rice_white",
+       "cat": "Acompañamientos",
+       "name": "Arroz Blanco",
+       "price": 50,
+       "reward_icon": "rice",
+       "extra_id": "rice_white"
+      },
+      {
+       "id": "rice_chinese",
+       "cat": "Acompañamientos",
+       "name": "Arroz Chino",
+       "price": 85,
+       "reward_icon": "rice",
+       "extra_id": "rice_chinese"
+      },
+      {
+       "id": "papas_fritas",
+       "cat": "Acompañamientos",
+       "name": "Papas Fritas",
+       "price": 75,
+       "reward_icon": "rice",
+       "extra_id": "papas_fritas"
+      },
+      {
+       "id": "sauce_chili_oil",
+       "cat": "Salsas",
+       "name": "Aceite Hot Chili",
+       "price": 30,
+       "extra_id": "sauce_chili_oil"
+      },
+      {
+       "id": "sauce_aioli",
+       "cat": "Salsas",
+       "name": "Salsa Aioli",
+       "price": 30,
+       "extra_id": "sauce_aioli"
+      },
+      {
+       "id": "sauce_chipotle",
+       "cat": "Salsas",
+       "name": "Salsa Chipotle",
+       "price": 30,
+       "extra_id": "sauce_chipotle"
+      },
+      {
+       "id": "sauce_dumpling",
+       "cat": "Salsas",
+       "name": "Salsa Dumplings",
+       "price": 30,
+       "extra_id": "sauce_dumpling"
+      },
+      {
+       "id": "sauce_wonton",
+       "cat": "Salsas",
+       "name": "Salsa Wontons",
+       "price": 30,
+       "extra_id": "sauce_wonton"
+      },
+      {
+       "id": "sauce_pad_thai",
+       "cat": "Salsas",
+       "name": "Salsa Pad Thai",
+       "price": 30,
+       "extra_id": "sauce_pad_thai"
+      },
+      {
+       "id": "sauce_spicy_mayo",
+       "cat": "Salsas",
+       "name": "Salsa Spicy Mayo",
+       "price": 30,
+       "extra_id": "sauce_spicy_mayo"
+      },
+      {
+       "id": "sauce_tuna_tartar",
+       "cat": "Salsas",
+       "name": "Salsa Tuna Tartar",
+       "price": 30,
+       "extra_id": "sauce_tuna_tartar"
+      },
+      {
+       "id": "protein_chicken",
+       "cat": "Proteínas",
+       "name": "Extra Pollo",
+       "price": 65,
+       "extra_id": "protein_chicken"
+      },
+      {
+       "id": "protein_beef",
+       "cat": "Proteínas",
+       "name": "Extra Filete Res",
+       "price": 155,
+       "extra_id": "protein_beef"
+      },
+      {
+       "id": "protein_shrimp",
+       "cat": "Proteínas",
+       "name": "Extra Camaron",
+       "price": 135,
+       "extra_id": "protein_shrimp"
+      }
+     ],
+     "categories": [
+      {
+       "id": "dim_sum",
+       "name": "Dim Sum"
+      },
+      {
+       "id": "starters",
+       "name": "Starters"
+      },
+      {
+       "id": "house_specials",
+       "name": "House Specials"
+      },
+      {
+       "id": "crudo",
+       "name": "Crudo"
+      },
+      {
+       "id": "noodles",
+       "name": "Noodles"
+      },
+      {
+       "id": "rice",
+       "name": "Rice"
+      },
+      {
+       "id": "soups_salads",
+       "name": "Soups & Salads"
+      },
+      {
+       "id": "bebidas",
+       "name": "Bebidas",
+       "subcats": [
+        "Sodas",
+        "Cervezas"
+       ],
+       "layout": "list"
+      }
+     ],
+     "variant_items": {
+      "noodle_01": {
+       "label": "Proteína",
+       "basePrice": 307,
+       "variantIds": [
+        "noodle_01_sin",
+        "noodle_01_pollo",
+        "noodle_01_camaron"
+       ]
+      }
+     },
+     "has_photo": [
+      "crudo_01",
+      "crudo_02",
+      "crudo_03",
+      "dimsum_01",
+      "dimsum_02",
+      "dimsum_03",
+      "dimsum_04",
+      "dimsum_05",
+      "noodle_01",
+      "noodle_02",
+      "noodle_03",
+      "rice_01",
+      "rice_02",
+      "rice_03",
+      "rice_04",
+      "rice_05",
+      "soup_01",
+      "soup_03",
+      "special_01",
+      "special_02",
+      "special_04",
+      "special_05",
+      "starter_01",
+      "starter_02",
+      "starter_03",
+      "starter_04",
+      "starter_05",
+      "starter_06"
+     ],
+     "extras_by_category": {
+      "dim_sum": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "starters": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "house_specials": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "crudo": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "noodles": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "rice": [
+       "Acompañamientos",
+       "Salsas"
+      ],
+      "soups_salads": [
+       "Acompañamientos",
+       "Salsas"
+      ]
+     },
+     "extras_by_item": {
+      "rice_03": [
+       "Proteínas"
+      ]
+     },
+     "badges": {
+      "signature_special": {
+       "label": "Especial de la casa",
+       "cls": "menu-badge--bronze"
+      },
+      "chefs_pick": {
+       "label": "Selección del chef",
+       "cls": "menu-badge--bronze"
+      },
+      "must_try": {
+       "label": "Imperdible",
+       "cls": "menu-badge--red"
+      },
+      "crowd_favourite": {
+       "label": "Favorito",
+       "cls": "menu-badge--red"
+      },
+      "most_ordered": {
+       "label": "Más pedido",
+       "cls": "menu-badge--jade"
+      },
+      "price_pending": {
+       "label": "Precio próximamente",
+       "cls": "menu-badge--muted"
+      }
+     },
+     "badge_priority": [
+      "signature_special",
+      "chefs_pick",
+      "must_try",
+      "crowd_favourite",
+      "most_ordered",
+      "price_pending"
+     ],
+     "extras_eligibility": {
+      "version": 1,
+      "deny": {
+       "dimsum_01": [],
+       "dimsum_02": [],
+       "dimsum_03": [],
+       "dimsum_04": [],
+       "dimsum_05": [],
+       "starter_01": [],
+       "starter_02": [],
+       "starter_03": [],
+       "starter_04": [],
+       "starter_05": [],
+       "starter_06": [],
+       "special_01": [],
+       "special_02": [],
+       "special_04": [],
+       "special_05": [],
+       "crudo_01": [],
+       "crudo_02": [],
+       "crudo_03": [],
+       "noodle_01": [],
+       "noodle_01_sin": [],
+       "noodle_01_pollo": [],
+       "noodle_01_camaron": [],
+       "noodle_02": [],
+       "noodle_03": [],
+       "rice_01": [],
+       "rice_02": [],
+       "rice_03": [],
+       "rice_04": [],
+       "rice_05": [],
+       "soup_01": [],
+       "soup_02": [],
+       "soup_03": [],
+       "beer_01": [],
+       "beer_02": [],
+       "beer_03": [],
+       "beer_04": [],
+       "beer_05": [],
+       "beer_06": [],
+       "beer_07": [],
+       "beer_08": [],
+       "soft_01": [],
+       "soft_02": [],
+       "soft_03": [],
+       "soft_04": []
+      }
+     },
+     "avail_identity": {
+      "field": "id"
+     },
+     "photos": {
+      "dimsum_01": {
+       "card": "https://orders.lamusa.hn/images/dimsum_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/dimsum_01-hero.webp"
+      },
+      "dimsum_02": {
+       "card": "https://orders.lamusa.hn/images/dimsum_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/dimsum_02-hero.webp"
+      },
+      "dimsum_03": {
+       "card": "https://orders.lamusa.hn/images/dimsum_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/dimsum_03-hero.webp"
+      },
+      "dimsum_04": {
+       "card": "https://orders.lamusa.hn/images/dimsum_04-card.webp",
+       "hero": "https://orders.lamusa.hn/images/dimsum_04-hero.webp"
+      },
+      "dimsum_05": {
+       "card": "https://orders.lamusa.hn/images/dimsum_05-card.webp",
+       "hero": "https://orders.lamusa.hn/images/dimsum_05-hero.webp"
+      },
+      "starter_01": {
+       "card": "https://orders.lamusa.hn/images/starter_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_01-hero.webp"
+      },
+      "starter_02": {
+       "card": "https://orders.lamusa.hn/images/starter_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_02-hero.webp"
+      },
+      "starter_03": {
+       "card": "https://orders.lamusa.hn/images/starter_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_03-hero.webp"
+      },
+      "starter_04": {
+       "card": "https://orders.lamusa.hn/images/starter_04-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_04-hero.webp"
+      },
+      "starter_05": {
+       "card": "https://orders.lamusa.hn/images/starter_05-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_05-hero.webp"
+      },
+      "starter_06": {
+       "card": "https://orders.lamusa.hn/images/starter_06-card.webp",
+       "hero": "https://orders.lamusa.hn/images/starter_06-hero.webp"
+      },
+      "special_01": {
+       "card": "https://orders.lamusa.hn/images/special_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/special_01-hero.webp"
+      },
+      "special_02": {
+       "card": "https://orders.lamusa.hn/images/special_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/special_02-hero.webp"
+      },
+      "special_04": {
+       "card": "https://orders.lamusa.hn/images/special_04-card.webp",
+       "hero": "https://orders.lamusa.hn/images/special_04-hero.webp"
+      },
+      "special_05": {
+       "card": "https://orders.lamusa.hn/images/special_05-card.webp",
+       "hero": "https://orders.lamusa.hn/images/special_05-hero.webp"
+      },
+      "crudo_01": {
+       "card": "https://orders.lamusa.hn/images/crudo_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/crudo_01-hero.webp"
+      },
+      "crudo_02": {
+       "card": "https://orders.lamusa.hn/images/crudo_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/crudo_02-hero.webp"
+      },
+      "crudo_03": {
+       "card": "https://orders.lamusa.hn/images/crudo_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/crudo_03-hero.webp"
+      },
+      "noodle_01": {
+       "card": "https://orders.lamusa.hn/images/noodle_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/noodle_01-hero.webp"
+      },
+      "noodle_02": {
+       "card": "https://orders.lamusa.hn/images/noodle_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/noodle_02-hero.webp"
+      },
+      "noodle_03": {
+       "card": "https://orders.lamusa.hn/images/noodle_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/noodle_03-hero.webp"
+      },
+      "rice_01": {
+       "card": "https://orders.lamusa.hn/images/rice_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/rice_01-hero.webp"
+      },
+      "rice_02": {
+       "card": "https://orders.lamusa.hn/images/rice_02-card.webp",
+       "hero": "https://orders.lamusa.hn/images/rice_02-hero.webp"
+      },
+      "rice_03": {
+       "card": "https://orders.lamusa.hn/images/rice_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/rice_03-hero.webp"
+      },
+      "rice_04": {
+       "card": "https://orders.lamusa.hn/images/rice_04-card.webp",
+       "hero": "https://orders.lamusa.hn/images/rice_04-hero.webp"
+      },
+      "rice_05": {
+       "card": "https://orders.lamusa.hn/images/rice_05-card.webp",
+       "hero": "https://orders.lamusa.hn/images/rice_05-hero.webp"
+      },
+      "soup_01": {
+       "card": "https://orders.lamusa.hn/images/soup_01-card.webp",
+       "hero": "https://orders.lamusa.hn/images/soup_01-hero.webp"
+      },
+      "soup_03": {
+       "card": "https://orders.lamusa.hn/images/soup_03-card.webp",
+       "hero": "https://orders.lamusa.hn/images/soup_03-hero.webp"
+      }
+     },
+     "item_keys": {
+      "dimsum_01": "dimsum_01",
+      "dimsum_02": "dimsum_02",
+      "dimsum_03": "dimsum_03",
+      "dimsum_04": "dimsum_04",
+      "dimsum_05": "dimsum_05",
+      "starter_01": "starter_01",
+      "starter_02": "starter_02",
+      "starter_03": "starter_03",
+      "starter_04": "starter_04",
+      "starter_05": "starter_05",
+      "starter_06": "starter_06",
+      "special_01": "special_01",
+      "special_02": "special_02",
+      "special_04": "special_04",
+      "special_05": "special_05",
+      "crudo_01": "crudo_01",
+      "crudo_02": "crudo_02",
+      "crudo_03": "crudo_03",
+      "noodle_01": "noodle_01",
+      "noodle_01_sin": "noodle_01_sin",
+      "noodle_01_pollo": "noodle_01_pollo",
+      "noodle_01_camaron": "noodle_01_camaron",
+      "noodle_02": "noodle_02",
+      "noodle_03": "noodle_03",
+      "rice_01": "rice_01",
+      "rice_02": "rice_02",
+      "rice_03": "rice_03",
+      "rice_04": "rice_04",
+      "rice_05": "rice_05",
+      "soup_01": "soup_01",
+      "soup_02": "soup_02",
+      "soup_03": "soup_03",
+      "beer_01": "beer_01",
+      "beer_02": "beer_02",
+      "beer_03": "beer_03",
+      "beer_04": "beer_04",
+      "beer_05": "beer_05",
+      "beer_06": "beer_06",
+      "beer_07": "beer_07",
+      "beer_08": "beer_08",
+      "soft_01": "soft_01",
+      "soft_02": "soft_02",
+      "soft_03": "soft_03",
+      "soft_04": "soft_04"
+     },
+     "dish_stats": {
+      "dimsum_01": {
+       "orders_30d": 77,
+       "top_rank": 1,
+       "pairs": [
+        {
+         "dishId": "beer_04",
+         "count": 17
+        },
+        {
+         "dishId": "soft_01",
+         "count": 16
+        },
+        {
+         "dishId": "beer_07",
+         "count": 15
+        }
+       ]
+      },
+      "dimsum_02": {
+       "orders_30d": 34,
+       "top_rank": 2,
+       "pairs": [
+        {
+         "dishId": "soft_03",
+         "count": 18
+        },
+        {
+         "dishId": "soft_04",
+         "count": 16
+        }
+       ]
+      },
+      "soft_03": {
+       "orders_30d": 33,
+       "top_rank": 3
+      },
+      "soft_04": {
+       "orders_30d": 30
+      }
+     }
+    }
+   },
+   "produced": {
+    "dimsum_01": {
+     "orders_30d": 77,
+     "top_rank": 1,
+     "pairs": [
+      {
+       "dishId": "beer_04",
+       "count": 17
+      },
+      {
+       "dishId": "soft_01",
+       "count": 16
+      },
+      {
+       "dishId": "beer_07",
+       "count": 15
+      }
+     ]
+    },
+    "dimsum_02": {
+     "orders_30d": 34,
+     "top_rank": 2,
+     "pairs": [
+      {
+       "dishId": "soft_03",
+       "count": 18
+      },
+      {
+       "dishId": "soft_04",
+       "count": 16
+      }
+     ]
+    },
+    "soft_03": {
+     "orders_30d": 33,
+     "top_rank": 3
+    },
+    "soft_04": {
+     "orders_30d": 30
+    }
+   },
+   "long_name": "Limonada de hierbabuena con jengibre"
   }
  },
  "la_musa": {
@@ -4462,5 +5569,5 @@
   "agua": "soft_04",
   "salva": "beer_07"
  },
- "scenarios_sha256": "2eeba62d0edf9796a5ff8eeeaa436daf663fd601d58212f8b6ca122de61b38fd"
+ "scenarios_sha256": "70095aeb16b57580524a135a014dfea4b8118ac2e0a1cc6b8b38b7ace8824bdf"
 }
