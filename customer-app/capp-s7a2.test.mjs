@@ -391,6 +391,55 @@ const VIRTUAL = new Set([
   'store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled',
   'store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)',
   'store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»',
+  // chunk 4 (file order 139–186: getMyOrders / Pedidos + its r2/r3 identity cells, receipts, Volver a pedir, C-3r G1/G3/G4)
+  'getMyOrders fake: as strict as the note — 401 without / with a non-customer token, 403 for a tombstone, 400 for an extra key / a body / a bad limit or cursor, paging exact across 45 rows (no dup, no gap), the projection a whitelist',
+  'Pedidos (member): the rows from getMyOrders (the real writer\'s entries) — the active order\'s card (status, «Orden #N» only when numbered, no tracking without its token), the past rows (store, «Sáb 11 oct · L 340», items_text AS GIVEN); the token only in the header; «Volver a pedir» hidden (interim)',
+  'Pedidos: a refused / failed read (401, 403, offline) claims NO empty state; a guest gets v6\'s empty state with NO read',
+  'Pedidos: THIS device\'s active order — its card (v6 «Orden #N · hoy · …», the sent lines) opens its live screen; it survives a reload (the local record) and a reload of /r/{rid}/pago lands on its screen; a final status drops it',
+  'Pedidos: the device\'s active record is written AT placement (no live channel needed: no RTDB base, no stream, no number read)',
+  'C-3r G4: the phone «Pedidos» tab shows the active-order dot while this device has an active order (also after a reload); none without one; the desktop bar draws none',
+  'Pedidos: cold link /pedidos hydrates the screen; leaving reflects the URL',
+  'C-3r G3 (D-4a Phase 1 = URL REFLECTION by replaceState, no Forward): a TAP on Pedidos writes /pedidos; a past receipt opened from it, then the device Back ⇒ Pedidos again with /pedidos reflected; no Forward entry',
+  'getMyOrders client: ONLY the Row whitelist survives; a malformed row is dropped; the token rides the header of a GET',
+  'store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card placement (valid credentials) ⇒ its verification starts by itself — a status request with no tap',
+  'store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (directory 503) keeps the handoff; the next (online) launch on that build still restores the store, its cart open, the line',
+  'Pedidos r2 P1 identity: Ana\'s history read still in flight when the SDK signs her out ⇒ it NEVER paints (the guest sees v6\'s empty state); a new admission loads its own',
+  'Pedidos r2 P1 shared device: a GUEST\'s active order is dropped when a DIFFERENT member signs in (unclaimed); a MEMBER\'s is hidden from the next person — no card, no restore, no URL',
+  'Pedidos r2 P2 expiry: the 24 h bound is LIVE (an open session past 24 h drops the card and the record) and a restore validates the record\'s age from placedAt (a tampered far exp is refused)',
+  'Pedidos r2 P2: a final status while ON Pedidos clears the active card there',
+  'Pedidos r2 P2: a cold /pedidos for a member BEFORE admission waits (never «Todavía no tenés pedidos»), then loads her rows',
+  'Pedidos r2: the server\'s items_text wins over the device snapshot when it lists the same order; invalid supplied args are refused; history rows are not controls',
+  'Pedidos r3 P1: an SDK switch Ana → Bob while Bob\'s token is still pending ⇒ Ana\'s held history answer NEVER paints (the invalidation is synchronous on the identity event)',
+  'Pedidos r3 P2/P3: a FINAL status reconciles the same order\'s cached server row (no card comes back); a server items_text of \'\' is kept as supplied',
+  'Pedidos r3 regressions: a member\'s /r/{rid}/pago reload waits for her admission and lands on her order screen; a cold /pedidos resumes her live stream once admitted',
+  'Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — any user navigation or gesture before the admission voids it (never yanked back to «Pedido recibido»); untouched, it still lands',
+  'Receipt (x_pizza delivery, cash): the past row is v6\'s «Ver el recibo» control; the screen = the PAST order screen — its priced lines, Envío / Descuento / Propina / Total, «Efectivo», her own address; the read is ?context=platform&order_id alone, the token in its header',
+  'Receipt (x_pizza delivery, ONLINE card through the real confirm patch, no promo): Envío + Propina + Total from the real breakdown (promo 0 draws no row); «Tarjeta» + «Confirmado» on a delivered card order; no reference anywhere',
+  'Receipt (la_musa pickup, card): no priced lines ⇒ v6\'s rows from the items_text lines WITHOUT amounts + the totals; «Tarjeta» with NO digits; «Recoger en» the store',
+  'Receipt: a refused read (another account\'s id ⇒ the uniform 404) or offline leaves the row\'s own screen — no tender / address guessed, no crash; the fake is as strict as the contract',
+  'Receipt identity: Ana\'s receipt read in flight when the SDK signs her out ⇒ it NEVER paints; the receipt screen is left for «Pedidos»',
+  'Receipt NO REFLOW (advisor 11-01, option A): on a miss the screen ENDS before the first block that needs the receipt — no address card, no summary, no CTA, no spinner; the fill goes IN PLACE: every node drawn before is the same node with the same text',
+  'Receipt: a FAILED read on a miss fills the row\'s own tail in place (items_text lines + total, no tender) — never stuck held',
+  'Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, the first ≤ 5 past rows\' receipts — ONE at a time; a prefetched receipt opens complete at once (no hold, no second read); the 6th+ are never read ahead',
+  'Receipt PREFETCH stops on an identity change: an SDK switch Ana → Bob mid-prefetch ⇒ none of Ana\'s remaining receipts is requested (never with Bob\'s token)',
+  'Receipt overlap: A held, back, B opened and held; A lands first ⇒ NOT drawn on B\'s screen; B lands ⇒ B\'s tail',
+  'Receipt overlap across identities (Codex r1 #3): Ana\'s read A held → Bob → Ana again; her NEW read B (updated details) lands, THEN the old A ⇒ a reopen shows B\'s details (A never overwrites the kept receipt)',
+  'Volver a pedir — by data: the eligible store\'s row has the pill, the all-null store\'s has none; the tabs appear; «Volver a pedir» lists ONLY the eligible store with its past dish (live menu)',
+  'Volver a pedir — no eligible store at all ⇒ no tabs, no pill (v6 «Pedidos anteriores» only)',
+  'Volver a pedir — the pill REPLACES that store\'s cart with the order (same dishes, same options), opens the store and its cart, «Pedido cargado en tu carrito»',
+  'Volver a pedir — MIXED nulls within one order: the resolvable line is rebuilt, the null one is dropped AND disclosed («1 plato ya no está disponible»)',
+  'Volver a pedir — a cart MID-PLACEMENT (a pending placement record / a frozen cart) is NEVER overwritten: the store opens on its own state',
+  'Volver a pedir — «+» on a past dish adds ONE to that store\'s cart, stays on «Pedidos», «Agregado · {store}»',
+  'Volver a pedir — «+» over a PURCHASED cart (a placed marker for its generation): the store\'s own reconcile clears it, the dish starts a NEW cart (a new generation) — the purchased lines never come back',
+  'Volver a pedir r2 (Codex VP r1 #2, the REAL held flow): a pill tapped while the menu cannot load yet, then RELEASED («Cerrar» on the app\'s error sheet) or the identity changes ⇒ a later menu opens nothing and applies no recipe',
+  'Volver a pedir r2 — the recipe by its DATA (Codex VP r1 #3/#4/#20): options strictly by kind (a name is never matched as an id), a malformed options container, an unknown recipe_format and count > qty ⇒ unavailable + disclosed — never a plain dish',
+  'Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the live menu no longer carries ⇒ nothing written (the store opens and discloses); a SOLD-OUT dish ⇒ its store, nothing added',
+  'Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()',
+  'C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1',
+  'C-3r G1 v1 RULE — Codex C-3r r1 P2 repro (Margherita 299→309 AND Mozzarella 50→60): never an «antes» built from the snapshot dish + a LIVE extra (it would read «antes L 359»; the configuration really cost L 349) — the extra configuration gets no note, the plain one is exact',
+  'C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)',
+  'C-3r G1 (no snapshot — an entry from before S-D): the dish price changed ⇒ NO note; live prices only (never an invented past price)',
+  'Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
 // a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
@@ -2450,7 +2499,7 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
       const entry = (db[uid] || {})[id], order = orders[id];
       const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
-      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency
+      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => (VC ? VC.setTimeout : setTimeout)(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency (on the cell's virtual clock when it has one)
       const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
       return g ? g.then(() => res) : res;
     }
@@ -2968,7 +3017,7 @@ test('Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, t
   const { S, mo } = await pedidosBoot(db, { orders, rdelay: 20 });
   try {
     S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
-    await new Promise((r) => setTimeout(r, 600)); await flush();
+    await flush(600); await flush();
     const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).map((c) => new URL(c.url).searchParams.get('order_id'));
     assert.deepEqual(rq(), ['XP-P0', 'XP-P1', 'XP-P2', 'XP-P3', 'XP-P4'], '🔴 RC-13: exactly the first 5 visible past rows, in order');
     assert.equal(mo.rx.max, 1, '🔴 RC-13: ONE at a time (never a fan-out)');
@@ -2989,11 +3038,11 @@ test('Receipt PREFETCH stops on an identity change: an SDK switch Ana → Bob mi
   try {
     S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
     const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).length;
-    for (let i = 0; i < 40 && rq() < 1; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 40 && rq() < 1; i++) await flush(20);
     assert.ok(rq() >= 1, 'premise: the prefetch started');
     st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));
     const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();
-    const at = rq(); await new Promise((r) => setTimeout(r, 500)); await flush();
+    const at = rq(); await flush(500); await flush();
     assert.ok(at < 5, 'premise: switched before the end');
     assert.equal(rq(), at, '🔴 RC-14: no receipt of Ana\'s requested after the switch');
   } finally { S.w.close(); }
