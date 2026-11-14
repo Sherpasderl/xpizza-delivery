@@ -101,11 +101,11 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
 // a transport error after sending, or a 200 whose body doesn't parse are all UNKNOWN until a fresh GET decides — envio-logic.js
 // classifyPost / classifyRecovery). → { status, body } | { status: 200, body: null, malformed: true } | { transport: true }.
 // A missing token or a withheld call (assertLive) throws BEFORE anything is sent — nothing landed, nothing to recover.
-async function rawCall(fnName, { body, token, assertLive, params }) {
+async function rawCall(fnName, { rid, body, token, assertLive, params }) {
   const tokenStr = await token();
   if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
   if (assertLive) assertLive();
-  const { url, options } = buildRequest(fnName, { body, tokenStr, params });
+  const { url, options } = buildRequest(fnName, { rid, body, tokenStr, params });
   let res;
   try { res = await sherpaFetch(url, options); } catch (_) { return { transport: true }; }
   let parsed = null, parsedOk = true;
@@ -124,6 +124,8 @@ export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, token, assertLi
   rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer }, token, assertLive });
 export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, token, assertLive }) =>
   rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev }, token, assertLive });
+// the 2×1 product picker's menu (Ofertas O2b): the editable catalog of one branch, as a RAW outcome (a failed read ⇒ the picker says so)
+export const getEditableCatalogRaw = ({ rid, token, assertLive }) => rawCall('getEditableCatalog', { rid, token, assertLive });
 export const offerRepeatRaw = ({ rid, offerId, token, assertLive }) => rawCall('marketingOfferRepeat', { body: { rid, offer_id: offerId }, token, assertLive });
 // the «Anuncio» (anuncio-core.js:5-7), DARK: anuncio-logic.js decides every outcome; nothing imports these until its screens are drawn.
 // The book body is rid + week ONLY — the server refuses anything else (a price never comes from the client); there is no charge call.

@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { DIR, NOW, OWNER, MGR, RID, backend, form, create, publish } from './marketing-harness.mjs';
+import { DIR, NOW, OWNER, MGR, RID, K1, K2, K3, backend, form, create, publish } from './marketing-harness.mjs';
 import * as ML from './marketing-logic.js';
 
 const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
@@ -24,7 +24,11 @@ const branch = (rid, name, caps) => ({ rid, brand_id: 'tb', role: caps.includes(
 // the REAL roster (marketing-harness): the owner holds both branches; the manager was granted tb_centro ONLY — E1 says the same
 const E1 = (caps = OWNER_CAPS) => ({ brands: [{ brand_id: 'tb', name: 'Tercera' }], branches: caps.includes('marketing.edit') ? [branch('tb_centro', 'Centro', caps), branch('tb_sur', 'Sur', caps)] : [branch('tb_centro', 'Centro', caps)], membership_writes_enabled: false });
 const okJson = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => null } });
-const MENU = () => okJson({ source: { restaurant_id: RID, schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+// the editable catalog the 2×1 picker reads: the SAME dish keys the harness's real catalog mirror publishes on tb_centro (K1 150 · K2 220 ·
+// K3 90), so the real core's unknown_dish check passes on what the picker offers
+const MENU = () => okJson({ source: { restaurant_id: RID, schema_version: 1, extras: [],
+  items: [{ key: K1, price: 150, display: { name: 'Pizza Margarita', cat: 'pizzas', price: 150 } }, { key: K2, price: 220, display: { name: 'Pizza Hawaiana', cat: 'pizzas', price: 220 } }, { key: K3, price: 90, display: { name: 'Refresco', cat: 'bebidas', price: 90 } }],
+  structure: { schema_version: 2, item_order: [K1, K2, K3], categories: [{ id: 'pizzas', name: 'Pizzas' }, { id: 'bebidas', name: 'Bebidas' }] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
 
 async function loadAll() {
   const tag = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
@@ -35,11 +39,12 @@ async function loadAll() {
   const files = [auth];
   const mods = {};
   try {
-    for (const name of ['app', 'ventas', 'shell', 'marketing']) {
+    for (const name of ['app', 'ventas', 'shell', 'marketing-builder', 'marketing']) {   // the builder per page too: its dialog state is module-level
       const src = readFileSync(join(DIR, `${name}.js`), 'utf8')
         .replace(/from '\.\/auth\.js'/g, `from './__mkt-auth-stub.${tag}.mjs'`)
         .replace(/from '\.\/app\.js'/g, `from '${url('app')}'`)
-        .replace(/from '\.\/shell\.js'/g, `from '${url('shell')}'`);
+        .replace(/from '\.\/shell\.js'/g, `from '${url('shell')}'`)
+        .replace(/from '\.\/marketing-builder\.js'/g, `from '${url('marketing-builder')}'`);
       writeFileSync(tmp(name), src); files.push(tmp(name));
       mods[name] = await import(pathToFileURL(tmp(name)).href);
     }
@@ -251,4 +256,133 @@ test('switched OFF on the server, visited directly: the title + lede only (NOT-D
   b.net.down = false;
   q.btn('Reintentar').click(); await settle(80);
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 1, 'recovered');
+});
+
+
+// ═══ O2b · the builder dialog + the review sheet (v5 3 / 3b; PLAN-portal-marketing-O2-r0 rulings) ═════════════════════════════════
+const dlg = (p) => p.host().querySelector('.mk5b-dlg');
+const rowEl = (p, id) => p.host().querySelector(`.mk5b-row[data-row="${id}"]`);
+const rowVal = (p, id) => rowEl(p, id).querySelector('.mk5b-val').textContent;
+async function openCard(p, type) {
+  p.mods.marketing.clock.now = () => NOW;   // the page's clock = the real core's (marketing-harness NOW)
+  p.btn('Crear campaña').click(); await settle();
+  p.host().querySelector(`.mk5-card[data-otype="${type}"]`).click(); await settle(60);
+}
+test('the builder opens from a card, preconfigured: v5\'s rows, the suggested values, the preview, the cost line — the gated parts absent', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Una' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'pct');
+  const d = dlg(p);
+  assert.ok(d && d.getAttribute('role') === 'dialog');
+  assert.equal(d.querySelector('h2').textContent, 'Nueva oferta');
+  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Porcentaje en todo el menú');
+  assert.deepEqual([...d.querySelectorAll('.mk5b-row')].map((r) => [r.dataset.row, r.querySelector('.mk5b-rlbl').textContent]),
+    [['br', 'Sucursales'], ['typ', 'Descuento'], ['aud', 'Clientes'], ['sch', 'Horario'], ['caps', 'Límites'], ['name', 'Nombre']], 'no Productos row outside 2×1');
+  assert.deepEqual([rowVal(p, 'br'), rowVal(p, 'typ'), rowVal(p, 'aud'), rowVal(p, 'caps'), rowVal(p, 'name')],
+    ['Las 2 sucursales', '15 % · hasta L 100 por pedido', 'Todos', 'Sin tope', '15 % en todo el menú · se armó solo']);
+  assert.match(rowVal(p, 'sch'), /^Todos los días · todo el día · desde el \d+ [a-z]{3}, sin fecha de fin$/, 'defaults: all days, todo el día, start today, no end');
+  assert.deepEqual([d.querySelector('.mk5b-pvchip').textContent, d.querySelector('.mk5b-pvoff').textContent], ['15 % menos', '15 % de descuento en todo el menú, hasta L 100']);
+  assert.equal(d.querySelector('.mk5b-pvhd b').textContent, 'Tercera', 'the brand name (E1)');
+  assert.equal(d.querySelector('.mk5b-pvmeta').textContent, '2 sucursales', '🔴 no «25–35 min · Envío L 40» (gated)');
+  assert.equal(d.querySelector('.mk5b-fine').textContent, 'El descuento lo cubre tu restaurante. Sherpa no te cobra. Hasta L 100 por canje.');
+  assert.ok(!d.querySelector('.mk5b-go').disabled && !d.querySelector('.mk5b-block'), 'a valid form: «Revisar y programar» enabled, no block line');
+  const text = d.textContent;
+  assert.ok(!/condiciones de marketing|se pausa sola|te avisamos|Más pedido|25–35 min|Envío L 40|Mínimo de compra/.test(text), '🔴 Q4 / Q6 / gated words absent (pct has no minimum)');
+  rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
+  assert.deepEqual([...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].map((x) => x.textContent), ['Todos los clientes', 'Clientes nuevos', 'Clientes que vuelven'], '🔴 Q3: titles only, no sub-lines');
+  rowEl(p, 'caps').querySelector('.mk5b-rowh').click(); await settle();
+  assert.equal(rowEl(p, 'aud').classList.contains('mk5b-open'), false, 'one row open at a time');
+  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-help').textContent, 'La oferta no tiene fin, así que el tope de gasto es por semana y se reinicia cada lunes. Al llegar a un tope, la oferta deja de aplicarse hasta el lunes o hasta que lo subas.');
+});
+
+test('«Revisar y programar» → «Revisá tu oferta» (the rows mirror the builder) → «Programar oferta»: the REAL core creates + activates; the toast; the list shows it', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Una' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  dlg(p).querySelector('.mk5b-go').click(); await settle();
+  const sheet = p.host().querySelector('.mk5r-modal');
+  assert.equal(sheet.querySelector('.mk5r-mt').textContent, 'Revisá tu oferta');
+  assert.deepEqual([...sheet.querySelectorAll('.mk5r-row')].map((r) => [r.querySelector('.mk5r-sl').textContent, r.querySelector('.mk5r-sv').textContent]).slice(0, 4),
+    [['Oferta', 'Lempiras de descuento con mínimo · L 50 · mínimo L 300'], ['Sucursales', 'Las 2'], ['Clientes', 'Todos'], ['Horario', rowVal(p, 'sch')]]);
+  assert.ok(!/condiciones de marketing/.test(sheet.textContent), '🔴 Q6: no terms sentence on the review either');
+  p.btn('Programar oferta', sheet).click(); await settle(120);
+  assert.equal(dlg(p), null, 'the dialog closes');
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Oferta programada. Empieza hoy.');
+  const names = [...p.host().querySelectorAll('.mk5-row .mk5-lnk')].map((x) => x.textContent);
+  assert.ok(names.includes('L 50 en pedidos desde L 300'), 'the list reloaded with it');
+  const row = [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === 'L 50 en pedidos desde L 300');
+  assert.equal(row.querySelector('.mk5-st').textContent, 'Programada', 'the real core activated it — «hoy» starts a minute from now (a past start is start_past), so it reads Programada until then');
+});
+
+test('«Guardar borrador» saves a draft («Borrador guardado»); «Seguir editando» reopens it with its own name; a refusal stays on the sheet, worded', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Una' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'envio');
+  p.btn('Guardar borrador', dlg(p)).click(); await settle(120);
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Borrador guardado');
+  const row = [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === 'Envío gratis desde L 350');
+  assert.equal(row.querySelector('.mk5-st').textContent, 'Borrador');
+  p.btn('Acciones', row).click(); await settle();
+  p.btn('Seguir editando', row).click(); await settle(60);
+  assert.equal(dlg(p).querySelector('h2').textContent, 'Seguir editando');
+  assert.equal(rowVal(p, 'name'), 'Envío gratis desde L 350', 'its own name, not «se armó solo»');
+  await b.setSwitch(false, 1);   // the switch goes OFF on the server while the merchant edits
+  dlg(p).querySelector('.mk5b-go').click(); await settle();
+  p.btn('Programar oferta', p.host().querySelector('.mk5r-modal')).click(); await settle(120);
+  assert.ok(dlg(p), 'refused: the dialog stays');
+  assert.equal(p.host().querySelector('.mk5r-modal .mk5b-err').textContent, 'Las ofertas no están disponibles en este momento.');
+});
+
+test('2×1: «Productos» picks from the menu (the editable catalog), chips with price; the block line until one is picked; the ceiling follows the dearest × gratis', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Una' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'bogo');
+  const d = dlg(p);
+  assert.equal(d.querySelector('.mk5b-block').textContent, 'Para revisar, agregá al menos un producto.');
+  assert.ok(d.querySelector('.mk5b-go').disabled);
+  rowEl(p, 'prod').querySelector('.mk5b-rowh').click(); await settle();
+  p.btn('Agregar producto', rowEl(p, 'prod')).click(); await settle();
+  [...rowEl(p, 'prod').querySelectorAll('.mk5b-opt')].find((o) => o.textContent.startsWith('Pizza Hawaiana')).querySelector('input').dispatchEvent(new p.w.Event('change')); await settle();
+  assert.deepEqual([...rowEl(p, 'prod').querySelectorAll('.mk5b-item')].map((c) => c.textContent), ['Pizza Hawaiana L 220']);
+  assert.equal(rowVal(p, 'prod'), '1 producto');
+  assert.equal(dlg(p).querySelector('.mk5b-fine').textContent, 'El descuento lo cubre tu restaurante. Sherpa no te cobra. Hasta L 220 por canje.');
+  assert.equal(dlg(p).querySelector('.mk5b-block'), null);
+  assert.equal(dlg(p).querySelector('.mk5b-nm span').textContent, 'Pizza Hawaiana', 'the menu-row preview names the chosen dish');
+});
+
+test('the calendar: Sunday-first, past days inert, a pick moves Inicio and the Horario summary; Esc closes the calendar first, then the sheet, then the dialog', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Una' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'pct');
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  p.host().querySelector('.mk5b-dpbtn[data-dp="start"]').click(); await settle();
+  const pop = p.host().querySelector('.mk5b-dpop');
+  assert.deepEqual([...pop.querySelectorAll('.mk5b-dpwk span')].map((x) => x.textContent), ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá']);
+  const days = [...pop.querySelectorAll('.mk5b-dpd')];
+  const today = days.find((x) => x.querySelector('.mk5b-tdot'));
+  assert.ok(today, 'today is dotted');
+  assert.ok(days.slice(0, days.indexOf(today)).every((x) => x.disabled), 'days before today are inert');
+  const pick = days[days.indexOf(today) + 1] || days[days.length - 1];
+  pick.click(); await settle();
+  assert.equal(p.host().querySelector('.mk5b-dpop'), null, 'a pick closes the calendar');
+  assert.ok(rowVal(p, 'sch').includes(`desde el ${pick.querySelector('.mk5b-dnum').textContent} `), 'the summary follows the new Inicio');
+  p.host().querySelector('.mk5b-dpbtn[data-dp="start"]').click(); await settle();
+  const esc = () => p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape' }));
+  esc(); await settle();
+  assert.ok(!p.host().querySelector('.mk5b-dpop') && dlg(p), 'Esc #1: the calendar only');
+  dlg(p).querySelector('.mk5b-go').click(); await settle();
+  esc(); await settle();
+  assert.ok(!p.host().querySelector('.mk5r-modal') && dlg(p), 'Esc #2: the review sheet only');
+  esc(); await settle();
+  assert.equal(dlg(p), null, 'Esc #3: the dialog');
 });

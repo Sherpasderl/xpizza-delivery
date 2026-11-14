@@ -8,11 +8,12 @@
 // is applied on the NEXT navigation (shell requestNavRefresh), never under the user. A direct visit with the switch off draws the
 // title + lede only (NOT-DRAWN state, logged in NOT_DRAWN).
 // A MANAGER (marketing.read without marketing.edit) reads the same list; no «Crear campaña», no «Acciones» (the server refuses).
-import { registerView, requestNavRefresh } from './shell.js';
+import { registerView, requestNavRefresh, toast } from './shell.js';
 import { token } from './auth.js';
 import { getMyBranches, getMarketingRaw } from './api.js';
 import { el, svg, button, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
+import { openBuilder, closeBuilder, builderOpen } from './marketing-builder.js';
 
 // ── what v5 draws that this build does NOT (advisor 11-14) ─────────────────────────────────────────────────────────────────────
 export const SOURCE_GATE = Object.freeze([
@@ -63,6 +64,8 @@ const SW_KEY = (uid, brandId) => `sherpa.portal.mkt.${uid}|${brandId}`;
 const swGet = (uid, brandId) => { try { return sessionStorage.getItem(SW_KEY(uid, brandId)) === '1'; } catch (_) { return false; } };
 const swSet = (uid, brandId, on) => { try { sessionStorage.setItem(SW_KEY(uid, brandId), on ? '1' : '0'); } catch (_) { /* no storage: stays hidden */ } };
 
+// the page's clock (tests align it with the server's; the builder's «hoy» and the default start read it)
+export const clock = { now: () => Date.now() };
 const S = {
   gen: 0, uid: null, sel: null, navSel: null, host: null, body: null,
   status: 'idle', tab: 'home', branches: [], reads: null, offers: [], off: false,
@@ -85,6 +88,8 @@ document.addEventListener('portal:auth', (e) => {
 // the brand's member branches the caller may read marketing for (getMyBranches), in the server's order
 async function branchesOf(g) {
   const e1 = await getMyBranches({ token, assertLive: g.assertLive });
+  const br = (e1 && Array.isArray(e1.brands) ? e1.brands : []).find((x) => x && x.brand_id === g.brandId);
+  if (br && typeof br.name === 'string') S.brandName = br.name;
   return (e1 && Array.isArray(e1.branches) ? e1.branches : [])
     .filter((b) => b && b.brand_id === g.brandId && b.state === 'member' && !b.degraded && Array.isArray(b.caps) && b.caps.includes('marketing.read'));
 }
@@ -229,7 +234,7 @@ function list(offers) {
       b.append(svg(DOWN));
       const m = el('div', `mk5-menu${S.menu === mid ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
       for (const a of r.menu) {
-        const ob = button(a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt', MENU_WORD[a], () => { S.menu = null; render(); });   // O2 / O3 wire the moves
+        const ob = button(a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt', MENU_WORD[a], () => { S.menu = null; render(); onRowAction(a, r.id); });   // O3 wires the other moves
         ob.setAttribute('role', 'menuitem'); ob.dataset.act = a;
         m.append(ob);
       }
@@ -252,6 +257,9 @@ function offerCards() {
     const i = el('span', `mk5-cico mk5-vv-${t}`); i.append(ico(ML.TYPE_ICON[c.type]));
     const ben = el('div', `mk5-ben mk5-ink-${t}`); ben.append(svg(CHECK), el('span', null, c.ben));
     card.append(el('i', `mk5-glow mk5-vv-${t}`), i, el('div', `mk5-ccat mk5-ink-${t}`, c.cat), el('h3', null, c.title), el('p', 'mk5-cline', c.line), ben, el('span', `mk5-cbtn mk5-vv-${t}`, 'Comenzar'));
+    const go = () => startBuilder({ type: c.type });
+    card.addEventListener('click', go);
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     grid.append(card);
   }
   sect.append(grid);
@@ -284,6 +292,18 @@ function emptyState() {
   return v;
 }
 
+// ── the builder (marketing-builder.js, O2) ───────────────────────────────────────────────────────────────────────────────────
+function builderCtx() {
+  return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
+    brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChangeType: () => { S.tab = 'create'; render(); } };
+}
+function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) openBuilder(S.host, builderCtx(), opts); }
+function onRowAction(a, id) {
+  const o = S.offers.find((x) => x.id === id);
+  if (!o) return;
+  if (a === 'continue') startBuilder({ offer: o });
+}
+
 document.addEventListener('click', (e) => {   // a click outside an open pill / Acciones menu closes it
   if (!S.menu || !S.body || !S.body.isConnected) return;
   if (e.target && e.target.closest && e.target.closest('.mk5-kebab')) return;
@@ -309,6 +329,7 @@ registerView({
   },
   unmount() {
     S.gen += 1;
+    closeBuilder();
     if (S.body) S.body.replaceChildren();
     S.host = null; S.body = null; S.reads = null; S.offers = []; S.menu = null;
   },
