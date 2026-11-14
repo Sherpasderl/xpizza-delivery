@@ -85,6 +85,7 @@ const cartOf = (rid, qty) => { const m = MENU[rid]; const d = m.dishes.find((x) 
 const offerDeps = () => ({ db: rtdb, verifyIdToken: async (t) => { if (t !== `t-${OWNER}`) throw new Error('bad'); return { uid: OWNER }; }, now: () => Date.now(), readMirror: makeRtdbMirrorReader(rtdb), readCategoryMenu: async () => { throw new Error('none'); } });
 const oreq = (rid, body) => ({ method: 'POST', body: { rid, ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
 const writeCfg = async (on) => { const cur = (await rtdb.ref('platform_config/marketing').get()).val();
+  await rtdb.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   assert.strictEqual((await CFG.writeMarketingConfig(rtdb, { expected: cur ? cur.policy_version : 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: Date.now() })).ok, true, 'premise: config'); };
 
 (async () => {

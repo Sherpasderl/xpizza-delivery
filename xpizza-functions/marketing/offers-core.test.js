@@ -69,6 +69,7 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
   await roster('zt', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OTHER_OWNER, profile: { name: 'Otro', email: 'o@ot.hn' } });
   const mirror = makeRtdbMirror(db);
   for (const rid of ['tb_centro', 'tb_sur']) await mirror(rid, { version: 'v1', seq: 1, rid, menu: { [K1]: 150, [K2]: 220, ...(rid === 'tb_centro' ? { [K3]: 90 } : {}) }, extras: {} });
+  await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   const w = await CFG.writeMarketingConfig(db, { expected: 0, config: { ...switches, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 });
   assert.strictEqual(w.ok, true, 'premise: the config writer wrote the switches');
   // each branch's active version: pizzas = K1 + K2 (+ K3 on tb_centro is a drink); a test may add a dish later (CATALOG[rid].push)

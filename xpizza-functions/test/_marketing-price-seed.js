@@ -40,6 +40,7 @@ async function world({ rid = 'tb_centro', brand = 'tb', menu, extras = {}, offer
   assert.strictEqual((await R.mutateRoster({ db: fake, now: () => 1 }, brand, { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@m.hn' } })).ok, true, 'premise: owner');
   await makeRtdbMirror(db)(rid, { version: 'v1', seq: 1, rid, menu, extras });
   const cfgBody = (on) => ({ offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } });
+  await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: cfgBody(true), actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
   const rows = Object.entries(menu).map(([key, price]) => ({ key, price, display: { price, cat: 'c1', name: key } }));
   const deps = { db, verifyIdToken: async (t) => { if (t !== `t-${OWNER}`) throw new Error('bad token'); return { uid: OWNER }; }, now: () => NOW,

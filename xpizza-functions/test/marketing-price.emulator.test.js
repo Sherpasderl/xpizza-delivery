@@ -114,6 +114,7 @@ async function pauseOffer(rid, brand, id) {
 }
 async function setOffers(on) {
   const cur = (await rtdb.ref('platform_config/marketing').get()).val();
+  await rtdb.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   const r = await CFG.writeMarketingConfig(rtdb, { expected: cur ? cur.policy_version : 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: Date.now() });
   assert.strictEqual(r.ok, true, 'premise: the marketing switch');
   await new Promise((r2) => setTimeout(r2, 0));

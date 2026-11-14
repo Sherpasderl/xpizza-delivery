@@ -55,6 +55,7 @@ async function world({ offers_enabled = true } = {}) {
   const db = prodDb(fake);
   assert.strictEqual((await R.mutateRoster({ db: fake, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@tb.hn' } })).ok, true, 'premise: owner');
   await makeRtdbMirror(db)('tb_centro', { version: 'v1', seq: 1, rid: 'tb_centro', menu: MENU, extras: EXTRAS });
+  await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   const w = await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 });
   assert.strictEqual(w.ok, true, 'premise: config written');
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async () => versionMenu([[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], ['pizzas', 'bebidas']) };
