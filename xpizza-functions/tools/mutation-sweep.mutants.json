@@ -35063,7 +35063,7 @@
    "--test",
    "../customer-app/capp-api-sdk.test.mjs"
   ],
-  "kills_with": "SDK-legacy: never paid over a dispatched placement"
+  "kills_with": "SDK-legacy-noauth"
  },
  {
   "id": "s2ck-a11",

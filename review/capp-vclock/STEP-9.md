@@ -58,3 +58,12 @@
   - **mutant:** `{ kind: 'offline' }` or `guest_ticket_invalid`.
   - Nothing is sent either way, so no money is at risk. The customer sees a different, worse answer.
 - **Proposal (advisor's call):** a RED-killing cell in capp-api-sdk: an unresolved dispatched hosted card, then `placeSdk` with the member token unavailable, asserting resolution and not «offline». s2ck-a10's `kills_with` then names it. Test-only; no production change.
+
+## 6. F-3 resolved (advisor 11-14: «add the cell NOW»)
+- **Two new cells** in capp-api-sdk, both built from real writers: `place()` sends the hosted card, and the network fails, so it is dispatched and unresolved.
+  - **«F-3: … NO member token»:** the member's `getIdToken` gives nothing, so `place()` still sends with no token cached.
+  - **«F-3: a guest whose keyed ticket EXPIRED»:** the `phone_key` still names the principal, but the ticket authorizes nothing.
+- **Each asserts:** nothing is sent (`placeSdkOrder` 0), and the answer is `existing_order` for the dispatched id: `🔴 SDK-legacy-noauth`.
+- **The real code passes both. RED:** s2ck-a10 is KILLED at `SDK-legacy-noauth` three ways: by the member cell alone, the guest cell alone, and the catalogue's whole-file command (3/3). Its `kills_with` now names `SDK-legacy-noauth`.
+- **Inventory:** two ADDED tests; every existing cell is unchanged.
+- **Results:** the full file 57/0; 20× the two cells 20/20 clean (load 4); anchors, baseline, isolation and capp-guards all green.
