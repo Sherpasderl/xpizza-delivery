@@ -36238,5 +36238,37 @@
   "kills_with": [
    "C1B-F3"
   ]
+ },
+ {
+  "id": "ws-01",
+  "slice": "web-signin",
+  "label": "the website built without member sign-in (owner 11-14)",
+  "file": "../customer-app/netlify.toml",
+  "from": "--out dist --flags guestCardOnly,signup\"",
+  "to": "--out dist --flags guestCardOnly\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "member sign-in ON"
+  ]
+ },
+ {
+  "id": "ws-02",
+  "slice": "web-signin",
+  "label": "the ID token in the last-tip URL (rule 20)",
+  "file": "../customer-app/capp-api.js",
+  "from": "sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "to": "sfetch(`${E.getMyLastTip}?context=platform&auth=${tok}`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "R20-URL"
+  ]
  }
 ]

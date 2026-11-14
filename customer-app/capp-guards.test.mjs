@@ -148,7 +148,8 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
   // key omit list, and a failure must not dump it
   const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
-  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  // owner 11-14 (PLAN-capp-web-signin r0, accepted): members sign in on the WEBSITE — the web build carries `signup` (phone + WhatsApp)
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly,signup"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target, member sign-in ON (owner 11-14)');
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
@@ -276,4 +277,22 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
     const rt = {}; new Function('self', B.files.get('capp-runtime.js').toString('utf8'))(rt);
     assert.equal(rt.CAPP_RUNTIME && rt.CAPP_RUNTIME.mode, target, `🔴 SBS-3: the packaged ${target} runtime says its own mode (no injected mode)`);
   }
+});
+
+// rule 20 (owner; PLAN-capp-web-signin r0 — the WEBSITE now signs members in): NO script the web shell loads builds a URL that carries a
+// token — an ID / custom / access token goes in a HEADER, never a query (a URL lands in browser history, devtools, proxy logs). The
+// scan covers every <script src> of shell.html (the packager's web file list, package-capp.js) — a token-shaped query parameter fed
+// from code (`?auth=${…}`, `&token=' + …`) is red; TIP-F4 (capp-ui) pins the one historical offender (last_tip) dynamically
+test('rule 20 (web sign-in): no script of the web shell puts a token in a URL query', () => {
+  const shell = readFileSync(join(ROOT, 'customer-app', 'shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/^https?:/.test(f));
+  assert.ok(scripts.length >= 10 && scripts.includes('capp-api.js') && scripts.includes('capp-signup-api.js'), 'premise: the shell\'s scripts');
+  const TOKQ = /[?&](?:auth|token|id_?token|access_?token|custom_?token|tok)=(?:\$\{|['"`]\s*\+)/i;
+  const hits = [];
+  for (const f of scripts) {
+    const src = readFileSync(join(ROOT, 'customer-app', f), 'utf8');
+    src.split('\n').forEach((ln, i) => { if (TOKQ.test(ln) && !/^\s*\/\//.test(ln)) hits.push(`${f}:${i + 1}`); });
+  }
+  assert.deepEqual(hits, [], '🔴 R20-URL: a token built into a URL query');
+  assert.ok(TOKQ.test("fetch(`${base}/x.json?auth=${encodeURIComponent(tok)}`)") && TOKQ.test("u + '&token=' + t"), 'non-vacuity: the former offender\'s shape is caught');
 });
