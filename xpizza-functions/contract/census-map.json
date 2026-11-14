@@ -2058,7 +2058,7 @@
   }
  ],
  "moneyPathNonFactReads": {
-  "offer@xpizza-functions/index.js#paymentStatus": "marketing price (Q5): the customer poll SHOWS the stored order's frozen offer (pollOfferOf → type / name / discount_cents / waived_envio_cents, the order screen's «Descuento») — a display of what the order write saved, never re-priced, never charged and never a total (total_cents beside it is the stored one); no offer id / rev / usage leaves (Q9)",
+  "offer@xpizza-functions/index.js#paymentStatus": "marketing price (Q5): the customer poll SHOWS the stored order's frozen offer (pollOfferOf → type / discount_cents / waived_envio_cents, the order screen's «Descuento»; no merchant name) — a display of what the order write saved, never re-priced, never charged and never a total (total_cents beside it is the stored one); no offer id / rev / usage leaves (Q9)",
   "payment_cancel@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
   "payment_placed@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
   "payment_placed@xpizza-functions/payments/sdk/finish.js#bindingRefusal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",

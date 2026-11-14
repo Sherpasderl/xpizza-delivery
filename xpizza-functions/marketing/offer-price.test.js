@@ -203,12 +203,13 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     }
   });
 
-  await cell('OP-POLL: the customer poll shows the frozen offer as {type,name,discount_cents,waived_envio_cents} only — no id, rev, usage, funder (Q9); none / malformed ⇒ null', async (L) => {
+  await cell('OP-POLL: the customer poll shows the frozen offer as {type,discount_cents,waived_envio_cents} only — no id, rev, usage, funder (Q9), no merchant name (advisor 11-14); none / malformed ⇒ null', async (L) => {
     const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const offer = await pick(w, [line(K2, 2)]);
     assert.ok(offer, `${L}: premise — the REAL offer`);
     const stored = OP.frozenOf(offer, { week: '2026-W47', salesCents: 39000 });   // what the order write stores (with its usage hold)
-    assert.deepStrictEqual(OP.pollOfferOf(stored), { type: 'lps', name: stored.name, discount_cents: 5000, waived_envio_cents: 0 }, L);
+    assert.deepStrictEqual(OP.pollOfferOf(stored), { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, L);
+    assert.ok(typeof stored.name === 'string' && !('name' in OP.pollOfferOf(stored)), `${L}: the stored record has a name; the poll never carries it`);
     for (const bad of [undefined, null, 'x', {}, { ...stored, discount_cents: -100 }, { ...stored, type: 'nope' }, { ...stored, waived_envio_cents: 1.5 }]) assert.strictEqual(OP.pollOfferOf(bad), null, `${L}: ${JSON.stringify(bad)}`);
   });
 

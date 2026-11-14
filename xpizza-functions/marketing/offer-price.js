@@ -156,9 +156,10 @@ const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'envio']);
 const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
 
 // The customer's poll (paymentStatus) shows the STORED offer as what was saved, never how it is tracked: no offer id / rev / usage /
-// funder (plan §1.9, Q9). A malformed record shows nothing (the order screen then simply has no «Descuento» line).
+// funder (plan §1.9, Q9) and no merchant name (advisor 11-14: the capp derives its label from the type and amounts — minimal data).
+// A malformed record shows nothing (the order screen then simply has no «Descuento» line).
 const cents = (v) => Number.isSafeInteger(v) && v >= 0;
-const pollOfferOf = (o) => (o && typeof o === 'object' && TYPES_PRICED.includes(o.type) && typeof o.name === 'string' && cents(o.discount_cents) && cents(o.waived_envio_cents)
-  ? { type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents } : null);
+const pollOfferOf = (o) => (o && typeof o === 'object' && TYPES_PRICED.includes(o.type) && cents(o.discount_cents) && cents(o.waived_envio_cents)
+  ? { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents } : null);
 
 module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };

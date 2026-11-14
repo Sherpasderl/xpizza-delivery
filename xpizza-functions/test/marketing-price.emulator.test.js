@@ -201,8 +201,9 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     await rtdb.ref(`orders/${kb.order_id}`).update({ status: 'new', payment_status: 'confirmed' });   // the confirmed shape (d4b-readers F precedent)
     await rtdb.ref(`payment_attempts/${po.active_attempt_id}/hosted_state`).set('paid');
     const paid = await poll();
-    assert.deepStrictEqual([paid.state, paid.offer], ['paid', { type: 'pct', name: po.offer.name, discount_cents: d, waived_envio_cents: 0 }], `🔴 E3b: the paid poll shows the offer summary (${JSON.stringify(paid)})`);
+    assert.deepStrictEqual([paid.state, paid.offer], ['paid', { type: 'pct', discount_cents: d, waived_envio_cents: 0 }], `🔴 E3b: the paid poll shows the offer summary (${JSON.stringify(paid)})`);
     assert.ok(!JSON.stringify(paid).includes(po.offer.offer_id), 'E3b: no offer id reaches the customer (Q9)');
+    assert.ok(po.offer.name && !('name' in paid.offer), 'E3b: no merchant offer name reaches the customer (advisor 11-14)');
     await rtdb.ref(`orders/${kb.order_id}/offer`).remove();
     assert.deepStrictEqual(Object.keys(await poll()).sort(), ['ok', 'redemption', 'state', 'total_cents', 'tracking_token'], 'E3b: no offer ⇒ the poll is the pre-offer shape');
   }
