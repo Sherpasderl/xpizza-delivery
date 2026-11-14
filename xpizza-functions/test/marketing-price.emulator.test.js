@@ -192,8 +192,21 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     assert.strictEqual(Math.round(CHARGED[0] * 100), gross - d + FEE, '🔴 E3: the captured PixelPay amount = the discounted net');
     const po = await order(kb.order_id);
     assert.deepStrictEqual([po.total_cents, po.offer && po.offer.discount_cents], [gross - d + FEE, d], 'E3: the pending record carries the total and the offer');
+    // E3b (Q5): the REAL customer poll (paymentStatus) — pending: no offer; paid: the frozen offer's summary (the order screen's
+    // «Descuento»), never its id; an order without an offer answers exactly the pre-offer keys
+    const ptok = (await rtdb.ref(`payment_attempts/${po.active_attempt_id}/poll_token`).get()).val();
+    const poll = async () => (await post(app.paymentStatus, { order_id: kb.order_id, token: ptok })).json;
+    const pend = await poll();
+    assert.ok(pend && pend.ok && !('offer' in pend), `E3b: a pending checkout shows no offer (${JSON.stringify(pend)})`);
+    await rtdb.ref(`orders/${kb.order_id}`).update({ status: 'new', payment_status: 'confirmed' });   // the confirmed shape (d4b-readers F precedent)
+    await rtdb.ref(`payment_attempts/${po.active_attempt_id}/hosted_state`).set('paid');
+    const paid = await poll();
+    assert.deepStrictEqual([paid.state, paid.offer], ['paid', { type: 'pct', name: po.offer.name, discount_cents: d, waived_envio_cents: 0 }], `🔴 E3b: the paid poll shows the offer summary (${JSON.stringify(paid)})`);
+    assert.ok(!JSON.stringify(paid).includes(po.offer.offer_id), 'E3b: no offer id reaches the customer (Q9)');
+    await rtdb.ref(`orders/${kb.order_id}/offer`).remove();
+    assert.deepStrictEqual(Object.keys(await poll()).sort(), ['ok', 'redemption', 'state', 'total_cents', 'tracking_token'], 'E3b: no offer ⇒ the poll is the pre-offer shape');
   }
-  ok('E3 card: the PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer');
+  ok('E3 card: the PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer; E3b the paid poll shows the offer summary, never its id');
 
   // ── E4. envío offer ──
   {
@@ -267,10 +280,18 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     await clean(); offerCaches();
     const q1 = await quote(THIRD, s.items);
     assert.strictEqual(q1.json.offer && q1.json.offer.discount_cents, d, 'E9 premise: offered');
+    const qLate = await quote(THIRD, s.items);   // a second customer quoted while the one use is still open
+    assert.strictEqual(qLate.json.offer && qLate.json.offer.discount_cents, d, 'E9 premise: the second quote is offered too');
     const b1 = bodyOf(THIRD, 'cash', s, { quote_token: q1.json.quote_token, expected_net_cents: q1.json.net_total_cents });
     await clean(); assert.strictEqual((await post(app.createOrder, b1)).status, 200, 'E9: the first order');
     const o1 = await order(b1.order_id);
     assert.deepStrictEqual([o1.offer.usage, (await usageOf(capId)).redemptions, (await usageOf(capId)).spend_cents], ['held', 1, d], '🔴 E9: the usage held WITH the order');
+    // E9b: that second customer places AFTER the cap is reached ⇒ the placement skips the capped offer (fresh usage read) and the cash
+    // gate refuses against the signed one — the EXACT body, nothing written, nothing counted
+    const b2 = bodyOf(THIRD, 'cash', s, { quote_token: qLate.json.quote_token, expected_net_cents: qLate.json.net_total_cents });
+    await clean(); offerCaches(); const late = await post(app.createOrder, b2);
+    assert.deepStrictEqual([late.status, late.json], [409, { error: 'offer_changed', net_total_cents: qLate.json.net_total_cents + d, order_id: b2.order_id }], `🔴 E9b: the cash cap answers exactly (${late.text.slice(0, 200)})`);
+    assert.deepStrictEqual([await order(b2.order_id), (await usageOf(capId)).redemptions], [null, 1], 'E9b: nothing written, nothing counted');
     await clean(); offerCaches();
     const q2 = await quote(THIRD, s.items);
     assert.ok(!q2.json.offer, 'E9: the capped offer is no longer quoted (no offer_changed loop)');

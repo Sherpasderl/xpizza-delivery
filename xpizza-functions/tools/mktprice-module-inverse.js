@@ -132,6 +132,21 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
+  "now": "      : null;\n    const state = paymentPollState(order); const offerShown = require('./marketing/offer-price').pollOfferOf(order.offer);   // marketing (Q5): the order screen's «Descuento», never the offer id · pure state machine (payment-poll-state.js, unit-tested)\n    // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) is confirmed but NOT\n",
+  "was": "      : null;\n    const state = paymentPollState(order);   // pure state machine (payment-poll-state.js, unit-tested)\n    // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) is confirmed but NOT\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,\n        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary, ...(offerShown ? { offer: offerShown } : {}) });\n    }\n",
+  "was": "      return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,\n        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });\n    }\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,\n      redemption: state === 'paid' ? redeemSummary : null, ...(state === 'paid' && offerShown ? { offer: offerShown } : {}) });\n  }\n",
+  "was": "      total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,\n      redemption: state === 'paid' ? redeemSummary : null });\n  }\n"
+ },
+ {
+  "file": "index.js",
   "now": "      const order = (await db.ref(`orders/${orderId}`).once('value')).val();\n      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now()); if (order && order.offer) await require('./marketing/offer-usage').releaseForOrder(db, orderId).catch((e) => console.error('onOrderCancelled: offer usage release failed', orderId, e && e.code != null ? String(e.code).slice(0, 40) : 'unknown'));   // marketing step 2: the cancel gives the offer usage back, once\n    } catch (e) {\n",
   "was": "      const order = (await db.ref(`orders/${orderId}`).once('value')).val();\n      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now());\n    } catch (e) {\n"
  },

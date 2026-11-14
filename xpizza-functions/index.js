@@ -2692,12 +2692,12 @@ exports.paymentStatus = onRequest(
           // v2: La Musa is a multiset (no single free_item_key) → carry the redeemed unit count so the success screen shows "N premios".
           free_count: Array.isArray(order.redemption.items) ? order.redemption.items.reduce((s, it) => s + (Number(it && it.qty) || 0), 0) : (order.redemption.free_item_key ? 1 : 0) }
       : null;
-    const state = paymentPollState(order);   // pure state machine (payment-poll-state.js, unit-tested)
+    const state = paymentPollState(order); const offerShown = require('./marketing/offer-price').pollOfferOf(order.offer);   // marketing (Q5): the order screen's «Descuento», never the offer id · pure state machine (payment-poll-state.js, unit-tested)
     // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) is confirmed but NOT
     // cooking. Distinct scheduled_paid carrying scheduled_for (no token) → "programado para <slot>".
     if (state === 'scheduled_paid') {
       return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,
-        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });
+        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary, ...(offerShown ? { offer: offerShown } : {}) });
     }
     // Paid-after-close AUTO-REFUND: distinct terminal state so the return page shows the honest
     // "te reembolsamos L{total}" screen (not the generic "cancelled"). blocked_reason is the guard's sentinel.
@@ -2707,7 +2707,7 @@ exports.paymentStatus = onRequest(
 
     return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null,
       total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,
-      redemption: state === 'paid' ? redeemSummary : null });
+      redemption: state === 'paid' ? redeemSummary : null, ...(state === 'paid' && offerShown ? { offer: offerShown } : {}) });
   }
 );
 

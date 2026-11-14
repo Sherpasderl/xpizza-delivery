@@ -155,4 +155,10 @@ const frozenOf = (offer, held = null) => ({ offer_id: offer.offer_id, rev: offer
 const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'envio']);
 const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
 
-module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, TYPES_PRICED };
+// The customer's poll (paymentStatus) shows the STORED offer as what was saved, never how it is tracked: no offer id / rev / usage /
+// funder (plan §1.9, Q9). A malformed record shows nothing (the order screen then simply has no «Descuento» line).
+const cents = (v) => Number.isSafeInteger(v) && v >= 0;
+const pollOfferOf = (o) => (o && typeof o === 'object' && TYPES_PRICED.includes(o.type) && typeof o.name === 'string' && cents(o.discount_cents) && cents(o.waived_envio_cents)
+  ? { type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents } : null);
+
+module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };
