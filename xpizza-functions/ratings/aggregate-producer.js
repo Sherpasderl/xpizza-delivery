@@ -5,11 +5,14 @@
 //      deploy, ruling F1), at most MAX_CATCHUP_DAYS per run: ONE key-range query on rating_index/{rid} (its keys are
 //      <inverted fulfilled_at>-<orderId>, so a day is a contiguous key range — the fulfilled-order log the fulfilment stamp already
 //      writes), budgeted (DAY_BUDGET keys, a LOUD abort above it), then four LEAF reads per order (restaurant_id, status,
-//      customer_phone, dish_qty) → aggregate.bucketFromOrders → stats_buckets/{rid}/{day}, REPLACED whole (a re-run is idempotent);
+//      customer_phone, dish_qty) + two timeline LEAF reads (order_timelines new_at, preparing_at — PLAN-3a-merit-A) →
+//      aggregate.bucketFromOrders + aggregate.meritDay (bucket.merit) → stats_buckets/{rid}/{day}, REPLACED whole (a re-run is idempotent);
 //   2. drop buckets older than 90 days (stats_buckets is server-only; the cust keys expire with them);
-//   3. ratings (F4, few for now): walk rating_index/{rid} in pages through rating-v2.readCountable (RATINGS_BUDGET, loud abort);
+//   3. ratings (F4, few for now): walk rating_index/{rid} in pages through rating-v2.readCountable (RATINGS_BUDGET, loud abort); the
+//      merit program's SERVER-ONLY stats_agg/{rid}/merit_ratings = { sum, count, as_of } (unthresholded, never published) from them;
 //   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish);
 //   5. the Anuncio's hidden days for the days just closed (marketing/anuncio-core recordAnuncioDays; PLAN-3a-marketing-server §4.4).
+//   Steps 3's merit_ratings write and 5 each run in their OWN try, after publish: either failing is logged and leaves the other intact.
 // + reviews v2 S4 (PLAN-3a-merchant-reviews-v2 r3 §2): review-buckets.buildReviewBuckets(rid) — its OWN step in its OWN try, right after
 //   retention and BEFORE any day closes: a closeDay / step-3 failure never stops it, and its failure never touches public_stats.
 // Repeat-customer keys are PSEUDONYMOUS: HMAC-SHA256 under HKDF(OTP_SALT, 'sherpa/stats-repeat/v1') of the normalized phone digits,
@@ -70,10 +73,14 @@ async function fulfilledOn(db, rid, day) {
 async function closeDay(db, rid, day, keyOf) {
   const { ids, first } = await fulfilledOn(db, rid, day);
   const orders = await pool(ids, async (id) => {
-    const [restaurant_id, status, customer_phone, dish_qty] = await Promise.all(['restaurant_id', 'status', 'customer_phone', 'dish_qty'].map((f) => leaf(db, `orders/${id}/${f}`)));
-    return { restaurant_id, status, customer_phone, dish_qty };
+    const [restaurant_id, status, customer_phone, dish_qty, new_at, preparing_at] = await Promise.all([
+      ...['restaurant_id', 'status', 'customer_phone', 'dish_qty'].map((f) => leaf(db, `orders/${id}/${f}`)),
+      ...['new_at', 'preparing_at'].map((f) => leaf(db, `order_timelines/${id}/${f}`)),
+    ]);
+    return { restaurant_id, status, customer_phone, dish_qty, new_at, preparing_at };
   });
   const bucket = AG.bucketFromOrders(rid, orders, keyOf);
+  bucket.merit = AG.meritDay(rid, orders);   // inside the SAME whole-bucket set below
   await db.ref(`stats_buckets/${rid}/${day}`).set(bucket);
   return { bucket, first };
 }
@@ -135,6 +142,12 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
     const firstServedAt = await leaf(db, `stats_agg/${rid}/first_served_at`);
     const doc = AG.publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt: Number.isFinite(firstServedAt) ? firstServedAt : null });
     await db.ref(`public_stats/${rid}`).set(doc);
+    // PLAN-3a-merit-A: the merit program's server-only rating tally (5f's meritNightly reads it). Its own try: a failure is logged and
+    // never blocks the aggregation or the Anuncio step (the nightly sees the older as_of).
+    try {
+      const st = AG.storeStars(rid, ratings, nowMs);
+      await db.ref(`stats_agg/${rid}/merit_ratings`).set({ sum: st.sum, count: st.count, as_of: nowMs });
+    } catch (e) { console.error('merit ratings', rid, e && e.message); }
     // PLAN-3a-marketing-server §4.4: the Anuncio's hidden days, recorded for the days just closed (+1 slot read per rid per day; a write
     // only for the week's booked rid). Its own try: a recorder failure is logged and never blocks the aggregation.
     let anuncioDays = [];

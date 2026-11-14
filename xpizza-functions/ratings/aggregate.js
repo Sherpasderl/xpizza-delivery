@@ -43,6 +43,23 @@ function bucketFromOrders(rid, orders, keyOf) {
   return b;
 }
 
+// PLAN-3a-merit-A — ONE day's MERIT facts over the SAME counted orders as bucketFromOrders (this rid, fulfilled): the accept time
+// of each, in whole seconds from order_timelines new_at (for a scheduled order: its release) to preparing_at, kept when 0 ≤ s ≤ 24 h.
+// Anything else (a missing / non-number stamp, an order that skipped preparing, a negative or longer gap) is COUNTED in
+// accept_invalid, never guessed. → { accept_s: [sorted ints], accept_invalid }
+const ACCEPT_MAX_S = 86400;
+function meritDay(rid, orders) {
+  const accept_s = []; let accept_invalid = 0;
+  for (const o of orders || []) {
+    if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;
+    const s = typeof o.new_at === 'number' && typeof o.preparing_at === 'number' && Number.isFinite(o.new_at) && Number.isFinite(o.preparing_at)
+      ? Math.round((o.preparing_at - o.new_at) / 1000) : null;
+    if (s !== null && s >= 0 && s <= ACCEPT_MAX_S) accept_s.push(s); else accept_invalid += 1;
+  }
+  accept_s.sort((x, y) => x - y);
+  return { accept_s, accept_invalid };
+}
+
 // the HN days of the window ending YESTERDAY (today is never complete): [today − days, today − 1]
 function windowDays(nowMs, days) {
   const out = new Set();
@@ -60,18 +77,28 @@ function sumBuckets(buckets, days) {
 }
 
 const round1 = (x) => Math.round(x * 10) / 10;
+// the STORE stars of this rid's countable ratings — publish's rating_avg / rating_count / rating_count_30d and the producer's
+// server-only merit_ratings (PLAN-3a-merit-A) read this ONE rule. → { sum, count, count30 }
+function storeStars(rid, ratings, nowMs) {
+  let sum = 0, count = 0, count30 = 0;
+  for (const r of ratings || []) {
+    if (!isObj(r) || r.state !== 'live') throw new Error('aggregate: a non-countable rating was handed to the core (readCountable upstream)');
+    if (r.restaurant_id !== rid) continue;
+    if (Number.isInteger(r.store) && r.store >= 1 && r.store <= 5) { sum += r.store; count += 1; if (Number.isFinite(r.rated_at) && r.rated_at >= nowMs - W.SHORT * DAY_MS) count30 += 1; }
+  }
+  return { sum, count, count30 };
+}
 function publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt }) {
   const doc = { v: STATS_VERSION };
   const dish = {};
   const ds = (id) => dish[id] || (dish[id] = {});
 
   // ratings (countable only)
-  let starSum = 0, stars = 0, stars30 = 0, likeUp = 0, likes = 0;
+  const { sum: starSum, count: stars, count30: stars30 } = storeStars(rid, ratings, nowMs);
+  let likeUp = 0, likes = 0;
   const votes = {};
   for (const r of ratings || []) {
-    if (!isObj(r) || r.state !== 'live') throw new Error('aggregate: a non-countable rating was handed to the core (readCountable upstream)');
     if (r.restaurant_id !== rid) continue;
-    if (Number.isInteger(r.store) && r.store >= 1 && r.store <= 5) { starSum += r.store; stars += 1; if (Number.isFinite(r.rated_at) && r.rated_at >= nowMs - W.SHORT * DAY_MS) stars30 += 1; }
     if (r.legacy_thumb === 1 || r.legacy_thumb === -1) { likes += 1; if (r.legacy_thumb === 1) likeUp += 1; }
     for (const [id, t] of Object.entries(isObj(r.dishes) ? r.dishes : {})) {
       if (t !== 1 && t !== -1) continue;
@@ -119,4 +146,4 @@ function buildPublicStats({ rid, nowMs, orders, ratings, priceOf, firstServedAt 
   return publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt });
 }
 
-module.exports = { STATS_VERSION, BUCKET_VERSION, T, W, DAY_MS, FULFILLED, PAIR_SEP, normPhone, bucketFromOrders, windowDays, sumBuckets, publish, buildPublicStats };
+module.exports = { STATS_VERSION, BUCKET_VERSION, T, W, DAY_MS, FULFILLED, PAIR_SEP, normPhone, bucketFromOrders, windowDays, sumBuckets, publish, buildPublicStats, meritDay, storeStars, ACCEPT_MAX_S };
