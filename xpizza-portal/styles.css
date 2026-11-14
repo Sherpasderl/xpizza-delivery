@@ -1591,6 +1591,57 @@
     .mk5r-back,.mk5r-ok{flex:1;justify-content:center}
   }
   .mk5r-back,.mk5r-ok,.mk5r-scrim{cursor:pointer}   /* the review sheet's clicked controls — single-compound rules */
+  /* ── MOCKUP-portal-marketing v5 — Ofertas O3 (marketing-detail.js): the offer detail (5 / 5c), the owner-pause strip, «Ver más» ›
+     «Cómo está armada», the end sheet's «Después» row; the list name as the detail's link and the row's «· vos». v5's final cascade
+     (.back / .mx-dhead / .mx-dmeta / .btn / .tbtn / .strip / .more / .sec / .kv / .st .why) under mk5d-* names. Every results block
+     is ABSENT (SOURCE_GATE detail-results). ── */
+  .mk5-lnk{background:none;border:none;padding:0;font-family:inherit;text-align:left;cursor:pointer}
+  .mk5-why{color:var(--mute2);margin-left:5px}
+  .mk5d{min-width:0}
+  .mk5d-back{display:inline-flex;align-items:center;gap:7px;color:var(--mute);font-size:13px;font-weight:650;background:none;border:none;cursor:pointer;padding:0 0 14px;font-family:inherit;min-height:44px}
+  .mk5d-back svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .mk5d-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  .mk5d-l{min-width:0;flex:1 1 420px}
+  .mk5d-l h1{font-size:28px;text-wrap:balance}
+  .mk5d-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--mute);line-height:1.45}
+  .mk5d-sep{color:var(--mute)}   /* v5 draws the dot in --line (1.2:1); the AA sweep wants text ≥ 4.5:1 — the readable token (deviation) */
+  .mk5d-acts{display:flex;gap:9px;flex-wrap:wrap}
+  .mk5d-btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:650;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:42px;font-family:inherit;transition:border-color .15s,background .18s}
+  .mk5d-btn:hover{border-color:var(--mute2);background:var(--card-2)}
+  .mk5d-btn:disabled{opacity:.42;cursor:not-allowed}
+  .mk5d-kebab{position:relative}
+  .mk5d-more1{width:42px;height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;cursor:pointer}
+  .mk5d-more1:hover{border-color:var(--mute2);background:var(--card-2)}
+  .mk5d-more1 svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+  .mk5-opt svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;flex:none}
+  .mk5d-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:24px;padding:12px 14px 12px 16px;border-radius:14px;background:var(--sand-soft);color:var(--sand-text);font-size:13.5px;line-height:1.45}
+  .mk5d-strip svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .mk5d-stxt{flex:1 1 320px;min-width:0;text-wrap:pretty}
+  .mk5d-stxt b{font-weight:700}
+  .mk5d-sbtn{min-height:38px;border:1px solid transparent;background:var(--card);color:var(--ink);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:650;cursor:pointer;font-family:inherit;flex:none;white-space:nowrap}
+  .mk5d-sbtn:hover{border-color:var(--sand-line)}
+  .mk5d-more{margin-top:24px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
+  .mk5d-morebtn{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:16px 20px;background:none;border:none;font:inherit;font-family:var(--disp);font-size:18px;font-weight:750;letter-spacing:-.025em;color:var(--ink);cursor:pointer;text-align:left;min-height:44px}
+  .mk5d-morelbl{font-family:var(--body);font-size:13px;font-weight:650;color:var(--accent);letter-spacing:0;white-space:nowrap}
+  .mk5d-morebody{padding:0 20px 20px;display:flex;flex-direction:column;gap:18px}
+  .mk5d-sec{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .mk5d-sec h3{font-size:12.5px;color:var(--mute2);font-weight:600;font-family:var(--body);letter-spacing:0}
+  .mk5d-kv{display:flex;flex-direction:column}
+  .mk5d-r{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line2);font-size:13.5px;line-height:1.4}
+  .mk5d-r:last-child{border-bottom:0}
+  .mk5d-r span{color:var(--mute)}
+  .mk5d-r b{font-weight:650;text-align:right;text-wrap:pretty}
+  .mk5d-errx{margin-left:auto;flex:none;background:none;border:none;font-family:inherit;font-size:13px;font-weight:650;color:var(--ink);cursor:pointer;padding:0 2px;min-height:32px}
+  @media(max-width:920px){
+    .mk5d-l h1{font-size:23px}
+    .mk5d-l{flex-basis:100%}
+    .mk5d-meta .mk5d-sep{display:none}
+    .mk5d-acts{width:100%}
+    .mk5d-acts .mk5d-btn{flex:1 1 120px;justify-content:center}
+    .mk5d-strip{align-items:flex-start}
+    .mk5d-sbtn{flex:1 1 100%;min-height:44px}
+  }
+  .mk5d-back,.mk5d-btn,.mk5d-more1,.mk5d-sbtn,.mk5d-morebtn,.mk5d-errx,.mk5-lnk{cursor:pointer}   /* O3's clicked controls — single-compound rules */
   /* ── PLAN-portal-team-invites T-d · the owner's publish-request banner (pubreq.js), mockup v8 D1 ── */
   #pubreq{margin-top:22px}
   .pbanner{display:flex;align-items:center;gap:14px;padding:13px 16px 13px 14px;border:1px solid var(--line);background:var(--card);border-radius:14px;flex-wrap:wrap;box-shadow:var(--shadow)}

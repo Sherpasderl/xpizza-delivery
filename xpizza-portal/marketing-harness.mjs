@@ -18,17 +18,23 @@ export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<fil
   'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
   'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
 };
+// backend({ ref }) runs another 3a ref's whole server set (the O2c flip waits for 3a's re-reviewed live-edit SHA — advisor 11-14).
 export const DIR = dirname(fileURLToPath(import.meta.url));
 export const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
 export const rq = refTree(REF);
 export const OM = rq('./marketing/offer-model');
 export const C = rq('./marketing/offers-core');
 export const CFG = rq('./marketing/config');
-const { createFakeDb } = rq('./merchant/_fake-db');
-const R = rq('./access/roster');
-const { makeRtdbMirror } = rq('./catalog/mirror-rtdb');
-const { makeRtdbMirrorReader } = rq('./catalog/snapshot-fallback');
-const { buildMenu } = rq('./catalog/catalog-menu');
+// one ref's whole server set (the cores AND the writers that seed them come from the SAME tree)
+const LIBS = new Map();
+function libs(ref) {
+  if (!LIBS.has(ref)) {
+    const q = ref === REF ? rq : refTree(ref);
+    LIBS.set(ref, { C: q('./marketing/offers-core'), CFG: q('./marketing/config'), createFakeDb: q('./merchant/_fake-db').createFakeDb, R: q('./access/roster'),
+      makeRtdbMirror: q('./catalog/mirror-rtdb').makeRtdbMirror, makeRtdbMirrorReader: q('./catalog/snapshot-fallback').makeRtdbMirrorReader, buildMenu: q('./catalog/catalog-menu').buildMenu });
+  }
+  return LIBS.get(ref);
+}
 export const { isBrandId } = rq('./brands/brand-model');
 
 // ── the real backend (3a's offers-core.test.js set-up, the same real writers) ─────────────────────────────────────────────────
@@ -38,7 +44,7 @@ export const OWNER = 'ownerMk01', MGR = 'mgrMk0001';
 const TOK = { [`t-${OWNER}`]: { uid: OWNER }, [`t-${MGR}`]: { uid: MGR } };
 export const K1 = 'i_aaaaaaaaaaaa', K2 = 'i_bbbbbbbbbbbb', K3 = 'i_cccccccccccc';
 const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
-const versionMenu = (rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
+const versionMenu = (buildMenu, rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
   { exists: true, data: () => ({ categories: cats.map((id) => ({ id })), item_order: rows.map((r) => r[0]) }) }, 'test');
 function prodDb(fake) {   // production's transaction semantics (the SDK's uncached first run sees null)
   return { ref(p = '') {
@@ -52,7 +58,8 @@ function prodDb(fake) {   // production's transaction semantics (the SDK's uncac
     } };
   } };
 }
-export async function backend({ offers = true, extra = null } = {}) {
+export async function backend({ offers = true, extra = null, ref = REF } = {}) {
+  const { C, CFG, createFakeDb, R, makeRtdbMirror, makeRtdbMirrorReader, buildMenu } = libs(ref);
   const fake = createFakeDb({
     brands: { tb: { name: 'Tercera', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } },
     restaurants: Object.fromEntries(['tb_centro', 'tb_sur'].map((rid) => [rid, { identity: { brand_id: 'tb', name: rid, active: true, version: 1 } }])),
@@ -69,7 +76,7 @@ export async function backend({ offers = true, extra = null } = {}) {
   const CATALOG = { tb_centro: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], tb_sur: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas']] };
   const CATS = { tb_centro: ['pizzas', 'bebidas'], tb_sur: ['pizzas'] };
   const deps = { db, verifyIdToken: async (t) => { if (!TOK[t]) throw new Error('bad token'); return TOK[t]; }, now: () => NOW,
-    readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async (rid) => versionMenu(CATALOG[rid], CATS[rid]) };
+    readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async (rid) => versionMenu(buildMenu, CATALOG[rid], CATS[rid]) };
   const CORES = { getMarketing: C.getMarketingCore, marketingOfferSave: C.marketingOfferSaveCore, marketingOfferSetState: C.marketingOfferSetStateCore, marketingOfferRepeat: C.marketingOfferRepeatCore };
   const calls = [];
   const net = { down: false };

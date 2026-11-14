@@ -10,7 +10,8 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { DIR, NOW, OWNER, MGR, RID, K1, K2, K3, backend, form, create, publish } from './marketing-harness.mjs';
+import { DIR, NOW, DAY, OWNER, MGR, RID, K1, K2, K3, backend, form, create, publish } from './marketing-harness.mjs';
+import { offerSetStateRaw } from './api.js';
 import * as ML from './marketing-logic.js';
 
 const { JSDOM } = createRequire(join(DIR, '..', 'xpizza-functions', 'package.json'))('jsdom');
@@ -39,12 +40,13 @@ async function loadAll() {
   const files = [auth];
   const mods = {};
   try {
-    for (const name of ['app', 'ventas', 'shell', 'marketing-builder', 'marketing']) {   // the builder per page too: its dialog state is module-level
+    for (const name of ['app', 'ventas', 'shell', 'marketing-builder', 'marketing-detail', 'marketing']) {   // the builder + detail per page too: their state is module-level
       const src = readFileSync(join(DIR, `${name}.js`), 'utf8')
         .replace(/from '\.\/auth\.js'/g, `from './__mkt-auth-stub.${tag}.mjs'`)
         .replace(/from '\.\/app\.js'/g, `from '${url('app')}'`)
         .replace(/from '\.\/shell\.js'/g, `from '${url('shell')}'`)
-        .replace(/from '\.\/marketing-builder\.js'/g, `from '${url('marketing-builder')}'`);
+        .replace(/from '\.\/marketing-builder\.js'/g, `from '${url('marketing-builder')}'`)
+        .replace(/from '\.\/marketing-detail\.js'/g, `from '${url('marketing-detail')}'`);
       writeFileSync(tmp(name), src); files.push(tmp(name));
       mods[name] = await import(pathToFileURL(tmp(name)).href);
     }
@@ -95,7 +97,7 @@ test('SOURCE_GATE: the v5 blocks this build can\'t source are named, each with i
   const b = await world();
   const p = await page({ b });
   const ids = p.mods.marketing.SOURCE_GATE.map(([id]) => id);
-  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'tope', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'empty-results']);
+  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'tope', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'detail-results', 'paused-date', 'empty-results']);
   for (const [id, why] of p.mods.marketing.SOURCE_GATE) assert.ok(typeof why === 'string' && why.length > 20, `${id}: a reason`);
   assert.deepEqual(p.mods.marketing.NOT_DRAWN.map(([id]) => id), ['switch-off', 'live-drift']);
 });
@@ -441,4 +443,150 @@ test('Editar: a cap may only go UP — a lower one blocks inline; a higher one s
   p.btn('Guardar cambios', dlg(p)).click(); await settle(120);
   assert.ok(dlg(p), 'the server refused: the dialog stays');
   assert.equal(dlg(p).querySelector('.mk5b-err').textContent, 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.', 'the interim panel until 3a widens its allowlist');
+});
+
+// ═══ O3 · the detail (v5 5 / 5b / 5c) + the state moves + «Repetir» — every write through 3a's REAL cores ══════════════════════
+const LIVE = () => form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * DAY, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' });
+const rowNamed = (p, name) => [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === name);
+const toastText = (p) => p.d.getElementById('opstoast').textContent;
+const stored = (b, name) => Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.name === name);
+const sheet = (p) => p.host().querySelector('.mk5r-modal');
+const detailMenu = async (p) => { p.host().querySelector('.mk5d-more1').click(); await settle(); return [...p.host().querySelectorAll('.mk5d-kebab [role="menuitem"]')]; };
+async function openDetail(p, name) {
+  p.mods.marketing.clock.now = () => NOW;
+  rowNamed(p, name).querySelector('.mk5-lnk').click(); await settle();
+}
+
+test('O3 the detail: the name opens it — «Marketing» back, h1, the status · «Oferta» · horario + dates, Editar / Pausar / ⋯; every results block ABSENT; «Ver más» shows «Cómo está armada» only', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  const h = p.host();
+  assert.equal(h.querySelector('.mk5-list'), null, 'the detail replaces the list');
+  assert.equal(h.querySelector('.mk5d-back').textContent, 'Marketing');
+  assert.equal(h.querySelector('h1').textContent, 'Almuerzo');
+  assert.equal(h.querySelector('.mk5d-meta').textContent, 'Activa·Oferta·Lun–Vie · 11:00–14:00 · del 16 nov al 6 dic');
+  assert.deepEqual([...h.querySelectorAll('.mk5d-acts > .mk5d-btn')].map((x) => x.textContent), ['Editar', 'Pausar']);
+  assert.deepEqual((await detailMenu(p)).map((x) => x.textContent), ['Terminar oferta'], '🔴 no «Repetir campaña» on a live offer (SOURCE_GATE repeat-live)');
+  for (const sel of ['.mk5d-strip', '.kfigs', '.vcard', '.notyet', '.lim']) assert.equal(h.querySelector(sel), null, `🔴 ${sel} ABSENT (SOURCE_GATE detail-results / tope)`);
+  assert.doesNotMatch(p.text(), /trajo|Resultados|Ventas con la oferta|Sucursales/, '🔴 no results words');
+  assert.equal(h.querySelector('.mk5d-morebtn').getAttribute('aria-expanded'), 'false');
+  h.querySelector('.mk5d-morebtn').click(); await settle();
+  assert.deepEqual([...h.querySelectorAll('.mk5d-sec h3')].map((x) => x.textContent), ['Cómo está armada']);
+  assert.deepEqual([...h.querySelectorAll('.mk5d-sec .mk5d-r')].map((r) => [r.firstChild.textContent, r.lastChild.textContent]),
+    [['Descuento', '15 % · hasta L 100 por pedido'], ['Días y horas', 'Lun–Vie · 11:00–14:00'], ['Fechas', '16 nov – 6 dic 2026'], ['Clientes', 'Todos']]);
+  h.querySelector('.mk5d-back').click(); await settle();
+  assert.ok(rowNamed(p, 'Almuerzo'), '«Marketing» goes back to the list');
+});
+
+test('O3 «Pausar» → the REAL core pauses (v5\'s toast); 5c\'s strip «Pausada por vos» (no date: SOURCE_GATE paused-date) + «Reanudar» → active again', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  p.btn('Pausar').click(); await settle(120);
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'the real core stored the pause');
+  const h = p.host();
+  assert.equal(h.querySelector('.mk5d-meta .mk5-st').textContent, 'Pausada· vos');
+  assert.equal(h.querySelector('.mk5d-strip .mk5d-stxt').textContent, 'Pausada por vos', '🔴 no invented date');
+  assert.equal(p.btn('Pausar'), undefined, 'no «Pausar» while paused');
+  p.btn('Reanudar', h.querySelector('.mk5d-strip')).click(); await settle(120);
+  assert.equal(toastText(p), 'Oferta activa de nuevo');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'active');
+  assert.equal(h.querySelector('.mk5d-strip'), null);
+  assert.equal(h.querySelector('.mk5d-meta .mk5-st').textContent, 'Activa');
+});
+
+test('O3 «Terminar oferta» (5b): always confirmed — v5\'s title, sentence, «Después» row (no «Lleva»: SOURCE_GATE); «Volver» keeps it; «Terminar oferta» ends it in the REAL core', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
+  const m = sheet(p);
+  assert.equal(m.querySelector('.mk5r-mt').textContent, '¿Terminar «Almuerzo»?');
+  assert.equal(m.querySelector('.mk5r-ms').textContent, 'La oferta deja de mostrarse ahora. Los resultados quedan guardados.');
+  assert.deepEqual([...m.querySelectorAll('.mk5d-r')].map((r) => r.textContent), ['DespuésQueda como «Terminada» y podés repetirla cuando querás'], '🔴 no «Lleva» row');
+  assert.deepEqual([...m.querySelectorAll('.mk5r-mf button')].map((x) => x.textContent), ['Volver', 'Terminar oferta'], 'the safe default first');
+  p.btn('Volver', m).click(); await settle();
+  assert.equal(sheet(p), null);
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'active', 'nothing written');
+  (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
+  p.btn('Terminar oferta', sheet(p)).click(); await settle(120);
+  assert.equal(sheet(p), null);
+  assert.equal(toastText(p), 'Oferta terminada. Los resultados quedan guardados.');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'ended');
+  assert.equal(p.host().querySelector('.mk5d-meta .mk5-st').textContent, 'Terminada');
+  assert.deepEqual([...p.host().querySelectorAll('.mk5d-acts > .mk5d-btn')].map((x) => x.textContent), [], 'no Editar / Pausar once ended');
+  assert.deepEqual((await detailMenu(p)).map((x) => x.textContent), ['Repetir campaña']);
+});
+
+test('O3 «Repetir campaña» on an ended offer: v5\'s sheet (the portal calendar, the same length, the summary) → the REAL repeat → dates → publish; v5\'s toast; the copy is live', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const end = await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  assert.equal(end.status, 200, 'premise: ended by the real core');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  const m = sheet(p);
+  assert.equal(m.querySelector('.mk5r-mt').textContent, 'Repetir «Almuerzo»');
+  assert.equal(m.querySelector('.mk5r-ms').textContent, 'Misma oferta, mismos días y horas, mismas sucursales. Solo elegís las fechas nuevas.');
+  assert.deepEqual([...m.querySelectorAll('.mk5b-dpbtn .mk5b-dpv')].map((x) => x.textContent), ['lun 16 nov 2026', 'dom 6 dic 2026'], 'from today, the same length');
+  assert.equal(m.querySelector('.mk5b-sum').textContent, 'Lun a Vie · 11:00–14:00 · del 16 nov al 6 dic · todos los clientes · 15 % · hasta L 100 por pedido');
+  m.querySelectorAll('.mk5b-dpbtn')[1].click(); await settle();
+  [...p.host().querySelectorAll('.mk5b-dpop .mk5b-dpd')].find((x) => x.textContent === '20').click(); await settle();   // it opens on Fin's month
+  assert.equal(sheet(p).querySelectorAll('.mk5b-dpv')[1].textContent, 'dom 20 dic 2026', 'the calendar moves Fin');
+  p.btn('Programar', sheet(p)).click(); await settle(200);
+  assert.equal(sheet(p), null);
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov');
+  const all = stored(b, 'Almuerzo');
+  assert.equal(all.length, 2, 'the real repeat made ONE copy');
+  const copy = all.find((r) => r.state === 'active');
+  assert.ok(copy, 'the copy is published');
+  assert.equal(copy.schedule.start, NOW + 60000, '«hoy» = now + 1 min');
+  assert.deepEqual(copy.schedule.days, [1, 2, 3, 4, 5]);
+  assert.equal(copy.schedule.end, Date.UTC(2026, 11, 21, 6) - 1, 'Fin = the end of 20 dic HN');
+});
+
+test('O3 the list\'s row moves: «Pausar» in place (v5\'s toast; the row reads «Pausada · vos»); «Terminar» opens 5b over the list; «Repetir» on an ended row opens the repeat sheet', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const old = await publish(b, form({ name: 'Viejo', start: NOW }));
+  await offerSetStateRaw({ rid: RID, offerId: old.id, to: 'ended', expectedRev: old.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  p.btn('Acciones', rowNamed(p, 'Almuerzo')).click(); await settle();
+  rowNamed(p, 'Almuerzo').querySelector('[data-act="pause"]').click(); await settle(150);
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.');
+  assert.ok(p.host().querySelector('.mk5-list'), 'still the list');
+  assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').textContent, 'Pausada· vos');
+  assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').title, 'Pausada por vos');
+  p.btn('Acciones', rowNamed(p, 'Almuerzo')).click(); await settle();
+  rowNamed(p, 'Almuerzo').querySelector('[data-act="end"]').click(); await settle();
+  assert.equal(sheet(p).querySelector('.mk5r-mt').textContent, '¿Terminar «Almuerzo»?');
+  assert.ok(p.host().querySelector('.mk5-list'), 'over the list');
+  p.btn('Volver', sheet(p)).click(); await settle();
+  assert.equal(sheet(p), null);
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'nothing written');
+  p.btn('Acciones', rowNamed(p, 'Viejo')).click(); await settle();
+  rowNamed(p, 'Viejo').querySelector('[data-act="repeat"]').click(); await settle();
+  assert.equal(sheet(p).querySelector('.mk5r-mt').textContent, 'Repetir «Viejo»');
+});
+
+test('O3 a manager (marketing.read only): the detail reads — no Editar, no Pausar, no ⋯, no strip action', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token });
+  const p = await page({ b, caps: MGR_CAPS, uid: MGR });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  assert.equal(p.host().querySelector('h1').textContent, 'Almuerzo');
+  for (const sel of ['.mk5d-acts', '.mk5d-kebab', '.mk5d-strip']) assert.equal(p.host().querySelector(sel), null, `${sel}: none for a reader`);
 });

@@ -13,7 +13,8 @@ import { token } from './auth.js';
 import { getMyBranches, getMarketingRaw } from './api.js';
 import { el, svg, button, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
-import { openBuilder, openEditor, closeBuilder, builderOpen } from './marketing-builder.js';
+import { openBuilder, openEditor, openRepeater, closeBuilder, builderOpen } from './marketing-builder.js';
+import { mountDetail, unmountDetail, refreshDetail } from './marketing-detail.js';
 
 // ── what v5 draws that this build does NOT (advisor 11-14) ─────────────────────────────────────────────────────────────────────
 export const SOURCE_GATE = Object.freeze([
@@ -27,6 +28,8 @@ export const SOURCE_GATE = Object.freeze([
   ['anuncios', 'the «Anuncios» section, the Anuncio hero and the eligibility line — the Anuncio stays dark — the ledger is unbuilt'],
   ['how-anuncios', 'the «Anuncios.» paragraph of «¿Cómo funcionan?» — the Anuncio stays dark'],
   ['sherpa-collections', '«Campañas de Sherpa» — no server for the collections yet'],
+  ['detail-results', 'the detail\'s headline, the three figures, the weekly chart, «Resultados», the Límites progress + help, the per-branch sales, the «not yet» reorder line and the end sheet\'s «Lleva» row — the per-offer results read, 5f'],
+  ['paused-date', 'the date in «Pausada por vos el 9 nov» (and the row tooltip\'s «hoy») — the server stores no pause time, only updated_at'],
   ['empty-results', 'the empty state\'s «acá vas a ver cuánto vendiste… cuántos pedidos trajo…» — it promises results the page cannot show until the per-offer results read lands, 5f'],
 ]);
 // states the server produces that v5 does not draw (advisor 11-14: render nothing until a frame is approved)
@@ -70,6 +73,7 @@ const S = {
   gen: 0, uid: null, sel: null, navSel: null, host: null, body: null,
   status: 'idle', tab: 'home', branches: [], reads: null, offers: [], off: false,
   filter: { rid: 'all', estado: 'all' }, howOpen: false, menu: null,
+  detail: null, dhost: null, ohost: null,   // O3: the open offer's id; the detail's host; the list's row-move host
 };
 const can = (cap) => !!(S.sel && S.sel.caps.includes(cap));
 function snap() {
@@ -81,7 +85,7 @@ function snap() {
 document.addEventListener('portal:auth', (e) => {
   const uid = e && e.detail ? e.detail.uid : null;
   S.gen += 1;
-  if (uid !== S.uid) { S.offers = []; S.reads = null; S.branches = []; S.status = 'idle'; S.menu = null; if (S.body) S.body.replaceChildren(); }
+  if (uid !== S.uid) { S.offers = []; S.reads = null; S.branches = []; S.status = 'idle'; S.menu = null; closeDetail(); if (S.body) S.body.replaceChildren(); }
   S.uid = uid;
 });
 
@@ -134,6 +138,7 @@ async function load() {
     S.reads = reads;
     S.offers = S.off ? [] : ML.unionOffers(reads.map((r) => r.offers));
     S.status = 'ready';
+    if (S.detail) { const o = S.offers.find((x) => x.id === S.detail); if (o) refreshDetail(o); else closeDetail(); }   // the page follows the fresh read
   } catch (err) {
     if (!g.alive() || (err && err.kind === 'obsolete')) return;
     S.status = 'error';
@@ -146,6 +151,7 @@ function render() {
   if (!S.body) return;
   const empty = S.status === 'ready' && !S.off && S.offers.length === 0;
   const { top } = topBlock('Marketing', empty && S.tab === 'home' ? LEDE_EMPTY : LEDE, []);
+  if (S.detail && S.status === 'ready' && !S.off) { S.body.replaceChildren(S.dhost); return; }   // O3: the detail replaces the list
   const out = [top];
   if (S.status === 'loading') out.push(skeleton());
   else if (S.status === 'error') out.push(errBox(OFFLINE[0], OFFLINE[1], () => load()));
@@ -154,6 +160,7 @@ function render() {
     if (S.tab === 'create' && can('marketing.edit')) out.push(createTab());
     else if (empty) out.push(emptyState());
     else out.push(...homeTab());
+    if (S.ohost) out.push(S.ohost);   // a row move's sheet / refusal
   }
   S.body.replaceChildren(...out);
 }
@@ -219,10 +226,11 @@ function list(offers) {
     const row = el('div', 'mk5-row'); row.dataset.offer = r.id;
     const ic = el('span', 'mk5-ico'); ic.append(ico(r.icon));
     const c1 = el('div', 'mk5-c1');
-    c1.append(el('span', 'mk5-lnk', r.name));   // the detail (O3) makes this the link; until then the name is plain text
+    c1.append(button('mk5-lnk', r.name, () => openDetail(r.id)));   // O3: the name opens the detail
     if (r.branchNote) c1.append(el('span', 'mk5-br', r.branchNote));
     const c2 = el('div', 'mk5-c2');
     const st = el('span', 'mk5-st'); st.append(el('i', `mk5-dot mk5-${r.status.key}`), document.createTextNode(r.status.word));
+    if (r.status.key === 'pausa') { st.append(el('span', 'mk5-why', '· vos')); st.title = 'Pausada por vos'; }   // v5: the owner's pause (the only pause the server has)
     c2.append(st);
     const c3 = el('div', 'mk5-c3');
     if (r.horario) c3.textContent = r.horario; else c3.append(el('span', 'mk5-faint', 'Sin programar'));
@@ -234,7 +242,7 @@ function list(offers) {
       b.append(svg(DOWN));
       const m = el('div', `mk5-menu${S.menu === mid ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
       for (const a of r.menu) {
-        const ob = button(a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt', MENU_WORD[a], () => { S.menu = null; render(); onRowAction(a, r.id); });   // O3 wires the other moves
+        const ob = button(a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt', MENU_WORD[a], () => { S.menu = null; render(); onRowAction(a, r.id); });
         ob.setAttribute('role', 'menuitem'); ob.dataset.act = a;
         m.append(ob);
       }
@@ -302,8 +310,29 @@ function onRowAction(a, id) {
   const o = S.offers.find((x) => x.id === id);
   if (!o) return;
   if (a === 'continue') startBuilder({ offer: o });
-  if (a === 'edit' && can('marketing.edit') && S.host && !builderOpen()) openEditor(S.host, builderCtx(), o);   // O2c: the running offer's dialog
+  if (a === 'edit') editOffer(o);   // O2c: the running offer's dialog
+  if (a === 'view') openDetail(id);
+  if (a === 'repeat') repeatOffer(o);
+  if ((a === 'pause' || a === 'resume' || a === 'end') && can('marketing.edit') && S.ohost) mountDetail(S.ohost, detailCtx(o), { act: a });
 }
+function editOffer(o) { if (can('marketing.edit') && S.host && !builderOpen()) openEditor(S.host, { ...builderCtx(), onDone: () => load() }, o); }
+function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen()) openRepeater(S.host, { ...builderCtx(), onDone: () => load(), onChanged: () => load() }, o); }
+
+// ── O3 · the offer detail (marketing-detail.js) ────────────────────────────────────────────────────────────────────────────────
+function detailCtx(o) {
+  return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
+    toast, onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+}
+function openDetail(id) {
+  const o = S.offers.find((x) => x.id === id);
+  if (!o || !S.dhost) return;
+  unmountDetail();
+  S.detail = id; S.menu = null;
+  mountDetail(S.dhost, detailCtx(o));
+  render();
+  if (typeof window.scrollTo === 'function') try { window.scrollTo(0, 0); } catch (_) { /* jsdom */ }
+}
+function closeDetail() { if (S.detail || S.ohost) unmountDetail(); S.detail = null; }
 
 document.addEventListener('click', (e) => {   // a click outside an open pill / Acciones menu closes it
   if (!S.menu || !S.body || !S.body.isConnected) return;
@@ -322,17 +351,19 @@ registerView({
     S.host = host;
     const wrap = el('div', 'mktv');
     S.body = el('div');
+    S.dhost = el('div', 'mk5d'); S.ohost = el('div');
     wrap.append(S.body);
     host.replaceChildren(wrap);
-    S.status = 'idle'; S.reads = null; S.offers = []; S.tab = 'home'; S.menu = null; S.howOpen = false; S.filter = { rid: 'all', estado: 'all' };
+    S.status = 'idle'; S.reads = null; S.offers = []; S.tab = 'home'; S.menu = null; S.howOpen = false; S.filter = { rid: 'all', estado: 'all' }; S.detail = null;
     render();
     load();
   },
   unmount() {
     S.gen += 1;
     closeBuilder();
+    closeDetail();
     if (S.body) S.body.replaceChildren();
-    S.host = null; S.body = null; S.reads = null; S.offers = []; S.menu = null;
+    S.host = null; S.body = null; S.dhost = null; S.ohost = null; S.reads = null; S.offers = []; S.menu = null;
   },
   canLeave: () => true,
 });

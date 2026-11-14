@@ -6,7 +6,7 @@
 // chip + overlap note (Q2 — the server's 409 at «Programar» is the signal), the audience sub-lines (Q3), the pct / nuevos minimum,
 // «Más pedido», the preview's ETA + fee, the terms sentence (Q6).
 // The host (marketing.js) passes { branches, rid, brandName, token, onDone(kind) } and the shell's toast.
-import { getEditableCatalogRaw, offerSaveRaw, offerSetStateRaw, getMarketingRaw } from './api.js';
+import { getEditableCatalogRaw, offerRepeatRaw, offerSaveRaw, offerSetStateRaw, getMarketingRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
 import { groupByCategory } from './render.js';
 import * as ML from './marketing-logic.js';
@@ -42,6 +42,8 @@ const REFUSAL_WORD = Object.freeze({
   schedule: () => 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.',   // interim (3a widening pending)
   live_edit: () => 'Por ahora no se puede cambiar eso en una oferta activa. Terminá esta oferta y creá una nueva.',   // interim (3a widening pending)
   off: () => 'Las ofertas no están disponibles en este momento.',
+  not_ended: () => 'Solo se puede repetir una oferta terminada.',
+  ended: () => 'Esta oferta ya terminó. Volvé a la lista para ver su estado.',
 });
 
 const now = () => (B.ctx && typeof B.ctx.now === 'function' ? B.ctx.now() : Date.now());
@@ -117,10 +119,11 @@ function render() {
   const x = el('button', 'mk5b-x'); x.type = 'button'; x.setAttribute('aria-label', 'Cerrar'); x.append(svg(X)); x.addEventListener('click', closeBuilder);
   hd.append(ht, x);
   const body = el('div', 'mk5b-body');
-  body.append(edit ? editFormCol(w) : formCol(w), previewCol(w));
+  if (B.mode !== 'repeat') body.append(edit ? editFormCol(w) : formCol(w), previewCol(w));
   dlg.append(hd, body);
   scrim.append(dlg);
   const kids = [scrim];
+  if (B.mode === 'repeat') kids.splice(0, 1, repeatSheet(w));   // O3: the repeat sheet alone (its dates use this calendar)
   if (B.dp) kids.push(datePopover());
   if (B.review) kids.push(reviewSheet(w));
   B.layer.replaceChildren(...kids);
@@ -665,4 +668,77 @@ async function saveEdit() {
   closeBuilder();
   B.ctx.toast('Cambios guardados');
   B.ctx.onDone && B.ctx.onDone();
+}
+
+// ── O3 · «Repetir «…»» (v5 repScrim): the same offer, days, hours and branches — only NEW dates. The writes: the server's repeat
+// (a NEW draft, rev 1, dates cleared — offers-core marketingOfferRepeat, ENDED offers only) → save the chosen dates → publish. A copy
+// that saved but did not publish stays in «Borradores» (the sheet says why); a retry continues THAT draft, never a second repeat.
+const R = { draft: null };
+export function openRepeater(host, ctx, offer) {
+  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  B.mode = 'repeat'; B.offer = offer; B.nameAuto = false; B.menu = null; R.draft = null;
+  const s = offer.schedule || {};
+  const len = Number.isSafeInteger(s.start) && Number.isSafeInteger(s.end) ? hnDay0(s.end) - hnDay0(s.start) : 7 * DAY;   // the same length as before
+  const start = hnDay0(now());
+  B.form = { ...ML.formFromOffer(offer), start, end: start + len + DAY - 1 };
+  B.custom = isCustom(B.form.window);
+  B.layer = el('div', 'mk5b-layer');
+  host.append(B.layer);
+  render();
+}
+// the summary after the bold days · hours: «del 14 al 22 nov · clientes que vuelven · 10 % · hasta L 60 por pedido»
+export function repeatRest(w, audience) {
+  const aud = ((AUD.find(([k]) => k === audience) || AUD[0])[1]).toLowerCase();
+  return [w.schedSummary.rest.replace(/\.$/, ''), aud, w.sumType].filter(Boolean).join(' · ');
+}
+function repeatSheet(w) {
+  const scrim = el('div', 'mk5r-scrim');
+  scrim.addEventListener('click', (e) => { if (e.target === scrim && !B.busy) closeBuilder(); });
+  const m = el('div', 'mk5r-modal'); m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'repT');
+  const mh = el('div', 'mk5r-mh'); const mt = el('div', 'mk5r-mt', `Repetir «${B.offer.name}»`); mt.id = 'repT';
+  mh.append(mt, el('div', 'mk5r-ms', 'Misma oferta, mismos días y horas, mismas sucursales. Solo elegís las fechas nuevas.'));
+  const mb = el('div', 'mk5r-mb');
+  const dates = el('div', 'mk5b-dates');
+  dates.append(dateField('Inicio', 'start', B.form.start, { disabled: B.busy }), dateField('Fin', 'end', B.form.end, { disabled: B.busy }));
+  const sum = el('div', 'mk5b-sum'); sum.append(svg(...ROW_ICON.sch));
+  const st = el('span'); st.append(el('b', null, w.schedSummary.strong), document.createTextNode(` · ${repeatRest(w, B.form.audience)}`));
+  sum.append(st);
+  mb.append(dates, sum);
+  if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); mb.append(e); }
+  const mf = el('div', 'mk5r-mf');
+  const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', closeBuilder);
+  const ok = el('button', 'mk5r-ok', 'Programar'); ok.type = 'button'; ok.disabled = B.busy || !(B.form.end > B.form.start); ok.addEventListener('click', () => repeatGo());
+  mf.append(back, ok);
+  m.append(mh, mb, mf); scrim.append(m);
+  return scrim;
+}
+async function repeatGo() {
+  if (B.busy) return;
+  B.busy = true; B.err = null; render();
+  const src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token;
+  const live = () => B.open && B.offer === src && B.ctx === ctx;   // still THIS sheet (not closed / reopened mid-write)
+  const rr = () => getMarketingRaw({ rid, token });
+  if (!R.draft) {
+    const r1 = ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid, offerId: src.id, token }));
+    if (!live()) return;
+    if (r1.outcome !== 'saved') { B.busy = false; B.err = wordOf(r1); render(); if (r1.outcome === 'unknown' && ctx.onChanged) ctx.onChanged(); return; }
+    R.draft = r1.offer;
+  }
+  const soon = Math.ceil((now() + 60000) / 60000) * 60000;
+  const a = ML.offerFromForm({ ...ML.formFromOffer(R.draft), start: Math.max(B.form.start, soon), end: B.form.end });
+  if (!a.ok) { B.busy = false; B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
+  const d = R.draft;
+  const s = await ML.settleWrite({ op: 'save', offerId: d.id, expectedRev: d.rev, sent: a.offer, prev: d },
+    () => offerSaveRaw({ rid, offerId: d.id, expectedRev: d.rev, offer: a.offer, token }), rr);
+  if (!live()) return;
+  if (s.outcome !== 'saved') { B.busy = false; B.err = wordOf(s); render(); if (ctx.onChanged) ctx.onChanged(); return; }   // the copy stays a draft
+  R.draft = s.offer;
+  const p = await ML.settleWrite({ op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' },
+    () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), rr);
+  if (!live()) return;
+  B.busy = false;
+  if (p.outcome !== 'saved') { B.err = wordOf(p); render(); if (ctx.onChanged) ctx.onChanged(); return; }
+  closeBuilder();
+  ctx.toast(`Campaña programada para el ${longDate(B.form.start).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov»
+  if (ctx.onDone) ctx.onDone();
 }

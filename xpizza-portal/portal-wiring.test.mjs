@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions, MUTATING_IMPORTS } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js', 'marketing-builder.js']);   // + Ofertas O2: «Oferta programada…» / «Borrador guardado» (v5's success toasts; failures are panels)   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js', 'marketing-builder.js', 'marketing-detail.js']);   // + Ofertas O3: «Oferta pausada…» / «Oferta activa de nuevo» / «Oferta terminada…» (v5's toasts; failures are panels)   // + Ofertas O2: «Oferta programada…» / «Borrador guardado» (v5's success toasts; failures are panels)   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
 // PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')

@@ -64,6 +64,7 @@
   "item-edit-logic.js",
   "item-edit.test.mjs",
   "marketing-builder.js",
+  "marketing-detail.js",
   "marketing-harness.mjs",
   "marketing-logic.js",
   "marketing-logic.test.mjs",
@@ -190,8 +191,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "088ebcbf6c110c4c773952dfd37aabfdc49d1d54aff82af293bf2df55065c2ac",
-   "bytes": 188558
+   "sha256": "a0b2ccaa52f2acb24f64eb57f518631b5b4df1752ac0dbe2417178178873dc99",
+   "bytes": 193480
   }
  },
  "diff_aid": {
@@ -2900,6 +2901,12 @@
    [
     "",
     ".mk5-lnk",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5-lnk",
     "color",
     "var(--ink)"
    ],
@@ -3064,6 +3071,12 @@
     ".mk5-vv-teal",
     "color",
     "var(--on-vivid)"
+   ],
+   [
+    "",
+    ".mk5-why",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -3778,6 +3791,156 @@
     ".mk5b-x:hover",
     "background",
     "var(--line2)"
+   ],
+   [
+    "",
+    ".mk5d-back",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-back",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-btn",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-btn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-btn:hover",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".mk5d-btn:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-errx",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-errx",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-meta",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-more",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-more1",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-more1",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-more1:hover",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".mk5d-more1:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-morebtn",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".mk5d-morebtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-morelbl",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mk5d-r span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5d-sbtn:hover",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".mk5d-sec h3",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".mk5d-sep",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5d-strip",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".mk5d-strip",
+    "color",
+    "var(--sand-text)"
    ],
    [
     "",
