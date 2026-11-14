@@ -256,3 +256,53 @@ export async function settleWrite(attempt, send, reread) {
   if (!r || r.transport || r.status !== 200) return { outcome: 'unknown' };
   return classifyRecovery(attempt, r.body);
 }
+
+// ── O1 · the «Campañas» list (MOCKUP-portal-marketing v5 s-home, owner-approved 11-14) ─────────────────────────────────────────
+// Each row: the type icon, the name (+ «N de M sucursales» when narrowed), the status as a dot + word, «Horario» in plain words.
+// The «Ventas» column, the summary and the period pill are ABSENT (SOURCE_GATE: the per-offer results read, 5f) — never «—» or 0.
+const STATUS_VIEW = Object.freeze({ live: ['activa', 'Activa'], scheduled: ['prog', 'Programada'], paused_owner: ['pausa', 'Pausada'], ended: ['fin', 'Terminada'], draft: ['borr', 'Borrador'] });
+const GROUP = ['live', 'scheduled', 'paused_owner', 'ended', 'draft'];   // the drawn order: Activa · Programada · Pausada · Terminada · Borrador
+export const TYPE_ICON = Object.freeze({ pct: 'i-percent', lps: 'i-coin', bogo: 'i-gift', envio: 'i-truck', nuevos: 'i-userplus' });
+export const statusView = (o) => { const v = STATUS_VIEW[o.status] || STATUS_VIEW[o.state]; return v ? { key: v[0], word: v[1] } : null; };
+// days 0 = domingo … 6 = sábado (offer-model scheduleOf); the merchant's week reads Monday first («Sáb y Dom»)
+const DAY_ABBR = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const monFirst = (d) => (d + 6) % 7;
+const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const joinY = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} y ${a[a.length - 1]}`);
+// a schedule → «Lun–Vie · 11:00–14:00» · «Vie y Sáb · 21:00–00:00» · «Todos los días · todo el día» · «Lun, Mié y Vie · 18:30–23:00»
+export function horario(s) {
+  if (!isObj(s) || !Array.isArray(s.days) || !s.days.length) return null;
+  const ds = [...new Set(s.days)].sort((a, b) => monFirst(a) - monFirst(b));
+  const run = ds.length >= 3 && ds.every((d, i) => i === 0 || monFirst(d) === monFirst(ds[i - 1]) + 1);
+  const days = ds.length === 7 ? 'Todos los días' : run ? `${DAY_ABBR[ds[0]]}–${DAY_ABBR[ds[ds.length - 1]]}` : joinY(ds.map((d) => DAY_ABBR[d]));
+  const win = isObj(s.window) ? `${hhmm(s.window.from)}–${hhmm(s.window.to)}` : 'todo el día';
+  return `${days} · ${win}`;
+}
+// the drawn row menu ∩ the server's moves (offers-core MOVES; «Repetir» only from ENDED — not_ended otherwise; no delete exists)
+export function rowMenu(o, canEdit) {
+  if (!canEdit || !o) return [];
+  const st = o.status;
+  if (st === 'draft') return ['continue'];
+  if (st === 'ended') return ['view', ...(actionsOf(o).includes('repeat') ? ['repeat'] : [])];
+  if (st === 'scheduled') return ['view', ...(editable(o) !== 'none' ? ['edit'] : [])];
+  const acts = actionsOf(o);
+  return ['view', ...(st === 'live' && acts.includes('pause') ? ['pause'] : []), ...(st === 'paused_owner' && acts.includes('resume') ? ['resume'] : []),
+    ...(editable(o) !== 'none' ? ['edit'] : []), ...(acts.includes('end') ? ['end'] : [])];
+}
+// offers → rows, grouped as drawn (the server's order — newest first — within a group)
+export function listRows(offers, { nBranches, canEdit }) {
+  return GROUP.flatMap((g) => offers.filter((o) => (o.status === g))).map((o) => ({
+    id: o.id, name: o.name, icon: TYPE_ICON[o.type], status: statusView(o), horario: o.status === 'draft' ? null : horario(o.schedule),
+    branchNote: Array.isArray(o.branches) && Number.isInteger(nBranches) && o.branches.length < nBranches ? `${o.branches.length} de ${nBranches} sucursales` : null,
+    menu: rowMenu(o, canEdit), drift: o.drift || null,
+  }));
+}
+// «Todas las sucursales»: each branch read returns the brand's offers that include it — one row per offer, the newest rev
+export function unionOffers(lists) {
+  const by = new Map();
+  for (const l of lists) for (const o of l || []) { const cur = by.get(o.id); if (!cur || o.rev > cur.rev) by.set(o.id, o); }
+  return [...by.values()].sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
+}
+export const ESTADOS = Object.freeze(['all', 'live', 'scheduled', 'paused_owner', 'ended', 'draft']);   // Todas · Activas · Programadas · Pausadas · Terminadas · Borradores
+export const estadoCounts = (offers) => Object.fromEntries(ESTADOS.map((e) => [e, e === 'all' ? offers.length : offers.filter((o) => o.status === e).length]));
+export const byEstado = (offers, e) => (e === 'all' ? offers : offers.filter((o) => o.status === e));

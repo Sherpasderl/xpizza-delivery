@@ -364,3 +364,66 @@ test('the Anuncio stays DARK: only api.js calls its endpoints, no shipped module
   assert.deepEqual(m, { kind: 'ok', offers: [], dropped: 0 }, 'no bookings in the model');
   assert.deepEqual(ML.readModel(null), { kind: 'unreadable' });
 });
+
+// ═══ O1 · the Campañas list (MOCKUP-portal-marketing v5 s-home, owner-approved 11-14) — from REAL server offers ══════════════════
+test('O1 list: one row per offer — the dot status, «Horario» in plain words, the branch note when narrowed, the type icon; grouped as drawn', async () => {
+  const b = await backend();
+  const live = await publish(b, form({ name: 'Almuerzo: 15 % en todo el menú', pct: 15, start: NOW, end: null, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 } }));
+  const sched = await publish(b, form({ name: '2 por 1 en pizzas clásicas', start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } }));
+  const draft = await create(b, form({ name: 'Cena: L 40 en pedidos desde L 300', days: [0, 1, 2, 3, 4, 5, 6], window: null }));
+  const one2 = await publish(b, form({ name: 'Fin de semana: 10 % en pastas', pct: 10, start: NOW, end: null, days: [0, 6], window: null, branches: [RID] }));
+  const m = ML.readModel((await read(b)).body);
+  const rows = ML.listRows(m.offers, { nBranches: 2, canEdit: true });
+  const by = Object.fromEntries(rows.map((r) => [r.name, r]));
+  assert.deepEqual(rows.map((r) => r.status.key), ['activa', 'activa', 'prog', 'borr'], 'grouped as drawn: Activa · Programada · Pausada · Terminada · Borrador');
+  assert.deepEqual(by[live.name].status, { key: 'activa', word: 'Activa' });
+  assert.equal(by[live.name].horario, 'Lun–Vie · 11:00–14:00', 'a weekday run + the window');
+  assert.equal(by[sched.name].horario, 'Vie y Sáb · 21:00–00:00', 'two days; a window to midnight');
+  assert.equal(by[one2.name].horario, 'Sáb y Dom · todo el día', 'Monday-first: «Sáb y Dom», no window = todo el día');
+  assert.equal(by[draft.name].horario, null, 'a draft is «Sin programar» (the screen words null)');
+  assert.equal(by[one2.name].branchNote, '1 de 2 sucursales', 'narrowed: «N de M sucursales»');
+  assert.equal(by[live.name].branchNote, '1 de 2 sucursales');
+  assert.equal(ML.listRows(m.offers, { nBranches: 1, canEdit: true }).find((r) => r.name === live.name).branchNote, null, 'all of the restaurant\'s branches: no note');
+  assert.equal(by[live.name].icon, 'i-percent');
+  assert.deepEqual(ML.horario({ days: [0, 1, 2, 3, 4, 5, 6], window: null }), 'Todos los días · todo el día');
+  assert.deepEqual(ML.horario({ days: [1, 3, 5], window: { from: 1110, to: 1380 } }), 'Lun, Mié y Vie · 18:30–23:00', 'three apart: a list');
+});
+
+test('O1 list: the Acciones menu is the DRAWN menu intersected with what the server allows — never a move it refuses, never «Eliminar» (no delete)', async () => {
+  const b = await backend();
+  const live = await publish(b, form({ name: 'A', start: NOW }));
+  const sched = await publish(b, form({ name: 'B' }));
+  const draft = await create(b, form({ name: 'C' }));
+  const paused = ML.classifyWrite({ op: 'state', offerId: live.id, expectedRev: live.rev, to: 'paused_owner' },
+    await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token })).offer;
+  const ended = ML.classifyWrite({ op: 'state', offerId: sched.id, expectedRev: sched.rev, to: 'ended' },
+    await offerSetStateRaw({ rid: RID, offerId: sched.id, to: 'ended', expectedRev: sched.rev, token: b.token })).offer;
+  const live2 = await publish(b, form({ name: 'D', start: NOW, days: [3] }));
+  const menu = (o) => ML.rowMenu(o, true);
+  assert.deepEqual(menu(live2), ['view', 'pause', 'edit', 'end'], 'Activa: Ver · Pausar · Editar · Terminar («Repetir» needs an ENDED offer: the server answers not_ended)');
+  assert.deepEqual(menu(paused), ['view', 'resume', 'edit', 'end'], 'Pausada (by the owner): Ver · Reanudar · Editar · Terminar');
+  assert.deepEqual(menu(ended), ['view', 'repeat'], 'Terminada: Ver · Repetir');
+  assert.deepEqual(menu(draft), ['continue'], 'Borrador: «Seguir editando» («Eliminar»: no delete on the server)');
+  assert.deepEqual(menu(await publish(b, form({ name: 'E', days: [4] }))), ['view', 'edit'], 'Programada: Ver · Editar, as drawn');
+  assert.deepEqual(ML.rowMenu(live2, false), [], 'a manager reads the list; no actions');
+  for (const o of [live2, paused, ended, draft]) for (const a of menu(o)) {
+    const need = { pause: 'paused_owner', resume: 'active', end: 'ended' }[a];
+    if (need) assert.ok(ML.MOVES[o.state].includes(need), `${o.name}: «${a}» is a server move from ${o.state}`);
+    if (a === 'repeat') assert.equal(o.status, 'ended', 'repeat only from ended');
+  }
+});
+
+test('O1 list: «Estado ▾» counts and filters; «Todas las sucursales» is the union of the branch reads (one row per offer, the newest rev)', async () => {
+  const b = await backend();
+  const both = await publish(b, form({ name: 'Ambas', start: NOW, branches: [RID, 'tb_sur'] }));
+  const sur = await create(b, form({ name: 'Solo sur', branches: ['tb_sur'] }));
+  const centro = await create(b, form({ name: 'Solo centro' }));
+  const reads = [ML.readModel((await read(b)).body), ML.readModel((await read(b, 'tb_sur')).body)];
+  const all = ML.unionOffers(reads.map((r) => r.offers));
+  assert.deepEqual(all.map((o) => o.name).sort(), ['Ambas', 'Solo centro', 'Solo sur'], 'one row per offer across the branches');
+  assert.equal(all.filter((o) => o.id === both.id).length, 1, 'the two-branch offer once');
+  assert.deepEqual(ML.estadoCounts(all), { all: 3, live: 1, scheduled: 0, paused_owner: 0, ended: 0, draft: 2 });
+  assert.deepEqual(ML.byEstado(all, 'draft').map((o) => o.name).sort(), ['Solo centro', 'Solo sur']);
+  assert.deepEqual(ML.byEstado(all, 'all').length, 3);
+  void sur; void centro;
+});
