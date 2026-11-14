@@ -64,7 +64,7 @@ function ratingEligibility(stats, thresholds) {
 }
 
 // THE visibility rule: eligible by rating AND open NOW — controlOf(identity, order_control current, now): inactive > paused > closed
-// (scheduled-orders.isOpenAt over identity.hours) > open; 'unknown' on a malformed identity or control. → { visible } | { visible:false, reason }
+// (scheduled-orders.isOpenAt on the branch's own schedule) > open; 'unknown' on a malformed identity or control. → { visible } | { visible:false, reason }
 function anuncioVisible({ stats, identity, control, thresholds, nowMs }) {
   if (!ratingEligibility(stats, thresholds).ok) return { visible: false, reason: 'rating' };
   const st = controlOf(identity, control, nowMs).state;
