@@ -59,4 +59,43 @@ withCopy((t, f) => writeFileSync(join(f, 'baseline', 'orders-form.google.css'), 
 withCopy((t, f) => { const m = JSON.parse(readFileSync(join(f, 'fonts.manifest.json'), 'utf8')); delete m.surfaces['orders-form'].metrics; writeFileSync(join(f, 'fonts.manifest.json'), JSON.stringify(m)); }, /no derived fallback metrics/, 'missing fallback metrics');
 ok('negative controls: a flipped byte, a missing file, an orphan, a hand-edited css, a wrong OFL, a re-edited baseline and missing metrics are each refused');
 
+
+// ── fontsDir (advisor 11-14, option A): a surface may host its files in its OWN folder next to a site's current fonts ──────────
+// Figtree (owner 11-13, one typeface everywhere) is pinned ONCE for capp + the driver app; each lands in `fonts-figtree/` +
+// `figtree-fonts.css` BESIDE the site's current Red Hat files, which this commit never deletes or overwrites (each lane's swap
+// commit re-points its link / preload and retires its own Red Hat files).
+for (const sf of ['portal', 'orders-form']) {
+  assert.equal(man.surfaces[sf].fontsDir, undefined, `${sf} keeps the default folder`);
+  const explicit = JSON.parse(JSON.stringify(man)); explicit.surfaces[sf].fontsDir = 'fonts';
+  assert.equal(plan(sf, explicit).css, plan(sf, man).css, `${sf}: an explicit 'fonts' renders byte-identically to the default`);
+  for (const site of man.surfaces[sf].sites) assert.equal(readFileSync(join(ROOT, site, man.surfaces[sf].css), 'utf8'), plan(sf, man).css, `${sf}: ${site} css unchanged`);
+}
+ok('the default folder is byte-unchanged: portal and orders-form render exactly as before (explicit fontsDir:"fonts" ≡ absent)');
+
+const FIG = { capp: { site: 'customer-app', bands: ['400 550', '600 800'] }, driver: { site: 'xpizza-driver', bands: ['400 550', '600 900'] } };
+for (const [sf, want] of Object.entries(FIG)) {
+  const s = man.surfaces[sf];
+  assert.ok(s, `the ${sf} surface exists`);
+  assert.deepEqual([s.sites, s.fontsDir, s.css, s.baseline], [[want.site], 'fonts-figtree', 'figtree-fonts.css', 'baseline/figtree'], `${sf}: its own folder + css, the ONE shared Figtree pin`);
+  const q = plan(sf, man);
+  assert.deepEqual([...new Set(q.faces.map((f) => f.family))], ['Figtree'], `${sf}: Figtree only`);
+  for (const f of q.faces) assert.equal(f.weight, '300 900', `${sf}: the variable face as Google declares it`);
+  assert.deepEqual(q.preload, [`fonts-figtree/${[...q.files.keys()].find((k) => k.startsWith('figtree-latin.'))}`], `${sf}: exactly ONE preload, the latin variable file`);
+  assert.match(q.css, /src:url\(fonts-figtree\/figtree-latin\.[0-9a-f]{10}\.woff2\)/, `${sf}: the css points into its own folder`);
+  const fbs = [...q.css.matchAll(/@font-face\{font-family:'(Figtree Fallback(?: Roboto)?)';font-weight:([0-9 ]+);/g)].map((m) => `${m[1]}|${m[2]}`);
+  assert.deepEqual(fbs, want.bands.flatMap((b) => [`Figtree Fallback|${b}`]).concat(want.bands.map((b) => `Figtree Fallback Roboto|${b}`)),
+    `${sf}: the regular / bold bands (${want.bands.join(' · ')}) for Arial and Roboto — real weights, never synthesized`);
+  const old = readdirSync(join(ROOT, want.site, 'fonts')).filter((x) => x.endsWith('.woff2'));
+  assert.ok(old.length >= 2 && old.every((x) => !x.startsWith('figtree')), `${sf}: the site's current fonts/ is untouched (${old.join(', ')})`);
+}
+assert.equal(plan('capp', man).files.size, 2, 'latin + latin-ext');
+assert.deepEqual([...plan('capp', man).files.keys()], [...plan('driver', man).files.keys()], 'capp and the driver host the SAME pinned bytes');
+ok('capp + driver: Figtree (variable 300–900, one shared pin) in fonts-figtree/ + figtree-fonts.css, one latin preload, regular/bold fallback bands; the current fonts/ untouched');
+// what the folder protects: pointed at the shared `fonts/`, --check reports the site's current files as orphans (--write would delete them)
+withCopy((t, f) => {
+  cpSync(join(ROOT, 'customer-app', 'fonts'), join(t, 'customer-app', 'fonts'), { recursive: true });
+  const m = JSON.parse(readFileSync(join(f, 'fonts.manifest.json'), 'utf8')); delete m.surfaces.capp.fontsDir; writeFileSync(join(f, 'fonts.manifest.json'), JSON.stringify(m));
+}, /customer-app\/fonts\/red-hat-[^ ]+ is not a pinned face \(orphan\)/, 'capp pointed at the shared fonts/');
+ok('negative control: without its own folder, capp\'s current Red Hat files read as orphans (what --write would delete)');
+
 console.log(`\nbuild-fonts: OK (${n})`);

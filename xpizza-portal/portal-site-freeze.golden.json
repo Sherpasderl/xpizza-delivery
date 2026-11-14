@@ -51,9 +51,8 @@
   "extras-view.js",
   "firebase.js",
   "fonts/OFL.txt",
-  "fonts/archivo-latin-ext.a999e009fd.woff2",
-  "fonts/archivo-latin.7150c0ec5a.woff2",
-  "fonts/archivo-vietnamese.2518e8eb97.woff2",
+  "fonts/figtree-latin-ext.f153aa07c1.woff2",
+  "fonts/figtree-latin.8330490a01.woff2",
   "gate-early.js",
   "hotfix-1112-fold.mjs",
   "index.html",
@@ -129,32 +128,28 @@
    "bytes": 4451
   },
   "aceptar.css": {
-   "sha256": "008782289ed38d94e26a80a77e4e433fd3e7bd958b4bfad4e578e70a83070b04",
-   "bytes": 5905
+   "sha256": "5138beb231dd1857f463ce08fd3e7966b03d6d36e71e9807a354229cff04e18b",
+   "bytes": 5844
   },
   "aceptar.html": {
-   "sha256": "954c3e3374acbc9f1077db36a087587d83cb7af629b41f1977cf45b3ae04bb14",
-   "bytes": 6656
+   "sha256": "6ce327b99d6c896615b6533dd0c86349fa69e153eb67f0eee3bbe28e70b54f1c",
+   "bytes": 6697
   },
   "fonts/OFL.txt": {
-   "sha256": "8961013dbda3464baefca27c97a068539c798ee7c0be1d1f6b4254a9b20d7518",
+   "sha256": "a3371b2021b2892a5925ad4f9be5f1b86bc2968a5652716610afed1f55ea866e",
    "bytes": 4389
   },
-  "fonts/archivo-latin-ext.a999e009fd.woff2": {
-   "sha256": "a999e009fdcd0f939c138e04043b3b2ad083b26252b644e8f94c083d48b77af0",
-   "bytes": 32672
+  "fonts/figtree-latin-ext.f153aa07c1.woff2": {
+   "sha256": "f153aa07c1b16fbb12391c2512860c97819a0a9fd014f338b2b3f12496479d13",
+   "bytes": 10228
   },
-  "fonts/archivo-latin.7150c0ec5a.woff2": {
-   "sha256": "7150c0ec5ad356453013d11affec1fbab95de0dd2dcecb043b4f1cb7f87c4ba4",
-   "bytes": 34940
-  },
-  "fonts/archivo-vietnamese.2518e8eb97.woff2": {
-   "sha256": "2518e8eb97cd2b36dbf380d085e47bbc0df5c32fc6adc32fe1ca6edce192cee0",
-   "bytes": 13216
+  "fonts/figtree-latin.8330490a01.woff2": {
+   "sha256": "8330490a01c60c196eae00b823de8102275aaa5862e7b76a7af21b8745338928",
+   "bytes": 20184
   },
   "index.html": {
-   "sha256": "db3f139e379552051a47b435d5f6a0eaeae11aa8f09092a172d84eb4358f0011",
-   "bytes": 14955
+   "sha256": "021c14b78377621ed060a919a13b2291d3722260c88ab37c4dba8d521ab4c313",
+   "bytes": 14996
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -173,16 +168,16 @@
    "bytes": 11580
   },
   "portal-fonts.css": {
-   "sha256": "c767de20341796e28f1c4d5e5b3b27d80871956cbd991de0f697065637c36d45",
-   "bytes": 2103
+   "sha256": "f56daaf355462d62990074516e4d67eeb84ddd57fa23a2e269c10de3abf01be9",
+   "bytes": 2115
   },
   "portalui-guards.t1-hunks.json": {
    "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "e8cf21ae2e288b2e661b20ac07e009c11021311c5432924990f4bee3b91a961c",
-   "bytes": 153702
+   "sha256": "9ce98f269c1ade03e8f4687e56a46a993c952cc224f2ab609e88a755fa7d2c57",
+   "bytes": 153641
   }
  },
  "diff_aid": {
@@ -228,8 +223,8 @@
    "--rbar-bg": "#FFFFFF",
    "--shadow": "0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26)",
    "--shadow-lg": "0 44px 96px -40px rgba(10,10,11,.34)",
-   "--body": "'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif",
-   "--disp": "'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif",
+   "--body": "'Figtree','Figtree Fallback','Figtree Fallback Roboto',system-ui,-apple-system,'Segoe UI',sans-serif",
+   "--disp": "var(--body)",
    "--r": "14px",
    "--focus": "0 0 0 2px var(--board),0 0 0 4px var(--ink)",
    "--env-map": "#F1F2EC",
