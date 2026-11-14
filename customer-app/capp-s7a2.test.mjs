@@ -242,318 +242,22 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
-// PLAN-capp-virtual-clock r0: a cell booted with bootShell({ clock: true }) runs on the VIRTUAL clock VC — flush(ms) = drain, advance
-// ms virtual, drain; until() spends a virtual budget. Every other cell keeps the real-sleep flush until its chunk migrates
-// MIGRATION (chunks): the cells NAMED in VIRTUAL boot on the virtual clock by default — bootShell and every helper that wraps it
-// (pedidosBoot, realAuthHome, enterOnPresentation, …). A chunk's diff is names added here; no cell line changes (the assertion
-// inventory stays identical by construction). Step 9 flips the default and deletes this list.
+// PLAN-capp-virtual-clock r0 (step 9): EVERY cell's shell runs on the VIRTUAL clock VC — flush(ms) = drain, advance ms virtual, drain;
+// until() spends a virtual budget — except the REAL_BY_DESIGN cells below. A cell with no clock (it booted no shell, or it is real by
+// design) flushes on a fresh EMPTY clock: drain only (microtasks, setImmediate turns, the environment's real 0 ms tasks) — never a
+// fixed sleep. The migration list (chunks 1–6) is gone: VC-M proves the default instead
 let VC = null, CLOCK_DEFAULT = false, CUR = null;
-const VC_BOOTED = new Set(), RAN = new Set(), SHELLS = [];   // SHELLS: every shell window a cell booted (the leak guard)   // the cells that booted the shell on the virtual clock / that ran (VC-M's evidence)
-const VIRTUAL = new Set([
-  // chunk 1 (file order 1–46: directory, Inicio, Buscar, shell, location, browse-only, frames 10/11, return, Codex s7a2 r1, G2, stamp, G6)
-  'contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators',
-  'directory: cold ⇒ loading; a complete 200 lists, verifies (enterable), and is stored with its validator',
-  'directory: a stored body < 24 h paints at boot as PRESENTATION (listed, never enterable); ≥ 24 h, future > 5 min, or a partial ⇒ discarded',
-  'directory: revalidation sends the stored etag; a matching 304 verifies; a 304 naming another etag ⇒ re-fetched WITHOUT a validator',
-  'directory: a complete body omitting a shown store TOMBSTONES it in place (disabled, same slot) until the next visit; it is never enterable',
-  'directory: a PARTIAL verifies what it lists; an omitted store is held (never tombstoned); the stored body is not overwritten; the partial note',
-  'directory: 503 / offline change nothing; with nothing to show ⇒ the error phase (frame 7); a later success clears it',
-  'directory: eligibility expires on its own clock (60 s) — a verified row reverts to held without any new response',
-  'Inicio S5-absent: no statistics rows; «Destacados» = «Abiertos ahora y para pedir hoy», open first then directory order',
-  'Inicio house: ids ⇒ those canonical dishes (a dish the loaded menu lacks is dropped); absent ⇒ catalog-tag fallback; [] ⇒ hidden',
-  'Inicio fees: «Envío desde L 45» only for a PRICED fee; no fee text otherwise — never «Envío gratis» / L 0; the promo is the MEMBER price',
-  'Inicio states: 1 loading line · 7 error · 2 zero · 3 B all closed (2nd sentence only while scheduling is live) · 9 partial · 4 out of zone',
-  'coverage: frame 4 only when EVERY store answers «outside»; an unknown coverage is never counted as outside',
-  'Buscar: dish hits are the DISPLAYED items (a launcher «desde L min», never a raw variant child), directory → section → item order, capped at 12',
-  'Buscar: «No encontramos» ONLY when every menu answered; a partial shows its note (frame 8); pending menus show «Buscando platos…» (frame 6)',
-  'shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)',
-  'shell: ONE cache — Buscar reuses Inicio\'s in-flight requests (no duplicate), and the search fills in as they land',
-  'shell: a tap on a PRESENTATION row is HELD (pressed) and opens the moment the verification lands; an eligible row opens at once',
-  'shell: a held tap whose directory read FAILS shows frame 7; «Reintentar» re-reads',
-  'shell: a Buscar dish result opens THAT dish\'s sheet in its store; Back returns to Buscar with the query',
-  'shell: a TOMBSTONED row stays in its slot, disabled; a tap does nothing; it leaves on the next visit to Inicio',
-  'shell location: «Entregar en» → «Usar mi ubicación actual» → the soft-ask (first time) → allowed ⇒ the GPS fix is the CONFIRMED guest location, persisted',
-  'shell location: denied ⇒ the drawn «Ubicación desactivada · Activar» row and NO location (no fallback pin); the pin editor\'s «Cancelar» changes nothing',
-  'shell location: the guest location drives frame 4 (every store outside) and SEEDS the store\'s checkout pin',
-  'browse-only: a store entered on its STORED menu has every ordering control inert (the existing disabled attribute); a forced tap changes nothing',
-  'browse-only: the verified IDENTICAL menu turns the controls live IN PLACE — the same nodes, no re-render; ordering works',
-  'browse-only: a CHANGED menu keeps the surface (its prices) while the customer is in it; at checkout entry it is adopted and the cart discloses the change (frame 13) BEFORE the quote',
-  'frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING',
-  'frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again',
-  'return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)',
-  'Codex s7a2 r1 #1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount',
-  'Codex s7a2 r1 #3: a STALE menu (verified > 60 s ago) never authorizes ordering — browse-only, revalidated, live in place when FRESH',
-  'Codex s7a2 r1 #4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed',
-  'Codex s7a2 r1 #5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails',
-  'Codex s7a2 r1 #6: frame 13 discloses PER CONFIGURATION — two changed configurations of one dish ⇒ two lines, each with its own unit prices',
-  'Codex s7a2 r1 #7: an UNPRICED fee never carries a promotional claim — no «Envío gratis» for a member, no guest pill / tag, no «Envío gratis» chip',
-  'Codex s7a2 r1 #8: ADJACENT tombstones keep their slots — [A,B,C,D] then complete [A,D] shows A,B(gone),C(gone),D; the next visit shows A,D',
-  'Codex s7a2 r1 #9: never «No encontramos» over an incomplete DIRECTORY — cold ⇒ «Buscando platos…»; error or partial ⇒ the partial note',
-  'G2 §4c device marker: the full E.164 + a hint (never a token); last 4 for display; malformed never stored; only forget() clears it',
-  'G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host',
-  'Codex guest r1 #3: with the guest flag ABSENT the Cuenta tab is exactly the S7a-2 behaviour — a host event, Inicio stays, the DOM unchanged',
-  'stamp: shell.html is stamped as orders-app; on the stamped shell SherpaClient is LIVE and the shell\'s createOrder carries X-Client-Deployment: orders-app',
-  'G6 flag-absent: no runtime.signup ⇒ «Entrá o creá tu cuenta» is the HOST\'s \'signin\' event, as before — no SDK load, no sheet layer',
-  'G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a verified existing account ⇒ member, the device marker + the profile cache; an ordinary sign-out clears the cache, keeps the marker',
-  'G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid\'s cache is never used',
-  'Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the MOUNTED checkout: its next send carries no member token',
-  // chunk 2 (file order 47–92: Codex G6 r1–r4, S4 shell, frames 15–18, G7, Part B, D-2 desktop, Pedidos entry points, D-4a routing)
-  'Codex G6 r2 #2 — the ALLOW-list: a restored uid is a member ONLY with its completion mark; the mark is written at «Listo», cleared by a confirmed sign-out',
-  'Codex G6 r2 #2 — a REJECTED sign-out admits nothing: still not a member at the next restore, and the sign-out is retried',
-  'Codex G6 r1 #3: a member apply delayed by a slow token never lands after a sign-out or a switch to another account',
-  'Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload',
-  'Codex G6 r4: a guest exit after a complete sign-in leaves NO mark and no member (its sign-out stands)',
-  'S4 shell: runtime.schedulingLive drives the Inicio cues (frame 3 B\'s sentence + «Programar pedido»); absent ⇒ none, as before',
-  'S4 frame G in the shell (schedulingLive + G6): a guest\'s «Programar» in the mounted checkout opens the sheet with ONLY the G=B subtitle and the guest exit; G6 without the flag keeps its member-only gate',
-  'S7a-2 frames 16 / 17 / 18: every menu down ⇒ «No pudimos buscar platos» + [Reintentar] under the directory\'s matches; no city ⇒ «{N} restaurantes»; no recents ⇒ the search .empty (no button)',
-  'S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir {restaurante}» over Inicio, the row still pressed; «Reintentar» re-fetches and enters; «Cerrar» releases the row',
-  'G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — today\'s restaurant_id shape, a tokenless call, a non-boolean value and a GET are refused; the client\'s request passes',
-  'G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event',
-  'G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»',
-  'G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable',
-  'G7 Codex r1 #3: an EXISTING account\'s stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server\'s value, cached',
-  'G7 Codex r1 #3: a NEW account\'s promotions choice, saved by completeProfile, reaches the Cuenta — the switch LIVE at that value',
-  'G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)',
-  'G7 Codex r1 #3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent',
-  'G7 decision 7 / Codex r1 #2: while the session RESOLVES, a profile on this device draws the member GEOMETRY with neutral placeholders — never its name, phone or email; none ⇒ the guest\'s',
-  'G7 Codex r1 #2: ANOTHER account restores on this device — the previous account\'s cached profile is never shown and is purged',
-  'G7 Codex r1 #2: a SIGNED-OUT device — the cached profile is never shown; the guest\'s Cuenta once the SDK answers; the cache purged',
-  'G7 Codex r1 #5: auth says member, the ID token still pending — the Cuenta draws the member\'s cached profile at once (never the guest card), the switch live once the member is applied',
-  'G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT',
-  'G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out',
-  'G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)',
-  'G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'s tab event, as before',
-  'Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the .cc button); absent ⇒ the «+504» span',
-  'D-2 view: ONE breakpoint (≥1024) read synchronously; a crossing notifies once after the debounce; no matchMedia ⇒ phone',
-  'D-2 mount: the desktop class is on #app BEFORE the first paint returns (no pop-in); the phone never gets it',
-  'D-2 store (v6 :1628): desktop ⇒ the deskcart aside inside storewrap, no close button; an item edit refreshes it (v6 syncPill :1726); phone ⇒ no aside',
-  'D-2 checkout (v6 :1886-1887): desktop ⇒ col-b = «Tu pedido» (MOVED, once), col-a without it; phone ⇒ no col-b, «Tu pedido» once in col-a',
-  'D-2 resize: crossing the breakpoint re-renders the view and PRESERVES state — the cart, the screen, a typed field',
-  'D-2 no-regression: below the breakpoint the store and the checkout are BYTE-IDENTICAL to a shell with no viewport signal at all',
-  'Pedidos (owner 11-01): every entry point — tabbar / desknav, the guest card row, the member Cuenta row — opens the «Pedidos» screen, desktop AND phone',
-  'D-2 the signup surface follows the breakpoint (its .app host carries desk too, both ways)',
-  'D-2 r1 #1: desktop → phone with an ASIDE control focused ⇒ focus moves to the visible phone equivalent (the cart bar) and the menu scroll is kept; phone → desktop with the cart bar focused ⇒ focus moves into the aside',
-  'D-2 r1 #2: the aside «Editar» returns focus to THAT aside control when the dish sheet closes (never the hidden cart bar)',
-  'D-2 r1 #3: browse-only ⇒ the ASIDE\'s ordering controls are disabled like the cart sheet\'s (ONE selector source), also after a syncPill refresh',
-  'D-4a reflection: every screen change REPLACES the pathname — the sentinel state, history.length and the search untouched',
-  'D-4a sentinel unchanged: a device Back runs ONE in-app back; a BLOCKED back («Enviando…») changes nothing and the URL keeps the locked path',
-  'D-4a precedence: a payment RETURN owns the boot — the owner store resolves it, the deep-linked store is never entered; persisted ⇒ the boot strips the query, memory ⇒ the query survives every reflection',
-  'D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ the checkout through the tap path; the URL kept',
-  'D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends',
-  'D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store',
-  'D-4a unverified ≠ absent: offline / 503 / partial keep the link PENDING (URL kept, nothing entered); only a fresh COMPLETE directory without the store ⇒ silent Inicio',
-  'D-4a generation: a user navigation CANCELS a pending cold link — a late verification never enters the old target',
-  'D-4a native / routing off: no replaceState from the router and no hydration (byte-identical boot)',
-  // chunk 3 (file order 93–138: D-4a locks/holds, store + home promo and the token timers, Pedido recibido, store-update)
-  'D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends',
-  'D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too',
-  'D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delayed directory never mounts the store (nor re-arms the sentinel)',
-  'D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)',
-  'D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending',
-  'D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store',
-  'D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout',
-  'D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears',
-  'store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ',
-  'store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing',
-  'store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)',
-  'store promo: nothing invented — an unpriced store draws no pill, no fee text, no ⓘ; a priced store without a zone draws no ⓘ',
-  'store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY values (no quote yet) — never «undefined» / «NaN»',
-  'store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved',
-  'store promo r1 #2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill',
-  'store promo r1 #2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept',
-  'home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved',
-  'home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store\'s card, no guest pill',
-  'store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both',
-  'store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)',
-  'store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)',
-  'until(): a condition still false at the deadline REJECTS with a descriptive error (never a silent pass)',
-  'store promo r3: token RECOVERY mid-quote — the quote\'s member header and the store\'s «Envío gratis» appear TOGETHER (the notifier patches in place)',
-  'store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote',
-  'store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved',
-  'store promo r3: the token timers are HANDLES — none left after a sign-out, a uid change or destroy',
-  'store promo r4 #1: a held quote token RELEASED AFTER a sign-out — no member header, member null (identity rechecked after the await)',
-  'store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn',
-  'store promo r4 #5: a real UID SWITCH cancels the old identity\'s token timers',
-  'store promo r5: a SIGN-OUT queued from the token notifier — no quote dispatch carries Ana\'s token while the member is null',
-  'store promo r5: a UID SWITCH queued from the token notifier — no quote dispatch carries Ana\'s token while she is not the identity',
-  'Pedido recibido: a placed cash order ⇒ the shell\'s order screen — «Pedido recibido», the sent lines + Envío + Total, the delivery details; the store left; close ⇒ Inicio',
-  'Pedido recibido: «Orden #N» from order_tracking/{token}/display_number via the shared order-number module (the exact public path; nothing before it lands)',
-  'Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the order number pre-filled; «Compartir seguimiento» copies <the context\'s tracker>/<token>; both absent without their config',
-  'Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone',
-  'Pedido recibido · live: the order screen follows order_tracking/{token} in place — preparing → stacked (is_active_drop false) → out with the driver → delivered (the stream closed); the window «Llega a – b» from S5\'s prep',
-  'Pedido recibido · live: a claim with no driver name says the tracker\'s calm copy (status-view); the cancelled path ⇒ «Pedido cancelado» and the stream closed; leaving the screen closes the stream',
-  'store-update state 2: the installed app\'s 426 on a send ⇒ the calm sheet «Actualizá la app para hacer pedidos» + «Abrir App Store» (opens the store URL) + «Ahora no» (closes; nothing re-sent)',
-  'store-update state 3: a 426 while the identity is kept in flight ⇒ «Actualizá la app para seguir» + «Tu carrito también se guarda.» — no order reference',
-  'store-update: WITHOUT a store (no runtime.store_urls yet, or the website) a 426 shows NO store sheet — today\'s shared behaviour stays (advisor ruling (i))',
-  'store-update: with a store, the shared coordinator gets a NO-RELOAD adapter (a bundled app cannot reload itself newer; the store sheet replaces its notice)',
-  'store-update state 4: back from the store on a NEW build ⇒ the cart says «App actualizada. Tu carrito sigue aquí.» once; closed ⇒ gone; the same build ⇒ never',
-  'store-update state 1: with a store AND the «newer build» signal — the Inicio line A «Hay una versión nueva de la app.» + «Actualizar» (opens the store, hidden until the next day); the Cuenta row B; no signal ⇒ neither',
-  'store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled',
-  'store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)',
-  'store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»',
-  // chunk 4 (file order 139–186: getMyOrders / Pedidos + its r2/r3 identity cells, receipts, Volver a pedir, C-3r G1/G3/G4)
-  'getMyOrders fake: as strict as the note — 401 without / with a non-customer token, 403 for a tombstone, 400 for an extra key / a body / a bad limit or cursor, paging exact across 45 rows (no dup, no gap), the projection a whitelist',
-  'Pedidos (member): the rows from getMyOrders (the real writer\'s entries) — the active order\'s card (status, «Orden #N» only when numbered, no tracking without its token), the past rows (store, «Sáb 11 oct · L 340», items_text AS GIVEN); the token only in the header; «Volver a pedir» hidden (interim)',
-  'Pedidos: a refused / failed read (401, 403, offline) claims NO empty state; a guest gets v6\'s empty state with NO read',
-  'Pedidos: THIS device\'s active order — its card (v6 «Orden #N · hoy · …», the sent lines) opens its live screen; it survives a reload (the local record) and a reload of /r/{rid}/pago lands on its screen; a final status drops it',
-  'Pedidos: the device\'s active record is written AT placement (no live channel needed: no RTDB base, no stream, no number read)',
-  'C-3r G4: the phone «Pedidos» tab shows the active-order dot while this device has an active order (also after a reload); none without one; the desktop bar draws none',
-  'Pedidos: cold link /pedidos hydrates the screen; leaving reflects the URL',
-  'C-3r G3 (D-4a Phase 1 = URL REFLECTION by replaceState, no Forward): a TAP on Pedidos writes /pedidos; a past receipt opened from it, then the device Back ⇒ Pedidos again with /pedidos reflected; no Forward entry',
-  'getMyOrders client: ONLY the Row whitelist survives; a malformed row is dropped; the token rides the header of a GET',
-  'store-update r3 (Codex r2 #1): back on a new build with an UNRESOLVED card placement (valid credentials) ⇒ its verification starts by itself — a status request with no tap',
-  'store-update r3 (Codex r2 #2): an OFFLINE first launch of the new build (directory 503) keeps the handoff; the next (online) launch on that build still restores the store, its cart open, the line',
-  'Pedidos r2 P1 identity: Ana\'s history read still in flight when the SDK signs her out ⇒ it NEVER paints (the guest sees v6\'s empty state); a new admission loads its own',
-  'Pedidos r2 P1 shared device: a GUEST\'s active order is dropped when a DIFFERENT member signs in (unclaimed); a MEMBER\'s is hidden from the next person — no card, no restore, no URL',
-  'Pedidos r2 P2 expiry: the 24 h bound is LIVE (an open session past 24 h drops the card and the record) and a restore validates the record\'s age from placedAt (a tampered far exp is refused)',
-  'Pedidos r2 P2: a final status while ON Pedidos clears the active card there',
-  'Pedidos r2 P2: a cold /pedidos for a member BEFORE admission waits (never «Todavía no tenés pedidos»), then loads her rows',
-  'Pedidos r2: the server\'s items_text wins over the device snapshot when it lists the same order; invalid supplied args are refused; history rows are not controls',
-  'Pedidos r3 P1: an SDK switch Ana → Bob while Bob\'s token is still pending ⇒ Ana\'s held history answer NEVER paints (the invalidation is synchronous on the identity event)',
-  'Pedidos r3 P2/P3: a FINAL status reconciles the same order\'s cached server row (no card comes back); a server items_text of \'\' is kept as supplied',
-  'Pedidos r3 regressions: a member\'s /r/{rid}/pago reload waits for her admission and lands on her order screen; a cold /pedidos resumes her live stream once admitted',
-  'Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — any user navigation or gesture before the admission voids it (never yanked back to «Pedido recibido»); untouched, it still lands',
-  'Receipt (x_pizza delivery, cash): the past row is v6\'s «Ver el recibo» control; the screen = the PAST order screen — its priced lines, Envío / Descuento / Propina / Total, «Efectivo», her own address; the read is ?context=platform&order_id alone, the token in its header',
-  'Receipt (x_pizza delivery, ONLINE card through the real confirm patch, no promo): Envío + Propina + Total from the real breakdown (promo 0 draws no row); «Tarjeta» + «Confirmado» on a delivered card order; no reference anywhere',
-  'Receipt (la_musa pickup, card): no priced lines ⇒ v6\'s rows from the items_text lines WITHOUT amounts + the totals; «Tarjeta» with NO digits; «Recoger en» the store',
-  'Receipt: a refused read (another account\'s id ⇒ the uniform 404) or offline leaves the row\'s own screen — no tender / address guessed, no crash; the fake is as strict as the contract',
-  'Receipt identity: Ana\'s receipt read in flight when the SDK signs her out ⇒ it NEVER paints; the receipt screen is left for «Pedidos»',
-  'Receipt NO REFLOW (advisor 11-01, option A): on a miss the screen ENDS before the first block that needs the receipt — no address card, no summary, no CTA, no spinner; the fill goes IN PLACE: every node drawn before is the same node with the same text',
-  'Receipt: a FAILED read on a miss fills the row\'s own tail in place (items_text lines + total, no tender) — never stuck held',
-  'Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, the first ≤ 5 past rows\' receipts — ONE at a time; a prefetched receipt opens complete at once (no hold, no second read); the 6th+ are never read ahead',
-  'Receipt PREFETCH stops on an identity change: an SDK switch Ana → Bob mid-prefetch ⇒ none of Ana\'s remaining receipts is requested (never with Bob\'s token)',
-  'Receipt overlap: A held, back, B opened and held; A lands first ⇒ NOT drawn on B\'s screen; B lands ⇒ B\'s tail',
-  'Receipt overlap across identities (Codex r1 #3): Ana\'s read A held → Bob → Ana again; her NEW read B (updated details) lands, THEN the old A ⇒ a reopen shows B\'s details (A never overwrites the kept receipt)',
-  'Volver a pedir — by data: the eligible store\'s row has the pill, the all-null store\'s has none; the tabs appear; «Volver a pedir» lists ONLY the eligible store with its past dish (live menu)',
-  'Volver a pedir — no eligible store at all ⇒ no tabs, no pill (v6 «Pedidos anteriores» only)',
-  'Volver a pedir — the pill REPLACES that store\'s cart with the order (same dishes, same options), opens the store and its cart, «Pedido cargado en tu carrito»',
-  'Volver a pedir — MIXED nulls within one order: the resolvable line is rebuilt, the null one is dropped AND disclosed («1 plato ya no está disponible»)',
-  'Volver a pedir — a cart MID-PLACEMENT (a pending placement record / a frozen cart) is NEVER overwritten: the store opens on its own state',
-  'Volver a pedir — «+» on a past dish adds ONE to that store\'s cart, stays on «Pedidos», «Agregado · {store}»',
-  'Volver a pedir — «+» over a PURCHASED cart (a placed marker for its generation): the store\'s own reconcile clears it, the dish starts a NEW cart (a new generation) — the purchased lines never come back',
-  'Volver a pedir r2 (Codex VP r1 #2, the REAL held flow): a pill tapped while the menu cannot load yet, then RELEASED («Cerrar» on the app\'s error sheet) or the identity changes ⇒ a later menu opens nothing and applies no recipe',
-  'Volver a pedir r2 — the recipe by its DATA (Codex VP r1 #3/#4/#20): options strictly by kind (a name is never matched as an id), a malformed options container, an unknown recipe_format and count > qty ⇒ unavailable + disclosed — never a plain dish',
-  'Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the live menu no longer carries ⇒ nothing written (the store opens and discloses); a SOLD-OUT dish ⇒ its store, nothing added',
-  'Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()',
-  'C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1',
-  'C-3r G1 v1 RULE — Codex C-3r r1 P2 repro (Margherita 299→309 AND Mozzarella 50→60): never an «antes» built from the snapshot dish + a LIVE extra (it would read «antes L 359»; the configuration really cost L 349) — the extra configuration gets no note, the plain one is exact',
-  'C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)',
-  'C-3r G1 (no snapshot — an entry from before S-D): the dish price changed ⇒ NO note; live prices only (never an invented past price)',
-  'Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)',
-  // chunk 5 (file order 187–231: Volver a pedir tail, the receipt API, capp-dark §3/§4, C-6a/C-6b/C-6c/C-6d desk)
-  'Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE the store leave the SAME stored AND in-memory cart, from every starting state (empty, other lines, the same dish, purchased, frozen, every write failing)',
-  'Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart',
-  'Receipt API (capp-signup-api.getReceipt): the contract whitelist — injected fields never survive; a malformed line ⇒ lines null; absent totals stay absent; a bad id is refused with NO request; a receipt for another id ⇒ failed',
-  'capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches',
-  'capp-dark §4: the INSTALLED app\'s status-bar icons follow the theme — once at boot, then exactly ONE native call per real flip (the media event, or the resume re-read when that event was lost); the web (no plugin) is a no-op; destroy detaches',
-  'C-6a titles: the tab follows every screen — Inicio (the directory\'s city), Buscar with its query, the store, a dish, the cart, Entrega & Pago, Pedidos, Cuenta',
-  'C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone',
-  'C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support chat; the legal slots are reserved until they land (no shift); nothing is fetched once Inicio was left before idle; a failing storage write never loses the links; the footer is on every Inicio state',
-  'C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet',
-  'C-6b bar: brand · «Entregar en» pill (the location sheet) · the search field that IS Buscar (the query, «live», on Buscar) · Inicio · Pedidos · Cuenta — no separate Buscar button',
-  'C-6b bar: a member\'s initial in the Cuenta avatar; the guest\'s person icon',
-  'C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\'s city}» + the approved sub; the guest promo only where sign-up exists; none for a member; the phone keeps its own head',
-  'Cuenta «Ayuda» (advisor 11-02: it was a DEAD control — the host never handled `help`): the guest\'s and the member\'s row open the platform support chat; no support number ⇒ no row',
-  'C-6b rows: the desk Inicio = «Destacados» a 4-up grid («Ver todo» + ‹ ›) · the REAL dish rows (row of dishes, ‹ ›) · «Todos los restaurantes» the 3-up grid — no «Platos populares»; the phone rows unchanged',
-  'C-6b rows: «Destacados» pages by 4 (‹ › follow the page; a filter starts over at page 1); «Ver todo» scrolls to «Todos los restaurantes»',
-  'C-6b rows: a dish row\'s ‹ › follow its scroll — ‹ off at the start, › off at the end or with nothing to scroll (never a dead arrow)',
-  'store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)',
-  'C-6b r2 crossing: the shell\'s desk-only DOM follows the breakpoint BOTH ways — phone→desk gains the H1 row + grids, desk→phone drops them; the page, the paging and the query survive',
-  'C-6b r2 arrows: a disabled ‹ › LOOKS disabled on the desk (D-3 r3: opacity .35, default cursor) — the style, not only the property',
-  'C-6b r2 promo: while auth is UNRESOLVED (sign-up on) the guest card\'s footprint is reserved — same markup, invisible, aria-hidden; a guest sees it; a member has none (no H1-row shift when a guest resolves)',
-  'C-6b r2 head: the desk renders NO empty header above the H1 (the bar has the address) — only the location-denied message keeps it; the phone keeps its head',
-  'C-6c page: the shell\'s top bar (no tab current) above storewrap = the menu scroller + the cart aside; hero + the logo over its edge; identity (name, facts) + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»); the rail beside two-column cards — no phone header, no «Más información»',
-  'C-6c cards: name · 2-line description · price, the + on the photo (an item without one: no photo pane, the + inline); the SAME overlay and cart path as the phone',
-  'C-6c rail: a category jumps the menu scroller to its section; the section in view marks its category (aria-current)',
-  'C-6c tools: delivery ⇒ the fee cell («Envío desde L 45 · según tu dirección», its ⓘ = the fee sheet) + the ETA cell («a–b min · llega aprox.»); Pickup ⇒ the pickup ETA + «Recogé en»; the mode switch is the store\'s own',
-  'C-6c bar on a store: Inicio / Pedidos / Cuenta / the search field leave the store for the shell\'s screen; the address pill ⇒ Inicio with the location sheet',
-  'C-6c aside: «Tu pedido» · «{store}» (+ « · N …» with lines); the drawn empty state; the guest\'s card-only note only under runtime.guestCardOnly — a guest yes, flag off no (advisor call 7)',
-  'C-6c header auth: the desk page\'s promo pill resolves IN PLACE (reserved while unresolved, shown for a guest) — the page is not re-rendered',
-  'C-6c dialog (frame 3): the desk dish dialog = two panes (photo | options) + the pinned bar; the HEADING takes focus (aria-labelledby), ✕ before it; close ⇒ back to the opener; no photo ⇒ one column; adding is the store\'s own path',
-  'C-6c crossing: desk→phone the store re-renders as the phone page (its own header back, the desk page gone), the cart kept; phone→desk back to the desk page',
-  'C-6c featured + badges: house-tagged dishes ⇒ «La casa recomienda» in the drawn 5-card row (no «Lo más pedido», no rail entry); a dish\'s badge sits in the pill slot after the price, its text and colour unchanged',
-  'C-6c dialog ✕ (advisor 11-02): the PHONE dish sheet keeps its ✕ in the header, before the title (its DOM unchanged)',
-  'C-6c r2 narrow desk: 1024–1279 px stacks the identity row, narrows the rail and puts the cards in ONE column (the CSS rule; the renders are the Chrome batch\'s)',
-  'C-6c r2 crossing with the dish dialog open: focus stays IN the dialog (the phone sheet\'s ✕), never BODY; back on the desk the heading',
-  'C-6c r2 sold featured dish: «La casa recomienda» shows «Agotado» in the price slot, dimmed, no «+» — like the category cards; its add is refused',
-  'C-6c r2 auth → the aside: the guest\'s card-only note appears when auth RESOLVES to guest (no store re-render), under the guest rules',
-  'C-6c r2 featured row: never clipped — the five cards share the width (≤ 150 px, ≥ 110 px) and the row scrolls where they cannot',
-  'C-6d checkout: its own bar («Volver a la tienda» · the Sherpa lock · «Pago seguro»), NO top bar, the H1 in column A over the approved sections; column B = store card → the CTA → «Tu pedido» → fine print; no paybar',
-  'C-6d checkout CTA: the SAME control as the phone — id, act, label and disabled state identical for the same order state',
-  'C-6d checkout: «Volver a la tienda» returns to the store with the cart; the summary is open by default and its toggle closes / reopens it',
-  'C-6d checkout totals + fine print: delivery ⇒ «Propina · Se elige en el siguiente paso» and «Sherpa lo entrega»; pickup ⇒ neither; the Terms sentence only with the platform\'s https Terms link',
-  'C-6d checkout: the guest\'s next step is ONLY the true sentence (never «No se cobra…», advisor call 5); the store card is static with a window',
-  'C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order',
-  'C-6d order panel through the SHELL: a placed order\'s screen on the desk carries the desk order (the shell passes the view); the phone keeps its own',
-  'phone house row: a sold house dish shows «Agotado» in the price slot with P\'s inert «+» (.sold-out), like the category rows; the add is refused; an available one is unchanged',
-  // chunk 6 (file order 232–288: C-2 ratings, C-5 help, S2 pay-adjust, C-1a, WAKE-6, RULE 10, G-B / G-C).
-  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.
-  'C-2 entry before delivery: a member\'s order that is NOT yet delivered has no rating entry and makes no rating read',
-  'C-2 entry (frame 9.2): a member\'s DELIVERED order screen reserves «Valorar tu pedido» while its rating is read (no reflow), then draws it; the sheet: «¿Cómo estuvo tu pedido?», the store, 5 stars + word, the PURCHASED dishes by name, «Tu repartidor de Sherpa», the comment, «Enviar» only once something is set',
-  'C-2 send: «Enviar» sends EXACTLY what was set (rateOrder v2) with the member\'s token; the sheet closes, the screen says «Ver tu calificación»; reopening shows it',
-  'C-2 Pedidos (frame 9.3): delivered rows inside the window read their rating — AT MOST 5 per view, ONE at a time, the line reserved — «Valorar» · «★ n tu calificación» · «Sin calificar»; older rows nothing; an EDIT from the row opens prefilled (getMyRating) and sends only the change',
-  'C-2 nudge: the delivered order THIS device placed opens the sheet ONCE on the next app open (at idle, over Inicio); «Ahora no» retires it for good; a rated order never nudges',
-  'C-2 gates: the flag OFF ⇒ no entry and ZERO rating reads; a GUEST\'s delivered order ⇒ no entry (no server path); the dish rows are ONLY the purchased ones (never the whole menu)',
-  'C-2 read-only + errors: past the window a rating is SHOWN, not editable («Cerrar», no «Enviar», controls off, no «Podés cambiarla»); a send the server answers window_closed keeps the sheet with its message',
-  'C-2 guests: a GUEST\'s delivered order has NO rating entry and makes ZERO rating reads (no guest server path)',
-  'C-2 the send diff (capp-rate): a first rating sends only what is set; an edit only what changed — `dishes` WHOLE (the writer replaces it), earlier votes the sheet could not show KEPT; a cleared thumb ⇒ null; the five words',
-  'C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the delivery thumbs exist only for a delivery)',
-  'C-5 sheet (frame 9.6): «Ayuda» on the order screen ⇒ «Ayuda con tu pedido», its order («Orden #N · store · llega …»), «Escribinos por WhatsApp» and the fine print — and NOTHING of tickets (no reasons, no «Otra cosa»)',
-  'C-5 link: «Escribinos por WhatsApp» opens wa.me to the CONFIGURED support number (never another) with «#N»; the sheet closes; scrim and Escape close it too',
-  'C-5 entries: the Pedidos active card\'s «Ayuda» opens the SAME sheet for its order; a past receipt\'s «Ayuda» too (no arrival line once done)',
-  'C-2 r2 server truth: a write whose dish votes the server could NOT keep (dishes:\'unavailable\') is DISCLOSED in the sheet, and the votes are not shown as saved — reopening shows the server\'s record',
-  'C-2 r2 Pedidos views: leaving and re-entering never runs two batches — ONE read at a time across views, no order read twice, ≤ 5 per view',
-  'C-2 r2 dish ids: the client\'s rule IS the server\'s (rating-v2.dishIdOk = identity-registry.validIdShape ∧ ¬RTDB_KEY_UNSAFE) — the same answer for every edge id; the RTDB rule\'s source byte-equal',
-  'C-2 r2 the fake is contract-strict (rule 29): a HANDHELD customer token and a TOMBSTONED caller get the generic 403; a tombstoned owner\'s node is never shown',
-  'C-2 r2 geometry: the reserved entry, «Valorar tu pedido» and «Ver tu calificación» have ONE height — whichever state lands, nothing moves',
-  'C-2 r2 re-read: after a write the sheet and the entry show the SERVER\'s record (another device\'s comment, written meanwhile, appears) — never the local guess',
-  'C-5 r2 help sheet: contained (the screen inert, Tab cycles inside) and EVERY close — scrim, Escape, the WhatsApp jump — gives focus back to «Ayuda»',
-  'C-5 r2 rating sheet: contained too, and «Ahora no» / Escape / «Enviar» give focus back to its entry',
-  'S2 shell · guest: the projection streams beside order_tracking (its own node); A + the Pago block in place; C read-only (no grant ⇒ no calls); an older seq never replaces a newer view; the view is never persisted',
-  'S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notice, today\'s Pago rows',
-  'S2 shell · member, the production path (no injected payFetch): getPayAdjust and respondPayAdjust go through SherpaClient.fetch (pselfupdate-wrapper-lint)',
-  'S2 shell · member: C anchors its countdown on the GET\'s server_now (Bearer); «Aceptar» POSTs {order_id, adjustment_id, accept} ⇒ the reply\'s view (E with the well); the stream\'s accepted ⇒ D',
-  'S2 shell · member: «Más información» opens B over C and «Entendido» returns to C; G\'s «Mantener mi pedido» calls nothing and lands on F',
-  'S2 shell · Codex r1 P1: the order cancelled under an open consent sheet ⇒ the sheet closes (no «Aceptar nuevo total» over «Pedido cancelado»)',
-  'S2 shell · Codex r1 #2: a new adjustment never inherits the previous one\'s (expired) anchor — B with a failed GET still shows C with its buttons',
-  'S2 shell · Codex r1 #3: a stale reply (an older seq) brings no timing — the countdown keeps the installed view\'s anchor',
-  'S2 shell · Codex r1 #4: §1.4 re-anchor — a stream reconnect and the app becoming visible each GET again; a failed first GET is recovered',
-  'S2 shell · Codex r1 #5: a pending consent that arrived while away is shown on ENTERING the order screen',
-  'S2 shell · Codex r1 #7: C\'s «Mantener mi pedido» is submitted as accept:false',
-  'S2 shell · Codex r1 #5: a pending consent that arrived under another sheet (Ayuda) opens C when that sheet closes',
-  'S2 shell · Codex r1 #3 (GET): a stale GET reply (an older seq) brings no timing either',
-  'S2 shell · Codex r2 #1: a newer adjustment arriving while the older one\'s GET is in flight is refreshed once that GET ends (never left unanchored)',
-  'S2 shell · Codex r2 #3: resuming the order screen with the stream alive GETs again and re-anchors (§1.4)',
-  'S2-checkout 8 (v7): an order placed with the in-app card shows its card in «Pago y entrega» — «Pago · Visa ···· 4242», the Total, «Se cobra al recibir tu pedido.» — before any adjustment projection exists',
-  'S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart with «1 plato ya no está disponible»',
-  'C-1a premise: the real chain publishes x_pizza «4.8 (10)» and la_musa NEW (2 ratings, first served 10 days ago); the body carries the real directory-2 schema',
-  'C-1a T1 (frame 9.1 phone + 9.4): «★ 4,8 (10)» is the FIRST store fact and the FIRST item of an open home card\'s meta, then «·»',
-  'C-1a T1 desk (frame 9.1 desktop): the rating is the first desk fact',
-  'C-1a T2 (frame 9.1 phone right): below 10 ratings within 60 days of first serving ⇒ «Nuevo en Sherpa», no number; after 60 days ⇒ nothing at all',
-  'C-1a T3 (no pop-in): Home visible with a stored body WITHOUT ratings → the revalidation brings ratings ⇒ the visible cards are unchanged; the next Home entry adopts them',
-  'C-1a T5: a degraded / absent `ratings` (null) ⇒ no rating, no pill; the list renders and enters as today',
-  'C-1a T6 share (frame 9.1): Web Share with the store\'s URL; no Web Share ⇒ the clipboard + «Enlace copiado»; neither ⇒ no share button',
-  'C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s heart opens the sign-in (ctx favorites), no request; a member\'s heart slot is RESERVED (hidden) until C-1b; unresolved ⇒ reserved',
-  'C-1a T4 (advisor 11-13): the store\'s rating is FIXED per mount — a directory revalidation that lands DURING the store visit changes nothing; the next mount adopts it',
-  'WAKE-6: a cold boot (the directory still loading) is NOT ready; the live list painted ⇒ READY; a stored list ⇒ READY at the first paint',
-  'WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ READY (the overlay never hides the error)',
-  'D1 (C-6b desk, 16b): the open card meta on the desk = «Abierto · Envío desde L 45» (no «cierra»); the phone unchanged',
-  'G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» after the lines; a tap opens the checkout with its notes field OPEN and focused; the phone sheet and an empty aside carry none',
-  'RULE 10: what the pinned directory writer emits TODAY (a promo without the pricing marker) ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them',
-  'RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself',
-  'G-C1 (f1a): the desk guest\'s filter row — Abierto ahora · Pickup · Menos de 30 min · «Envío desde L 45» (the lowest priced fee); the phone keeps v6\'s three',
-  'G-C2: the fee chip is COMPUTED — the lowest priced fee labels it, and pressing it keeps only the stores at that floor; no priced fee ⇒ no chip',
-]);
+const VC_BOOTED = new Set(), BOOTED_REAL = new Set(), RAN = new Set(), SHELLS = [];   // SHELLS: every shell window a cell booted (the leak guard)   // the cells that booted the shell on the virtual / the REAL clock, that ran (VC-M's evidence)
 // the cells that stay on the REAL clock by design (advisor 11-13): they prove the harness's paint frames themselves — 266 that a
 // frame the shell requests lands before a 0 ms timer, 269 the app under jsdom's own timer-driven frames. VC-M names them.
 const REAL_BY_DESIGN = new Set([
   'harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load',
   'harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven requestAnimationFrame, the home list paints and a tap opens the store — awaited on the paint itself (a MutationObserver), never a sleep',
 ]);
-beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
+beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = !REAL_BY_DESIGN.has(t.name); });
 // a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
 afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try { x.w.close(); } catch (_) {} } VC = null; CLOCK_DEFAULT = false; });
-const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));
+const flush = (ms = 30) => (VC || createClock(T0)).flush(ms);
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
 function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = CLOCK_DEFAULT } = {}) {
@@ -583,7 +287,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   // the cell's OWN clock instance is captured (vc): work a cell leaves running past its end reads that clock, never the next cell's
   // a LATER boot in the same cell (a relaunch) continues from the previous boot's virtual time — time never runs backwards
   const vc = vclock ? createClock(now ? now.t : (VC ? VC.now() : T0)) : null;
-  if (vc) { VC = vc; VC_BOOTED.add(CUR); }
+  if (vc) { VC = vc; VC_BOOTED.add(CUR); } else BOOTED_REAL.add(CUR);
   // a cell that brings its OWN app-time object (now: { t }) owns app time — it stays manual, as on the real harness (the virtual
   // clock drives the timers and flush only); otherwise the app's time IS the virtual clock (S.clock.t forward = a jump)
   const clock = vc ? (now || { get t() { return vc.now(); }, set t(v) { vc.jump(v); } }) : (now || { t: T0 });
@@ -1503,10 +1207,11 @@ const pedidoCount = (S) => S.qa('section[aria-label="Resumen del pedido"]').leng
 test('D-2 view: ONE breakpoint (≥1024) read synchronously; a crossing notifies once after the debounce; no matchMedia ⇒ phone', async () => {
   const CappView = require('./capp-view.js');
   assert.equal(CappView.BREAKPOINT, 1024); assert.equal(CappView.QUERY, '(min-width: 1024px)');
-  const m = fakeMedia(true), v = CappView.createView({ matchMedia: m.matchMedia });
+  // the view's timers are the virtual clock, as the shell hands it its ONE timers (capp-shell-ui.js createView(win, { timers: T }))
+  const vc = createClock(T0), m = fakeMedia(true), v = CappView.createView({ matchMedia: m.matchMedia }, { timers: vc });
   assert.equal(v.desk(), true, 'synchronous at creation');
   const seen = []; v.subscribe((d) => seen.push(d));
-  m.set(false); m.set(true); m.set(false); await flush(DESK_SETTLE);
+  m.set(false); m.set(true); m.set(false); await vc.flush(DESK_SETTLE);
   assert.deepEqual(seen, [false], 'a burst of crossings settles to ONE notification with the final value');
   assert.equal(v.desk(), false);
   assert.equal(CappView.createView({}).desk(), false, 'no matchMedia ⇒ the phone layout');
@@ -2608,7 +2313,7 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
       const entry = (db[uid] || {})[id], order = orders[id];
       const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
-      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => (VC ? VC.setTimeout : setTimeout)(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency (on the cell's virtual clock when it has one)
+      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => VC.setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency (on the cell's virtual clock — step 9: every shell cell has one)
       const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
       return g ? g.then(() => res) : res;
     }
@@ -4199,7 +3904,7 @@ function ratingServer({ now = () => T0, delay = 5 } = {}) {
   async function handler(u, i = {}) {
     const url = new URL(u, 'https://fn.test'), pth = url.pathname, method = i.method || 'GET';
     calls.push({ path: pth.split('/').pop(), url: url.toString(), method, headers: i.headers || {}, body: i.body == null ? null : JSON.parse(i.body) });
-    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => (VC ? VC.setTimeout : setTimeout)(r, delay)); rx.inflight--;
+    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); if (delay) await new Promise((r) => VC.setTimeout(r, delay)); rx.inflight--;   // the latency runs on the cell's virtual clock; delay 0 = no clock needed (a direct handler call)
     const uid = uidOf((i.headers || {})['x-firebase-id-token']);
     if (pth.endsWith('/getMyRating')) {
       if (method !== 'GET') return out(405, { ok: false, error: 'method_not_allowed' });
@@ -4532,7 +4237,7 @@ test('C-2 r2 dish ids: the client\'s rule IS the server\'s (rating-v2.dishIdOk =
   for (const id of corpus) { assert.equal(A.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the transport answers like the server`); assert.equal(R.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the sheet too`); }
 });
 test('C-2 r2 the fake is contract-strict (rule 29): a HANDHELD customer token and a TOMBSTONED caller get the generic 403; a tombstoned owner\'s node is never shown', async () => {
-  const rate = ratingServer(); rate.own('XP-F1', 'u_ana'); rate.fulfil('XP-F1'); rate.nodes['XP-F1'] = { ...rate.nodes['XP-F1'], store: 4, rated_at: T0, owner_uid: 'u_ana' };
+  const rate = ratingServer({ delay: 0 }); rate.own('XP-F1', 'u_ana'); rate.fulfil('XP-F1'); rate.nodes['XP-F1'] = { ...rate.nodes['XP-F1'], store: 4, rated_at: T0, owner_uid: 'u_ana' };   // no shell, no clock: the handler is called directly
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'), tok = (pl) => `${b64({ alg: 'RS256' })}.${b64(pl)}.sig`;
   const get = async (t) => { const r = await rate.handler('https://fn.test/getMyRating?order_id=XP-F1', { method: 'GET', headers: { 'x-firebase-id-token': t } }); return [r.status, await r.json()]; };
   assert.deepEqual(await get(tok({ user_id: 'u_ana', customer: true, handheld: true })), [403, { ok: false, error: 'not_allowed' }], '🔴 R2-4: a handheld token is never a customer');
@@ -5199,21 +4904,14 @@ test('VC-H1 bootShell({ clock: true }): the desk→phone switch fires at EXACTLY
     await flush(1); assert.ok(!S.q('#app').classList.contains('desk'), '🔴 VC-H1: at the settle ⇒ the phone, exactly');
   } finally { S.w.close(); }
 });
-// the migration list names REAL cells only — a typo would silently leave a cell on the real clock
-test('VC-M every name in the VIRTUAL migration list is a cell of this file (exactly once)', () => {
+// step 9: the clock is virtual BY DEFAULT — the real-by-design names are real cells (a typo or a rename would silently move a paint-frame
+// cell onto the virtual clock), those cells boot REAL, and every other cell that ran booted its shells on the virtual clock
+test('VC-M the virtual clock is the default: every shell a cell boots is virtual, except the REAL_BY_DESIGN cells (each exactly one cell, booted real)', () => {
   const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
   const names = [...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'/gm)].map((m) => m[1].replace(/\\(.)/g, '$1'));
-  const missing = [...VIRTUAL].filter((n) => names.filter((x) => x === n).length !== 1);
-  assert.deepEqual(missing, [], '🔴 VC-M: a VIRTUAL name that is not exactly one cell');
-  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => names.filter((x) => x === n).length !== 1 || VIRTUAL.has(n)), [], '🔴 VC-M: a real-by-design name that is not exactly one cell, or is also listed VIRTUAL');
-  assert.ok(VIRTUAL.size >= 46, 'premise: chunk 1 listed');
-  // every listed cell that boots the shell (directly or through a helper) DID boot on the virtual clock this run
-  const bodies = new Map([...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'([\s\S]*?)(?=^(?:test\(|function |async function |const |let |\/\/)|(?![\s\S]))/gm)].map((m) => [m[1].replace(/\\(.)/g, '$1'), m[2]]));   // a body ends at the next TOP-LEVEL statement
-  const BOOTS = /\b(bootShell|pedidosBoot|realAuthHome|enterOnPresentation|promoStore|deskStore|tokenBoot)\(/;
-  const shouldBoot = [...VIRTUAL].filter((n) => BOOTS.test(bodies.get(n) || ''));
-  assert.ok(shouldBoot.length >= 27, `premise: chunk 1 boots the shell in 27 cells (${shouldBoot.length})`);
-  assert.deepEqual(shouldBoot.filter((n) => RAN.has(n) && !VC_BOOTED.has(n)), [],   // the cells that ran this run (a filtered run checks its own)
-    '🔴 VC-M: a listed cell booted on the REAL clock');
+  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => names.filter((x) => x === n).length !== 1), [], '🔴 VC-M: a real-by-design name that is not exactly one cell');
+  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => RAN.has(n) && VC_BOOTED.has(n)), [], '🔴 VC-M: a real-by-design cell booted on the virtual clock');   // the cells that ran this run (a filtered run checks its own)
+  assert.deepEqual([...BOOTED_REAL].filter((n) => !REAL_BY_DESIGN.has(n)), [], '🔴 VC-M: a cell booted a shell on the REAL clock');
 });
 
 // the leak hunt (advisor 11-13): a cell that leaves its shell window OPEN keeps it rendering on late responses after the cell ended

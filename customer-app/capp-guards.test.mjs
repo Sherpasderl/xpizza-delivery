@@ -275,3 +275,33 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
     assert.equal(rt.CAPP_RUNTIME && rt.CAPP_RUNTIME.mode, target, `🔴 SBS-3: the packaged ${target} runtime says its own mode (no injected mode)`);
   }
 });
+
+// PLAN-capp-virtual-clock step 9 (advisor 11-14): the customer-app suites never WAIT on a fixed real sleep — a Promise settled by a real
+// setTimeout races the work it waits for under load (the 2e flakes); the virtual clock (test-clock.mjs) drains instead. Real = a bare,
+// window or jsdom-window setTimeout — any receiver that is not a virtual clock (fail closed). A waiver names its reason and pins its
+// count (a second sleep in a waived file is never hidden by the first). The premises split «set»+«Timeout» so this file scans clean
+const SLEEP_WAIVED = {
+  'capp-s7a1-shell.test.mjs': [1, 'popTick: an EVENT-based wait for jsdom\'s popstate — its 1 s timer is a hang cap only (advisor 11-14)'],
+};
+const VIRTUAL_RECV = /^(VC|vc|c|POP)\.$/;
+function realSleeps(src) {
+  const out = [];
+  for (const m of src.matchAll(/new Promise\(\s*(?:\(\s*(\w+)[^)]*\)|(\w+))\s*=>/g)) {
+    const r = m[1] || m[2], body = src.slice(m.index, m.index + 400);
+    const settles = new RegExp(`([\\w.]*?)setTimeout\\)?\\(\\s*(?:${r}\\s*[,)]|\\(\\)\\s*=>\\s*\\{?\\s*${r}\\()`, 'g');
+    for (const t of body.matchAll(settles)) if (!VIRTUAL_RECV.test(t[1])) { out.push(src.slice(0, m.index).split('\n').length); break; }
+  }
+  return out;
+}
+test('no fixed real sleep in the customer-app suites: no Promise settled by a real setTimeout — the virtual clock drains instead (PLAN-capp-virtual-clock step 9)', () => {
+  const dir = join(ROOT, 'customer-app'), files = readdirSync(dir).filter((f) => f.endsWith('.test.mjs'));
+  assert.ok(files.length >= 30 && files.includes('capp-s7a2.test.mjs') && files.includes('capp-ui.test.mjs'), `🔴 premise: the scan reads the suites (${files.length})`);
+  const ST = 'set' + 'Timeout';
+  assert.deepEqual(realSleeps(`const s = () => new Promise((r) => ${ST}(r, 30));`), [1], '🔴 premise: the scanner sees a bare sleep');
+  assert.deepEqual(realSleeps(`const s = () => new Promise((res) => w.${ST}(() => res(), 30));`), [1], '🔴 premise: the scanner sees a jsdom-window sleep');
+  assert.deepEqual(realSleeps(`const s = () => new Promise((r) => VC.${ST}(r, 30));`), [], '🔴 premise: a virtual-clock wait is not a sleep');
+  const found = Object.fromEntries(files.map((f) => [f, realSleeps(readFileSync(join(dir, f), 'utf8'))]).filter(([, l]) => l.length));
+  const bad = Object.entries(found).filter(([f, l]) => !SLEEP_WAIVED[f] || l.length !== SLEEP_WAIVED[f][0]).map(([f, l]) => `${f}:${l.join(',')}`);
+  assert.deepEqual(bad, [], '🔴 SLEEP: a fixed real sleep in a customer-app suite (wait on the virtual clock, or on an event)');
+  assert.deepEqual(Object.keys(SLEEP_WAIVED).filter((f) => !found[f]), [], '🔴 SLEEP: a stale waiver (its sleep is gone — drop it)');
+});

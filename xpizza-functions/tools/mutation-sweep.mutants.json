@@ -36729,19 +36729,19 @@
  {
   "id": "vc-12",
   "slice": "vclock",
-  "label": "a real-by-design paint-frame cell is ALSO listed VIRTUAL (it would silently run virtual)",
+  "label": "step 9: the virtual default ignores REAL_BY_DESIGN — a paint-frame cell silently boots on the virtual clock",
   "file": "../customer-app/capp-s7a2.test.mjs",
-  "from": "  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.\n",
-  "to": "  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.\n  'harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load',\n",
+  "from": "CLOCK_DEFAULT = !REAL_BY_DESIGN.has(t.name); });",
+  "to": "CLOCK_DEFAULT = true; });",
   "command": [
    "node",
    "--test",
    "--test-timeout=120000",
-   "--test-name-pattern=^VC-M",
+   "--test-name-pattern=^(harness|VC-M)",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "🔴 VC-M: a real-by-design name"
+   "🔴 VC-M: a real-by-design cell booted on the virtual clock"
   ]
  },
  {
@@ -36844,6 +36844,78 @@
   ],
   "kills_with": [
    "🔴 VC-UI1: nothing is sent before the 2 s"
+  ]
+ },
+ {
+  "id": "vc-19",
+  "slice": "vclock",
+  "label": "step 9: bootShell defaults to the REAL clock (a shell cell silently leaves the virtual clock)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "clock: vclock = CLOCK_DEFAULT } = {}) {",
+  "to": "clock: vclock = false } = {}) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^(shell: Inicio paints|VC-M)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a cell booted a shell on the REAL clock"
+  ]
+ },
+ {
+  "id": "vc-20",
+  "slice": "vclock",
+  "label": "step 9: the s7a2 flush regains its real-sleep branch",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const flush = (ms = 30) => (VC || createClock(T0)).flush(ms);",
+  "to": "const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^no fixed real sleep",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SLEEP: a fixed real sleep"
+  ]
+ },
+ {
+  "id": "vc-21",
+  "slice": "vclock",
+  "label": "step 9: a SECOND sleep hides in the waived file (the waiver pins its count)",
+  "file": "../customer-app/capp-s7a1-shell.test.mjs",
+  "from": "const popTick = (w) =>",
+  "to": "const nap = () => new Promise((r) => setTimeout(r, 30));\nconst popTick = (w) =>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^no fixed real sleep",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SLEEP: a fixed real sleep"
+  ]
+ },
+ {
+  "id": "vc-22",
+  "slice": "vclock",
+  "label": "the money queue never releases after an operation settles (a deadlock the drained SDK-fifo cell must report)",
+  "file": "../customer-app/capp-api.js",
+  "from": "moneyChain = run.then(() => {}, () => {}); return run; }",
+  "to": "moneyChain = run.then(() => new Promise(() => {})); return run; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^Codex r3 P2-3 repro",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SDK-fifo: no deadlock"
   ]
  }
 ]
