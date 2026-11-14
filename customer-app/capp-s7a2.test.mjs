@@ -4922,3 +4922,52 @@ test('VC-L no shell window outlives the cell that booted it (late responses neve
   assert.ok(SHELLS.length > 0, 'premise: shells were booted');
   assert.deepEqual([...new Set(open)].filter((c) => c !== CUR), [], '🔴 VC-L: a shell left open by an earlier cell');
 });
+
+// ── PLAN-capp-dish-stats r0 (1) (advisor 11-14): getPublicMenu 1d.4 may carry `dish_stats` (3a's (3)). The fixture is 3a's REAL producer +
+// serve path (fixtures/dish-stats/gen-dish-stats.mjs at feat/dish-stats-3a): the capture's 1d.4 body, the rating writers → the
+// producer → withDishStats; 'plain' (no stats), 'stats_a' and 'stats_b' (a stats-ONLY change: one dish's votes) ──
+const DSX = JSON.parse(readFileSync(join(HERE, 'fixtures/dish-stats/dish-stats.json'), 'utf8'));
+const dsEnv = (k) => J(DSX.scenarios[k].envelope);
+const plainOf = (v) => (v === undefined ? undefined : J(v));   // a model built in the jsdom window: compared as plain data (its prototypes are the window's)
+const fpHex = (env) => require('./capp-checkout.js').menuFingerprint(env);
+test('dish-stats fixture: produced by 3a\'s pinned commit — the contents are the pinned generation; the stats scenarios carry the producer\'s doc as served', () => {
+  assert.match(DSX.source.commit, /^[0-9a-f]{40}$/, 'the producing commit');
+  const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+  assert.equal(createHash('sha256').update(canon(DSX.scenarios)).digest('hex'), DSX.scenarios_sha256, '🔴 the fixture contents are the generation (a hand edit fails)');
+  assert.ok(!('dish_stats' in DSX.scenarios.plain.envelope.menu) && DSX.scenarios.plain.envelope.representation_version === '1d.4', 'plain: 1d.4 without stats');
+  for (const k of ['stats_a', 'stats_b']) assert.deepEqual(DSX.scenarios[k].envelope.menu.dish_stats, DSX.scenarios[k].produced, `${k}: the producer's dish_stats, served`);
+});
+test('dish-stats (1) F1: a stats-bearing 1d.4 envelope adapts EXACTLY like the same body without stats — plus `dishStats` (the served map, keyed by dish_id); none ⇒ an empty map', () => {
+  const pick = (m) => J({ rv: m.representation_version, photos: m.photosAuthoritative, avail: m.availIdentity, dishes: m.dishes, extras: m.extras, categories: m.categories, groups: m.groups });
+  const plain = CappMenu.adaptMenu(dsEnv('plain')), a = CappMenu.adaptMenu(dsEnv('stats_a'));
+  assert.deepEqual(pick(a), pick(plain), 'the menu content is unchanged by the stats');
+  assert.deepEqual(a.dishStats, DSX.scenarios.stats_a.envelope.menu.dish_stats, '🔴 DS-F1: the served dish_stats reach the model');
+  assert.deepEqual(plain.dishStats, {}, 'no stats ⇒ an empty map (never undefined)');
+  assert.ok(Object.isFrozen(a.dishStats), 'read-only like the rest of the model');
+});
+test('dish-stats (1) F2: the menu fingerprint is the menu CONTENT — a stats-only change keeps it; a price change moves it', async () => {
+  const [p, a, b] = await Promise.all(['plain', 'stats_a', 'stats_b'].map((k) => fpHex(dsEnv(k))));
+  assert.equal(a, p, '🔴 DS-F2: the stats never change the fingerprint');
+  assert.equal(b, a, '🔴 DS-F2: a stats-only refresh is the SAME menu');
+  const repr = dsEnv('stats_a'); repr.menu.dishes[0].price += 10;
+  assert.notEqual(await fpHex(repr), a, 'premise: a price change is a different menu');
+});
+test('dish-stats (1) F3: a stats-only revalidation during the visit adopts NOTHING (no remount at checkout entry; the visit keeps the stats it entered with); the NEXT store entry shows the new ones', async () => {
+  const S = bootShell({ envelope: 'hold', storage: memStorage(storedMenu('x_pizza', dsEnv('stats_a'))) });
+  try {
+    await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const ui0 = S.ui.store().ui;
+    assert.deepEqual(plainOf(ui0.menu.dishStats), DSX.scenarios.stats_a.envelope.menu.dish_stats, '🔴 DS-F3: the visit\'s model carries the stats it entered with');
+    S.release('x_pizza', dsEnv('stats_b')); await flush(); await flush();
+    assert.equal(ui0.orderable(), true, 'premise: the fresh body verified the surface');
+    const d = ui0.menu.dishes.find((x) => !x.launcher && !x.variantOf && !ui0.menu.pickupOnlyCats.has(String(x.cat)));
+    S.click(`.qty-add-btn[data-id="${d.key}"]`); S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush();
+    assert.equal(S.ui.store().ui, ui0, '🔴 DS-F3: no adoption at checkout entry for a stats-only change (the mount is kept)');
+    assert.deepEqual(plainOf(ui0.menu.dishStats), DSX.scenarios.stats_a.envelope.menu.dish_stats, 'the visit keeps the stats it entered with');
+    assert.equal(S.ui.store().ui.state.screen, 'checkout', 'premise: in the checkout of the SAME mount');
+    S.w.history.back(); await until(() => S.ui.store() && S.ui.store().ui.state.screen === 'store'); await flush();   // the device Back (as the cells above)
+    if (S.q('#layer [data-act="lclose"], #layer [data-act="close"]')) { S.click(S.q('#layer [data-act="lclose"], #layer [data-act="close"]')); await flush(); }
+    S.click('.store-nav [data-act="back"]'); await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.deepEqual(plainOf(S.ui.store().ui.menu.dishStats), DSX.scenarios.stats_b.envelope.menu.dish_stats, '🔴 DS-F3: the next entry shows the new stats');
+  } finally { S.w.close(); }
+});

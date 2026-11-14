@@ -26222,8 +26222,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2: the fingerprint hashes non-canonical JSON",
   "file": "../customer-app/capp-checkout.js",
-  "from": "new TextEncoder().encode(canonicalJson(envelope))",
-  "to": "new TextEncoder().encode(JSON.stringify(envelope))",
+  "from": "new TextEncoder().encode(canonicalJson({ ...envelope, menu: content }))",
+  "to": "new TextEncoder().encode(JSON.stringify({ ...envelope, menu: content }))",
   "command": [
    "node",
    "--test",
@@ -36967,6 +36967,40 @@
   ],
   "kills_with": [
    "WAKE-8"
+  ]
+ },
+ {
+  "id": "ds1-01",
+  "slice": "dish-stats",
+  "label": "the menu fingerprint hashes dish_stats (a stats-only refresh reads as a CHANGED menu: a remount at checkout entry)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "canonicalJson({ ...envelope, menu: content })",
+  "to": "canonicalJson(envelope)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(1\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DS-F2"
+  ]
+ },
+ {
+  "id": "ds1-02",
+  "slice": "dish-stats",
+  "label": "adaptMenu drops the served dish_stats (the model never carries them)",
+  "file": "../customer-app/capp-menu.js",
+  "from": "hasPhoto: new Set(list(m.has_photo).map(String)), dishStats,",
+  "to": "hasPhoto: new Set(list(m.has_photo).map(String)), dishStats: Object.freeze({}),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(1\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DS-F1"
   ]
  }
 ]

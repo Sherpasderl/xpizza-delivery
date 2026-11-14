@@ -255,11 +255,14 @@
   // PLAN-capp-S7a r3.3-F2 [r2] (Codex perf r2 New-2): "is the served menu unchanged?" is a CONTENT FINGERPRINT of the RAW envelope —
   // sha-256 over THIS file's canonicalJson (one canonical form in the app) — never deep equality of adapted models (they carry
   // functions). The envelope body carries no transport metadata (the etag is an HTTP header). WebCrypto, so async.
+  // PLAN-capp-dish-stats r0 (1): the menu CONTENT leaves out `menu.dish_stats` (1d.4, a daily-moving decoration): a stats-only refresh
+  // is the SAME menu — nothing adopted mid-visit (no remount at checkout entry); the new stats show at the next store entry (rule 7)
   async function menuFingerprint(envelope) {
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-checkout: no menu in the envelope');
     const subtle = typeof crypto !== 'undefined' && crypto ? crypto.subtle : null;
     if (!subtle) throw new Error('capp-checkout: no WebCrypto');
-    const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(envelope)));
+    const { dish_stats: _stats, ...content } = envelope.menu;
+    const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson({ ...envelope, menu: content })));
     return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
   // PLAN 5 (owner-approved repriced-cart pattern, DECISIONS 2026-10-26 (1)) — the notice copy, ONE source with the forms: this
