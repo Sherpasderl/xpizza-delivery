@@ -10,7 +10,7 @@ const { BASE, HUNKS, FILES, unapplyZonesModule } = require('./tools/zones-module
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js'], 'the owned files');
 for (const f of FILES) {
-  const src = require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/memberreads-module-inverse').unapplyMemberReadsModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read; D4 (5e63f584, newest) peeled first; train/portal-structure (5f): S1-server's s1srv (disjoint index.js hunks) merged beside this lane is peeled innermost
+  const src = require('./tools/envlim-module-inverse').unapplyEnvlimModule(f, require('./tools/confirmretire-module-inverse').unapplyConfirmRetireModule(f, require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/memberreads-module-inverse').unapplyMemberReadsModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, require('./tools/d4-intake-inverse').unapplyD4Module(f, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(f, fs.readFileSync(path.join(__dirname, f), 'utf8'))))))));   // the NEWEST layer: the file on disk; train asm7 (2e): confirmOnlinePayment's retirement (1721f5d1, disjoint index.js hunks) merged beside this lane is peeled at the read; D4 (5e63f584, newest) peeled first; train/portal-structure (5f): S1-server's s1srv (disjoint index.js hunks) merged beside this lane is peeled innermost
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyZonesModule(f, src), b, `🔴 ${f} minus the zones hunks is not ${BASE}:${f}`);
@@ -25,7 +25,7 @@ for (const f of FILES) {
 assert.strictEqual(unapplyZonesModule('tb-unowned.js', 'x\n'), 'x\n', 'an unowned file passes through');
 ok(`${FILES.length} files → ${BASE} byte-for-byte, same-line only; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
 // the portal fold of index.js carries every index.js hunk exactly once (the guards that read the fold peel this layer)
-const fold = require('./tools/envlim-module-inverse').unapplyEnvlimModule('index.js', require('./tools/portal-split').foldPortalSplit());
+const fold = require('./tools/envlim-module-inverse').unapplyEnvlimModule('index.js', require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', require('./tools/portal-split').foldPortalSplit()));
 for (const h of HUNKS.filter((x) => x.file === 'index.js')) assert.strictEqual(fold.split(h.now).length - 1, 1, 'an index.js hunk survives the portal fold exactly once');
 ok('the portal fold carries each index.js hunk exactly once');
 // the frozen order forms (rule 40): no byte under either form directory differs from the base, and both pages hash as pinned

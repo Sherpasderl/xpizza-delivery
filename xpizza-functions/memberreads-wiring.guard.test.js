@@ -14,7 +14,7 @@ const { BASE, HUNKS, FILES, unapplyMemberReadsModule } = require('./tools/member
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, '604e96ab5', 'the base is train asm9 (the RC asm9b branches from)');
 assert.deepStrictEqual([...FILES], ['index.js'], 'the owned files');
-const src = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const src = require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // marketing price (5f, the newest layer) peeled first
 const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 assert.notStrictEqual(src, b, 'non-vacuity: index.js differs from the base');
 assert.strictEqual(unapplyMemberReadsModule('index.js', src), b, `🔴 index.js minus the member-reads hunks is not ${BASE}:index.js`);

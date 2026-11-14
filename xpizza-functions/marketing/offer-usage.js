@@ -82,8 +82,8 @@ async function holdForOrder(db, orderId, offer, { salesCents, nowMs = Date.now()
   });
   if (!(r.committed && mine)) {
     await unholdCounters(db, offer, { salesCents, week: h.week });
-    const now = (await flagRef.once('value')).val();
-    return { ok: !!now && now.usage === 'held' };   // a concurrent retry flagged it first ⇒ counted once, by it
+    const after = (await flagRef.once('value')).val();
+    return { ok: !!after && after.usage === 'held' };   // a concurrent retry flagged it first ⇒ counted once, by it
   }
   return { ok: true };
 }

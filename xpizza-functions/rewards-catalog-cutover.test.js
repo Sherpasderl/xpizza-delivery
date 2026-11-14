@@ -185,8 +185,12 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
        It prices exactly as the legacy recompute does, from the same resolved tables — enumerated and pinned to its own call. */
     assert.strictEqual((SRC.match(/const a8Incoming = [\s\S]{0,500}?computeIncomingFingerprint\([\s\S]{0,700}?tables: pricingTables/g) || []).length, 1,
       "the 'a8' createOrder recompute (PLAN-A A-1) prices from the SAME resolved pricingTables");
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 9,
-      "the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates + the 1 canonical + the 1 'a8' createOrder recompute share the ONE resolved pricingTables");
+    /* PLAN-5f-marketing-price added a TENTH and ELEVENTH: each order handler's restaurant offer (cash + card) is priced by
+       OFW.withOffer from the handler's ONE resolved table set — the same tables the net and both gates read. Enumerated and pinned. */
+    assert.strictEqual((SRC.match(/OFW\.withOffer\(\{[^;]{0,300}?tables: pricingTables/g) || []).length, 2,
+      'BOTH order handlers price the restaurant offer from the SAME resolved pricingTables (marketing price)');
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 11,
+      "the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates + the 1 canonical + the 1 'a8' createOrder recompute + the 2 offer pricings share the ONE resolved pricingTables");
     assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
       'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
     // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler

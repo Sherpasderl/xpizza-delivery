@@ -3289,7 +3289,7 @@
   "slice": "c1",
   "label": "only the net is checked, not the components, so a NaN breakdown reaches the token",
   "file": "compute-server-net.js",
-  "from": "  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents };",
+  "from": "  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents, offer_discount_cents };",
   "to": "  const out = { net_total_cents };",
   "command": [
    "node",
@@ -4724,7 +4724,7 @@
   "slice": "b9",
   "label": "🔴 an expired token throws away the confirmation again — the grace-window overcharge returns",
   "file": "../xpizza-functions/token-gate.js",
-  "from": "    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });\n    if (stale) return { ...stale, reason: `${stale.reason}_stale_token` };",
+  "from": "    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables, offer });\n    if (stale) return { ...stale, reason: `${stale.reason}_stale_token` };",
   "to": "",
   "command": [
    "node",
@@ -5429,8 +5429,8 @@
   "slice": "d2",
   "label": "🔴 computeServerNet returns a CONSTANT - the price-neutrality premise goes vacuous with it",
   "file": "compute-server-net.js",
-  "from": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {",
-  "to": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {\n  if (true) return { net_total_cents: 1000, components: {} };",
+  "from": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null, offer = null }) {",
+  "to": "function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null, offer = null }) {\n  if (true) return { net_total_cents: 1000, components: {} };",
   "command": [
    "node",
    "../cart-identity-order.test.mjs"
@@ -22924,8 +22924,8 @@
   "slice": "s2tip",
   "label": "stored (grandfathered) economics drop the tip",
   "file": "delivery/delivery-pricing.js",
-  "from": "    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}) });",
-  "to": "    });",
+  "from": "    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}), ...(order.promo_discount_cents > 0",
+  "to": "    ...(order.promo_discount_cents > 0",
   "command": [
    "node",
    "s2tip.test.js"
