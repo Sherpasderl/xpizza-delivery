@@ -33,8 +33,8 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BASE = '1d862e17';
-const CAPP_TIP = '08a0bc43';
+const BASE = 'b6f6b82b1';   // feat/fonts-figtree-pin's fork point (advisor 11-14: the forked-lane re-base, ruling 11-12 (a))
+const CAPP_TIP = '04629a599';   // the Figtree pin (customer-app/figtree-fonts.css + fonts-figtree/, nothing else under customer-app/)
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -237,8 +237,8 @@ const MERGE_ALLOW = {
   // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
   // asm8 (2e, advisor merge obligation 11-13): the capp D4 client × 3a's fence — the harness runs the REAL fence (finishSdk's reads +
   // cancelSdkPendingCore) and the mirror is deleted; RED-or-meaningless on either lane alone (the fence lives only on 3a's branch)
-  '195147ff customer-app/test/real-sdk-server.mjs': 'capp D4 client × fence: the REAL fence imported, the line-for-line mirror deleted',
-  '195147ff customer-app/capp-api-sdk.test.mjs': 'capp D4 client × fence: P2-4-FENCE names the REAL fence, not the model',
+  // (empty again at BASE b6f6b82b1, 11-14: the asm8 entries «195147ff customer-app/test/real-sdk-server.mjs» and «195147ff
+  // customer-app/capp-api-sdk.test.mjs» named a merge now BELOW the base — the same shape as the 11-12 re-base above)
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
