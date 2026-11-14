@@ -211,6 +211,7 @@
     "test:s2claim": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/s2-portal-claim.emulator.test.js\"",
     "test:driver-assignment-parity": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-assignment-parity.emulator.test.js\"",
     "test:arrived-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-drvc \"node test/arrived-rules.emulator.test.js\"",
+    "test:marketing-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-mkt \"node test/marketing-rules.emulator.test.js\"",
     "test:driver-problems-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-drvf \"node test/driver-problems-rules.emulator.test.js\"",
     "test:s1b-rules": "node tools/emulator-run.js --only database \"node test/s1b-driver-accounts-rules.emulator.test.js\"",
     "test:f2-driver-feed-lifecycle": "node tools/emulator-run.js --only database \"node test/f2-driver-feed-lifecycle.emulator.test.js\"",
