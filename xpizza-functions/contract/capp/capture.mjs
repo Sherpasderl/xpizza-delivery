@@ -24,8 +24,9 @@ const FN = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);          // Wed 2026-10-21 18:00 America/Tegucigalpa
 export const PLAN_ETAG = {                                // PLAN-shared-order-form.FINAL §10.3
-  x_pizza: '"ce08dc10eb5ac354087f42e3b849999ffd3b912ba6ea2f4256b083dec7916098"',   // S2-core (§1.6 / R3): the served body carries extras_by_item {} when empty — was "80284300…12db2" (S1d)
-  la_musa: '"27fae80408b4f08da43b0fdaf4837c31904abd8bd65c866c1c3406ad9693961a"',   // S2-core (R3): the public deny lists only extras inside each dish's offered groups — was "cea5849b…5b1e" (S1d)
+  // re-pinned for the 1d.4 representation bump (3a (3), advisor 2026-11-13); every client takes one 200 on deploy
+  x_pizza: '"ad550e2de2fbc330cd7b5585c1c1729ccf1cf236adabcd56eb06434dfb1d1c1a"',   // 1d.4 — was "ce08dc10…6098" (S2-core: extras_by_item {} when empty; before it "80284300…12db2", S1d)
+  la_musa: '"25982b2d104eed8d07def3d6286d92c4146a4226db3149ea15f8fca1f474d684"',   // 1d.4 — was "27fae804…961a" (S2-core: the deny lists only offered-group extras; before it "cea5849b…5b1e", S1d)
 };
 
 export const PREAMBLE = `(function(){
