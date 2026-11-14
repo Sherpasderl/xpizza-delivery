@@ -14,6 +14,13 @@ const { makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
 const CFG = require('./config');
 const OM = require('./offer-model');
 const C = require('./offers-core');
+const { buildMenu } = require('../catalog/catalog-menu');
+
+// a branch's ACTIVE catalog version as the REAL payload builder (catalog-menu buildMenu) reads it from Firestore-shaped snapshots —
+// the shape getRestaurantMenu returns in production (items carry display.cat; structure.categories lists the ids)
+const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
+const versionMenu = (rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
+  { exists: true, data: () => ({ categories: cats.map((id) => ({ id })), item_order: rows.map((r) => r[0]) }) }, 'test');
 
 let n = 0; let FINISHED = false;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -64,8 +71,12 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
   for (const rid of ['tb_centro', 'tb_sur']) await mirror(rid, { version: 'v1', seq: 1, rid, menu: { [K1]: 150, [K2]: 220, ...(rid === 'tb_centro' ? { [K3]: 90 } : {}) }, extras: {} });
   const w = await CFG.writeMarketingConfig(db, { expected: 0, config: { ...switches, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 });
   assert.strictEqual(w.ok, true, 'premise: the config writer wrote the switches');
-  const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db) };
-  return { fake, db, deps };
+  // each branch's active version: pizzas = K1 + K2 (+ K3 on tb_centro is a drink); a test may add a dish later (CATALOG[rid].push)
+  const CATALOG = { tb_centro: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], tb_sur: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas']] };
+  const CATS = { tb_centro: ['pizzas', 'bebidas', 'vacia'], tb_sur: ['pizzas'] };
+  const readCategoryMenu = async (rid) => versionMenu(CATALOG[rid], CATS[rid]);
+  const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu };
+  return { fake, db, deps, CATALOG };
 }
 const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
 const get = (deps, tok, rid) => C.getMarketingCore(deps, req(tok, undefined, 'GET', { rid }));
@@ -147,9 +158,40 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.reason], [400, reason], `validation: ${reason} (${JSON.stringify(o)})`);
       }
-      const cats = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['c_pizzas'], free_per_order: 1 } }) });
-      assert.deepStrictEqual([cats.status, cats.body.error], [409, 'cats_not_supported'], 'bogo by category: refused until its key source exists');
-      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, cats refused');
+      const both = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], items: [K1], free_per_order: 1 } }) });
+      assert.deepStrictEqual([both.status, both.body.reason], [400, 'bad_params'], 'the builder sends items OR cats, never both (items are the server\'s)');
+      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, items xor cats');
+    }
+
+    // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
+    {
+      const { fake, deps, CATALOG } = await setup();
+      const cat = (o = {}) => offer({ name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, ...o });
+      const r = await save(deps, `t-${OWNER}`, { offer: cat({ branches: ['tb_centro', 'tb_sur'] }) });
+      assert.strictEqual(r.status, 200, `premise: saved (${JSON.stringify(r.body)})`);
+      assert.deepStrictEqual(fake.get(`marketing_offers/tb/${r.body.offer.id}/params`), { cats: ['pizzas'], items: [K1, K2].sort(), free_per_order: 1 }, 'saved: the category AND its resolved dishes (the union over the branches)');
+      assert.deepStrictEqual(r.body.offer.params.items, [K1, K2].sort(), 'the review shows the resolved product list («Aplica a: …»)');
+      ok('category save: dishes resolved from the active versions, stored with the category');
+      for (const [cats, reason, rid] of [[['nada'], 'unknown_category', 'tb_centro'], [['vacia'], 'empty_category', 'tb_centro'], [['bebidas'], 'unknown_category', 'tb_sur']]) {
+        const x = await save(deps, `t-${OWNER}`, { offer: cat({ params: { cats, free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }) });
+        assert.deepStrictEqual([x.status, x.body.reason, x.body.rid], [400, reason, rid], `${cats}: ${reason} on ${rid}`);
+      }
+      ok('an unknown or empty category on ANY branch is refused, naming the branch');
+      CATALOG.tb_centro.push(['i_dddddddddddd', 180, 'pizzas']);   // a dish added BEFORE publishing
+      const p = await move(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, to: 'active', expected_rev: 1 });
+      assert.strictEqual(p.status, 200);
+      const want = [K1, K2, 'i_dddddddddddd'].sort();
+      assert.deepStrictEqual(fake.get(`marketing_live/tb_sur/${r.body.offer.id}/params/items`), want, 'publish RE-RESOLVES: the new dish is in the mirror');
+      CATALOG.tb_centro.push(['i_eeeeeeeeeeee', 200, 'pizzas']);   // a dish added AFTER publishing
+      assert.deepStrictEqual(fake.get(`marketing_live/tb_centro/${r.body.offer.id}/params/items`), want, 'frozen: a dish added after publish is NOT covered');
+      const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], caps: { redemptions: 60, spend_cents: null, weekly: false } }) });
+      assert.strictEqual(re.status, 200, `a re-save of the live category offer is allowed (${JSON.stringify(re.body)})`);
+      assert.deepStrictEqual(fake.get(`marketing_live/tb_centro/${r.body.offer.id}/params/items`), [...want, 'i_eeeeeeeeeeee'].sort(), '…and covers the dish added since');
+      ok('publish re-resolves; frozen between; a re-save of the live offer picks up a dish added since');
+      const dish = await created(deps, { name: 'Solo K1' });
+      const clash = await move(deps, `t-${OWNER}`, { offer_id: dish.id, to: 'active', expected_rev: 1 });
+      assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['2 por 1 en pizzas']], 'a dish offer on a dish the category covers clashes by its resolved items');
+      ok('the overlap rule sees a category offer through its resolved dishes');
     }
 
     // ── 4. publish → the live mirror; pause / resume / end; CAS ──

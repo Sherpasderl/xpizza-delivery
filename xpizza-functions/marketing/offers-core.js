@@ -57,19 +57,34 @@ async function authorizeBranches(deps, ctx, brandId, branches) {
   return null;
 }
 
-// an item-offer's dish keys must be on EVERY listed branch's live menu (the catalog mirror, through its one reader)
-async function dishProblem(deps, value) {
-  if (value.type !== 'bogo') return null;
-  if (OM.usesCats(value)) return reply(409, { error: 'cats_not_supported' });   // the category → key source is not sourced yet (§3.3)
+// An item-offer's dishes → { value } (a category offer with its dishes RESOLVED) | { fail }.
+//  · by dish: every key on EVERY listed branch's live menu (the catalog mirror, through its one reader);
+//  · by category (advisor 11-14): each category resolved on EVERY branch from its ACTIVE catalog version (deps.readCategoryMenu — one
+//    version read per branch, only on a portal save / publish, never on the price path or the read); the union of the dishes is
+//    stored as params.items, FROZEN until the next save / publish.
+async function resolveDishes(deps, value) {
+  if (value.type !== 'bogo') return { value };
+  if (OM.usesCats(value)) {
+    const all = new Set();
+    for (const rid of value.branches) {
+      let menu;
+      try { menu = await deps.readCategoryMenu(rid); } catch (_) { return { fail: UNAVAILABLE() }; }
+      const r = OM.resolveCats(menu, value.params.cats);
+      if (!r.ok) return { fail: reply(400, { error: 'bad_request', field: 'params', reason: r.reason, rid }) };
+      for (const k of r.items) all.add(k);
+    }
+    if (all.size > OM.LIMITS.cat_items_max) return { fail: reply(409, { error: 'category_too_large' }) };
+    return { value: { ...value, params: { cats: value.params.cats, items: [...all].sort(), free_per_order: value.params.free_per_order } } };
+  }
   for (const rid of value.branches) {
     let m;
-    try { m = await deps.readMirror(rid); } catch (_) { return UNAVAILABLE(); }
+    try { m = await deps.readMirror(rid); } catch (_) { return { fail: UNAVAILABLE() }; }
     const menu = isObj(m) && isObj(m.menu) ? m.menu : null;
-    if (!menu) return reply(409, { error: 'menu_unavailable', rid });
+    if (!menu) return { fail: reply(409, { error: 'menu_unavailable', rid }) };
     const missing = value.params.items.filter((k) => !Object.prototype.hasOwnProperty.call(menu, k));
-    if (missing.length) return reply(400, { error: 'bad_request', field: 'params', reason: 'unknown_dish', rid });
+    if (missing.length) return { fail: reply(400, { error: 'bad_request', field: 'params', reason: 'unknown_dish', rid }) };
   }
-  return null;
+  return { value };
 }
 
 // THE live judgement — ONE rule, used by the cheap pre-check AND inside the per-branch transaction: this offer against one branch's
@@ -247,11 +262,11 @@ async function marketingOfferSaveCore(deps, req) {
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0 || (creating !== (body.expected_rev === 0))) return reply(400, { error: 'bad_request', field: 'expected_rev' });
   const v = OM.validateAuthored(body.offer, opts);
   if (!v.ok) return reply(400, { error: 'bad_request', field: v.field, reason: v.reason });
-  const value = v.value;
-  const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
+  const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
   if (denied) return denied;
-  const dish = await dishProblem(deps, value);
-  if (dish) return dish;
+  const dish = await resolveDishes(deps, v.value);
+  if (dish.fail) return dish.fail;
+  const value = dish.value;
   const t = now();
   const offerId = creating ? newOfferId() : body.offer_id;
   let prune = [];
@@ -306,15 +321,16 @@ async function marketingOfferSetStateCore(deps, req) {
   try { pre = await val(db, path); } catch (_) { return UNAVAILABLE(); }
   if (pre === null) return reply(404, { error: 'not_found' });
   if (!OM.recordOk(pre, opts)) return reply(409, { error: 'current_malformed' });
-  const value = OM.authoredOf(pre, opts);
+  let value = OM.authoredOf(pre, opts);
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
   const t = now();
   if (body.to === 'active') {   // publish / resume: the schedule is still ahead, the dishes are on the menu, no overlap, under MAX_LIVE
     if (pre.state === 'draft') { const p = OM.validatePublishable(value, t); if (!p.ok) return reply(400, { error: 'bad_request', field: p.field, reason: p.reason }); }
     if (pre.state === 'paused_owner' && value.schedule.end !== null && value.schedule.end <= t) return reply(409, { error: 'ended' });
-    const dish = await dishProblem(deps, value);
-    if (dish) return dish;
+    const dish = await resolveDishes(deps, value);   // a category offer is RE-RESOLVED at publish / resume (frozen from here)
+    if (dish.fail) return dish.fail;
+    value = dish.value;
     const live = await liveProblem(deps, body.offer_id, value);
     if (live) return live;
   }
@@ -323,7 +339,7 @@ async function marketingOfferSetStateCore(deps, req) {
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
     if (!MOVES[cur.state].includes(body.to)) { d.why = 'bad_transition'; return undefined; }
     d.why = 'write';
-    const next = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t };
+    const next = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') next.ended_reason = 'owner'; else delete next.ended_reason;
     return next;
   });

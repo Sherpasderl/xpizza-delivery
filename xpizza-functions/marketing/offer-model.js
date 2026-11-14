@@ -13,6 +13,7 @@ const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
 const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
+  cat_items_max: 100,                                // a category offer's RESOLVED dish keys (frozen at save / publish)
   pct_min: 5, pct_max: 50, pct_step: 5,              // Q2 (advisor): 50 % is a typo guard, not a business rule
   cents_max: 10_000_000,                             // L 100,000 — a sanity bound on any money field (centavos)
   live_max: 10, offers_max: 100,                     // per branch (scheduled + live) · per brand (every state)
@@ -39,7 +40,7 @@ function nameOf(v) {
   return s.length >= 1 && s.length <= LIMITS.name_max && !/[\u0000-\u001f\u007f]/.test(s) ? s : null;
 }
 
-function paramsOf(type, p) {
+function paramsOf(type, p, stored = false) {
   const c = (v) => isInt(v, 0, LIMITS.cents_max);
   if (type === 'pct') {
     if (!exactKeys(p, ['pct'], ['max_cents'])) return null;
@@ -53,13 +54,21 @@ function paramsOf(type, p) {
     return c(p.off_cents) && p.off_cents > 0 && c(p.min_cents) && p.min_cents >= p.off_cents ? { off_cents: p.off_cents, min_cents: p.min_cents } : null;
   }
   if (type === 'bogo') {
+    // AUTHORED (the builder): items XOR cats. STORED: a category offer also carries `items`, its dishes RESOLVED from each branch's
+    // active catalog version at save / publish (advisor 11-14: frozen at publish; a dish added to the category later is covered only
+    // after a re-save). The price path and the overlap rule read `items` only.
     const hasItems = isObj(p) && 'items' in p, hasCats = isObj(p) && 'cats' in p;
-    if (hasItems === hasCats || !exactKeys(p, ['free_per_order'], ['items', 'cats'])) return null;
+    if (stored ? !(hasItems || hasCats) || (hasCats && !hasItems) : hasItems === hasCats) return null;
+    if (!exactKeys(p, ['free_per_order'], ['items', 'cats'])) return null;
     if (!isInt(p.free_per_order, 1, LIMITS.free_per_order_max)) return null;
-    const list = hasItems ? p.items : p.cats;
-    const max = hasItems ? LIMITS.items_max : LIMITS.cats_max;
-    if (!Array.isArray(list) || list.length < 1 || list.length > max || !list.every(keyOk) || !uniq(list)) return null;
-    return { [hasItems ? 'items' : 'cats']: [...list], free_per_order: p.free_per_order };
+    const listOk = (list, max) => Array.isArray(list) && list.length >= 1 && list.length <= max && list.every(keyOk) && uniq(list);
+    if (hasCats) {
+      if (!listOk(p.cats, LIMITS.cats_max)) return null;
+      if (hasItems && !listOk(p.items, LIMITS.cat_items_max)) return null;
+      return { cats: [...p.cats], ...(hasItems ? { items: [...p.items] } : {}), free_per_order: p.free_per_order };
+    }
+    if (!listOk(p.items, LIMITS.items_max)) return null;
+    return { items: [...p.items], free_per_order: p.free_per_order };
   }
   if (type === 'envio') {
     if (!exactKeys(p, [], ['min_cents'])) return null;
@@ -102,12 +111,12 @@ function capsOf(c) {
 // The AUTHORED fields of an offer (what the builder sends) → { ok, value } | { ok:false, field, reason }. `isRid` is the location-id
 // rule (brands/brand-model isBrandId), injected so this module stays pure.
 const AUTHORED = Object.freeze(['name', 'type', 'params', 'audience', 'branches', 'schedule', 'caps']);
-function validateAuthored(input, { isRid }) {
+function validateAuthored(input, { isRid, stored = false }) {
   if (!exactKeys(input, AUTHORED)) return fail('offer', 'bad_shape');
   const name = nameOf(input.name);
   if (name === null) return fail('name', 'bad_name');
   if (!TYPES.includes(input.type)) return fail('type', 'bad_type');
-  const params = paramsOf(input.type, input.params);
+  const params = paramsOf(input.type, input.params, stored);
   if (params === null) return fail('params', 'bad_params');
   if (!AUDIENCES.includes(input.audience)) return fail('audience', 'bad_audience');
   if (input.type === 'nuevos' && input.audience !== 'new') return fail('audience', 'nuevos_is_new');   // «Para clientes nuevos»
@@ -135,7 +144,7 @@ function authoredOf(rec, { isRid }) {
   for (const k of AUTHORED) pick[k] = rec[k];
   if (isObj(pick.schedule)) pick.schedule = { days: pick.schedule.days, start: nul(pick.schedule.start), end: nul(pick.schedule.end), window: nul(pick.schedule.window) };
   if (isObj(pick.caps)) pick.caps = { weekly: pick.caps.weekly, redemptions: nul(pick.caps.redemptions), spend_cents: nul(pick.caps.spend_cents) };
-  const v = validateAuthored(pick, { isRid });
+  const v = validateAuthored(pick, { isRid, stored: true });
   return v.ok ? v.value : null;
 }
 const recordOk = (rec, opts) => isObj(rec) && rec.v === 1 && isInt(rec.rev, 1, 1e15) && STATES.includes(rec.state) && authoredOf(rec, opts) !== null;
@@ -153,13 +162,31 @@ function stripNulls(v) {
 // none) and the end moved LATER (or removed). Anything else → the field that changed.
 function liveEditProblem(prev, next) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  for (const k of ['name', 'type', 'params', 'audience', 'branches']) if (!same(prev[k], next[k])) return k;
+  for (const k of ['name', 'type', 'audience', 'branches']) if (!same(prev[k], next[k])) return k;
+  if (!same(paramsKey(prev), paramsKey(next))) return 'params';   // a category offer's resolved dishes may move (a re-save / publish re-resolves)
   const ps = prev.schedule, ns = next.schedule;
   if (ps.start !== ns.start || !same(ps.days, ns.days) || !same(ps.window, ns.window)) return 'schedule';
   if (!(ns.end === null || (ps.end !== null && ns.end >= ps.end))) return 'schedule';
   const up = (a, b) => b === null || (a !== null && b >= a);
   if (prev.caps.weekly !== next.caps.weekly || !up(prev.caps.redemptions, next.caps.redemptions) || !up(prev.caps.spend_cents, next.caps.spend_cents)) return 'caps';
   return null;
+}
+
+const paramsKey = (v) => (usesCats(v) ? { cats: v.params.cats, free_per_order: v.params.free_per_order } : v.params);
+
+// A category offer's dishes on ONE branch, from its ACTIVE catalog version (catalog-menu getRestaurantMenu: items carry display.cat;
+// structure.categories lists the ids) → { ok, items } | { ok:false, reason: 'unknown_category'|'empty_category', cat }. Pure.
+function resolveCats(menu, cats) {
+  const known = new Set((isObj(menu) && isObj(menu.structure) && Array.isArray(menu.structure.categories) ? menu.structure.categories : []).filter(isObj).map((c) => c.id));
+  const items = isObj(menu) && Array.isArray(menu.items) ? menu.items : [];
+  const out = [];
+  for (const cat of cats) {
+    if (!known.has(cat)) return { ok: false, reason: 'unknown_category', cat };
+    const keys = items.filter((it) => isObj(it) && isObj(it.display) && it.display.cat === cat && keyOk(it.key)).map((it) => it.key);
+    if (!keys.length) return { ok: false, reason: 'empty_category', cat };
+    out.push(...keys);
+  }
+  return { ok: true, items: [...new Set(out)].sort() };
 }
 
 // The compact record the PRICE PATH reads — present only while state === 'active'. `name` rides for the overlap refusal's wording.
@@ -185,11 +212,11 @@ function schedulesOverlap(a, b) {
   const A = weeklyIntervals(a), B = weeklyIntervals(b);
   return A.some(([s1, e1]) => B.some(([s2, e2]) => s1 < e2 && s2 < e1));
 }
-// the dish keys an item-offer covers; cats expand through the branch's category map ({ catId: [keys] }). Whole-order types: none.
-function dishesOf(rec, catMap) {
+// the dish keys an item-offer covers (a category offer: its RESOLVED items). Whole-order types: none.
+function dishesOf(rec) {
   if (rec.type !== 'bogo') return [];
   if (Array.isArray(rec.params.items)) return rec.params.items;
-  return (rec.params.cats || []).flatMap((c) => (isObj(catMap) && Array.isArray(catMap[c]) ? catMap[c] : []));
+  return [];   // a category offer without its resolved items covers nothing (never guessed)
 }
 const usesCats = (rec) => rec.type === 'bogo' && Array.isArray(rec.params.cats);
 
@@ -207,5 +234,5 @@ const hnDow = (ms) => new Date(ms - HN_OFFSET_MS).getUTCDay();
 module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
   validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
-  weeklyIntervals, schedulesOverlap, dishesOf, usesCats, statusOf, hnDow,
+  weeklyIntervals, schedulesOverlap, dishesOf, usesCats, resolveCats, statusOf, hnDow,
 };

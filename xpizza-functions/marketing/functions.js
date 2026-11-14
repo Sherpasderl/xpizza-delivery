@@ -8,10 +8,13 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
 const { PORTAL_ORIGINS } = require('../portal/origins');
+const { getFirestore } = require('firebase-admin/firestore');
 const { makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
+const { getRestaurantMenu } = require('../catalog/catalog-menu');
 const C = require('./offers-core');
 
-const deps = () => ({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t), now: () => Date.now(), readMirror: makeRtdbMirrorReader(getDatabase()) });
+const deps = () => ({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t), now: () => Date.now(), readMirror: makeRtdbMirrorReader(getDatabase()),
+  readCategoryMenu: (rid) => getRestaurantMenu(getFirestore(), rid) });   // a category offer's dishes: the ACTIVE version (save / publish only)
 
 function handler(name, core) {
   return async (req, res) => {
