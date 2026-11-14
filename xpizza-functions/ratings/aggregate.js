@@ -26,12 +26,15 @@ const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const normPhone = (p) => (typeof p === 'string' || typeof p === 'number' ? String(p).replace(/\D/g, '') : '');
 const PAIR_SEP = '~';
 
+// the COUNTED orders of a day: this rid's FULFILLED ones — the bucket's set and the merit facts' set (PLAN-3a-merit-A), one rule
+const counted = (rid, o) => isObj(o) && o.restaurant_id === rid && FULFILLED.has(o.status);
+
 // ONE day's bucket from that day's orders (the producer's keyed reads). Only this rid's FULFILLED orders count; a dish counts once
 // per order (qty never multiplies); every unordered dish pair in an order co-occurs once. keyOf(normalized phone digits) → key|null.
 function bucketFromOrders(rid, orders, keyOf) {
   const b = { v: BUCKET_VERSION, orders: 0, dish: {}, pairs: {}, cust: {} };
   for (const o of orders || []) {
-    if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;
+    if (!counted(rid, o)) continue;
     b.orders += 1;
     const ids = isObj(o.dish_qty) ? Object.keys(o.dish_qty).filter((d) => Number.isInteger(o.dish_qty[d]) && o.dish_qty[d] > 0 && !d.includes(PAIR_SEP)).sort(byStr) : [];
     for (const d of ids) b.dish[d] = (b.dish[d] || 0) + 1;
@@ -51,7 +54,7 @@ const ACCEPT_MAX_S = 86400;
 function meritDay(rid, orders) {
   const accept_s = []; let accept_invalid = 0;
   for (const o of orders || []) {
-    if (!isObj(o) || o.restaurant_id !== rid || !FULFILLED.has(o.status)) continue;
+    if (!counted(rid, o)) continue;
     const s = typeof o.new_at === 'number' && typeof o.preparing_at === 'number' && Number.isFinite(o.new_at) && Number.isFinite(o.preparing_at)
       ? Math.round((o.preparing_at - o.new_at) / 1000) : null;
     if (s !== null && s >= 0 && s <= ACCEPT_MAX_S) accept_s.push(s); else accept_invalid += 1;
