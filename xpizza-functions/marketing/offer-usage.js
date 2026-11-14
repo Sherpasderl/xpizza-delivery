@@ -69,14 +69,14 @@ async function holdForOrder(db, orderId, offer, { salesCents, nowMs = Date.now()
   const cur = (await flagRef.once('value')).val();
   if (!cur || cur.offer_id !== offer.offer_id) return { ok: false };
   if (cur.usage === 'held') return { ok: true };
-  if (cur.usage != null && cur.usage !== 'released_failed') return { ok: false };   // 'released' (a cancel) is terminal; a decline's release is re-holdable
+  if (cur.usage != null) return { ok: false };
   const h = await holdCounters(db, offer, { salesCents, nowMs });
   if (!h.ok) return { ok: false };
   let mine = false;
   const r = await flagRef.transaction((o) => {
     mine = false;
     if (o == null) return null;
-    if (o.offer_id !== offer.offer_id || (o.usage != null && o.usage !== 'released_failed')) return undefined;
+    if (o.offer_id !== offer.offer_id || o.usage != null) return undefined;
     mine = true;
     return { ...o, usage: 'held', usage_week: h.week, usage_sales_cents: int(salesCents) };
   });
@@ -88,10 +88,8 @@ async function holdForOrder(db, orderId, offer, { salesCents, nowMs = Date.now()
   return { ok: true };
 }
 
-/* A cancel: 'held' → 'released' (terminal); a DEFINITIVE decline (pixelpay-confirm, beside the reward's own release): 'held' → 'released_failed'
-   (a retry of that order re-holds through the cap check). Set-once per hold, then the counters given back. → true when THIS call released it. */
-async function releaseForOrder(db, orderId, { to = 'released' } = {}) {
-  if (to !== 'released' && to !== 'released_failed') throw new Error(`offer-usage: bad release target ${to}`);
+/* A cancel: 'held' → 'released' (set-once), then the counters given back. → true when THIS call released it. */
+async function releaseForOrder(db, orderId) {
   const flagRef = db.ref(`orders/${orderId}/offer`);
   let held = null;
   const r = await flagRef.transaction((o) => {
@@ -99,7 +97,7 @@ async function releaseForOrder(db, orderId, { to = 'released' } = {}) {
     if (o == null) return null;
     if (o.usage !== 'held') return undefined;
     held = o;
-    return { ...o, usage: to };
+    return { ...o, usage: 'released' };
   });
   if (!(r.committed && held)) return false;
   await unholdCounters(db, held, { salesCents: held.usage_sales_cents, week: held.usage_week });

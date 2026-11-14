@@ -4025,7 +4025,9 @@
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/mktprice-wiring.guard.test.js"
+   ]
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -7481,7 +7483,6 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
-      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7491,7 +7492,6 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
-      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7502,7 +7502,6 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
-      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7510,8 +7509,7 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/materialize-hub.test.js",
-    "xpizza-functions/mktprice-wiring.guard.test.js"
+    "xpizza-functions/materialize-hub.test.js"
    ]
   },
   "pixelpay-hosted-charge.js": {

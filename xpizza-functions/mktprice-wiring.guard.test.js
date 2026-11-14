@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyMktPriceModule } = require('./tools/mktprice-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'pixelpay-confirm.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
@@ -31,10 +31,11 @@ ok(`${FILES.length} files minus the ${HUNKS.length} marketing hunks === ${BASE} 
   for (const f of files) {
     const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
     const re = /require\('[./]*tools\/d4-intake-inverse'\)\.unapplyD4Module\(/g; let m;
-    while ((m = re.exec(s))) if (!/unapplyMktPriceModule\([^,]+, $/.test(s.slice(Math.max(0, m.index - 120), m.index))) bare.push(`${f}@${m.index}`);
+    // the NEWEST layer is peeled FIRST, on the raw read (its runGate hunk overlaps a D4 hunk): D4's argument is the mktprice peel
+    while ((m = re.exec(s))) if (!/^[^,]+, require\('[./]*(?:tools\/)?mktprice-module-inverse'\)\.unapplyMktPriceModule\(/.test(s.slice(m.index + m[0].length, m.index + m[0].length + 200))) bare.push(`${f}@${m.index}`);
   }
   assert.ok(files.length > 50, `MKTPRICE: non-vacuity (${files.length} readers)`);
-  assert.deepStrictEqual(bare, [], `MKTPRICE: 🔴 a D4 peel without the mktprice peel around it: ${bare.join(', ')}`);
-  ok(`every D4 peel in ${files.length} readers is wrapped by the mktprice peel`);
+  assert.deepStrictEqual(bare, [], `MKTPRICE: 🔴 a D4 peel whose argument is not the mktprice peel: ${bare.join(', ')}`);
+  ok(`every D4 peel in ${files.length} readers peels the mktprice layer first (inside it, on the raw read)`);
 }
 console.log(`mktprice-wiring.guard: OK (${n})`);

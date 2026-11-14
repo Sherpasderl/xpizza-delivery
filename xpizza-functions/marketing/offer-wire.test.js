@@ -96,6 +96,18 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const p2 = await place(w2, items, q2.quote_token);
     assert.deepStrictEqual([p2.gate.refuse, p2.gate.result.chargeNet, p2.recorded.total_cents], [null, 44000 - 8000, 44000 - 8000], `${L}: lower net charged`);
   });
+  await cell('MW-CACHE: quotes read the mirror once per 60 s per instance; placement reads it FRESH every time; the config is cached 60 s', async (L) => {
+    const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    const cdb = counting(w.db); const items = [line('Pepperoni', 2)];
+    for (const t of [0, 1000, 59999]) await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + t });
+    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 1, `${L}: one mirror read for three quotes in 60 s`);
+    await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + 60000 });
+    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 2, `${L}: re-read after 60 s`);
+    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('platform_config')).length, 2, `${L}: the config too`);
+    const before = cdb.reads.filter((p) => p.startsWith('marketing_live')).length;
+    await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60001 }); await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60002 });
+    assert.strictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, before + 2, `${L}: placement fresh`);
+  });
   await cell('MW-ENVIO-FUNDER: a restaurant envío offer ⇒ promo_discount_cents = the fee, funder «restaurant», envío not charged; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
     const w = await xworld(); await w.publish({ type: 'envio', params: { min_cents: 20000 } });
     const items = [line('Pepperoni', 2)];
@@ -110,18 +122,6 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.deepStrictEqual([s.recorded.promo_discount_cents, s.recorded.delivery_discount_funder], [6000, 'sherpa'], `${L}: sherpa`);
     const none = await place(w2, items, null, { ctx: envio() });
     assert.ok(!('delivery_discount_funder' in none.recorded), `${L}: no discount ⇒ no funder field`);
-  });
-  await cell('MW-CACHE: quotes read the mirror once per 60 s per instance; placement reads it FRESH every time; the config is cached 60 s', async (L) => {
-    const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
-    const cdb = counting(w.db); const items = [line('Pepperoni', 2)];
-    for (const t of [0, 1000, 59999]) await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + t });
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 1, `${L}: one mirror read for three quotes in 60 s`);
-    await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + 60000 });
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 2, `${L}: re-read after 60 s`);
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('platform_config')).length, 2, `${L}: the config too`);
-    const before = cdb.reads.filter((p) => p.startsWith('marketing_live')).length;
-    await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60001 }); await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60002 });
-    assert.strictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, before + 2, `${L}: placement fresh`);
   });
   await cell('MW-STORED: a card retry of an existing order keeps the offer frozen on it, even after the offer is paused', async (L) => {
     const w = await xworld(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });

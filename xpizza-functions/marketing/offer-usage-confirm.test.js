@@ -1,17 +1,16 @@
 'use strict';
-// PLAN-5f-marketing-price step 2 (A, advisor 11-14) — the offer usage on the REAL hosted money writers:
-//   UC-DECLINE: a definitive decline through the REAL confirmOnlinePayment (PixelPay status stubbed «declined»; the real interpretStatus)
-//               ⇒ order.offer.usage 'released_failed' and the counters given back — beside the reward's own release;
-//   UC-RETRY:   that order retried ⇒ re-held exactly once (the normal cap check);
-//   UC-ABANDON: the REAL resolve-manual abandon (a stale hosted order a person abandons) writes status 'cancelled' — the transition the
-//               onOrderCancelled hook releases on (its wiring: test:marketing-price E10) — ⇒ 'released', terminal.
+// PLAN-5f-marketing-price step 2 (advisor ruling (a), 11-14) — the offer usage on the REAL hosted money writers. The live hosted flow
+// has NO decline writer (pixelpay-hosted-webhook ignores every non-paid callback, I12): a declined checkout expires, sweepStalePending
+// flags it manual_reconciliation with the usage STILL held (an unknown outcome is never a release, rule 17 — emulator
+// test:marketing-price E12 drives the REAL sweep), and a person abandons or refunds it:
+//   UC-ABANDON: the REAL resolve-manual abandon of that stale hosted order writes status 'cancelled' — the transition the
+//               onOrderCancelled hook releases on (its wiring: test:marketing-price E10/E12) — ⇒ 'released', terminal.
 // The offer by 3a's REAL writers (the seed), the hold by offer-usage. Run: node marketing/offer-usage-confirm.test.js
 const assert = require('assert');
 const { world, NOW } = require('../test/_marketing-price-seed');
 const OP = require('./offer-price');
 const CFG = require('./config');
 const OU = require('./offer-usage');
-const { confirmOnlinePayment } = require('../pixelpay-confirm');
 const { resolveManualReconciliationCore } = require('../resolve-manual');
 const { buildMaterializeUpdates } = require('../materialize');
 const { voidOrRefund } = require('../pixelpay-cancel');
@@ -38,23 +37,8 @@ async function heldOrder(extra = {}) {
   assert.deepStrictEqual(await OU.holdForOrder(w.db, 'PZ-1', offer, { salesCents: SALES, nowMs: T }), { ok: true }, 'premise: held at the gate');
   return { w, id, offer };
 }
-const confirmDeps = (db, st) => ({ db, client: client(st), restaurant: { lat: 15.5, lng: -88, name: 'R', phone: '+504' }, buildMaterializeUpdates, voidOrRefund, staleMs: 90000, alert: () => {} });
 
 (async () => {
-  await cell('UC-DECLINE: a definitive decline through the REAL confirmOnlinePayment ⇒ «released_failed», the counters given back', async (L) => {
-    const { w, id } = await heldOrder();
-    const r = await confirmOnlinePayment(confirmDeps(w.db, 'declined'), { orderId: 'PZ-1', paymentUuid: 'U-1', now: T + 1000, trackingToken: 'TK' });
-    assert.strictEqual(r.outcome, 'failed', `${L}: premise — the real decline path (${JSON.stringify(r)})`);
-    assert.deepStrictEqual([w.fake.get('orders/PZ-1/payment_status'), w.fake.get('orders/PZ-1/status')], ['failed', 'pending_payment'], `${L}: premise — the order stays open (the leak's shape)`);
-    assert.strictEqual(w.fake.get('orders/PZ-1/offer/usage'), 'released_failed', L);
-    assert.deepStrictEqual([w.fake.get(`marketing_usage/${id}/redemptions`), w.fake.get(`marketing_usage/${id}/spend_cents`), w.fake.get(`marketing_usage/${id}/orders`)], [0, 0, 0], `${L}: counters back`);
-  });
-  await cell('UC-RETRY: the declined order retried ⇒ re-held exactly once (a retried gate counts nothing more)', async (L) => {
-    const { w, id, offer } = await heldOrder();
-    await confirmOnlinePayment(confirmDeps(w.db, 'declined'), { orderId: 'PZ-1', paymentUuid: 'U-1', now: T + 1000, trackingToken: 'TK' });
-    for (let i = 0; i < 2; i += 1) assert.deepStrictEqual(await OU.holdForOrder(w.db, 'PZ-1', offer, { salesCents: SALES, nowMs: T + 2000 }), { ok: true }, `${L}: gate ${i + 1}`);
-    assert.deepStrictEqual([w.fake.get('orders/PZ-1/offer/usage'), w.fake.get(`marketing_usage/${id}/redemptions`)], ['held', 1], L);
-  });
   await cell('UC-ABANDON: the REAL resolve-manual abandon of a stale hosted order writes status «cancelled» ⇒ the hook\'s release ⇒ «released», terminal', async (L) => {
     const { w, id, offer } = await heldOrder({ payment_status: 'manual_reconciliation' });
     w.fake.put('payment_attempts/A/hosted_state', 'manual_reconciliation'); w.fake.put('payment_attempts/A/payment_uuid', null);   // a stale NO-callback checkout: no payment id (with one, the real abandon refuses: «usá Reembolsar»)

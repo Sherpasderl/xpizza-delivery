@@ -146,26 +146,6 @@ const HUNKS = Object.freeze([
   "was": "        ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),\n        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx),\n      });\n"
  },
  {
-  "file": "pixelpay-confirm.js",
-  "now": "        await orderRef.update({ payment_status: 'failed' });\n        await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now }); await require('./marketing/offer-usage').releaseForOrder(db, orderId, { to: 'released_failed' }).catch(() => {});   // definitive not-captured → release\n        deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });\n",
-  "was": "        await orderRef.update({ payment_status: 'failed' });\n        await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // definitive not-captured → release\n        deps.alert && deps.alert('confirm_voided_inactive', { orderId, attemptId, restaurant_id: rid });\n"
- },
- {
-  "file": "pixelpay-confirm.js",
-  "now": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now }); await require('./marketing/offer-usage').releaseForOrder(db, orderId, { to: 'released_failed' }).catch(() => {});   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'failed', reason: status.status };\n",
-  "was": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'failed', reason: status.status };\n"
- },
- {
-  "file": "pixelpay-confirm.js",
-  "now": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now }); await require('./marketing/offer-usage').releaseForOrder(db, orderId, { to: 'released_failed' }).catch(() => {});   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_not_found };\n",
-  "was": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_not_found };\n"
- },
- {
-  "file": "pixelpay-confirm.js",
-  "now": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now }); await require('./marketing/offer-usage').releaseForOrder(db, orderId, { to: 'released_failed' }).catch(() => {});   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_declined };\n",
-  "was": "    await orderRef.update({ payment_status: 'failed' });\n    await settleRedemptionAtConfirm(db, { orderId, order, disposition: 'release', now });   // [C/#15] definitive not-captured (PixelPay queried → declined/failed) → release the redemption hold promptly\n    return { outcome: 'capture_failed', message: require('./pixelpay-cancel').CAPTURE_MESSAGES.capture_declined };\n"
- },
- {
   "file": "quote-issue.js",
   "now": "function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now(), offer = null }) {\n  const net = computeServerNet({ items, reward, deliveryContext, rid, tables, offer });\n",
   "was": "function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now() }) {\n  const net = computeServerNet({ items, reward, deliveryContext, rid, tables });\n"

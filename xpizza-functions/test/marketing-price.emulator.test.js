@@ -21,6 +21,7 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'mkt-price-secret';
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'mkt-price-quote-secret';
 process.env.OTP_SALT = process.env.OTP_SALT || 'c'.repeat(40);
+process.env.RECON_SECRET = process.env.RECON_SECRET || 'mkt-price-recon';   // E12: the dispatcher's abandon (resolveManualReconciliation)
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 const CHARGED = [];
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
@@ -50,12 +51,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('marketing-price(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 
-function post(handler, body) {
+function post(handler, body, bearer = process.env.MAKE_SECRET) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
-        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}` }, body: JSON.stringify(body) });
+        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
         s.close(() => resolve({ status: r.status, json: j, text: t }));
       } catch (e) { s.close(() => reject(e)); }
@@ -294,8 +295,23 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     await clean(); const r2 = await post(app.chargeOnlineOrder, kb);
     assert.ok(r2.status === 200 || r2.status === 202, `E11: the retry answered (${r2.text.slice(0, 160)})`);
     assert.strictEqual((await usageOf(xId)).redemptions, before + 1, '🔴 E11: the retry counts nothing more');
+    // E12 (ruling (a)): the LIVE hosted path has no decline writer — the declined checkout simply expires; the REAL sweep flags it for a
+    // person with the usage STILL held (an unknown outcome is never a release, rule 17); the person's REAL abandon cancels it; the
+    // cancel hook gives the use back.
+    const aid = (await order(kb.order_id)).active_attempt_id;
+    assert.strictEqual((await rtdb.ref(`payment_attempts/${aid}/hosted_state`).get()).val(), 'created', 'E12 premise: a live, unpaid hosted checkout');
+    await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(Date.now() - 16 * 60000);   // time passes: past expiry + the 15-min callback grace
+    await app.sweepStalePending.run({});
+    const flagged = await order(kb.order_id);
+    assert.deepStrictEqual([flagged.status, flagged.payment_status], ['pending_payment', 'manual_reconciliation'], 'E12 premise: the REAL sweep flagged it for a person');
+    assert.deepStrictEqual([flagged.offer.usage, (await usageOf(xId)).redemptions], ['held', before + 1], '🔴 E12: at manual_reconciliation the usage is STILL held');
+    const ab = await post(app.resolveManualReconciliation, { order_id: kb.order_id, action: 'abandon' }, process.env.RECON_SECRET);
+    assert.strictEqual((await order(kb.order_id)).status, 'cancelled', `E12 premise: the REAL abandon cancels (${ab.status} ${ab.text.slice(0, 160)})`);
+    const evk = { data: { before: { val: () => 'pending_payment' }, after: { val: () => 'cancelled' } }, params: { orderId: kb.order_id } };
+    await app.onOrderCancelled.run(evk);
+    assert.deepStrictEqual([(await order(kb.order_id)).offer.usage, (await usageOf(xId)).redemptions], ['released', before], '🔴 E12: the abandon\'s cancel releases the use');
   }
-  ok('E9 a cap: held with the order, then no longer quoted; E10 the cancel trigger releases once; E11 a card holds at the gate, once across a retry');
+  ok('E9 a cap: held with the order, then no longer quoted; E10 the cancel trigger releases once; E11 a card holds at the gate, once across a retry; E12 a declined hosted checkout: still held at manual_reconciliation, released by the abandon');
 
   // ── E6. a legacy-form order ⇒ no offer ──
   {
