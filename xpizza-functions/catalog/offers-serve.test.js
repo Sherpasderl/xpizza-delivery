@@ -109,11 +109,33 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.notStrictEqual(on.etag, before.etag, 'ON: the body moves the ETag by itself (no representation bump)');
       assert.strictEqual(on.etag, etagOf(RID, on.body), 'the ETag is over the served body');
       ok('ON: exactly the all-audience live offers (not nuevos / returning / paused), public shape, no name / caps / ids; the ETag follows the body');
-      assert.deepStrictEqual(OS.offerFlagOf(RID, { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: NOW }]]), now: () => NOW }), { types: ['bogo', 'envio', 'pct'] }, 'the directory flag: the distinct types, no amounts');
-      ok('offerFlagOf: { types } of the served offers (for the directory owner to wire)');
+      // the directory flag (shape set by capp, advisor 11-14): the public AMOUNTS of the offers inside their window NOW
+      const flagAt = (t) => OS.offerFlagOf(RID, { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: t }]]), now: () => t });
+      assert.strictEqual(flagAt(NOW), null, 'before any start ⇒ no flag');
+      const tue = NOW + DAY;                                   // Tue 17 Nov 12:00 HN: the all-day offers are in window; the Fri/Sat 21:00–00:00 one is not
+      assert.deepStrictEqual(flagAt(tue), { offers: [{ type: 'envio', min_cents: 30000 }, { type: 'pct', pct: 10 }, { type: 'bogo' }] },
+        'the flag: envío carries its minimum (rule 10), pct its percent, bogo no amount; the out-of-window category offer is absent');
+      const satNight = NOW + 5 * DAY + 10 * 3600000;          // Sat 21 Nov 22:00 HN: inside 21:00–00:00
+      assert.deepStrictEqual(flagAt(satNight).offers.filter((o) => o.type === 'bogo').length, 2, 'inside its window the category offer joins');
+      assert.deepStrictEqual(flagAt(NOW + 5 * DAY).offers.filter((o) => o.type === 'bogo').length, 1, 'Saturday noon: outside 21:00–00:00 ⇒ absent');
+      assert.strictEqual(flagAt(NOW + 31 * DAY), null, 'past their end (and outside the open-ended category offer\'s Fri/Sat window) ⇒ no flag at all');
+      assert.ok(!JSON.stringify(flagAt(satNight)).match(/name|items|cats|caps|schedule|days|start|window|max_cents|free_per_order|"rev"|brand|o_[a-z2-7]{12}/), 'no private field ever appears (no max_cents, items, schedule, name, id)');
+      ok('offerFlagOf: { offers: [{ type, pct? , off_cents?, min_cents? }] } inside the window now; ended / out-of-window absent; no private field');
       const later = await served(fs, db, { at: NOW + 31 * DAY });
       assert.deepStrictEqual(later.body.offers.map((o) => o.type), ['bogo'], 'past their end ⇒ ended offers are not served (the open-ended category offer stays)');
       ok('an offer past its end is never served');
+    }
+
+    // ── 2b. the flag's cap: ≤ 10 entries ──
+    {
+      const live = {};
+      for (let i = 0; i < 11; i++) {
+        const v = OM.validateAuthored(offer({ params: { pct: 5 + 5 * (i % 10) }, schedule: { start: NOW - DAY, days: [0, 1, 2, 3, 4, 5, 6] } }), { isRid: () => true });
+        live[`o_${'abcdefghijk'[i].repeat(12)}`] = OM.liveProjection({ ...v.value, rev: 2, state: 'active' }, 'xb');
+      }
+      assert.strictEqual(OS.flagOf({ on: true, live }, NOW).offers.length, OS.OFFERS_MAX, 'the flag holds at most 10 entries');
+      assert.strictEqual(OS.flagOf({ on: false, live }, NOW), null, 'off ⇒ null');
+      ok('the flag is capped at 10 entries; off ⇒ null');
     }
 
     // ── 3. a paused offer is never priced (advisor Q-C): the price path's mirror loses it at once, even while a memo still serves it ──

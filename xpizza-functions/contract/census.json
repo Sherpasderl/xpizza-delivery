@@ -64,7 +64,7 @@
   },
   "clocks": {
    "business-sample": 212,
-   "display": 42,
+   "display": 43,
    "persisted-stamp": 62,
    "business-comparison": 14,
    "io-deadline": 4
@@ -58560,8 +58560,13 @@
    "class": "business-sample"
   },
   {
+   "key": "xpizza-functions/catalog/offers-serve.js:inWindowNow:new Date()",
+   "line": 90,
+   "class": "display"
+  },
+  {
    "key": "xpizza-functions/catalog/offers-serve.js:offerFlagOf:Date.now()",
-   "line": 85,
+   "line": 106,
    "class": "business-sample"
   },
   {

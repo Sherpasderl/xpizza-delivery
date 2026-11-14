@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-capp-offers-read r0 Q1 (advisor APPROVED 2026-11-14) — the served `offers` decoration of the PUBLIC MENU, and the directory's
-// offer flag (offerFlagOf, wired by the directory's owner). Only when platform_config/marketing.offers_enabled is on (its ONE reader);
+// offer flag (offerFlagOf → { offers: [{ type, pct?, off_cents?, min_cents? }] }, wired by the directory's owner). Only when platform_config/marketing.offers_enabled is on (its ONE reader);
 // off, or on any trouble, the key is ABSENT — the body, and so the ETag (public-menu.js: sha256 over rid + representation + the
 // canonical body), are byte-identical to before.
 //   SOURCE: marketing_live/{rid} — the price path's own mirror (present only while an offer is active, ≤ LIMITS.live_max). The PRICE
@@ -78,13 +78,33 @@ async function withOffers(rid, body, deps = {}) {
   }
 }
 
-// the directory's flag (Q-B: its owner wires it, adding the key only when this is non-null): the distinct types served, no amounts
+// the directory's flag (Q-B; shape set by capp, advisor 11-14): { offers: [{ type, pct?, off_cents?, min_cents? }] } (≤ OFFERS_MAX) or
+// null — the PUBLIC AMOUNTS of the live audience-'all' offers INSIDE their schedule window right now (a home chip must be honest on its
+// own: «Envío gratis» carries its minimum, rule 10). Never a name, items, caps, schedule or id; a bogo carries no amount. The window
+// is the offer model's own weekly rule (weeklyIntervals: a window past midnight belongs to the day it starts), in HN time.
+const HN_OFFSET_MS = 6 * 3600000;   // Honduras: UTC−6, no DST (lib/hn-date.js)
+const FLAG_FIELDS = Object.freeze(['pct', 'off_cents', 'min_cents']);
+function inWindowNow(schedule, nowMs) {
+  if (!(Number.isSafeInteger(schedule.start) && schedule.start <= nowMs)) return false;
+  if (Number.isSafeInteger(schedule.end) && nowMs >= schedule.end) return false;
+  const hn = new Date(nowMs - HN_OFFSET_MS);
+  const m = hn.getUTCDay() * 1440 + hn.getUTCHours() * 60 + hn.getUTCMinutes();
+  return OM.weeklyIntervals({ days: schedule.days, window: schedule.window || null }).some(([a, b]) => m >= a && m < b);
+}
+function flagOf(raw, nowMs) {
+  if (!isObj(raw) || raw.on !== true || !isObj(raw.live)) return null;
+  const rows = Object.entries(raw.live).filter(([id]) => OM.OFFER_ID_RE.test(id)).map(([, e]) => publicOffer(e, nowMs))
+    .filter((o) => o && inWindowNow(o.schedule, nowMs))
+    .map((o) => ({ type: o.type, ...Object.fromEntries(FLAG_FIELDS.filter((k) => Number.isSafeInteger(o.params[k])).map((k) => [k, o.params[k]])) }))
+    .sort((a, b) => (canonicalJson(a) < canonicalJson(b) ? -1 : canonicalJson(a) > canonicalJson(b) ? 1 : 0))
+    .slice(0, OFFERS_MAX);
+  return rows.length ? { offers: rows } : null;
+}
 function offerFlagOf(rid, deps = {}) {
   try {
     const m = SM.memoFor(rid, deps);
-    const offers = m ? selectOffers(m.raw, deps.now ? deps.now() : Date.now()) : null;
-    return offers ? { types: [...new Set(offers.map((o) => o.type))].sort() } : null;
+    return m ? flagOf(m.raw, deps.now ? deps.now() : Date.now()) : null;
   } catch (_) { return null; }
 }
 
-module.exports = { withOffers, offerFlagOf, selectOffers, publicOffer, OFFERS_MAX, OFFERS_BYTES, OFFERS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, STALE_MAX_MS, _state: SM.state };
+module.exports = { withOffers, offerFlagOf, flagOf, inWindowNow, selectOffers, publicOffer, OFFERS_MAX, OFFERS_BYTES, OFFERS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, STALE_MAX_MS, _state: SM.state };
