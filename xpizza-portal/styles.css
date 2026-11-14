@@ -2042,6 +2042,7 @@
   .envio .envzones .railadd:disabled{opacity:.5;cursor:default}
   /* ENVÍO step 2, Z1b — the zones save outcomes (addendum D–F: the blocking-branch list, dot + word) and the «Quitar zona» confirm */
   .envio .envzfail .ebtns{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;flex:0 0 auto;align-self:center}
+  .envio .envzfail>div{flex:1;min-width:0}   /* the text column takes the room; .ebtns (above, more specific) keeps its natural width */
   .envio .blist{display:flex;flex-direction:column;gap:6px;margin-top:11px}
   .envio .zbrow{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid var(--red-line);border-radius:10px;background:var(--card);font-size:13px}
   .envio .zbrow .k{flex:1;min-width:0;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2191,6 +2192,14 @@
     .envio .modal{border-radius:18px 18px 0 0;max-width:none}
     .envio .mfoot{flex-direction:column-reverse}
     .envio .mfoot .btn{justify-content:center;min-height:46px}
+    /* the zones addendum's final cascade (visual check r5–r8): the save bar wraps its actions onto their own row; the 409 box stacks them */
+    .envio .rbar{row-gap:10px}
+    .envio .rb-t{flex:1 1 auto}
+    .envio .rb-sp{flex:0 0 100%;display:flex;gap:8px}
+    .envio .rb-sp .btn{flex:1;justify-content:center;min-height:44px}
+    .envio .envzfail{flex-wrap:wrap;padding:16px}
+    .envio .envzfail .ebtns{flex:0 0 100%;width:100%;justify-content:stretch;flex-direction:column}
+    .envio .envzfail .ebtns .btn{justify-content:center;min-height:44px;margin-left:0}
   }
 
   /* ═══ INICIO (PLAN-portal-inicio-r0): EXACT to MOCKUP-portal-map.html v3 s-inicio / s-inicio-ok — the frame's .top / .filt / .vpre /
