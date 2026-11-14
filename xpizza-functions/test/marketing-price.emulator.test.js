@@ -28,6 +28,13 @@ stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, s
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 
+// E13: the SDK placement's provider is the fake adapter (the SDK suites' recipe) — every call recorded, none expected here
+const { makeAdapter } = require('../payments/sdk/psp-adapter');
+const { makeFakePsp } = require('../payments/sdk/fake-adapter');
+const FAKE = makeFakePsp({});
+stub('../payments/sdk/deps', (r) => ({ ...r, productionDeps: (db) => ({ ...r.productionDeps(db), psp: makeAdapter(FAKE.impl), ppNamespace: 'sandbox' }) }));
+const PC = require(path.join(__dirname, '..', '..', 'customer-app', 'capp-pay-card.js'));
+
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -334,6 +341,25 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     assert.deepStrictEqual([(await order(kb.order_id)).offer.usage, (await usageOf(xId)).redemptions], ['released', before], '🔴 E12: the abandon\'s cancel releases the use');
   }
   ok('E9 a cap: held with the order, then no longer quoted; E10 the cancel trigger releases once; E11 a card holds at the gate, once across a retry; E12 a declined hosted checkout: still held at manual_reconciliation, released by the abandon');
+
+  // ── E13. the SDK placement (placeSdkOrder = the same card handler in SDK mode) refuses a changed offer with the SAME body ──
+  {
+    const xid = Object.keys((await rtdb.ref('marketing_live/x_pizza').get()).val() || {})[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    const k = cartOf('x_pizza', 2);
+    await clean(); offerCaches();
+    const qk = await quote('x_pizza', k.s.items);
+    assert.ok(qk.json.offer && qk.json.offer.discount_cents > 0, `E13 premise: quoted with the offer (${qk.text.slice(0, 160)})`);
+    const before = ((await rtdb.ref(`marketing_usage/${xid}`).get()).val() || {}).redemptions || 0;
+    await pauseOffer('x_pizza', BRAND.x_pizza, xid);
+    const base = bodyOf('x_pizza', 'online', k.s, { quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents, order_id: `sdk_261114-${String(Date.now() % 1e6).padStart(6, '0')}-MKTPRCEX` });   // the SDK id grammar (no I L O U)
+    const sb = PC.placeBody(base, { kind: 'new', sdk_token: 'tok_emu', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031 } }, 'att_emu_mktprice000001', { guest: false });
+    assert.ok(sb, 'E13 premise: the client builds the SDK body');
+    await clean(); offerCaches(); const r = await post(app.placeSdkOrder, sb, 'idt_member');
+    assert.deepStrictEqual([r.status, r.json], [409, { error: 'offer_changed', net_total_cents: qk.json.net_total_cents + qk.json.offer.discount_cents, order_id: sb.order_id }], `🔴 E13: the SDK placement answers the SAME offer_changed body (${r.text.slice(0, 200)})`);
+    assert.strictEqual(FAKE.calls.length, 0, 'E13: no provider call (nothing charged)');
+    assert.strictEqual(((await rtdb.ref(`marketing_usage/${xid}`).get()).val() || {}).redemptions || 0, before, 'E13: nothing counted');
+  }
+  ok('E13 the SDK placement refuses a changed offer with the same 409 offer_changed body; no provider call, nothing counted');
 
   // ── E6. a legacy-form order ⇒ no offer ──
   {
