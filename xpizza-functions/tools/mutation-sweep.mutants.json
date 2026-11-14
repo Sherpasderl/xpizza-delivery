@@ -35974,7 +35974,7 @@
   "slice": "ga",
   "label": "a stale cart quote shows a guessed Total (the subtotal) instead of «—»",
   "file": "../customer-app/capp-ui.js",
-  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span>",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span>",
   "to": "<span>${T.ready ? moneyC(T.total - T.tip) : money(total)}</span>",
   "command": [
    "node",
@@ -36025,8 +36025,8 @@
   "slice": "ga",
   "label": "the cart Total carries the tip (v6 draws no Propina row in the cart)",
   "file": "../customer-app/capp-ui.js",
-  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span>",
-  "to": "<span>${T.ready ? moneyC(T.total) : addr ? '—' : money(total)}</span>",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span>",
+  "to": "<span>${T.ready ? moneyC(T.total) : addr || hasOffers() ? '—' : money(total)}</span>",
   "command": [
    "node",
    "--test",
@@ -37502,18 +37502,19 @@
  {
   "id": "of-20",
   "slice": "capp-offers-sliceA",
-  "label": "a quote settling inside the checkout leaves the store line stale (Codex r1 P1-2)",
+  "label": "a quote settling in the checkout (incl. the offer_changed re-quote) leaves the store line stale (Codex r1 P1-2 / r2)",
   "file": "../customer-app/capp-ui.js",
-  "from": "      nudgeSettle(key);   // Codex offers-ui r1 P1-2: EVERY settled quote settles the store line too (a checkout / tip landing included)\n",
+  "from": "      nudgeSettle(key);   // Codex offers-ui r1 P1-2 / r2: EVERY settled quote settles the store line — here, BEFORE the offer_changed sheet's return\n",
   "to": "",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=Codex r1 P",
+   "--test-name-pattern=Codex r",
    "../customer-app/capp-ui.test.mjs"
   ],
   "kills_with": [
-   "OF-SETTLE-CO"
+   "OF-SETTLE-CO",
+   "OF-SETTLE-OC"
   ]
  },
  {
@@ -37565,6 +37566,40 @@
   ],
   "kills_with": [
    "OF-RESTORE"
+  ]
+ },
+ {
+  "id": "of-24",
+  "slice": "capp-offers-sliceA",
+  "label": "a menu_changed quote in the checkout leaves the store line stale (Codex r2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "{ nudgeSettle(key); itemRefused(r); return; }",
+  "to": "{ itemRefused(r); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SETTLE-MC"
+  ]
+ },
+ {
+  "id": "of-25",
+  "slice": "capp-offers-sliceA",
+  "label": "a served-offer store shows the client subtotal as the delivery Total before a pin (Codex r2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": ": addr || hasOffers() ? '—' : money(total)}",
+  "to": ": addr ? '—' : money(total)}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOPIN"
   ]
  }
 ]

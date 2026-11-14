@@ -961,17 +961,17 @@
       }
       // S2b r1 P2-6: a failed quote is never a silent dead end — the key is released and the generic held state offers «Reintentar»
       if (r.kind === 'offline' || r.kind === 'try_again' || r.kind === 'refused') { S.askedKey = null; S.quoteErr = key; quoteFailed(); }
-      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { itemRefused(r); return; } }
+      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { nudgeSettle(key); itemRefused(r); return; } }   // Codex r2: settled before the return
       else S.quoteErr = null;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
+      nudgeSettle(key);   // Codex offers-ui r1 P1-2 / r2: EVERY settled quote settles the store line — here, BEFORE the offer_changed sheet's return
       // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); a refused QUOTE has no sheet; the placement's sheets are below (onOutcome)
       if (S.oc) {   // offers Q3: the re-quote after an offer_changed — the sheet only for a HIGHER Total, from the quote that just landed
         const from = S.oc.from; S.oc = null; const T = r.kind === 'ok' ? totalsNow() : { ready: false };
         if (T.ready && from !== null && T.total > from && (S.screen === 'checkout' || S.screen === 'tip')) { render(); showErr(ERR.offerChanged(T.total)); return; }
       }
       if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
-      nudgeSettle(key);   // Codex offers-ui r1 P1-2: EVERY settled quote settles the store line too (a checkout / tip landing included)
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
     // ── gates (capp-checkout missingStep, G0 first) ──
@@ -1122,7 +1122,7 @@
       const floor = cfg.feeFromCents != null ? money(cfg.feeFromCents / 100) : null;
       const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)
         : `<div class="sumrow"><span>Envío</span><span class="r">${cfg.promoFree === true && authOf() === 'member' ? `<span class="strike">${floor}</span><span class="free">Gratis</span>` : `Envío desde ${floor}`}</span></div>`;
-      return `<div class="ctot">${sub}${fee}${discRowHtml(T)}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
+      return `<div class="ctot">${sub}${fee}${discRowHtml(T)}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span></div></div>`;   // Codex r2: a store with a served offer never shows a client Total (no pin yet ⇒ «—»); no offers ⇒ today's subtotal (OFF byte-identical)
     }
     const CART_QUOTE_MS = 350;
     let cartQT = null;

@@ -4221,7 +4221,9 @@ test('offers 4 B3: the provable case on the sheet — 2 ⇒ «L 340 ~~L 680~~ ·
   assert.equal(o.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-WINDOW-UI: outside its window ⇒ no pill, no strike');
 });
 // ── Codex offers-ui r1 (REVISE) — P1-1 / P1-2 / P1-3 / P2 ──
-test('Codex r1 P1-1: the strike comes ONLY from a served offer — an offer missing from menu.offers (e.g. at its cap, not served) ⇒ no strike, today\'s button', async () => {
+// Codex r2 P2: a CONTRACT cell — the client cannot see usage caps; the real fix is 3a's served-headroom rule (only offers with cap headroom
+// are in menu.offers). This pins the client's half of that contract: no served offer ⇒ no strike
+test('Codex r1 P1-1 (CONTRACT): the strike comes ONLY from a served offer — an offer missing from menu.offers (e.g. at its cap, not served) ⇒ no strike, today\'s button', async () => {
   for (const [what, env] of [['no offers key', PROV.x_pizza.envelope], ['only another offer served', offersEnv('LPS_UNDER')]]) {
     const b = bootCo({ envelope: env, now: B3_NOW }); const s = await sheetAt2(b);
     assert.equal(b.q('#detail-scroll .detail-pricerow'), null, `🔴 B3-SERVED: ${what} ⇒ no pill, no strike`);
@@ -4265,4 +4267,37 @@ test('Codex r1 P2: a RESTORED cart asks the same debounced store-page offers quo
   await quoteLand(b);
   assert.equal(b.srv.of('quoteOrder').length, 1, '🔴 OF-RESTORE: the restored cart is quoted');
   assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', '🔴 OF-RESTORE: its line');
+});
+
+// ── Codex offers-ui r2 (REVISE, narrow) ──
+test('Codex r2 P1: a menu_changed quote settled in the checkout ALSO settles the store line — back on the store, no stale «Ahorrás»', async () => {
+  let refuse = false;
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [(body) => (refuse ? { status: 200, json: { ok: false, error: 'menu_changed' } } : oqServer(() => 'BOGO_DEL')(body))] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  refuse = true; await b.click('[data-act="type"][data-val="pickup"]'); await settle(); b.timers.flush(); await settle();
+  assert.ok(b.q('#layer .errsheet'), 'premise: the menu_changed sheet over the checkout');
+  assert.notEqual(b.ui.state.nudge, 'Ahorrás L 340 · 2 por 1', '🔴 OF-SETTLE-MC: the refused quote settled the line (the state the store repaints from — no stale saving)');
+});
+test('Codex r2 P1: the offer_changed re-quote settles the store line BEFORE its sheet — no stale «Ahorrás L 340»', async () => {
+  let phase = 'BOGO_DEL';
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => phase)], createOrder: [{ status: 409, json: OCX2.scenarios.cash_cap.body }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  phase = 'UNDER_DEL';
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'La oferta ya no está disponible', 'premise: the offer-changed sheet');
+  assert.notEqual(b.ui.state.nudge, 'Ahorrás L 340 · 2 por 1', '🔴 OF-SETTLE-OC: the re-quote (no offer) settled the line before the sheet returned (the state the store repaints from)');
+});
+test('Codex r2 P1: a store with a served offer never shows a client Total — delivery with NO pin yet ⇒ «—», zero quotes; no offers ⇒ today\'s subtotal Total (OFF)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), geo: GEO_NO });
+  await addTwo(b); await b.click('#cart-bar'); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, 'premise: no address ⇒ nothing asked');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-NOPIN: no client total with an offer live');
+  const o = bootCo({ geo: GEO_NO }); o.ui.cart.inc(OQ_CART.key); o.ui.cart.inc(OQ_CART.key); o.ui.render(); await o.click('#cart-bar');
+  assert.equal(o.text('#layer .ctot .sumrow.tot'), `Total L ${2 * OQ_CART.items[0].price}`, 'no offers ⇒ today\'s subtotal Total (OFF byte-identical)');
 });
