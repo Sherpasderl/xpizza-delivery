@@ -319,7 +319,8 @@
   "support": "S-F support tickets (NOTE-S-F-support-tickets-build): the createSupportTicket validator + owner check + ticket / alert writer. It reads the order's customer_uid / tracking_token (ownership) and restaurant_id (copied onto the ticket), never as a displayed order fact; the ticket and its dispatcher alert carry order_id + reason only",
   "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
   "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js",
-  "marketing": "portal «Marketing» offers (PLAN-3a-marketing-server steps 1–2): the restaurant's offer records (marketing_offers), their price-path mirror (marketing_live) and the platform switches (platform_config/marketing) — never an /orders path read or written; 5f's price path reads the mirror"
+  "marketing": "portal «Marketing» offers (PLAN-3a-marketing-server steps 1–2): the restaurant's offer records (marketing_offers), their price-path mirror (marketing_live) and the platform switches (platform_config/marketing) — never an /orders path read or written; 5f's price path reads the mirror",
+  "marketing_price": "the marketing PRICE PATH (PLAN-5f-marketing-price r0): offerFor picks the ONE restaurant offer for a cart from the live mirror (marketing_live/{rid}) and the server-priced cart (computeServerTotal per line, menu table prices); foodBreakdown is the ISV split of the paid food (+ the platform-factura rebaja); frozenOf is the order's frozen offer fact; withOffer reads platform_config/marketing, marketing_live/{rid} and, for a card retry, orders/{id}/offer (that order's own frozen offer) — never another order"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -855,6 +856,17 @@
   "marketing/offers-core.js#settleMirrors>anon": "marketing",
   "marketing/config.js#exactKeys": "marketing",
   "marketing/offer-model.js#exactKeys": "marketing",
+  "marketing/offer-price.js#discountOf": "marketing_price",
+  "marketing/offer-price.js#dishUnitsOf": "marketing_price",
+  "marketing/offer-price.js#entryOf": "marketing_price",
+  "marketing/offer-price.js#foodBreakdown": "marketing_price",
+  "marketing/offer-price.js#frozenOf": "marketing_price",
+  "marketing/offer-price.js#mintStored": "marketing_price",
+  "marketing/offer-price.js#offerFor": "marketing_price",
+  "marketing/offer-price.js#savingOf>anon": "marketing_price",
+  "marketing/offer-wire.js#storedOfferOf": "marketing_price",
+  "marketing/offer-wire.js#storedOfferOf>anon": "marketing_price",
+  "marketing/offer-wire.js#withOffer": "marketing_price",
   "delivery/pricing-admin-core.js#setDeliveryPricingCore": "delivery_pricing",
   "delivery/pricing-admin-core.js#lockSummary": "delivery_pricing",
   "delivery/zones.js#normalizeInput": "delivery_pricing",
@@ -1355,6 +1367,8 @@
   "tip_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
+  "offer": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "delivery_discount_funder": { "class": "pointer", "reason": "who funds promo_discount_cents — 'sherpa' | 'restaurant' (PLAN-5f-marketing-price Q3, explicit); the settlement's input, never displayed as an order fact" },
   "desc_rebaja_cents": {
    "class": "fact",
    "facts": [

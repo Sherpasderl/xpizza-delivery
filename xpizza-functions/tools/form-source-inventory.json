@@ -273,6 +273,8 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -678,6 +680,8 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1139,6 +1143,8 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -1545,6 +1551,8 @@
     "xpizza-functions/kds-manifest-writer.test.mjs",
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
+    "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
@@ -2255,6 +2263,7 @@
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
+  "xpizza-functions/test/_marketing-price-seed.js",
   "xpizza-functions/test/_s2core-harness.js",
   "xpizza-functions/test/_s2core-scale.js",
   "xpizza-functions/test/d4b-legacy-capture.js",
@@ -2825,6 +2834,8 @@
   "marketing/config.js",
   "marketing/functions.js",
   "marketing/offer-model.js",
+  "marketing/offer-price.js",
+  "marketing/offer-wire.js",
   "marketing/offers-core.js",
   "materialize.js",
   "member-auth.js",
@@ -3892,6 +3903,7 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -3899,6 +3911,7 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -3990,11 +4003,14 @@
      "file": "xpizza-functions/zones-wiring.guard.test.js",
      "inverses": [
       "tools/envlim-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/mktprice-wiring.guard.test.js"
+   ]
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -4003,6 +4019,7 @@
      "inverses": [
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     },
@@ -4010,11 +4027,14 @@
      "file": "xpizza-functions/zones-wiring.guard.test.js",
      "inverses": [
       "tools/envlim-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/zones-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/mktprice-wiring.guard.test.js"
+   ]
   },
   "delivery/limits.js": {
    "pins": [],
@@ -4152,6 +4172,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4215,6 +4236,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4282,6 +4304,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4339,6 +4362,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4382,6 +4406,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4442,6 +4467,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4491,6 +4517,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -4511,6 +4538,7 @@
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4545,6 +4573,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4603,6 +4632,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4638,6 +4668,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4663,6 +4694,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4707,6 +4739,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
@@ -4750,6 +4783,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
@@ -4781,6 +4815,7 @@
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -4813,6 +4848,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4867,6 +4903,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -4910,6 +4947,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
@@ -4960,6 +4998,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5019,6 +5058,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5074,6 +5114,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5115,6 +5156,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5140,6 +5182,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5159,6 +5202,7 @@
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5204,6 +5248,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5251,6 +5296,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5296,6 +5342,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5354,6 +5401,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5399,6 +5447,7 @@
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5432,6 +5481,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5467,6 +5517,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5510,6 +5561,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5567,6 +5619,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5617,6 +5670,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5671,6 +5725,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5731,6 +5786,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5773,6 +5829,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -5789,6 +5846,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -5802,6 +5860,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -5828,6 +5887,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5871,6 +5931,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5913,6 +5974,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -5958,6 +6020,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6002,6 +6065,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6041,6 +6105,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
@@ -6088,6 +6153,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6139,6 +6205,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6171,6 +6238,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6192,6 +6260,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6213,6 +6282,7 @@
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6250,6 +6320,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6308,6 +6379,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6369,6 +6441,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6424,6 +6497,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
@@ -6464,6 +6538,7 @@
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6520,6 +6595,7 @@
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6586,6 +6662,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6638,6 +6715,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6696,6 +6774,7 @@
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
       "tools/menu-warm-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/o1b-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
@@ -6749,6 +6828,7 @@
       "tools/keymode-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
@@ -6780,6 +6860,7 @@
       "tools/d4-intake-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/memberreads-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -6817,6 +6898,7 @@
     "xpizza-functions/intl-intake-wire-sync.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
+    "xpizza-functions/mktprice-wiring.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
@@ -6884,6 +6966,14 @@
    "lifts": []
   },
   "marketing/offer-model.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/offer-price.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/offer-wire.js": {
    "pins": [],
    "lifts": []
   },
@@ -7545,6 +7635,7 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
@@ -7553,12 +7644,15 @@
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
    ],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/mktprice-wiring.guard.test.js"
+   ]
   },
   "quote-token.js": {
    "pins": [],
@@ -7914,13 +8008,15 @@
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
     }
    ],
    "lifts": [
     "xpizza-functions/catalog/charge-inputs.test.js",
-    "xpizza-functions/charge-gate-placement.test.js"
+    "xpizza-functions/charge-gate-placement.test.js",
+    "xpizza-functions/mktprice-wiring.guard.test.js"
    ]
   },
   "tracking/claims-txn.js": {

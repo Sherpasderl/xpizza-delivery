@@ -8,7 +8,7 @@
 // Run: node marketing/offer-wire.test.js
 const assert = require('assert');
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'marketing-price-test-'.padEnd(48, 'x');
-const { world, NOW } = require('./_price-seed');
+const { world, NOW } = require('../test/_marketing-price-seed');
 const OW = require('./offer-wire');
 const OP = require('./offer-price');
 const P = require('../delivery/delivery-pricing');

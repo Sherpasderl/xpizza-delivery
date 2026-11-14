@@ -7,8 +7,8 @@ const { createFakeDb } = require('../merchant/_fake-db');
 const R = require('../access/roster');
 const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
-const CFG = require('./config');
-const C = require('./offers-core');
+const CFG = require('../marketing/config');
+const C = require('../marketing/offers-core');
 const { buildMenu } = require('../catalog/catalog-menu');
 
 const NOW = Date.UTC(2026, 10, 16, 18);   // Mon 16 Nov 2026 12:00 HN
