@@ -102,6 +102,7 @@ test('every module the portal ships is reachable from an entry page (index.html,
 });
 // The NON-DRAWING half of a feature whose screens wait for an owner-approved mockup (the S3 / S4 split): the logic lands, tested
 // against the real server, before anything imports it. Each entry names its gate; nothing else may ship unreachable.
+// APPROVED by the advisor 11-14 on one condition: the DRAWING commit that wires a module removes its entry here.
 const AWAITING_SCREENS = Object.freeze({
   'marketing-logic.js': 'Marketing «Ofertas» (advisor 11-14): its screens wait for the owner\'s approval of MOCKUP-portal-marketing v5',
 });
