@@ -31231,8 +31231,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
   "command": [
    "node",
    "--test",
@@ -36397,6 +36397,38 @@
   ],
   "kills_with": [
    "PUSH-FLAG"
+  ]
+ },
+ {
+  "id": "push-06",
+  "slice": "capp-push",
+  "label": "the card returns after «Ahora no» without limit (owner Q2: at most twice)",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (n > RETURNS_MAX) return false;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-RETURNS"
+  ]
+ },
+ {
+  "id": "push-07",
+  "slice": "capp-push",
+  "label": "the register call drops ?context=platform",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken, query: 'context=platform' });",
+  "to": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered"
   ]
  }
 ]

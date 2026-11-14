@@ -17,7 +17,7 @@
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
   // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
-  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -37,6 +37,10 @@
       return new Promise((res) => { const t = T.setTimeout(() => res({ status: 0, json: null }), timeoutMs); req.then((v) => { T.clearTimeout(t); res(v); }); });
     }
     const off = { ok: false, reason: 'offline' };
+    const prefsOf = (p) => (p && typeof p === 'object' && typeof p.pedidos === 'boolean' && typeof p.promociones === 'boolean' ? { pedidos: p.pedidos, promociones: p.promociones } : null);
+    // register / setPrefs → { ok, prefs } | a reason (3a 4ab62975c: the «Ofertas de Sherpa» switch IS the push-offers consent, server-recorded)
+    const pushPrefsOut = (r) => { const j = r.json; if (r.status === 200 && j && j.ok === true && prefsOf(j.prefs)) return { ok: true, prefs: prefsOf(j.prefs) };
+      return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) }; };
     const reasonOf = (r) => (r.json && typeof r.json.reason === 'string' ? r.json.reason : r.status === 429 ? 'rate_limited' : r.status === 401 ? 'unauthenticated' : r.status === 0 || !r.json ? 'offline' : 'failed');
     const COMPLETION = new Set(['complete', 'needed', 'off']);
     const signedIn = (j) => ({ ok: true, token: j.token, isNew: j.is_new === true, name: typeof j.name === 'string' ? j.name : null,
@@ -143,6 +147,38 @@
         const favorites = j.favorites.filter((x) => typeof x === 'string' && RID_RE.test(x));
         const recent = j.recent.filter((x) => x && typeof x === 'object' && typeof x.rid === 'string' && RID_RE.test(x.rid) && Number.isSafeInteger(x.last_at) && x.last_at > 0).map((x) => ({ rid: x.rid, last_at: x.last_at }));
         return { ok: true, favorites, more: j.more === true, recent };
+      },
+      // ── PLAN-capp-push r1 §6b (3a's customer-push.js @615bda7c4): the member's push token + prefs. Every route ?context=platform, the
+      // ID token in its HEADER (rule 20 — the FCM token only in a POST body, never a URL). prefs { pedidos, promociones } once per
+      // person; limits are the server's ONE policy (HN minutes) — the client shows them, never enforces them ──
+      async pushRegister({ idToken, token, platform, app_build, pedidos, promociones } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof token === 'string' && token && token.length <= 4096 && !/\s/.test(token)) || !['ios', 'android'].includes(platform) || !(typeof app_build === 'string' && /^[A-Za-z0-9._+-]{1,32}$/.test(app_build)) || typeof pedidos !== 'boolean' || typeof promociones !== 'boolean') return { ok: false, reason: 'bad_request' };   // = 3a's vToken / vBuild: never a request the server must refuse
+        const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken, query: 'context=platform' });
+        return pushPrefsOut(r);
+      },
+      async pushUnregister({ idToken, token } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof token === 'string' && token)) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.unregisterCustomerPushToken, { body: { token }, idToken, query: 'context=platform' });
+        return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
+      },
+      async pushSetPrefs({ idToken, pedidos, promociones } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (typeof pedidos !== 'boolean' || typeof promociones !== 'boolean') return { ok: false, reason: 'bad_request' };
+        const r = await call(E.setCustomerPushPrefs, { body: { pedidos, promociones }, idToken, query: 'context=platform' });
+        return pushPrefsOut(r);
+      },
+      async pushGetPrefs({ idToken } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        const r = await call(E.getCustomerPushPrefs, { method: 'GET', idToken, query: 'context=platform' });
+        const j = r.json;
+        if (r.status !== 200 || !j || j.ok !== true) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
+        const prefs = j.prefs === null ? null : prefsOf(j.prefs);
+        if (j.prefs !== null && !prefs) return { ok: false, reason: 'failed' };
+        const L = j.limits, min = (v) => Number.isSafeInteger(v) && v >= 0 && v <= 1439, cnt = (v) => Number.isSafeInteger(v) && v >= 0;
+        const limits = L && cnt(L.promo_daily_max) && cnt(L.promo_weekly_max) && min(L.quiet_from) && min(L.quiet_to) ? { promo_daily_max: L.promo_daily_max, promo_weekly_max: L.promo_weekly_max, quiet_from: L.quiet_from, quiet_to: L.quiet_to } : null;
+        return { ok: true, prefs, limits };
       },
       // the heart: { rid, on } — idempotent; 409 too_many (the cap) / 404 unknown_restaurant / 403 deleted are reasons
       async setFavorite({ idToken, rid, on } = {}) {

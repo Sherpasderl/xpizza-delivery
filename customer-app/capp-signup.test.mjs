@@ -365,6 +365,8 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
   await a.getMyFavorites({ idToken: 't' }); await a.setFavorite({ idToken: 't', rid: 'x_pizza', on: true });   // C-1b
+  await a.pushRegister({ idToken: 't', token: 'fcm_t', platform: 'ios', app_build: '1', pedidos: true, promociones: false }); await a.pushUnregister({ idToken: 't', token: 'fcm_t' });   // PLAN-capp-push §6b
+  await a.pushSetPrefs({ idToken: 't', pedidos: true, promociones: false }); await a.pushGetPrefs({ idToken: 't' });
   assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });
 // ── C-2 (PLAN §C-2; 3a's getMyRating 1958b8ed + the S-A1 writer rateOrder): the member transport's two rating calls, against the REAL
