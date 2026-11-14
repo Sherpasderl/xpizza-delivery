@@ -36741,5 +36741,107 @@
   "kills_with": [
    "🔴 VC-M: a real-by-design name"
   ]
+ },
+ {
+  "id": "vc-13",
+  "slice": "vclock",
+  "label": "fireThrough fires in ARMING order (the old fake's snapshot order), not (due, arming)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {\n",
+  "to": "    for (let e = [...q].find(([, x]) => x.due <= limit) || null, at = null, same = 0; e; e = [...q].find(([, x]) => x.due <= limit) || null) {\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC8",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC8: (due, arming) order"
+  ]
+ },
+ {
+  "id": "vc-14",
+  "slice": "vclock",
+  "label": "intervals never re-arm (the old fake never fired them at all past once)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    if (t.every != null) { t.due += Math.max(1, t.every); t.seq = ++seq; } else q.delete(id);\n",
+  "to": "    q.delete(id);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC9",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC9: a 1 s interval fires"
+  ]
+ },
+ {
+  "id": "vc-15",
+  "slice": "vclock",
+  "label": "fireThrough fires only the SNAPSHOT pending at entry (the old flush): an arm it chains waits",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    const limit = Number(t);\n    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {\n",
+  "to": "    const limit = Number(t), snap = new Set(q.keys());\n    const early = (l) => { let b = null; for (const [id, x] of q) if (snap.has(id) && x.due <= l && (!b || x.due < b[1].due || (x.due === b[1].due && x.seq < b[1].seq))) b = [id, x]; return b; };\n    for (let e = early(limit), at = null, same = 0; e; e = early(limit)) {\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC8",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC8: a chained arm due by t fires"
+  ]
+ },
+ {
+  "id": "vc-16",
+  "slice": "vclock",
+  "label": "the capp-ui fake's intervals are dead again (the old fake: setInterval armed nothing)",
+  "file": "../customer-app/capp-ui.test.mjs",
+  "from": "setInterval: c.setInterval, clearInterval: c.clearInterval,",
+  "to": "setInterval: () => 0, clearInterval: () => {},",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: the countdown ticks at 1 s"
+  ]
+ },
+ {
+  "id": "vc-17",
+  "slice": "vclock",
+  "label": "«Realizando pedido…»: the countdown never ticks (stuck at 0:02)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "placingI = T_.setInterval(() => { left = Math.max(0, left - 1);",
+  "to": "placingI = T_.setInterval(() => { left = Math.max(0, left);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: the countdown ticks at 1 s"
+  ]
+ },
+ {
+  "id": "vc-18",
+  "slice": "vclock",
+  "label": "«Realizando pedido…»: the order is sent at 1 s, before the countdown ends",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      placingT = T_.setTimeout(placingGo, 2000);\n",
+  "to": "      placingT = T_.setTimeout(placingGo, 1000);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: nothing is sent before the 2 s"
+  ]
  }
 ]

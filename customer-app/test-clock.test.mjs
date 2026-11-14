@@ -65,3 +65,30 @@ test('VC7 drain lets the ENVIRONMENT\'s own zero-delay task chains land (jsdom: 
   assert.equal(landed, true, '🔴 VC7: the environment\'s 0 ms task landed within drain');
   assert.equal(c.now(), 0, 'no virtual time passed');
 });
+
+// step 8b (advisor 11-14 (a)): the callback-driven fakes (capp-ui's fakeTimers) flush SYNCHRONOUSLY — fireThrough(t) fires every timer
+// due by t in (due, arming) order, chained arms and re-armed intervals included, with no drain between (the cell awaits settle() itself)
+test('VC8 fireThrough(t) is synchronous: every timer due by t in (due, arming) order — a chained arm due by t fires within; time ends at t', () => {
+  const c = createClock(0), seen = [];
+  c.setTimeout(() => seen.push('b20'), 20);
+  c.setTimeout(() => { seen.push('a10'); c.setTimeout(() => seen.push('chain15'), 5); c.setTimeout(() => seen.push('late99'), 89); }, 10);
+  c.setTimeout(() => seen.push('c20'), 20);
+  assert.equal(c.lastDue, 20, 'premise: lastDue is the latest due pending');
+  c.fireThrough(c.lastDue);
+  assert.deepEqual(seen.filter((s) => s !== 'chain15'), ['a10', 'b20', 'c20'], '🔴 VC8: (due, arming) order — never the arming order alone');
+  assert.deepEqual(seen, ['a10', 'chain15', 'b20', 'c20'], '🔴 VC8: a chained arm due by t fires within the same fireThrough');
+  assert.equal(c.now(), 20, '🔴 VC8: time ends at t');
+  assert.equal(c.pending, 1, 'the arm due past t waits');
+  assert.equal(c.lastDue, 99);
+});
+
+test('VC9 fireThrough re-arms intervals at their period up to t; no pending timer ⇒ lastDue null; a same-instant loop FAILS (never hangs)', () => {
+  const c = createClock(0); let n = 0;
+  assert.equal(c.lastDue, null, '🔴 VC9: nothing pending ⇒ no lastDue');
+  const h = c.setInterval(() => n++, 1000); c.setTimeout(() => {}, 3000);
+  c.fireThrough(c.lastDue);
+  assert.equal(n, 3, '🔴 VC9: a 1 s interval fires at 1, 2 and 3 s through t = 3 s');
+  c.clearInterval(h); assert.equal(c.pending, 0, 'cleared');
+  const d = createClock(0); const loop = () => d.setTimeout(loop, 0); d.setTimeout(loop, 0);
+  assert.throws(() => d.fireThrough(0), /not quiet/, '🔴 VC9: a same-instant loop is a failure, never a hang');
+});

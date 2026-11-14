@@ -8,6 +8,10 @@
 //   jump(t)         a wall-clock jump, forward only (the passed timers fire at the next drain)
 //   flush(ms = 30)  drain, advance to +ms firing each due timer in (due, arming) order with a drain after each, drain — the same
 //                   virtual duration the real-sleep flush waited, now exact
+//   fireThrough(t)  SYNCHRONOUS (the callback-driven fakes: capp-ui's fakeTimers): fire every timer due by t in (due, arming) order —
+//                   chained arms and re-armed intervals included — with no drain between; time ends at max(now, t); bounded (a timer
+//                   that re-arms itself at the same instant is a failure, never a hang)
+//   lastDue         the latest due among the pending timers (null when none)
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
 
 trackDigests();
@@ -44,10 +48,19 @@ export function createClock(t0 = 0) {
     now = target;
     await drain();
   }
+  function fireThrough(t) {
+    const limit = Number(t);
+    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {
+      if (e[1].due === at) { if (++same > ROUNDS) throw new Error(`fireThrough: not quiet after ${ROUNDS} firings at ${at} — a timer re-arms itself at the same instant`); } else { at = e[1].due; same = 0; }
+      now = Math.max(now, e[1].due); fire(e);
+    }
+    if (limit > now) now = limit;
+  }
   return {
     setTimeout: (f, ms) => arm(f, ms, null), clearTimeout: (h) => { q.delete(h); },
     setInterval: (f, ms) => arm(f, ms, Math.max(1, Number(ms) || 0)), clearInterval: (h) => { q.delete(h); },
-    now: () => now, drain, flush, get pending() { return q.size; },
+    now: () => now, drain, flush, fireThrough, get pending() { return q.size; },
+    get lastDue() { let m = null; for (const t of q.values()) if (m == null || t.due > m) m = t.due; return m; },
     // a wall-clock JUMP (a cell moving the app's time): forward only; the timers it passed fire at the next drain, in due order
     jump(t) { const v = Number(t); if (!(v >= now)) throw new Error(`jump: the virtual clock only moves forward (${now} → ${t})`); now = v; },
   };

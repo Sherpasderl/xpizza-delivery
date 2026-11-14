@@ -473,7 +473,15 @@ function scripted(script) {
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
-function fakeTimers() { let id = 0; const q = new Map(); const ms = new Map(); return { ms, setTimeout: (f, d) => { q.set(++id, f); ms.set(id, d); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
+// the app's timers on the VIRTUAL clock (PLAN-capp-virtual-clock step 8b, advisor 11-14 (a)): flush() fires everything pending, in
+// (due, arming) order — the arms it chains and the intervals it re-arms included, up to the latest due — never a snapshot fired in
+// arming order with the intervals dead. advance(ms): only what is due within the next ms. ms: every setTimeout's delay (the cells read
+// the armed bounds)
+function fakeTimers() {
+  const c = createClock(0), ms = new Map();
+  return { ms, setTimeout: (f, d) => { const id = c.setTimeout(f, d); ms.set(id, d); return id; }, clearTimeout: c.clearTimeout, setInterval: c.setInterval, clearInterval: c.clearInterval,
+    flush() { const t = c.lastDue; if (t != null) c.fireThrough(t); }, advance(ms) { c.fireThrough(c.now() + ms); }, get size() { return c.pending; } };
+}
 const tick = () => new Promise((r) => setImmediate(r));
 // a fixed tick count races WebCrypto (libuv's threadpool) under load — settle() also waits for the digests in flight (capp-test-digests)
 trackDigests();
@@ -1479,6 +1487,19 @@ test('S2b-geo r1 P2: the coordinates are captured WITH the version; work made ob
   assert.deepEqual(gc.map((r) => r.at), [{ lat: 15.5, lng: -88.0 }], '🔴 one geocode, for B — A\'s obsolete request never left');
   gc[0].reply(GEO.street); await settle();
   assert.equal(bold(b), 'Calle 10');
+});
+
+// vclock step 8b (advisor 11-14 (a)): the fake's intervals are REAL now — the «Realizando pedido…» countdown ticks once a second
+// (capp-ui.js placeTap: a 1 s interval beside the 2 s send), exactly as on the device; the old fake never fired it
+test('vclock 8b: «Realizando pedido…» counts down 0:02 → 0:01 on its 1 s interval — and sends nothing before the 2 s', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await filled(b); await b.click('#cta');
+  assert.equal(b.q('#layer [data-act="placing-go"] .cd').textContent, '0:02', 'premise: the countdown opens at 0:02');
+  b.timers.advance(1000); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 VC-UI1: nothing is sent before the 2 s');
+  assert.equal(b.q('#layer [data-act="placing-go"] .cd')?.textContent, '0:01', '🔴 VC-UI1: the countdown ticks at 1 s (the interval fires)');
+  b.timers.advance(1000); await settle();
+  assert.equal(b.srv.of('createOrder').length, 1, 'the 2 s send');
 });
 
 test('S2b-geo r1 P3: a reply during «Enviando»\'s completion (the green check) patches the address in place — the check stays; during «Realizando» the countdown node survives', async () => {
