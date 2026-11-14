@@ -36531,5 +36531,184 @@
   "kills_with": [
    "SU-r2-3: the retained placement record survives the sheet"
   ]
+ },
+ {
+  "id": "c6d-01",
+  "slice": "c6-desk",
+  "label": "C-6a: the store's tab title loses «— menú y pedidos a domicilio» (D-3 r3 §0 «Thing — what it is · Sherpa»)",
+  "file": "../customer-app/capp-home.js",
+  "from": "      return `${t.store || ''} — menú y pedidos a domicilio · Sherpa`;",
+  "to": "      return `${t.store || ''} · Sherpa`;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: the store"
+  ]
+ },
+ {
+  "id": "c6d-02",
+  "slice": "c6-desk",
+  "label": "C-6a: Buscar's tab title drops the query",
+  "file": "../customer-app/capp-home.js",
+  "from": "    if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');",
+  "to": "    if (t.screen === 'search') return S_('Buscar');",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: Buscar"
+  ]
+ },
+ {
+  "id": "c6d-03",
+  "slice": "c6-desk",
+  "label": "C-6a: Inicio's tab title ignores the directory's city (the city is DATA)",
+  "file": "../customer-app/capp-home.js",
+  "from": "    return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';",
+  "to": "    return 'Sherpa — Pedí a domicilio';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: Inicio"
+  ]
+ },
+ {
+  "id": "c6d-04",
+  "slice": "c6-desk",
+  "label": "C-6a: the shell becomes indexable before Phase S (robots meta index,follow)",
+  "file": "../customer-app/shell.html",
+  "from": "<meta name=\"robots\" content=\"noindex\">",
+  "to": "<meta name=\"robots\" content=\"index,follow\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "../customer-app/capp-seo.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-noindex"
+  ]
+ },
+ {
+  "id": "c6d-05",
+  "slice": "c6-desk",
+  "label": "C-6c r2 (Codex C-6c r1 #1): the 1024–1279 px narrow desk keeps TWO card columns (cramped next to the aside)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .icards{grid-template-columns:minmax(0,1fr)}\n}",
+  "to": ".app.desk .icards{grid-template-columns:repeat(2,minmax(0,1fr))}\n}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6c r2 narrow desk",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 NB-1: one card column"
+  ]
+ },
+ {
+  "id": "c6d-06",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: the desk order panel keeps the phone order («Orden #N» above the bar, not after the receipt)",
+  "file": "../customer-app/capp-order.js",
+  "from": "    const deskOrder = !!c.desk && !c.past;",
+  "to": "    const deskOrder = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-1: desk = … receipt → number → share"
+  ]
+ },
+ {
+  "id": "c6d-07",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: a PAST receipt on the desk is reordered too (its tail streams in place; the order must hold)",
+  "file": "../customer-app/capp-order.js",
+  "from": "    const deskOrder = !!c.desk && !c.past;",
+  "to": "    const deskOrder = !!c.desk;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-1: a past receipt keeps its order"
+  ]
+ },
+ {
+  "id": "c6d-08",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: the desk order panel's title / window stay centred (the approved panel is left-aligned)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:left}",
+  "to": ".app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:center}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-2: left-aligned on the desk"
+  ]
+ },
+ {
+  "id": "c6d-09",
+  "slice": "c6-desk",
+  "label": "C-6d: the shell never passes the desk view to the order screen (a placed order on the desk keeps the phone order)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "desk: !!v.desk,",
+  "to": "desk: false,",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel through the SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-3: the shell draws the desk order"
+  ]
+ },
+ {
+  "id": "c6d-10",
+  "slice": "c6-desk",
+  "label": "C-6b heading: the desk Inicio H1 ignores the directory's city",
+  "file": "../customer-app/capp-home.js",
+  "from": "<h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1>",
+  "to": "<h1>Pedí a domicilio</h1>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6b heading",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 DN-5: the H1 from the data"
+  ]
  }
 ]
