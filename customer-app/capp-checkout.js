@@ -56,6 +56,7 @@
   const OFFER_COPY = Object.freeze({
     row: 'Descuento', bogo: '2 por 1', pct: (pct) => `${pct} %`, lps: (min) => `Pedido desde ${min}`, nuevos: 'Primer pedido', loyalty: 'Recompensa', envio: 'Envío gratis',
     saved: (amt, label) => (label ? `Ahorrás ${amt} · ${label}` : `Ahorrás ${amt}`),
+    nudge: (amt, reward) => `Agregá ${amt} para ${reward}`, nextOff: (amt) => `${amt} menos`, nextEnvio: 'envío gratis',   // 3 A under the minimum (frame 3 A)
     sheetTitle: 'La oferta ya no está disponible', sheetBody: (total) => `Tu total ahora es ${total}.`, sheetConfirm: 'Confirmar', sheetBack: 'Volver',
   });
   const OFFER_COPY_PENDING = Object.freeze([]);   // the SHIP GATE: every key the owner has not approved (none since 11-14)
@@ -76,8 +77,24 @@
     return { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents,
       ...(Number.isSafeInteger(o.pct) ? { pct: o.pct } : {}), ...(Number.isSafeInteger(o.min_cents) ? { min_cents: o.min_cents } : {}) };   // the label's amounts, once 5f sends them
   }
+  // the quote's offer_next (5f f992c28a7: ONLY on a quote with no applied offer) — { type, remaining_cents, off_cents? | waived_envio_cents? };
+  // only a well-formed one with something left and ONE reward (lps → off_cents, envio → waived_envio_cents); anything else is no line
+  function nextOf(resp) {
+    const n = resp && resp.offer_next;
+    if (!n || typeof n !== 'object' || typeof n.type !== 'string' || !Number.isSafeInteger(n.remaining_cents) || n.remaining_cents <= 0) return null;
+    const off = Number.isSafeInteger(n.off_cents) && n.off_cents > 0, env = Number.isSafeInteger(n.waived_envio_cents) && n.waived_envio_cents > 0;
+    if (off === env) return null;
+    return { type: n.type, remaining_cents: n.remaining_cents, ...(off ? { off_cents: n.off_cents } : { waived_envio_cents: n.waived_envio_cents }) };
+  }
   // 3 A met state: «Ahorrás L x · {label}» — x = the quote's own saving (food discount + the waived envío), never client arithmetic on a rule
   const savedLine = (T, moneyC) => (T && T.ready && T.offer ? OFFER_COPY.saved(moneyC(T.offer.discount_cents + T.offer.waived_envio_cents), offerLabel(T.offer, moneyC)) : null);
+  // 3 A, the ONE line above the cart pill: met ⇒ «Ahorrás …»; under the minimum ⇒ «Agregá L {remaining} para {reward}» — every amount the quote's
+  const nudgeLine = (T, moneyC) => {
+    if (!T || !T.ready) return null;
+    if (T.offer) return savedLine(T, moneyC);
+    const n = T.next;
+    return n ? OFFER_COPY.nudge(moneyC(n.remaining_cents), n.off_cents ? OFFER_COPY.nextOff(moneyC(n.off_cents)) : OFFER_COPY.nextEnvio) : null;
+  };
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
   // S-picker (PLAN-intl-phone r2.3): a flow with a chosen country (f.cc — set only by the UI's picker, behind the runtime intlPhone)
@@ -272,9 +289,9 @@
     if (r.total_cents !== cartSubtotalCents) return { ready: false, reason: 'subtotal_mismatch' };   // re-quote; never show a guess
     const d = f.mode === 'delivery' && r.delivery ? r.delivery : null;
     const promo = d && Number(d.promo_discount_cents) > 0;
-    const offer = offerOf(r);   // Slice A: present only with an offer (no offer ⇒ today's exact object)
+    const offer = offerOf(r), next = offer ? null : nextOf(r);   // Slice A: present only with an offer / an offer_next (neither ⇒ today's exact object)
     return { ready: true, subtotal: r.total_cents, envio: d ? d.delivery_cents : 0, envioFree: !!promo, promoCents: promo ? d.promo_discount_cents : 0,
-      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {}) };
+      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {}), ...(next ? { next } : {}) };
   }
   // cash change against the QUOTED Total (lempiras in, cents out); null when nothing / too little was entered
   function changeCents(f, totalCents) {
@@ -285,11 +302,14 @@
   // PLAN-capp-S7a r3.3-F2 [r2] (Codex perf r2 New-2): "is the served menu unchanged?" is a CONTENT FINGERPRINT of the RAW envelope —
   // sha-256 over THIS file's canonicalJson (one canonical form in the app) — never deep equality of adapted models (they carry
   // functions). The envelope body carries no transport metadata (the etag is an HTTP header). WebCrypto, so async.
+  // PLAN-capp-marketing-offers Slice A (3a Q1 d688d8378): the menu CONTENT leaves out `menu.offers` (a minute-moving decoration, the
+  // dish-stats pattern): an offers-only refresh is the SAME menu — nothing adopted mid-visit; no `offers` key ⇒ the same bytes as before
   async function menuFingerprint(envelope) {
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-checkout: no menu in the envelope');
     const subtle = typeof crypto !== 'undefined' && crypto ? crypto.subtle : null;
     if (!subtle) throw new Error('capp-checkout: no WebCrypto');
-    const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson(envelope)));
+    const { offers: _offers, ...content } = envelope.menu;
+    const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson({ ...envelope, menu: content })));
     return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
   // PLAN 5 (owner-approved repriced-cart pattern, DECISIONS 2026-10-26 (1)) — the notice copy, ONE source with the forms: this
@@ -300,5 +320,5 @@
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, TIP_DEFAULT_LEMPIRAS, tipDefault, tipped, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
     areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail,
-    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, savedLine };
+    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, nextOf, savedLine, nudgeLine };
 });

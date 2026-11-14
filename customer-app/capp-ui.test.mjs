@@ -497,7 +497,7 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA } = {}) {
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA, envelope = null } = {}) {
   const rd = src || ((f) => readFileSync(join(HERE, f), 'utf8'));   // src: another commit's files (the offers OFF golden)
   const css = rd('capp.css');
   const html = rd('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
@@ -506,7 +506,7 @@ function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search 
   if (pre) pre(w);   // window stubs the page has before the app boots (google.maps, console)
   const srv = scripted({ quoteOrder: [QUOTE], ...script });
   const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
-  const ui = w.CappUI.mount(w.document, { envelope: PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
+  const ui = w.CappUI.mount(w.document, { envelope: envelope || PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
     CappCheckout: CKo, CappApi: CAo, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
@@ -4008,10 +4008,11 @@ test('offers 5 A: the checkout\'s «Descuento · 2 por 1 − L 340» row between
   assert.deepEqual([row.querySelector('.lbl').firstChild.nodeValue, row.querySelector('.lbl .ty').textContent, row.lastElementChild.className], ['Descuento', ' · 2 por 1', 'free'], 'the word in ink, the type muted, the amount in the «Gratis» green');
   assert.ok(!b.text('.ostot').includes(OQ.scenarios.BOGO_DEL.offer.name), 'never the merchant-typed name');
 });
-test('offers 5 A: a type without its amount yet (lps, today\'s quote) ⇒ «Descuento» alone; the envío offer ⇒ no row, the v6 struck fee + «Gratis»', async () => {
+test('offers 5 A: the lps / pct labels from the quote\'s own amounts (5f f992c28a7); the envío offer ⇒ no row, the v6 struck fee + «Gratis»', async () => {
   const l = bootCo({ script: { quoteOrder: [oqServer(() => 'LPS_DEL')] } }); await oqCheckout(l);
-  assert.deepEqual(rowsOf(l, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento − L 50', 'Total L 690'], '🔴 OF-UI-FALLBACK');
-  assert.equal(l.q('.ostot .lbl .ty'), null);
+  assert.deepEqual(rowsOf(l, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · Pedido desde L 600 − L 50', 'Total L 690'], '🔴 OF-UI-LPS');
+  const p = bootCo({ script: { quoteOrder: [oqServer(() => 'PCT_DEL')] } }); await oqCheckout(p);
+  assert.deepEqual(rowsOf(p, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 15 % − L 102', 'Total L 638'], '🔴 OF-UI-PCT');
   const e = bootCo({ script: { quoteOrder: [oqServer(() => 'ENVIO_DEL')] } }); await oqCheckout(e);
   assert.deepEqual(rowsOf(e, '.ostot'), ['Subtotal L 680', 'Envío L 60 Gratis', 'Total L 680'], '🔴 OF-UI-ENVIO: the envío offer is the Envío row, never a Descuento row');
   assert.ok(e.q('.ostot .strike') && !e.q('.ostot .lbl'), 'struck fee, no Descuento row');
@@ -4027,13 +4028,21 @@ test('offers OFF golden: no offer ⇒ the checkout and the cart sheet are byte-i
   const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
   const R = refLoader(ROOT, CAPP_OFF_BASE);
   const run = async (o) => {
-    const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] }, ...o }); await oqCheckout(b);
+    const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] }, ...o });
+    const store0 = b.q('#app').innerHTML; await b.click(`.qty-add-btn[data-id="${OQ_CART.key}"]`); b.timers.flush(); await settle(); const store1 = b.q('#app').innerHTML;
+    const pq = b.srv.of('quoteOrder').length;
+    await b.click('[data-act="mode"][data-val="pickup"]'); await b.click('#cart-bar'); const pick = b.q('#layer').innerHTML; b.w.history.back(); await popped();
+    await b.click('[data-act="mode"][data-val="delivery"]'); b.ui.cart.inc(OQ_CART.key); b.ui.render(); await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
     const co = b.q('.screen').innerHTML; b.w.history.back(); await popped();
-    return { co, cart: b.q('#layer').innerHTML };
+    return { store0, store1, pq, pick, co, cart: b.q('#layer').innerHTML };
   };
   for (const k of ['OFF_DEL', 'UNDER_DEL']) assert.ok(!('offer' in OQ.scenarios[k]), `premise: ${k} carries no offer`);
   const tip = await run({}), was = await run({ src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') });
   assert.ok(was.co.includes('Total') && was.cart.includes('Total'), 'premise: both surfaces drawn');
+  assert.equal(tip.store0, was.store0, '🔴 OF-OFF-GOLDEN: the store page');
+  assert.equal(tip.store1, was.store1, '🔴 OF-OFF-GOLDEN: the store page after an add');
+  assert.deepEqual([tip.pq, was.pq], [0, 0], '🔴 OF-OFF-NOQUOTE: a store without offers asks nothing on the store page');
+  assert.equal(tip.pick, was.pick, '🔴 OF-OFF-GOLDEN: the pickup cart sheet');
   assert.equal(tip.co, was.co, '🔴 OF-OFF-GOLDEN: the checkout');
   assert.equal(tip.cart, was.cart, '🔴 OF-OFF-GOLDEN: the cart sheet');
 });
@@ -4080,4 +4089,66 @@ test('offers Q3: «Volver» closes the sheet over the re-priced checkout; an equ
 test('offers fixture cart: cart.json is still the capp\'s REAL quote-body items for 2× the plain dish (re-derived, no drift)', async () => {
   const { cartOf } = await import('./fixtures/offer-quote/cart-of.mjs');
   assert.deepEqual(await cartOf(), OQ_CART, '🔴 OQ-CART: regenerate cart.json and the offer-quote fixture');
+});
+
+// ── Slice A part 2: the store page of a store WITH offers — the menu's `offers` are 3a's REAL selectOffers (capp-offers-3a 9a6d4a78d,
+// loaded from its ref) over the marketing_live mirror 5f's world left (fixtures/offer-quote `live`) ──
+const A3 = execFileSync('git', ['rev-parse', '9a6d4a78d'], { cwd: ROOT, encoding: 'utf8' }).trim();
+const SERVE = refLoader(ROOT, A3).require('xpizza-functions/catalog/offers-serve.js');
+const offersEnv = (live) => { const L = OQ.live[live]; const offers = SERVE.selectOffers({ on: true, live: L.raw }, L.now_ms); assert.ok(Array.isArray(offers) && offers.length, `premise: 3a serves ${live}`);
+  const e = PROV.x_pizza.envelope; return { ...e, menu: { ...e.menu, offers } }; };
+const OF_SEED = { lat: 15.52, lng: -88.04, confirmed: true };
+const addTwo = async (b) => { await b.click(`.qty-add-btn[data-id="${OQ_CART.key}"]`); await b.click(`.qty-ctrl-btn[data-act="inc"][data-id="${OQ_CART.key}"]`); };
+const nudge = (b) => { const el = b.q('#offer-nudge'); return el ? { on: el.classList.contains('on'), text: b.text(el), tag: !!el.querySelector('path[d^="M3 11V4"]') } : null; };
+const quoteLand = async (b) => { b.timers.flush(); await settle(); };
+test('offers part 2: the served `offers` pin — 3a\'s offers-serve.js blob at its ref; the capp reads the key, never 3a\'s files', () => {
+  assert.equal(A3, execFileSync('git', ['rev-parse', '9a6d4a78d^{commit}'], { cwd: ROOT, encoding: 'utf8' }).trim());
+  assert.equal(refLoader(ROOT, A3).blob('xpizza-functions/catalog/offers-serve.js'), '8f907530763cfda3ac60b650317d59be4405dce0', '🔴 OF-3A-PIN: offers-serve.js at 9a6d4a78d');
+  const m = require('./capp-menu.js').adaptMenu(offersEnv('BOGO'));
+  assert.deepEqual(m.offers.map((o) => o.type), ['bogo'], 'the adapted menu carries the served offers');
+  assert.deepEqual(require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope).offers, [], 'no key ⇒ none');
+});
+test('offers 3 A met: a store with an offer quotes its cart on the store page (debounced) ⇒ «Ahorrás L 340 · 2 por 1» above the pill, the slot reserved', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, 'the reserved slot, empty (no reflow when it fills)');
+  assert.ok(b.q('.storewrap').classList.contains('offers'), 'the content keeps its padding for the line');
+  await addTwo(b);
+  assert.equal(b.srv.of('quoteOrder').length, 0, '🔴 OF-DEBOUNCE: nothing asked before the timer');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 1, 'ONE request for the burst');
+  assert.deepEqual(nudge(b), { on: true, text: 'Ahorrás L 340 · 2 por 1', tag: false }, '🔴 OF-NUDGE-MET');
+});
+test('offers 3 A under the minimum: «Agregá L 320 para L 50 menos» from the quote\'s offer_next (the tag icon)', async () => {
+  const b = bootCo({ envelope: offersEnv('LPS_UNDER'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'UNDER_DEL')] } });
+  await addTwo(b); await quoteLand(b);
+  assert.deepEqual(nudge(b), { on: true, text: 'Agregá L 320 para L 50 menos', tag: true }, '🔴 OF-NUDGE-NEXT');
+});
+test('offers 3 A perf: the previous line stays ONLY while the newer quote is in flight; a settled newer quote (failed) leaves no stale line', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL'), async () => { await held; return { status: 503, json: { ok: false } }; }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('[data-act="mode"][data-val="pickup"]'); await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 2, 'premise: the newer quote is in flight');
+  assert.deepEqual(nudge(b), { on: true, text: 'Ahorrás L 340 · 2 por 1', tag: false }, 'in flight: the previous text holds (no blink)');
+  release(); await settle(); b.timers.flush(); await settle();
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-NUDGE-STALE: a stale line never survives a settled newer quote');
+});
+test('offers (b): a pickup cart of a store with an offer quotes like delivery — «—» until it lands, then the cart Total = the checkout Total (BOGO pickup)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), script: { quoteOrder: [oqServer((body) => (body.mode === 'pickup' ? 'BOGO_PICK' : 'BOGO_DEL'))] } });
+  await b.click('[data-act="mode"][data-val="pickup"]');
+  await addTwo(b); await b.click('#cart-bar');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-PICK-CART: the Total reserved «—» until the quote lands');
+  await quoteLand(b);
+  assert.deepEqual(rowsOf(b, '#layer .ctot'), ['Subtotal L 680', 'Descuento · 2 por 1 − L 340', 'Total L 340'], '🔴 OF-PICK-CART');
+  await b.click('[data-act="checkout"]'); await settle();
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 340', '🔴 OF-PICK-EQ: the pickup cart Total = the checkout Total');
+});
+test('offers part 2: the menu fingerprint leaves out `offers` (an offers-only refresh is the SAME menu); no key ⇒ the same bytes as before', async () => {
+  const base = PROV.x_pizza.envelope, on = offersEnv('BOGO');
+  const fp = (e) => CK.menuFingerprint(e);
+  assert.equal(await fp(on), await fp(base), '🔴 OF-FP: offers never change the menu content');
+  const R = refLoader(ROOT, CAPP_OFF_BASE).require('customer-app/capp-checkout.js');
+  assert.equal(await fp(base), await R.menuFingerprint(base), 'no offers ⇒ the base commit\'s fingerprint');
+  assert.notEqual(await fp({ ...base, menu: { ...base.menu, categories: [] } }), await fp(base), 'premise: content still counts');
 });

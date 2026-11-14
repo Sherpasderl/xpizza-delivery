@@ -35,7 +35,7 @@ if (at < 0 || SRC.indexOf(ANCHOR, at + 1) >= 0) throw new Error('premise: ONE qu
 const open = at + ANCHOR.length, close = SRC.indexOf('\n      });', open);
 const LITERAL = SRC.slice(open, close + '\n      }'.length);
 if (!/^\{\n\s+ok: true, total_cents: bd\.total_cents/.test(LITERAL) || !LITERAL.includes('OFW.offerOf(dqo)')) throw new Error('premise: the literal is the offer-aware response');
-const respond = new Function('bd', 'issued', 'DW', 'OFW', 'dqo', `return (${LITERAL});`);
+const respond = new Function('bd', 'issued', 'DW', 'OFW', 'dqo', 'require', `return (${LITERAL});`);   // `require` = the pinned tree's (the literal requires offer-price)
 
 const CART = JSON.parse(readFileSync(join(HERE, 'cart.json'), 'utf8'));
 const RID = 'x_pizza', TABLES = { restaurantId: RID, menu: CART.menu, extras: {} };
@@ -45,27 +45,31 @@ if (error || total !== items.reduce((a, i) => a + i.subtotal, 0)) throw new Erro
 const PRICING = P.readPricing({ policy_version: 1, bands: [{ max_km: 10, cents: 6000 }], restaurants: { [RID]: { active: true, free_delivery: false } } }, RID);
 const ctxOf = (mode) => P.quoteDelivery({ pricing: PRICING, hub: { lat: 14.1, lng: -87.2 }, mode, pin: { lat: 14.11, lng: -87.21, confirmed: true }, customerUid: 'cust1' }).ctx;
 
-async function quoted({ offer, mode = 'delivery', offers_enabled = true }) {
+const LIVE = {};   // marketing_live/{rid} as 3a's REAL writers left it — the capp's menu `offers` are 3a's selectOffers over THIS (capp-ui.test)
+async function quoted({ offer, mode = 'delivery', offers_enabled = true, live = null }) {
   OFW._resetCaches();
   const w = await world({ rid: RID, brand: 'xp', menu: CART.menu });
   if (offer) await w.publish(offer);
   if (!offers_enabled) await w.setOffers(false);   // the switch written OFF by the REAL config writer, over a live offer
   const nowMs = NOW + 3600000;
+  if (live) LIVE[live] = { raw: w.fake.get(`marketing_live/${RID}`), now_ms: nowMs };
   const dqo = await OFW.withOffer({ db: w.db, rid: RID, items, tables: TABLES, baseTotalL: total, dq: { ctx: ctxOf(mode), uid: 'cust1' }, reward: null, app: true, nowMs, log: quiet });
   const issued = issueQuote({ items, reward: null, rid: RID, tables: TABLES, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo), customerId: 'cust1', nowMs });
   if (!issued.ok) throw new Error('premise: issued ' + JSON.stringify(issued));
-  const resp = JSON.parse(JSON.stringify(respond(orderBreakdownCents(total, RID), issued, DW, OFW, dqo)));
+  const resp = JSON.parse(JSON.stringify(respond(orderBreakdownCents(total, RID), issued, DW, OFW, dqo, require)));
   if (typeof resp.quote_token !== 'string') throw new Error('premise: a signed quote');
   resp.quote_token = '<quote_token>';   // signed per run; the capp never reads it for the totals
   return resp;
 }
 
 const S = {
-  BOGO_DEL: await quoted({ offer: { type: 'bogo', params: { items: [NAME], free_per_order: 1 } } }),
+  BOGO_DEL: await quoted({ offer: { type: 'bogo', params: { items: [NAME], free_per_order: 1 } }, live: 'BOGO' }),
   BOGO_PICK: await quoted({ offer: { type: 'bogo', params: { items: [NAME], free_per_order: 1 } }, mode: 'pickup' }),
   LPS_DEL: await quoted({ offer: { type: 'lps', params: { off_cents: 5000, min_cents: 60000 } } }),
+  PCT_DEL: await quoted({ offer: { type: 'pct', params: { pct: 15 } } }),
   ENVIO_DEL: await quoted({ offer: { type: 'envio', params: { min_cents: 60000 } } }),
-  UNDER_DEL: await quoted({ offer: { type: 'lps', params: { off_cents: 5000, min_cents: 100000 } } }),
+  ENVIO_UNDER_DEL: await quoted({ offer: { type: 'envio', params: { min_cents: 100000 } } }),
+  UNDER_DEL: await quoted({ offer: { type: 'lps', params: { off_cents: 5000, min_cents: 100000 } }, live: 'LPS_UNDER' }),
   OFF_DEL: await quoted({ offer: { type: 'bogo', params: { items: [NAME], free_per_order: 1 } }, offers_enabled: false }),
 };
 // premises: each scenario is the state it is named for
@@ -75,7 +79,12 @@ ok(S.BOGO_DEL.net_total_cents === S.BOGO_DEL.total_cents + S.BOGO_DEL.delivery.d
 ok(S.BOGO_PICK.offer && S.BOGO_PICK.offer.discount_cents > 0 && S.BOGO_PICK.delivery.mode === 'pickup', 'BOGO_PICK');
 ok(S.LPS_DEL.offer && S.LPS_DEL.offer.type === 'lps' && S.LPS_DEL.offer.discount_cents === 5000, 'LPS_DEL');
 ok(S.ENVIO_DEL.offer && S.ENVIO_DEL.offer.type === 'envio' && S.ENVIO_DEL.offer.discount_cents === 0 && S.ENVIO_DEL.delivery.promo_discount_cents === S.ENVIO_DEL.delivery.delivery_cents, 'ENVIO_DEL: the fee waived, no food discount');
-ok(!('offer' in S.UNDER_DEL) && !('offer' in S.OFF_DEL), 'UNDER / OFF: no offer block');
+ok(!('offer' in S.UNDER_DEL) && !('offer' in S.OFF_DEL) && !('offer' in S.ENVIO_UNDER_DEL), 'UNDER / OFF: no offer block');
+ok(S.UNDER_DEL.offer_next && S.UNDER_DEL.offer_next.type === 'lps' && S.UNDER_DEL.offer_next.remaining_cents === 100000 - S.UNDER_DEL.total_cents, 'UNDER_DEL: offer_next names the lps and what is left');
+ok(S.ENVIO_UNDER_DEL.offer_next && S.ENVIO_UNDER_DEL.offer_next.type === 'envio' && S.ENVIO_UNDER_DEL.offer_next.remaining_cents > 0, 'ENVIO_UNDER_DEL: offer_next for the envío');
+ok(!('offer_next' in S.OFF_DEL) && !('offer_next' in S.BOGO_DEL), 'OFF / applied: no offer_next');
+ok(S.PCT_DEL.offer && S.PCT_DEL.offer.pct === 15 && S.LPS_DEL.offer.min_cents === 60000, 'the label amounts ride the offer');
+ok(!('name' in S.BOGO_DEL.offer), 'no merchant name');
 ok(S.UNDER_DEL.net_total_cents === S.OFF_DEL.net_total_cents, 'UNDER = OFF economics');
 
 const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
@@ -85,7 +94,9 @@ const out = {
   literal_sha256: createHash('sha256').update(LITERAL).digest('hex'),
   cart_sha256: createHash('sha256').update(JSON.stringify(canon(CART))).digest('hex'),
   scenarios: S,
+  live: LIVE,
   scenarios_sha256: createHash('sha256').update(JSON.stringify(canon(S))).digest('hex'),
+  live_sha256: createHash('sha256').update(JSON.stringify(canon(LIVE))).digest('hex'),
 };
 writeFileSync(join(HERE, 'offer-quote.json'), JSON.stringify(out, null, 1) + '\n');
 console.log('wrote offer-quote.json', Object.keys(S).join(' '));

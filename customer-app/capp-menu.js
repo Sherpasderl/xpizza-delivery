@@ -86,6 +86,11 @@
       dish: (k) => dishByKey.get(String(k)) || null, extra: (k) => extraByKey.get(String(k)) || null, extrasFor,
       groups: Object.freeze(groups), pickupOnlyCats: new Set(list(m.pickup_only_cats).map(String)), weekendOnlyCats: new Set(list(m.weekend_only_cats).map(String)),
       badges: obj(m.badges), hasPhoto: new Set(list(m.has_photo).map(String)),
+      // PLAN-capp-marketing-offers Slice A (3a Q1 offers-serve): the served `offers` decoration [{ type, params, schedule }] — live
+      // all-audience offers only, ABSENT when offers are off (⇒ []). The capp gates its store-page quote on «non-empty»; prices come from
+      // the quote only, never from these rows
+      offers: Object.freeze(list(m.offers).filter((o) => o && typeof o === 'object' && typeof o.type === 'string')
+        .map((o) => Object.freeze({ type: o.type, params: Object.freeze({ ...obj(o.params) }), schedule: o.schedule && typeof o.schedule === 'object' ? Object.freeze({ ...o.schedule }) : null }))),
     });
   }
 

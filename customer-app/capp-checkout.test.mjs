@@ -324,10 +324,9 @@ test('offer totals (5 A): the quote\'s offer rides the totals as sent; Subtotal 
   assert.equal(T.total, OQ.scenarios.BOGO_DEL.net_total_cents, 'Total = the quote\'s net (never computed here)');
   assert.deepEqual(oqT('ENVIO_DEL').offer, { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, 'the envío offer: no food discount, the fee waived');
   assert.equal(oqT('ENVIO_DEL').envioFree, true, 'the envío offer strikes the fee (v6 «Gratis»), from the quote');
-  for (const k of ['UNDER_DEL', 'OFF_DEL']) {
-    const N = oqT(k);
-    assert.deepEqual(Object.keys(N), ['ready', 'subtotal', 'envio', 'envioFree', 'promoCents', 'tip', 'total'], `🔴 OF-NONE: ${k} — no offer key at all (OFF byte-identical)`);
-  }
+  assert.deepEqual(Object.keys(oqT('OFF_DEL')), ['ready', 'subtotal', 'envio', 'envioFree', 'promoCents', 'tip', 'total'], '🔴 OF-NONE: OFF — no offer key at all (OFF byte-identical)');
+  assert.deepEqual(Object.keys(oqT('UNDER_DEL')), ['ready', 'subtotal', 'envio', 'envioFree', 'promoCents', 'tip', 'total', 'next'], 'under the minimum: only `next`');
+  assert.equal(oqT('BOGO_DEL').next, undefined, 'an applied offer carries no next');
   const bad = (offer) => C.totals(ready(), { resp: { ...OQ.scenarios.BOGO_DEL, offer }, sig: 's', tipCents: C.tipCentsOf(ready()) }, OQ.scenarios.BOGO_DEL.total_cents, 's').offer;
   for (const o2 of [null, 'x', { ...o, discount_cents: -1 }, { ...o, discount_cents: 1.5 }, { ...o, discount_cents: '34000' }, { ...o, type: 7 }, { ...o, waived_envio_cents: undefined }, { ...o, discount_cents: 0, waived_envio_cents: 0 }])
     assert.equal(bad(o2), undefined, `🔴 OF-NOGUESS: a malformed / empty offer ${JSON.stringify(o2)} is no offer`);
@@ -340,7 +339,8 @@ test('offer copy (Q2, owner-approved 11-14): derived from the type and amounts �
     '🔴 OF-FALLBACK: pct / lps without their amount (today\'s quote) ⇒ no label: «Descuento» alone, never a guessed type');
   assert.equal(C.savedLine(oqT('BOGO_DEL'), money), 'Ahorrás L 340 · 2 por 1', '🔴 OF-SAVED: the met line = the quote\'s saving + the derived label');
   assert.equal(C.savedLine(oqT('ENVIO_DEL'), money), 'Ahorrás L 60 · Envío gratis', '🔴 OF-SAVED-ENVIO: the waived envío is the quote\'s saving');
-  assert.equal(C.savedLine(oqT('LPS_DEL'), money), 'Ahorrás L 50', 'no label yet ⇒ the amount alone');
+  assert.equal(C.savedLine(oqT('LPS_DEL'), money), 'Ahorrás L 50 · Pedido desde L 600', 'lps: the minimum the quote names');
+  assert.equal(C.savedLine(oqT('PCT_DEL'), money), 'Ahorrás L 102 · 15 %', 'pct: the percent the quote names');
   for (const k of ['UNDER_DEL', 'OFF_DEL']) assert.equal(C.savedLine(oqT(k), money), null, `${k}: no line`);
   assert.ok(!JSON.stringify(Object.values(C.OFFER_COPY).map(String)).includes(OQ.scenarios.BOGO_DEL.offer.name), 'premise: the merchant name is nowhere in the copy');
 });
@@ -350,4 +350,16 @@ test('SHIP GATE: no offer string ships unapproved — the owner-approved copy, p
   const K = C.OFFER_COPY;
   assert.deepEqual([K.row, K.bogo, K.pct(15), K.lps('L 300'), K.nuevos, K.loyalty, K.sheetTitle, K.sheetBody('L 651'), K.sheetConfirm, K.sheetBack],
     ['Descuento', '2 por 1', '15 %', 'Pedido desde L 300', 'Primer pedido', 'Recompensa', 'La oferta ya no está disponible', 'Tu total ahora es L 651.', 'Confirmar', 'Volver']);
+  assert.deepEqual([K.saved('L 299', '2 por 1'), K.nudge('L 80', K.nextEnvio), K.nudge('L 57', K.nextOff('L 50'))], ['Ahorrás L 299 · 2 por 1', 'Agregá L 80 para envío gratis', 'Agregá L 57 para L 50 menos'], 'frame 3 A');
+});
+test('offer next (3 A under the minimum): «Agregá L {remaining} para …» from the quote\'s offer_next ONLY — never computed from a rule', () => {
+  const money = (c) => `L ${c / 100}`;
+  assert.equal(C.nudgeLine(oqT('UNDER_DEL'), money), 'Agregá L 320 para L 50 menos', '🔴 OF-NEXT: the lps remaining + its reward, from the quote');
+  assert.equal(C.nudgeLine(oqT('ENVIO_UNDER_DEL'), money), 'Agregá L 320 para envío gratis', '🔴 OF-NEXT-ENVIO');
+  assert.equal(C.nudgeLine(oqT('BOGO_DEL'), money), 'Ahorrás L 340 · 2 por 1', 'met ⇒ the saving');
+  assert.equal(C.nudgeLine(oqT('OFF_DEL'), money), null, 'OFF ⇒ no line');
+  assert.equal(C.nudgeLine({ ready: false }, money), null, 'no matching quote ⇒ no line from the model');
+  const n = OQ.scenarios.UNDER_DEL.offer_next;
+  for (const bad of [null, { ...n, remaining_cents: 0 }, { ...n, remaining_cents: 1.5 }, { ...n, remaining_cents: '32000' }, { ...n, off_cents: undefined }, { ...n, waived_envio_cents: 6000 }, { ...n, type: 1 }])
+    assert.equal(C.nextOf({ offer_next: bad }), null, `🔴 OF-NEXT-NOGUESS: ${JSON.stringify(bad)}`);
 });

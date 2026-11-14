@@ -96,6 +96,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --pop:#11703A; --pop-bg:#DDF3E4; --pop-fill:#187A43; --pop-fill-ink:#FFFFFF;
   --deal:#B0245A; --deal-bg:#FCE7F0; --deal-fill:#B0245A; --deal-fill-ink:#FFFFFF;
   --value:#7A5200; --value-bg:#FBEFCB;
+  --offer:#0E6A55; --offer-bg:#DFF4ED; --offer-line:#A9E0D0;   /* restaurant offers (MOCKUP-capp-offers-calm-vs-loud): deep mint, never --deal (Sherpa promos) */
   --promo-bg:linear-gradient(135deg,#E2EBFA 0%,#DCF1EF 100%); --promo-ink:#0D1424; --promo-mute:#3F5377; --promo-line:#C9D8F0;
   /* v4 tip-step illustration (flat shapes; Cuadra tints + the green box, never a restaurant colour) */
   --il-sky-a:#E2EBFA; --il-sky-b:#C5D8F2; --il-sky-c:#D3ECE9; --il-jacket:#1D3F85; --il-pants:#2A3550; --il-skin:#D9A77B; --il-tyre:#1B2537;
@@ -111,6 +112,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
   --value:#F3C86C;--value-bg:#3B2D0A;
+  --offer:#7FDCBF;--offer-bg:#102A23;--offer-line:#1E4D40;
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}
@@ -119,6 +121,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --pop:#6FD79A;--pop-bg:#143322;--pop-fill:#6FD79A;--pop-fill-ink:#0A0F1C;
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
   --value:#F3C86C;--value-bg:#3B2D0A;
+  --offer:#7FDCBF;--offer-bg:#102A23;--offer-line:#1E4D40;
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}}
@@ -381,6 +384,13 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .qty-ctrl-btn{width:32px;height:32px;border-radius:50%;border:none;background:transparent;color:#0D1424;font-size:18px;font-weight:500;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;line-height:1;touch-action:manipulation}
 .qty-ctrl-btn:active{background:rgba(0,0,0,.06)}
 .qty-ctrl-num{font-size:15px;font-weight:700;color:#0D1424;min-width:16px;text-align:center;padding:0 2px}
+/* offers 3 A (MOCKUP-capp-offers-calm-vs-loud .nudge-a): ONE quiet pastel line above the cart pill, the width of its text. Its slot is
+   RESERVED on a store with offers (.offers: the content's bottom padding never changes; the line only toggles visibility) — no reflow */
+.storewrap.offers .content{padding-bottom:150px}
+.nudge{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:40;max-width:340px;padding:7px 14px;border-radius:999px;background:var(--offer-bg);color:var(--offer);box-shadow:inset 0 0 0 1px var(--offer-line),0 4px 16px rgba(0,0,0,.12);font-size:13px;font-weight:600;line-height:1.3;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;visibility:hidden}
+.nudge.on{visibility:visible}
+.nudge svg{width:12px;height:12px;flex:none}
+.app.desk .nudge{display:none}
 .cart-bar{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:auto;min-width:180px;max-width:320px;background:var(--pill);border-radius:30px;padding:14px 22px;display:flex;align-items:center;justify-content:center;gap:8px;z-index:40;box-shadow:0 4px 24px rgba(0,0,0,.22);cursor:pointer;border:0;color:var(--pill-ink)}
 .cart-bar:active{opacity:.9}
 .cart-icon{font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;line-height:1}

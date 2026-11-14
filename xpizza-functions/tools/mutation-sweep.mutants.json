@@ -23785,8 +23785,8 @@
   "slice": "s2a",
   "label": "Total computed as net + tip",
   "file": "../customer-app/capp-checkout.js",
-  "from": "      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer",
-  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f), ...(offer",
+  "from": "      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {})",
+  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f), ...(offer ? { offer } : {})",
   "command": [
    "node",
    "--test",
@@ -25297,8 +25297,8 @@
   "slice": "s7a1",
   "label": "a delivery/pickup change does not notify the shell",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }",
-  "to": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; renderStoreKeep(); return; }",
+  "from": "S.mode = t.dataset.val; notifyCart(); offersCartChanged(); renderStoreKeep(); return; }",
+  "to": "S.mode = t.dataset.val; offersCartChanged(); renderStoreKeep(); return; }",
   "command": [
    "node",
    "--test",
@@ -26222,8 +26222,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2: the fingerprint hashes non-canonical JSON",
   "file": "../customer-app/capp-checkout.js",
-  "from": "new TextEncoder().encode(canonicalJson(envelope))",
-  "to": "new TextEncoder().encode(JSON.stringify(envelope))",
+  "from": "new TextEncoder().encode(canonicalJson({ ...envelope, menu: content }))",
+  "to": "new TextEncoder().encode(JSON.stringify({ ...envelope, menu: content }))",
   "command": [
    "node",
    "--test",
@@ -26923,8 +26923,8 @@
   "slice": "s7a2",
   "label": "an existing checkout flow is re-seeded",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
-  "to": "if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+  "from": "function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
+  "to": "function seededFlow() { if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
   "command": [
    "node",
    "--test",
@@ -36008,8 +36008,8 @@
   "slice": "ga",
   "label": "a landed cart quote is never painted (no in-place refresh)",
   "file": "../customer-app/capp-ui.js",
-  "from": "else { S.askedKey = null; S.cartQErr = key; if (r.kind === 'out_of_zone') S.outZone = true; }   // the checkout may still ask (loud)\n        cartRefresh(); return;",
-  "to": "else { S.askedKey = null; S.cartQErr = key; if (r.kind === 'out_of_zone') S.outZone = true; }   // the checkout may still ask (loud)\n        return;",
+  "from": "        nudgeSettle(key); cartRefresh(); return;",
+  "to": "        nudgeSettle(key); return;",
   "command": [
    "node",
    "--test",
@@ -37309,6 +37309,108 @@
   ],
   "kills_with": [
    "OF-NOGUESS"
+  ]
+ },
+ {
+  "id": "of-09",
+  "slice": "capp-offers-sliceA",
+  "label": "the under-minimum amount adjusted on the client (not the quote's remaining_cents)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "OFFER_COPY.nudge(moneyC(n.remaining_cents),",
+  "to": "OFFER_COPY.nudge(moneyC(n.remaining_cents + T.envio),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NEXT"
+  ]
+ },
+ {
+  "id": "of-10",
+  "slice": "capp-offers-sliceA",
+  "label": "a failed newer quote leaves the previous line standing",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const T = totalsNow(); S.nudge = T.ready ? C.nudgeLine(T, moneyC) : null; paintNudge();",
+  "to": "const T = totalsNow(); if (T.ready) S.nudge = C.nudgeLine(T, moneyC); paintNudge();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NUDGE-STALE"
+  ]
+ },
+ {
+  "id": "of-11",
+  "slice": "capp-offers-sliceA",
+  "label": "a store without offers treated as one (an empty `offers` list)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const hasOffers = () => !!menu.offers && menu.offers.length > 0;",
+  "to": "const hasOffers = () => !!menu.offers;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-OFF-GOLDEN: the store page"
+  ]
+ },
+ {
+  "id": "of-12",
+  "slice": "capp-offers-sliceA",
+  "label": "the pickup cart of a store with an offer not quoted (gross Total vs the checkout's net)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.mode !== 'delivery' && !hasOffers()) return",
+  "to": "if (S.mode !== 'delivery') return",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-PICK-CART"
+  ]
+ },
+ {
+  "id": "of-13",
+  "slice": "capp-offers-sliceA",
+  "label": "the menu fingerprint counts `offers` (an offer toggle reads as a changed menu)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    const { offers: _offers, ...content } = envelope.menu;\n",
+  "to": "    const content = envelope.menu;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-FP"
+  ]
+ },
+ {
+  "id": "of-14",
+  "slice": "capp-offers-sliceA",
+  "label": "the store-page quote not debounced (one request per tap)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (T.ready) { S.nudge = C.nudgeLine(T, moneyC); paintNudge(); return; }\n      cartQuoteSoon();",
+  "to": "      if (T.ready) { S.nudge = C.nudgeLine(T, moneyC); paintNudge(); return; }\n      requote(true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-DEBOUNCE"
   ]
  }
 ]

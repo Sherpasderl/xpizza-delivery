@@ -1,13 +1,13 @@
 {
  "ref": "feat/marketing-price-5f",
- "sha": "2ce9bd1eb9bb1057b19ed89203699a2ec41b648f",
+ "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
  "blobs": {
-  "index.js": "53e340f608b2fbb009aee0029dbf5a60bb7ae2e1",
-  "marketing/offer-wire.js": "17df567a7262ad1cabacdccba89474db7689bc45",
-  "marketing/offer-price.js": "617ebba55217c3524d11d05fef6293833681ef34",
+  "index.js": "1366c6d0b54bd06e512fa6b4f8aa6a6c3290e9be",
+  "marketing/offer-wire.js": "120bf12fcc20fa2232269775d0aed07d49a577f5",
+  "marketing/offer-price.js": "ec630c2408b08041c4938f2d6943f1386d3b21dc",
   "delivery/delivery-wire.js": "272d3f65fcd3d2039d9233e6bb4962baa7fa4d1f"
  },
- "literal_sha256": "cde961159a544ca4f67ffadca16d72f1b426d86d09f091bde6242a1ac223b101",
+ "literal_sha256": "c1733ede5e96771a1a3feb17024565d1119fbe289cd53729133c7291eb08722c",
  "cart_sha256": "c632f45d76177a4483cc25169d27179e11fa7ab9e5593eaaf7bf5d1f3bb631b4",
  "scenarios": {
   "BOGO_DEL": {
@@ -25,7 +25,6 @@
    },
    "offer": {
     "type": "bogo",
-    "name": "Oferta",
     "discount_cents": 34000,
     "waived_envio_cents": 0
    }
@@ -45,7 +44,6 @@
    },
    "offer": {
     "type": "bogo",
-    "name": "Oferta",
     "discount_cents": 34000,
     "waived_envio_cents": 0
    }
@@ -65,8 +63,28 @@
    },
    "offer": {
     "type": "lps",
-    "name": "Oferta",
+    "min_cents": 60000,
     "discount_cents": 5000,
+    "waived_envio_cents": 0
+   }
+  },
+  "PCT_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 63800,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   },
+   "offer": {
+    "type": "pct",
+    "pct": 15,
+    "discount_cents": 10200,
     "waived_envio_cents": 0
    }
   },
@@ -85,8 +103,26 @@
    },
    "offer": {
     "type": "envio",
-    "name": "Oferta",
     "discount_cents": 0,
+    "waived_envio_cents": 6000
+   }
+  },
+  "ENVIO_UNDER_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 74000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   },
+   "offer_next": {
+    "type": "envio",
+    "remaining_cents": 32000,
     "waived_envio_cents": 6000
    }
   },
@@ -102,6 +138,11 @@
     "promo_discount_cents": 0,
     "policy_version": 1,
     "mode": "delivery"
+   },
+   "offer_next": {
+    "type": "lps",
+    "remaining_cents": 32000,
+    "off_cents": 5000
    }
   },
   "OFF_DEL": {
@@ -119,5 +160,74 @@
    }
   }
  },
- "scenarios_sha256": "4466303b3af7f97ab42584db91c14e5af89450704616ec51f3beccdc790ada31"
+ "live": {
+  "BOGO": {
+   "raw": {
+    "o_udhcck233wv2": {
+     "rev": 2,
+     "brand_id": "xp",
+     "name": "Oferta",
+     "type": "bogo",
+     "params": {
+      "items": [
+       "Carnivora"
+      ],
+      "free_per_order": 1
+     },
+     "audience": "all",
+     "schedule": {
+      "start": 1794852000000,
+      "end": 1797444000000,
+      "days": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6
+      ]
+     },
+     "caps": {
+      "weekly": false
+     }
+    }
+   },
+   "now_ms": 1794855600000
+  },
+  "LPS_UNDER": {
+   "raw": {
+    "o_fpyuz7kdtoip": {
+     "rev": 2,
+     "brand_id": "xp",
+     "name": "Oferta",
+     "type": "lps",
+     "params": {
+      "off_cents": 5000,
+      "min_cents": 100000
+     },
+     "audience": "all",
+     "schedule": {
+      "start": 1794852000000,
+      "end": 1797444000000,
+      "days": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6
+      ]
+     },
+     "caps": {
+      "weekly": false
+     }
+    }
+   },
+   "now_ms": 1794855600000
+  }
+ },
+ "scenarios_sha256": "6601ec126752c9083388ddd556c19a8b382146c0625e7d5d66b69a7992d3be39",
+ "live_sha256": "51235cc3bfb6d0a92e30e42ee3dd77cab1c554dc0d94cbaa44e1d0146489a5c6"
 }
