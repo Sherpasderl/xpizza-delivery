@@ -440,6 +440,52 @@ const VIRTUAL = new Set([
   'C-3r G1 v1 RULE (advisor 11-13, option A): an EXTRA\'s price changed but the dish\'s did not ⇒ NO note (a v1 snapshot has no extra prices; the cart shows the live price)',
   'C-3r G1 (no snapshot — an entry from before S-D): the dish price changed ⇒ NO note; live prices only (never an invented past price)',
   'Volver a pedir r3 (Codex VP r2 #3): a pill held on a loading menu, then the customer goes to Buscar ⇒ the late menu opens NOTHING (the held tap is void with the reorder)',
+  // chunk 5 (file order 187–231: Volver a pedir tail, the receipt API, capp-dark §3/§4, C-6a/C-6b/C-6c/C-6d desk)
+  'Volver a pedir (advisor 11-02): «+» from «Pedidos» and «+» INSIDE the store leave the SAME stored AND in-memory cart, from every starting state (empty, other lines, the same dish, purchased, frozen, every write failing)',
+  'Volver a pedir — a held reorder is VOID once the customer goes elsewhere: a later plain visit of the store keeps its own cart',
+  'Receipt API (capp-signup-api.getReceipt): the contract whitelist — injected fields never survive; a malformed line ⇒ lines null; absent totals stay absent; a bad id is refused with NO request; a receipt for another id ⇒ failed',
+  'capp-dark §3: the SHELL\'s own live map (the Inicio pin editor) is built in the OS theme and restyled in place on a flip; destroy detaches',
+  'capp-dark §4: the INSTALLED app\'s status-bar icons follow the theme — once at boot, then exactly ONE native call per real flip (the media event, or the resume re-read when that event was lost); the web (no plugin) is a no-op; destroy detaches',
+  'C-6a titles: the tab follows every screen — Inicio (the directory\'s city), Buscar with its query, the store, a dish, the cart, Entrega & Pago, Pedidos, Cuenta',
+  'C-6a footer: on the DESKTOP Inicio, last in the body — Ayuda at once; Términos / Privacidad once the platform\'s legal URLs arrive (fetched ONCE at idle, kept on the device); hidden on the phone',
+  'C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support chat; the legal slots are reserved until they land (no shift); nothing is fetched once Inicio was left before idle; a failing storage write never loses the links; the footer is on every Inicio state',
+  'C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet',
+  'C-6b bar: brand · «Entregar en» pill (the location sheet) · the search field that IS Buscar (the query, «live», on Buscar) · Inicio · Pedidos · Cuenta — no separate Buscar button',
+  'C-6b bar: a member\'s initial in the Cuenta avatar; the guest\'s person icon',
+  'C-6b heading: the desktop Inicio H1 «Pedí a domicilio en {the directory\'s city}» + the approved sub; the guest promo only where sign-up exists; none for a member; the phone keeps its own head',
+  'Cuenta «Ayuda» (advisor 11-02: it was a DEAD control — the host never handled `help`): the guest\'s and the member\'s row open the platform support chat; no support number ⇒ no row',
+  'C-6b rows: the desk Inicio = «Destacados» a 4-up grid («Ver todo» + ‹ ›) · the REAL dish rows (row of dishes, ‹ ›) · «Todos los restaurantes» the 3-up grid — no «Platos populares»; the phone rows unchanged',
+  'C-6b rows: «Destacados» pages by 4 (‹ › follow the page; a filter starts over at page 1); «Ver todo» scrolls to «Todos los restaurantes»',
+  'C-6b rows: a dish row\'s ‹ › follow its scroll — ‹ off at the start, › off at the end or with nothing to scroll (never a dead arrow)',
+  'store promo r4 #5: no TimeoutOverflowWarning anywhere in this file (token timers are bounded by the 48 h plausibility cap)',
+  'C-6b r2 crossing: the shell\'s desk-only DOM follows the breakpoint BOTH ways — phone→desk gains the H1 row + grids, desk→phone drops them; the page, the paging and the query survive',
+  'C-6b r2 arrows: a disabled ‹ › LOOKS disabled on the desk (D-3 r3: opacity .35, default cursor) — the style, not only the property',
+  'C-6b r2 promo: while auth is UNRESOLVED (sign-up on) the guest card\'s footprint is reserved — same markup, invisible, aria-hidden; a guest sees it; a member has none (no H1-row shift when a guest resolves)',
+  'C-6b r2 head: the desk renders NO empty header above the H1 (the bar has the address) — only the location-denied message keeps it; the phone keeps its head',
+  'C-6c page: the shell\'s top bar (no tab current) above storewrap = the menu scroller + the cart aside; hero + the logo over its edge; identity (name, facts) + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»); the rail beside two-column cards — no phone header, no «Más información»',
+  'C-6c cards: name · 2-line description · price, the + on the photo (an item without one: no photo pane, the + inline); the SAME overlay and cart path as the phone',
+  'C-6c rail: a category jumps the menu scroller to its section; the section in view marks its category (aria-current)',
+  'C-6c tools: delivery ⇒ the fee cell («Envío desde L 45 · según tu dirección», its ⓘ = the fee sheet) + the ETA cell («a–b min · llega aprox.»); Pickup ⇒ the pickup ETA + «Recogé en»; the mode switch is the store\'s own',
+  'C-6c bar on a store: Inicio / Pedidos / Cuenta / the search field leave the store for the shell\'s screen; the address pill ⇒ Inicio with the location sheet',
+  'C-6c aside: «Tu pedido» · «{store}» (+ « · N …» with lines); the drawn empty state; the guest\'s card-only note only under runtime.guestCardOnly — a guest yes, flag off no (advisor call 7)',
+  'C-6c header auth: the desk page\'s promo pill resolves IN PLACE (reserved while unresolved, shown for a guest) — the page is not re-rendered',
+  'C-6c dialog (frame 3): the desk dish dialog = two panes (photo | options) + the pinned bar; the HEADING takes focus (aria-labelledby), ✕ before it; close ⇒ back to the opener; no photo ⇒ one column; adding is the store\'s own path',
+  'C-6c crossing: desk→phone the store re-renders as the phone page (its own header back, the desk page gone), the cart kept; phone→desk back to the desk page',
+  'C-6c featured + badges: house-tagged dishes ⇒ «La casa recomienda» in the drawn 5-card row (no «Lo más pedido», no rail entry); a dish\'s badge sits in the pill slot after the price, its text and colour unchanged',
+  'C-6c dialog ✕ (advisor 11-02): the PHONE dish sheet keeps its ✕ in the header, before the title (its DOM unchanged)',
+  'C-6c r2 narrow desk: 1024–1279 px stacks the identity row, narrows the rail and puts the cards in ONE column (the CSS rule; the renders are the Chrome batch\'s)',
+  'C-6c r2 crossing with the dish dialog open: focus stays IN the dialog (the phone sheet\'s ✕), never BODY; back on the desk the heading',
+  'C-6c r2 sold featured dish: «La casa recomienda» shows «Agotado» in the price slot, dimmed, no «+» — like the category cards; its add is refused',
+  'C-6c r2 auth → the aside: the guest\'s card-only note appears when auth RESOLVES to guest (no store re-render), under the guest rules',
+  'C-6c r2 featured row: never clipped — the five cards share the width (≤ 150 px, ≥ 110 px) and the row scrolls where they cannot',
+  'C-6d checkout: its own bar («Volver a la tienda» · the Sherpa lock · «Pago seguro»), NO top bar, the H1 in column A over the approved sections; column B = store card → the CTA → «Tu pedido» → fine print; no paybar',
+  'C-6d checkout CTA: the SAME control as the phone — id, act, label and disabled state identical for the same order state',
+  'C-6d checkout: «Volver a la tienda» returns to the store with the cart; the summary is open by default and its toggle closes / reopens it',
+  'C-6d checkout totals + fine print: delivery ⇒ «Propina · Se elige en el siguiente paso» and «Sherpa lo entrega»; pickup ⇒ neither; the Terms sentence only with the platform\'s https Terms link',
+  'C-6d checkout: the guest\'s next step is ONLY the true sentence (never «No se cobra…», advisor call 5); the store card is static with a window',
+  'C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order',
+  'C-6d order panel through the SHELL: a placed order\'s screen on the desk carries the desk order (the shell passes the view); the phone keeps its own',
+  'phone house row: a sold house dish shows «Agotado» in the price slot with P\'s inert «+» (.sold-out), like the category rows; the add is refused; an available one is unchanged',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
 // a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
@@ -3634,20 +3680,20 @@ test('C-6b r2 crossing: the shell\'s desk-only DOM follows the breakpoint BOTH w
     const page = () => S.qa('.hsec[aria-label="Destacados"] .rcard').map((c) => c.dataset.rid);
     assert.ok(S.q('.h1row') && S.q('.rgrid4'), 'premise: the desk Inicio');
     S.click(S.q('.hsec[aria-label="Destacados"] [data-act="feat-next"]')); await flush(); const p2 = page(); assert.equal(p2.length, 2, 'premise: page 2');
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.ok(!S.q('.app').classList.contains('desk'), 'premise: the phone now');
     assert.equal(S.q('.h1row'), null, '🔴 XB-1: desk→phone drops the H1 row');
     assert.equal(S.q('.rgrid'), null, '🔴 XB-1: desk→phone drops the desk grids');
     assert.equal(S.q('[data-act="seeall"]'), null, '🔴 XB-1: … and «Ver todo»');
     assert.equal(S.q('footer.dfoot'), null, 'and the desk footer');
     assert.ok(S.q('.home-head .addr-btn') && S.q('.hrow'), '🔴 XB-1: the phone\'s own head and rows');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.h1row') && S.q('.rgrid4'), '🔴 XB-2: phone→desk gains the H1 row and the grids');
     assert.deepEqual(page(), p2, '🔴 XB-2: the paging survives the round trip');
     S.click('.desknav .dn-search'); await flush(); const i = S.q('#gq'); i.value = 'pizza'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.equal(S.q('#gq') && S.q('#gq').value, 'pizza', '🔴 XB-3: Buscar keeps its query across the crossing');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(/pizza/.test(S.q('.desknav .dn-search').textContent), '🔴 XB-3: … and the bar shows it again on the desk');
   } finally { S.w.close(); }
 });
@@ -3836,11 +3882,11 @@ test('C-6c crossing: desk→phone the store re-renders as the phone page (its ow
   const { S, media } = await deskStoreAt();
   try {
     S.click('.qty-add-btn'); await flush();
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.equal(S.q('.sinfo'), null, '🔴 SX-1: no desk page on the phone'); assert.ok(S.q('#top') && S.q('#stick'), '🔴 SX-1: the phone header');
     assert.equal(S.q('.screen > .desknav'), null, 'no top bar on the phone store');
     assert.ok(/1/.test(S.q('#cart-bar').textContent), 'the cart kept');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.sinfo') && S.q('.screen > .desknav'), '🔴 SX-2: back to the desk page');
   } finally { S.w.close(); }
 });
@@ -3891,7 +3937,7 @@ test('C-6c r2 crossing with the dish dialog open: focus stays IN the dialog (the
     const a = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && d.img);
     S.click(`#dish-${a.key} .txt`); await flush();
     assert.equal(S.w.document.activeElement, S.q('#detail-name'), 'premise: the heading has focus');
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     const ae = S.w.document.activeElement;
     assert.ok(S.q('#detail-modal').classList.contains('open') && !S.q('#detail-modal').classList.contains('wide'), 'premise: the phone sheet, still open');
     assert.ok(ae && ae !== S.w.document.body && S.q('#detail-modal').contains(ae), `🔴 XF-1: focus inside the sheet (${ae && (ae.id || ae.tagName)})`);
@@ -4038,7 +4084,7 @@ test('C-6d order panel through the SHELL: a placed order\'s screen on the desk c
     await flush(); await placeShellCash(S); await until(() => S.q('.mk-num'), 6000);
     const kids = () => [...S.q('.mk-sheet').children].map((x) => x.className.split(' ')[0]);
     assert.ok(kids().indexOf('mk-num') < kids().indexOf('segbar'), 'premise: the phone order');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.app').classList.contains('desk') && S.q('.screen > .desknav'), 'premise: the desk, with its top bar');
     const k = kids(); assert.ok(k.indexOf('mk-num') > k.indexOf('segbar'), `🔴 OD-3: the shell draws the desk order (${k.join(', ')})`);
   } finally { S.w.close(); }
