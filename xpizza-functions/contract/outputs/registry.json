@@ -1680,10 +1680,13 @@
   "xpizza-functions/stats/stats-api.js#orderRow@xpizza-functions/stats/stats-api.js#ordersCsv>anon": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#getSalesStatsCore": {
+  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#shape": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#getSalesStatsCore~2": {
+  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#ridView": {
+   "status": "pending"
+  },
+  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#ridView~2": {
    "status": "pending"
   },
   "xpizza-functions/stats/stats-build.js#addOrder@xpizza-functions/stats/stats-build.js#buildDailies": {
@@ -1698,10 +1701,16 @@
   "xpizza-functions/stats/stats-build.js#linesOf@xpizza-functions/stats/stats-build.js#addSale": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#getSalesStatsCore": {
+  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#mergedOf": {
    "status": "pending"
   },
-  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#getSalesStatsCore~2": {
+  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#shape": {
+   "status": "pending"
+  },
+  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#ridView": {
+   "status": "pending"
+  },
+  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#ridView~2": {
    "status": "pending"
   },
   "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#series>anon": {

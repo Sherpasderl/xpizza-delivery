@@ -7829,7 +7829,9 @@
   },
   "stats/stats-api.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/salesmulti-wiring.guard.test.js"
+   ]
   },
   "stats/stats-build.js": {
    "pins": [],
