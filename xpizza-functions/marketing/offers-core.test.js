@@ -335,6 +335,134 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('the fence is strict: an activation at the tombstone\'s own rev (a lost pause CAS) overwrites it');
     }
 
+    // ── 5d. Codex fence/live-edit r1 P1-2 (PLAN-3a-live-mirror-2phase r0): a refused MULTI-branch edit never loses an existing branch's
+    //        offer — the old reservation holds until EVERY branch accepts (two-phase), so a refusal never re-acquires a slot ──
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps, { branches: ['tb_centro', 'tb_sur'] });   // K1, Fri + Sat 21:00–00:00 in Centro AND Sur (rev 2)
+      const before = { c: fake.get(`marketing_live/tb_centro/${a.id}`), s: fake.get(`marketing_live/tb_sur/${a.id}`) };
+      const bDraft = await created(deps, { name: 'Viernes temprano', branches: ['tb_centro'], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5], window: { from: 1260, to: 1320 } } });
+      const cDraft = await created(deps, { name: 'Miércoles Sur', branches: ['tb_sur'], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3], window: { from: 1200, to: 1320 } } });
+      let pb = null; let pc = null; let armed = true;
+      const lateDb = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === 'marketing_live/tb_sur') return { ...r, transaction: async (fn) => { armed = false;   // Centro has accepted; before Sur:
+          pb = await move(deps, `t-${OWNER}`, { offer_id: bDraft.id, to: 'active', expected_rev: 1 });   // B: Friday 21–22 in Centro
+          pc = await move(deps, `t-${OWNER}`, { offer_id: cDraft.id, to: 'active', expected_rev: 1 });   // C: Wednesday in Sur
+          return r.transaction(fn); } };
+        return r; } };
+      const r = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ branches: ['tb_centro', 'tb_sur'], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3], window: { from: 1260, to: 0 } } }) });
+      assert.deepStrictEqual([pb && pb.status, pb && pb.body.error], [409, 'overlap'], `B (Friday in Centro) is judged against A's OLD reservation, which still holds ⇒ overlap (${JSON.stringify(pb && pb.body)})`);
+      assert.strictEqual(pc && pc.status, 200, 'premise: C (Wednesday in Sur) published before A reached Sur');
+      assert.deepStrictEqual([r.status, r.body.error], [409, 'overlap'], `Sur refuses A's edit ⇒ 409 overlap — never a 503 (${JSON.stringify(r.body)})`);
+      const rec = fake.get(`marketing_offers/tb/${a.id}`);
+      assert.deepStrictEqual([rec.state, rec.schedule.days], ['active', [5, 6]], 'A is still active on Fri + Sat');
+      for (const [rid, k] of [['tb_centro', 'c'], ['tb_sur', 's']]) {
+        const e = fake.get(`marketing_live/${rid}/${a.id}`);
+        assert.ok(e && e.removed !== true && e.pending !== true && e.next === undefined && JSON.stringify(e.schedule.days) === '[5,6]' && e.rev === rec.rev, `${rid}: A keeps its Fri + Sat projection, at the record's rev, nothing staged (${JSON.stringify(e)})`);
+        assert.deepStrictEqual({ ...e, rev: before[k].rev }, before[k], `${rid}: the same projection as before the edit (only its rev follows the record)`);
+      }
+      ok('Codex P1-2: a refused multi-branch edit never loses a branch — A keeps Fri + Sat in Centro AND Sur (409, never 503); B is judged against the old reservation');
+    }
+
+    // ── 5e. Codex fence/live-edit r1 P1-1: a rollback never DELETES a fence — a stalled lower-rev resume can never resurrect a paused offer ──
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps, { branches: ['tb_centro', 'tb_sur'] });   // rev 2
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused (rev 3)');
+      const dDraft = await created(deps, { name: 'Competidor Sur', branches: ['tb_sur'] });   // the same dish + hours as A, in Sur
+      let r6 = null; let armed = true;
+      const stalled = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === 'marketing_live/tb_centro') return { ...r, transaction: async (fn) => { armed = false;
+          // the rev-4 resume STALLS here; meanwhile: the rev-5 pause completes, D publishes in Sur, the rev-6 resume mirrors Centro and is refused in Sur
+          assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 4 })).status, 200, 'premise: the rev-5 pause');
+          let dArmed = true;   // D publishes in Sur AFTER the rev-6 resume's pre-check, right before its Sur mirror txn (Codex's order)
+          const r6Db = { ref: (q) => { const rr = db.ref(q);
+            if (dArmed && q === 'marketing_live/tb_sur') return { ...rr, transaction: async (fn) => { dArmed = false; assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: dDraft.id, to: 'active', expected_rev: 1 })).status, 200, 'premise: D live in Sur'); return rr.transaction(fn); } };
+            return rr; } };
+          r6 = await move({ ...deps, db: r6Db }, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 5 });
+          return r.transaction(fn); } };
+        return r; } };
+      await move({ ...deps, db: stalled }, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3 });   // the rev-4 resume
+      assert.deepStrictEqual([r6 && r6.status, r6 && r6.body.error], [409, 'overlap'], 'premise: the rev-6 resume is refused in Sur');
+      const rec = fake.get(`marketing_offers/tb/${a.id}`);
+      assert.deepStrictEqual([rec.state, rec.rev], ['paused_owner', 7], 'premise: the undo put A back to paused (rev 7)');
+      for (const rid of ['tb_centro', 'tb_sur']) {
+        const e = fake.get(`marketing_live/${rid}/${a.id}`);
+        assert.ok(e && e.removed === true && e.rev >= 7, `${rid}: a TOMBSTONE at the undo rev — never deleted, never a live projection (${JSON.stringify(e)})`);
+        assert.strictEqual(require('../catalog/offers-serve').publicOffer(e, NOW + 2 * DAY), null, `${rid}: never served`);
+      }
+      ok('Codex P1-1: a rollback leaves a tombstone at the undo rev on EVERY branch — the stalled rev-4 resume never resurrects the paused offer');
+    }
+
+    // ── 5f. advisor (a)+(b): an edit never clashes with ITSELF; a staged `next` left by a crash never blocks nor prices ──
+    {
+      const { fake, deps } = await setup();
+      const a = await published(deps);   // Fri + Sat 21:00–00:00
+      const self = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6, 0], window: { from: 1200, to: 0 } } }) });
+      assert.strictEqual(self.status, 200, `an edit overlapping its OWN previous days/hours is accepted (never judged against itself) (${JSON.stringify(self.body)})`);
+      // a crash between the phases: A's entry carries a staged `next` that never swapped (written as phase 1 writes it)
+      const live = fake.get(`marketing_live/tb_centro/${a.id}`);
+      const crashedNext = { rev: live.rev + 1, at: NOW - 61 * 1000, proj: { ...live, rev: live.rev + 1, schedule: { ...live.schedule, days: [3] } } };
+      fake.put(`marketing_live/tb_centro/${a.id}`, { ...live, next: crashedNext });
+      const wedD = await created(deps, { name: 'Miércoles otro', schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3], window: { from: 1260, to: 0 } } });
+      const wed = await move(deps, `t-${OWNER}`, { offer_id: wedD.id, to: 'active', expected_rev: 1 });
+      assert.strictEqual(wed.status, 200, `a crashed (stale) \`next\` never blocks a competitor (${JSON.stringify(wed.body)})`);
+      assert.strictEqual(require('../catalog/offers-serve').publicOffer(fake.get(`marketing_live/tb_centro/${a.id}`), NOW + 2 * DAY).schedule.days.join(), [0, 5, 6].join(), 'and never prices: the live projection (days stored sorted) is served');
+      const again = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 3, offer: offer({ caps: { redemptions: 60, spend_cents: null, weekly: false }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6, 0], window: { from: 1200, to: 0 } } }) });
+      assert.strictEqual(again.status, 200, 'premise: the next save of A');
+      assert.strictEqual(fake.get(`marketing_live/tb_centro/${a.id}`).next, undefined, 'the next save of that offer clears the stale `next`');
+      ok('advisor (a)+(b): an edit never clashes with itself; a crashed `next` never blocks nor prices, and the next save clears it');
+    }
+
+    // ── 5g. phase 1 FAILS (an outage on the 2nd branch) during a resume ⇒ the 1st branch's pending marker becomes a TOMBSTONE (never an empty
+    //        slot a stalled lower-rev activation could fill) ──
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps, { branches: ['tb_centro', 'tb_sur'] });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused (rev 3)');
+      const outDb = { ref: (p) => { const r = db.ref(p); if (p === 'marketing_live/tb_sur') return { ...r, transaction: async () => { throw new Error('rtdb unavailable'); } }; return r; } };
+      const res = await move({ ...deps, db: outDb }, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3 });
+      assert.strictEqual(res.status, 503, 'premise: the resume hit an outage in phase 1');
+      const e = fake.get(`marketing_live/tb_centro/${a.id}`);
+      assert.ok(e && e.removed === true && e.rev >= 4, `a failed phase 1 leaves a TOMBSTONE where it staged, never an empty slot (${JSON.stringify(e)})`);
+      ok('a failed phase 1 (an outage) turns its pending marker into a tombstone — never an empty slot');
+    }
+
+    // ── 5h. the swap is rev-guarded: a NEWER edit staged + swapped between an older edit's phases is never overwritten by the older swap ──
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps);   // rev 2
+      let newer = null; let armed = true;
+      const entryPath = `marketing_live/tb_centro/${a.id}`;
+      const lateDb = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === entryPath) return { ...r, transaction: async (fn) => { armed = false;   // the OLDER edit's phase-2 swap is about to run
+          newer = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 3, offer: offer({ caps: { redemptions: 99, spend_cents: null, weekly: false } }) });
+          return r.transaction(fn); } };
+        return r; } };
+      const older = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 70, spend_cents: null, weekly: false } }) });
+      assert.deepStrictEqual([older.status, newer && newer.status], [200, 200], `premise: both edits answered (${JSON.stringify([older.body, newer && newer.body])})`);
+      const e = fake.get(entryPath); const rec = fake.get(`marketing_offers/tb/${a.id}`);
+      assert.deepStrictEqual([rec.rev, e.rev, e.caps.redemptions], [4, 4, 99], `the older swap never overwrites the newer projection (live = the record's rev 4) (${JSON.stringify(e)})`);
+      ok('the phase-2 swap is rev-guarded: an older edit never overwrites a newer one\'s projection');
+    }
+
+    // ── 5i. the owner's pause stamps paused_at (server time) on the record; resume clears it; the portal's read exposes it
+    //        (portal-ui «Pausada por vos el …») ──
+    {
+      const { fake, deps } = await setup();
+      const a = await published(deps);
+      const T = NOW + 3 * 3600 * 1000;
+      assert.strictEqual((await move({ ...deps, now: () => T }, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused');
+      assert.strictEqual(fake.get(`marketing_offers/tb/${a.id}`).paused_at, T, 'the pause writes paused_at = the server time');
+      const r1 = (await get({ ...deps, now: () => T + 1 }, `t-${OWNER}`, 'tb_centro')).body.offers.find((o) => o.id === a.id);
+      assert.deepStrictEqual([r1.state, r1.paused_at], ['paused_owner', T], 'the read exposes paused_at while paused');
+      assert.strictEqual((await move({ ...deps, now: () => T + 2 }, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3 })).status, 200, 'premise: resumed');
+      assert.strictEqual(fake.get(`marketing_offers/tb/${a.id}`).paused_at, undefined, 'resume clears paused_at');
+      const r2 = (await get({ ...deps, now: () => T + 3 }, `t-${OWNER}`, 'tb_centro')).body.offers.find((o) => o.id === a.id);
+      assert.ok(!('paused_at' in r2), 'the read carries no paused_at once active');
+      ok('the owner pause stamps paused_at (server time), resume clears it, the read exposes it while paused');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();

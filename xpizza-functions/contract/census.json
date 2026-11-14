@@ -63,7 +63,7 @@
    "application-sleep": 2
   },
   "clocks": {
-   "business-sample": 214,
+   "business-sample": 216,
    "display": 43,
    "persisted-stamp": 62,
    "business-comparison": 14,
@@ -16995,7 +16995,7 @@
   },
   {
    "id": "xpizza-functions/marketing/offer-model.js#resolveCats#items#0",
-   "line": 185,
+   "line": 187,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -17005,7 +17005,7 @@
   },
   {
    "id": "xpizza-functions/marketing/offer-model.js#resolveCats#items#1",
-   "line": 185,
+   "line": 187,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -17015,7 +17015,7 @@
   },
   {
    "id": "xpizza-functions/marketing/offer-model.js#dishesOf#items#0",
-   "line": 222,
+   "line": 224,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -17025,7 +17025,7 @@
   },
   {
    "id": "xpizza-functions/marketing/offer-model.js#dishesOf#items#1",
-   "line": 222,
+   "line": 224,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -17055,7 +17055,7 @@
   },
   {
    "id": "xpizza-functions/marketing/offers-core.js#settleMirrors#status#0",
-   "line": 193,
+   "line": 255,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -55714,7 +55714,7 @@
    "file": "xpizza-functions/marketing/offers-core.js",
    "fn": "settleMirrors>anon",
    "base": "before",
-   "line": 194,
+   "line": 257,
    "how": "spread",
    "rule": "server:marketing"
   },
@@ -58300,7 +58300,7 @@
   },
   {
    "key": "xpizza-functions/marketing/switch-memo.js:startRead>anon:setTimeout",
-   "line": 25,
+   "line": 26,
    "delay": "deps.switchTimeoutMs || SWITCH_TIMEOUT_MS",
    "class": "io-deadline"
   },
@@ -59582,17 +59582,17 @@
   },
   {
    "key": "xpizza-functions/marketing/anuncio-core.js:getAnuncioWeeksCore>anon:Date.now()",
-   "line": 47,
+   "line": 75,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/marketing/anuncio-core.js:anuncioBookCore>anon:Date.now()",
-   "line": 68,
+   "line": 104,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/marketing/anuncio-core.js:anuncioCancelCore>anon:Date.now()",
-   "line": 144,
+   "line": 189,
    "class": "business-sample"
   },
   {
@@ -59602,27 +59602,37 @@
   },
   {
    "key": "xpizza-functions/marketing/offer-model.js:hnDow:new Date()",
-   "line": 236,
+   "line": 238,
    "class": "display"
   },
   {
+   "key": "xpizza-functions/marketing/offers-core.js:liveProblem:Date.now()",
+   "line": 121,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/marketing/offers-core.js:mirrorActive:Date.now()",
+   "line": 169,
+   "class": "business-sample"
+  },
+  {
    "key": "xpizza-functions/marketing/offers-core.js:getMarketingCore>anon:Date.now()",
-   "line": 218,
+   "line": 282,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/marketing/offers-core.js:marketingOfferSaveCore>anon:Date.now()",
-   "line": 265,
+   "line": 329,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/marketing/offers-core.js:marketingOfferSetStateCore>anon:Date.now()",
-   "line": 321,
+   "line": 385,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/marketing/offers-core.js:marketingOfferRepeatCore>anon:Date.now()",
-   "line": 369,
+   "line": 434,
    "class": "business-sample"
   },
   {
@@ -59632,7 +59642,7 @@
   },
   {
    "key": "xpizza-functions/marketing/switch-memo.js:nowOf:Date.now()",
-   "line": 18,
+   "line": 19,
    "class": "business-sample"
   },
   {
@@ -61660,7 +61670,7 @@
    "file": "xpizza-functions/marketing/anuncio-core.js",
    "fn": "recordAnuncioDays",
    "how": "dynamic-root-path",
-   "line": 195,
+   "line": 240,
    "detail": "*/*/days/*",
    "resolved": []
   },

@@ -89,25 +89,40 @@ async function resolveDishes(deps, value) {
 }
 
 // THE live judgement — ONE rule, used by the cheap pre-check AND inside the per-branch transaction: this offer against one branch's
-// CURRENT live set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids)
-function liveJudgement(offerId, value, live) {
-  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r) && r.removed !== true);   // a TOMBSTONE is never live
+// CURRENT live set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids).
+// PLAN-3a-live-mirror-2phase r0: another offer RESERVES the union of its live projection (never a tombstone / pending marker) and a
+// FRESH staged `next` (an edit / activation waiting for all its branches) — so a competitor is judged against both while an edit is in
+// flight. A `next` older than STAGE_MAX_MS is a crash's leftover: it never blocks. This offer's OWN entry is never judged (an edit
+// may overlap itself).
+const STAGE_MAX_MS = 60 * 1000;
+function reservedOf(e, nowMs) {
+  if (!isObj(e)) return [];
+  const out = [];
+  if (e.removed !== true && e.pending !== true) out.push(e);
+  const n = e.next;
+  if (isObj(n) && isObj(n.proj) && Number.isSafeInteger(n.at) && nowMs - n.at < STAGE_MAX_MS) out.push(n.proj);
+  return out;
+}
+function liveJudgement(offerId, value, live, nowMs) {
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id]) => id !== offerId).map(([, e]) => reservedOf(e, nowMs)).filter((ps) => ps.length);
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesOf(value));
   if (!mine.size) return null;
-  const clash = others.filter(([, r]) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
-    && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
-  return clash.length ? { error: 'overlap', with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() } : null;
+  const hits = (r) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
+    && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null });
+  const clash = others.map((ps) => ps.find(hits)).filter(Boolean);
+  return clash.length ? { error: 'overlap', with: [...new Set(clash.map((r) => r.name).filter((n) => typeof n === 'string'))].sort() } : null;
 }
 const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}) });
 
 // the PRE-check (no write): refuse early, before the record moves, when a branch's live set already says no. Not the authority —
 // mirrorActive re-judges inside each branch's transaction.
 async function liveProblem(deps, offerId, value) {
+  const t = deps.now ? deps.now() : Date.now();
   for (const rid of value.branches) {
     let live;
     try { live = await val(deps.db, livePath(rid)); } catch (_) { return UNAVAILABLE(); }
-    const v = liveJudgement(offerId, value, live);
+    const v = liveJudgement(offerId, value, live, t);
     if (v) return judgementReply(v, rid);
   }
   return null;
@@ -143,49 +158,83 @@ async function casWrite(db, path, expectedRev, decide) {
   return { rec: s };
 }
 
-// An ACTIVE record's mirrors — THE AUTHORITY on MAX_LIVE and the overlap rule (advisor 11-14, rule 5): per branch, ONE transaction on
-// marketing_live/{rid} judges the CURRENT live set and adds this offer only when it passes, so two simultaneous publishes on a branch
-// serialize on that node and cannot both pass. A refusal (or an outage) removes what this call already added (only entries still at
-// this rev). Branches the offer no longer names lose their entry. → null | the 409 judgement | 503
-async function mirrorActive(db, brandId, offerId, rec, prevBranches = []) {
+// An ACTIVE record's mirrors — THE AUTHORITY on MAX_LIVE and the overlap rule (advisor 11-14, rule 5), TWO-PHASE (PLAN-3a-live-mirror-
+// 2phase r0, Codex r1 P1-1/P1-2): per branch, ONE transaction on marketing_live/{rid} judges the CURRENT live set and STAGES this offer as
+// `next: { rev, at, proj }` BESIDE its live projection (or as { pending, rev, next } where there is none) — nothing priced moves (the top
+// level is what prices now; 5f's entryOf reads only it). Only when EVERY branch accepted does each swap to the new projection; a refusal
+// (or an outage) un-stages every branch — a live projection stays exactly as it was (the old reservation never left, so nothing is
+// re-acquired), a pending one becomes a TOMBSTONE at the undo rev. Branches the offer no longer names are tombstoned only after the swap.
+// THE FENCE (Codex 5f-price r1 P1-2): an entry or a staged `next` at a HIGHER rev owns the branch — this (stale) mirror never writes.
+// → null | the 409 judgement | 503
+async function mirrorActive(db, brandId, offerId, rec, prevBranches = [], t = Date.now()) {
   const value = OM.authoredOf(rec, opts);
   const proj = OM.liveProjection(rec, brandId);
-  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid)), null, rec.rev))) return UNAVAILABLE();
-  const done = [];
-  for (const rid of rec.branches) {
+  const staged = [];
+  let fail = null;
+  for (const rid of rec.branches) {   // PHASE 1 — judge + reserve
     let last = null;
     let tx;
     try {
       tx = await db.ref(livePath(rid)).transaction((cur) => {
         const d = { verdict: null, stale: false };
         last = d;
-        // THE FENCE (Codex 5f-price r1 P1-2): an entry at a HIGHER rev — a pause / end tombstone, or a later activation — owns this
-        // branch; this mirror is stale (its record was superseded after its CAS) and never writes
         const ex = isObj(cur) ? cur[offerId] : null;
-        if (isObj(ex) && Number.isSafeInteger(ex.rev) && ex.rev > proj.rev) { d.stale = true; return undefined; }
-        const v = liveJudgement(offerId, value, cur);
+        const top = isObj(ex) && Number.isSafeInteger(ex.rev) ? ex.rev : -1;
+        const nxt = isObj(ex) && isObj(ex.next) && Number.isSafeInteger(ex.next.rev) ? ex.next.rev : -1;
+        if (top > proj.rev || nxt > proj.rev) { d.stale = true; return undefined; }
+        const v = liveJudgement(offerId, value, cur, t);
         if (v) { d.verdict = v; return undefined; }
-        return { ...(isObj(cur) ? cur : {}), [offerId]: proj };
+        const next = { rev: proj.rev, at: t, proj };
+        const keepLive = isObj(ex) && ex.removed !== true && ex.pending !== true;
+        const kept = keepLive ? Object.fromEntries(Object.entries(ex).filter(([k]) => k !== 'next')) : null;   // a crashed `next` is replaced
+        return { ...(isObj(cur) ? cur : {}), [offerId]: keepLive ? { ...kept, next } : { pending: true, rev: proj.rev, next } };
       });
-    } catch (_) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
-    if (last && last.stale) continue;   // a newer write owns this branch's entry: nothing to mirror (and nothing to undo)
-    if (last && last.verdict) { await unmirror(db, offerId, done, rec.rev); return judgementReply(last.verdict, rid); }
-    if (!tx || !tx.committed) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
-    done.push(rid);
+    } catch (_) { fail = UNAVAILABLE(); break; }
+    if (last && last.stale) continue;   // a newer write owns this branch: nothing to stage, nothing to undo
+    if (last && last.verdict) { fail = judgementReply(last.verdict, rid); break; }
+    if (!tx || !tx.committed) { fail = UNAVAILABLE(); break; }
+    staged.push(rid);
   }
+  if (fail) return (await unstage(db, offerId, staged, proj.rev, rec.rev + 1)) ? fail : UNAVAILABLE();
+  try {   // PHASE 2 — every branch accepted: swap (only while the staged `next` is still this rev's)
+    for (const rid of staged) {
+      await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
+        if (cur === null) return null;
+        return isObj(cur) && isObj(cur.next) && cur.next.rev === proj.rev && isObj(cur.next.proj) ? cur.next.proj : undefined;
+      });
+    }
+  } catch (_) { return UNAVAILABLE(); }   // the record is ahead of a branch's mirror: never mispriced (top level unchanged), reported as live_drift
+  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid)), null, rec.rev))) return UNAVAILABLE();
   return null;
+}
+// undo phase 1 on each branch, only where the staged `next` is still this rev's: a live projection keeps itself (the `next` dropped), a
+// pending marker becomes a TOMBSTONE at `tombRev` (never a delete — the fence must survive a rollback). → ok
+async function unstage(db, offerId, rids, rev, tombRev) {
+  try {
+    for (const rid of rids) {
+      await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
+        if (cur === null) return null;
+        if (!isObj(cur) || !isObj(cur.next) || cur.next.rev !== rev) return undefined;
+        if (cur.pending === true) return { removed: true, rev: tombRev };
+        return Object.fromEntries(Object.entries(cur).filter(([k]) => k !== 'next'));
+      });
+    }
+    return true;
+  } catch (_) { return false; }
 }
 // remove this offer's entry on each branch (when `rev` is given: only an entry still at that rev — never a newer write's). With `tomb`
 // (the rev the removing write's record CAS will carry) the entry becomes a TOMBSTONE { removed: true, rev: tomb } instead — the fence
 // a late, stale activation mirror (a lower rev) can never overwrite, while a genuine later activation (a higher rev) can; an entry
-// already at a higher rev is left alone. → ok
+// (or a staged `next`) already at a higher rev is left alone. → ok
 async function unmirror(db, offerId, rids, rev = null, tomb = null) {
   try {
     for (const rid of rids) {
       await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
         if (tomb !== null) {
           if (cur === null) return { removed: true, rev: tomb };   // null-first: commits only if the server is null too
-          return isObj(cur) && Number.isSafeInteger(cur.rev) && cur.rev > tomb ? undefined : { removed: true, rev: tomb };
+          const top = isObj(cur) && Number.isSafeInteger(cur.rev) ? cur.rev : -1;
+          const nxt = isObj(cur) && isObj(cur.next) && Number.isSafeInteger(cur.next.rev) ? cur.next.rev : -1;
+          return top > tomb || nxt > tomb ? undefined : { removed: true, rev: tomb };
         }
         if (cur === null) return null;   // the null-first pass: commits only if the server is null too, else re-runs on the entry
         return rev === null || (isObj(cur) && cur.rev === rev) ? null : undefined;
@@ -194,18 +243,20 @@ async function unmirror(db, offerId, rids, rev = null, tomb = null) {
     return true;
   } catch (_) { return false; }
 }
-// after the record CAS: active ⇒ the judged mirrors, else every branch's entry removed. A refused activation puts the record BACK to
-// what it was (a second CAS on the new rev) and answers the judgement with the record's current rev; a failed undo is a 503 (the
-// record is active with no mirror — never applied by the price path; the read reports live_drift).
+// after the record CAS: active ⇒ the judged (two-phase) mirrors, else every branch tombstoned. A refused activation puts the record BACK
+// to what it was (a second CAS on the new rev) and answers the judgement with the record's current rev. Codex r1 P1-1: an undo to an
+// INACTIVE state first tombstones EVERY branch at the undo rev (reached or not), so a stalled lower-rev activation finds a fence on each;
+// an undo to ACTIVE re-mirrors the old record (its old projections never left — the swap re-stamps their rev). A failed undo is a 503.
 async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
   const prevBranches = isObj(before) && Array.isArray(before.branches) ? before.branches : [];
   if (rec.state !== 'active') return (await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])], null, rec.rev)) ? null : UNAVAILABLE();
-  const refused = await mirrorActive(db, brandId, offerId, rec, prevBranches);
+  const refused = await mirrorActive(db, brandId, offerId, rec, prevBranches, t);
   if (!refused) return null;
   if (refused.status !== 409) return refused;
+  if (!(isObj(before) && before.state === 'active') && !(await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])], null, rec.rev + 1))) return UNAVAILABLE();
   const undo = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...before, rev: cur.rev + 1, updated_at: t }; });
   if (undo.fail) return UNAVAILABLE();
-  if (undo.rec.state === 'active' && (await mirrorActive(db, brandId, offerId, undo.rec, rec.branches))) return UNAVAILABLE();   // a live edit undone: its old mirrors back
+  if (undo.rec.state === 'active' && (await mirrorActive(db, brandId, offerId, undo.rec, rec.branches, t))) return UNAVAILABLE();   // a live edit undone: its old projections re-stamped
   return reply(409, { ...refused.body, current_rev: undo.rec.rev });
 }
 
@@ -223,6 +274,7 @@ const offerView = (id, rec, nowMs) => ({
   ...OM.authoredOf(rec, opts),
   created_at: rec.created_at, updated_at: rec.updated_at,
   ...(rec.ended_reason ? { ended_reason: rec.ended_reason } : {}), ...(rec.repeated_from ? { repeated_from: rec.repeated_from } : {}),
+  ...(rec.state === 'paused_owner' && Number.isSafeInteger(rec.paused_at) ? { paused_at: rec.paused_at } : {}),
 });
 
 // ── getMarketing ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -252,7 +304,7 @@ async function getMarketingCore(deps, req) {
     .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.branches.includes(rid))
     .map(([id, rec]) => {
       const m = isObj(live) ? live[id] : undefined;
-      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;   // a tombstone is «not live»
+      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.pending !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true && m.pending !== true;   // a tombstone / pending marker is «not live»
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
     .sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
@@ -367,6 +419,7 @@ async function marketingOfferSetStateCore(deps, req) {
     d.why = 'write';
     const next = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') next.ended_reason = 'owner'; else delete next.ended_reason;
+    if (body.to === 'paused_owner') next.paused_at = t; else delete next.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
     return next;
   });
   if (w.fail) return w.fail;
