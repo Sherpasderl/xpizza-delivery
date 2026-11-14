@@ -683,6 +683,18 @@
       ".read": false,
       ".write": false
     },
+    "marketing_offers": {
+      ".read": false,
+      ".write": false
+    },
+    "marketing_live": {
+      ".read": false,
+      ".write": false
+    },
+    "marketing_usage": {
+      ".read": false,
+      ".write": false
+    },
     "form_signals": {
       ".read": false,
       ".write": false
