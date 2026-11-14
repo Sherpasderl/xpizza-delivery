@@ -331,3 +331,57 @@ test('O1 list: «Estado ▾» counts and filters; «Todas las sucursales» is th
   assert.deepEqual(ML.byEstado(all, 'all').length, 3);
   void sur; void centro;
 });
+
+// ═══ O2a · the builder's words (MOCKUP-portal-marketing v5 3 + PLAN-portal-marketing-O2-r0 rulings, advisor 11-14) ═══════════════════
+const HN0 = (y, m, d) => Date.UTC(y, m - 1, d, 6);   // 00:00 HN of a calendar day
+const BR3 = [{ rid: 'r_c', name: 'Centro' }, { rid: 'r_p', name: 'Los Próceres' }, { rid: 'r_t', name: 'El Trapiche' }];
+const MENU3 = [{ key: 'i_m', name: 'Pizza Margarita', price_cents: 28000 }, { key: 'i_h', name: 'Pizza Hawaiana', price_cents: 29000 }, { key: 'i_v', name: 'Pizza Vegetariana', price_cents: 27000 }];
+const bform = (o = {}) => ({ ...ML.emptyForm(o.type || 'bogo'), branches: BR3.map((b) => b.rid), start: HN0(2026, 11, 12), end: HN0(2026, 11, 30), days: [5, 6], window: { from: 1260, to: 0 }, ...o });
+test('O2a words: each type\'s chip, title, auto name, Descuento row value and cost line — v5\'s templates, filled from the form (no money invented)', () => {
+  const ctx = { branches: BR3, items: MENU3 };
+  const bogo = ML.builderText(bform({ items: ['i_m', 'i_h', 'i_v'], free_per_order: 1 }), ctx);
+  assert.deepEqual([bogo.chip, bogo.title, bogo.autoName, bogo.sumType, bogo.rowLabel, bogo.prodSummary], ['2 por 1', 'Comprá 1 y llevate otro gratis en 3 productos', '2 por 1 en 3 productos', 'Hasta 1 gratis por pedido', 'Descuento', '3 productos']);
+  assert.deepEqual(bogo.cost, { lead: 'El descuento lo cubre tu restaurante. Sherpa no te cobra.', ceiling: 'Hasta L 290 por canje.' }, '2×1: the dearest chosen item × gratis por pedido (menu prices)');
+  assert.equal(ML.builderText(bform({ items: ['i_m', 'i_h'], free_per_order: 2 }), ctx).cost.ceiling, 'Hasta L 580 por canje.');
+  const pct = ML.builderText(bform({ type: 'pct', pct: 15, max: '100' }), ctx);
+  assert.deepEqual([pct.chip, pct.title, pct.autoName, pct.sumType, pct.cost.ceiling], ['15 % menos', '15 % de descuento en todo el menú, hasta L 100', '15 % en todo el menú', '15 % · hasta L 100 por pedido', 'Hasta L 100 por canje.']);
+  const lps = ML.builderText(bform({ type: 'lps', off: '50', min: '300' }), ctx);
+  assert.deepEqual([lps.chip, lps.title, lps.autoName, lps.sumType, lps.cost.ceiling], ['L 50 menos', 'L 50 de descuento en pedidos desde L 300', 'L 50 en pedidos desde L 300', 'L 50 · mínimo L 300', 'Hasta L 50 por canje.']);
+  const env = ML.builderText(bform({ type: 'envio', min: '350' }), ctx);
+  assert.deepEqual([env.chip, env.title, env.autoName, env.sumType, env.rowLabel], ['Envío gratis', 'Envío gratis en pedidos desde L 350', 'Envío gratis desde L 350', 'Pedidos desde L 350', 'Envío']);
+  assert.deepEqual(env.cost, { lead: 'El envío lo cubre tu restaurante. Sherpa no te cobra.', ceiling: 'Hasta el costo del envío por canje.' }, 'envío: v5\'s own phrase, no figure (Q5)');
+  const nue = ML.builderText(bform({ type: 'nuevos', off: '50' }), ctx);
+  assert.deepEqual([nue.chip, nue.title, nue.autoName, nue.sumType, nue.cost.ceiling], ['Bienvenida', 'L 50 de descuento en tu primer pedido', 'L 50 de bienvenida', 'L 50 · primer pedido', 'Hasta L 50 por canje.'], 'nuevos: no minimum (the server has none)');
+  assert.equal(ML.builderText(bform({ type: 'pct', pct: 15, max: '1500' }), ctx).cost.ceiling, 'Hasta L 1,500 por canje.', 'money as v5 writes it: comma thousands');
+});
+
+test('O2a words: Sucursales, Horario (days, franja, dates), the preview\'s «when», Límites — the drawn phrasings; the false cap promise is gone (Q4)', () => {
+  const ctx = { branches: BR3, items: MENU3 };
+  const t = ML.builderText(bform({ items: ['i_m'] }), ctx);
+  assert.deepEqual([t.branchText, t.branchShort], ['Las 3 sucursales', '3 sucursales']);
+  assert.deepEqual([ML.builderText(bform({ branches: ['r_c'] }), ctx).branchText, ML.builderText(bform({ branches: ['r_c'] }), ctx).branchShort], ['Solo Centro', 'Centro']);
+  assert.equal(ML.builderText(bform({ branches: ['r_c', 'r_t'] }), ctx).branchText, '2 de 3 sucursales: Centro y El Trapiche');
+  assert.equal(ML.builderText(bform({ branches: [] }), ctx).branchText, 'Elegí al menos una sucursal');
+  assert.deepEqual([t.daysText, t.slotText, t.when, t.sumSched], ['Vie y Sáb', '21:00–00:00', 'Vie y Sáb, 21:00–00:00 · hasta el 30 nov', 'Vie y Sáb · 21:00–00:00 · del 12 nov al 30 nov']);   // as v5 RENDERS it (its script's fmt overwrites the static «del 12 al 30 nov» on load)
+  assert.deepEqual(t.schedSummary, { strong: 'Vie y Sáb · 21:00–00:00', rest: 'del 12 nov al 30 nov.' });
+  const days = (d) => ML.builderText(bform({ days: d }), ctx).daysText;
+  assert.deepEqual([days([0, 1, 2, 3, 4, 5, 6]), days([1, 2, 3, 4, 5]), days([0, 6]), days([1, 3, 5]), days([])], ['Todos los días', 'Lun a Vie', 'Sáb y Dom', 'Lun, Mié, Vie', 'Elegí al menos un día']);
+  const open = ML.builderText(bform({ end: null, window: null, days: [0, 1, 2, 3, 4, 5, 6] }), ctx);
+  assert.deepEqual([open.slotText, open.when, open.schedSummary.rest, open.sumSched], ['todo el día', 'Todos los días, todo el día', 'desde el 12 nov, sin fecha de fin.', 'Todos los días · todo el día · desde el 12 nov, sin fecha de fin']);
+  const caps = (o) => ML.builderText(bform(o), ctx).caps;
+  assert.deepEqual(caps({ cap_redemptions: 60, cap_spend: '6000' }), { summary: '60 canjes o L 6,000', spendLabel: 'Tope de gasto', help: 'Al llegar a un tope, la oferta deja de aplicarse hasta que lo subas.' });
+  assert.deepEqual(caps({ end: null, weekly: true, cap_redemptions: 60, cap_spend: '6000' }), { summary: '60 canjes o L 6,000 por semana', spendLabel: 'Tope de gasto por semana',
+    help: 'La oferta no tiene fin, así que el tope de gasto es por semana y se reinicia cada lunes. Al llegar a un tope, la oferta deja de aplicarse hasta el lunes o hasta que lo subas.' });
+  assert.deepEqual([caps({ cap_redemptions: 60 }).summary, caps({ cap_spend: '750' }).summary, caps({}).summary], ['60 canjes', 'L 750', 'Sin tope']);
+  for (const v of [caps({ cap_redemptions: 60, cap_spend: '6000' }), caps({ end: null, weekly: true, cap_redemptions: 1 })]) assert.ok(!/se pausa sola|te avisamos/.test(JSON.stringify(v)), '🔴 no auto-pause / notification promise (Q4)');
+});
+
+test('O2a: the one-line block reason under «Revisar y programar» — the first missing piece, as v5 words it; a valid form has none', () => {
+  const ctx = { branches: BR3, items: MENU3 };
+  const block = (o) => ML.builderText(bform(o), ctx).block;
+  assert.equal(block({ items: ['i_m'] }), null, 'a valid 2×1');
+  assert.equal(block({ items: ['i_m'], days: [] }), 'Para revisar, elegí al menos un día.');
+  assert.equal(block({ items: [] }), 'Para revisar, agregá al menos un producto.');
+  assert.equal(block({ items: ['i_m'], branches: [] }), 'Para revisar, elegí al menos una sucursal.');
+  assert.equal(block({ type: 'pct', pct: 15, max: '' }), 'Para revisar, poné el descuento máximo por pedido.', 'pct requires its maximum here (v2 item 3; stricter than the server)');
+});

@@ -306,3 +306,91 @@ export function unionOffers(lists) {
 export const ESTADOS = Object.freeze(['all', 'live', 'scheduled', 'paused_owner', 'ended', 'draft']);   // Todas · Activas · Programadas · Pausadas · Terminadas · Borradores
 export const estadoCounts = (offers) => Object.fromEntries(ESTADOS.map((e) => [e, e === 'all' ? offers.length : offers.filter((o) => o.status === e).length]));
 export const byEstado = (offers, e) => (e === 'all' ? offers : offers.filter((o) => o.status === e));
+
+// ── O2a · the builder's words (MOCKUP-portal-marketing v5 «Nueva oferta» + PLAN-portal-marketing-O2-r0 rulings, advisor 11-14) ───
+// v5's script templates, filled from the FORM — every lempira figure is one the merchant typed or a menu price (never invented).
+const TYPE_LABEL = Object.freeze({ pct: 'Porcentaje en todo el menú', lps: 'Lempiras de descuento con mínimo', bogo: 'Comprá 1 y llevate otro gratis', envio: 'Envío gratis', nuevos: 'Para clientes nuevos' });
+const MON_FIRST = [1, 2, 3, 4, 5, 6, 0];
+const MONTH_ABBR = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const HN_MS = 6 * 3600000;   // Honduras: UTC−6, no DST
+export const money = (cents) => `L ${(cents / 100).toLocaleString('en-US')}`;
+const dayMonth = (ms) => { const d = new Date(ms - HN_MS); return `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`; };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const cents = (text) => { const r = parseLempiras(text, { required: false }); return r.ok ? r.cents : null; };
+function daysWord(days) {
+  const set = new Set(days || []);
+  const on = MON_FIRST.filter((d) => set.has(d));
+  if (on.length === 7) return 'Todos los días';
+  if (!on.length) return 'Elegí al menos un día';
+  if (on.length === 5 && !set.has(6) && !set.has(0)) return 'Lun a Vie';
+  if (on.length === 2 && set.has(6) && set.has(0)) return 'Sáb y Dom';
+  const w = on.map((d) => DAY_ABBR[d]);
+  return on.length === 2 ? w.join(' y ') : w.join(', ');
+}
+// the form (+ ctx: { branches: [{ rid, name }], items: [{ key, name, price_cents, cat? }] }) → every word the dialog draws
+export function builderText(f, ctx = {}) {
+  const t = f.type;
+  const brs = ctx.branches || [];
+  const on = brs.filter((b) => (f.branches || []).includes(b.rid));
+  const N = brs.length;
+  const branchText = !on.length ? 'Elegí al menos una sucursal' : on.length === N ? `Las ${N} sucursales` : on.length === 1 ? `Solo ${on[0].name}` : `${on.length} de ${N} sucursales: ${on.map((b) => b.name).join(' y ')}`;
+  const branchShort = on.length === N ? `${N} sucursales` : on.length === 1 ? on[0].name : `${on.length} sucursales`;
+  // the type's own words
+  let chip, title, autoName, sumType, ceiling = null, prodSummary = null;
+  if (t === 'pct') {
+    const max = cents(f.max);
+    chip = `${f.pct} % menos`; title = `${f.pct} % de descuento en todo el menú${max ? `, hasta ${money(max)}` : ''}`; autoName = `${f.pct} % en todo el menú`;
+    sumType = `${f.pct} %${max ? ` · hasta ${money(max)} por pedido` : ''}`; if (max) ceiling = money(max);
+  } else if (t === 'lps') {
+    const off = cents(f.off), min = cents(f.min);
+    chip = `${off ? money(off) : 'L —'} menos`; title = `${off ? money(off) : ''} de descuento en pedidos desde ${min ? money(min) : ''}`; autoName = `${off ? money(off) : ''} en pedidos desde ${min ? money(min) : ''}`;
+    sumType = `${off ? money(off) : ''} · mínimo ${min ? money(min) : ''}`; if (off) ceiling = money(off);
+  } else if (t === 'bogo') {
+    const byCats = f.by === 'cats';
+    const n = byCats ? (f.cats || []).length : (f.items || []).length;
+    const what = byCats ? plural(n, 'categoría', 'categorías') : plural(n, 'producto', 'productos');
+    chip = '2 por 1'; title = `Comprá 1 y llevate otro gratis en ${what}`; autoName = `2 por 1 en ${what}`;
+    sumType = `Hasta ${f.free_per_order} gratis por pedido`; prodSummary = what;
+    const pool = (ctx.items || []).filter((i) => (byCats ? (f.cats || []).includes(i.cat) : (f.items || []).includes(i.key)));
+    const top = pool.reduce((m, i) => (Number.isSafeInteger(i.price_cents) && i.price_cents > m ? i.price_cents : m), 0);
+    if (top > 0 && Number.isInteger(f.free_per_order)) ceiling = money(top * f.free_per_order);
+  } else if (t === 'envio') {
+    const min = cents(f.min);
+    chip = 'Envío gratis'; title = min ? `Envío gratis en pedidos desde ${money(min)}` : 'Envío gratis'; autoName = min ? `Envío gratis desde ${money(min)}` : 'Envío gratis';
+    sumType = min ? `Pedidos desde ${money(min)}` : 'Sin mínimo de compra'; ceiling = 'el costo del envío';
+  } else if (t === 'nuevos') {
+    const off = cents(f.off);
+    chip = 'Bienvenida'; title = `${off ? money(off) : ''} de descuento en tu primer pedido`; autoName = `${off ? money(off) : ''} de bienvenida`;
+    sumType = `${off ? money(off) : ''} · primer pedido`; if (off) ceiling = money(off);
+  }
+  // Horario
+  const daysText = daysWord(f.days);
+  const slotText = isObj(f.window) ? `${hhmm(f.window.from)}–${hhmm(f.window.to)}` : 'todo el día';
+  const noEnd = f.end === null || f.end === undefined;
+  const d1 = Number.isSafeInteger(f.start) ? dayMonth(f.start) : null, d2 = noEnd ? null : dayMonth(f.end);
+  const whenRaw = `${daysText}, ${slotText}${noEnd ? '' : ` · hasta el ${d2}`}`;
+  const dates = !d1 ? '' : noEnd ? `desde el ${d1}, sin fecha de fin` : `del ${d1} al ${d2}`;
+  // Límites (Q4: the offer stops APPLYING at a cap — no auto-pause, no notification)
+  const capN = Number.isInteger(f.cap_redemptions) ? f.cap_redemptions : null, capL = cents(f.cap_spend);
+  const wk = f.weekly === true;
+  const capSummary = capN && capL ? `${capN} canjes o ${money(capL)}${wk ? ' por semana' : ''}` : capN ? `${capN} canjes` : capL ? `${money(capL)}${wk ? ' por semana' : ''}` : 'Sin tope';
+  const caps = { summary: capSummary, spendLabel: wk ? 'Tope de gasto por semana' : 'Tope de gasto',
+    help: wk ? 'La oferta no tiene fin, así que el tope de gasto es por semana y se reinicia cada lunes. Al llegar a un tope, la oferta deja de aplicarse hasta el lunes o hasta que lo subas.'
+      : 'Al llegar a un tope, la oferta deja de aplicarse hasta que lo subas.' };
+  // the one block reason (v5's four, in its order; then the client's stricter pct maximum; then any other invalid field)
+  const name = typeof f.name === 'string' && f.name.trim() ? f.name : autoName;
+  let block = null;
+  if (!(f.days || []).length) block = 'Para revisar, elegí al menos un día.';
+  else if (t === 'bogo' && !(f.by === 'cats' ? (f.cats || []).length : (f.items || []).length)) block = 'Para revisar, agregá al menos un producto.';
+  else if (!(f.branches || []).length) block = 'Para revisar, elegí al menos una sucursal.';
+  else if (t === 'pct' && !cents(f.max)) block = 'Para revisar, poné el descuento máximo por pedido.';
+  else if (!offerFromForm({ ...f, name }).ok) block = 'Para revisar, completá los datos de la oferta.';
+  return {
+    typeLabel: TYPE_LABEL[t], icon: TYPE_ICON[t], rowLabel: t === 'envio' ? 'Envío' : 'Descuento',
+    chip, title, autoName, sumType, prodSummary, branchText, branchShort, daysText, slotText,
+    when: whenRaw.charAt(0).toUpperCase() + whenRaw.slice(1), schedSummary: { strong: `${daysText} · ${slotText}`, rest: dates ? `${dates}.` : '' },
+    sumSched: `${daysText} · ${slotText}${dates ? ` · ${dates}` : ''}`,
+    cost: { lead: `${t === 'envio' ? 'El envío' : 'El descuento'} lo cubre tu restaurante. Sherpa no te cobra.`, ceiling: ceiling ? `Hasta ${ceiling} por canje.` : null },
+    caps, block, name,
+  };
+}
