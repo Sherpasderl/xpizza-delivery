@@ -318,7 +318,8 @@
   "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js S-A1 (ratings_v2): + the fulfilment stamp's orders/{id}/status + restaurant_id (the status trigger) and the member's OWN user_orders/{uid}/{id}.items recipe keys (dish-vote validation through the one resolver) — never an amount or a collector.",
   "support": "S-F support tickets (NOTE-S-F-support-tickets-build): the createSupportTicket validator + owner check + ticket / alert writer. It reads the order's customer_uid / tracking_token (ownership) and restaurant_id (copied onto the ticket), never as a displayed order fact; the ticket and its dispatcher alert carry order_id + reason only",
   "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
-  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
+  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js",
+  "marketing": "portal «Marketing» offers (PLAN-3a-marketing-server steps 1–2): the restaurant's offer records (marketing_offers), their price-path mirror (marketing_live) and the platform switches (platform_config/marketing) — never an /orders path read or written; 5f's price path reads the mirror"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -845,6 +846,12 @@
   "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
   "delivery/pricing-admin-functions.js#handler>anon": "delivery_pricing",
   "delivery/pricing-admin-core.js#exactKeys": "delivery_pricing",
+  "marketing/functions.js#handler>anon": "marketing",
+  "marketing/offer-model.js#paramsOf": "marketing",
+  "marketing/offer-model.js#dishesOf": "marketing",
+  "marketing/offers-core.js#dishProblem": "marketing",
+  "marketing/config.js#exactKeys": "marketing",
+  "marketing/offer-model.js#exactKeys": "marketing",
   "delivery/pricing-admin-core.js#setDeliveryPricingCore": "delivery_pricing",
   "delivery/pricing-admin-core.js#lockSummary": "delivery_pricing",
   "delivery/zones.js#normalizeInput": "delivery_pricing",
@@ -1786,6 +1793,15 @@
   }
  },
  "opaqueWriteResolutions": [
+  {
+   "file": "xpizza-functions/marketing/offers-core.js",
+   "fn": "writeMirrors",
+   "how": "computed-key-at-root",
+   "detail": "*/*",
+   "fields": [],
+   "reason": "PLAN-3a-marketing-server steps 1–2: writeMirrors' keys are always `marketing_live/<rid>/<offerId>` (livePath × an offer id), one per branch the offer names now or named before — the price path's offer mirror, never an /orders path",
+   "count": 1
+  },
   {
    "file": "xpizza-functions/catalog/capp-serialize.js",
    "fn": "serialize>anon",

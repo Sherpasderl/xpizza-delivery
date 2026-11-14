@@ -80,6 +80,8 @@ const D = {
     'brands-admin',
     // ORCHESTRATION O1a — the Sherpa-admin branches CLI: requireProject({ requireFlag: true }) before any client
     'branches-admin',
+    // PLAN-3a-marketing-server §2.6 — the owner's marketing-config CLI (switches / Anuncio price): requireProject({ requireFlag: true }) first
+    'marketing-config-admin',
     // S1c — the reservation audit owner CLI: requireProject({ requireFlag: true }) before any client
     'reserved-keys-audit',
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
@@ -145,6 +147,7 @@ const D = {
   [F('portal/ops-functions.js')]: 'lib: the deployed portal branch-ops entry (PORTAL-UI 1a) — lib/admin.js',
   [F('photos/functions.js')]: 'lib: the deployed dish-photos entry (DISH PHOTOS A1, isolated group) — lib/admin.js',
   [F('delivery/pricing-admin-functions.js')]: 'lib: the deployed owner-only «Envío» pricing entry (delivery pricing app-only) — lib/admin.js',
+  [F('marketing/functions.js')]: 'lib: the deployed portal «Marketing» offer entry (PLAN-3a-marketing-server steps 1–2) — lib/admin.js',
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('memory-floor.guard.test.js')]: 'unit: loads index.js only to read each export\'s __endpoint options; no handler runs, and the import itself is proven network-free (emulator-endpoint.test cell 8: index.js full load)',
   [F('photos/photos-config-wiring.test.js')]: 'unit: every scenario in a fresh child under tools/egress-guard.js (loopback-only; any refusal fails the test), offline — index.js / publish-io / the CLIs are only LOADED or run to their pre-client refusal or dry run; the only fake I/O is in-process (no client call reaches anything)',
