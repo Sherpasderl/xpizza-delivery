@@ -1139,7 +1139,7 @@
     },
     "user_private": {
       "$uid": {
-        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid && !data.child('deleted_at').exists()",
+        ".read": "auth != null && auth.token.handheld !== true && auth.uid === $uid && !data.child('deleted_at').exists() && !root.child('deleted_uids').child($uid).exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()",
         ".write": false
       }
     },
