@@ -94,7 +94,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const { fake, deps } = await setup({ switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false } });
       const before = clone(fake.get(''));
       const r = await get(deps, `t-${OWNER}`, 'tb_centro');
-      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, offers: [] }], 'OFF: the read states three falses and no list');
+      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, offers: [], bookings: [] }], 'OFF: the read states three falses and no list');
       const s = await save(deps, `t-${OWNER}`, { offer: offer() });
       assert.deepStrictEqual([s.status, s.body.error], [409, 'offers_disabled'], 'OFF: a save is refused offers_disabled');
       assert.deepStrictEqual(fake.get(''), before, 'OFF: nothing written');

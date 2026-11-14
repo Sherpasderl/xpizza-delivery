@@ -7877,4 +7877,5 @@ exports.createSupportTicket = onRequest(
 require('./ratings/rate-order').configure({ resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) });
 // PLAN-3a-marketing-server steps 1–2: the portal «Marketing» offer endpoints (marketing/functions.js; dark until platform_config/marketing.offers_enabled)
 exports.getMarketing = require('./marketing/functions').getMarketing; exports.marketingOfferSave = require('./marketing/functions').marketingOfferSave; exports.marketingOfferSetState = require('./marketing/functions').marketingOfferSetState; exports.marketingOfferRepeat = require('./marketing/functions').marketingOfferRepeat;
+exports.getAnuncioWeeks = require('./marketing/functions').getAnuncioWeeks; exports.anuncioBook = require('./marketing/functions').anuncioBook; exports.anuncioCancel = require('./marketing/functions').anuncioCancel;   // PLAN-3a-marketing-server step 3: the «Anuncio» (dark until anuncio_enabled)
 /* checkout:end endpoints */

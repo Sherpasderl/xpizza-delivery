@@ -22,9 +22,11 @@ function settableOf(c) {
   if (!SWITCHES.every((k) => typeof c[k] === 'boolean')) return null;
   if (!isInt(c.anuncio_price_cents, 100, 10_000_000)) return null;
   const t = c.thresholds;
-  if (!exactKeys(t, ['rating_min', 'min_ratings']) || typeof t.rating_min !== 'number' || !(t.rating_min >= 1 && t.rating_min <= 5) || !isInt(t.min_ratings, 1, 1000)) return null;
+  if (!exactKeys(t, ['rating_min', 'min_ratings'], ['paused_max_h_30d']) || typeof t.rating_min !== 'number' || !(t.rating_min >= 1 && t.rating_min <= 5) || !isInt(t.min_ratings, 1, 1000)) return null;
+  if ('paused_max_h_30d' in t && !(typeof t.paused_max_h_30d === 'number' && t.paused_max_h_30d >= 0 && t.paused_max_h_30d <= 720)) return null;
+  // paused_max_h_30d (advisor 11-14, «not paused-heavy»): paused-while-open hours over the last 30 HN days; default 4 (the merit bar)
   return { offers_enabled: c.offers_enabled, anuncio_enabled: c.anuncio_enabled, collections_enabled: c.collections_enabled,
-    anuncio_price_cents: c.anuncio_price_cents, thresholds: { rating_min: t.rating_min, min_ratings: t.min_ratings } };
+    anuncio_price_cents: c.anuncio_price_cents, thresholds: { rating_min: t.rating_min, min_ratings: t.min_ratings, paused_max_h_30d: 'paused_max_h_30d' in t ? t.paused_max_h_30d : 4 } };
 }
 
 // a STORED node → the effective config; anything off-shape → OFF (a malformed node never enables a switch)

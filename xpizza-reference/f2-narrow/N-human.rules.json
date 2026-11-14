@@ -695,6 +695,14 @@
       ".read": false,
       ".write": false
     },
+    "anuncio_slots": {
+      ".read": false,
+      ".write": false
+    },
+    "anuncio_bookings": {
+      ".read": false,
+      ".write": false
+    },
     "form_signals": {
       ".read": false,
       ".write": false

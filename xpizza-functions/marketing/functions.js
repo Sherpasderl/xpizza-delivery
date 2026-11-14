@@ -12,6 +12,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
 const C = require('./offers-core');
+const AN = require('./anuncio-core');
 
 const deps = () => ({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t), now: () => Date.now(), readMirror: makeRtdbMirrorReader(getDatabase()),
   readCategoryMenu: (rid) => getRestaurantMenu(getFirestore(), rid) });   // a category offer's dishes: the ACTIVE version (save / publish only)
@@ -35,3 +36,7 @@ exports.getMarketing = onRequest(READ_OPTS, handler('getMarketing', C.getMarketi
 exports.marketingOfferSave = onRequest(WRITE_OPTS, handler('marketingOfferSave', C.marketingOfferSaveCore));
 exports.marketingOfferSetState = onRequest(WRITE_OPTS, handler('marketingOfferSetState', C.marketingOfferSetStateCore));
 exports.marketingOfferRepeat = onRequest(WRITE_OPTS, handler('marketingOfferRepeat', C.marketingOfferRepeatCore));
+// step 3 — the «Anuncio», dark until platform_config/marketing.anuncio_enabled (no charge field; the ledger posts later)
+exports.getAnuncioWeeks = onRequest(READ_OPTS, handler('getAnuncioWeeks', AN.getAnuncioWeeksCore));
+exports.anuncioBook = onRequest(WRITE_OPTS, handler('anuncioBook', AN.anuncioBookCore));
+exports.anuncioCancel = onRequest(WRITE_OPTS, handler('anuncioCancel', AN.anuncioCancelCore));

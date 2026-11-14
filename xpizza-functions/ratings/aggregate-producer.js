@@ -8,7 +8,8 @@
 //      customer_phone, dish_qty) → aggregate.bucketFromOrders → stats_buckets/{rid}/{day}, REPLACED whole (a re-run is idempotent);
 //   2. drop buckets older than 90 days (stats_buckets is server-only; the cust keys expire with them);
 //   3. ratings (F4, few for now): walk rating_index/{rid} in pages through rating-v2.readCountable (RATINGS_BUDGET, loud abort);
-//   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish).
+//   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish);
+//   5. the Anuncio's hidden days for the days just closed (marketing/anuncio-core recordAnuncioDays; PLAN-3a-marketing-server §4.4).
 // Repeat-customer keys are PSEUDONYMOUS: HMAC-SHA256 under HKDF(OTP_SALT, 'sherpa/stats-repeat/v1') of the normalized phone digits,
 // never the digits; stored only inside the 90-day buckets (automatic expiry); only the COUNT is published.
 const crypto = require('crypto');
@@ -130,7 +131,11 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
     const firstServedAt = await leaf(db, `stats_agg/${rid}/first_served_at`);
     const doc = AG.publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt: Number.isFinite(firstServedAt) ? firstServedAt : null });
     await db.ref(`public_stats/${rid}`).set(doc);
-    return { rid, closed, dropped, ratings: ratings.length };
+    // PLAN-3a-marketing-server §4.4: the Anuncio's hidden days, recorded for the days just closed (+1 slot read per rid per day; a write
+    // only for the week's booked rid). Its own try: a recorder failure is logged and never blocks the aggregation.
+    let anuncioDays = [];
+    try { anuncioDays = await require('../marketing/anuncio-core').recordAnuncioDays(db, rid, closed, doc); } catch (e) { console.error('anuncio days', rid, e && e.message); }
+    return { rid, closed, dropped, ratings: ratings.length, anuncio_days: anuncioDays.length };
   } finally {
     await db.ref(`stats_agg/${rid}/lease`).transaction((cur) => (cur && cur.run === runId ? null : cur));
   }
