@@ -33,8 +33,13 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BASE = '1d862e17';
-const CAPP_TIP = 'f8c86cfc';
+// BASE → 604e96ab (advisor 11-13, option (a), the D4 precedent): the asm9b capp lane (the rule-20 swap + C-1b) branches FROM the
+// asm9 RC itself (2e: no fork-point auto-merges), so first-parent from 1d862e17 would walk the TRAIN's own commits (other lanes'
+// server files). The lane's range is now 604e96ab..CAPP_TIP; everything below it is the RC (all prior capp work, Codex-approved).
+// Bite proof: a planted capp commit touching xpizza-functions/claim-order.js in the new range fails «no server change» (index.js is
+// in the cell's own S2TIP_SERVER allowlist, so it cannot be the proof file; the run is in the d8256f73 commit message)
+const BASE = '604e96ab';
+const CAPP_TIP = 'aeb48923';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -234,18 +239,8 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {
-  // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
-  // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
-  // asm8 (2e, advisor merge obligation 11-13): the capp D4 client × 3a's fence — the harness runs the REAL fence (finishSdk's reads +
-  // cancelSdkPendingCore) and the mirror is deleted; RED-or-meaningless on either lane alone (the fence lives only on 3a's branch)
-  '195147ff customer-app/test/real-sdk-server.mjs': 'capp D4 client × fence: the REAL fence imported, the line-for-line mirror deleted',
-  '195147ff customer-app/capp-api-sdk.test.mjs': 'capp D4 client × fence: P2-4-FENCE names the REAL fence, not the model',
-  // asm9 (2e, advisor-accepted PLAN-asm9 r0.3): the capp tip 827373d6 forks at 579feee4, below asm8's s2b capp merge 78bc71cc —
-  // two CLEAN 3-way auto-merges (merge-file of 579feee4 / ^1 / ^2 reproduces each committed blob byte for byte) + the MERGE_ALLOW
-  // resolution itself (asm8's entries kept; the capp-lane db677478 entry dropped: that merge is under ^2 here, never first-parent)
-  '11273d0c customer-app/capp-s7a2.test.mjs': 'asm9 capp tip x asm8 s2b capp: clean auto-merge (merge-file-identical), no resolution edit',
-  '11273d0c customer-app/capp-shell-ui.js': 'asm9 capp tip x asm8 s2b capp: clean auto-merge (merge-file-identical), no resolution edit',
-  '11273d0c customer-app/capp-guards.test.mjs': 'asm9 MERGE_ALLOW resolution: asm8 195147ff entries kept, the capp-lane db677478 entry dropped',
+  // (empty at BASE 604e96ab: the asm8 195147ff and asm9 11273d0c entries name merges BELOW the base — in the RC the lane branches from —
+  // so they would read as stale; advisor ruling 11-13, option (a), as at the 11-12 BASE move)
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);

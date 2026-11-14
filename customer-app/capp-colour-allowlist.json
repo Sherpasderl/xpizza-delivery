@@ -574,5 +574,17 @@
  "css @media (prefers-color-scheme:dark) .csplash | --cs-m2 #FFFFFF": {
   "disposition": "fixed",
   "why": "the opening animation «wake» (OWNER 11-01, DECISIONS:3308): the native splash palette, light and dark recipes set explicitly per theme (platform/native/brand-assets.js PALETTE, guarded by capp-splash.test.mjs WAKE-1)"
+ },
+ "css .rcard .heart | background rgba(255,255,255,.92)": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B) — the same chip on a «Para vos» card (C-1b heart, D-3 r3 9.4 .rcard .heart)"
+ },
+ "css .rcard .heart | box-shadow rgba(0,0,0,.18)": {
+  "disposition": "v6-parity",
+  "why": "a shadow / drop-shadow: dark on both themes (v6) — the same chip on a «Para vos» card (C-1b heart, D-3 r3 9.4 .rcard .heart)"
+ },
+ "css .rcard .heart | color #0D1424": {
+  "disposition": "v6-parity",
+  "why": "v6 dark keeps it white/light (advisor ruling 2026-11-01: v6-exact, option B) — the same chip on a «Para vos» card (C-1b heart, D-3 r3 9.4 .rcard .heart)"
  }
 }
