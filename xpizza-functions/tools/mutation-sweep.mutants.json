@@ -36221,5 +36221,22 @@
   "kills_with": [
    "R11-HOME"
   ]
+ },
+ {
+  "id": "fav-copy-01",
+  "slice": "c1b-favorites",
+  "label": "the 50-favorites cap back to the 11-13 placeholder (owner-approved copy 11-14)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "'Llegaste a 50 favoritos. Quitá uno para guardar otro.'",
+  "to": "'Llegaste al máximo de favoritos.'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F3"
+  ]
  }
 ]

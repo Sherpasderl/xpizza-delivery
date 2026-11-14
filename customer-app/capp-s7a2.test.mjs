@@ -4851,7 +4851,7 @@ test('C-1b F3: a card\'s heart toggles IN PLACE (optimistic) through setFavorite
   try {
     await flush(); await reEnterHome(R.S); R.S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
     assert.equal(pvCards(R.S)[0][1], false, '🔴 C1B-F3: a refusal reverts the heart');
-    assert.ok(txt(R.S.q('#toast')).length > 0, '🔴 C1B-F3: and says so');
+    assert.equal(txt(R.S.q('#toast')), 'Llegaste a 50 favoritos. Quitá uno para guardar otro.', '🔴 C1B-F3: and says so — the owner-approved cap copy (11-14), exact');
   } finally { R.S.w.close(); }
 });
 test('C-1b F4 (9.1): a MEMBER\'s store heart is shown, pressed for a favorite; a tap unsaves it through setFavorite', async () => {

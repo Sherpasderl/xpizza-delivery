@@ -1013,8 +1013,8 @@
         favEnd.set(rid, ++favClock);
         if (!r || r.ok !== true) {
           favPend.delete(rid); favShow();   // the UI falls back to confirmed
-          // PLACEHOLDER copy for the 50 cap until the owner rules (advisor 11-13); the other failure is the app's calm retry line
-          toast(r && r.reason === 'too_many' ? 'Llegaste al máximo de favoritos.' : 'No pudimos guardar tu favorito. Intentá de nuevo.');
+          // the 50 cap: OWNER-APPROVED copy 11-14 (was the 11-13 placeholder); the other failure is the app's calm retry line
+          toast(r && r.reason === 'too_many' ? 'Llegaste a 50 favoritos. Quitá uno para guardar otro.' : 'No pudimos guardar tu favorito. Intentá de nuevo.');
           return;
         }
         favConf = { ...favConf, favorites: withFav(favConf.favorites, rid, typeof r.on === 'boolean' ? r.on : on) };   // the server's read-back
