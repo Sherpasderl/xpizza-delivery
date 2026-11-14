@@ -36187,5 +36187,39 @@
   "kills_with": [
    "C1B-P3: a new Inicio visit starts at the first page"
   ]
+ },
+ {
+  "id": "r11-01",
+  "slice": "rule11-eta",
+  "label": "the store / checkout ETA back to v6's lone «≈ N min» (rule 11)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "    const etaTxt = (mode) => { const w = winTxt(mode === 'delivery' ? cfg.etaDel : cfg.etaPick); return w && mode !== 'delivery' ? `Listo en ${w}` : w; };",
+  "to": "    const etaTxt = (mode) => (mode === 'delivery' ? (cfg.etaDel ? `≈ ${cfg.etaDel[0]} min` : '') : (cfg.etaPick ? `Listo en ≈ ${cfg.etaPick[1]} min` : ''));",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rule 11 guard",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "R11-STORE"
+  ]
+ },
+ {
+  "id": "r11-02",
+  "slice": "rule11-eta",
+  "label": "Inicio's pickup time back to «Listo en ≈ N min» (rule 11)",
+  "file": "../customer-app/capp-home.js",
+  "from": "(r.etaPick && r.etaPick[1] > r.etaPick[0] ? `Listo en ${r.etaPick[0]}–${r.etaPick[1]} min` : '')",
+  "to": "(r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rule 11 guard",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R11-HOME"
+  ]
  }
 ]

@@ -533,7 +533,7 @@ test('S2b checkout: a guest delivery renders the drawn «Entrega & Pago» inside
   assert.equal(b.text('.flowbar h1'), 'Entrega & Pago');
   assert.deepEqual(b.qa('.fsec > h2').map((h) => h.textContent), ['Entrega', 'Tus datos', 'Tu pedido', 'Pago']);
   assert.equal(b.qa('.opts .opt').length, 1, 'ASAP only — no «Programar» card (S4)');
-  assert.equal(b.text('.opts .opt'), `Lo antes posible ≈ ${CONFIG.x_pizza.etaDel[0]} min`);
+  assert.equal(b.text('.opts .opt'), `Lo antes posible ${CONFIG.x_pizza.etaDel[0]}–${CONFIG.x_pizza.etaDel[1]} min`);   // rule 11 (owed SBS 11-14): the window
   assert.ok(!/Programar/.test(b.text('.screen')), 'no «Programar» anywhere');
   assert.ok(b.q('button.map .pin') && b.text('button.map .tag') === 'Tu ubicación' && b.text('button.map .adj') === 'Ajustar pin', 'the drawn map chrome');
   assert.ok(b.q('button.map svg.mapsvg') && !b.q('[data-gmap]'), 'no Maps key ⇒ the schematic map, no live map container');
@@ -3819,5 +3819,27 @@ test('S3 Codex r1 P1-1: menu_changed / extra_not_allowed / pickup_only_item rele
       await b.click('#layer [data-act="menu-reload"]'); await settle();
       assert.equal(b.events.filter(([n]) => n === 'menu_reload').length, 1, `${pay}: «Recargar» asks the shell (its adoption needs the unfrozen cart — the A2 cell)`);
     }
+  }
+});
+
+// ── rule 11 (owner; owed SBS 11-14, advisor ruling — a RECORDED deviation from v6:1276-1277's single figure): every time the customer
+// reads is an ARRIVAL WINDOW «{a}–{b} min» (pickup «Listo en {a}–{b} min»), never a lone «≈ N min» / «N min». The guard scans the
+// rendered store (phone + desk, delivery + pickup) and the checkout («Lo antes posible», delivery + pickup) ──
+const loneTimes = (s) => (s.replace(/\s+/g, ' ').match(/(?:\d+\s*–\s*)?≈?\s*\d+\s*min\b/g) || []).filter((m) => !/\d+\s*–\s*\d+\s*min/.test(m));
+test('rule 11 guard: no lone «≈ N min» / «N min» on the store (phone + desk, delivery + pickup) or the checkout card — the window only', async () => {
+  const DESKV = { view: { desk: () => true } };
+  for (const mount of [{}, DESKV]) for (const mode of ['delivery', 'pickup']) {
+    const b = boot('x_pizza', { mount });
+    if (mode === 'pickup') b.click('[data-act="mode"][data-val="pickup"]');
+    const t = b.q('#app').textContent;
+    assert.deepEqual(loneTimes(t), [], `🔴 R11-STORE: ${mount.view ? 'desk' : 'phone'} ${mode}`);
+    assert.ok(t.includes(mode === 'delivery' ? '30–45 min' : 'Listo en 15–20 min'), `the window from the config (${mode})`);
+  }
+  for (const mode of ['delivery', 'pickup']) {
+    const b = bootCo(); await toCheckout(b); await settle();
+    if (mode === 'pickup') await b.click('[data-act="type"][data-val="pickup"]');
+    const card = b.text('[data-act="time"][data-val="asap"]');
+    assert.deepEqual(loneTimes(card), [], `🔴 R11-CHECKOUT: «Lo antes posible» ${mode}: ${card}`);
+    assert.ok(/\d+–\d+ min/.test(card), `the card carries the window (${mode}): ${card}`);
   }
 });

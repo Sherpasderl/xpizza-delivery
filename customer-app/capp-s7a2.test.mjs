@@ -5091,3 +5091,20 @@ test('C1b-P3 (shell): a desk member taps › ⇒ the next «Para vos» page; the
     assert.deepEqual(cards(), rids.slice(0, 4), '🔴 C1B-P3: a new Inicio visit starts at the first page');
   } finally { S.w.close(); }
 });
+
+// rule 11 (owed SBS 11-14, advisor ruling): Inicio's cards read the ARRIVAL WINDOW — delivery and, under the «Pickup» filter, «Listo en
+// {a}–{b} min» — never a lone «≈ N min» / «N min» (the filter chip «Menos de 30 min» is a filter, not a time the order takes)
+test('rule 11 guard (Inicio): every store card\'s time is a window — delivery and the Pickup filter', async () => {
+  const S = bootShell(); await flush();
+  try {
+    const lone = (s) => (s.replace(/\s+/g, ' ').match(/(?:\d+\s*–\s*)?≈?\s*\d+\s*min\b/g) || []).filter((m) => !/\d+\s*–\s*\d+\s*min/.test(m));
+    const all = () => S.qa('.rcard, .scard').map((c) => txt(c)), cards = () => S.qa('.scard').map((c) => txt(c));   // every card is scanned; the pickup window is «Destacados»' (scard; the list cards keep the delivery window)
+    assert.ok(cards().length, 'premise: store cards');
+    assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: delivery');
+    const pk = S.q('.fchip[data-val="pickup"]'); assert.ok(pk, 'premise: the Pickup filter');
+    S.click(pk); await flush();
+    assert.equal(S.q('.fchip[data-val="pickup"]').getAttribute('aria-pressed'), 'true', 'premise: the Pickup filter is on');
+    assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: pickup');
+    assert.ok(cards().some((c) => /Listo en \d+–\d+ min/.test(c)), `the pickup window shows: ${cards().join(' | ')}`);
+  } finally { S.w.close(); }
+});

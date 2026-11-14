@@ -300,7 +300,10 @@
     const closesText = () => { const o = range(clock().day); return o ? fmtMin(o[1]) : ''; };
     const opensText = () => { const c = clock(), o = range(c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = range((c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
     const firstSlot = () => { const c = clock(); for (let off = 0; off < 7; off++) { const o = range((c.day + off) % 7); if (!o) continue; let t = off === 0 ? Math.max(c.min + 60, o[0]) : o[0]; t = Math.ceil(t / 15) * 15; if (t + 30 <= o[1] + 15 && t < o[1]) return { off, t }; } return null; };
-    const etaTxt = (mode) => (mode === 'delivery' ? (cfg.etaDel ? `≈ ${cfg.etaDel[0]} min` : '') : (cfg.etaPick ? `Listo en ≈ ${cfg.etaPick[1]} min` : ''));
+    // rule 11 (owed SBS 11-14, advisor ruling — a RECORDED deviation from v6:1276-1277's «≈ 30 min» / «Listo en ≈ 20 min»): the customer
+    // reads an ARRIVAL WINDOW, never a lone figure — «30–45 min», pickup «Listo en 15–20 min»; no proper [a, b] (a < b) ⇒ no time at all
+    const winTxt = (e) => (Array.isArray(e) && Number.isFinite(e[0]) && Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]} min` : '');
+    const etaTxt = (mode) => { const w = winTxt(mode === 'delivery' ? cfg.etaDel : cfg.etaPick); return w && mode !== 'delivery' ? `Listo en ${w}` : w; };
 
     // ── cart reads (capp-cart) ──
     const qtyOf = (id) => { const l = cart.lines().find((x) => x.key === id); return l ? l.qty : 0; };
@@ -474,7 +477,7 @@
         + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
     }
     // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
-    const etaWindow = () => { const e = cfg.etaDel; return e && Number.isFinite(e[0]) ? `${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min` : ''; };
+    const etaWindow = () => winTxt(cfg.etaDel);   // rule 11: the window or nothing (no single-figure fallback)
     function deskCellsHtml() {
       if (!isOpen()) return '';
       const cells = [];

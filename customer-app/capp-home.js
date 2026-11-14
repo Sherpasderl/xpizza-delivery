@@ -274,7 +274,7 @@
   const dcard = ({ r, it }) => `<button class="dcard" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="${esc(it.n)} · ${esc(r.name)}"${rowAttrs(r)}><span class="ph"><img src="${esc(it.img)}" alt="" loading="lazy">${logoChip(r, 'lg')}</span><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="pr">${esc(dishPrice(it))}</span></span><span class="st">${esc(r.name)}</span></button>`;
   function scard(r, vm) {
     const open = !r.gone && isOpen(r.cfg, vm.now), pickup = vm.filters.has('pickup');
-    const eta = open ? (pickup ? (r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '') : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
+    const eta = open ? (pickup ? (r.etaPick && r.etaPick[1] > r.etaPick[0] ? `Listo en ${r.etaPick[0]}–${r.etaPick[1]} min` : '')   /* rule 11 (owed SBS 11-14): the window, never «≈ N» */ : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
     // a store with no drawable fee keeps its line box (a zero-width space), so a fee that arrives later never grows the card
     const fee = feeHtml(r, vm.promoAuth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
