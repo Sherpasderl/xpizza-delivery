@@ -1,0 +1,245 @@
+'use strict';
+// PLAN-5f-marketing-price r0 (APPROVED 2026-11-14) step 1 — a restaurant offer through the REAL handlers on the emulator:
+//   the catalog published through the real path (x_pizza = the platform-factura restaurant; THIRD = the synthetic, non-factura brand),
+//   offers by 3a's REAL cores (marketingOfferSaveCore → SetStateCore) on the emulator RTDB, carts by the REAL capp modules
+//   (capp-cart → capp-serialize), quoteOrder → createOrder / chargeOnlineOrder (the hosted PixelPay call stubbed: its AMOUNT recorded).
+//   E1 OFF: offers switched off ⇒ the quote response and the stored order are those of a world with no offer at all
+//   E2 cash: quote total_cents = the GROSS cart (the capp's compare); net discounted; the stored total = the net; order.offer frozen;
+//      the rebaja on the platform-factura restaurant, none on THIRD; the summary foots with a «Descuento» line
+//   E3 card: the captured PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer
+//   E4 envío offer: the fee waived on the stored order, promo_discount_cents = the fee, delivery_discount_funder 'restaurant'
+//   E5 the offer paused between quote and order ⇒ 409 offer_changed, NOTHING written
+//   E6 a legacy-form order (no entry_mode 'app') ⇒ no offer
+// Run: npm run test:marketing-price
+require('./_emulator-required')('database', 'firestore');
+
+const assert = require('assert');
+const http = require('http');
+const path = require('path');
+const express = require('express');
+process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'mkt-price-secret';
+process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'mkt-price-quote-secret';
+process.env.OTP_SALT = process.env.OTP_SALT || 'c'.repeat(40);
+const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
+const CHARGED = [];
+stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
+stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(Number(q.amountLempiras)); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
+stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+
+const app = require('../index.js');
+const admin = require('firebase-admin');
+const rtdb = admin.database();
+const fs = admin.firestore();
+const ROOT = path.join(__dirname, '..', '..');
+const { adaptMenu } = require(path.join(ROOT, 'customer-app/capp-menu.js'));
+const { createCart } = require(path.join(ROOT, 'customer-app/capp-cart.js'));
+const { serialize } = require(path.join(ROOT, 'customer-app/capp-serialize.js'));
+const { publishVersion } = require('../catalog/catalog-publish');
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+const { makeRtdbMirrorReader } = require('../catalog/snapshot-fallback');
+const { buildPublicMenu } = require('../catalog/public-menu');
+const { publishThirdBrand, THIRD } = require('../contract/third-brand');
+const { orderBreakdownCents } = require('../order-money');
+const R = require('../access/roster');
+const CFG = require('../marketing/config');
+const C = require('../marketing/offers-core');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('marketing-price(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
+
+function post(handler, body) {
+  return new Promise((resolve, reject) => {
+    const w = express(); w.use(express.json()); w.use(handler);
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
+      try {
+        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}` }, body: JSON.stringify(body) });
+        const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
+        s.close(() => resolve({ status: r.status, json: j, text: t }));
+      } catch (e) { s.close(() => reject(e)); }
+    });
+  });
+}
+async function wipe() {
+  const url = rtdb.ref().toString();
+  assert.match(url, /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\//, `🔴 refusing to wipe: the RTDB handle resolves to ${url}`);
+  assert.match(String(process.env.FIRESTORE_EMULATOR_HOST || ''), /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/, '🔴 refusing to wipe: Firestore is not the local emulator');
+  for (const c of await fs.listCollections()) await fs.recursiveDelete(c);
+  await rtdb.ref().remove();
+}
+const OPENH = { open: true, start: '00:00', end: '24:00' };
+const HOURS = { sun: OPENH, mon: OPENH, tue: OPENH, wed: OPENH, thu: OPENH, fri: OPENH, sat: OPENH };
+const HUB = { lat: 14.1, lng: -87.2 };
+const PIN = { lat: HUB.lat + 1 / 111.195, lng: HUB.lng };   // 1 km → the first band (L 30)
+const FEE = 3000;
+const clean = async () => { await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove(); };
+let PH = 0; const phone = () => `9966${String(PH += 1).padStart(4, '0')}`;
+let OID = 0; const oid = (tag) => `mkp_${tag}_${OID += 1}`;
+const OWNER = 'ownerMkp1';
+const MENU = {};
+
+const bodyOf = (rid, method, s, extra = {}) => ({ restaurant_id: rid, order_id: oid(`${rid}_${method}`), customer_name: 'Mkt', customer_phone: phone(), customer_email: 'm@example.com',
+  order_type: 'delivery', payment_method: method, lat: PIN.lat, lng: PIN.lng, pin_confirmed: true, address_detected: 'Calle', address_details: 'portón',
+  items: s.items, items_text: s.items_text, entry_mode: 'app', ...extra });
+const quote = (rid, items, extra = {}) => post(app.quoteOrder, { restaurant_id: rid, items, mode: 'delivery', pin: { ...PIN, confirmed: true }, entry_mode: 'app', ...extra });
+const order = async (id) => (await rtdb.ref(`orders/${id}`).get()).val();
+const strip = (j) => { const o = { ...j }; delete o.quote_token; return o; };
+
+// offers by 3a's REAL cores on the emulator RTDB
+const offerDeps = () => ({ db: rtdb, verifyIdToken: async (t) => { if (t !== `t-${OWNER}`) throw new Error('bad token'); return { uid: OWNER }; }, now: () => Date.now(),
+  readMirror: makeRtdbMirrorReader(rtdb), readCategoryMenu: async () => { throw new Error('no category offers here'); } });
+const oreq = (rid, body) => ({ method: 'POST', body: { rid, ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
+async function publish(rid, o) {
+  const offer = { name: 'Oferta', audience: 'all', branches: [rid], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { redemptions: null, spend_cents: null, weekly: false }, ...o };
+  const s = await C.marketingOfferSaveCore(offerDeps(), oreq(rid, { expected_rev: 0, offer }));
+  assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
+  const m = await C.marketingOfferSetStateCore(offerDeps(), oreq(rid, { offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
+  assert.strictEqual(m.status, 200, `premise: published (${JSON.stringify(m.body)})`);
+  return s.body.offer.id;
+}
+async function pauseOffer(rid, brand, id) {
+  const rev = (await rtdb.ref(`marketing_offers/${brand}/${id}`).get()).val().rev;
+  const m = await C.marketingOfferSetStateCore(offerDeps(), oreq(rid, { offer_id: id, to: 'paused_owner', expected_rev: rev }));
+  assert.strictEqual(m.status, 200, `premise: paused (${JSON.stringify(m.body)})`);
+}
+async function setOffers(on) {
+  const cur = (await rtdb.ref('platform_config/marketing').get()).val();
+  const r = await CFG.writeMarketingConfig(rtdb, { expected: cur ? cur.policy_version : 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: Date.now() });
+  assert.strictEqual(r.ok, true, 'premise: the marketing switch');
+  await new Promise((r2) => setTimeout(r2, 0));
+}
+const cartOf = (rid, qty = 2) => { const m = MENU[rid]; const d = m.dishes.find((x) => !x.launcher && !(m.weekendOnlyCats.has(String(x.cat)) || m.pickupOnlyCats.has(String(x.cat)))); const c = createCart(m); c.add(d.key, [], qty); return { cart: c, s: serialize(c, m) }; };
+const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   // the 60 s per-instance caches, between phases
+
+(async () => {
+  await wipe();
+  await fs.collection('restaurants').doc('x_pizza').set({ name: 'x_pizza', pricing_key_mode: 'name', active: true, schema_version: 2 });
+  const seed = buildPublishCandidate('x_pizza', { activeVersionId: null }, { source_sha: 'mkt-price-seed' });
+  await publishVersion(fs, 'x_pizza', seed.input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+  await publishThirdBrand(fs, { mirror: makeRtdbMirror(rtdb) });
+  const BRAND = { x_pizza: 'bxp', [THIRD]: 'bth' };
+  for (const rid of ['x_pizza', THIRD]) {
+    await rtdb.ref(`restaurants/${rid}/identity`).set({ name: rid, phone: '+504', active: true, hub_lat: HUB.lat, hub_lng: HUB.lng, delivery_radius_km: 8, version: 1, hours: HOURS, brand_id: BRAND[rid] });
+    await rtdb.ref(`brands/${BRAND[rid]}`).set({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'on', since: 1 } });
+    assert.strictEqual((await R.mutateRoster({ db: rtdb, now: () => 1 }, BRAND[rid], { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@m.hn' } })).ok, true, 'premise: owner');
+    const m = await buildPublicMenu(fs, rid, { known: new Set([rid]), isActive: async () => true });
+    MENU[rid] = adaptMenu({ rid: m.rid, representation_version: m.representation_version, menu: m.body });
+  }
+  await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 2, cents: FEE }, { max_km: 5, cents: 5000 }],
+    restaurants: { x_pizza: { active: true, free_delivery: false }, [THIRD]: { active: true, free_delivery: false } } });
+  await setOffers(true);
+
+  // ── E1. OFF ⇒ the world with no offer at all ──
+  {
+    const { s } = cartOf('x_pizza');
+    await clean(); offerCaches();
+    const qNone = await quote('x_pizza', s.items);
+    const cbNone = bodyOf('x_pizza', 'cash', s, { quote_token: qNone.json.quote_token, expected_net_cents: qNone.json.net_total_cents });
+    await clean(); assert.strictEqual((await post(app.createOrder, cbNone)).status, 200, 'E1 premise: the no-offer order');
+    const id = await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    await setOffers(false); offerCaches();
+    await clean();
+    const qOff = await quote('x_pizza', s.items);
+    assert.deepStrictEqual(strip(qOff.json), strip(qNone.json), '🔴 E1: OFF — the quote response equals the no-offer world');
+    const cbOff = bodyOf('x_pizza', 'cash', s, { quote_token: qOff.json.quote_token, expected_net_cents: qOff.json.net_total_cents });
+    await clean(); assert.strictEqual((await post(app.createOrder, cbOff)).status, 200, 'E1: the OFF order');
+    const a = await order(cbNone.order_id), b = await order(cbOff.order_id);
+    for (const k of ['total', 'total_cents', 'subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'desc_rebaja_cents', 'offer', 'delivery_discount_funder', 'summary_lines'])
+      assert.deepStrictEqual(b[k], a[k], `🔴 E1: OFF — order.${k} equals the no-offer world`);
+    await setOffers(true); offerCaches();
+    ok(`E1 OFF: an ACTIVE offer (${id}) with the switch off ⇒ the quote response and the stored cash order equal the no-offer world`);
+  }
+
+  // ── E2. cash, platform-factura + non-factura ──
+  for (const rid of ['x_pizza', THIRD]) {
+    if (rid === THIRD) await publish(THIRD, { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    const { cart, s } = cartOf(rid);
+    const gross = cart.subtotalCents(); const d = Math.floor((gross * 20) / 10000) * 100;
+    await clean(); offerCaches();
+    const q = await quote(rid, s.items);
+    assert.ok(q.json && q.json.ok, `E2 ${rid}: quote — ${q.text.slice(0, 200)}`);
+    assert.strictEqual(q.json.total_cents, gross, `🔴 E2 ${rid}: quote total_cents = the GROSS cart (the capp's compare)`);
+    assert.deepStrictEqual([q.json.offer && q.json.offer.discount_cents, q.json.net_total_cents], [d, gross - d + FEE], `E2 ${rid}: the offer block + the discounted net`);
+    assert.ok(!('offer_id' in q.json.offer), `E2 ${rid}: no offer id to the customer (Q9)`);
+    const cb = bodyOf(rid, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); const c = await post(app.createOrder, cb);
+    assert.strictEqual(c.status, 200, `E2 ${rid} cash: ${c.text.slice(0, 200)}`);
+    const o = await order(cb.order_id);
+    assert.strictEqual(o.total_cents, q.json.net_total_cents, `🔴 E2 ${rid}: the STORED total = the quoted net`);
+    assert.deepStrictEqual([o.offer.type, o.offer.discount_cents, o.offer.funded_by, o.offer.waived_envio_cents], ['pct', d, 'restaurant', 0], `E2 ${rid}: order.offer frozen`);
+    const paid = orderBreakdownCents((gross - d) / 100, rid), full = orderBreakdownCents(gross / 100, rid);
+    assert.deepStrictEqual([o.subtotal_cents, o.tax_cents], [paid.subtotal_cents, paid.tax_cents], `E2 ${rid}: the ISV split of the PAID food`);
+    if (rid === 'x_pizza') assert.strictEqual(o.desc_rebaja_cents, full.subtotal_cents - paid.subtotal_cents, 'E2 x_pizza: the rebaja (platform factura)');
+    else assert.ok(!o.desc_rebaja_cents, `E2 ${rid}: no fiscal rebaja off the platform factura`);
+    const sl = o.summary_lines || [];
+    assert.strictEqual(sl.reduce((a, l) => a + l.cents, 0), gross - d, `E2 ${rid}: the summary foots to the charged food`);
+    assert.deepStrictEqual(sl[sl.length - 1], { name: 'Descuento', qty: 1, cents: -d }, `E2 ${rid}: the «Descuento» line`);
+  }
+  ok('E2 cash: gross total_cents kept, net discounted, stored = quoted, order.offer frozen, ISV of the paid food, rebaja only on the platform factura, summary foots');
+
+  // ── E3. card ──
+  {
+    const { cart, s } = cartOf('x_pizza', 3);
+    const gross = cart.subtotalCents(); const d = Math.floor((gross * 20) / 10000) * 100;
+    await clean(); offerCaches(); CHARGED.length = 0;
+    const q = await quote('x_pizza', s.items);
+    const kb = bodyOf('x_pizza', 'online', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); const k = await post(app.chargeOnlineOrder, kb);
+    assert.ok(k.status === 200 && k.json.checkout_url && CHARGED.length === 1, `E3 card: ${k.text.slice(0, 200)}`);
+    assert.strictEqual(Math.round(CHARGED[0] * 100), gross - d + FEE, '🔴 E3: the captured PixelPay amount = the discounted net');
+    const po = await order(kb.order_id);
+    assert.deepStrictEqual([po.total_cents, po.offer && po.offer.discount_cents], [gross - d + FEE, d], 'E3: the pending record carries the total and the offer');
+  }
+  ok('E3 card: the PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer');
+
+  // ── E4. envío offer ──
+  {
+    const pauseAll = async () => { for (const [id, e] of Object.entries((await rtdb.ref(`marketing_live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id); };
+    await pauseAll();
+    await publish(THIRD, { type: 'envio', params: { min_cents: 0 } });
+    const { cart, s } = cartOf(THIRD);
+    await clean(); offerCaches();
+    const q = await quote(THIRD, s.items);
+    assert.strictEqual(q.json.net_total_cents, cart.subtotalCents(), 'E4: the quote waives the fee');
+    const cb = bodyOf(THIRD, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); assert.strictEqual((await post(app.createOrder, cb)).status, 200, 'E4: placed');
+    const o = await order(cb.order_id);
+    assert.deepStrictEqual([o.total_cents, o.delivery_cents, o.promo_discount_cents, o.delivery_discount_funder, o.offer.waived_envio_cents], [cart.subtotalCents(), FEE, FEE, 'restaurant', FEE], '🔴 E4: the waived fee, funder «restaurant»');
+  }
+  ok('E4 envío offer: the stored order waives the fee — promo_discount_cents = the fee, delivery_discount_funder «restaurant»');
+
+  // ── E5. paused between quote and order ──
+  {
+    const live = (await rtdb.ref('marketing_live/x_pizza').get()).val() || {};
+    const id = Object.keys(live)[0];
+    const { s } = cartOf('x_pizza');
+    await clean(); offerCaches();
+    const q = await quote('x_pizza', s.items);
+    assert.ok(q.json.offer, 'E5 premise: quoted with the offer');
+    await pauseOffer('x_pizza', BRAND.x_pizza, id);
+    const cb = bodyOf('x_pizza', 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); const c = await post(app.createOrder, cb);
+    assert.deepStrictEqual([c.status, c.json && c.json.error], [409, 'offer_changed'], `🔴 E5: offer_changed (${c.text.slice(0, 160)})`);
+    assert.strictEqual(await order(cb.order_id), null, 'E5: nothing written');
+  }
+  ok('E5: the offer paused between quote and order ⇒ 409 offer_changed, nothing written');
+
+  // ── E6. a legacy-form order ⇒ no offer ──
+  {
+    const { s } = cartOf(THIRD);
+    await clean(); offerCaches();
+    const cb = bodyOf(THIRD, 'cash', s, { entry_mode: undefined });
+    delete cb.entry_mode;
+    await clean(); const c = await post(app.createOrder, cb);
+    assert.strictEqual(c.status, 200, `E6: ${c.text.slice(0, 200)}`);
+    const o = await order(cb.order_id);
+    assert.ok(!o.offer && !o.delivery_discount_funder, 'E6: a legacy-form order carries no offer');
+  }
+  ok('E6: a legacy-form order (no entry_mode app) gets no offer');
+
+  FINISHED = true;
+  console.log(`marketing-price(emulator): OK (${n})`);
+  process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });
