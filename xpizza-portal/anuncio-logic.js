@@ -5,16 +5,20 @@
 // NO MONEY IS COMPUTED HERE. The price is the server's `price_cents` as-is (Sherpa-set, platform_config/marketing; copied onto each
 // booking AT booking). Hidden days are shown as a COUNT only («Días sin mostrar: N»): the pro-rata amount belongs to the restaurant
 // ledger (PLAN-sherpa-ledger-and-payouts.md:16, r4.6 amendment 5), which serves no line yet — advisor ruling 11-14. There is no
-// payment or charge call: a booking only reserves the week; the ledger posts it later. No cap on how many weeks a branch books (the
-// owner's decision; the server's own bound arrives as `too_many_bookings`).
+// payment or charge call: a booking only reserves the week; the ledger posts it later.
+// THE CAP (owner 11-14: ≤ 2 booked weeks in any rolling 4-week window per branch) is the SERVER's alone: a week it would refuse reads
+// `capped`, a book over it is 409 cap_reached with the server's `next_week` hint (or null). Nothing here counts weeks.
 //
-// THE SERVER (3a feat/marketing-offers-3a @ b62765981 — anuncio-logic.test.mjs runs the REAL cores at that ref):
+// THE SERVER (3a feat/marketing-offers-3a @ dad98ad42 — anuncio-logic.test.mjs runs the REAL cores at that ref):
 //   anuncio-core.js:5-7    getAnuncioWeeks GET ?rid= · anuncioBook POST { rid, week } · anuncioCancel POST { rid, booking_id }
-//   anuncio-core.js:9      ONE slot per week, platform-wide: a week reads free | mine | taken (never another restaurant's id)
-//   anuncio-core.js:34     every call 409 anuncio_disabled while the switch is off (a cancel is allowed: it only releases)
-//   anuncio-core.js:60-62  { price_cents, eligibility: { eligible, rating, rating_count, reasons }, weeks: [{ week, starts_at, cancel_until, state }] }
-//   anuncio-core.js:71     the book body is rid + week ONLY — a price never comes from the client
-//   anuncio-core.js:100-109 a 503 after the slot transaction may leave the slot written without its booking record (re-booking repairs it)
+//   anuncio-core.js:10,63  ONE slot per week, platform-wide: a week reads free | mine | taken | capped (taken wins over capped)
+//   anuncio-core.js:85-89,121,135 a book over the cap ⇒ 409 { error: 'cap_reached', next_week } — the first bookable week the cap allows (other
+//                          restaurants' slots NOT checked: booking it can still be week_taken), or null
+//   anuncio-core.js:35     every call 409 anuncio_disabled while the switch is off (a cancel is allowed: it only releases)
+//   anuncio-core.js:61-63  { price_cents, eligibility: { eligible, rating, rating_count, reasons }, weeks: [{ week, starts_at, cancel_until, state }] }
+//   anuncio-core.js:72     the book body is rid + week ONLY — a price never comes from the client
+//   anuncio-core.js:105-138 a 503 after the slot transaction releases this call's slot; if the release fails too, the slot stays
+//                          written without its booking record (re-booking repairs it)
 //   anuncio-model.js:34-43 eligibility reasons today: not_enough_ratings | rating_below | config_unavailable (the «not paused-heavy»
 //                          term arrives with merit-5f as a NEW code — an unknown code renders «No disponible», never eligible)
 //   offers-core.js:237     getMarketing's bookings: { id, week, status, price_cents, cancel_deadline, hidden_days }
@@ -40,8 +44,8 @@ export function eligibilityView(e) {
 // ── the weeks read ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // res (api.js rawCall) → { kind: 'off' } | { kind: 'denied' } | { kind: 'unknown' } | { kind: 'unreadable' } |
 // { kind: 'ok', price_cents, eligibility, weeks: [{ week, starts_at, cancel_until, state, bookable }] }.
-// A week is bookable ONLY when it is free AND the server's eligibility says eligible; `mine` (already this branch's) and `taken`
-// never are — one slot per week.
+// A week is bookable ONLY when it is free AND the server's eligibility says eligible; `mine` (already this branch's), `taken` and
+// `capped` (the server's cap) never are — one slot per week. The state is the server's verbatim; an unknown one is 'unknown'.
 export function weeksModel(res) {
   if (!res || res.transport || res.malformed) return { kind: 'unknown' };
   const b = isObj(res.body) ? res.body : {};
@@ -51,7 +55,7 @@ export function weeksModel(res) {
   if (b.ok !== true || !isInt(b.price_cents, 100, 10_000_000) || !Array.isArray(b.weeks)) return { kind: 'unreadable' };
   const eligibility = eligibilityView(b.eligibility);
   const weeks = b.weeks.filter((w) => isObj(w) && WEEK_RE.test(String(w.week))).map((w) => {
-    const state = ['free', 'mine', 'taken'].includes(w.state) ? w.state : 'unknown';
+    const state = ['free', 'mine', 'taken', 'capped'].includes(w.state) ? w.state : 'unknown';
     return { week: w.week, starts_at: w.starts_at, cancel_until: w.cancel_until, state, bookable: state === 'free' && eligibility.state === 'eligible' };
   });
   return { kind: 'ok', price_cents: b.price_cents, eligibility, weeks };
@@ -74,7 +78,7 @@ export function bookingsView(body, nowMs) {
 // success the server did not state.
 const CODES = Object.freeze({
   anuncio_disabled: 'off', week_taken: 'week_taken', already_booked: 'already_booked', not_eligible: 'not_eligible',
-  too_many_bookings: 'too_many_bookings', branch_not_live: 'branch_not_live', slot_malformed: 'unreadable', current_malformed: 'unreadable',
+  too_many_bookings: 'too_many_bookings', cap_reached: 'cap_reached', branch_not_live: 'branch_not_live', slot_malformed: 'unreadable', current_malformed: 'unreadable',
   past_deadline: 'past_deadline', already_cancelled: 'already_cancelled', not_found: 'gone', bad_rid: 'invalid', bad_request: 'invalid',
   not_authorized: 'denied', missing_bearer_token: 'signed_out', invalid_credentials: 'signed_out',
 });
@@ -82,6 +86,7 @@ export function refusalOf(status, b) {
   const out = { code: CODES[b.error] || 'other', server: b.error, status };
   if (b.error === 'bad_request' && b.reason === 'not_bookable') out.code = 'not_bookable';
   for (const k of ['field', 'reason', 'booking_id']) if (b[k] !== undefined) out[k] = b[k];
+  if (b.error === 'cap_reached') out.next_week = typeof b.next_week === 'string' && WEEK_RE.test(b.next_week) ? b.next_week : null;   // the server's hint, shape-checked
   if (b.error === 'not_eligible') out.eligibility = eligibilityView({ eligible: false, reasons: b.reasons, rating: null, rating_count: null }).state;
   return out;
 }
@@ -104,7 +109,7 @@ export function classifyCancel(attempt, res) {
 }
 
 // After an UNKNOWN booking: the booking list first (a reserved booking for that week ⇒ saved), then the week's slot: `mine` with no
-// booking is a half-made reservation (`incomplete` — booking the week again completes it, anuncio-core.js:85-86), `free` ⇒
+// booking is a half-made reservation (`incomplete` — booking the week again completes it), `free` or `capped` (the slot is free) ⇒
 // not_landed, `taken` ⇒ conflict (another restaurant got it).
 export function classifyBookRecovery(attempt, weeksRes, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);
@@ -113,7 +118,7 @@ export function classifyBookRecovery(attempt, weeksRes, marketingBody, nowMs) {
   if (m.kind !== 'ok' || !list) return { outcome: 'unknown' };
   const w = m.weeks.find((x) => x.week === attempt.week);
   if (!w) return { outcome: 'unknown' };
-  return { outcome: { mine: 'incomplete', free: 'not_landed', taken: 'conflict' }[w.state] || 'unknown' };
+  return { outcome: { mine: 'incomplete', free: 'not_landed', capped: 'not_landed', taken: 'conflict' }[w.state] || 'unknown' };
 }
 export function classifyCancelRecovery(attempt, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);

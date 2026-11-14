@@ -1,5 +1,5 @@
 // Portal «Marketing» «Anuncio», the non-drawing half (DARK) — anuncio-logic.js + the api.js raw calls, run against 3a's REAL cores at
-// the PINNED ref (feat/marketing-offers-3a @ b62765981, git-archived by ref-tree.mjs). Every server reply is the real core's; the
+// the PINNED ref (feat/marketing-offers-3a @ dad98ad42 — the booking cap, owner 11-14 — git-archived by ref-tree.mjs). Every server reply is the real core's; the
 // eligibility input (public_stats) comes from the REAL ratings pipeline — intake, the fulfilment stamp, rateOrderCore and the REAL
 // producer, which also runs the hidden-day recorder — exactly as 3a's anuncio-core.test.js builds it, on the producer's own RTDB double.
 // Run: node --test anuncio-logic.test.mjs
@@ -12,8 +12,8 @@ import * as AL from './anuncio-logic.js';
 import { getAnuncioWeeksRaw, anuncioBookRaw, anuncioCancelRaw, getMarketingRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
-const REF = 'b62765981defcc37066ad3d9196b71005fdd924b';
-const BLOBS = { 'anuncio-core.js': '35c9cb598c5c2793cb83c84a29e0575f41feede9', 'anuncio-model.js': 'd8b83ec973ce280674f37f57db457d9df6462141' };
+const REF = 'dad98ad422fcf2f31a1bd4b917a648d501fa34d0';
+const BLOBS = { 'anuncio-core.js': 'f34d713040cf89dcb608000a20fdacf213930d0d', 'anuncio-model.js': '63781716e9877df84c41690b01ac48f9c5678e34' };
 const DIR = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
 process.env.OTP_SALT = process.env.OTP_SALT || 'anuncio-logic-test-salt-'.padEnd(40, 'x');
@@ -59,8 +59,12 @@ const eligible = async (db, rid) => { await rated(db, rid, '2027-03-01', Array(1
 
 async function world({ on = true, price = 45000 } = {}) {
   const raw = fakeDb();
-  const failTx = new Set();   // an injected OUTAGE on a transaction path prefix (the double itself is never laxer than production)
-  const db = { ...raw, ref: (p = '') => { const r = raw.ref(p); return { ...r, transaction: async (fn) => { for (const x of failTx) if (String(p).startsWith(x)) throw new Error(`injected outage: ${p}`); return r.transaction(fn); } }; } };
+  // an injected OUTAGE on a transaction path prefix → how many transactions there still pass first (0 = the next one fails). The
+  // double itself is never laxer than production.
+  const failTx = new Map();
+  const db = { ...raw, ref: (p = '') => { const r = raw.ref(p); return { ...r, transaction: async (fn) => {
+    for (const [x, n] of failTx) if (String(p).startsWith(x)) { if (n > 0) { failTx.set(x, n - 1); break; } throw new Error(`injected outage: ${p}`); }
+    return r.transaction(fn); } }; } };
   raw.set('brands', { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } });
   for (const rid of ['tb_centro', 'tb_sur']) raw.set(`restaurants/${rid}/identity`, { brand_id: 'tb', name: rid, active: true, version: 1 });
   assert.equal((await R.mutateRoster({ db: raw, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@tb.hn' } })).ok, true, 'premise: roster');
@@ -173,7 +177,7 @@ test('ONE slot per week: a booked week is `mine` and not bookable again; another
   assert.deepEqual([t.outcome, t.code], ['refused', 'week_taken'], 'another restaurant\'s week is week_taken');
   const again = AL.classifyBook({ week: W }, await w.api.book(W));
   assert.deepEqual([again.outcome, again.code], ['refused', 'already_booked'], 'the same week twice: already_booked');
-  await bookOk(w, W2);   // a different week: no client cap (the owner decides how many)
+  await bookOk(w, W2);   // a different week, within the cap (2 in any 4: the SERVER's rule)
   const nb = AL.classifyBook({ week: 'W2027-03-01' }, await w.api.book('W2027-03-01'));
   assert.deepEqual([nb.outcome, nb.code], ['refused', 'not_bookable'], 'the week already under way: not_bookable');
 });
@@ -211,16 +215,21 @@ test('cancel: before the deadline it frees the week; twice is already_cancelled;
 test('a 503 book is NEVER success: a half-made reservation is `incomplete` (booking again completes it); one that never started is not_landed', async () => {
   const w = await world();
   await eligible(w.raw, 'tb_centro');
-  w.failTx.add('anuncio_bookings/tb_centro/');   // the slot commits, the booking record does not (anuncio-core.js:106-108)
+  // the slot commits, the booking record does not, and releasing the slot fails too (anuncio-core.js:105-138 @ dad98ad42)
+  w.failTx.set('anuncio_bookings/tb_centro', 0); w.failTx.set('anuncio_slots/', 1);
   const raw = await w.api.book(W);
   assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
   assert.deepEqual(AL.classifyBook({ week: W }, raw), { outcome: 'unknown' }, 'the 503 book is unknown');
-  const r = await AL.settleBook({ week: W2 }, () => w.api.book(W2), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
-  assert.equal(r.outcome, 'incomplete', 'a slot without a record is incomplete — never saved, never free');
   w.failTx.clear();
-  const k = await bookOk(w, W2);
-  assert.equal(k.id, w.raw.get(`anuncio_slots/${W2}`).booking_id, 'booking again completes it under the slot\'s own id');
-  w.failTx.add('anuncio_slots/');
+  const r = AL.classifyBookRecovery({ week: W }, await w.api.weeks(), (await w.api.marketing()).body, BOOK_AT);
+  assert.equal(r.outcome, 'incomplete', 'a slot without a record is incomplete — never saved, never free');
+  const k = await bookOk(w, W);
+  assert.equal(k.id, w.raw.get(`anuncio_slots/${W}`).booking_id, 'booking again completes it under the slot\'s own id');
+  w.failTx.set('anuncio_bookings/tb_centro', 0);   // the record fails, the core releases its own slot ⇒ nothing landed
+  const rel = await AL.settleBook({ week: W2 }, () => w.api.book(W2), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
+  assert.equal(rel.outcome, 'not_landed', 'a released slot: not_landed');
+  w.failTx.clear();
+  w.failTx.set('anuncio_slots/', 0);
   const n = await AL.settleBook({ week: 'W2027-03-22' }, () => w.api.book('W2027-03-22'), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
   assert.equal(n.outcome, 'not_landed', 'the slot itself failed: nothing landed');
   w.failTx.clear();
@@ -235,11 +244,53 @@ test('a 503 cancel after the booking moved is recovered as saved by the fresh re
   const w = await world();
   await eligible(w.raw, 'tb_centro');
   const k = await bookOk(w);
-  w.failTx.add('anuncio_slots/');   // the booking is cancelled; freeing the slot fails (anuncio-core.js:145-150)
+  w.failTx.set('anuncio_slots/', 0);   // the booking is cancelled; freeing the slot fails (anuncio-core.js:145-150)
   const raw = await w.api.cancel(k.id);
   assert.equal(raw.status, 503, 'premise: 503');
   assert.deepEqual(AL.classifyCancel({ bookingId: k.id }, raw), { outcome: 'unknown' }, 'the 503 cancel is unknown');
   w.failTx.clear();
   assert.equal(AL.classifyCancelRecovery({ bookingId: k.id }, (await w.api.marketing()).body, BOOK_AT).outcome, 'saved', 'the fresh read: cancelled');
   assert.equal(AL.classifyCancelRecovery({ bookingId: 'b_aaaaaaaaaaaa' }, (await w.api.marketing()).body, BOOK_AT).outcome, 'conflict', 'a booking that is gone: conflict');
+});
+
+// ── the booking cap (owner 11-14: ≤ 2 weeks in any rolling 4; 3a dad98ad42 anuncio-model.js capProblem / nextCapWeek) ──────────
+// The SERVER decides it — on the weeks read ('capped') and on the book (409 cap_reached, next_week). This client counts nothing.
+const WK = AM.bookableWeeks(BOOK_AT);
+test('the cap, from the real core: capped weeks are not bookable, `taken` wins over `capped`, a cap refusal carries the server\'s next week', async () => {
+  const w = await world();
+  await eligible(w.raw, 'tb_centro');
+  await eligible(w.raw, 'tb_sur');
+  await bookOk(w, WK[0]); await bookOk(w, WK[1]);
+  await bookOk(w, WK[2], 'tb_sur');
+  const m = AL.weeksModel(await w.api.weeks());
+  assert.deepEqual(m.weeks.slice(0, 5).map((x) => [x.state, x.bookable]), [['mine', false], ['mine', false], ['taken', false], ['capped', false], ['free', true]],
+    'the server\'s capped week is capped, not bookable; taken wins over capped');
+  const c = AL.classifyBook({ week: WK[3] }, await w.api.book(WK[3]));
+  assert.deepEqual([c.outcome, c.code], ['refused', 'cap_reached'], 'over the cap: refused cap_reached');
+  assert.ok(m.weeks.some((x) => x.week === c.next_week && x.state === 'free'), `the hint is the server's, a free week of the read (${c.next_week})`);
+  await bookOk(w, c.next_week);   // the hint books
+});
+
+test('the cap with no week left: next_week null is passed as null; every other week reads capped', async () => {
+  const w = await world();
+  await eligible(w.raw, 'tb_centro');
+  for (const i of [0, 1, 4, 5]) await bookOk(w, WK[i]);
+  const m = AL.weeksModel(await w.api.weeks());
+  assert.deepEqual(m.weeks.map((x) => x.state), ['mine', 'mine', 'capped', 'capped', 'mine', 'mine', 'capped', 'capped'], 'the server caps every other week');
+  assert.deepEqual(m.weeks.filter((x) => x.bookable), [], 'nothing bookable');
+  const c = AL.classifyBook({ week: WK[2] }, await w.api.book(WK[2]));
+  assert.deepEqual([c.outcome, c.code, c.next_week], ['refused', 'cap_reached', null], 'no next week: null, never a guess');
+});
+
+test('the cap is NEVER computed here: the weeks\' states are the server\'s verbatim; a malformed hint is dropped; a capped week after an unknown book is not_landed', () => {
+  const weeks = WK.slice(0, 4).map((week, i) => ({ week, state: ['mine', 'mine', 'free', 'free'][i] }));
+  const m = AL.weeksModel({ status: 200, body: { ok: true, price_cents: 45000, eligibility: { eligible: true, rating: 4.8, rating_count: 40, reasons: [] }, weeks } });
+  assert.deepEqual(m.weeks.map((x) => [x.state, x.bookable]), [['mine', false], ['mine', false], ['free', true], ['free', true]], 'the server\'s states verbatim — no client cap');
+  const hint = (next_week) => AL.classifyBook({ week: WK[3] }, { status: 409, body: { error: 'cap_reached', next_week } }).next_week;
+  assert.equal(hint(WK[4]), WK[4], 'a well-formed hint passes through');
+  for (const bad of [undefined, 'garbage', 'W2027-4-12', 20270412, { week: WK[4] }, ['x']]) assert.equal(hint(bad), null, `a malformed hint is dropped (${JSON.stringify(bad)})`);
+  assert.equal(AL.classifyBook({ week: WK[3] }, { status: 409, body: { error: 'week_taken', next_week: WK[4] } }).next_week, undefined, 'a hint rides only on cap_reached');
+  const g = { ok: true, switches: {}, bookings: [] };
+  const rec = AL.classifyBookRecovery({ week: WK[3] }, { status: 200, body: { ok: true, price_cents: 45000, eligibility: {}, weeks: [{ week: WK[3], state: 'capped' }] } }, g, BOOK_AT);
+  assert.equal(rec.outcome, 'not_landed', 'a capped week after an unknown book: nothing landed');
 });
