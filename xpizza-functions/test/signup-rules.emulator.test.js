@@ -16,6 +16,7 @@ const path = require('path');
 const assert = require('assert');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 const S = require('../signup-core');
+const E = require('../signup-endpoints');   // backfillDeletedUids: the REAL deleted_uids writer
 
 const RULES = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
 const U = 'u_' + 'a'.repeat(24), U2 = 'u_' + 'b'.repeat(24);
@@ -101,7 +102,18 @@ const ADDR = { label: 'Casa', detected: 'Col. Palmira', details: '', lat: 14.1, 
   // ── 3b. Codex asm9b r1 P1-2: EACH of the other two tombstones ALONE refuses the owner's direct private read (last_tip included) —
   //        the same three the endpoint applies (member-auth isMemberTombstoned) ──
   for (const [why, apply] of [
-    ['deleted_uids', async (db) => db.ref(`deleted_uids/${U}`).set(99)],   // the value backfillDeletedUids writes (signup-endpoints.js): the deleted_at ms
+    ['deleted_uids (the REAL backfillDeletedUids)', async (db) => {
+      // its precondition (signup-endpoints.js): a deleted account — the in-node tombstone — with no profile; the REAL writer runs, then its
+      // marker is ISOLATED: the live private node and the profile are put back, so deleted_uids alone remains
+      const live = (await db.ref(`user_private/${U}`).once('value')).val();
+      const prof = (await db.ref(`user_profiles/${U}`).once('value')).val();
+      await db.ref(`user_private/${U}`).set({ deleted_at: 99 });
+      await db.ref(`user_profiles/${U}`).remove();
+      assert.strictEqual(await E.backfillDeletedUids(db), 1, 'premise: the REAL backfill wrote exactly one marker');
+      assert.strictEqual((await db.ref(`deleted_uids/${U}`).once('value')).val(), 99, 'premise: its marker is the account\'s deleted_at');
+      await db.ref(`user_private/${U}`).set(live);
+      await db.ref(`user_profiles/${U}`).set(prof);
+    }],
     ['the sweep claim (deleting_at)', async (db) => assert.strictEqual(await S.sweepClaim(db, U, 10, 99), 'claimed', 'premise: the REAL sweep claim')],
   ]) {
     await seed();
