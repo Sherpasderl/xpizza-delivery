@@ -86,7 +86,7 @@ test('the pin: the S2 ref and its stats-api.js blob', () => {
 test('the presets are exactly the mockup\'s, «Últimos 14 días» by default, and the real core accepts every one; the shipped set is untouched', async () => {
   assert.deepEqual(VL.REND_PRESETS.map(([id]) => id), ['today', '7d', '14d', '30d', 'custom'], 'Hoy · 7 · 14 · 30 · Personalizado');
   assert.deepEqual(VL.REND_PRESETS.map(([, l]) => l), ['Hoy', 'Últimos 7 días', 'Últimos 14 días', 'Últimos 30 días', 'Personalizado']);
-  assert.equal(VL.REND_DEFAULT_PRESET, '14d');
+  assert.equal(VL.REND_DEFAULT_PRESET, '14d', '«Últimos 14 días» is the default');
   assert.deepEqual(VL.rangeFor('14d', TODAY), { from: '2026-10-30', to: TODAY }, '14 days ending today (the mockup\'s «30 oct – 12 nov»)');
   assert.deepEqual(VL.PRESETS.map(([id]) => id), ['today', 'yesterday', '7d', '30d', 'month', 'custom'], 'the shipped page keeps its set');
   const w = { serve: await world() };
@@ -99,7 +99,7 @@ test('the presets are exactly the mockup\'s, «Últimos 14 días» by default, a
 });
 
 test('«Vendidos» counts UNITS: the real items carry qty (2 pizzas in ONE order), so «Pedidos» per product would be false', async () => {
-  assert.equal(VL.TOP_QTY_LABEL, 'Vendidos');
+  assert.equal(VL.TOP_QTY_LABEL, 'Vendidos', 'the column is «Vendidos» (units), never «Pedidos»');
   route({ serve: await world() });
   const b = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
   const pep = b.items.find((i) => i.name === 'Pepperoni 12″');
