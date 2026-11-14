@@ -1,0 +1,376 @@
+{
+ "x_pizza cash (platform factura)": {
+  "charged": [],
+  "order": {
+   "address_details": "portón",
+   "address_detected": "Calle",
+   "cash_tendered_cents": 71000,
+   "created_at": "<v>",
+   "customer_name": "Mko",
+   "customer_phone": "99770100",
+   "delivery_cents": 3000,
+   "delivery_snapshot": {
+    "band": 0,
+    "km": 1,
+    "mode": "delivery",
+    "policy_version": 1
+   },
+   "delivery_task_id": "mko_x_pizza_cash_1_delivery",
+   "earn_preview": {
+    "delta": 2,
+    "goal": 8,
+    "unit": "punch",
+    "welcome": 2
+   },
+   "factura_status": "not_due",
+   "hub_lat": 14.1,
+   "hub_lng": -87.2,
+   "items": [
+    {
+     "description": "Carnivora",
+     "item_key": "Carnivora",
+     "line_gross_cents": 34000,
+     "menu_version_id": "<v>",
+     "qty": 1
+    },
+    {
+     "description": "Carnivora",
+     "item_key": "Carnivora",
+     "line_gross_cents": 34000,
+     "menu_version_id": "<v>",
+     "qty": 1
+    }
+   ],
+   "items_text": "2x Carnivora (L340)",
+   "lat": 14.108993210126354,
+   "lng": -87.2,
+   "maps_link": "https://www.google.com/maps?q=14.108993210126354,-87.2",
+   "menu_version_id": "<v>",
+   "notes": "",
+   "order_id": "mko_x_pizza_cash_1",
+   "order_type": "delivery",
+   "payment_fingerprint": "4a3951ed8dc90d748b1f680e7199684613cb79c5e605ac9e32f9158354c95f1e",
+   "payment_method": "cash",
+   "pickup_task_id": "mko_x_pizza_cash_1_pickup",
+   "promo_discount_cents": 0,
+   "quote": {
+    "charged_net_cents": 71000,
+    "confirmation": "signed",
+    "confirmed_net_cents": 71000,
+    "quote_id": "<v>"
+   },
+   "restaurant_id": "x_pizza",
+   "restaurant_name": "x_pizza",
+   "restaurant_phone": "+504",
+   "status": "new",
+   "subtotal_cents": 59130,
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "item_key": "Carnivora",
+     "name": "Carnivora",
+     "qty": 1
+    },
+    {
+     "cents": 34000,
+     "item_key": "Carnivora",
+     "name": "Carnivora",
+     "qty": 1
+    }
+   ],
+   "tax_cents": 8870,
+   "total": 710,
+   "total_cents": 71000,
+   "tracking_token": "<v>"
+  },
+  "quote": {
+   "delivery": {
+    "delivery_cents": 3000,
+    "from_cents": 3000,
+    "max_km": 2,
+    "mode": "delivery",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "net_total_cents": 71000,
+   "ok": true,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "total_cents": 68000
+  },
+  "signed": {
+   "cart_fingerprint": "4e1045c1c17880ec6fe0b55a6d1d1caafcbf09669c0e966411f6975a765f63d0",
+   "components": {
+    "base_cents": 68000,
+    "delivery_cents": 3000,
+    "fiscal_cents": 8870,
+    "reward_discount_cents": 0
+   },
+   "customer_id": null,
+   "delivery": {
+    "customer": null,
+    "delivery_cents": 3000,
+    "mode": "delivery",
+    "place": "05c3d12c326c1e1355ecfcd0",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "expires_at": "<v>",
+   "issued_at": "<v>",
+   "net_total_cents": 71000,
+   "quote_id": "<v>",
+   "redemption_ref": null,
+   "rid": "x_pizza"
+  }
+ },
+ "x_pizza card (pending record)": {
+  "charged": [
+   1050
+  ],
+  "order": {
+   "active_attempt_id": "<v>",
+   "address_details": "portón",
+   "address_detected": "Calle",
+   "cash_tendered_cents": 0,
+   "content_key": "9141851314d71bb8c416a25a15749ee6",
+   "content_legacy_order": [
+    0
+   ],
+   "created_at": "<v>",
+   "customer_name": "Mko",
+   "customer_phone": "99770200",
+   "delivery_cents": 3000,
+   "delivery_snapshot": {
+    "band": 0,
+    "km": 1,
+    "mode": "delivery",
+    "policy_version": 1
+   },
+   "earn_preview": {
+    "delta": 3,
+    "goal": 8,
+    "unit": "punch",
+    "welcome": 2
+   },
+   "factura_status": "not_due",
+   "hub_lat": 14.1,
+   "hub_lng": -87.2,
+   "items": [
+    {
+     "description": "Carnivora",
+     "item_key": "Carnivora",
+     "line_gross_cents": 34000,
+     "menu_version_id": "<v>",
+     "qty": 1
+    },
+    {
+     "description": "Carnivora",
+     "item_key": "Carnivora",
+     "line_gross_cents": 34000,
+     "menu_version_id": "<v>",
+     "qty": 1
+    },
+    {
+     "description": "Carnivora",
+     "item_key": "Carnivora",
+     "line_gross_cents": 34000,
+     "menu_version_id": "<v>",
+     "qty": 1
+    }
+   ],
+   "items_text": "3x Carnivora (L340)",
+   "lat": 14.108993210126354,
+   "lng": -87.2,
+   "maps_link": "https://www.google.com/maps?q=14.108993210126354,-87.2",
+   "menu_version_id": "<v>",
+   "notes": "",
+   "order_id": "mko_x_pizza_online_2",
+   "order_type": "delivery",
+   "payment_fingerprint": "51d1feed0967fd478a2a0e05114e6839176f90cba536497489ebabfcd4bb3cad",
+   "payment_method": "online",
+   "payment_status": "pending",
+   "promo_discount_cents": 0,
+   "quote": {
+    "charged_net_cents": 105000,
+    "confirmation": "signed",
+    "confirmed_net_cents": 105000,
+    "quote_id": "<v>"
+   },
+   "restaurant_id": "x_pizza",
+   "restaurant_name": "x_pizza",
+   "restaurant_phone": "+504",
+   "status": "pending_payment",
+   "subtotal_cents": 88696,
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "item_key": "Carnivora",
+     "name": "Carnivora",
+     "qty": 1
+    },
+    {
+     "cents": 34000,
+     "item_key": "Carnivora",
+     "name": "Carnivora",
+     "qty": 1
+    },
+    {
+     "cents": 34000,
+     "item_key": "Carnivora",
+     "name": "Carnivora",
+     "qty": 1
+    }
+   ],
+   "tax_cents": 13304,
+   "total": 1050,
+   "total_cents": 105000
+  },
+  "quote": {
+   "delivery": {
+    "delivery_cents": 3000,
+    "from_cents": 3000,
+    "max_km": 2,
+    "mode": "delivery",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "net_total_cents": 105000,
+   "ok": true,
+   "subtotal_cents": 88696,
+   "tax_cents": 13304,
+   "total_cents": 102000
+  },
+  "signed": {
+   "cart_fingerprint": "d6e39503e32566e85124235dd98d6eb0819fc7abc976d52b210efdebc3ada9e5",
+   "components": {
+    "base_cents": 102000,
+    "delivery_cents": 3000,
+    "fiscal_cents": 13304,
+    "reward_discount_cents": 0
+   },
+   "customer_id": null,
+   "delivery": {
+    "customer": null,
+    "delivery_cents": 3000,
+    "mode": "delivery",
+    "place": "05c3d12c326c1e1355ecfcd0",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "expires_at": "<v>",
+   "issued_at": "<v>",
+   "net_total_cents": 105000,
+   "quote_id": "<v>",
+   "redemption_ref": null,
+   "rid": "x_pizza"
+  }
+ },
+ "third-brand cash (non-factura)": {
+  "charged": [],
+  "order": {
+   "address_details": "portón",
+   "address_detected": "Calle",
+   "cash_tendered_cents": 71000,
+   "created_at": "<v>",
+   "customer_name": "Mko",
+   "customer_phone": "99770300",
+   "delivery_cents": 3000,
+   "delivery_snapshot": {
+    "band": 0,
+    "km": 1,
+    "mode": "delivery",
+    "policy_version": 1
+   },
+   "delivery_task_id": "mko_r3_synth_cash_3_delivery",
+   "earn_preview": {
+    "delta": 0,
+    "goal": 0,
+    "unit": "point",
+    "welcome": 0
+   },
+   "factura_status": "not_due",
+   "hub_lat": 14.1,
+   "hub_lng": -87.2,
+   "items_text": "2x R3 Carnivora (L340)",
+   "lat": 14.108993210126354,
+   "lng": -87.2,
+   "maps_link": "https://www.google.com/maps?q=14.108993210126354,-87.2",
+   "menu_version_id": "<v>",
+   "notes": "",
+   "order_id": "mko_r3_synth_cash_3",
+   "order_type": "delivery",
+   "payment_fingerprint": "584a411df92b3e1fe25b251b9f1c58db060eb37f12e7362090634aaf45975111",
+   "payment_method": "cash",
+   "pickup_task_id": "mko_r3_synth_cash_3_pickup",
+   "promo_discount_cents": 0,
+   "quote": {
+    "charged_net_cents": 71000,
+    "confirmation": "signed",
+    "confirmed_net_cents": 71000,
+    "quote_id": "<v>"
+   },
+   "restaurant_id": "r3_synth",
+   "restaurant_name": "r3_synth",
+   "restaurant_phone": "+504",
+   "status": "new",
+   "subtotal_cents": 68000,
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "item_key": "R3 Carnivora",
+     "name": "R3 Carnivora",
+     "qty": 1
+    },
+    {
+     "cents": 34000,
+     "item_key": "R3 Carnivora",
+     "name": "R3 Carnivora",
+     "qty": 1
+    }
+   ],
+   "tax_cents": 0,
+   "total": 710,
+   "total_cents": 71000,
+   "tracking_token": "<v>"
+  },
+  "quote": {
+   "delivery": {
+    "delivery_cents": 3000,
+    "from_cents": 3000,
+    "max_km": 2,
+    "mode": "delivery",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "net_total_cents": 71000,
+   "ok": true,
+   "subtotal_cents": 68000,
+   "tax_cents": 0,
+   "total_cents": 68000
+  },
+  "signed": {
+   "cart_fingerprint": "5b5f1c1750c67eb4acdd386044ac5843fe991f528650586a1e141edbca6fc244",
+   "components": {
+    "base_cents": 68000,
+    "delivery_cents": 3000,
+    "fiscal_cents": 0,
+    "reward_discount_cents": 0
+   },
+   "customer_id": null,
+   "delivery": {
+    "customer": null,
+    "delivery_cents": 3000,
+    "mode": "delivery",
+    "place": "05c3d12c326c1e1355ecfcd0",
+    "policy_version": 1,
+    "promo_discount_cents": 0
+   },
+   "expires_at": "<v>",
+   "issued_at": "<v>",
+   "net_total_cents": 71000,
+   "quote_id": "<v>",
+   "redemption_ref": null,
+   "rid": "r3_synth"
+  }
+ }
+}
