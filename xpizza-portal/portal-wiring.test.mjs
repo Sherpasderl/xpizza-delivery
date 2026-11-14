@@ -106,6 +106,7 @@ test('every module the portal ships is reachable from an entry page (index.html,
 // (The same pin as feat/portal-marketing-ofertas — at assembly the two entries lists merge into one.)
 const AWAITING_SCREENS = Object.freeze({
   'rend-data.js': '«Rendimiento» · Ventas (advisor 11-14): wired by the drawing half once MOCKUP-portal-rendimiento-ventas-delta is approved',
+  'rend-logic.js': '«Rendimiento» · Ventas (advisor 11-14): the tab\'s presets / label / states — wired with rend-data.js by the drawing half',
 });
 
 test('the CSP allows exactly the hosts the code actually talks to', () => {

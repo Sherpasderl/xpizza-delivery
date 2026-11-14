@@ -103,6 +103,7 @@
   "rend-data.js",
   "rend-data.test.mjs",
   "rend-fold.mjs",
+  "rend-logic.js",
   "render.js",
   "render.test.mjs",
   "rendimiento.test.mjs",

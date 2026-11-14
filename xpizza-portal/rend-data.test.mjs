@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as VL from './ventas-logic.js';
+import * as RL from './rend-logic.js';
 import * as RD from './rend-data.js';
 import { getSalesStats, getSalesStatsMulti } from './api.js';
 import { refTree } from './ref-tree.mjs';
@@ -84,22 +85,22 @@ test('the pin: the S2 ref and its stats-api.js blob', () => {
 });
 
 test('the presets are exactly the mockup\'s, «Últimos 14 días» by default, and the real core accepts every one; the shipped set is untouched', async () => {
-  assert.deepEqual(VL.REND_PRESETS.map(([id]) => id), ['today', '7d', '14d', '30d', 'custom'], 'Hoy · 7 · 14 · 30 · Personalizado');
-  assert.deepEqual(VL.REND_PRESETS.map(([, l]) => l), ['Hoy', 'Últimos 7 días', 'Últimos 14 días', 'Últimos 30 días', 'Personalizado']);
-  assert.equal(VL.REND_DEFAULT_PRESET, '14d', '«Últimos 14 días» is the default');
-  assert.deepEqual(VL.rangeFor('14d', TODAY), { from: '2026-10-30', to: TODAY }, '14 days ending today (the mockup\'s «30 oct – 12 nov»)');
+  assert.deepEqual(RL.REND_PRESETS.map(([id]) => id), ['today', '7d', '14d', '30d', 'custom'], 'Hoy · 7 · 14 · 30 · Personalizado');
+  assert.deepEqual(RL.REND_PRESETS.map(([, l]) => l), ['Hoy', 'Últimos 7 días', 'Últimos 14 días', 'Últimos 30 días', 'Personalizado']);
+  assert.equal(RL.REND_DEFAULT_PRESET, '14d', '«Últimos 14 días» is the default');
+  assert.deepEqual(RL.rendRangeFor('14d', TODAY), { from: '2026-10-30', to: TODAY }, '14 days ending today (the mockup\'s «30 oct – 12 nov»)');
   assert.deepEqual(VL.PRESETS.map(([id]) => id), ['today', 'yesterday', '7d', '30d', 'month', 'custom'], 'the shipped page keeps its set');
   const w = { serve: await world() };
   route(w);
-  for (const [id] of VL.REND_PRESETS.filter(([id]) => id !== 'custom')) {
-    const r = VL.rangeFor(id, TODAY);
+  for (const [id] of RL.REND_PRESETS.filter(([id]) => id !== 'custom')) {
+    const r = RL.rendRangeFor(id, TODAY);
     const b = await getSalesStats({ rid: 'r_a', from: r.from, to: r.to, granularity: VL.granularityFor(r), compare: VL.defaultCompare(r), token });
-    assert.equal(VL.statsState({ body: b }).state, 'ok', `the real core answers «${id}»`);
+    assert.equal(RL.statsState({ body: b }).state, 'ok', `the real core answers «${id}»`);
   }
 });
 
 test('«Vendidos» counts UNITS: the real items carry qty (2 pizzas in ONE order), so «Pedidos» per product would be false', async () => {
-  assert.equal(VL.TOP_QTY_LABEL, 'Vendidos', 'the column is «Vendidos» (units), never «Pedidos»');
+  assert.equal(RL.TOP_QTY_LABEL, 'Vendidos', 'the column is «Vendidos» (units), never «Pedidos»');
   route({ serve: await world() });
   const b = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
   const pep = b.items.find((i) => i.name === 'Pepperoni 12″');
@@ -109,20 +110,20 @@ test('«Vendidos» counts UNITS: the real items carry qty (2 pizzas in ONE order
 test('the state model from REAL answers: ok, empty, missing days (never zero-filled), 503 unavailable, 403 denied', async () => {
   route({ serve: await world() });
   const ok = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
-  assert.deepEqual(VL.statsState({ body: ok }), { state: 'ok', missing: [] });
+  assert.deepEqual(RL.statsState({ body: ok }), { state: 'ok', missing: [] });
   const none = await getSalesStats({ rid: 'r_b', from: '2026-11-08', to: '2026-11-09', granularity: 'day', compare: 'none', token });
-  assert.deepEqual(VL.statsState({ body: none }), { state: 'empty', missing: [] }, 'a period with no orders is the honest empty');
+  assert.deepEqual(RL.statsState({ body: none }), { state: 'empty', missing: [] }, 'a period with no orders is the honest empty');
   const gap = await getSalesStats({ rid: 'r_a', from: '2026-10-28', to: '2026-11-03', granularity: 'day', compare: 'none', token });
-  const s = VL.statsState({ body: gap });
+  const s = RL.statsState({ body: gap });
   assert.deepEqual([s.state, s.missing], ['empty', ['2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']], 'days the roll-up never computed ride as `missing`');
-  for (const b of [ok, none, gap]) assert.equal(VL.bodyEmpty(b), VL.viewModel(b, { range: { from: b.range.from, to: b.range.to }, compare: 'none', metric: 'sales', nowMs: NOW }).empty, 'the same «empty» the shipped view model computes');
+  for (const b of [ok, none, gap]) assert.equal(RL.bodyEmpty(b), VL.viewModel(b, { range: { from: b.range.from, to: b.range.to }, compare: 'none', metric: 'sales', nowMs: NOW }).empty, 'the same «empty» the shipped view model computes');
   route({ serve: await world({ keyerFails: true }) });
   const down = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token }).then(() => null, (e) => e);
-  assert.deepEqual([down.status, VL.statsState({ error: down }).state], [503, 'unavailable'], 'the real 503 (the keyer fails closed)');
+  assert.deepEqual([down.status, RL.statsState({ error: down }).state], [503, 'unavailable'], 'the real 503 (the keyer fails closed)');
   route({ serve: await world() });
   const no = await getSalesStats({ rid: 'r_zz', ...OLD, granularity: 'day', compare: 'none', token }).then(() => null, (e) => e);
-  assert.equal(VL.statsState({ error: no }).state, 'denied', 'a branch the member cannot read');
-  assert.equal(VL.statsState({ error: { status: 0 } }).state, 'unavailable', 'a transport failure');
+  assert.equal(RL.statsState({ error: no }).state, 'denied', 'a branch the member cannot read');
+  assert.equal(RL.statsState({ error: { status: 0 } }).state, 'unavailable', 'a transport failure');
 });
 
 test('«Todas las sucursales» is ONE call, merged on the server; one branch refused refuses the whole total; a 503 paints nothing', async () => {
@@ -139,11 +140,11 @@ test('«Todas las sucursales» is ONE call, merged on the server; one branch ref
   assert.deepEqual([painted.kpis.orders, painted.kpis.sales_cents], [ka.orders + kb.orders, ka.sales_cents + kb.sales_cents], 'the server\'s merged figures');
   const u1 = ui();
   const r1 = await RD.loadStats({ uid: 'uA', rids: ['r_a', 'r_zz'], range: OLD, compare: 'none', token, api: API, cache: null, now: () => NOW, ui: u1 });
-  assert.deepEqual([r1.source, u1.log.map((x) => x.ev), VL.statsState({ error: r1.error }).state], ['error', ['fail'], 'denied'], 'one branch the member cannot read: the whole total refused, nothing painted');
+  assert.deepEqual([r1.source, u1.log.map((x) => x.ev), RL.statsState({ error: r1.error }).state], ['error', ['fail'], 'denied'], 'one branch the member cannot read: the whole total refused, nothing painted');
   w.serve = await world({ keyerFails: true });
   const u2 = ui();
   const r2 = await RD.loadStats({ uid: 'uA', rids: ['r_a', 'r_b'], range: OLD, compare: 'none', token, api: API, cache: null, now: () => NOW, ui: u2 });
-  assert.deepEqual([r2.source, u2.log.map((x) => x.ev), VL.statsState({ error: r2.error }).state], ['error', ['fail'], 'unavailable'], 'no partial total is ever painted');
+  assert.deepEqual([r2.source, u2.log.map((x) => x.ev), RL.statsState({ error: r2.error }).state], ['error', ['fail'], 'unavailable'], 'no partial total is ever painted');
 });
 
 test('cached-first: the cached body paints at once WITH ITS OWN stamp; an unchanged revalidate moves only the stamp (no swap)', async () => {
@@ -151,10 +152,10 @@ test('cached-first: the cached body paints at once WITH ITS OWN stamp; an unchan
   const cache = RD.makeCache(store());
   const T1 = NOW, T2 = NOW + 12 * 60000;
   const first = ui();
-  await RD.loadStats({ uid: 'uA', rids: ['r_a'], range: VL.rangeFor('14d', TODAY), compare: 'previous', token, api: API, cache, now: () => T1, ui: first });
+  await RD.loadStats({ uid: 'uA', rids: ['r_a'], range: RL.rendRangeFor('14d', TODAY), compare: 'previous', token, api: API, cache, now: () => T1, ui: first });
   assert.deepEqual(first.log.map((x) => [x.ev, x.source]), [['paint', 'network']], 'no cache yet: one paint, from the network');
   const again = ui();
-  const r = await RD.loadStats({ uid: 'uA', rids: ['r_a'], range: VL.rangeFor('14d', TODAY), compare: 'previous', token, api: API, cache, now: () => T2, ui: again });
+  const r = await RD.loadStats({ uid: 'uA', rids: ['r_a'], range: RL.rendRangeFor('14d', TODAY), compare: 'previous', token, api: API, cache, now: () => T2, ui: again });
   assert.deepEqual(again.log.map((x) => x.ev), ['paint', 'stamp'], 'an unchanged revalidate never swaps the body');
   assert.equal(r.source, 'cache+same');
   assert.equal(again.log[0].source, 'cache');
@@ -174,7 +175,7 @@ test('a CHANGED revalidate swaps once; a failed one keeps the cached body; the k
   const w = { serve: await world() };
   route(w);
   const cache = RD.makeCache(store());
-  const range = VL.rangeFor('14d', TODAY);
+  const range = RL.rendRangeFor('14d', TODAY);
   await RD.loadStats({ uid: 'uA', rids: ['r_a'], range, compare: 'previous', token, api: API, cache, now: () => NOW, ui: ui() });
   w.serve = await world({ extra: [F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-11-10', 20), phone: '88880077', totalCents: 44000, items: [{ name: 'Suprema 18″', qty: 1, unit: 440 }] })] });
   const u = ui();
