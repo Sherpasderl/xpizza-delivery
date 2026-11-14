@@ -20,6 +20,7 @@ const CFG = require('../marketing/config');
 const OM = require('../marketing/offer-model');
 const C = require('../marketing/offers-core');
 const OS = require('./offers-serve');
+const SW = require('../marketing/switch-memo');
 
 let n = 0; let FINISHED = false;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -44,6 +45,7 @@ async function world({ on = true } = {}) {
   db.set(`restaurants/${RID}/identity`, { brand_id: 'xb', name: 'X', active: true, version: 1 });
   assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, 'xb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@x.hn' } })).ok, true, 'premise: roster');
   await makeRtdbMirror(db)(RID, { version: 'v1', seq: 1, rid: RID, menu: Object.fromEntries(menu.items.map((it) => [it.key, it.price])), extras: {} });
+  await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // 5f's go-live gate (32a95e405): offers ON needs the owner's marker
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) };
   return { fs, db, deps, menu };
@@ -57,12 +59,14 @@ async function live(deps, o) {
   return s.body.offer.id;
 }
 // the menu as the endpoint serves it, with the offers memo settled (the decoration never blocks: the first serve starts the read)
-async function served(fs, db, { at = NOW, memo = new Map(), read } = {}) {
+async function served(fs, db, { at = NOW, memo = new Map(), sw = {}, read } = {}) {
   const inflight = new Map();
-  const o = { rtdb: db, memo, inflight, now: () => at, ...(read ? { read } : {}) };
-  await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  const o = { rtdb: db, memo, inflight, now: () => at, switchState: sw, ...(read ? { read } : {}) };   // sw: the switch memo (marketing/switch-memo), per instance
+  const trigger = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));   // the response that TRIGGERS the reads (Codex r2)
   await Promise.all([...inflight.values()]);
-  return quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  const r = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  r.trigger = trigger;
+  return r;
 }
 const { canonicalJson } = require('./canonical-json');   // public-menu.js's own (line 31)
 const etagOf = (rid, body) => `"${crypto.createHash('sha256').update(`${rid} ${REPRESENTATION_VERSION} ${canonicalJson(body)}`).digest('hex')}"`;
@@ -79,7 +83,62 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.ok(!('offers' in off.body), 'OFF: no offers key');
       assert.deepStrictEqual([off.body, off.etag], [undecorated.body, undecorated.etag], 'OFF: body + ETag byte-identical to the undecorated serve');
       assert.strictEqual(off.etag, etagOf(RID, off.body), 'premise: the ETag is over rid + representation + the canonical body (public-menu.js)');
+      assert.strictEqual(REPRESENTATION_VERSION, '1d.4', 'offers add NO representation bump (Q-A): the base→head ETag move is dish-stats\' approved 1d.3 → 1d.4 (s2b-off-golden peels it)');
       ok('OFF: the key is absent and the body + ETag are byte-identical to the undecorated menu');
+    }
+
+    // ── 1b. the switch turned OFF (the REAL config writer) WHILE offers are live: the mirror is never served ──
+    {
+      const { fs, db, deps } = await world();
+      await live(deps, { name: 'Diez' });
+      assert.strictEqual((await served(fs, db)).body.offers.length, 1, 'premise: ON serves the live offer');
+      assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 })).ok, true, 'premise: the owner turned offers off');
+      const off = await served(fs, db);
+      const undecorated = await served(fs, db, { read: async () => { throw new Error('down'); } });
+      assert.ok(!('offers' in off.body), 'OFF with live offers: no offers key');
+      assert.deepStrictEqual([off.body, off.etag], [undecorated.body, undecorated.etag], 'OFF with live offers: body + ETag byte-identical to the undecorated serve');
+      db.set('platform_config/marketing', 'garbage');
+      assert.ok(!('offers' in (await served(fs, db)).body), 'a malformed config with live offers ⇒ off ⇒ no key');
+      ok('the switch off while offers are live (or a malformed config) ⇒ the mirror is never served; byte-identical to the undecorated menu');
+    }
+
+    // ── 1c. the config READ fails while offers are live: never a guessed «on» ──
+    {
+      const { fs, db, deps } = await world();
+      await live(deps, { name: 'Diez' });
+      const down = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); }, get: async () => { throw new Error('config down'); } } : db.ref(p)) };
+      assert.strictEqual((await CFG.readMarketingConfig(down)).unavailable, true, 'premise: the config read fails ⇒ unavailable');
+      assert.ok(!('offers' in (await served(fs, down)).body), 'a config outage with live offers: no offers key');
+      ok('a config outage while offers are live ⇒ the key is absent (never a guessed «on»)');
+    }
+
+    // ── 1d. Codex r1 P1-3: a WARM instance (its decoration memo still fresh and holding the offer). The owner turns offers OFF, or the
+    //        switch read fails ⇒ the key is absent at the next switch read (≤ SWITCH_TTL), never after the memo's 6-min stale window ──
+    {
+      const { fs, db, deps } = await world();
+      await live(deps, { name: 'Diez' });
+      const memo = new Map(); const sw = {};
+      assert.strictEqual((await served(fs, db, { memo, sw })).body.offers.length, 1, 'premise: a warm instance serves the offer');
+      assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 })).ok, true, 'premise: the owner turned offers off');
+      const early = await served(fs, db, { memo, sw, at: NOW + SW.REFRESH_AT_MS - 1 });
+      assert.strictEqual(early.trigger.body.offers.length, 1, 'the accepted bound: before the switch refreshes (< REFRESH_AT) the last ON stands');
+      const t1 = NOW + SW.SWITCH_TTL_MS;
+      assert.strictEqual(sw.rec.at, NOW, 'premise: no refresh started before REFRESH_AT — the ON read is from NOW, so at t1 it is exactly SWITCH_TTL old');
+      const off = await served(fs, db, { memo, sw, at: t1 });
+      assert.ok(!('offers' in off.trigger.body), 'WARM memo, the switch ON read EXPIRED (hard, at SWITCH_TTL) ⇒ the TRIGGERING response is already absent');
+      assert.ok(memo.get(RID).ok && t1 - memo.get(RID).at < OS.OK_TTL_MS && memo.get(RID).raw.on === true, 'premise: the decoration memo is still FRESH and still holds «on»');
+      assert.ok(!('offers' in off.body), 'WARM memo, offers turned OFF ⇒ absent at the next switch read (the memo notwithstanding)');
+    }
+    {
+      const { fs, db, deps } = await world();
+      await live(deps, { name: 'Diez' });
+      const memo = new Map(); const sw = {};
+      assert.strictEqual((await served(fs, db, { memo, sw })).body.offers.length, 1, 'premise: a warm instance serves the offer');
+      const down = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); }, get: async () => { throw new Error('config down'); } } : db.ref(p)) };
+      const r = await served(fs, down, { memo, sw, at: NOW + SW.SWITCH_TTL_MS });
+      assert.ok(!('offers' in r.trigger.body), 'WARM memo, the switch read EXPIRED ⇒ the TRIGGERING response is absent (never a stale «on» while refreshing)');
+      assert.ok(!('offers' in r.body), 'WARM memo, the switch read FAILS ⇒ absent (fail-closed), never the stale «on»');
+      ok('a WARM instance: offers turned OFF, or the switch read failing, ⇒ absent at the next switch read, whatever the decoration memo holds');
     }
 
     // ── 2. ON: exactly the all-audience live offers, in the public shape; ON moves the ETag by itself ──
@@ -110,16 +169,20 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.strictEqual(on.etag, etagOf(RID, on.body), 'the ETag is over the served body');
       ok('ON: exactly the all-audience live offers (not nuevos / returning / paused), public shape, no name / caps / ids; the ETag follows the body');
       // the directory flag (shape set by capp, advisor 11-14): the public AMOUNTS of the offers inside their window NOW
-      const flagAt = (t) => OS.offerFlagOf(RID, { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: t }]]), now: () => t });
-      assert.strictEqual(flagAt(NOW), null, 'before any start ⇒ no flag');
-      const tue = NOW + DAY;                                   // Tue 17 Nov 12:00 HN: the all-day offers are in window; the Fri/Sat 21:00–00:00 one is not
-      assert.deepStrictEqual(flagAt(tue), { offers: [{ type: 'envio', min_cents: 30000 }, { type: 'pct', pct: 10 }, { type: 'bogo' }] },
-        'the flag: envío carries its minimum (rule 10), pct its percent, bogo no amount; the out-of-window category offer is absent');
+      const flagAt = async (t) => {   // the memo as a settled read at t; the switch by its REAL read at t
+        const d = { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: t }]]), inflight: new Map(), switchState: {}, now: () => t };
+        OS.offerFlagOf(RID, d); await Promise.all([...d.inflight.values()]);
+        return OS.offerFlagOf(RID, d);
+      };
+      assert.strictEqual((await flagAt(NOW)), null, 'before any start ⇒ no flag');
       const satNight = NOW + 5 * DAY + 10 * 3600000;          // Sat 21 Nov 22:00 HN: inside 21:00–00:00
-      assert.deepStrictEqual(flagAt(satNight).offers.filter((o) => o.type === 'bogo').length, 2, 'inside its window the category offer joins');
-      assert.deepStrictEqual(flagAt(NOW + 5 * DAY).offers.filter((o) => o.type === 'bogo').length, 1, 'Saturday noon: outside 21:00–00:00 ⇒ absent');
-      assert.strictEqual(flagAt(NOW + 31 * DAY), null, 'past their end (and outside the open-ended category offer\'s Fri/Sat window) ⇒ no flag at all');
-      assert.ok(!JSON.stringify(flagAt(satNight)).match(/name|items|cats|caps|schedule|days|start|window|max_cents|free_per_order|"rev"|brand|o_[a-z2-7]{12}/), 'no private field ever appears (no max_cents, items, schedule, name, id)');
+      assert.ok(!JSON.stringify((await flagAt(satNight))).match(/name|items|cats|caps|schedule|days|start|window|max_cents|free_per_order|"rev"|brand|o_[a-z2-7]{12}/), 'no private field ever appears (no max_cents, items, schedule, name, id)');
+      const tue = NOW + DAY;                                   // Tue 17 Nov 12:00 HN: the all-day offers are in window; the Fri/Sat 21:00–00:00 one is not
+      assert.deepStrictEqual((await flagAt(tue)), { offers: [{ type: 'envio', min_cents: 30000 }, { type: 'pct', pct: 10 }, { type: 'bogo' }] },
+        'the flag: envío carries its minimum (rule 10), pct its percent, bogo no amount; the out-of-window category offer is absent');
+      assert.deepStrictEqual((await flagAt(satNight)).offers.filter((o) => o.type === 'bogo').length, 2, 'inside its window the category offer joins');
+      assert.deepStrictEqual((await flagAt(NOW + 5 * DAY)).offers.filter((o) => o.type === 'bogo').length, 1, 'Saturday noon: outside 21:00–00:00 ⇒ absent');
+      assert.strictEqual((await flagAt(NOW + 31 * DAY)), null, 'past their end (and outside the open-ended category offer\'s Fri/Sat window) ⇒ no flag at all');
       ok('offerFlagOf: { offers: [{ type, pct? , off_cents?, min_cents? }] } inside the window now; ended / out-of-window absent; no private field');
       const later = await served(fs, db, { at: NOW + 31 * DAY });
       assert.deepStrictEqual(later.body.offers.map((o) => o.type), ['bogo'], 'past their end ⇒ ended offers are not served (the open-ended category offer stays)');
@@ -142,14 +205,14 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
     {
       const { fs, db, deps } = await world();
       const id = await live(deps, { name: 'Diez' });
-      const memo = new Map();
-      const first = await served(fs, db, { memo });
+      const memo = new Map(); const sw = {};
+      const first = await served(fs, db, { memo, sw });
       assert.strictEqual(first.body.offers.length, 1, 'premise: served');
       assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: id, to: 'paused_owner', expected_rev: 2 }))).status, 200);
       assert.strictEqual(db.get(`marketing_live/${RID}/${id}`) ?? null, null, 'paused ⇒ the PRICE PATH\'s mirror has no entry: never priced');
-      const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), now: () => NOW + 30 * 1000 } }));
+      const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => NOW + 5 * 1000 } }));   // inside the switch TTL (this cell is the DATA memo's staleness)
       assert.strictEqual(within.body.offers.length, 1, 'within the 60 s memo the menu may still show it — the accepted staleness (the quote refuses)');
-      const after = await served(fs, db, { memo, at: NOW + 61 * 1000 });
+      const after = await served(fs, db, { memo, sw, at: NOW + 61 * 1000 });
       assert.ok(!('offers' in after.body), 'past the memo the menu drops it');
       ok('a paused offer is never priced: the price path\'s mirror drops it at once; the menu follows within its memo (accepted staleness)');
     }
@@ -158,7 +221,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
     {
       const { fs, db } = await world();
       for (const [why, read] of [['an outage', async () => { throw new Error('down'); }], ['a timeout', () => new Promise(() => {})], ['a malformed read', async () => 'garbage']]) {
-        const o = { rtdb: db, memo: new Map(), inflight: new Map(), now: () => NOW, read, timeoutMs: 20 };
+        const o = { rtdb: db, memo: new Map(), inflight: new Map(), switchState: {}, now: () => NOW, read, timeoutMs: 20 };
         await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
         await Promise.all([...o.inflight.values()]);
         const r = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));

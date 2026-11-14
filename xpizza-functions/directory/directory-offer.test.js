@@ -53,7 +53,7 @@ async function live(odeps, o) {
 function depsOf(db, { flag = true } = {}) {
   const memo = new Map(); const inflight = new Map();
   const real = makeDirectoryDeps({ rtdb: db, registry: { readNow: async () => ({ ok: true, ids: [RID] }) }, pricingView: async () => ({ fee: { state: 'none' }, promo: null, coverage_km: 5 }),
-    offers: { memo, inflight, now: () => NOW } });
+    offers: { memo, inflight, now: () => NOW, switchState: { rec: null, inflight: null } } });   // each world its own switch memo (3a's switch-memo; its default state is per instance)
   const deps = {
     readRegistry: async () => ({ ok: true, ids: [RID] }),
     readPlatform: async () => PC.pickPlatform({ city_label: 'Tegucigalpa' }),

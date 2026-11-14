@@ -65,7 +65,9 @@ function seededMint(fn) {
 }
 
 // x_pizza / la_musa: the plan-fixtures recipe (real publish, seeded), served as getPublicMenu sends it.
-export async function provisionBrand(rid) {
+// `inputTransform` (capp, advisor 11-14): an optional (input) => input applied to the REAL publish candidate BEFORE the real publish (e.g.
+// a long-name fixture renaming soft_04) — the transformed catalog still passes publishVersion's own validation; absent ⇒ byte-identical.
+export async function provisionBrand(rid, { inputTransform } = {}) {
   const { makeDb } = require(join(FN, 'catalog/firestore-fake'));
   const { publishVersion } = require(join(FN, 'catalog/catalog-publish'));
   const { buildPublishCandidate } = require(join(FN, 'tools/publish-version'));
@@ -73,7 +75,7 @@ export async function provisionBrand(rid) {
   const db = makeDb();
   await seededMint(async () => {
     const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1b' });
-    await publishVersion(db, rid, input, { expected });
+    await publishVersion(db, rid, typeof inputTransform === 'function' ? inputTransform(input) : input, { expected });
   });
   const m = await buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true });
   // the PUBLISHED catalog's pricing tables + reward allowlist (plan §10.3), for the reward server below
