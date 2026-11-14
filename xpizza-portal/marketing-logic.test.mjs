@@ -356,7 +356,8 @@ test('live_drift: an active offer whose pause half-ran is NOT applied; a non-act
 
 test('the Anuncio stays DARK: no portal source names its endpoints, and the read model drops the bookings', async () => {
   const src = readdirSync(DIR).filter((f) => /\.(js|html|mjs)$/.test(f) && !/\.test\.mjs$/.test(f));
-  for (const f of src) assert.doesNotMatch(readFileSync(join(DIR, f), 'utf8'), /getAnuncioWeeks|anuncioBook|anuncioCancel/, `${f} reaches no Anuncio endpoint`);
+  // a compact projection (the first hit, or null) — a failing whole-file match would carry the file into the report
+  for (const f of src) assert.equal((readFileSync(join(DIR, f), 'utf8').match(/getAnuncioWeeks|anuncioBook|anuncioCancel/) || [null])[0], null, `${f} reaches no Anuncio endpoint`);
   const m = ML.readModel({ ok: true, switches: { offers_enabled: true, anuncio_enabled: true }, offers: [], bookings: [{ id: 'x' }] });
   assert.deepEqual(m, { kind: 'ok', offers: [], dropped: 0 }, 'no bookings in the model');
   assert.deepEqual(ML.readModel(null), { kind: 'unreadable' });
