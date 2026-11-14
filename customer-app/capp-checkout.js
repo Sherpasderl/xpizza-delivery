@@ -95,6 +95,24 @@
     const n = T.next;
     return n ? OFFER_COPY.nudge(moneyC(n.remaining_cents), n.off_cents ? OFFER_COPY.nextOff(moneyC(n.off_cents)) : OFFER_COPY.nextEnvio) : null;
   };
+  // 4 B3 (MOCKUP-capp-offers-calm-vs-loud declutter B3; advisor 11-14 scope): the dish sheet's «L 299 ~~L 598~~» + «2 por 1», ONLY in
+  // the provable case — exactly ONE served offer, a bogo whose items hold this dish's pricing key, in its window NOW, the staged n even
+  // ≥ 2 and a MARGINAL saving > 0 over the current cart's eligible units. The pairing and the window are the SERVER's own rules (`rules`
+  // = OfferRules, 5f's marketing/offer-rules.js synced byte-identical — never a client copy); no rules ⇒ null (today's sheet).
+  // null ⇒ not offered (no pill); { strike: null } ⇒ the pill only; { strike: { pay, was } } (cents) ⇒ the struck price
+  const pricingKeyOf = (d, availIdentity) => (!d ? null : d.item_key ? d.item_key : availIdentity === 'id' ? String(d.id) : availIdentity === 'name' ? d.name : null);   // ≡ menu-pricing itemPricingKey (item_key wins)
+  function bogoPreview({ rules, offers, key, priceCents, n, cartUnits, nowMs }) {
+    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return null;
+    if (!Array.isArray(offers) || offers.length !== 1) return null;
+    const f = offers[0], p = f && f.params;
+    if (!f || f.type !== 'bogo' || !p || !Array.isArray(p.items) || !Number.isSafeInteger(p.free_per_order) || p.free_per_order < 1) return null;
+    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule || rules.inWindow(f.schedule, nowMs) !== true) return null;
+    if (!Number.isSafeInteger(priceCents) || priceCents <= 0) return null;
+    if (!Number.isSafeInteger(n) || n < 2 || n % 2 !== 0) return { strike: null };
+    const items = new Set(p.items), held = (Array.isArray(cartUnits) ? cartUnits : []).filter((u) => items.has(u.key)).map((u) => u.unit);
+    const marginal = rules.bogoSaving([...held, ...Array(n).fill(priceCents)], p.free_per_order) - rules.bogoSaving(held, p.free_per_order);
+    return { strike: Number.isSafeInteger(marginal) && marginal > 0 && marginal < n * priceCents ? { pay: n * priceCents - marginal, was: n * priceCents } : null };
+  }
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
   // S-picker (PLAN-intl-phone r2.3): a flow with a chosen country (f.cc — set only by the UI's picker, behind the runtime intlPhone)
@@ -320,5 +338,5 @@
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, TIP_DEFAULT_LEMPIRAS, tipDefault, tipped, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
     areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail,
-    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, nextOf, savedLine, nudgeLine };
+    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, nextOf, savedLine, nudgeLine, pricingKeyOf, bogoPreview };
 });

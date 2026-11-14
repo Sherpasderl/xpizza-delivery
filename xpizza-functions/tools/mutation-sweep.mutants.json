@@ -37412,5 +37412,22 @@
   "kills_with": [
    "OF-DEBOUNCE"
   ]
+ },
+ {
+  "id": "of-15",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the «2 por 1» pill shown without the server's rules (window unproven)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return null;",
+  "to": "    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return { strike: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-NORULES"
+  ]
  }
 ]

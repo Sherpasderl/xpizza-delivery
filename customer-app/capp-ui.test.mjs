@@ -4117,6 +4117,7 @@ test('offers 3 A met: a store with an offer quotes its cart on the store page (d
   await quoteLand(b);
   assert.equal(b.srv.of('quoteOrder').length, 1, 'ONE request for the burst');
   assert.deepEqual(nudge(b), { on: true, text: 'Ahorrás L 340 · 2 por 1', tag: false }, '🔴 OF-NUDGE-MET');
+  assert.equal(b.qa('#cart-bar .cart-pill-text')[1].textContent, 'L 680', '🔴 OF-PILL-GROSS: the pill stays the cart\'s GROSS subtotal in the met state (advisor 11-14 (i), rule 7)');
 });
 test('offers 3 A under the minimum: «Agregá L 320 para L 50 menos» from the quote\'s offer_next (the tag icon)', async () => {
   const b = bootCo({ envelope: offersEnv('LPS_UNDER'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'UNDER_DEL')] } });
@@ -4151,4 +4152,25 @@ test('offers part 2: the menu fingerprint leaves out `offers` (an offers-only re
   const R = refLoader(ROOT, CAPP_OFF_BASE).require('customer-app/capp-checkout.js');
   assert.equal(await fp(base), await R.menuFingerprint(base), 'no offers ⇒ the base commit\'s fingerprint');
   assert.notEqual(await fp({ ...base, menu: { ...base.menu, categories: [] } }), await fp(base), 'premise: content still counts');
+});
+// ── 4 B3 (advisor 11-14 scope): the strike needs the SERVER's own rules (OfferRules = 5f's marketing/offer-rules.js, synced) — until
+// that module is on the page the sheet is today's, byte for byte; the strike cells follow the module's SHA ──
+const sheetAt2 = async (b) => { await b.click(`.txtbtn[data-id="${OQ_CART.key}"]`); await b.click('#detail-step [data-delta="1"]'); return { body: b.q('#detail-scroll').innerHTML, cta: b.text('#detail-cta') }; };
+test('offers 4 B3: no OfferRules on the page ⇒ no pill, no strike — the offered dish\'s sheet at 2 is today\'s (never a guessed price)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO') }), s = await sheetAt2(b);
+  assert.equal(b.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-NORULES: no price row without the server\'s rules');
+  assert.equal(s.cta, `Agregar · L ${2 * OQ_CART.items[0].price}`, 'the button: today\'s gross pair');
+  const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const R = refLoader(ROOT, CAPP_OFF_BASE);
+  const was = await sheetAt2(bootCo({ envelope: offersEnv('BOGO'), src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') }));
+  assert.deepEqual(s, was, '🔴 B3-NORULES: byte-identical to the base commit\'s sheet');
+});
+test('offers 4 B3 model: bogoPreview without rules / with several offers / not offered ⇒ null (the provable case only)', () => {
+  const offers = offersEnv('BOGO').menu.offers, key = OQ_CART.items[0].item_key, base = { offers, key, priceCents: 34000, n: 2, cartUnits: [], nowMs: OQ.live.BOGO.now_ms };
+  assert.equal(CK.bogoPreview({ ...base, rules: null }), null, '🔴 B3-NORULES-MODEL');
+  const stub = { bogoSaving: () => { throw new Error('premise: never reached'); }, inWindow: () => { throw new Error('premise: never reached'); } };
+  assert.equal(CK.bogoPreview({ ...base, rules: stub, offers: [...offers, ...offers] }), null, '🔴 B3-ONE: two served offers ⇒ no strike');
+  assert.equal(CK.bogoPreview({ ...base, rules: stub, key: 'Otra' }), null, 'a dish outside the offer');
+  assert.equal(CK.pricingKeyOf({ item_key: 'K', name: 'N', id: 7 }, 'id'), 'K', 'item_key wins');
+  assert.deepEqual([CK.pricingKeyOf({ name: 'N', id: 7 }, 'id'), CK.pricingKeyOf({ name: 'N', id: 7 }, 'name'), CK.pricingKeyOf({ name: 'N', id: 7 }, null)], ['7', 'N', null], 'else the availIdentity field; unknown ⇒ none');
 });

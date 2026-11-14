@@ -638,6 +638,14 @@
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
     }
+    // 4 B3: the server's own rules (OfferRules, synced) over the served offers and the cart's eligible units — null without them
+    const offerRules = () => opts.OfferRules || (typeof self !== 'undefined' && self.OfferRules) || null;
+    function b3Of(it, n) {
+      if (!hasOffers() || !mods() || it.group || it.parent) return null;
+      const d = menu.dish(it.id), key = C.pricingKeyOf(d, menu.availIdentity);
+      const cartUnits = []; for (const l of cart.lines()) { const cd = menu.dish(l.key), k = C.pricingKeyOf(cd, menu.availIdentity); if (cd && k) for (let i = 0; i < l.qty; i++) cartUnits.push({ key: k, unit: Math.round(cd.price * 100) }); }
+      return C.bogoPreview({ rules: offerRules(), offers: menu.offers, key, priceCents: d ? Math.round(d.price * 100) : null, n, cartUnits, nowMs: now().getTime() });
+    }
     function renderDetail() { renderDetailBody(); applyOrderable(); if (detailHad && lost()) focusTo(refind(detailHad)); detailHad = null; }
     let detailHad = null;
     function renderDetailBody() {
@@ -654,8 +662,8 @@
       // the desk dialog (advisor 11-02, frame 3 a11y): ✕ is the NEXT Tab stop after the focused heading — it follows the h2 in the DOM
       // and is drawn in the header's slot by CSS (.detail-close-slot keeps the header's layout)
       const nameEl = desk ? `<h2 class="detail-name" id="detail-name" tabindex="-1">${esc(it.n)}</h2><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button>` : `<div class="detail-name">${esc(it.n)}</div>`;
-      const body = (price) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}<div class="detail-price">${price}</div></div>`   // D-3 r3 frame 3: name, description, price
-        : `<div class="detail-body">${nameEl}<div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
+      const body = (price, row = `<div class="detail-price">${price}</div>`) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}${row}</div>`   // D-3 r3 frame 3: name, description, price
+        : `<div class="detail-body">${nameEl}${row}${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
       const groupLabel = (g) => `<div class="detail-cat-label"><span>${esc(g.label)}</span><span class="grp-status ${o.staged.choice ? 'done' : 'req'}">${o.staged.choice ? IC.check.replace('class="i"', '') + 'Requerido' : IC.alert.replace('class="i"', '') + 'Elegí 1 · Requerido'}</span></div>`;
       const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null, off = soldOf(c.id); return `<div class="detail-variant-row${sel ? ' sel' : ''}${off ? ' sold-out' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}"${off ? ' aria-disabled="true" style="opacity:.45"' : ''} tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${off ? '<span class="detail-extras-price">Agotado</span>' : delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
       const optLabel = (cat) => `<div class="detail-cat-label"><span>${esc(cat)}</span><span class="grp-status optional">Opcional</span></div>`;
@@ -670,7 +678,8 @@
         for (const grp of extrasByCat(exOfChoice())) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, o.staged.ex[e.id] || 0, 'staged', `data-eid="${esc(e.id)}"`)).join('')}</div>`;
       } else {
         const q = qtyOf(it.id), l = cart.lines().find((x) => x.key === it.id);
-        html += body(money(it.p));
+        const bp = q === 0 ? b3Of(it, o.staged.qty || 1) : null;   // 4 B3: the staged sheet of a provably offered dish
+        html += bp ? body(null, `<div class="detail-pricerow"><div class="detail-price">${bp.strike ? `${moneyC(bp.strike.pay)}<s class="was">${moneyC(bp.strike.was)}</s>` : money(it.p)}</div><span class="tag-offer-fill">${IC.tag}${esc(C.OFFER_COPY.bogo)}</span></div>`) : body(money(it.p));
         if (q > 0 && it.ex.length) for (let inst = 0; inst < q; inst++) {
           if (q > 1) html += `<div class="detail-pizza-header">${esc(unit[0][0].toUpperCase() + unit[0].slice(1))} ${inst + 1}</div>`;
           for (const grp of extrasByCat(it.ex)) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, (l && l.ex[inst] && l.ex[inst][e.id]) || 0, 'extra', `data-eid="${esc(e.id)}" data-inst="${inst}"`)).join('')}</div>`;
@@ -688,7 +697,7 @@
       if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (c && (soldOf(c.id) || soldOf(it.id))) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
       const q = qtyOf(it.id);
       if (isSold(it)) { const q0 = qtyOf(it.id); step.innerHTML = q0 > 0 ? stepper(q0, true, false) : stepper(o.staged.qty || 1, false, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }   // Codex perf-core r3 #1: + inert, − live
-      if (q === 0) { const n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); cta.innerHTML = label('Agregar', n * it.p); }
+      if (q === 0) { const n = o.staged.qty || 1, bp = b3Of(it, n); step.innerHTML = stepper(n, n > 1); cta.innerHTML = bp && bp.strike ? label('Agregar', bp.strike.pay / 100) : label('Agregar', n * it.p); }   // 4 B3: the button stays clean, at the pair price
       else { const lineSum = cart.groups().filter((g) => g.key === it.id).reduce((a, g) => a + g.total, 0); step.innerHTML = stepper(q, true); cta.innerHTML = label('Guardar', lineSum); }
     }
     function detailAct(t) {
