@@ -149,6 +149,42 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       ok('weeks show taken / mine (never another\'s id); a re-book ⇒ already_booked; a slot without its record is repaired idempotently');
     }
 
+    // ── 3b. the booking cap (owner 11-14, PLAN-3a-anuncio-cap r0): ≤ 2 booked weeks in any rolling 4-week window per branch; cancelled
+    //        bookings never count; decided inside ONE transaction on the branch's bookings (a race can't exceed it) ──
+    {
+      // the slot is ONE per week platform-wide, so each scenario runs on its own database
+      const WK = AM.bookableWeeks(BOOK_AT);                     // W0 = W2027-03-08 … W7
+      const okBook = async (db, tok, rid, week) => { const r = await book(db, tok, { rid, week }); assert.strictEqual(r.status, 200, `premise: ${rid} books ${week} (${JSON.stringify(r.body)})`); return r.body.booking; };
+      const sur = await world(); await eligible(sur, 'tb_sur');
+      await okBook(sur, `t-${OWNER}`, 'tb_sur', WK[0]); await okBook(sur, `t-${OWNER}`, 'tb_sur', WK[2]);
+      assert.strictEqual((await book(sur, `t-${OWNER}`, { rid: 'tb_sur', week: WK[3] })).body.error, 'cap_reached', 'W, W+2 booked ⇒ W+3 refused');
+      const db = await world(); await eligible(db, 'tb_centro');
+      await okBook(db, `t-${OWNER}`, 'tb_centro', WK[0]);
+      const b1 = await okBook(db, `t-${OWNER}`, 'tb_centro', WK[1]);   // consecutive weeks are allowed
+      assert.strictEqual((await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[4] })).status, 200, 'W, W+1 booked ⇒ W+4 OK');
+      ok('the window is exactly 4 weeks: W, W+2 ⇒ W+3 refused; W, W+1 (consecutive OK) ⇒ W+4 allowed');
+      const r2 = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[2] });
+      assert.deepStrictEqual([r2.status, r2.body], [409, { error: 'cap_reached', next_week: WK[5] }], 'a 3rd week inside the window ⇒ cap_reached + the next week within the cap');
+      assert.strictEqual(db.get(`anuncio_slots/${WK[2]}`) ?? null, null, 'a refusal leaves no slot');
+      assert.deepStrictEqual(Object.values(db.get('anuncio_bookings/tb_centro')).map((b) => b.week).sort(), [WK[0], WK[1], WK[4]], 'a refusal leaves no record');
+      ok('a 3rd week inside the window ⇒ 409 cap_reached with next_week; nothing written');
+      const wk = await weeks(db, `t-${OWNER}`, 'tb_centro');
+      assert.deepStrictEqual(wk.body.weeks.map((x) => x.state), ['mine', 'mine', 'capped', 'capped', 'mine', 'free', 'free', 'free'], 'getAnuncioWeeks marks the weeks the cap refuses «capped»');
+      ok('weeks: a free week the cap would refuse reads «capped»');
+      assert.strictEqual((await cancel(db, `t-${OWNER}`, { rid: 'tb_centro', booking_id: b1.id })).status, 200, 'premise: W+1 cancelled by the REAL cancel');
+      assert.strictEqual((await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[2] })).status, 200, 'a cancelled booking frees its count: W+2 now books');
+      ok('a cancelled booking never counts');
+      const zt = await world(); await eligible(zt, 'zt_uno');
+      await okBook(zt, `t-${OTHER}`, 'zt_uno', WK[0]);
+      const [ra, rb] = await Promise.all([book(zt, `t-${OTHER}`, { rid: 'zt_uno', week: WK[1] }), book(zt, `t-${OTHER}`, { rid: 'zt_uno', week: WK[2] })]);
+      assert.deepStrictEqual([ra.status, rb.status].sort(), [200, 409], `the race: two books at once can't exceed the cap (${JSON.stringify([ra.body, rb.body])})`);
+      const lost = ra.status === 409 ? [ra, WK[1]] : [rb, WK[2]];
+      assert.strictEqual(lost[0].body.error, 'cap_reached');
+      assert.strictEqual(Object.values(zt.get('anuncio_bookings/zt_uno')).filter((b) => b.state !== 'cancelled').length, 2, 'the node holds 2 live bookings');
+      assert.strictEqual(zt.get(`anuncio_slots/${lost[1]}`) ?? null, null, 'the refused book released the slot it wrote');
+      ok('the race: two simultaneous books ⇒ exactly one wins; the loser\'s slot is released');
+    }
+
     // ── 4. cancel: before / at / after the deadline; frees only its own slot ──
     {
       const db = await world();
