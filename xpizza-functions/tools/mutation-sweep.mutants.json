@@ -36710,5 +36710,41 @@
   "kills_with": [
    "🔴 DN-5: the H1 from the data"
   ]
+ },
+ {
+  "id": "vc-11",
+  "slice": "vclock",
+  "label": "a real-by-design name goes stale (its cell renamed) and VC-M still passes",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const REAL_BY_DESIGN = new Set([\n  'harness (2e",
+  "to": "const REAL_BY_DESIGN = new Set([\n  'harness (2f",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^VC-M",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a real-by-design name"
+  ]
+ },
+ {
+  "id": "vc-12",
+  "slice": "vclock",
+  "label": "a real-by-design paint-frame cell is ALSO listed VIRTUAL (it would silently run virtual)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.\n",
+  "to": "  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.\n  'harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load',\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^VC-M",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a real-by-design name"
+  ]
  }
 ]

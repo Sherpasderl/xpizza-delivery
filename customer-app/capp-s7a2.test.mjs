@@ -486,6 +486,69 @@ const VIRTUAL = new Set([
   'C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order',
   'C-6d order panel through the SHELL: a placed order\'s screen on the desk carries the desk order (the shell passes the view); the phone keeps its own',
   'phone house row: a sold house dish shows «Agotado» in the price slot with P\'s inert «+» (.sold-out), like the category rows; the add is refused; an available one is unchanged',
+  // chunk 6 (file order 232–288: C-2 ratings, C-5 help, S2 pay-adjust, C-1a, WAKE-6, RULE 10, G-B / G-C).
+  // NOT listed by design: the two paint-frame cells (266, 269) — see REAL_BY_DESIGN below.
+  'C-2 entry before delivery: a member\'s order that is NOT yet delivered has no rating entry and makes no rating read',
+  'C-2 entry (frame 9.2): a member\'s DELIVERED order screen reserves «Valorar tu pedido» while its rating is read (no reflow), then draws it; the sheet: «¿Cómo estuvo tu pedido?», the store, 5 stars + word, the PURCHASED dishes by name, «Tu repartidor de Sherpa», the comment, «Enviar» only once something is set',
+  'C-2 send: «Enviar» sends EXACTLY what was set (rateOrder v2) with the member\'s token; the sheet closes, the screen says «Ver tu calificación»; reopening shows it',
+  'C-2 Pedidos (frame 9.3): delivered rows inside the window read their rating — AT MOST 5 per view, ONE at a time, the line reserved — «Valorar» · «★ n tu calificación» · «Sin calificar»; older rows nothing; an EDIT from the row opens prefilled (getMyRating) and sends only the change',
+  'C-2 nudge: the delivered order THIS device placed opens the sheet ONCE on the next app open (at idle, over Inicio); «Ahora no» retires it for good; a rated order never nudges',
+  'C-2 gates: the flag OFF ⇒ no entry and ZERO rating reads; a GUEST\'s delivered order ⇒ no entry (no server path); the dish rows are ONLY the purchased ones (never the whole menu)',
+  'C-2 read-only + errors: past the window a rating is SHOWN, not editable («Cerrar», no «Enviar», controls off, no «Podés cambiarla»); a send the server answers window_closed keeps the sheet with its message',
+  'C-2 guests: a GUEST\'s delivered order has NO rating entry and makes ZERO rating reads (no guest server path)',
+  'C-2 the send diff (capp-rate): a first rating sends only what is set; an edit only what changed — `dishes` WHOLE (the writer replaces it), earlier votes the sheet could not show KEPT; a cleared thumb ⇒ null; the five words',
+  'C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the delivery thumbs exist only for a delivery)',
+  'C-5 sheet (frame 9.6): «Ayuda» on the order screen ⇒ «Ayuda con tu pedido», its order («Orden #N · store · llega …»), «Escribinos por WhatsApp» and the fine print — and NOTHING of tickets (no reasons, no «Otra cosa»)',
+  'C-5 link: «Escribinos por WhatsApp» opens wa.me to the CONFIGURED support number (never another) with «#N»; the sheet closes; scrim and Escape close it too',
+  'C-5 entries: the Pedidos active card\'s «Ayuda» opens the SAME sheet for its order; a past receipt\'s «Ayuda» too (no arrival line once done)',
+  'C-2 r2 server truth: a write whose dish votes the server could NOT keep (dishes:\'unavailable\') is DISCLOSED in the sheet, and the votes are not shown as saved — reopening shows the server\'s record',
+  'C-2 r2 Pedidos views: leaving and re-entering never runs two batches — ONE read at a time across views, no order read twice, ≤ 5 per view',
+  'C-2 r2 dish ids: the client\'s rule IS the server\'s (rating-v2.dishIdOk = identity-registry.validIdShape ∧ ¬RTDB_KEY_UNSAFE) — the same answer for every edge id; the RTDB rule\'s source byte-equal',
+  'C-2 r2 the fake is contract-strict (rule 29): a HANDHELD customer token and a TOMBSTONED caller get the generic 403; a tombstoned owner\'s node is never shown',
+  'C-2 r2 geometry: the reserved entry, «Valorar tu pedido» and «Ver tu calificación» have ONE height — whichever state lands, nothing moves',
+  'C-2 r2 re-read: after a write the sheet and the entry show the SERVER\'s record (another device\'s comment, written meanwhile, appears) — never the local guess',
+  'C-5 r2 help sheet: contained (the screen inert, Tab cycles inside) and EVERY close — scrim, Escape, the WhatsApp jump — gives focus back to «Ayuda»',
+  'C-5 r2 rating sheet: contained too, and «Ahora no» / Escape / «Enviar» give focus back to its entry',
+  'S2 shell · guest: the projection streams beside order_tracking (its own node); A + the Pago block in place; C read-only (no grant ⇒ no calls); an older seq never replaces a newer view; the view is never persisted',
+  'S2 shell · dark: runtime.sdkPay absent ⇒ no projection stream, no notice, today\'s Pago rows',
+  'S2 shell · member, the production path (no injected payFetch): getPayAdjust and respondPayAdjust go through SherpaClient.fetch (pselfupdate-wrapper-lint)',
+  'S2 shell · member: C anchors its countdown on the GET\'s server_now (Bearer); «Aceptar» POSTs {order_id, adjustment_id, accept} ⇒ the reply\'s view (E with the well); the stream\'s accepted ⇒ D',
+  'S2 shell · member: «Más información» opens B over C and «Entendido» returns to C; G\'s «Mantener mi pedido» calls nothing and lands on F',
+  'S2 shell · Codex r1 P1: the order cancelled under an open consent sheet ⇒ the sheet closes (no «Aceptar nuevo total» over «Pedido cancelado»)',
+  'S2 shell · Codex r1 #2: a new adjustment never inherits the previous one\'s (expired) anchor — B with a failed GET still shows C with its buttons',
+  'S2 shell · Codex r1 #3: a stale reply (an older seq) brings no timing — the countdown keeps the installed view\'s anchor',
+  'S2 shell · Codex r1 #4: §1.4 re-anchor — a stream reconnect and the app becoming visible each GET again; a failed first GET is recovered',
+  'S2 shell · Codex r1 #5: a pending consent that arrived while away is shown on ENTERING the order screen',
+  'S2 shell · Codex r1 #7: C\'s «Mantener mi pedido» is submitted as accept:false',
+  'S2 shell · Codex r1 #5: a pending consent that arrived under another sheet (Ayuda) opens C when that sheet closes',
+  'S2 shell · Codex r1 #3 (GET): a stale GET reply (an older seq) brings no timing either',
+  'S2 shell · Codex r2 #1: a newer adjustment arriving while the older one\'s GET is in flight is refreshed once that GET ends (never left unanchored)',
+  'S2 shell · Codex r2 #3: resuming the order screen with the stream alive GETs again and re-anchors (§1.4)',
+  'S2-checkout 8 (v7): an order placed with the in-app card shows its card in «Pago y entrega» — «Pago · Visa ···· 4242», the Total, «Se cobra al recibir tu pedido.» — before any adjustment projection exists',
+  'S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart with «1 plato ya no está disponible»',
+  'C-1a premise: the real chain publishes x_pizza «4.8 (10)» and la_musa NEW (2 ratings, first served 10 days ago); the body carries the real directory-2 schema',
+  'C-1a T1 (frame 9.1 phone + 9.4): «★ 4,8 (10)» is the FIRST store fact and the FIRST item of an open home card\'s meta, then «·»',
+  'C-1a T1 desk (frame 9.1 desktop): the rating is the first desk fact',
+  'C-1a T2 (frame 9.1 phone right): below 10 ratings within 60 days of first serving ⇒ «Nuevo en Sherpa», no number; after 60 days ⇒ nothing at all',
+  'C-1a T3 (no pop-in): Home visible with a stored body WITHOUT ratings → the revalidation brings ratings ⇒ the visible cards are unchanged; the next Home entry adopts them',
+  'C-1a T5: a degraded / absent `ratings` (null) ⇒ no rating, no pill; the list renders and enters as today',
+  'C-1a T6 share (frame 9.1): Web Share with the store\'s URL; no Web Share ⇒ the clipboard + «Enlace copiado»; neither ⇒ no share button',
+  'C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s heart opens the sign-in (ctx favorites), no request; a member\'s heart slot is RESERVED (hidden) until C-1b; unresolved ⇒ reserved',
+  'C-1a T4 (advisor 11-13): the store\'s rating is FIXED per mount — a directory revalidation that lands DURING the store visit changes nothing; the next mount adopts it',
+  'WAKE-6: a cold boot (the directory still loading) is NOT ready; the live list painted ⇒ READY; a stored list ⇒ READY at the first paint',
+  'WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ READY (the overlay never hides the error)',
+  'D1 (C-6b desk, 16b): the open card meta on the desk = «Abierto · Envío desde L 45» (no «cierra»); the phone unchanged',
+  'G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» after the lines; a tap opens the checkout with its notes field OPEN and focused; the phone sheet and an empty aside carry none',
+  'RULE 10: what the pinned directory writer emits TODAY (a promo without the pricing marker) ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them',
+  'RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself',
+  'G-C1 (f1a): the desk guest\'s filter row — Abierto ahora · Pickup · Menos de 30 min · «Envío desde L 45» (the lowest priced fee); the phone keeps v6\'s three',
+  'G-C2: the fee chip is COMPUTED — the lowest priced fee labels it, and pressing it keeps only the stores at that floor; no priced fee ⇒ no chip',
+]);
+// the cells that stay on the REAL clock by design (advisor 11-13): they prove the harness's paint frames themselves — 266 that a
+// frame the shell requests lands before a 0 ms timer, 269 the app under jsdom's own timer-driven frames. VC-M names them.
+const REAL_BY_DESIGN = new Set([
+  'harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load',
+  'harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven requestAnimationFrame, the home list paints and a tap opens the store — awaited on the paint itself (a MutationObserver), never a sleep',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
 // a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
@@ -4136,7 +4199,7 @@ function ratingServer({ now = () => T0, delay = 5 } = {}) {
   async function handler(u, i = {}) {
     const url = new URL(u, 'https://fn.test'), pth = url.pathname, method = i.method || 'GET';
     calls.push({ path: pth.split('/').pop(), url: url.toString(), method, headers: i.headers || {}, body: i.body == null ? null : JSON.parse(i.body) });
-    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => setTimeout(r, delay)); rx.inflight--;
+    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => (VC ? VC.setTimeout : setTimeout)(r, delay)); rx.inflight--;
     const uid = uidOf((i.headers || {})['x-firebase-id-token']);
     if (pth.endsWith('/getMyRating')) {
       if (method !== 'GET') return out(405, { ok: false, error: 'method_not_allowed' });
@@ -5142,6 +5205,7 @@ test('VC-M every name in the VIRTUAL migration list is a cell of this file (exac
   const names = [...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'/gm)].map((m) => m[1].replace(/\\(.)/g, '$1'));
   const missing = [...VIRTUAL].filter((n) => names.filter((x) => x === n).length !== 1);
   assert.deepEqual(missing, [], '🔴 VC-M: a VIRTUAL name that is not exactly one cell');
+  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => names.filter((x) => x === n).length !== 1 || VIRTUAL.has(n)), [], '🔴 VC-M: a real-by-design name that is not exactly one cell, or is also listed VIRTUAL');
   assert.ok(VIRTUAL.size >= 46, 'premise: chunk 1 listed');
   // every listed cell that boots the shell (directly or through a helper) DID boot on the virtual clock this run
   const bodies = new Map([...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'([\s\S]*?)(?=^(?:test\(|function |async function |const |let |\/\/)|(?![\s\S]))/gm)].map((m) => [m[1].replace(/\\(.)/g, '$1'), m[2]]));   // a body ends at the next TOP-LEVEL statement
