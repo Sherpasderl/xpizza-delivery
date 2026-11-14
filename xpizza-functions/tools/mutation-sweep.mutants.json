@@ -28443,7 +28443,9 @@
   ],
   "kills_with": [
    "S4-row10: «Reintentar» stays enabled"
-  ]
+  ],
+  "equivalent": true,
+  "why": "vclock step-8b F-2 (advisor 11-14, analysed): gateCtx().anySlot is read only by missingStep (capp-checkout.js:171) via need(), and with a slot lock held no need() reader decides an outcome — ctaLabel returns «Reintentar» before need() (capp-ui.js:945-946); ctaOff ignores need() under the lock (:956); the CTA tap under the lock sends the replay directly (:1859), so enterTip/placeTap are never reached from it (:1860); the tip step is reachable only through :1860 (a forward history move is ignored :1801, backTo walks back :1542), so tip-place/tipReady (:1867/:1276) never run under the lock; the lock is member-only (lockedBody :838-839), so the guest paths (placeNow :1328 via OTP :1428, guest-card :1912) never hold it; err-card (:1917/:1920) and contextRestored (:1724) follow a payment_failed return, which releases the record first (capp-api.js:399; a non-clearable one shows the pending sheet, no err-card :1722); sdkPlaceIfReady (:2071) follows an SDK switch, and under a base lock the tender is fixed (:1180, :1847) and the tap replays the base body (:1859), so no SDK flow runs. Kept as defence-in-depth (hasSlotLock() is the ONE predicate every consumer reads, :844)."
  },
  {
   "id": "s4-28",

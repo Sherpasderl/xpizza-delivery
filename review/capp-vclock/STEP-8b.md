@@ -45,3 +45,16 @@
 - **After the cell fix:** the full file 252/0, 40 s; 20× the cell 20/20.
 - **5× synthetic load:** deferred (the quiet box).
 - **Guards:** mutation-anchors, sweep-baseline, firestore-config-isolation, capp-guards 7/0 and test-clock 9/0 are all green.
+
+## 6. F-2 resolved: s4-27 is EQUIVALENT (advisor 11-14: «ANALYSE first, then act»)
+- `gateCtx().anySlot` has exactly one reader: `missingStep` (capp-checkout.js:171), through `need()`.
+- With a slot lock held, no `need()` reader decides an outcome. Each guard below pre-empts it (capp-ui.js unless named):
+  - **The CTA label:** «Reintentar» is returned before `need()` (:945–946).
+  - **ctaOff:** it ignores `need()` under the lock (:956).
+  - **The CTA tap:** under the lock it sends the replay directly (:1859), so `enterTip` / `placeTap` are never reached from it (:1860).
+  - **The tip step:** it is reachable only through :1860. A forward history move is ignored (:1801) and `backTo` walks back (:1542), so `tip-place` / `tipReady` (:1867 / :1276) never run under the lock.
+  - **The guest paths** (`placeNow` :1328 via the code :1428; `guest-card` :1912): the lock is member-only (`lockedBody` :838–839).
+  - **`err-card`** (:1917 / :1920) and **`contextRestored`** (:1724): both follow a `payment_failed` return, which releases the record first (capp-api.js:399). A non-clearable return shows the pending sheet, which has no `err-card` (:1722).
+  - **`sdkPlaceIfReady`** (:2071): it follows an SDK switch. Under a base lock the tender is fixed (:1180, :1847) and the tap replays the base body (:1859), so no SDK flow runs.
+- **Catalogue:** s4-27 now has `equivalent: true` with this proof. The sweep reports it as EQUIVALENT; the anchors, baseline and isolation guards are green.
+- **Proposal: KEEP the term** as defence-in-depth (rt-05 precedent; :844 says «hasSlotLock() is the ONE predicate every consumer reads»). Deleting it changes a production gate for no behaviour change, and it would silently become load-bearing again if a future path reads `need()` under a lock.
