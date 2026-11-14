@@ -91,7 +91,7 @@ async function resolveDishes(deps, value) {
 // THE live judgement — ONE rule, used by the cheap pre-check AND inside the per-branch transaction: this offer against one branch's
 // CURRENT live set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids)
 function liveJudgement(offerId, value, live) {
-  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r));
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r) && r.removed !== true);   // a TOMBSTONE is never live
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesOf(value));
   if (!mine.size) return null;
@@ -150,31 +150,43 @@ async function casWrite(db, path, expectedRev, decide) {
 async function mirrorActive(db, brandId, offerId, rec, prevBranches = []) {
   const value = OM.authoredOf(rec, opts);
   const proj = OM.liveProjection(rec, brandId);
-  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid))))) return UNAVAILABLE();
+  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid)), null, rec.rev))) return UNAVAILABLE();
   const done = [];
   for (const rid of rec.branches) {
     let last = null;
     let tx;
     try {
       tx = await db.ref(livePath(rid)).transaction((cur) => {
-        const d = { verdict: null };
+        const d = { verdict: null, stale: false };
         last = d;
+        // THE FENCE (Codex 5f-price r1 P1-2): an entry at a HIGHER rev — a pause / end tombstone, or a later activation — owns this
+        // branch; this mirror is stale (its record was superseded after its CAS) and never writes
+        const ex = isObj(cur) ? cur[offerId] : null;
+        if (isObj(ex) && Number.isSafeInteger(ex.rev) && ex.rev > proj.rev) { d.stale = true; return undefined; }
         const v = liveJudgement(offerId, value, cur);
         if (v) { d.verdict = v; return undefined; }
         return { ...(isObj(cur) ? cur : {}), [offerId]: proj };
       });
     } catch (_) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
+    if (last && last.stale) continue;   // a newer write owns this branch's entry: nothing to mirror (and nothing to undo)
     if (last && last.verdict) { await unmirror(db, offerId, done, rec.rev); return judgementReply(last.verdict, rid); }
     if (!tx || !tx.committed) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
     done.push(rid);
   }
   return null;
 }
-// remove this offer's entry on each branch (when `rev` is given: only an entry still at that rev — never a newer write's) → ok
-async function unmirror(db, offerId, rids, rev = null) {
+// remove this offer's entry on each branch (when `rev` is given: only an entry still at that rev — never a newer write's). With `tomb`
+// (the rev the removing write's record CAS will carry) the entry becomes a TOMBSTONE { removed: true, rev: tomb } instead — the fence
+// a late, stale activation mirror (a lower rev) can never overwrite, while a genuine later activation (a higher rev) can; an entry
+// already at a higher rev is left alone. → ok
+async function unmirror(db, offerId, rids, rev = null, tomb = null) {
   try {
     for (const rid of rids) {
       await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
+        if (tomb !== null) {
+          if (cur === null) return { removed: true, rev: tomb };   // null-first: commits only if the server is null too
+          return isObj(cur) && Number.isSafeInteger(cur.rev) && cur.rev > tomb ? undefined : { removed: true, rev: tomb };
+        }
         if (cur === null) return null;   // the null-first pass: commits only if the server is null too, else re-runs on the entry
         return rev === null || (isObj(cur) && cur.rev === rev) ? null : undefined;
       });
@@ -187,7 +199,7 @@ async function unmirror(db, offerId, rids, rev = null) {
 // record is active with no mirror — never applied by the price path; the read reports live_drift).
 async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
   const prevBranches = isObj(before) && Array.isArray(before.branches) ? before.branches : [];
-  if (rec.state !== 'active') return (await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])])) ? null : UNAVAILABLE();
+  if (rec.state !== 'active') return (await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])], null, rec.rev)) ? null : UNAVAILABLE();
   const refused = await mirrorActive(db, brandId, offerId, rec, prevBranches);
   if (!refused) return null;
   if (refused.status !== 409) return refused;
@@ -240,7 +252,7 @@ async function getMarketingCore(deps, req) {
     .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.branches.includes(rid))
     .map(([id, rec]) => {
       const m = isObj(live) ? live[id] : undefined;
-      const drift = rec.state === 'active' ? !(isObj(m) && m.rev === rec.rev) : m !== undefined && m !== null;
+      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;   // a tombstone is «not live»
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
     .sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
@@ -347,7 +359,7 @@ async function marketingOfferSetStateCore(deps, req) {
   // PAUSE / END (advisor 11-14, 5f's price-plan review): the price path loses the offer BEFORE its record says so. A failed removal is
   // a 503 with the record unchanged (still active, still applied — consistent); never a paused / ended record whose mirror still prices.
   // A lost CAS after the removal leaves an active record with no mirror: never applied, reported as live_drift, healed by the next write.
-  if (body.to !== 'active' && MOVES[pre.state].includes(body.to) && !(await unmirror(db, body.offer_id, value.branches))) return UNAVAILABLE();
+  if (body.to !== 'active' && MOVES[pre.state].includes(body.to) && !(await unmirror(db, body.offer_id, value.branches, null, pre.rev + 1))) return UNAVAILABLE();   // a TOMBSTONE at the rev this CAS will write (the fence)
   const w = await casWrite(db, path, body.expected_rev, (cur, d) => {
     if (cur === null) { d.why = 'not_found'; return undefined; }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }

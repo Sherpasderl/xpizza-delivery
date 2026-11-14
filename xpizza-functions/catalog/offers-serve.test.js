@@ -209,7 +209,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const first = await served(fs, db, { memo, sw });
       assert.strictEqual(first.body.offers.length, 1, 'premise: served');
       assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: id, to: 'paused_owner', expected_rev: 2 }))).status, 200);
-      assert.strictEqual(db.get(`marketing_live/${RID}/${id}`) ?? null, null, 'paused ⇒ the PRICE PATH\'s mirror has no entry: never priced');
+      { const e = db.get(`marketing_live/${RID}/${id}`) ?? null; assert.ok(e === null || e.removed === true, `paused ⇒ the PRICE PATH's mirror holds no priceable entry (absent or the pause's TOMBSTONE): never priced (${JSON.stringify(e)})`); }
       const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => NOW + 5 * 1000 } }));   // inside the switch TTL (this cell is the DATA memo's staleness)
       assert.strictEqual(within.body.offers.length, 1, 'within the 60 s memo the menu may still show it — the accepted staleness (the quote refuses)');
       const after = await served(fs, db, { memo, sw, at: NOW + 61 * 1000 });

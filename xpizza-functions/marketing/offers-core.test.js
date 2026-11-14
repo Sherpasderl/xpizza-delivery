@@ -25,8 +25,10 @@ const versionMenu = (rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) 
 let n = 0; let FINISHED = false;
 const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  ✗ offers-core: exited without completing (a hang)\n'); process.exitCode = 1; } });
-// the mirror entries present (RTDB prunes empty parents; the in-memory fake keeps them — count leaves, never compare the parent)
-const mirrored = (fake) => Object.entries(fake.get('marketing_live') || {}).flatMap(([rid, m]) => Object.keys(m || {}).map((id) => `${rid}/${id}`));
+// the LIVE (priceable) mirror entries (RTDB prunes empty parents; the in-memory fake keeps them — count leaves, never compare the parent).
+// A pause / end leaves a TOMBSTONE { removed, rev } (the P1-2 fence): never live, so never counted here — `tombs` lists them.
+const mirrored = (fake) => Object.entries(fake.get('marketing_live') || {}).flatMap(([rid, m]) => Object.entries(m || {}).filter(([, e]) => !(e && e.removed === true)).map(([id]) => `${rid}/${id}`));
+const tombs = (fake) => Object.entries(fake.get('marketing_live') || {}).flatMap(([rid, m]) => Object.entries(m || {}).filter(([, e]) => e && e.removed === true).map(([id]) => `${rid}/${id}`));
 const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
 
 // production transaction semantics over the shared fake (see header)
@@ -365,6 +367,50 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([r.status, r.body.error], [409, 'superseded'], 'a concurrent commit ⇒ superseded, never a blind overwrite');
       assert.deepStrictEqual(mirrored(fake), [], 'nothing mirrored on a lost CAS');
       ok('CAS: a concurrent commit between read and write is superseded');
+    }
+
+    // ── Codex (5f price path) r1 P1-2: a LATE activation mirror never resurrects a paused offer — the TOMBSTONE fence ──
+    {
+      const { fake, db, deps } = await setup();
+      const o = await published(deps);
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: o.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused (rev 3)');
+      // Codex's interleaving: the RESUME's record CAS lands (rev 4, active); before its mirror transaction runs, a PAUSE runs to the end
+      // (unmirror → CAS rev 5 → settle); then the resume's (now stale) mirror transaction runs
+      let paused = null; let armed = true;
+      const lateDb = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === 'marketing_live/tb_centro') return { ...r, transaction: async (fn) => { armed = false; paused = await move(deps, `t-${OWNER}`, { offer_id: o.id, to: 'paused_owner', expected_rev: 4 }); return r.transaction(fn); } };
+        return r; } };
+      const resumed = await move({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: o.id, to: 'active', expected_rev: 3 });
+      assert.deepStrictEqual([resumed.status, paused && paused.status], [200, 200], `premise: the resume and the pause both answer 200 (${JSON.stringify([resumed.body, paused && paused.body])})`);
+      const rec = fake.get(`marketing_offers/tb/${o.id}`);
+      assert.deepStrictEqual([rec.state, rec.rev], ['paused_owner', 5], 'premise: the record ends paused at rev 5');
+      const entry = fake.get(`marketing_live/tb_centro/${o.id}`);
+      assert.ok(entry === null || entry === undefined || entry.removed === true, `a LATE activation mirror never resurrects a paused offer (live: ${JSON.stringify(entry)})`);
+      assert.strictEqual(require('../catalog/offers-serve').publicOffer(entry, NOW + 2 * DAY), null, 'the public read never serves it');
+      ok('Codex P1-2: resume 200 + pause 200 interleaved ⇒ the paused offer is never live again (the tombstone blocks the late mirror)');
+      // a GENUINE later resume (a higher rev) re-mirrors over the tombstone
+      const again = await move(deps, `t-${OWNER}`, { offer_id: o.id, to: 'active', expected_rev: 5 });
+      assert.strictEqual(again.status, 200, 'a genuine resume');
+      const e2 = fake.get(`marketing_live/tb_centro/${o.id}`);
+      assert.ok(e2 && e2.removed !== true && e2.rev === 6, `a higher rev re-mirrors over the tombstone (${JSON.stringify(e2)})`);
+      ok('a genuine later resume (a higher rev) re-mirrors over the tombstone');
+      // readers skip a tombstone: it never counts as live (overlap, MAX_LIVE)
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: o.id, to: 'paused_owner', expected_rev: 6 })).status, 200, 'premise: paused again (a tombstone at rev 7)');
+      assert.strictEqual(fake.get(`marketing_live/tb_centro/${o.id}`).removed, true, 'premise: the pause left a tombstone');
+      const twin = await published(deps, { name: 'Otra 2x1 clásicas' });   // the SAME dish and schedule as the paused offer
+      assert.strictEqual(twin.state, 'active', 'a tombstone never counts as live: an offer on the same dish publishes (no overlap)');
+      // MAX_LIVE: ten paused offers leave ten tombstones on the branch — an eleventh offer still publishes (a tombstone never counts)
+      {
+        const { fake: f2, deps: d2 } = await setup();
+        for (let i = 0; i < OM.LIMITS.live_max; i++) {
+          const x = await published(d2, { name: `Pct ${i}`, type: 'pct', params: { pct: 10 } });
+          assert.strictEqual((await move(d2, `t-${OWNER}`, { offer_id: x.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused');
+        }
+        assert.strictEqual(tombs(f2).length, OM.LIMITS.live_max, `premise: ${OM.LIMITS.live_max} tombstones on the branch`);
+        const eleventh = await move(d2, `t-${OWNER}`, { offer_id: (await created(d2, { name: 'Pct 11', type: 'pct', params: { pct: 10 } })).id, to: 'active', expected_rev: 1 });
+        assert.strictEqual(eleventh.status, 200, `a tombstone never counts toward MAX_LIVE: the eleventh publishes (${JSON.stringify(eleventh.body)})`);
+      }
+      ok('readers skip a tombstone: it never clashes and never counts toward MAX_LIVE');
     }
 
     FINISHED = true;
