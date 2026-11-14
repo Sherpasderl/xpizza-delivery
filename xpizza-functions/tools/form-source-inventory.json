@@ -2863,6 +2863,7 @@
   "marketing/functions.js",
   "marketing/offer-model.js",
   "marketing/offer-price.js",
+  "marketing/offer-rules.js",
   "marketing/offer-usage.js",
   "marketing/offer-wire.js",
   "marketing/offers-core.js",
@@ -7019,6 +7020,12 @@
    "lifts": []
   },
   "marketing/offer-price.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/marketing/offer-rules-sync.guard.test.js"
+   ]
+  },
+  "marketing/offer-rules.js": {
    "pins": [],
    "lifts": []
   },

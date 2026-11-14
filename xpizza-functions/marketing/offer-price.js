@@ -16,12 +16,11 @@
 //   The mirror outlives an offer's end (no job removes it): the schedule is evaluated HERE, in HN (UTC−6, no DST).
 // Brand-agnostic: no rid / brand literal. No PII.
 const OM = require('./offer-model');
+const OR = require('./offer-rules');   // the ONE offer rules, shared with the capp (bogoSaving, inWindow)
 const { computeServerTotal, resolvePriceTables, itemPricingKey, keyModeOfTables } = require('../menu-pricing');
 const { isServerDeliveryCtx } = require('../delivery/delivery-pricing');
 
 const L = 100;   // one lempira in centavos
-const DAY_MS = 86400000;
-const HN_OFFSET_MS = 6 * 3600000;
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const whole = (v, lo = 1) => Number.isSafeInteger(v) && v >= lo && v <= OM.LIMITS.cents_max && v % L === 0;   // whole lempiras (Q1b)
 const floorL = (cents) => Math.floor(cents / L) * L;
@@ -60,13 +59,9 @@ function entryOf(id, e) {
   return { id, rev: e.rev, type: e.type, name: e.name, audience: e.audience, params, caps, schedule: { start, end, days: s.days, window } };
 }
 
-// Is the offer live at `nowMs` (HN)? start ≤ now < end, and the HN minute-of-week inside one of its weekly intervals.
+// Is the offer live at `nowMs` (HN)? The ONE in-window rule, shared with the capp (marketing/offer-rules.js inWindow).
 function liveAt(c, nowMs) {
-  if (nowMs < c.schedule.start || (c.schedule.end !== null && nowMs >= c.schedule.end)) return false;
-  const local = nowMs - HN_OFFSET_MS;
-  const minuteOfDay = Math.floor((((local % DAY_MS) + DAY_MS) % DAY_MS) / 60000);
-  const m = OM.hnDow(nowMs) * 1440 + minuteOfDay;
-  return OM.weeklyIntervals(c.schedule).some(([a, b]) => m >= a && m < b);
+  return OR.inWindow(c.schedule, nowMs);
 }
 
 // The cart's eligible dish units for a bogo: each line priced by computeServerTotal ITSELF (its sum must equal the base total, else
@@ -96,8 +91,7 @@ function savingOf(c, f) {
   else if (c.type === 'bogo') {
     const units = f.units();
     if (!units) return null;
-    const el = units.filter((u) => c.params.items.has(u.key)).map((u) => u.unit).sort((a, b) => b - a);
-    for (let i = 1, k = 0; i < el.length && k < c.params.free_per_order; i += 2, k += 1) d += el[i];
+    d = OR.bogoSaving(units.filter((u) => c.params.items.has(u.key)).map((u) => u.unit), c.params.free_per_order);   // the ONE pairing rule (offer-rules.js)
   } else if (c.type === 'envio') {
     const ctx = f.delivery;
     if (ctx && ctx.mode === 'delivery' && Number.isSafeInteger(ctx.delivery_cents) && ctx.delivery_cents > 0 && ctx.promo_discount_cents === 0 && f.food >= c.params.min_cents) w = ctx.delivery_cents;
