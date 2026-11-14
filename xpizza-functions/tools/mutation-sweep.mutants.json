@@ -36100,5 +36100,92 @@
   "kills_with": [
    "r2 S2"
   ]
+ },
+ {
+  "id": "c1bp-01",
+  "slice": "c1b",
+  "label": "a «Para vos» card keeps the home card meta (closing time + fee) — C1b-P2, 16b",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : ` · cierra",
+  "to": "<b>Abierto</b>${false ? '' : ` · cierra",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P2"
+  ]
+ },
+ {
+  "id": "c1bp-02",
+  "slice": "c1b",
+  "label": "the phone «Para vos» header has no «›» — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "<button class=\"nxt\" data-act=\"rownext\" aria-label=\"Ver más de Para vos\">${IC.chev}</button>",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: the header «›»"
+  ]
+ },
+ {
+  "id": "c1bp-03",
+  "slice": "c1b",
+  "label": "the desk «Para vos» is not paged (every card in the grid) — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "${pv.slice(pvPg * PAGE, pvPg * PAGE + PAGE).map(",
+  "to": "${pv.map(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: the first page = 4 cards",
+   "C1B-P3: the desk's first page = 4 cards"
+  ]
+ },
+ {
+  "id": "c1bp-04",
+  "slice": "c1b",
+  "label": "the desk «Para vos» arrows never shown — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "pvPages > 1 ? arrowsD('pv-prev'",
+  "to": "false ? arrowsD('pv-prev'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: ‹ disabled, › live on the first page",
+   "C1B-P3: › shows the next page"
+  ]
+ },
+ {
+  "id": "c1bp-05",
+  "slice": "c1b",
+  "label": "the «Para vos» page survives into the next Inicio visit — C1b-P3",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "pvVisit = null; S.pvPage = 0; }",
+  "to": "pvVisit = null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: a new Inicio visit starts at the first page"
+  ]
  }
 ]

@@ -678,13 +678,13 @@
     }
     function vm() {
       const v = dir.view();
-      if (S.tab !== 'home') { homeSeen = null; pvVisit = null; } else if (!homeSeen) homeSeen = new Map();
+      if (S.tab !== 'home') { homeSeen = null; pvVisit = null; S.pvPage = 0; } else if (!homeSeen) homeSeen = new Map();   // C1b-P3: the «Para vos» page is per visit too
       const rows = S.heldErr ? [] : v.rows.map((r) => {
         const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid, ...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {}) };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
         schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
@@ -1601,6 +1601,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); S.featPage = 0; return renderNow(); }
       // C-6b: the desktop Inicio rows — «Destacados» paged by 4, «Ver todo» → «Todos los restaurantes», ‹ on the dish rows
       if (a === 'feat-prev' || a === 'feat-next') { S.featPage = Math.max(0, (S.featPage || 0) + (a === 'feat-next' ? 1 : -1)); return renderNow(); }
+      if (a === 'pv-prev' || a === 'pv-next') { S.pvPage = Math.max(0, (S.pvPage || 0) + (a === 'pv-next' ? 1 : -1)); return renderNow(); }   // C1b-P3 (the home clamps)
       if (a === 'seeall') { const el = app.querySelector('section[aria-label="Todos los restaurantes"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
       if (a === 'rowprev') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: -Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }

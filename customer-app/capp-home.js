@@ -251,7 +251,8 @@
 
   // ── INICIO ──
   // C-1b (D-3 r3 9.4): a «Para vos» card adds the heart at the photo's top-right (filled = saved; a tap toggles IN PLACE — its own
-  // data-act, so the delegated click finds it before the card) and, for a recent order, «Pediste el 28 oct» after the meta. The heart
+  // data-act, so the delegated click finds it before the card) and, for a recent order, «Pediste el 28 oct» after the meta. Its meta is
+  // 9.4's ONE line «[★ rating ·] ● Abierto [· Pediste el …]» — no closing time, no fee (C1b-P2, 16b; advisor 11-14: both layouts). The heart
   // is a span: the card itself is the store's button (a nested button is invalid); the store page's heart is the keyboard path
   const HEART = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z"/></svg>';
   function rcardHtml(r, vm, pv) {
@@ -265,7 +266,7 @@
     return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heart}
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b> · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}${again}</span>`
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${pv ? '' : ` · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}`}${again}</span>`
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -355,8 +356,11 @@
     // (vm.paraVos, the shell's per-visit list); before «Destacados»: the desk's 4-card grid, the phone's row of 300 px cards
     const pv = Array.isArray(vm.paraVos) ? vm.paraVos.filter((x) => x && x.r) : [];
     const pvCards = pv.map((x) => rcardHtml(x.r, vm, x)).join('');
-    const pvPhone = pv.length ? `<section class="hsec paravos" aria-label="Para vos"><div class="hd"><div><h2>Para vos</h2><p>Tus favoritos y los que ya pediste</p></div></div><div class="hrow pvrow">${pvCards}</div></section>` : '';
-    const pvDesk = pv.length ? `<section class="hsec paravos" aria-label="Para vos">${hdD('Para vos', 'Tus favoritos y los que ya pediste')}<div class="rgrid rgrid4">${pvCards}</div></section>` : '';
+    const pvPhone = pv.length ? `<section class="hsec paravos" aria-label="Para vos"><div class="hd"><div><h2>Para vos</h2><p>Tus favoritos y los que ya pediste</p></div><button class="nxt" data-act="rownext" aria-label="Ver más de Para vos">${IC.chev}</button></div><div class="hrow pvrow">${pvCards}</div></section>` : '';
+    // C1b-P3 (advisor 11-14): the desk pages 4 at a time with ‹ › exactly like «Destacados» (only past 4; the shell resets the page per
+    // Inicio visit); no «Ver todo» until a destination is designed. The phone row scrolls instead (its «›»)
+    const pvPages = Math.max(1, Math.ceil(pv.length / PAGE)), pvPg = Math.min(Math.max(vm.pvPage | 0, 0), pvPages - 1);
+    const pvDesk = pv.length ? `<section class="hsec paravos" aria-label="Para vos">${hdD('Para vos', 'Tus favoritos y los que ya pediste', pvPages > 1 ? arrowsD('pv-prev', 'pv-next', pvPg === 0, pvPg >= pvPages - 1, 'Para vos') : '')}<div class="rgrid rgrid4">${pv.slice(pvPg * PAGE, pvPg * PAGE + PAGE).map((x) => rcardHtml(x.r, vm, x)).join('')}</div></section>` : '';
     const rows = vis.length ? (vm.desk ? pvDesk + rowsDesk : pvPhone + rowsPhone) : (vm.desk ? rowsDesk : rowsPhone);
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }

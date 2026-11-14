@@ -39,7 +39,7 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
   const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
-  assert.equal(digest, '115f98189d64c572ba996d56c2bae0827f81e0a4de54fd65a88e6195f6381a14', '🔴 the fixture contents are the pinned generation');
+  assert.equal(digest, 'df09576342a0aa0fe0d2bbd591630e265bcfdf89366388cf4f4ec6a424446621', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -2328,7 +2328,7 @@ async function pedidosBoot(db, opts = {}) {
     if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb, g };
 }
@@ -5029,5 +5029,65 @@ test('Codex r2: a read racing a write — the read updates CONFIRMED for the unt
     assert.equal(heartOf(S, 'x_pizza'), true, '🔴 r2 race: x_pizza keeps the pending wish (its write is in flight)');
     heldW[0](); await flush(); await flush();
     assert.deepEqual([...(bookOf(st) || [])].sort(), ['la_musa', 'x_pizza'], '🔴 r2 race: both confirmed and persisted');
+  } finally { S.w.close(); }
+});
+
+// ── C1b-P2 / P3 (the functional SBS 11-14, CLASSIFICATION-fx.md; advisor: exact to D-3 r3 9.4): a «Para vos» card's meta is ONE line
+// «[★ rating ·] ● Abierto [· Pediste el …]» — no closing time, no fee (16b: it wrapped with a dangling «·» on both layouts); the phone
+// header carries the row's «›» like every other phone row. The other rows' cards are unchanged ──
+const pvVm = (desk) => { const rows = rowsOf(SC.complete.body), x = rows.find((r) => r.rid === 'x_pizza'), l = rows.find((r) => r.rid === 'la_musa');
+  return VM({ desk, auth: 'member', rows, paraVos: [{ r: CappHome.storeOf(x), fav: true, again: '11 nov' }, { r: CappHome.storeOf(l), fav: true, again: null }] }); };
+test('C1b-P2 (9.4, 16b): a «Para vos» card\'s meta = «● Abierto · Pediste el …» — no closing time, no fee — on the phone and the desk; the other rows keep theirs', () => {
+  for (const desk of [false, true]) {
+    const d = dom(CappHome.homeHtml(pvVm(desk))), pv = d.querySelector('.hsec[aria-label="Para vos"]');
+    assert.ok(pv, 'premise: the row');
+    const metas = [...pv.querySelectorAll('.rcard')].map((c) => [c.dataset.rid, txt(c.querySelector('.meta'))]);
+    assert.deepEqual(metas, [['x_pizza', 'Abierto · Pediste el 11 nov'], ['la_musa', 'Abierto']], `🔴 C1B-P2: 9.4's one line (${desk ? 'desk' : 'phone'})`);
+    const other = [...d.querySelectorAll('.hsec:not(.paravos) .rcard[data-rid="x_pizza"] .meta')].map(txt);
+    assert.ok(other.length && other.every((t) => /cierra/.test(t)), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
+  }
+});
+test('C1b-P3 (9.4): the PHONE «Para vos» header carries the row\'s «›» (rownext — the same control as every phone row)', () => {
+  const pv = dom(CappHome.homeHtml(pvVm(false))).querySelector('.hsec[aria-label="Para vos"]');
+  const b = pv && pv.querySelector('.hd > button.nxt[data-act="rownext"]');
+  assert.ok(b, '🔴 C1B-P3: the header «›»');
+  assert.equal(b.getAttribute('aria-label'), 'Ver más de Para vos', 'the row label, as the other rows');
+  assert.ok(pv.querySelector('.hrow'), 'premise: the row it scrolls');
+});
+
+// C1b-P3 (advisor 11-14): the DESK «Para vos» pages 4 at a time with ‹ ›, exactly like «Destacados» (shown only past 4 stores, reset per
+// Inicio visit); NO «Ver todo» (no destination is designed — a link to the wrong list would mislead). The phone row scrolls (its «›»).
+// The five stores: the directory writer's five_stores scenario (gen-directory.mjs: three DECLARED fake stores beside the two)
+test('C1b-P3 (9.4 desk): «Para vos» past 4 stores pages 4 at a time — ‹ › like «Destacados» (prev disabled on the first page, next on the last; clamped), no «Ver todo»; ≤ 4 ⇒ no arrows; the phone is never paged', () => {
+  const rows = rowsOf(SC.five_stores.body), pv = rows.map((r) => ({ r: CappHome.storeOf(r), fav: true, again: null })), ids = rows.map((r) => r.rid);
+  assert.equal(ids.length, 5, 'premise: the writer\'s five stores');
+  const at = (over) => dom(CappHome.homeHtml(VM({ desk: true, auth: 'member', rows, paraVos: pv, ...over }))).querySelector('.hsec[aria-label="Para vos"]');
+  const state = (sec) => ({ cards: [...sec.querySelectorAll('.rcard')].map((c) => c.dataset.rid), prev: sec.querySelector('.hd [data-act="pv-prev"]'), next: sec.querySelector('.hd [data-act="pv-next"]') });
+  const p0 = state(at({}));
+  assert.deepEqual(p0.cards, ids.slice(0, 4), '🔴 C1B-P3: the first page = 4 cards');
+  assert.ok(p0.prev && p0.prev.disabled && p0.next && !p0.next.disabled, '🔴 C1B-P3: ‹ disabled, › live on the first page');
+  assert.equal(p0.prev.getAttribute('aria-label'), 'Anterior · Para vos', 'the arrows\' labels, as «Destacados»');
+  const p1 = state(at({ pvPage: 1 }));
+  assert.deepEqual(p1.cards, ids.slice(4), '🔴 C1B-P3: the second page');
+  assert.ok(!p1.prev.disabled && p1.next.disabled, '🔴 C1B-P3: › disabled on the last page');
+  assert.deepEqual(state(at({ pvPage: 9 })).cards, ids.slice(4), 'clamped to the last page');
+  assert.equal(at({}).querySelector('.hd [data-act="seeall"]'), null, '🔴 C1B-P3: no «Ver todo» on «Para vos»');
+  const two = state(at({ paraVos: pv.slice(0, 2) }));
+  assert.ok(!two.prev && !two.next && two.cards.length === 2, '≤ 4 stores ⇒ no arrows');
+  const ph = dom(CappHome.homeHtml(VM({ desk: false, auth: 'member', rows, paraVos: pv, pvPage: 1 }))).querySelector('.hsec[aria-label="Para vos"]');
+  assert.deepEqual([...ph.querySelectorAll('.rcard')].map((c) => c.dataset.rid), ids, 'the phone: every card in its scrolling row (never paged)');
+});
+test('C1b-P3 (shell): a desk member taps › ⇒ the next «Para vos» page; the next Inicio entry starts again at the first page', async () => {
+  const rids = rowsOf(SC.five_stores.body).map((r) => r.rid);
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: rids, recent: [] }));
+  const { S } = await pedidosBoot({}, { fav: favServer({ favs: rids }), storage: st, dirScript: ['five_stores'], media: fakeMedia(true) });
+  try {
+    const cards = () => [...S.qa('.hsec[aria-label="Para vos"] .rcard')].map((c) => c.dataset.rid);
+    await flush(); await reEnterHome(S); await until(() => PV(S)); await flush();   // the row is decided at a visit's first paint (rule 7): the next entry
+    assert.deepEqual(cards(), rids.slice(0, 4), '🔴 C1B-P3: the desk\'s first page = 4 cards (the cached book)');
+    S.click('.hsec[aria-label="Para vos"] [data-act="pv-next"]'); await flush();
+    assert.deepEqual(cards(), rids.slice(4), '🔴 C1B-P3: › shows the next page');
+    await reEnterHome(S); await until(() => PV(S)); await flush();
+    assert.deepEqual(cards(), rids.slice(0, 4), '🔴 C1B-P3: a new Inicio visit starts at the first page');
   } finally { S.w.close(); }
 });
