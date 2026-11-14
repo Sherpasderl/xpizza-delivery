@@ -2783,6 +2783,7 @@
   "compute-server-net.js",
   "create-order-build.js",
   "createorder-classify.js",
+  "customer-push.js",
   "delivery/delivery-pricing.js",
   "delivery/delivery-wire.js",
   "delivery/limits.js",
@@ -3971,6 +3972,10 @@
    "lifts": [
     "xpizza-functions/secfp-wiring.guard.test.js"
    ]
+  },
+  "customer-push.js": {
+   "pins": [],
+   "lifts": []
   },
   "delivery/delivery-pricing.js": {
    "pins": [

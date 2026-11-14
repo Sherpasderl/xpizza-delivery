@@ -51,7 +51,7 @@
   },
   "sendSites": 24,
   "fieldsWritten": 119,
-  "opaqueWrites": 26,
+  "opaqueWrites": 25,
   "opaque": 152,
   "projections": 153,
   "sentinel": 38,
@@ -6598,7 +6598,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#0",
-   "line": 90,
+   "line": 95,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6611,7 +6611,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#1",
-   "line": 91,
+   "line": 96,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6624,7 +6624,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#2",
-   "line": 93,
+   "line": 98,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6637,7 +6637,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#3",
-   "line": 93,
+   "line": 98,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6650,7 +6650,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#4",
-   "line": 96,
+   "line": 101,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -55470,7 +55470,7 @@
    "file": "xpizza-functions/customer-push.js",
    "fn": "exactKeys",
    "base": "o",
-   "line": 38,
+   "line": 42,
    "how": "Object.keys",
    "rule": "server-reader:customer-push.js",
    "r": "R17"
@@ -58462,7 +58462,7 @@
   },
   {
    "key": "xpizza-functions/customer-push.js:makeCustomerPush>anon:Date.now()",
-   "line": 74,
+   "line": 79,
    "class": "business-sample"
   },
   {
@@ -61314,14 +61314,6 @@
    "how": "unmodelled-member-base",
    "line": 100,
    "detail": "ds(id).pairs",
-   "resolved": []
-  },
-  {
-   "file": "xpizza-functions/customer-push.js",
-   "fn": "writePrefs",
-   "how": "dynamic-root-path",
-   "line": 99,
-   "detail": "*/*",
    "resolved": []
   },
   {

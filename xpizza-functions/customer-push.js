@@ -6,15 +6,18 @@
 //   POST unregisterCustomerPushToken { token }                                                         → 200 { ok }   (idempotent)
 //   POST setCustomerPushPrefs        { pedidos, promociones }                                          → 200 { ok, prefs }
 //   GET  getCustomerPushPrefs                                         → 200 { ok, prefs | null, limits } (marketing/push-policy)
-//   all → 400 bad_request | 401 unauthenticated | 403 deleted | 405 | 409 promos_consent_required | 429 rate_limited | 503 unavailable
+//   all → 400 bad_request | 401 unauthenticated | 403 deleted | 405 | 429 rate_limited | 503 unavailable
 // STORAGE, server-only (rules .read/.write false):
 //   customer_push_tokens/{sha256(token)} = { uid, token, platform, app_build, at, claim }   ONE record per token (every change is ONE
 //     transaction on ONE path — the merchant H1c model); a person's devices = orderByChild('uid').equalTo(uid) (.indexOn uid), ≤ DEVICE_MAX
 //     (the oldest `at` evicted). A token registered by another uid MOVES (a uid switch / a shared phone): it belongs to the signed-in person.
 //     `claim` is new per registration (never reused), so a late cleanup of an OLD registration (an FCM prune, an eviction) never removes
 //     a newer one (compare-and-clear).
-//   customer_push_prefs/{uid} = { pedidos, promociones, at }   ONCE per person (the sender reads it per uid). promociones = true needs the
-//     PLATFORM promos consent (user_private/{uid}/consent/_platform/promos.value === true — signup-core's writer).
+//   customer_push_prefs/{uid} = { pedidos, promociones, at, offers_consent }   ONCE per person (the sender reads it per uid).
+//     Owner ruling 11-14: the «Ofertas de Sherpa» push switch IS the consent — per CHANNEL. promociones needs NO email / WhatsApp promos
+//     consent; each change of it writes offers_consent = { channel: 'push', value, copy_version: PUSH_OFFERS_COPY_VERSION, at } (on =
+//     the consent given, off = its withdrawal; a pedidos-only change leaves the record as it was). The sender gates offer pushes on
+//     pushOffersConsented(prefs) — THIS record, never the email / WhatsApp consent. Account deletion clears the node.
 // DELETION: account deletion + the 180-day sweep remove every token + the prefs IN the same atomic update (account-lib
 //   accountDeleteUpdates, push hashes read by pushHashesOf); a register racing a deletion re-checks the tombstones AFTER its write and
 //   clears its own claim; the sender (5f) also refuses a tombstoned uid. An FCM terminal error ⇒ pruneCustomerToken(hash, claim).
@@ -22,9 +25,10 @@
 const crypto = require('crypto');
 const MA = require('./member-auth');
 const PP = require('./marketing/push-policy');
-const { PLATFORM_SCOPE } = require('./signup-core');
 
 const DEVICE_MAX = 10;
+// the version of the «Ofertas de Sherpa» switch's sub-line copy the person saw (capp's copy; bumped with it — pinned in the contract)
+const PUSH_OFFERS_COPY_VERSION = 'push-offers-1';
 const TOKENS = 'customer_push_tokens';
 const PREFS = 'customer_push_prefs';
 const PLATFORMS = Object.freeze(['ios', 'android']);
@@ -60,9 +64,10 @@ async function pruneCustomerToken(db, hash, claim) {
   return removed;
 }
 
-async function promosConsented(db, uid) {
-  const v = (await db.ref(`user_private/${uid}/consent/${PLATFORM_SCOPE}/promos/value`).once('value')).val();
-  return v === true;
+// THE sender's gate for an offer push (5f's sender): the person's PUSH-channel consent is given — never the email / WhatsApp consent
+function pushOffersConsented(prefs) {
+  const c = isObj(prefs) ? prefs.offers_consent : null;
+  return isObj(prefs) && prefs.promociones === true && isObj(c) && c.channel === 'push' && c.value === true;
 }
 
 const hasBody = (req) => {
@@ -96,7 +101,12 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
       return res.status(503).json({ ok: false, reason: 'unavailable', retryable: true });
     }
   };
-  const writePrefs = (db, uid, p, t) => db.ref(`${PREFS}/${uid}`).set({ pedidos: p.pedidos, promociones: p.promociones, at: t });
+  // ONE transaction on the person's prefs: the consent record is rewritten only when promociones CHANGES (given / withdrawn)
+  const writePrefs = (db, uid, p, t) => db.ref(`${PREFS}/${uid}`).transaction((cur) => {
+    const prev = isObj(cur) && isObj(cur.offers_consent) && cur.offers_consent.channel === 'push' ? cur.offers_consent : null;
+    const consent = prev && prev.value === p.promociones ? prev : { channel: 'push', value: p.promociones, copy_version: PUSH_OFFERS_COPY_VERSION, at: t };
+    return { pedidos: p.pedidos, promociones: p.promociones, at: t, offers_consent: consent };
+  });
 
   const registerCustomerPushToken = handle('registerCustomerPushToken', 'POST', async (req, res) => {
     const b = req.body;
@@ -105,7 +115,6 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
     const a = await admit(req, res, 'push_register', RATE_WRITE);
     if (!a.uid) return a;
     const { db, uid } = a;
-    if (b.promociones && !(await promosConsented(db, uid))) return { status: 409, body: { ok: false, reason: 'promos_consent_required' } };
     const t = now();
     const hash = hashOf(b.token);
     let claim = null;
@@ -145,7 +154,6 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
     if (!exactKeys(b, ['pedidos', 'promociones']) || typeof b.pedidos !== 'boolean' || typeof b.promociones !== 'boolean') return BAD;
     const a = await admit(req, res, 'push_prefs', RATE_WRITE);
     if (!a.uid) return a;
-    if (b.promociones && !(await promosConsented(a.db, a.uid))) return { status: 409, body: { ok: false, reason: 'promos_consent_required' } };
     const prefs = { pedidos: b.pedidos, promociones: b.promociones };
     await writePrefs(a.db, a.uid, prefs, now());
     return { status: 200, body: { ok: true, prefs } };
@@ -162,4 +170,4 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
   return { registerCustomerPushToken, unregisterCustomerPushToken, setCustomerPushPrefs, getCustomerPushPrefs };
 }
 
-module.exports = { makeCustomerPush, pushHashesOf, pruneCustomerToken, hashOf, DEVICE_MAX, TOKENS, PREFS, RATE_WRITE, RATE_READ };
+module.exports = { makeCustomerPush, pushHashesOf, pruneCustomerToken, pushOffersConsented, PUSH_OFFERS_COPY_VERSION, hashOf, DEVICE_MAX, TOKENS, PREFS, RATE_WRITE, RATE_READ };

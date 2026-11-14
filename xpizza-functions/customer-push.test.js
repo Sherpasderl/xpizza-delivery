@@ -69,7 +69,7 @@ const DEV = (i) => `fcm_device_${String(i).padStart(2, '0')}_` + 'x'.repeat(40);
       const rec = w.db.get(`${CP.TOKENS}/${h}`);
       assert.deepStrictEqual(Object.keys(rec).sort(), ['app_build', 'at', 'claim', 'platform', 'token', 'uid'], 'the record: uid, token, platform, app_build, at, claim');
       assert.deepStrictEqual([rec.uid, rec.token, rec.platform, rec.app_build, rec.at], [A, DEV(1), 'android', '1.4.0', CLOCK]);
-      assert.deepStrictEqual(w.db.get(`${CP.PREFS}/${A}`), { pedidos: true, promociones: false, at: CLOCK }, 'the prefs, once per person');
+      assert.deepStrictEqual(w.db.get(`${CP.PREFS}/${A}`), { pedidos: true, promociones: false, at: CLOCK, offers_consent: { channel: 'push', value: false, copy_version: CP.PUSH_OFFERS_COPY_VERSION, at: CLOCK } }, 'the prefs, once per person (push offers OFF recorded as not given)');
       assert.ok(!JSON.stringify(r.body).includes(DEV(1)) && !JSON.stringify(r.body).includes(h.slice(0, 8)), 'the response never carries the token or its hash');
       assert.deepStrictEqual(w.rl.map((x) => `${x.bucket}:${x.key}`), [`push_register:${A}`], 'rate-limited by the VERIFIED uid, an explicit policy');
       ok('register: one sha256-keyed record { uid, token, platform, app_build, at, claim }; prefs once per person; no token / hash in the response');
@@ -96,20 +96,35 @@ const DEV = (i) => `fcm_device_${String(i).padStart(2, '0')}_` + 'x'.repeat(40);
       ok(`the cap: ${CP.DEVICE_MAX} devices per person, the oldest evicted`);
     }
 
-    // ── 4. promociones needs the PLATFORM promos consent (the REAL signup writer) — refused before ANY write ──
+    // ── 4. owner ruling 11-14: the «Ofertas de Sherpa» push switch IS the consent (per channel). Turning it on needs NO email / WhatsApp
+    //       promos consent and WRITES a push-offers consent record; turning it off records the withdrawal; the email consent never moves it ──
     {
       const w = world();
       const r = await w.register(A, DEV(1), { promociones: true });
-      assert.deepStrictEqual([r.code, r.body.reason], [409, 'promos_consent_required'], 'no consent ⇒ 409 promos_consent_required');
-      assert.deepStrictEqual([w.db.get(CP.TOKENS) ?? null, w.db.get(CP.PREFS) ?? null], [null, null], 'refused before ANY write (no token, no prefs)');
-      assert.deepStrictEqual((await S.completeProfile(w.db, { uid: A, rid: S.PLATFORM_SCOPE, email: 'ana@gmail.com', acceptTerms: true, promos: false, now: 5 })).ok, true, 'premise: the real platform profile (promos OFF)');
-      assert.strictEqual((await w.register(A, DEV(1), { promociones: true })).code, 409, 'consent recorded as OFF ⇒ still 409');
-      assert.strictEqual((await w.setPrefs(A, { pedidos: true, promociones: true })).body.reason, 'promos_consent_required', 'setPrefs: the same rule');
-      assert.deepStrictEqual((await S.setPromos(w.db, { uid: A, rid: S.PLATFORM_SCOPE, value: true, now: 6 })).ok, true, 'premise: the REAL writer turns platform promos ON');
-      assert.deepStrictEqual((await w.register(A, DEV(1), { promociones: true })).body, { ok: true, prefs: { pedidos: true, promociones: true } }, 'with consent ⇒ registered with promociones');
-      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: false, promociones: true })).body, { ok: true, prefs: { pedidos: false, promociones: true } }, 'setPrefs with consent');
-      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: false })).body, { ok: true, prefs: { pedidos: true, promociones: false } }, 'turning promos OFF never needs consent');
-      ok('promociones requires the platform promos consent (the REAL writer): 409 promos_consent_required before any write; OFF always allowed');
+      assert.deepStrictEqual([r.code, r.body], [200, { ok: true, prefs: { pedidos: true, promociones: true } }], `push offers ON with NO email/WhatsApp consent ⇒ 200 (${JSON.stringify(r.body)})`);
+      const c1 = w.db.get(`${CP.PREFS}/${A}/offers_consent`);
+      assert.deepStrictEqual(c1, { channel: 'push', value: true, copy_version: CP.PUSH_OFFERS_COPY_VERSION, at: CLOCK }, 'the push-offers consent record is written (channel, the switch copy version, when)');
+      assert.strictEqual(CP.pushOffersConsented(w.db.get(`${CP.PREFS}/${A}`)), true, 'the sender\'s gate reads THIS consent ⇒ yes');
+      ok('push offers ON needs no email/WhatsApp consent: 200 + a push-offers consent record { channel: push, copy_version, at }');
+      // the email promos consent ON then OFF (the REAL signup writer) never moves the push one
+      assert.deepStrictEqual((await S.completeProfile(w.db, { uid: A, rid: S.PLATFORM_SCOPE, email: 'ana@gmail.com', acceptTerms: true, promos: true, now: 5 })).ok, true, 'premise: email promos ON');
+      assert.deepStrictEqual((await S.setPromos(w.db, { uid: A, rid: S.PLATFORM_SCOPE, value: false, now: 6 })).ok, true, 'premise: email promos OFF');
+      assert.deepStrictEqual([(await w.getPrefs(A)).body.prefs, CP.pushOffersConsented(w.db.get(`${CP.PREFS}/${A}`))], [{ pedidos: true, promociones: true }, true], 'email promos OFF does NOT turn push offers off');
+      // turning push offers OFF records the withdrawal; an unrelated prefs write keeps the consent's own time
+      CLOCK += 1000;
+      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: false })).body, { ok: true, prefs: { pedidos: true, promociones: false } });
+      assert.deepStrictEqual(w.db.get(`${CP.PREFS}/${A}/offers_consent`), { channel: 'push', value: false, copy_version: CP.PUSH_OFFERS_COPY_VERSION, at: CLOCK }, 'turning it OFF records the withdrawal (value false, when)');
+      assert.strictEqual(CP.pushOffersConsented(w.db.get(`${CP.PREFS}/${A}`)), false, 'the sender\'s gate ⇒ no');
+      const tOff = CLOCK; CLOCK += 1000;
+      await w.setPrefs(A, { pedidos: false, promociones: false });
+      assert.strictEqual(w.db.get(`${CP.PREFS}/${A}/offers_consent/at`), tOff, 'a pedidos-only change keeps the consent record as it was');
+      ok('email promos OFF never turns push offers off; push offers OFF records the withdrawal; a pedidos-only change keeps the record');
+      // the sender's gate reads ONLY the push consent: email promos ON with push offers OFF ⇒ no push offer
+      assert.deepStrictEqual((await S.setPromos(w.db, { uid: A, rid: S.PLATFORM_SCOPE, value: true, now: 7 })).ok, true, 'premise: email promos ON again');
+      assert.strictEqual(CP.pushOffersConsented(w.db.get(`${CP.PREFS}/${A}`)), false, 'email promos ON never lets an offer push through while push offers are OFF');
+      assert.strictEqual(CP.pushOffersConsented(null), false, 'no prefs ⇒ no');
+      assert.strictEqual(CP.pushOffersConsented({ pedidos: true, promociones: true }), false, 'a prefs node without the consent record ⇒ no (never inferred)');
+      ok('the sender\'s gate (pushOffersConsented) reads ONLY the push-channel consent record');
     }
 
     // ── 5. unregister: compare-and-clear on the caller's uid; idempotent ──
