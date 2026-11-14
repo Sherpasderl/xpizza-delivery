@@ -41,17 +41,20 @@ function nameOf(v) {
 }
 
 function paramsOf(type, p, stored = false) {
-  const c = (v) => isInt(v, 0, LIMITS.cents_max);
+  // EVERY money field (advisor 11-14, 5f's price-plan review): whole lempiras (a multiple of 100 centavos), positive; an absent field
+  // means «none» — never a 0 sentinel on a money field
+  const c = (v) => isInt(v, 100, LIMITS.cents_max) && v % 100 === 0;
   if (type === 'pct') {
     if (!exactKeys(p, ['pct'], ['max_cents'])) return null;
     if (!isInt(p.pct, LIMITS.pct_min, LIMITS.pct_max) || p.pct % LIMITS.pct_step !== 0) return null;
-    const max = nul(p.max_cents) === null ? 0 : p.max_cents;
-    return c(max) ? { pct: p.pct, max_cents: max } : null;
+    const max = nul(p.max_cents);   // absent / null = no maximum
+    if (max !== null && !c(max)) return null;
+    return { pct: p.pct, ...(max !== null ? { max_cents: max } : {}) };
   }
   if (type === 'lps') {
     if (!exactKeys(p, ['off_cents', 'min_cents'])) return null;
     // a lempira discount can never exceed the order it applies to: min ≥ off (never a money decision — a typo guard)
-    return c(p.off_cents) && p.off_cents > 0 && c(p.min_cents) && p.min_cents >= p.off_cents ? { off_cents: p.off_cents, min_cents: p.min_cents } : null;
+    return c(p.off_cents) && c(p.min_cents) && p.min_cents >= p.off_cents ? { off_cents: p.off_cents, min_cents: p.min_cents } : null;
   }
   if (type === 'bogo') {
     // AUTHORED (the builder): items XOR cats. STORED: a category offer also carries `items`, its dishes RESOLVED from each branch's
@@ -72,13 +75,14 @@ function paramsOf(type, p, stored = false) {
   }
   if (type === 'envio') {
     if (!exactKeys(p, [], ['min_cents'])) return null;
-    const min = nul(p.min_cents) === null ? 0 : p.min_cents;
-    return c(min) ? { min_cents: min } : null;
+    const min = nul(p.min_cents);   // absent / null = no minimum order
+    if (min !== null && !c(min)) return null;
+    return min !== null ? { min_cents: min } : {};
   }
   if (type === 'nuevos') {
     const hasOff = isObj(p) && 'off_cents' in p, hasPct = isObj(p) && 'pct' in p;
     if (hasOff === hasPct || !exactKeys(p, [], ['off_cents', 'pct'])) return null;
-    if (hasOff) return c(p.off_cents) && p.off_cents > 0 ? { off_cents: p.off_cents } : null;
+    if (hasOff) return c(p.off_cents) ? { off_cents: p.off_cents } : null;
     return isInt(p.pct, LIMITS.pct_min, LIMITS.pct_max) && p.pct % LIMITS.pct_step === 0 ? { pct: p.pct } : null;
   }
   return null;
@@ -104,7 +108,7 @@ function capsOf(c) {
   if (!exactKeys(c, ['weekly'], ['redemptions', 'spend_cents']) || typeof c.weekly !== 'boolean') return null;
   const r = nul(c.redemptions), s = nul(c.spend_cents);
   if (r !== null && !isInt(r, 1, 1e6)) return null;
-  if (s !== null && !isInt(s, 1, LIMITS.cents_max)) return null;
+  if (s !== null && !(isInt(s, 100, LIMITS.cents_max) && s % 100 === 0)) return null;   // the spend cap: whole lempiras too
   return { redemptions: r, spend_cents: s, weekly: c.weekly };
 }
 

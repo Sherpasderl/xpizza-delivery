@@ -344,6 +344,10 @@ async function marketingOfferSetStateCore(deps, req) {
     const live = await liveProblem(deps, body.offer_id, value);
     if (live) return live;
   }
+  // PAUSE / END (advisor 11-14, 5f's price-plan review): the price path loses the offer BEFORE its record says so. A failed removal is
+  // a 503 with the record unchanged (still active, still applied — consistent); never a paused / ended record whose mirror still prices.
+  // A lost CAS after the removal leaves an active record with no mirror: never applied, reported as live_drift, healed by the next write.
+  if (body.to !== 'active' && MOVES[pre.state].includes(body.to) && !(await unmirror(db, body.offer_id, value.branches))) return UNAVAILABLE();
   const w = await casWrite(db, path, body.expected_rev, (cur, d) => {
     if (cur === null) { d.why = 'not_found'; return undefined; }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
