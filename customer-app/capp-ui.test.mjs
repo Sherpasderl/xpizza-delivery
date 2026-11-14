@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
+import { createClock } from './test-clock.mjs';
 import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
 
 const require = createRequire(import.meta.url);
@@ -1012,7 +1013,10 @@ test('S2b r2: the pin toast lives the prototype\'s 2.2 s (P toast() :1377) and i
   assert.ok(!b.q('#toast').classList.contains('on'), '🔴 no toast over the open sheet');
 });
 
-const popped = async () => { await new Promise((r) => setTimeout(r, 30)); await settle(); };   // jsdom fires popstate from a timer task
+// jsdom delivers a history traversal and its popstate on its own real 0 ms tasks: the virtual clock's drain() yields to them until
+// QUIET (two empty rounds, so a skipped popstate ends too) — never a fixed sleep that races them (PLAN-capp-virtual-clock step 8)
+const POP = createClock(0);
+const popped = async () => { await POP.drain(); await settle(); };
 test('S2b r2: device back (history) — tip → «Entrega & Pago» → the cart → the menu; the tip «←» walks the same history', async () => {
   const b = bootCo(); const H = b.w.history;
   b.ui.cart.inc(b.plain.key); b.ui.render();
