@@ -182,6 +182,11 @@ export async function resetDraftToLive({ rid, expectedRevision, token }) {
 export async function getSalesStats({ rid, from, to, granularity, compare, token, assertLive }) {
   return apiFetch('getSalesStats', { rid, token, assertLive, params: { from, to, granularity, compare } });
 }
+// S2 (5f, PLAN-portal-inicio-server-r0): several branches merged ON THE SERVER — «Todas las sucursales». The ids travel as ONE
+// `restaurantIds` param (2..20, each authorized there); `restaurantId` never rides with it. JSON only; no `customers` in this form.
+export async function getSalesStatsMulti({ rids, from, to, granularity, compare, token, assertLive }) {
+  return apiFetch('getSalesStats', { token, assertLive, params: { restaurantIds: rids.join(','), from, to, granularity, compare } });
+}
 
 // ── P-1 «Calificaciones» — the anonymous rating comments (S-A(d) getMerchantRatingComments) ──────────────
 // → { ok, comments: [{ comment, store }], cursor }. The rid travels as `rid` in params, NEVER through the

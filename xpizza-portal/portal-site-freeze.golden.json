@@ -62,6 +62,9 @@
   "gate-early.js",
   "hotfix-1112-fold.mjs",
   "index.html",
+  "inicio-logic.js",
+  "inicio.js",
+  "inicio.test.mjs",
   "invite-mail.js",
   "item-edit-drawer.test.mjs",
   "item-edit-logic.js",
@@ -161,8 +164,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "7f23149d76ce6e9c750c4ac6fa1e1d88cbe91459871b4b2a5dae88d78dba35d5",
-   "bytes": 14615
+   "sha256": "a4770d5d1a7b8b95d857aaa3650b021ccbd47b48e53a84b60551431eead54b2f",
+   "bytes": 14941
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -189,8 +192,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "a91d323fe7f1cc0cb71476358c3d9b976d17fb757ea1c5cef062f8cbf6ed7fc0",
-   "bytes": 159862
+   "sha256": "fc56e784a411ad46839e1835befbd09e15933c39e9f9b6b8712d56abf6e6b4b7",
+   "bytes": 166167
   }
  },
  "diff_aid": {
@@ -2106,6 +2109,156 @@
     ".idesc",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-act",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-act",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".inicio .in-dot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-fig .in-fl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-fig .in-fs",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".inicio .in-figs",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-ico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-ico",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-lede",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-menu button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-menu button",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-menu button:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".inicio .in-ok span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-ok",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-okico",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".inicio .in-okico",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".inicio .in-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".inicio .in-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-pill.dd:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".inicio .in-quick",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".inicio .in-quick",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".inicio .in-quick:hover",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".inicio .in-row .in-rt .in-when",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".inicio .in-sect .in-cnt",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

@@ -64,6 +64,7 @@
       <div class="switchmenu hidden" id="scopemenu" role="listbox"></div>
       <p class="scopenote hidden" id="scopenote" role="status" aria-live="polite"></p>
     </div>
+    <button class="nav hidden" id="navinicio" type="button"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</button>
     <div class="nlabel" id="navmenulabel">Menú</div>
     <button class="nav on" id="navprod" type="button" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</button>
     <!-- PORTAL-UI 1a: Operación (shell.js shows these only to a holder of the location capabilities) -->
@@ -93,6 +94,7 @@
 
   <!-- mobile (≤920px, where the sidebar is hidden): the Productos/Ventas pair, shown to owners only -->
   <nav class="mnav" id="mnav" aria-label="Secciones">
+    <button class="mn hidden" id="mninicio" type="button">Inicio</button>
     <button class="mn on" id="mnprod" type="button" aria-current="page">Productos</button>
     <button class="mn hidden" id="mnsuc" type="button">Sucursales</button>
     <button class="mn hidden" id="mnequipos" type="button">Equipos</button>
@@ -136,6 +138,7 @@
   <main class="main vmain hidden" id="viewventas" aria-labelledby="vtitle"></main>
 
   <!-- PORTAL-UI 1a: Sucursales (list + detail, with «Pausar pedidos» on each branch's page), built by branches-view.js -->
+  <main class="main ops hidden" id="viewinicio" aria-label="Inicio"></main>
   <main class="main ops hidden" id="viewsuc" aria-label="Sucursales"></main>
   <!-- PORTAL-UI slice 2: Equipos (handhelds), built by equipos.js -->
   <main class="main ops hidden" id="viewequipos" aria-label="Equipos"></main>

@@ -1779,3 +1779,64 @@
     .envio .mfoot{flex-direction:column-reverse}
     .envio .mfoot .btn{justify-content:center;min-height:46px}
   }
+
+  /* ═══ INICIO (PLAN-portal-inicio-r0): EXACT to MOCKUP-portal-map.html v3 s-inicio / s-inicio-ok — the frame's .top / .filt / .vpre /
+     .menu / .kfigs / .home2 / .sect / .rvrow / .rico / .qact / .qarow / .okcard declarations, desktop then ≤ 920 px, under the home's own
+     in-* names (the colour grammar refuses a class crossing two ancestor chains: .kfig / .qact / .lede / .vpre already live elsewhere) ═══ */
+  .inicio h1{font-family:var(--disp);font-size:34px;font-weight:750;letter-spacing:-.035em;line-height:1.08}
+  .inicio .in-lede{color:var(--mute);font-size:14px;margin-top:8px;max-width:54ch;line-height:1.5;text-wrap:pretty}
+  .inicio .in-filt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:20px;min-width:0}
+  .inicio .in-pill{padding:8px 14px;border-radius:999px;font-size:12.5px;cursor:pointer;min-height:40px;background:var(--board-2);color:var(--ink);border:1px solid transparent;font-weight:600;font-family:inherit;line-height:1.3}
+  .inicio .in-pill.one{display:inline-flex;align-items:center;cursor:default}
+  .inicio .in-pill.dd{display:inline-flex;align-items:center;gap:8px;padding:8px 12px 8px 14px;white-space:nowrap}
+  .inicio .in-pill.dd svg{width:14px;height:14px;stroke:var(--mute);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .inicio .in-pill.dd:hover{border-color:var(--line)}
+  .inicio .in-kebab{position:relative}
+  .inicio .in-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:20;min-width:220px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+  .inicio .in-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);border-radius:8px;cursor:pointer;text-align:left}
+  .inicio .in-menu button:hover{background:var(--board-2)}
+  .in-pill.dd,.in-opt,.in-act,.in-quick{cursor:pointer}   /* the four clickables, single compounds (portal-wiring's pointer guard) */
+  .inicio .in-opt{font-family:inherit}
+  .inicio .in-dot{width:6px;height:6px;border-radius:50%;background:var(--ink);margin-left:auto;flex:none}   /* the chosen option's dot (the mockup's ::after, as an element: colour sites stay plain classes) */
+  .inicio .in-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 24px;margin-top:22px}
+  .inicio .in-figs{padding:18px 22px;background:var(--board-2);border-radius:16px}
+  .inicio .in-fig{min-width:0}
+  .inicio .in-fig .in-fl{font-size:12.5px;color:var(--mute);line-height:1.4;text-wrap:balance}
+  .inicio .in-fig .in-fn{font-family:var(--disp);font-size:26px;font-weight:750;letter-spacing:-.03em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .inicio .in-fig .in-fs{font-size:12px;color:var(--mute2);margin-top:5px;line-height:1.4}
+  .inicio .in-two{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:8px 48px;margin-top:6px}
+  .inicio .in-sect{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:34px}
+  .inicio .in-sect h2{font-family:var(--disp);font-size:18px;font-weight:750;letter-spacing:-.025em;line-height:1.3}
+  .inicio .in-sect .in-cnt{font-size:13px;color:var(--mute2)}
+  .inicio .in-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line2)}
+  .inicio .in-row .in-rt{font-size:14px;line-height:1.45;text-wrap:pretty}
+  .inicio .in-row .in-rt .in-when{color:var(--mute)}
+  .inicio .in-ico{width:30px;height:30px;border-radius:50%;background:var(--board-2);color:var(--mute);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .inicio .in-ico svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .inicio .in-act{background:none;border:none;font:inherit;font-size:13.5px;font-weight:650;color:var(--accent);cursor:pointer;padding:6px 0;white-space:nowrap;text-decoration:underline;text-underline-offset:3px;text-decoration-color:transparent;transition:text-decoration-color .15s}
+  .inicio .in-act:hover{text-decoration-color:currentColor}
+  .inicio .in-act:disabled{opacity:.5;cursor:default}
+  .inicio .in-quick{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:13px 0;border:none;border-bottom:1px solid var(--line2);background:none;font:inherit;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left}
+  .inicio .in-quick:hover{color:var(--accent)}
+  .inicio .in-quick svg{width:16px;height:16px;stroke:var(--mute2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .inicio .in-ok{margin-top:12px;padding:20px 22px;background:var(--board-2);border-radius:16px;display:flex;gap:14px;align-items:center}
+  .inicio .in-okico{width:36px;height:36px;border-radius:50%;background:var(--card);color:var(--mint-text);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .inicio .in-okico svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .inicio .in-ok b{display:block;font-family:var(--disp);font-size:16px;font-weight:750;letter-spacing:-.02em}
+  .inicio .in-ok span{display:block;font-size:13px;color:var(--mute);margin-top:2px;line-height:1.45}
+  .inicio .in-err{margin-top:12px}
+  @media(max-width:920px){
+    .inicio h1{font-size:26px}
+    .inicio .in-top{flex-wrap:wrap}
+    .inicio .in-figs{grid-template-columns:1fr;gap:0;margin-top:14px}
+    .inicio .in-figs{padding:6px 16px}
+    .inicio .in-fig{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:11px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+    .inicio .in-fig:first-child{border-top:none}
+    .inicio .in-fig .in-fl{flex:1 1 auto}
+    .inicio .in-fig .in-fn{font-size:20px;margin-top:0}
+    .inicio .in-fig .in-fs{flex-basis:100%;margin-top:0}
+    .inicio .in-sect{margin-top:28px}
+    .inicio .in-two{grid-template-columns:1fr;gap:0}
+    .inicio .in-row{grid-template-columns:30px minmax(0,1fr);gap:4px 14px}
+    .inicio .in-row .in-act{grid-column:2;padding:0 0 2px;justify-self:start}
+  }

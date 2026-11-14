@@ -255,7 +255,11 @@ function apply(e1, { persist = true } = {}) {
     const b = sel.brand.branches.find((x) => x.rid === rid);
     catalog = openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
-  settleThenReady(renderViews(), catalog);
+  const strip = renderViews();
+  // INICIO (owner 11-13: the landing page): the first selection of a page opens the home; its figures fill fixed slots, so the reveal
+  // waits on nothing Productos-only (the strip and the catalog keep loading behind it)
+  if (HOME && S.views.inicio && !S.landed) { S.landed = true; goto('inicio'); settleThenReady(); return; }
+  settleThenReady(strip, catalog);
 }
 
 function showBootError(err) {
@@ -285,8 +289,8 @@ function showNoBranches() {
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
 function hideOpsChrome() {
-  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navequipos', 'mnsuc', 'mnequipos', 'mtop', 'mscopemenu', 'availstrip', 'menulock']) { const n = $(id); if (n) n.classList.add('hidden'); }
-  for (const id of ['viewsuc', 'viewequipos']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
+  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navequipos', 'mnsuc', 'mnequipos', 'mtop', 'mscopemenu', 'availstrip', 'menulock', 'navinicio', 'mninicio']) { const n = $(id); if (n) n.classList.add('hidden'); }
+  for (const id of ['viewsuc', 'viewequipos', 'viewinicio']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
   const app = $('app'); if (app) app.classList.remove('opsview');
   hideRegistered();
 }
@@ -357,6 +361,7 @@ function renderChrome() {
   ecnt.textContent = nav.devices ? String(linked) : '';
   $('mnav').classList.add('show');
   $('mnventas').classList.toggle('hidden', !S.sales);
+  for (const id of ['navinicio', 'mninicio']) { const n = $(id); if (n) n.classList.toggle('hidden', !HOME); }   // INICIO: first in the nav (map order)
   renderRegistered();
   for (const id of badges.keys()) paintBadge(id);   // codex follow-up r1: a label rewrite above (mnsuc) drops its badge → re-apply
 }
@@ -383,7 +388,7 @@ function renderLifecycleChrome(sel) {
     it.addEventListener('click', () => { closeMenus(); if (b.brand_id !== sel.brand_id) select({ brand_id: b.brand_id, scope: null }); });
     menu.append(it);
   }
-  for (const id of ['scopewrap', 'navmenulabel', 'navprod', 'navopslabel', 'navequipos', 'navbiz', 'navventas', 'mnprod', 'mnequipos', 'mnventas', 'availstrip', 'menulock']) { const x = $(id); if (x) x.classList.add('hidden'); }
+  for (const id of ['scopewrap', 'navmenulabel', 'navprod', 'navopslabel', 'navequipos', 'navbiz', 'navventas', 'mnprod', 'mnequipos', 'mnventas', 'availstrip', 'menulock', 'navinicio', 'mninicio']) { const x = $(id); if (x) x.classList.add('hidden'); }
   $('navsuc').classList.remove('hidden');
   $('navsuctext').textContent = 'Sucursales';
   const cnt = $('navsuccount');
@@ -458,7 +463,7 @@ $('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (adminVi
 document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.closest('.switchwrap') && !e.target.closest('#mtop') && !e.target.closest('#mscopemenu'))) closeMenus(); });
 
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
+const NAV = [['navinicio', 'inicio'], ['mninicio', 'inicio'], ['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
 // ENVÍO: on a Sherpa-admin view the chrome shows the neutral admin scope («Sherpa · Todas las marcas», a globe) instead of a
 // restaurant — same components (index.html .admonly / .admhide); the switcher opens nothing there
 const adminView = () => { const a = $('app'); return !!(a && a.classList.contains('admview')); };
@@ -485,6 +490,7 @@ export function goto(view, opts = {}) {
     $('navventas').click(); return;
   }
   if (view === 'menu') { $('navprod').click(); return; }   // ventas.js owns menu + Rendimiento
+  if (view === 'inicio' && !(HOME && S.views.inicio)) { $('navprod').click(); return; }   // no home on this page → today's landing
   const reg = REG.find((r) => r.id === view);
   if (reg && !canOffer(reg)) { $('navprod').click(); return; }   // not offered on this page → the default view
   if (reg && reg.mounted) return;   // codex follow-up r1: already showing → no second mount
@@ -496,6 +502,7 @@ export function goto(view, opts = {}) {
   $('viewsuc').classList.toggle('hidden', !isSuc);
   const isEquipos = view === 'equipos';
   $('viewequipos').classList.toggle('hidden', !isEquipos);
+  const vi = $('viewinicio'); if (vi) vi.classList.toggle('hidden', view !== 'inicio');
   if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel(reg)); } catch (e) { console.error('portal view mount', view, e && e.message); } }
   const app = $('app');
   app.classList.remove('vview');
@@ -503,6 +510,7 @@ export function goto(view, opts = {}) {
   markNav(view);
   if (view === 'suc') S.views.suc && S.views.suc.show(opts);
   if (view === 'equipos') S.views.equipos && S.views.equipos.show(opts);
+  if (view === 'inicio') S.views.inicio && S.views.inicio.show(opts);
   if (typeof window !== 'undefined' && window.scrollTo) { try { window.scrollTo(0, 0); } catch (_) { /* jsdom-free harness */ } }
 }
 // ventas.js's own nav handlers run first (they were registered at import); these hide the ops views behind them
@@ -510,10 +518,13 @@ function leaveOps(v) {
   leaveRegistered(v);
   S.view = v;
   $('viewsuc').classList.add('hidden'); $('viewequipos').classList.add('hidden');
+  { const vi = $('viewinicio'); if (vi) vi.classList.add('hidden'); }
   $('app').classList.remove('opsview');
   $('sucbar').classList.remove('show');
   markNav(v);
 }
+{ const navinicio = $('navinicio'); if (navinicio) navinicio.addEventListener('click', () => goto('inicio')); }
+{ const mninicio = $('mninicio'); if (mninicio) mninicio.addEventListener('click', () => goto('inicio')); }
 $('navsuc').addEventListener('click', () => goto('suc'));
 $('mnsuc').addEventListener('click', () => goto('suc'));
 $('navequipos').addEventListener('click', () => goto('equipos'));
@@ -522,6 +533,16 @@ $('navprod').addEventListener('click', () => leaveOps('menu'));
 $('mnprod').addEventListener('click', () => leaveOps('menu'));
 $('navventas').addEventListener('click', () => leaveOps('ventas'));
 $('mnventas').addEventListener('click', () => leaveOps('ventas'));
+
+// ── INICIO (PLAN-portal-inicio-r0): the home is a BUILT-IN ops view (it needs the branch list, the token and the pause control —
+// the ops ctx), registered by its own module so a page that does not load inicio.js keeps today's shell (Productos lands)
+let HOME = null;
+export function registerHome(def) {
+  if (HOME) throw new Error('registerHome: one home');
+  if (navRendered) throw new Error('registerHome: register at module top level, before the nav is first drawn');
+  if (!def || typeof def.mount !== 'function') throw new Error('registerHome: a mount function is required');
+  HOME = def;
+}
 
 // ── registered views (PLAN-portal-team-invites §4.1): another lane's view layers on the shell with zero shell edits ──────
 // registerView({ id, group, label, icon?, visible(sel), mount(el, sel), unmount(), canLeave() }) — called at module top level, before
@@ -534,7 +555,7 @@ $('mnventas').addEventListener('click', () => leaveOps('ventas'));
 // and an admin view is shown only for platform_admin (a display hint; the server decides every request).
 const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navsuc', 'Negocio': 'navventas', 'Sherpa': 'navadmlabel' });
 const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnsuc', 'Negocio': 'mnventas', 'Sherpa': 'mnadmanchor' });
-const BUILTIN = Object.freeze({ menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'] });
+const BUILTIN = Object.freeze({ inicio: ['navinicio', 'mninicio'], menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'] });
 const REG = [];
 const badges = new Map();   // viewId → text | null
 let navRendered = false;
@@ -718,6 +739,8 @@ function renderViews() {
   if (!S.views.suc) S.views.suc = mountBranches($('viewsuc'), ctx);
   if (!S.views.avail) S.views.avail = mountAvailability(ctx);
   if (!S.views.equipos) S.views.equipos = mountEquipos($('viewequipos'), ctx);
+  if (HOME && !S.views.inicio && $('viewinicio')) { const mountHome = HOME.mount; S.views.inicio = mountHome($('viewinicio'), ctx); }
+  if (S.views.inicio) S.views.inicio.render();
   S.views.suc.render();
   const strip = S.views.avail.render();
   S.views.equipos.render();   // a no-op while hidden; entry (goto) fetches

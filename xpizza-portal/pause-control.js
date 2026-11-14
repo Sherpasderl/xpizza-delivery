@@ -105,5 +105,9 @@ export function pauseControl(ctx, hooks) {
     }
   }
 
-  return { actionFor };
+  // INICIO (PLAN-portal-inicio-r0 ann 3): «Reanudar» acts in place from the home — the SAME request, toast and failure boxes as the
+  // branch page's «Reanudar pedidos»; busy(rid) lets that row disable itself while its call is in flight
+  const resume = (b) => send(b, { op: 'resume' }, `${b.name} recibe pedidos otra vez`);
+  const busy = (rid) => V.busy.has(rid);
+  return { actionFor, resume, busy };
 }
