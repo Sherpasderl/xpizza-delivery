@@ -206,27 +206,16 @@ function compareRange(p) {
   return { from: T.addDays(p.from, -shift), to: T.addDays(p.to, -shift) };
 }
 
-async function getSalesStatsCore(deps, req) {
-  const { authorize, fsdb, rtdb, getKeyer, nowMs = Date.now(), liveCache = null } = deps;
-  if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
-  const q = req.query || {};
-  const rid = q.restaurantId;
+const deltasOf = (period, comparison) => ({
+  sales_pct: pct(period.kpis.sales_cents, comparison.kpis.sales_cents),
+  orders_pct: pct(period.kpis.orders, comparison.kpis.orders),
+  average_paid_ticket_pct: pct(period.kpis.average_paid_ticket_cents || 0, comparison.kpis.average_paid_ticket_cents || 0),
+});
 
-  const auth = await authorize(rid, req);   // 🔴 FIRST. Nothing is read before this answers.
-  if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
-  // OWNER RULING 2026-10-05 (supersedes the plan's "complete existing policy"): sales stats are
-  // OWNER-ONLY — kitchen staff and dispatchers are refused, in every form (JSON, daily CSV, orders CSV).
-  // Same shape as catalog/portal-reads.js getEditableCatalogCore.
-  if (!can(auth, 'stats.read')) return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
-
-  const { p, error } = parseParams(q, nowMs);
-  if (error) return error;
-
-  let keyer;
-  try { keyer = getKeyer(); } catch (e) { return reply(503, { error: 'stats_unavailable', retryable: false }); }   // secret fails CLOSED
-
-  if (p.format === 'csv' && p.kind === 'orders') return ordersCsv({ rtdb, keyer }, rid, p);
-
+/* ONE restaurant's view of a request (S2 multi-branch, PLAN-portal-inicio-server-r0): the epoch-checked stored read, the live
+   overlay and the merged period / comparison — exactly the single-branch steps, extracted so the multi form runs the SAME code per
+   restaurant. Returns { error: reply } or the view. */
+async function ridView({ fsdb, rtdb, keyer, liveCache, nowMs }, rid, p) {
   const cmp = compareRange(p);
   const yesterday = T.addDays(p.today, -1);
   const read = async () => {
@@ -245,11 +234,11 @@ async function getSalesStatsCore(deps, req) {
     r = await read();
     if (((r.meta1 || {}).epoch || 0) !== ((r.meta2 || {}).epoch || 0)) {
       r = await read();
-      if (((r.meta1 || {}).epoch || 0) !== ((r.meta2 || {}).epoch || 0)) return reply(503, { error: 'stats_publishing', retryable: true });
+      if (((r.meta1 || {}).epoch || 0) !== ((r.meta2 || {}).epoch || 0)) return { error: reply(503, { error: 'stats_publishing', retryable: true }) };
     }
   } catch (e) {
     console.warn('stats_read_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
-    return reply(503, { error: 'stats_unavailable', retryable: true });
+    return { error: reply(503, { error: 'stats_unavailable', retryable: true }) };
   }
 
   // LIVE: today, plus yesterday while it is NOT yet settled (00:00 → the nightly run) — decided from the
@@ -267,7 +256,7 @@ async function getSalesStatsCore(deps, req) {
     try { live = await liveSummaries({ rtdb, keyer, cache: liveCache }, rid, liveDates, nowMs); }
     catch (e) {
       console.warn('stats_live_unavailable', JSON.stringify({ rid, code: e.code || null }));
-      return reply(503, { error: 'stats_live_unavailable', retryable: true });
+      return { error: reply(503, { error: 'stats_live_unavailable', retryable: true }) };
     }
   }
   const byDate = new Map(r.byDateStored);
@@ -284,12 +273,36 @@ async function getSalesStatsCore(deps, req) {
   if (cmp) {
     const cm = B.mergeSummaries(r.cmpDates.map((d) => byDate.get(d)));
     comparison = { range: cmp, ...shapePeriod(cm, r.cmpDates, byDate, firsts, cmp.from, p.granularity) };
-    period.deltas = {
-      sales_pct: pct(period.kpis.sales_cents, comparison.kpis.sales_cents),
-      orders_pct: pct(period.kpis.orders, comparison.kpis.orders),
-      average_paid_ticket_pct: pct(period.kpis.average_paid_ticket_cents || 0, comparison.kpis.average_paid_ticket_cents || 0),
-    };
+    period.deltas = deltasOf(period, comparison);
   }
+  return { r, byDate, firsts, cmp, dayInfo, period, comparison };
+}
+
+async function getSalesStatsCore(deps, req) {
+  const { authorize, fsdb, rtdb, getKeyer, nowMs = Date.now(), liveCache = null } = deps;
+  if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
+  const q = req.query || {};
+  if (q.restaurantIds !== undefined) return salesStatsMulti(deps, req, q);   // S2: several branches, merged here
+  const rid = q.restaurantId;
+
+  const auth = await authorize(rid, req);   // 🔴 FIRST. Nothing is read before this answers.
+  if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
+  // OWNER RULING 2026-10-05 (supersedes the plan's "complete existing policy"): sales stats are
+  // OWNER-ONLY — kitchen staff and dispatchers are refused, in every form (JSON, daily CSV, orders CSV).
+  // Same shape as catalog/portal-reads.js getEditableCatalogCore.
+  if (!can(auth, 'stats.read')) return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
+
+  const { p, error } = parseParams(q, nowMs);
+  if (error) return error;
+
+  let keyer;
+  try { keyer = getKeyer(); } catch (e) { return reply(503, { error: 'stats_unavailable', retryable: false }); }   // secret fails CLOSED
+
+  if (p.format === 'csv' && p.kind === 'orders') return ordersCsv({ rtdb, keyer }, rid, p);
+
+  const v = await ridView({ fsdb, rtdb, keyer, liveCache, nowMs }, rid, p);
+  if (v.error) return v.error;
+  const { r, byDate, firsts, dayInfo, period, comparison } = v;
 
   if (p.format === 'csv') {
     const rows = [['fecha', 'ventas_L', 'pedidos', 'ticket_promedio_L', 'subtotal_L', 'isv_L', 'efectivo_L', 'tarjeta_entrega_L', 'en_linea_L', 'otro_L', 'domicilio_pedidos', 'recoger_pedidos', 'cancelados', 'reembolsados', 'reembolso_pendiente', 'sin_resolver', 'clientes', 'clientes_nuevos', 'calculado']];
@@ -310,6 +323,56 @@ async function getSalesStatsCore(deps, req) {
     timezone: 'UTC-6 (Honduras, fixed)', epoch: (r.meta2 || {}).epoch || 0,
     days: r.periodDates.map((d) => ({ date: d, computed_at: dayInfo(d) })),
     missing_days: r.periodDates.filter((d) => !byDate.has(d)),
+    ...period,
+    comparison,
+  });
+}
+
+/* S2 (PLAN-portal-inicio-server-r0, advisor-approved 11-13) — SEVERAL branches in ONE read, merged on the server: «Todas las
+   sucursales» (Inicio, Ventas). Every id is authorized + stats.read BEFORE any read, and one refusal refuses the whole request (no
+   branch the member cannot read ever enters a total). Each branch runs the SAME ridView as the single form; ANY branch unavailable ⇒
+   that 503 (never a partial total). Per date, B.mergeSummaries over the branches' summaries, then the SAME shapePeriod — so every
+   money figure (avgPaidTicket included) comes from the one formula. `customers` (new vs returning) is OMITTED: one person ordering at
+   two branches would count twice. JSON only (the CSVs stay single-branch). */
+const MULTI_MAX = 20;
+async function salesStatsMulti(deps, req, q) {
+  const { authorize, fsdb, rtdb, getKeyer, nowMs = Date.now(), liveCache = null } = deps;
+  if (q.restaurantId !== undefined) return bad('bad_restaurants', 'restaurantId and restaurantIds are exclusive');
+  const ids = typeof q.restaurantIds === 'string' ? q.restaurantIds.split(',') : [];
+  if (ids.length < 2 || ids.length > MULTI_MAX || new Set(ids).size !== ids.length) return bad('bad_restaurants', `2 to ${MULTI_MAX} distinct restaurant ids`);
+  for (const rid of ids) {
+    const auth = await authorize(rid, req);   // 🔴 FIRST, for EVERY id. Nothing is read before all answer.
+    if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized', restaurantId: rid });
+    if (!can(auth, 'stats.read')) return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners', restaurantId: rid });
+  }
+  const { p, error } = parseParams(q, nowMs);
+  if (error) return error;
+  if (p.format !== 'json') return bad('csv_single_branch', 'the CSV exports are per branch');
+  let keyer;
+  try { keyer = getKeyer(); } catch (e) { return reply(503, { error: 'stats_unavailable', retryable: false }); }   // secret fails CLOSED
+
+  const views = await Promise.all(ids.map((rid) => ridView({ fsdb, rtdb, keyer, liveCache, nowMs }, rid, p)));
+  const failed = views.find((v) => v.error);
+  if (failed) return failed.error;
+
+  const mergedOf = (dates) => {
+    const byDate = new Map();
+    for (const d of dates) { const list = views.map((v) => v.byDate.get(d)).filter(Boolean); if (list.length) byDate.set(d, B.mergeSummaries(list)); }
+    return byDate;
+  };
+  const shape = (dates, from) => { const byDate = mergedOf(dates); const out = shapePeriod(B.mergeSummaries(dates.map((d) => byDate.get(d))), dates, byDate, new Map(), from, p.granularity); delete out.customers; return out; };
+  const { periodDates, cmpDates } = views[0].r;
+  const cmp = views[0].cmp;
+  const period = shape(periodDates, p.from);
+  let comparison = null;
+  if (cmp) { comparison = { range: cmp, ...shape(cmpDates, cmp.from) }; period.deltas = deltasOf(period, comparison); }
+  const dayInfo = (d) => { const xs = views.map((v) => v.dayInfo(d)); return xs.includes(null) ? null : xs.includes('live') ? 'live' : xs.sort()[0]; };
+  return reply(200, {
+    restaurantIds: [...ids].sort(), range: { from: p.from, to: p.to, granularity: p.granularity, compare: p.compare },
+    timezone: 'UTC-6 (Honduras, fixed)',
+    days: periodDates.map((d) => ({ date: d, computed_at: dayInfo(d) })),
+    missing_days: periodDates.filter((d) => views.some((v) => !v.byDate.has(d))),
+    branches: ids.map((rid, i) => ({ restaurantId: rid, kpis: views[i].period.kpis, missing_days: periodDates.filter((d) => !views[i].byDate.has(d)) })),
     ...period,
     comparison,
   });
