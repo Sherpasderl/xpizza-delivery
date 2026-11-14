@@ -1,0 +1,363 @@
+// Portal «Marketing» «Ofertas», the non-drawing half — marketing-logic.js + the api.js raw calls, run against 3a's REAL offer cores at
+// the PINNED ref (feat/marketing-offers-3a @ b62765981, git-archived by ref-tree.mjs): every server reply below is the real core's,
+// over production's transaction semantics, with membership by the REAL roster writer, menus by the REAL catalog mirror writer, the
+// switches by the REAL config writer. No hand-built server reply.
+// Run: node --test marketing-logic.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ML from './marketing-logic.js';
+import { getMarketingRaw, offerSaveRaw, offerSetStateRaw, offerRepeatRaw } from './api.js';
+import { refTree } from './ref-tree.mjs';
+
+// ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const REF = 'b62765981defcc37066ad3d9196b71005fdd924b';
+const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
+  'offer-model.js': 'd1f1349ad05c6b4112fd150e6e28e62831208f4b',
+  'offers-core.js': '26ad91b6dd2d94a139ec3bc13679cc2877e6b817',
+  'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
+  'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
+};
+const DIR = dirname(fileURLToPath(import.meta.url));
+const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
+const rq = refTree(REF);
+const OM = rq('./marketing/offer-model');
+const C = rq('./marketing/offers-core');
+const CFG = rq('./marketing/config');
+const { createFakeDb } = rq('./merchant/_fake-db');
+const R = rq('./access/roster');
+const { makeRtdbMirror } = rq('./catalog/mirror-rtdb');
+const { makeRtdbMirrorReader } = rq('./catalog/snapshot-fallback');
+const { buildMenu } = rq('./catalog/catalog-menu');
+const { isBrandId } = rq('./brands/brand-model');
+
+// ── the real backend (3a's offers-core.test.js set-up, the same real writers) ─────────────────────────────────────────────────
+const NOW = Date.UTC(2026, 10, 16, 18);   // Mon 16 Nov 2026 12:00 HN
+const DAY = 86400000;
+const OWNER = 'ownerMk01', MGR = 'mgrMk0001';
+const TOK = { [`t-${OWNER}`]: { uid: OWNER }, [`t-${MGR}`]: { uid: MGR } };
+const K1 = 'i_aaaaaaaaaaaa', K2 = 'i_bbbbbbbbbbbb', K3 = 'i_cccccccccccc';
+const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
+const versionMenu = (rows, cats) => buildMenu(snap(rows.map(([key, price, cat]) => ({ key, price, display: { price, cat, name: key } }))), snap([]),
+  { exists: true, data: () => ({ categories: cats.map((id) => ({ id })), item_order: rows.map((r) => r[0]) }) }, 'test');
+function prodDb(fake) {   // production's transaction semantics (the SDK's uncached first run sees null)
+  return { ref(p = '') {
+    const r = fake.ref(p);
+    return { ...r, get: () => r.once(), async transaction(fn) {
+      for (const pp of fake.failReads) if (String(p).startsWith(pp)) throw new Error(`injected failure: ${p}`);
+      const cold = fn(null);
+      if (cold === undefined) return { committed: false, snapshot: { val: () => null } };
+      if (fake.get(p) === null) { fake.put(p, cold); return { committed: true, snapshot: { val: () => fake.get(p) } }; }
+      return r.transaction(fn);
+    } };
+  } };
+}
+async function backend({ offers = true } = {}) {
+  const fake = createFakeDb({
+    brands: { tb: { name: 'Tercera', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } },
+    restaurants: Object.fromEntries(['tb_centro', 'tb_sur'].map((rid) => [rid, { identity: { brand_id: 'tb', name: rid, active: true, version: 1 } }])),
+  });
+  const db = prodDb(fake);
+  const roster = async (actor, op) => assert.equal((await R.mutateRoster({ db: fake, now: () => 1 }, 'tb', actor, op)).ok, true, `premise: roster ${op.type}`);
+  await roster({ kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@tb.hn' } });
+  await roster({ kind: 'owner', uid: OWNER }, { type: 'grant_manager', uid: MGR, rids: ['tb_centro'] });
+  const mirror = makeRtdbMirror(db);
+  for (const rid of ['tb_centro', 'tb_sur']) await mirror(rid, { version: 'v1', seq: 1, rid, menu: { [K1]: 150, [K2]: 220, ...(rid === 'tb_centro' ? { [K3]: 90 } : {}) }, extras: {} });
+  const setSwitch = async (on, expected) => assert.equal((await CFG.writeMarketingConfig(db, { expected, actor: 'cli:op', now: 1,
+    config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } })).ok, true, 'premise: the config writer');
+  await setSwitch(offers, 0);
+  const CATALOG = { tb_centro: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], tb_sur: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas']] };
+  const CATS = { tb_centro: ['pizzas', 'bebidas'], tb_sur: ['pizzas'] };
+  const deps = { db, verifyIdToken: async (t) => { if (!TOK[t]) throw new Error('bad token'); return TOK[t]; }, now: () => NOW,
+    readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async (rid) => versionMenu(CATALOG[rid], CATS[rid]) };
+  const CORES = { getMarketing: C.getMarketingCore, marketingOfferSave: C.marketingOfferSaveCore, marketingOfferSetState: C.marketingOfferSetStateCore, marketingOfferRepeat: C.marketingOfferRepeatCore };
+  const calls = [];
+  const net = { down: false };
+  globalThis.fetch = async (url, opts) => {   // the portal's request, unchanged, into the real core (functions.js handler: status + json)
+    if (net.down) throw new TypeError('Failed to fetch');
+    const u = new URL(String(url));
+    const fn = u.pathname.split('/').pop();
+    const body = opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : undefined;
+    const auth = opts && opts.headers && opts.headers.Authorization;
+    calls.push({ fn, query: Object.fromEntries(u.searchParams), body, method: opts.method });
+    let out;
+    try { out = await CORES[fn](deps, { method: opts.method, query: Object.fromEntries(u.searchParams), body, get: (h) => (h === 'authorization' ? auth : undefined) }); }
+    catch (_) { out = { status: 500, body: { error: 'error' } }; }
+    const text = JSON.stringify(out.body);
+    return { status: out.status, ok: out.status >= 200 && out.status < 300, json: async () => JSON.parse(text) };
+  };
+  const token = async () => `t-${OWNER}`;
+  return { fake, deps, calls, net, setSwitch, token };
+}
+const RID = 'tb_centro';
+const read = async (b, rid = RID) => getMarketingRaw({ rid, token: b.token });
+const form = (o = {}) => ({ ...ML.emptyForm(o.type || 'pct'), name: 'Martes de pizza', pct: 20, branches: [RID], start: NOW + DAY, end: NOW + 30 * DAY, days: [2], window: { from: 1080, to: 1320 }, ...o });
+const authored = (f) => { const r = ML.offerFromForm(f); assert.equal(r.ok, true, `premise: the form is valid (${JSON.stringify(r.errors)})`); return r.offer; };
+async function create(b, f) {
+  const offer = authored(f);
+  const res = await offerSaveRaw({ rid: RID, expectedRev: 0, offer, token: b.token });
+  const c = ML.classifyWrite({ op: 'create' }, res);
+  assert.equal(c.outcome, 'saved', `premise: created (${JSON.stringify(res.body)})`);
+  return c.offer;
+}
+async function publish(b, f) {
+  const d = await create(b, f);
+  const res = await offerSetStateRaw({ rid: RID, offerId: d.id, to: 'active', expectedRev: 1, token: b.token });
+  const c = ML.classifyWrite({ op: 'state', offerId: d.id, expectedRev: 1, to: 'active' }, res);
+  assert.equal(c.outcome, 'saved', `premise: published (${JSON.stringify(res.body)})`);
+  return c.offer;
+}
+const one = async (b, id) => ML.readModel((await read(b)).body).offers.find((o) => o.id === id);
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+test('the pin: the ref and each server file\'s blob are the ones this client was written against; the client\'s tables equal the server\'s', () => {
+  assert.equal(git('rev-parse', `${REF}^{commit}`), REF, 'the pinned ref resolves');
+  for (const [f, blob] of Object.entries(BLOBS)) assert.equal(git('rev-parse', `${REF}:xpizza-functions/marketing/${f}`), blob, `pinned blob ${f}`);
+  assert.deepEqual([...ML.TYPES], [...OM.TYPES], 'TYPES');
+  assert.deepEqual([...ML.AUDIENCES], [...OM.AUDIENCES], 'AUDIENCES');
+  assert.deepEqual(Object.keys(ML.MOVES).sort(), [...OM.STATES].sort(), 'one MOVES row per stored state');
+  for (const s of OM.STATES) assert.deepEqual([...ML.MOVES[s]], [...C.MOVES[s]], `MOVES.${s}`);
+  for (const k of ['name_max', 'branches_max', 'items_max', 'cats_max', 'free_per_order_max', 'pct_min', 'pct_max', 'pct_step']) assert.equal(ML.LIMITS[k], OM.LIMITS[k], `LIMITS.${k}`);
+  assert.equal(ML.LIMITS.lempiras_max * 100, OM.LIMITS.cents_max, 'the lempira bound is the server\'s centavo bound');
+});
+
+test('money is WHOLE lempiras: decimals refused (never rounded), zero refused (no 0 sentinel), blank = none only where optional', () => {
+  const p = (t, o) => ML.parseLempiras(t, o);
+  for (const [t, cents] of [['150', 15000], ['L 150', 15000], ['L.150', 15000], ['1,500', 150000], ['1 500', 150000], ['100000', 10000000], [' 45 ', 4500]]) assert.deepEqual(p(t), { ok: true, cents }, `«${t}»`);
+  for (const t of ['150.50', '150.5', '150.00', '0.5', 'L 99.99']) assert.deepEqual(p(t), { ok: false, error: 'whole_lempiras' }, `centavos refused: «${t}»`);
+  assert.deepEqual(p('0'), { ok: false, error: 'positive' }, 'zero is refused: no money field has a 0 sentinel');
+  assert.deepEqual(p('100001'), { ok: false, error: 'too_large' }, 'over L 100,000');
+  for (const t of ['-5', 'abc', '1,50', '15o']) assert.deepEqual(p(t), { ok: false, error: 'not_a_number' }, `«${t}»`);
+  assert.deepEqual(p(''), { ok: true, cents: null }, 'blank optional = none');
+  assert.deepEqual(p('  ', { required: true }), { ok: false, error: 'required' }, 'blank required');
+  assert.equal(ML.lempirasText(15000), '150');
+  assert.equal(ML.lempirasText(undefined), '', 'absent = none');
+});
+
+test('«no maximum» / «no minimum» send the field ABSENT — the real core stores none — and the core refuses a 0 or centavos itself', async () => {
+  const b = await backend();
+  const pct = authored(form({ max: '' }));
+  assert.deepEqual(pct.params, { pct: 20 }, 'pct with a blank maximum: no max_cents key at all');
+  const env = authored(form({ type: 'envio', min: '' }));
+  assert.deepEqual(env.params, {}, 'envío with a blank minimum: no min_cents key');
+  assert.deepEqual(authored(form({ max: 'L 300' })).params, { pct: 20, max_cents: 30000 }, 'a maximum in whole lempiras → centavos');
+  const saved = await create(b, form({ max: '' }));
+  assert.equal('max_cents' in saved.params, false, 'the real core stored no maximum');
+  assert.equal(b.fake.get(`marketing_offers/tb/${saved.id}/params/max_cents`), null, 'nothing in the record either');
+  for (const [params, why] of [[{ pct: 20, max_cents: 0 }, 'a 0 «no max»'], [{ pct: 20, max_cents: 15050 }, 'centavos']]) {
+    const res = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...pct, params }, token: b.token });
+    assert.deepEqual(ML.classifyWrite({ op: 'create' }, res), { outcome: 'refused', code: 'invalid', server: 'bad_request', status: 400, field: 'params', reason: 'bad_params' }, `the server refuses ${why}`);
+  }
+  assert.deepEqual(ML.offerFromForm(form({ max: '150.50' })).errors, { max: 'whole_lempiras' }, 'the form never sends centavos');
+  assert.deepEqual(ML.offerFromForm(form({ max: '0' })).errors, { max: 'positive' }, 'the form never sends a 0');
+  const caps = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...pct, caps: { redemptions: null, spend_cents: 0, weekly: false } }, token: b.token });
+  assert.equal(ML.classifyWrite({ op: 'create' }, caps).reason, 'bad_caps', 'a 0 spend cap is the server\'s bad_caps');
+  assert.equal(authored(form({ cap_spend: '' })).caps.spend_cents, null, 'a blank spend cap is none');
+});
+
+test('the form agrees with the REAL validator: valid ⇔ the core\'s validateAuthored accepts it, and the offer is the core\'s normal form', () => {
+  const cases = [
+    form(), form({ pct: 50 }), form({ pct: 55 }), form({ pct: 4 }), form({ pct: 12 }), form({ max: '250' }),
+    form({ type: 'lps', off: '50', min: '200' }), form({ type: 'lps', off: '200', min: '200' }), form({ type: 'lps', off: '250', min: '200' }), form({ type: 'lps', off: '', min: '200' }),
+    form({ type: 'bogo', items: [K1], free_per_order: 1 }), form({ type: 'bogo', items: [K1, K1] }), form({ type: 'bogo', items: [] }), form({ type: 'bogo', items: [K1], free_per_order: 4 }),
+    form({ type: 'bogo', items: Array.from({ length: 11 }, (_, i) => `i_${i}`) }), form({ type: 'bogo', by: 'cats', cats: ['pizzas'] }), form({ type: 'bogo', by: 'cats', cats: ['a', 'b', 'c'] }),
+    form({ type: 'envio' }), form({ type: 'envio', min: '350' }), form({ type: 'nuevos', off: '75' }), form({ type: 'nuevos', nuevos_by: 'pct', pct: 15 }), form({ type: 'nuevos', nuevos_by: 'pct', pct: 7 }),
+    form({ type: 'nuevos', off: '75', audience: 'all' }), form({ audience: 'returning' }), form({ audience: 'vip' }),
+    form({ name: '' }), form({ name: 'x'.repeat(41) }), form({ name: '  Martes  ' }), form({ branches: [] }), form({ branches: ['tb_sur', RID] }),
+    form({ start: null }), form({ end: null }), form({ end: NOW }), form({ days: [] }), form({ days: [7] }), form({ days: [6, 0, 3] }),
+    form({ window: null }), form({ window: { from: 1260, to: 0 } }), form({ window: { from: 60, to: 60 } }), form({ window: { from: 0, to: 1440 } }),
+    form({ cap_redemptions: 50 }), form({ cap_redemptions: 0 }), form({ cap_spend: '2,000' }), form({ weekly: true }),
+  ];
+  for (const f of cases) {
+    const mine = ML.offerFromForm(f);
+    const real = mine.ok ? OM.validateAuthored(mine.offer, { isRid: isBrandId }) : null;
+    const label = JSON.stringify({ ...f, items: f.items.length > 3 ? `${f.items.length} items` : f.items });
+    if (mine.ok) assert.deepEqual(real, { ok: true, value: mine.offer }, `the core accepts the form's offer verbatim: ${label}`);
+    // a form the client refuses: the closest offer the core would see is refused too (the client is never STRICTER on a valid offer)
+    else assert.equal(OM.validateAuthored(looseOffer(f), { isRid: isBrandId }).ok, false, `the client refused ⇒ the core refuses: ${label}`);
+  }
+});
+// the offer a form would be WITHOUT the client's own checks — money parsed best-effort — so a client refusal is proven the core's too
+function looseOffer(f) {
+  const c = (t) => { const s = String(t ?? '').trim().replace(/^L\.?\s*/i, '').replace(/[, ]/g, ''); return s === '' ? null : Math.round(Number(s) * 100); };
+  const params = { pct: { pct: f.pct, ...(c(f.max) !== null ? { max_cents: c(f.max) } : {}) }, lps: { off_cents: c(f.off), min_cents: c(f.min) },
+    bogo: f.by === 'cats' ? { cats: f.cats, free_per_order: f.free_per_order } : { items: f.items, free_per_order: f.free_per_order },
+    envio: c(f.min) !== null ? { min_cents: c(f.min) } : {}, nuevos: f.nuevos_by === 'pct' ? { pct: f.pct } : { off_cents: c(f.off) } }[f.type];
+  return { name: f.name, type: f.type, params, audience: f.audience, branches: f.branches,
+    schedule: { start: f.start, end: f.end, days: f.days, window: f.window }, caps: { redemptions: f.cap_redemptions, spend_cents: c(f.cap_spend), weekly: f.weekly } };
+}
+
+test('every type round-trips through the REAL save + read: the form an offer reads back into re-authors exactly what was saved', async () => {
+  const b = await backend();
+  const forms = [form({ name: 'Pct' }), form({ name: 'Pct tope', max: '300' }), form({ name: 'Lps', type: 'lps', off: '50', min: '250' }),
+    form({ name: 'Bogo', type: 'bogo', items: [K1, K3], free_per_order: 2, days: [5, 6], window: { from: 1260, to: 0 } }),
+    form({ name: 'Envio', type: 'envio', min: '350', window: null }), form({ name: 'Envio libre', type: 'envio' }),
+    form({ name: 'Nuevos L', type: 'nuevos', off: '75' }), form({ name: 'Nuevos pct', type: 'nuevos', nuevos_by: 'pct', pct: 15, cap_redemptions: 100, cap_spend: '5,000', weekly: true })];
+  for (const f of forms) {
+    const sent = authored(f);
+    const saved = await create(b, f);
+    const back = await one(b, saved.id);
+    assert.equal(back.status, 'draft', `${f.name}: a new offer is a draft`);
+    assert.deepEqual(authored(ML.formFromOffer(back)), sent, `${f.name}: read → form → offer is what was sent`);
+  }
+  const m = ML.readModel((await read(b)).body);
+  assert.deepEqual([m.kind, m.offers.length, m.dropped], ['ok', forms.length, 0], 'the read lists them all');
+  assert.ok(b.calls.filter((c) => c.fn === 'getMarketing').every((c) => c.method === 'GET' && c.query.rid === RID && c.body === undefined), 'the read: GET ?rid=');
+  assert.ok(b.calls.filter((c) => c.fn === 'marketingOfferSave').every((c) => c.method === 'POST' && c.body.rid === RID && Object.keys(c.query).length === 0), 'writes: the rid in the BODY, nothing in the URL');
+});
+
+test('a CATEGORY offer: «Aplica a» is the list the server froze; editing it sends the categories only (both would be bad_params)', async () => {
+  const b = await backend();
+  const d = await create(b, form({ name: 'Pizzas 2x1', type: 'bogo', by: 'cats', cats: ['pizzas'] }));
+  assert.deepEqual(d.params, { cats: ['pizzas'], items: [K1, K2], free_per_order: 1 }, 'premise: the real core resolved the category');
+  assert.deepEqual(ML.appliesTo(d), [K1, K2], '«Aplica a:» = the server\'s frozen list');
+  const f = ML.formFromOffer(d);
+  assert.deepEqual([f.by, f.cats, f.items], ['cats', ['pizzas'], []], 'the form edits the categories, not the resolved dishes');
+  const edit = authored({ ...f, name: 'Pizzas 2x1 finde' });
+  assert.deepEqual(edit.params, { cats: ['pizzas'], free_per_order: 1 }, 'the edit sends cats only');
+  const res = await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 1, offer: edit, token: b.token });
+  assert.equal(ML.classifyWrite({ op: 'save', offerId: d.id, expectedRev: 1 }, res).outcome, 'saved', 'the real core takes the edit');
+  const both = await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 2, offer: { ...edit, params: d.params }, token: b.token });
+  assert.equal(ML.classifyWrite({ op: 'save', offerId: d.id, expectedRev: 2 }, both).reason, 'bad_params', 'premise: sending the stored params back IS refused');
+  assert.deepEqual(ML.appliesTo(await one(b, d.id)), [K1, K2], 'still the frozen list');
+  assert.deepEqual(ML.appliesTo({ type: 'pct', params: { pct: 10 } }), [], 'a whole-order offer lists no dishes');
+});
+
+test('live edits: the client\'s answer is the REAL liveEditProblem\'s, and the real save refuses exactly that field', async () => {
+  const b = await backend();
+  const live = await publish(b, form({ name: 'Viva', cap_redemptions: 50, cap_spend: '2,000' }));
+  assert.equal(ML.editable(live), 'caps_and_end');
+  assert.equal(ML.editable({ state: 'draft', status: 'draft' }), 'all');
+  assert.equal(ML.editable({ state: 'ended', status: 'ended' }), 'none');
+  assert.equal(ML.editable({ state: 'active', status: 'ended' }), 'none', 'ended by schedule: nothing to edit');
+  const edits = { same: {}, name: { name: 'Otra' }, pct: { pct: 25 }, branches: { branches: [RID, 'tb_sur'] }, days: { days: [2, 3] }, window: { window: null },
+    start: { start: NOW + 2 * DAY }, end_later: { end: NOW + 40 * DAY }, end_sooner: { end: NOW + 10 * DAY }, end_none: { end: null },
+    redemptions_up: { cap_redemptions: 80 }, redemptions_down: { cap_redemptions: 20 }, redemptions_none: { cap_redemptions: null },
+    spend_up: { cap_spend: '3,000' }, spend_down: { cap_spend: '1,000' }, weekly: { weekly: true } };
+  let rev = live.rev;
+  for (const [k, patch] of Object.entries(edits)) {
+    const cur = await one(b, live.id);
+    const next = authored({ ...ML.formFromOffer(cur), ...patch });
+    const mine = ML.liveEditProblem(cur, next);
+    const real = OM.liveEditProblem(OM.authoredOf({ ...cur, v: 1 }, { isRid: isBrandId }), next);
+    assert.equal(mine, real, `${k}: the client's answer is the core's (${real})`);
+    const res = await offerSaveRaw({ rid: RID, offerId: live.id, expectedRev: cur.rev, offer: next, token: b.token });
+    const c = ML.classifyWrite({ op: 'save', offerId: live.id, expectedRev: cur.rev }, res);
+    if (real === null) { assert.equal(c.outcome, 'saved', `${k}: allowed ⇒ saved`); rev = c.offer.rev; }
+    else assert.deepEqual([c.outcome, c.code, c.field], ['refused', 'live_edit', real], `${k}: refused at that field`);
+  }
+  assert.ok(rev > live.rev, 'premise: the allowed edits landed');
+});
+
+test('states: publish / pause / resume / end / repeat through the real core; the actions each status offers are the server\'s moves', async () => {
+  const b = await backend();
+  const d = await create(b, form({ name: 'Ciclo' }));
+  assert.deepEqual(ML.actionsOf(d), ['publish', 'end']);
+  const move = async (o, to) => {
+    const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to, from: o.state };
+    return ML.settleWrite(a, () => offerSetStateRaw({ rid: RID, offerId: o.id, to, expectedRev: o.rev, token: b.token }), () => read(b));
+  };
+  const pub = await move(d, 'active');
+  assert.deepEqual([pub.outcome, pub.offer.state, pub.offer.status], ['saved', 'active', 'scheduled'], 'published, starts tomorrow');
+  assert.deepEqual(ML.actionsOf(pub.offer), ['pause', 'end']);
+  const pau = await move(pub.offer, 'paused_owner');
+  assert.deepEqual([pau.outcome, pau.offer.status], ['saved', 'paused_owner']);
+  assert.deepEqual(ML.actionsOf(pau.offer), ['resume', 'end']);
+  assert.equal(b.fake.get(`marketing_live/${RID}/${d.id}`), null, 'paused: out of the price path');
+  const res = await move(pau.offer, 'active');
+  assert.equal(res.outcome, 'saved', 'resumed');
+  const end = await move(res.offer, 'ended');
+  assert.deepEqual([end.outcome, end.offer.state], ['saved', 'ended']);
+  assert.deepEqual(ML.actionsOf(end.offer), ['repeat']);
+  const again = await move(end.offer, 'active');
+  assert.deepEqual([again.outcome, again.code], ['refused', 'stale'], 'an ended offer cannot move (bad_transition)');
+  const rep = ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid: RID, offerId: d.id, token: b.token }));
+  assert.deepEqual([rep.outcome, rep.offer.state, rep.offer.schedule.start ?? null], ['saved', 'draft', null], '«Repetir»: a new draft, dates cleared');
+  assert.deepEqual(ML.actionsOf({ state: 'active', status: 'ended' }), ['end', 'repeat'], 'ended by schedule: end it or repeat it');
+});
+
+test('refusals map to honest keys: overlap (with the clashing names), stale + current_rev, switched off, manager denied', async () => {
+  const b = await backend();
+  const bogo = (name) => form({ name, type: 'bogo', items: [K1], days: [5, 6], window: { from: 1260, to: 0 } });
+  await publish(b, bogo('Primera'));
+  const second = await create(b, bogo('Segunda'));
+  const ov = ML.classifyWrite({ op: 'state', offerId: second.id, expectedRev: 1, to: 'active' },
+    await offerSetStateRaw({ rid: RID, offerId: second.id, to: 'active', expectedRev: 1, token: b.token }));
+  assert.deepEqual([ov.outcome, ov.code, ov.with, ov.rid], ['refused', 'overlap', ['Primera'], RID], 'overlap: names the offer it clashes with');
+  const stale = ML.classifyWrite({ op: 'save', offerId: second.id, expectedRev: 7 },
+    await offerSaveRaw({ rid: RID, offerId: second.id, expectedRev: 7, offer: authored(bogo('Segunda b')), token: b.token }));
+  assert.deepEqual([stale.outcome, stale.code, stale.current_rev], ['refused', 'stale', 1], 'superseded: stale, with the rev to reload at');
+  const den = ML.classifyWrite({ op: 'create' }, await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(form()), token: async () => `t-${MGR}` }));
+  assert.deepEqual([den.outcome, den.code], ['refused', 'denied'], 'a manager cannot create (owner only)');
+  const out = ML.classifyWrite({ op: 'create' }, await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(form()), token: async () => 'nope' }));
+  assert.deepEqual([out.outcome, out.code], ['refused', 'signed_out']);
+  await b.setSwitch(false, 1);
+  const off = ML.classifyWrite({ op: 'create' }, await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(form()), token: b.token }));
+  assert.deepEqual([off.outcome, off.code], ['refused', 'off'], 'switched off: offers_disabled');
+  assert.deepEqual(ML.readModel((await read(b)).body), { kind: 'off' }, 'switched off: the read is OFF — no Ofertas path at all');
+  assert.equal(ML.refusalOf(409, { error: 'something_new' }).code, 'other', 'an unknown code is `other`, its code kept');
+});
+
+test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN, and the fresh read proves it did not land (still active, still applied)', async () => {
+  const b = await backend();
+  const live = await publish(b, form({ name: 'Firme' }));
+  b.fake.failReads.add(`marketing_live/${RID}/${live.id}`);   // the price-path removal fails (an outage) — offers-core.js:350
+  const attempt = { op: 'state', offerId: live.id, expectedRev: live.rev, to: 'paused_owner', from: 'active' };
+  const raw = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token });
+  assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
+  assert.deepEqual(ML.classifyWrite(attempt, raw), { outcome: 'unknown' }, 'the 503 is unknown — never saved');
+  const s = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
+  assert.equal(s.outcome, 'not_landed', 'the fresh read decides: the pause did NOT land');
+  assert.deepEqual([s.offer.state, s.offer.rev, s.offer.drift], ['active', live.rev, null], 'still active, still applied, no drift');
+  b.fake.failReads.clear();
+  assert.deepEqual(ML.classifyWrite(attempt, { transport: true }), { outcome: 'unknown' }, 'a transport failure is unknown');
+  assert.deepEqual(ML.classifyWrite(attempt, { status: 200, body: null, malformed: true }), { outcome: 'unknown' }, 'a malformed 200 is unknown');
+  assert.deepEqual(ML.classifyWrite(attempt, { status: 500, body: { error: 'error' } }), { outcome: 'unknown' }, 'a 500 is unknown');
+  b.net.down = true;
+  const t = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
+  assert.deepEqual(t, { outcome: 'unknown' }, 'the write AND the re-read fail: still unknown, never saved');
+  b.net.down = false;
+  const ok = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
+  assert.equal(ok.outcome, 'saved', 'healthy again: the same pause saves');
+});
+
+test('an unknown that DID land is recovered as saved; one moved by someone else is a conflict', async () => {
+  const b = await backend();
+  const d = await create(b, form({ name: 'Borrador' }));
+  const sent = authored(form({ name: 'Borrador 2' }));
+  const w = await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 1, offer: sent, token: b.token });
+  assert.equal(w.status, 200, 'premise: it landed');
+  const attempt = { op: 'save', offerId: d.id, expectedRev: 1, sent, prev: d };
+  assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'saved', 'landed (the reply was lost) ⇒ saved');
+  await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 2, offer: authored(form({ name: 'De otra persona' })), token: b.token });
+  assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'conflict', 'someone else wrote it since ⇒ conflict');
+  assert.equal(ML.classifyRecovery({ op: 'create' }, (await read(b)).body).outcome, 'reread', 'a create has no id: the list is the truth');
+  assert.equal(ML.classifyRecovery(attempt, { ok: true }).outcome, 'unknown', 'an unreadable re-read stays unknown');
+});
+
+test('live_drift: an active offer whose pause half-ran is NOT applied; a non-active one still in the price path IS still applied', async () => {
+  const b = await backend();
+  const live = await publish(b, form({ name: 'Deriva' }));
+  // the REAL half-run: the pause removes the mirror (offers-core.js:350), then its CAS loses to a stale expected_rev
+  const r = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev - 1, token: b.token });
+  assert.deepEqual([r.status, r.body.error], [409, 'superseded'], 'premise: refused after the mirror was removed');
+  const o = await one(b, live.id);
+  assert.deepEqual([o.state, o.live_drift, o.drift], ['active', true, 'not_applied'], 'active, out of the price path: NOT applied');
+  const p = await create(b, form({ name: 'Quieta' }));
+  const rec = b.fake.get(`marketing_offers/tb/${p.id}`);
+  b.fake.put(`marketing_live/${RID}/${p.id}`, OM.liveProjection(rec, 'tb'));   // the real projection, stranded under a draft
+  const q = await one(b, p.id);
+  assert.deepEqual([q.state, q.drift], ['draft', 'still_applied'], 'a draft still in the price path: STILL applied');
+  assert.equal(ML.driftOf({ state: 'active' }), null, 'no flag, no drift');
+});
+
+test('the Anuncio stays DARK: no portal source names its endpoints, and the read model drops the bookings', async () => {
+  const src = readdirSync(DIR).filter((f) => /\.(js|html|mjs)$/.test(f) && !/\.test\.mjs$/.test(f));
+  for (const f of src) assert.doesNotMatch(readFileSync(join(DIR, f), 'utf8'), /getAnuncioWeeks|anuncioBook|anuncioCancel/, `${f} reaches no Anuncio endpoint`);
+  const m = ML.readModel({ ok: true, switches: { offers_enabled: true, anuncio_enabled: true }, offers: [], bookings: [{ id: 'x' }] });
+  assert.deepEqual(m, { kind: 'ok', offers: [], dropped: 0 }, 'no bookings in the model');
+  assert.deepEqual(ML.readModel(null), { kind: 'unreadable' });
+});

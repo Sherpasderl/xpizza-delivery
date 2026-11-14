@@ -91,8 +91,19 @@ test('every module the portal ships is reachable from an entry page (index.html,
   // the shell loads its boot script via <script src>, not an import
   for (const m of html.matchAll(/<script[^>]*src="\.\/([\w-]+\.js)"/g)) walk(m[1]);
   for (const f of JS) {
+    if (AWAITING_SCREENS[f]) continue;
     assert.ok(seen.has(f), `${f} ships but nothing imports it — dead code on a money surface, or a missing wire`);
   }
+  // a pinned module is EXACTLY the not-yet-wired one: present, still unreachable — wiring it (or deleting it) makes the entry stale
+  for (const f of Object.keys(AWAITING_SCREENS)) {
+    assert.ok(JS.includes(f), `AWAITING_SCREENS.${f} no longer exists — drop the entry`);
+    assert.ok(!seen.has(f), `AWAITING_SCREENS.${f} is wired now — drop the entry`);
+  }
+});
+// The NON-DRAWING half of a feature whose screens wait for an owner-approved mockup (the S3 / S4 split): the logic lands, tested
+// against the real server, before anything imports it. Each entry names its gate; nothing else may ship unreachable.
+const AWAITING_SCREENS = Object.freeze({
+  'marketing-logic.js': 'Marketing «Ofertas» (advisor 11-14): its screens wait for the owner\'s approval of MOCKUP-portal-marketing v5',
 });
 
 test('the CSP allows exactly the hosts the code actually talks to', () => {

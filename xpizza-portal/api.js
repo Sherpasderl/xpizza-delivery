@@ -101,11 +101,11 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
 // a transport error after sending, or a 200 whose body doesn't parse are all UNKNOWN until a fresh GET decides — envio-logic.js
 // classifyPost / classifyRecovery). → { status, body } | { status: 200, body: null, malformed: true } | { transport: true }.
 // A missing token or a withheld call (assertLive) throws BEFORE anything is sent — nothing landed, nothing to recover.
-async function rawCall(fnName, { body, token, assertLive }) {
+async function rawCall(fnName, { body, token, assertLive, params }) {
   const tokenStr = await token();
   if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
   if (assertLive) assertLive();
-  const { url, options } = buildRequest(fnName, { body, tokenStr });
+  const { url, options } = buildRequest(fnName, { body, tokenStr, params });
   let res;
   try { res = await sherpaFetch(url, options); } catch (_) { return { transport: true }; }
   let parsed = null, parsedOk = true;
@@ -115,6 +115,17 @@ async function rawCall(fnName, { body, token, assertLive }) {
 }
 export const getDeliveryPricingRaw = ({ token, assertLive }) => rawCall('getDeliveryPricing', { token, assertLive });
 export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('setDeliveryPricing', { body, token, assertLive });
+
+// ── MARKETING «Ofertas» (3a feat/marketing-offers-3a @ b62765981, offers-core.js:5-8) — RAW outcomes, as above: a 503 after a write
+// may hide a moved record (a failed unmirror / undo), so marketing-logic.js classifyWrite decides saved / refused / UNKNOWN and a
+// fresh getMarketing settles an unknown. The read takes the rid as `?rid=` (offers-core.js:220); every write carries it in the BODY.
+// The «Anuncio» endpoints are deliberately absent: it stays dark.
+export const getMarketingRaw = ({ rid, token, assertLive }) => rawCall('getMarketing', { params: { rid }, token, assertLive });
+export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, token, assertLive }) =>
+  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer }, token, assertLive });
+export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, token, assertLive }) =>
+  rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev }, token, assertLive });
+export const offerRepeatRaw = ({ rid, offerId, token, assertLive }) => rawCall('marketingOfferRepeat', { body: { rid, offer_id: offerId }, token, assertLive });
 
 // ── Portal 2b-2b — THE WRITE CALLS ───────────────────────────────────────────────────────────────
 // 🔴 MONEY PATH. These two carry a merchant's price into the catalog that serves the customer order
