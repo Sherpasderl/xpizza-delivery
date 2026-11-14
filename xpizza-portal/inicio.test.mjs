@@ -203,7 +203,7 @@ test('s-inicio — the greeting, the date, the pill, the three REAL figures; one
   assert.equal(textOf(pill), 'Centro', 'one branch: its name');
   const reqs = p.stats();
   assert.equal(reqs.length, 1, '🔴 one read for the scope');
-  assert.deepEqual([reqs[0].query.restaurantId, reqs[0].query.from, reqs[0].query.to, reqs[0].query.compare], ['r_a', TODAY, TODAY, 'previous_week']);
+  assert.deepEqual([reqs[0].query.restaurantId, reqs[0].query.from, reqs[0].query.to, reqs[0].query.compare], ['r_a', TODAY, TODAY, 'previous_week'], '🔴 today vs the same weekday last week');
   const serve = await statsWorld();
   const truth = IL.figures((await serve({ restaurantId: 'r_a', ...IL.statsQuery(TODAY) }, 'Bearer TK-test')).body, TODAY);
   const figs = cls(p.view, 'in-fig').map((f) => [textOf(f.querySelector('.in-fl')), textOf(f.querySelector('.in-fn')), f.querySelector('.in-fs') ? textOf(f.querySelector('.in-fs')) : null]);
