@@ -1,0 +1,41 @@
+{
+ "source": {
+  "commit": "ca5f561629f30fcfbfb30edd62d274de079aa09a",
+  "blobs": {
+   "token-gate.js": "f2bc6fa74c78043d6f31a7f1b590c71fe1743495",
+   "quote-issue.js": "39545fb2d63ee5c1ca58924ff6ba22f472c1db73",
+   "marketing/offer-wire.js": "17df567a7262ad1cabacdccba89474db7689bc45",
+   "marketing/offer-price.js": "2b64b3ed7118ac89734c4df0564becdbf29dceb0",
+   "marketing/offer-usage.js": "287887984c935bc11aa658d9fa800c6c88633a54",
+   "index.js": "86d904979239eaa1a002b5d8c610148b09bc2fae",
+   "test/_marketing-price-seed.js": "a40622e1fcf04bb00960c6a8f11d29d2d530f485"
+  },
+  "cash_literal": "if (offerHeld && !offerHeld.ok) return res.status(409).json({ error: 'offer_changed', order_id: orderId });"
+ },
+ "scenarios": {
+  "gate": {
+   "quoted_net_cents": 39000,
+   "status": 409,
+   "body": {
+    "error": "offer_changed",
+    "net_total_cents": 44000,
+    "order_id": "capp_ord_01"
+   }
+  },
+  "card_cap": {
+   "status": 409,
+   "body": {
+    "error": "offer_changed",
+    "order_id": "capp_ord_01"
+   }
+  },
+  "cash_cap": {
+   "status": 409,
+   "body": {
+    "error": "offer_changed",
+    "order_id": "capp_ord_01"
+   }
+  }
+ },
+ "scenarios_sha256": "16d2d243e71c2e808b3d9c21b0e55d1bc624153804f24560fb58692376f670c3"
+}

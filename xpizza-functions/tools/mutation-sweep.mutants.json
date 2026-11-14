@@ -37140,5 +37140,73 @@
   "kills_with": [
    "RN-FALLBACK"
   ]
+ },
+ {
+  "id": "oc-01",
+  "slice": "capp-offers-q4",
+  "label": "the gate form loses the server's new net (typed as a cap hold)",
+  "file": "../customer-app/capp-api.js",
+  "from": "? { form: 'gate', requote: true, net_total_cents: j.net_total_cents } :",
+  "to": "? { form: 'cap', requote: true } :",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: gate"
+  ]
+ },
+ {
+  "id": "oc-02",
+  "slice": "capp-offers-q4",
+  "label": "a cap hold given a guessed total",
+  "file": "../customer-app/capp-api.js",
+  "from": "{ form: 'cap', requote: true };\n",
+  "to": "{ form: 'cap', requote: true, net_total_cents: 0 };\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: cash_cap"
+  ]
+ },
+ {
+  "id": "oc-03",
+  "slice": "capp-offers-q4",
+  "label": "offer_changed not typed (falls to handleRejection's untyped error)",
+  "file": "../customer-app/capp-api.js",
+  "from": "        { const oc = offerChangedOf(r.status, j); if (oc) return { kind: 'error', order_id: id, status: r.status, error: 'offer_changed', offer_changed: oc }; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: gate"
+  ]
+ },
+ {
+  "id": "oc-04",
+  "slice": "capp-offers-q4",
+  "label": "a malformed net trusted as the server's number",
+  "file": "../customer-app/capp-api.js",
+  "from": "return Number.isSafeInteger(j.net_total_cents) && j.net_total_cents > 0 ?",
+  "to": "return j.net_total_cents != null ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-NOGUESS"
+  ]
  }
 ]
