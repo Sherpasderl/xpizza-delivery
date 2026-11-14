@@ -15,8 +15,9 @@
 // STORAGE (server-only, rules closed):
 //   marketing_offers/{brandId}/{offerId} — the authored record; every write is ONE transaction with a rev CAS (Q3)
 //   marketing_live/{rid}/{offerId}       — the price path's compact record (offer-model liveProjection), present only while the
-//                                           offer is active; rewritten for EVERY branch by every state write (so a crash between the
-//                                           record and the mirror heals on the next one; the read reports live_drift meanwhile)
+//                                           offer is active. The overlap rule and MAX_LIVE are judged INSIDE a per-branch transaction on
+//                                           this node (mirrorActive) — the authority; a refused activation puts the record back. A crash
+//                                           between the record and its mirror leaves it un-applied (live_drift in the read; healed on the next write)
 // Owner-only data is never logged; no PII is read or returned.
 const crypto = require('crypto');
 const { can } = require('../access/membership');
@@ -71,18 +72,27 @@ async function dishProblem(deps, value) {
   return null;
 }
 
-// activation-time checks against each branch's live set: MAX_LIVE and the overlap rule (names of the clashing offers, no ids)
+// THE live judgement — ONE rule, used by the cheap pre-check AND inside the per-branch transaction: this offer against one branch's
+// CURRENT live set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids)
+function liveJudgement(offerId, value, live) {
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r));
+  if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
+  const mine = new Set(OM.dishesOf(value));
+  if (!mine.size) return null;
+  const clash = others.filter(([, r]) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
+    && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
+  return clash.length ? { error: 'overlap', with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() } : null;
+}
+const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}) });
+
+// the PRE-check (no write): refuse early, before the record moves, when a branch's live set already says no. Not the authority —
+// mirrorActive re-judges inside each branch's transaction.
 async function liveProblem(deps, offerId, value) {
   for (const rid of value.branches) {
     let live;
-    try { live = (await val(deps.db, livePath(rid))) || {}; } catch (_) { return UNAVAILABLE(); }
-    const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r));
-    if (others.length >= OM.LIMITS.live_max) return reply(409, { error: 'too_many_live', rid });
-    const mine = new Set(OM.dishesOf(value));
-    if (!mine.size) continue;
-    const clash = others.filter(([, r]) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
-      && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
-    if (clash.length) return reply(409, { error: 'overlap', rid, with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() });
+    try { live = await val(deps.db, livePath(rid)); } catch (_) { return UNAVAILABLE(); }
+    const v = liveJudgement(offerId, value, live);
+    if (v) return judgementReply(v, rid);
   }
   return null;
 }
@@ -117,14 +127,58 @@ async function casWrite(db, path, expectedRev, decide) {
   return { rec: s };
 }
 
-// the mirrors of one record, for EVERY branch it names now and every branch it named before → one multi-path update
-async function writeMirrors(db, brandId, offerId, rec, prevBranches = []) {
-  const up = {};
-  const active = rec.state === 'active';
-  for (const rid of new Set([...prevBranches, ...rec.branches])) {
-    up[`${livePath(rid)}/${offerId}`] = active && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId) : null;
+// An ACTIVE record's mirrors — THE AUTHORITY on MAX_LIVE and the overlap rule (advisor 11-14, rule 5): per branch, ONE transaction on
+// marketing_live/{rid} judges the CURRENT live set and adds this offer only when it passes, so two simultaneous publishes on a branch
+// serialize on that node and cannot both pass. A refusal (or an outage) removes what this call already added (only entries still at
+// this rev). Branches the offer no longer names lose their entry. → null | the 409 judgement | 503
+async function mirrorActive(db, brandId, offerId, rec, prevBranches = []) {
+  const value = OM.authoredOf(rec, opts);
+  const proj = OM.liveProjection(rec, brandId);
+  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid))))) return UNAVAILABLE();
+  const done = [];
+  for (const rid of rec.branches) {
+    let last = null;
+    let tx;
+    try {
+      tx = await db.ref(livePath(rid)).transaction((cur) => {
+        const d = { verdict: null };
+        last = d;
+        const v = liveJudgement(offerId, value, cur);
+        if (v) { d.verdict = v; return undefined; }
+        return { ...(isObj(cur) ? cur : {}), [offerId]: proj };
+      });
+    } catch (_) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
+    if (last && last.verdict) { await unmirror(db, offerId, done, rec.rev); return judgementReply(last.verdict, rid); }
+    if (!tx || !tx.committed) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
+    done.push(rid);
   }
-  try { await db.ref().update(up); return true; } catch (_) { return false; }
+  return null;
+}
+// remove this offer's entry on each branch (when `rev` is given: only an entry still at that rev — never a newer write's) → ok
+async function unmirror(db, offerId, rids, rev = null) {
+  try {
+    for (const rid of rids) {
+      await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
+        if (cur === null) return null;   // the null-first pass: commits only if the server is null too, else re-runs on the entry
+        return rev === null || (isObj(cur) && cur.rev === rev) ? null : undefined;
+      });
+    }
+    return true;
+  } catch (_) { return false; }
+}
+// after the record CAS: active ⇒ the judged mirrors, else every branch's entry removed. A refused activation puts the record BACK to
+// what it was (a second CAS on the new rev) and answers the judgement with the record's current rev; a failed undo is a 503 (the
+// record is active with no mirror — never applied by the price path; the read reports live_drift).
+async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
+  const prevBranches = isObj(before) && Array.isArray(before.branches) ? before.branches : [];
+  if (rec.state !== 'active') return (await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])])) ? null : UNAVAILABLE();
+  const refused = await mirrorActive(db, brandId, offerId, rec, prevBranches);
+  if (!refused) return null;
+  if (refused.status !== 409) return refused;
+  const undo = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...before, rev: cur.rev + 1, updated_at: t }; });
+  if (undo.fail) return UNAVAILABLE();
+  if (undo.rec.state === 'active' && (await mirrorActive(db, brandId, offerId, undo.rec, rec.branches))) return UNAVAILABLE();   // a live edit undone: its old mirrors back
+  return reply(409, { ...refused.body, current_rev: undo.rec.rev });
 }
 
 // Q4: the brand's ended offers older than 180 days (by their last write) — removed by the next create, in ONE update of the brand node
@@ -211,8 +265,8 @@ async function marketingOfferSaveCore(deps, req) {
   if (!creating) {   // an active / paused offer: the live-edit allowlist is checked against the record the CAS will see
     try { prevRec = await val(db, `${offersPath(brandId)}/${offerId}`); } catch (_) { return UNAVAILABLE(); }
     if (isObj(prevRec) && (prevRec.state === 'active' || prevRec.state === 'paused_owner')) {
-      const live = await liveProblem(deps, offerId, value);   // a raised cap / later end can never create an overlap, but keep one rule
-      if (live && live.body.error !== 'too_many_live') return live;
+      const live = await liveProblem(deps, offerId, value);   // a later end CAN create an overlap: the same judgement as a publish
+      if (live) return live;
     }
   }
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, body.expected_rev, (cur, d) => {
@@ -230,7 +284,7 @@ async function marketingOfferSaveCore(deps, req) {
     return OM.stripNulls({ ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t });
   });
   if (w.fail) return w.fail;
-  if (w.rec.state === 'active' && !(await writeMirrors(db, brandId, offerId, w.rec, isObj(prevRec) ? prevRec.branches : []))) return UNAVAILABLE();
+  if (w.rec.state === 'active') { const m = await settleMirrors(db, brandId, `${offersPath(brandId)}/${offerId}`, offerId, w.rec, prevRec, t); if (m) return m; }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
@@ -274,7 +328,8 @@ async function marketingOfferSetStateCore(deps, req) {
     return next;
   });
   if (w.fail) return w.fail;
-  if (!(await writeMirrors(db, brandId, body.offer_id, w.rec, value.branches))) return UNAVAILABLE();
+  const m = await settleMirrors(db, brandId, path, body.offer_id, w.rec, pre, t);
+  if (m) return m;
   return reply(200, { ok: true, offer: offerView(body.offer_id, w.rec, t) });
 }
 

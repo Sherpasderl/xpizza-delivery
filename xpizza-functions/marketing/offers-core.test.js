@@ -229,6 +229,29 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('MAX_LIVE: 10 scheduled+live offers per branch');
     }
 
+    // ── 6b. the race (advisor 11-14, rule 5): two clashing publishes at once — the per-branch transaction lets exactly one through ──
+    {
+      const { fake, deps } = await setup();
+      const a = await created(deps, { name: 'Carrera A' });
+      const b = await created(deps, { name: 'Carrera B', schedule: { start: NOW + DAY, days: [6], window: { from: 1380, to: 60 } } });
+      const [ra, rb] = await Promise.all([a, b].map((d) => move(deps, `t-${OWNER}`, { offer_id: d.id, to: 'active', expected_rev: 1 })));
+      const codes = [ra.status, rb.status].sort();
+      assert.deepStrictEqual(codes, [200, 409], `exactly one of two simultaneous publishes wins (${JSON.stringify([ra.body, rb.body])})`);
+      const [win, lose, loser] = ra.status === 200 ? [a, rb, b] : [b, ra, a];
+      assert.deepStrictEqual([lose.body.error, lose.body.rid, lose.body.with, lose.body.current_rev], ['overlap', 'tb_centro', [win.name], 3], 'the loser: a typed overlap refusal naming the winner, with its record\'s current rev');
+      assert.deepStrictEqual(mirrored(fake), [`tb_centro/${win.id}`], 'one mirror: the winner\'s');
+      const back = fake.get(`marketing_offers/tb/${loser.id}`);
+      assert.deepStrictEqual([back.state, back.rev], ['draft', 3], 'the loser\'s record is put back to draft (a second CAS)');
+      ok('race: two clashing publishes at once ⇒ exactly one wins; the other refused (overlap), its record back to draft, one mirror');
+      // a live edit that would now clash (a later end) is judged the same way and undone
+      const c = await published(deps, { name: 'Diciembre K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 10 * DAY, days: [1], window: null } });
+      await published(deps, { name: 'Enero K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + 12 * DAY, end: NOW + 20 * DAY, days: [1], window: null } });
+      const ext = await save(deps, `t-${OWNER}`, { offer_id: c.id, expected_rev: 2, offer: offer({ name: 'Diciembre K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 15 * DAY, days: [1], window: null } }) });
+      assert.deepStrictEqual([ext.status, ext.body.error, ext.body.with], [409, 'overlap', ['Enero K3']], 'a later end that runs into another offer is refused');
+      assert.strictEqual(fake.get(`marketing_live/tb_centro/${c.id}/schedule/end`), NOW + 10 * DAY, 'the edited offer keeps its OLD mirror');
+      ok('a live edit whose later end would clash is refused; the old mirror stays');
+    }
+
     // ── 7. the read: this branch's offers, statuses, drift; repeat; the 180-day prune ──
     {
       const { fake, deps } = await setup();
