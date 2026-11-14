@@ -7,9 +7,10 @@
 //   eligibility (advisor ruling 11-14, owner pending): the PUBLIC rating — rating_avg ≥ rating_min with rating_count ≥ min_ratings —
 //   and «not paused-heavy»: paused-while-open hours over the last 30 HN days ≤ paused_max_h_30d. The pause term comes from 5f's merit C
 //   (merit/paused.js, one source) and is ABSENT until feat/merit-5f merges (advisor ruling (A)); no «pedidos con problemas» metric.
-//   visibility (one rule, shared by the capp's serving read and the hidden-day recorder): eligible by rating, and not paused NOW.
+//   visibility (one rule, the capp's sponsored read): eligible by rating, and OPEN now by ops-core controlOf (the portal's
+//   Abierto / Cerrado / Pausado). The hidden-day recorder keeps the rating term only (a night closed by hours is not «hidden»).
 const { weekOf, weekBounds, nextWeek } = require('../driver-ledger/ledger-core');
-const OCS = require('../order-control-state');
+const { controlOf } = require('../portal/ops-core');   // THE operational reading (inactive > paused > closed by hours > open)
 
 const WEEKS_AHEAD = 8;
 const BOOKINGS_MAX = 12;                     // per rid (a quarter ahead + recent history)
@@ -62,12 +63,12 @@ function ratingEligibility(stats, thresholds) {
   return { ok: reasons.length === 0, rating, count, reasons };
 }
 
-// THE visibility rule (capp serving read + hidden-day recorder): eligible by rating and NOT paused now (order_control's one reader)
-function anuncioVisible({ stats, control, thresholds, nowMs }) {
+// THE visibility rule: eligible by rating AND open NOW — controlOf(identity, order_control current, now): inactive > paused > closed
+// (scheduled-orders.isOpenAt over identity.hours) > open; 'unknown' on a malformed identity or control. → { visible } | { visible:false, reason }
+function anuncioVisible({ stats, identity, control, thresholds, nowMs }) {
   if (!ratingEligibility(stats, thresholds).ok) return { visible: false, reason: 'rating' };
-  const st = OCS.effectiveState(control, nowMs).state;
-  if (st !== OCS.OPEN) return { visible: false, reason: st === OCS.PAUSED ? 'paused' : 'control_unknown' };
-  return { visible: true };
+  const st = controlOf(identity, control, nowMs).state;
+  return st === 'open' ? { visible: true } : { visible: false, reason: st };
 }
 
 // a booking's state as shown: reserved before its week, active during, ended after (derived — no job); cancelled is stored

@@ -246,16 +246,24 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       ok('a restaurant without the week\'s slot records nothing, for anyone');
     }
 
-    // ── 6. the visibility rule (the capp read + the recorder share it) ──
+    // ── 6. the visibility rule (the capp's sponsored read): eligible by rating AND the ONE operational reading open NOW
+    //       (portal/ops-core controlOf: inactive > paused > closed by hours > open; unknown on a malformed identity / control) ──
     {
       const th = { rating_min: 4.5, min_ratings: 10 };
       const good = { rating_avg: 4.7, rating_count: 20 };
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: null, thresholds: th, nowMs: 5 }), { visible: true });
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'paused' }, 'paused now ⇒ not visible');
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true, until: 4 }, thresholds: th, nowMs: 5 }), { visible: true }, 'a timed pause past its until is OPEN (order-control-state)');
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: 'yes' }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'control_unknown' });
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: { rating_avg: 4.4, rating_count: 20 }, control: null, thresholds: th, nowMs: 5 }), { visible: false, reason: 'rating' });
-      ok('visibility: eligible by rating AND open now (order-control-state\'s one reading; unknown control hides)');
+      const DAYH = { open: true, start: '11:00', end: '22:00' };
+      const identity = { brand_id: 'tb', name: 'Centro', phone: '+50431234567', hours: { sun: DAYH, mon: DAYH, tue: DAYH, wed: DAYH, thu: DAYH, fri: DAYH, sat: DAYH }, hub_lat: 15.5, hub_lng: -88, delivery_radius_km: 5, active: true, version: 1 };
+      const noon = at('2027-03-08', 12), night = at('2027-03-08', 23);
+      const vis = (o) => AM.anuncioVisible({ stats: good, identity, control: null, thresholds: th, nowMs: noon, ...o });
+      assert.deepStrictEqual(vis({}), { visible: true }, 'rated, open by its hours, not paused ⇒ visible');
+      assert.deepStrictEqual(vis({ nowMs: night }), { visible: false, reason: 'closed' }, 'outside its hours ⇒ closed ⇒ not visible');
+      assert.deepStrictEqual(vis({ identity: { ...identity, active: false } }), { visible: false, reason: 'inactive' }, 'an inactive branch ⇒ not visible');
+      assert.deepStrictEqual(vis({ control: { paused: true } }), { visible: false, reason: 'paused' }, 'paused now ⇒ not visible');
+      assert.deepStrictEqual(vis({ control: { paused: true, until: noon - 1 } }), { visible: true }, 'a timed pause past its until is OPEN (order-control-state)');
+      assert.deepStrictEqual(vis({ control: { paused: 'yes' } }), { visible: false, reason: 'unknown' }, 'a malformed control ⇒ unknown ⇒ not visible');
+      assert.deepStrictEqual(vis({ identity: null }), { visible: false, reason: 'unknown' }, 'no identity ⇒ unknown ⇒ not visible');
+      assert.deepStrictEqual(vis({ stats: { rating_avg: 4.4, rating_count: 20 } }), { visible: false, reason: 'rating' });
+      ok('visibility: eligible by rating AND open now by the ONE operational reading (hours, inactive, pause; unknown hides)');
     }
 
     FINISHED = true;
