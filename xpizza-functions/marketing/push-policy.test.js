@@ -13,16 +13,16 @@ const POL = (o = {}) => ({ promo_daily_max: 2, promo_weekly_max: 5, quiet_from: 
 
 (async () => {
   try {
-    // ── 1. the defaults: an absent, malformed or unreadable node ⇒ DEFAULTS (fail closed) ──
+    // ── 1. never configured ⇒ the DEFAULTS; configured but malformed / unreadable ⇒ null (no send — Codex push r1 P2, fail closed) ──
     {
       assert.deepStrictEqual(PP.DEFAULTS, { promo_daily_max: 1, promo_weekly_max: 3, quiet_from: 1260, quiet_to: 540 }, 'the owner\'s defaults: 1/day, 3/week, quiet 21:00 → 09:00 HN');
       const db = fakeDb();
       assert.deepStrictEqual(await PP.readPushPolicy(db), PP.DEFAULTS, 'absent ⇒ DEFAULTS');
       await db.ref('platform_config/push').set('garbage');
-      assert.deepStrictEqual(await PP.readPushPolicy(db), PP.DEFAULTS, 'a malformed node ⇒ DEFAULTS');
+      assert.strictEqual(await PP.readPushPolicy(db), null, 'a CONFIGURED but malformed node ⇒ null: no send (fail closed, Codex push r1)');
       const down = { ref: () => ({ once: async () => { throw new Error('rtdb unavailable'); } }) };
-      assert.deepStrictEqual(await PP.readPushPolicy(down), PP.DEFAULTS, 'an unreadable node ⇒ DEFAULTS (fail closed)');
-      ok('absent / malformed / unreadable ⇒ the DEFAULTS (1/day, 3/week, quiet 1260 → 540)');
+      assert.strictEqual(await PP.readPushPolicy(down), null, 'a read error ⇒ null: no send (fail closed)');
+      ok('absent (never configured) ⇒ the DEFAULTS; malformed or unreadable ⇒ null — no send (fail closed)');
     }
 
     // ── 2. the REAL writer: valid policy written with a version CAS; read back exactly ──
@@ -65,13 +65,13 @@ const POL = (o = {}) => ({ promo_daily_max: 2, promo_weekly_max: 5, quiet_from: 
       ok('bounds: daily 0..3, weekly 0..10 ≥ daily; the quiet window is mandatory, 6..14 h wrap-aware, integer minutes 0..1439; exact fields');
     }
 
-    // ── 4. a stored node out of bounds (written past the setter) ⇒ the DEFAULTS, never a partial policy ──
+    // ── 4. a stored node out of bounds (written past the setter) ⇒ null (no send), never a partial policy ──
     {
       const db = fakeDb();
       await PP.writePushPolicy(db, { expected: 0, policy: POL(), actor: 'cli:op', now: 1 });
       await db.ref('platform_config/push/quiet_to').set(1320);   // a corrupt node: from === to
-      assert.deepStrictEqual(await PP.readPushPolicy(db), PP.DEFAULTS, 'a stored node failing the bounds ⇒ the DEFAULTS (fail closed)');
-      ok('a stored node failing the bounds ⇒ the DEFAULTS, never a partial policy');
+      assert.strictEqual(await PP.readPushPolicy(db), null, 'a stored node failing the bounds ⇒ null: no send (fail closed), never a partial policy');
+      ok('a stored node failing the bounds ⇒ null (no send), never a partial policy');
     }
 
     FINISHED = true;

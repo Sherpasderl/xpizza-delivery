@@ -7,8 +7,9 @@ const INACTIVE_MS = 180 * 24 * 3600e3;   // ~6 months of dormancy before an acco
 
 // The atomic null-map that clears ONE account's three nodes. phoneHash may be absent (legacy profile) —
 // then the phone_index entry is left (it will resolve to a re-created profile at the same uid on next login).
-// `push` (PLAN-3a-capp-push-tokens r0): { hashes } — the person's customer_push_tokens records (read by the caller with the indexed uid
-// query) + their customer_push_prefs (and the push consent in it) leave in the SAME atomic update. Absent ⇒ the map is unchanged.
+// `push` (PLAN-3a-capp-push-tokens r0 + Codex push r1): { fenceAt } — the person's customer_push_prefs (and the push consent in it) are
+// REPLACED by the deletion FENCE { _deleted: fenceAt } in the SAME atomic update (every prefs txn aborts on it); the devices are drained
+// by the caller AFTER this update (fence → discover → drain). Absent ⇒ the map is unchanged.
 function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null, push = null) {
   // S-C (PLAN §S-C): the member's favorites go with the account — a SUBTREE-ROOT null, so every rid under it is purged
   const updates = { [`user_profiles/${uid}`]: null, [`user_orders/${uid}`]: null, [`user_rewards/${uid}`]: null, [`user_favorites/${uid}`]: null };
@@ -21,10 +22,7 @@ function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null, push = null) {
   // account (BC2), so this is one more equal-size key per account, not a new unbounded class. The legacy 2-arg
   // form (pruneUpdates) is kept for its tests only; no caller deletes through it.
   if (tombstoneAt != null) updates[`deleted_uids/${uid}`] = tombstoneAt;
-  if (push) {
-    for (const h of Array.isArray(push.hashes) ? push.hashes : []) if (/^[a-f0-9]{64}$/.test(String(h))) updates[`customer_push_tokens/${h}`] = null;
-    updates[`customer_push_prefs/${uid}`] = null;
-  }
+  if (push && Number.isSafeInteger(push.fenceAt)) updates[`customer_push_prefs/${uid}`] = { _deleted: push.fenceAt };
   return updates;
 }
 

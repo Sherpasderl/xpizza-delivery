@@ -7,7 +7,8 @@
 //   DEFAULTS: 1 per day, 3 per week, quiet 21:00 → 09:00 HN — times are HN MINUTES 0..1439 (the hours tripwire: no HH:MM parsing).
 //   BOUNDS (APPROVED 11-14): daily 0..3; weekly 0..10 and ≥ daily (room to RAISE frequency); the quiet window is MANDATORY — from ≠ to,
 //   its wrap-aware length (to − from + 1440) % 1440 within 360..840 minutes (6..14 h): the owner may send more often, never at night.
-//   A malformed, out-of-bounds or unreadable stored node ⇒ the DEFAULTS (fail closed); the setter refuses what the bounds refuse.
+//   Never configured (absent) ⇒ the DEFAULTS; a CONFIGURED node that is malformed / out of bounds, or a read error ⇒ null = NO send
+//   (fail closed, Codex push r1 — never more pushes than the owner set); the setter refuses what the bounds refuse.
 const PATH = 'platform_config/push';
 const DEFAULTS = Object.freeze({ promo_daily_max: 1, promo_weekly_max: 3, quiet_from: 1260, quiet_to: 540 });
 const FIELDS = Object.freeze(Object.keys(DEFAULTS));
@@ -28,16 +29,17 @@ function validatePushPolicy(p) {
   return { ok: true, value: { promo_daily_max: p.promo_daily_max, promo_weekly_max: p.promo_weekly_max, quiet_from: p.quiet_from, quiet_to: p.quiet_to } };
 }
 
-// the stored node → the policy in force (the DEFAULTS unless the node is a whole, in-bounds, versioned policy)
+// the stored node → the policy in force: absent ⇒ the DEFAULTS; a whole, in-bounds, versioned policy ⇒ it; anything else ⇒ null (no send)
 function normalizePushPolicy(node) {
-  if (!isObj(node) || !Number.isSafeInteger(node.v) || node.v < 1) return { ...DEFAULTS };
+  if (node === null || node === undefined) return { ...DEFAULTS };
+  if (!isObj(node) || !Number.isSafeInteger(node.v) || node.v < 1) return null;
   const r = validatePushPolicy(Object.fromEntries(FIELDS.map((k) => [k, node[k]])));
-  return r.ok ? r.value : { ...DEFAULTS };
+  return r.ok ? r.value : null;
 }
 
-// the policy in force; a read failure ⇒ the DEFAULTS (fail closed: never more pushes than the owner's defaults on an outage)
+// the policy in force, or null (a read error / a bad configured node) — the sender then sends NO promo push; a reader answers 503
 async function readPushPolicy(db) {
-  try { return normalizePushPolicy((await db.ref(PATH).once('value')).val()); } catch (_) { return { ...DEFAULTS }; }
+  try { return normalizePushPolicy((await db.ref(PATH).once('value')).val()); } catch (_) { return null; }
 }
 
 // THE setter (the Sherpa-admin editor; an owner CLI): validated, ONE version-CAS transaction (expected 0 = create).
