@@ -274,6 +274,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage-confirm.test.js",
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
@@ -684,6 +685,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage-confirm.test.js",
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
@@ -1150,6 +1152,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage-confirm.test.js",
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
@@ -1561,6 +1564,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
+    "xpizza-functions/marketing/offer-usage-confirm.test.js",
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
@@ -4021,9 +4025,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -7468,6 +7470,7 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7477,6 +7480,7 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7487,6 +7491,7 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
+      "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7494,7 +7499,8 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
-    "xpizza-functions/materialize-hub.test.js"
+    "xpizza-functions/materialize-hub.test.js",
+    "xpizza-functions/mktprice-wiring.guard.test.js"
    ]
   },
   "pixelpay-hosted-charge.js": {

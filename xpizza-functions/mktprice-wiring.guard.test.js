@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyMktPriceModule } = require('./tools/mktprice-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
+assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'pixelpay-confirm.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);

@@ -102,6 +102,26 @@ const SALES = 35000;   // the paid food of the order (L 400 − L 50)
     assert.deepStrictEqual([capped.refuse, released], [{ status: 409, body: { error: 'offer_changed', order_id: 'o2' } }, 1], L);
   });
 
+  await cell('OU-FAILED: a definitive decline releases as «released_failed» (counters back); a retry of that order RE-HOLDS exactly once; a cancel («released») stays terminal', async (L) => {
+    const { w, id, offer } = await offered({});
+    w.fake.put('orders/o1/offer', OP.frozenOf(offer));
+    await OU.holdForOrder(w.db, 'o1', offer, { salesCents: SALES, nowMs: T });
+    assert.strictEqual(await OU.releaseForOrder(w.db, 'o1', { to: 'released_failed' }), true, L);
+    assert.deepStrictEqual([w.fake.get('orders/o1/offer/usage'), usage(w, id).redemptions, usage(w, id).spend_cents], ['released_failed', 0, 0], `${L}: released, counters back`);
+    assert.strictEqual(await OU.releaseForOrder(w.db, 'o1', { to: 'released_failed' }), false, `${L}: a second decline releases nothing`);
+    assert.deepStrictEqual(await OU.holdForOrder(w.db, 'o1', offer, { salesCents: SALES, nowMs: T }), { ok: true }, `${L}: the retry re-holds`);
+    assert.deepStrictEqual(await OU.holdForOrder(w.db, 'o1', offer, { salesCents: SALES, nowMs: T }), { ok: true }, `${L}: its retried gate`);
+    assert.deepStrictEqual([w.fake.get('orders/o1/offer/usage'), usage(w, id).redemptions], ['held', 1], `${L}: counted exactly once again`);
+    assert.strictEqual(await OU.releaseForOrder(w.db, 'o1'), true, `${L}: then cancelled`);
+    assert.strictEqual((await OU.holdForOrder(w.db, 'o1', offer, { salesCents: SALES, nowMs: T })).ok, false, `${L}: a cancelled order never re-holds`);
+    const c = await offered({ redemptions: 1 });
+    c.w.fake.put('orders/o2/offer', OP.frozenOf(c.offer)); c.w.fake.put('orders/o3/offer', OP.frozenOf(c.offer));
+    await OU.holdForOrder(c.w.db, 'o2', c.offer, { salesCents: SALES, nowMs: T });
+    await OU.releaseForOrder(c.w.db, 'o2', { to: 'released_failed' });
+    await OU.holdForOrder(c.w.db, 'o3', c.offer, { salesCents: SALES, nowMs: T });   // another order took the one use meanwhile
+    assert.strictEqual((await OU.holdForOrder(c.w.db, 'o2', c.offer, { salesCents: SALES, nowMs: T })).ok, false, `${L}: the retry meets the cap ⇒ refused (offer_changed upstream)`);
+  });
+
   FINISHED = true;
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`offer-usage: OK (${n})`);
