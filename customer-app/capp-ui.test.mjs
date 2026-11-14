@@ -4080,3 +4080,18 @@ test('dish-stats (2b) UPS4: two mains in the cart ⇒ the UNION of their pairs, 
   b.ui.cart.inc(m2); b.ui.render(); b.click('#cart-bar');
   assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.sprite, L.toña, L.coca].map((d) => lmKey(b, d)), '🔴 DS-UPS: the union, ranked, at most 3');
 });
+test('dish-stats (2b) UPS5: a partner that became a CHOICE item on the live menu since the publish (the real noodle_01 shape: variant_items + variantOf rows) is never upsold — its «+» would need the dialog', () => {
+  // the real chain never SERVES a launcher partner (3a's producer drops partners at L 100+, and the only launcher, noodle_01, is L 307+;
+  // a variant-keyed order pairs nothing) — the live case is the merchant making a served drink a choice item after the daily publish
+  const L = DSX.la_musa, env = dsEnv('lm_pairs'), m = env.menu, real = m.dishes.find((d) => d.id === 'noodle_01_sin');
+  assert.ok(real && m.variant_items && m.variant_items.noodle_01, 'premise: the served launcher shape');
+  const coca = m.dishes.find((d) => d.dish_id === L.coca);
+  assert.ok(coca && coca.price < 100, 'premise: the partner stays under L 100');
+  const vids = ['355', '600'].map((ml) => `${coca.id}_${ml}`);
+  m.variant_items[coca.id] = { label: 'Tamaño', basePrice: coca.price, variantIds: vids };
+  vids.forEach((id, i) => m.dishes.push({ ...real, id, cat: coca.cat, name: `${coca.name} - ${['355', '600'][i]} ml`, price: coca.price + 10 * i, variantOf: coca.id, choice: `${['355', '600'][i]} ml`, dish_id: id }));
+  const b = boot('la_musa', { envelope: env }); b.ui.cart.inc(keyOfDish(b, L.main)); b.ui.render();
+  assert.ok(b.q(`#dish-${keyOfDish(b, L.coca)} [data-act="open"].qty-add-btn, #dish-${keyOfDish(b, L.coca)} .qty-add-btn[data-act="open"]`), 'premise: Coca Cola is now a choice launcher on the store');
+  b.click('#cart-bar');
+  assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.toña, L.salva].map((d) => keyOfDish(b, d)), '🔴 DS-UPS: a launcher partner is never upsold');
+});

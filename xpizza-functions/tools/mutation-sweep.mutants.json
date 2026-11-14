@@ -37206,5 +37206,22 @@
   "kills_with": [
    "DS-UPS: «+» adds ONE"
   ]
+ },
+ {
+  "id": "ups-07",
+  "slice": "dish-stats",
+  "label": "a choice-launcher partner is upsold (its «+» would skip the dialog)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a launcher partner is never upsold"
+  ]
  }
 ]
