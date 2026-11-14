@@ -2675,6 +2675,7 @@
   "access/writes-flag.js",
   "account-lib.js",
   "address-area.js",
+  "address-book.js",
   "alert-prune.js",
   "arrived-notify.js",
   "assign-hub.js",
@@ -3059,6 +3060,10 @@
    "lifts": []
   },
   "address-area.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "address-book.js": {
    "pins": [],
    "lifts": []
   },
