@@ -36429,5 +36429,107 @@
   "kills_with": [
    "VC-L: a shell left open"
   ]
+ },
+ {
+  "id": "pr-01",
+  "slice": "pr-su",
+  "label": "«Pedido recibido» drops the quoted Envío row",
+  "file": "../customer-app/capp-order.js",
+  "from": "${del && o.fee != null ? `<div class=\"rrow\"><span class=\"k\">Envío</span>",
+  "to": "${false && o.fee != null ? `<div class=\"rrow\"><span class=\"k\">Envío</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido: a placed cash order",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-1: the quoted Envío"
+  ]
+ },
+ {
+  "id": "pr-02",
+  "slice": "pr-su",
+  "label": "«Pedido recibido» never shows the served display number («Orden #N»)",
+  "file": "../customer-app/capp-order.js",
+  "from": "o.display_number != null && String(o.display_number) !== '' ? `<div class=\"mk-num\">",
+  "to": "false ? `<div class=\"mk-num\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido: «Orden #N»",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-2: the display number from the tracking node"
+  ]
+ },
+ {
+  "id": "pr-03",
+  "slice": "pr-su",
+  "label": "the live order screen keeps «Pedido recibido» once the tracker says preparing",
+  "file": "../customer-app/capp-order.js",
+  "from": "case 'preparing': return { t: 'Tu pedido se está preparando',",
+  "to": "case 'preparing': return { t: 'Pedido recibido',",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido · live: the order screen follows",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-live: preparing, in place"
+  ]
+ },
+ {
+  "id": "su-01",
+  "slice": "pr-su",
+  "label": "«Abrir App Store» records the handoff but never opens the store",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "keepHandoff(entry.rid); openExternal(runtime.store.url); } return; }",
+  "to": "keepHandoff(entry.rid); } return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update state 2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-2: «Abrir App Store» opens the store URL"
+  ]
+ },
+ {
+  "id": "su-02",
+  "slice": "pr-su",
+  "label": "a NEW build on this device is never noticed («App actualizada» never shown)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (last && last !== b) appUpdated = true;",
+  "to": "if (false) appUpdated = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update state 4: back from the store",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-4: the one cart line"
+  ]
+ },
+ {
+  "id": "su-03",
+  "slice": "pr-su",
+  "label": "a 426 on an IN-FLIGHT send releases its placement record behind the SAME state-3 reply (the order could be sent twice)",
+  "file": "../customer-app/capp-api.js",
+  "from": "          return { ...(await resolveExisting(id)), update_required: true };",
+  "to": "          { const r = await resolveExisting(id); resolvePlace(id, 'released'); return { ...r, update_required: true }; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update r2 \\(state 3 safety\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-r2-3: the retained placement record survives the sheet"
+  ]
  }
 ]
