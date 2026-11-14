@@ -6,7 +6,7 @@ const { activityWithSource } = require('../catalog/public-menu');
 const { loadSchedule } = require('../schedule/load-schedule');
 const { readCustomerAppPlatform } = require('./platform-config');
 
-function makeDirectoryDeps({ rtdb, registry, pricingView, offers = {} }) {
+function makeDirectoryDeps({ rtdb, registry, pricingView, offers = {}, sponsoredDeps = {} }) {
   if (typeof pricingView !== 'function') throw new Error('makeDirectoryDeps: pricingView (the Sherpa delivery readers) is required');
   const activity = activityWithSource(rtdb);
   return {
@@ -20,6 +20,9 @@ function makeDirectoryDeps({ rtdb, registry, pricingView, offers = {} }) {
     // the store's live offers as a home-chip hint (advisor 11-14): 3a's ONE flag reader — synchronous, non-blocking (its memo), null when
     // offers are off or on any trouble. `offers` = test seams only (memo / inflight / now); production passes none.
     offerFlag: (rid) => require('../catalog/offers-serve').offerFlagOf(rid, { rtdb, ...offers }),
+    // the platform's «Patrocinado» read (3a's Q6, marketing/sponsored-serve): never throws, never awaits (its own week-keyed memo);
+    // `sponsoredDeps` = test seams only (memo / inflight / now / switchState)
+    sponsored: () => require('../marketing/sponsored-serve').sponsoredOf({ rtdb, ...sponsoredDeps }),
   };
 }
 

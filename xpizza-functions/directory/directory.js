@@ -17,6 +17,10 @@
 // THE ONE-SCHEMA EXCEPTION (advisor 11-14): `offer` is the only entry key that may be ABSENT — added after the allowlist, and only when
 // marketing offers are on and the store has a live offer, so with offers off the body and its ETag stay byte-identical (no null key, no
 // representation bump). Shape { offers: [{ type, pct?, off_cents?, min_cents? }] } ≤ OFFER_MAX, re-allowlisted field by field here.
+//   sponsored()              → marketing/sponsored-serve sponsoredOf (3a, Q6) {rid} | null  (throw ⇒ absent; never partial)
+// THE SAME EXCEPTION, BODY-LEVEL (advisor 11-14): `sponsored: { rid }` — the week's «Patrocinado» branch — is the only BODY key that may be
+// absent: added after the allowlist ONLY when the read names a rid that is one of THIS response's listed rows (the directory stays the ONE
+// «listed» authority); off / none / unlisted / an outage ⇒ absent, so the body and its ETag stay byte-identical.
 const crypto = require('crypto');
 const { SERVED_FIELDS, pickPresentation } = require('./presentation-shape');
 const { toPublicSchedule } = require('../schedule/schedule-only');   // the SAME public schedule shape schedule_only serves
@@ -147,6 +151,11 @@ async function buildDirectory(deps) {
     restaurants.push(row);
   }
   const body = { representation_version: REPRESENTATION_VERSION, complete, platform: platform === undefined ? null : platform, restaurants, unavailable };
+  if (typeof deps.sponsored === 'function') {   // …except the sponsored hint (see the header): a listed rid only, exactly { rid }
+    let sp = null;
+    try { sp = deps.sponsored(); } catch (_) { sp = null; }
+    if (sp && typeof sp === 'object' && isStr(sp.rid) && restaurants.some((r) => r.restaurant_id === sp.rid)) body.sponsored = { rid: sp.rid };
+  }
   return { status: 200, body };
 }
 
