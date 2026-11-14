@@ -207,7 +207,7 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       const th = { rating_min: 4.5, min_ratings: 10 };
       const good = { rating_avg: 4.7, rating_count: 20 };
       assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: null, thresholds: th, nowMs: 5 }), { visible: true });
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'paused' });
+      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'paused' }, 'paused now ⇒ not visible');
       assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true, until: 4 }, thresholds: th, nowMs: 5 }), { visible: true }, 'a timed pause past its until is OPEN (order-control-state)');
       assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: 'yes' }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'control_unknown' });
       assert.deepStrictEqual(AM.anuncioVisible({ stats: { rating_avg: 4.4, rating_count: 20 }, control: null, thresholds: th, nowMs: 5 }), { visible: false, reason: 'rating' });
