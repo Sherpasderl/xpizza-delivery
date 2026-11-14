@@ -34056,10 +34056,10 @@
  {
   "id": "dsk-02",
   "slice": "desk",
-  "label": "the store's deskcart aside is never emitted (the cart unreachable on desktop)",
+  "label": "the DESK store page's deskcart aside is never emitted (the cart unreachable on desktop) — the live storeDeskHtml aside (re-pointed: the old :460 branch was dead since C-6c)",
   "file": "../customer-app/capp-ui.js",
-  "from": "${S.desk ? `<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628",
-  "to": "</div>${pill}`;   // v6 :1628",
+  "from": "      return `${chrome}<div class=\"storewrap\">${scroller}<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside></div>${pill}`;",
+  "to": "      return `${chrome}<div class=\"storewrap\">${scroller}</div>${pill}`;",
   "command": [
    "node",
    "--test",
