@@ -21,14 +21,28 @@ function shape(cur) {
     orders: int(u.orders), sales_cents: int(u.sales_cents), new_customers: int(u.new_customers) };
 }
 
+// THE cap rule on a usage node as read: would one more use costing `cost` exceed a cap? (weekly caps read the current HN week's bucket;
+// a past week's bucket is history.) capReached and headroomGone are this rule; the hold enforces the same rule inside its transaction.
+function overCap(cur, caps, nowMs, cost) {
+  const u = shape(cur); const key = weekOf(nowMs);
+  const base = caps.weekly ? (u.week.key === key ? u.week : { redemptions: 0, spend_cents: 0 }) : u;
+  return (caps.redemptions != null && base.redemptions + 1 > caps.redemptions) || (caps.spend_cents != null && base.spend_cents + cost > caps.spend_cents);
+}
+const capsOk = (caps) => !!caps && typeof caps === 'object' && typeof caps.weekly === 'boolean';
+
 /* Would ONE more use of `offer` exceed a cap, given the usage node as read? The SAME rule the hold enforces (the hold stays the
    authority; this lets the quote and the placement skip a capped offer instead of answering offer_changed forever). */
 function capReached(cur, offer, nowMs) {
   const caps = offer && offer.caps;
-  if (!caps || typeof caps.weekly !== 'boolean') return true;
-  const u = shape(cur); const key = weekOf(nowMs); const cost = costOf(offer);
-  const base = caps.weekly ? (u.week.key === key ? u.week : { redemptions: 0, spend_cents: 0 }) : u;
-  return (caps.redemptions != null && base.redemptions + 1 > caps.redemptions) || (caps.spend_cents != null && base.spend_cents + cost > caps.spend_cents);
+  if (!capsOk(caps)) return true;
+  return overCap(cur, caps, nowMs, costOf(offer));
+}
+
+/* Is the offer's headroom GONE — redemptions ≥ cap or spend ≥ cap (weekly ⇒ this HN week)? i.e. capReached for a 1-centavo use: no
+   use of any size fits. Pure (3a's offers memo drops exhausted offers from menu.offers with it; advisor 11-14). Malformed caps ⇒ gone. */
+function headroomGone(usage, caps, nowMs) {
+  if (!capsOk(caps)) return true;
+  return overCap(usage, caps, nowMs, 1);
 }
 
 /* → { ok: true, week } | { ok: false, reason: 'cap' }. Never exceeds a cap: the check and the increment are one transaction. */
@@ -114,4 +128,4 @@ async function afterGate({ db, orderId, offer, salesCents, nowMs = Date.now(), r
   return { refuse: { status: 409, body: { error: 'offer_changed', order_id: orderId } }, provenance: null, result: gate.result };
 }
 
-module.exports = { holdCounters, unholdCounters, holdForOrder, releaseForOrder, afterGate, capReached };
+module.exports = { holdCounters, unholdCounters, holdForOrder, releaseForOrder, afterGate, capReached, headroomGone };

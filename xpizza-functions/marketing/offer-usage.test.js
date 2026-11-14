@@ -102,6 +102,26 @@ const SALES = 35000;   // the paid food of the order (L 400 − L 50)
     assert.deepStrictEqual([capped.refuse, released], [{ status: 409, body: { error: 'offer_changed', order_id: 'o2' } }, 1], L);
   });
 
+  await cell('OU-HEADROOM: headroomGone(usage, caps, nowMs) — redemptions ≥ cap or spend ≥ cap (weekly ⇒ this HN week), the usage built by the REAL holdCounters; capReached agrees (one source)', async (L) => {
+    const r = await offered({ redemptions: 2 });
+    const caps = r.offer.caps;
+    assert.strictEqual(OU.headroomGone(usage(r.w, r.id), caps, T), false, `${L}: no usage yet`);
+    await OU.holdCounters(r.w.db, r.offer, { salesCents: SALES, nowMs: T });
+    assert.strictEqual(OU.headroomGone(usage(r.w, r.id), caps, T), false, `${L}: 1 of 2 ⇒ under`);
+    await OU.holdCounters(r.w.db, r.offer, { salesCents: SALES, nowMs: T });
+    assert.deepStrictEqual([OU.headroomGone(usage(r.w, r.id), caps, T), OU.capReached(usage(r.w, r.id), r.offer, T)], [true, true], `${L}: 2 of 2 ⇒ gone`);
+    const sp = await offered({ spend_cents: 10000 });   // L 50 per use
+    await OU.holdCounters(sp.w.db, sp.offer, { salesCents: SALES, nowMs: T });
+    assert.deepStrictEqual([OU.headroomGone(usage(sp.w, sp.id), sp.offer.caps, T), OU.capReached(usage(sp.w, sp.id), sp.offer, T)], [false, false], `${L}: spend 5000 of 10000 ⇒ under`);
+    await OU.holdCounters(sp.w.db, sp.offer, { salesCents: SALES, nowMs: T });
+    assert.strictEqual(OU.headroomGone(usage(sp.w, sp.id), sp.offer.caps, T), true, `${L}: spend 10000 of 10000 ⇒ gone (not one centavo left)`);
+    const wk = await offered({ redemptions: 1, weekly: true });
+    await OU.holdCounters(wk.w.db, wk.offer, { salesCents: SALES, nowMs: T });
+    assert.deepStrictEqual([OU.headroomGone(usage(wk.w, wk.id), wk.offer.caps, T), OU.headroomGone(usage(wk.w, wk.id), wk.offer.caps, T + WEEK)], [true, false], `${L}: weekly — gone this HN week, open again the next (${weekOf(T)} → ${weekOf(T + WEEK)})`);
+    assert.strictEqual(OU.headroomGone(null, { redemptions: null, spend_cents: null, weekly: false }, T), false, `${L}: no limits ⇒ never gone`);
+    for (const bad of [null, undefined, {}, { redemptions: 1 }, 'x']) assert.strictEqual(OU.headroomGone({}, bad, T), true, `${L}: malformed caps ${JSON.stringify(bad)} ⇒ gone (fail closed, like capReached)`);
+  });
+
   FINISHED = true;
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`offer-usage: OK (${n})`);
