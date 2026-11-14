@@ -457,7 +457,7 @@
     <div class="stick" id="stick"><div class="slim">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span class="sp"></span>'}<b>${esc(cfg.name || '')}</b><button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></div>
       <div class="tabsbar"><button class="iconbtn" data-act="menu" aria-label="Ver todo el menú">${IC.menu}</button><nav class="tabs" id="tabs" aria-label="Categorías">${sections.map((s, i) => `<button class="tab" data-act="jump" data-jump="${esc(s.id)}" aria-current="${i === 0}">${esc(s.name)}</button>`).join('')}</nav>${S.entry === 'app' ? '' : `<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button>`}</div></div>
     <main class="content" id="content">${content}</main></div>`;
-      return `<div class="storewrap">${scroller}${S.desk ? `<aside class="deskcart" aria-label="Tu pedido">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628
+      return `<div class="storewrap">${scroller}</div>${pill}`;   // v6 :1628 — the PHONE page (the desktop page and its cart aside are storeDeskHtml)
     }
     // C-6c (MOCKUP-capp-desktop-D3 r3 frames 2a/2b, approved; advisor calls 1–7): the desktop store page — the host's top bar
     // (opts.deskChrome), the wide hero with the logo over it, identity + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»),
