@@ -169,7 +169,9 @@ function liveEditProblem(prev, next) {
   for (const k of ['name', 'type', 'audience', 'branches']) if (!same(prev[k], next[k])) return k;
   if (!same(paramsKey(prev), paramsKey(next))) return 'params';   // a category offer's resolved dishes may move (a re-save / publish re-resolves)
   const ps = prev.schedule, ns = next.schedule;
-  if (ps.start !== ns.start || !same(ps.days, ns.days) || !same(ps.window, ns.window)) return 'schedule';
+  // owner-approved v5 «Editar oferta activa»: the days and the window MAY change on a live offer — the save re-judges the overlap (the
+  // pre-check + mirrorActive inside each branch's transaction, tombstone-aware) and the mirror re-projects; the START stays locked
+  if (ps.start !== ns.start) return 'schedule';
   if (!(ns.end === null || (ps.end !== null && ns.end >= ps.end))) return 'schedule';
   const up = (a, b) => b === null || (a !== null && b >= a);
   if (prev.caps.weekly !== next.caps.weekly || !up(prev.caps.redemptions, next.caps.redemptions) || !up(prev.caps.spend_cents, next.caps.spend_cents)) return 'caps';

@@ -273,6 +273,68 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('live edit: only a raised cap and a later end; the mirror follows');
     }
 
+    // ── 5b. owner-approved v5 «Editar oferta activa»: days + window MAY change on a live offer (start stays locked, end later-only);
+    //        the edit is re-judged for overlap inside the per-branch txn (the fenced mirror path) ──
+    {
+      const { fake, deps } = await setup();
+      const a = await published(deps);   // K1, Fri + Sat 21:00–00:00
+      const edit = (o, rev) => save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: rev, offer: offer(o) });
+      const sched = (o) => ({ schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 }, ...o } });
+      const d1 = await edit(sched({ days: [4, 5, 6] }), 2);
+      assert.deepStrictEqual([d1.status, d1.body.offer && d1.body.offer.rev, d1.body.offer && d1.body.offer.schedule.days], [200, 3, [4, 5, 6]], `a live edit of the DAYS is saved (${JSON.stringify(d1.body)})`);
+      const w1 = await edit(sched({ days: [4, 5, 6], window: { from: 1140, to: 1380 } }), 3);
+      assert.deepStrictEqual([w1.status, w1.body.offer && w1.body.offer.schedule.window], [200, { from: 1140, to: 1380 }], 'a live edit of the WINDOW is saved');
+      assert.deepStrictEqual(fake.get(`marketing_live/tb_centro/${a.id}`), OM.liveProjection(fake.get(`marketing_offers/tb/${a.id}`), 'tb'), 'the mirror re-projects the edit (the fenced path)');
+      const s1 = await edit(sched({ start: NOW + 2 * DAY, days: [4, 5, 6], window: { from: 1140, to: 1380 } }), 4);
+      assert.deepStrictEqual([s1.status, s1.body.error, s1.body.field], [409, 'live_edit_not_allowed', 'schedule'], 'the START stays locked once live');
+      ok('v5 live edit: days and window are editable (rev bumps, the mirror re-projects); the start stays locked');
+      // an edit that CREATES an overlap is refused by the judgement — the record and the mirror unchanged
+      const wed = await published(deps, { name: 'Miércoles noche', schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3], window: { from: 1200, to: 1320 } } });
+      const before = [fake.get(`marketing_offers/tb/${a.id}`), fake.get(`marketing_live/tb_centro/${a.id}`)];
+      const clash = await edit(sched({ days: [3, 4, 5, 6], window: { from: 1140, to: 1380 } }), 4);
+      assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['Miércoles noche']], `an edit adding Wednesday 19:00–23:00 clashes with «Miércoles noche» ⇒ overlap (${JSON.stringify(clash.body)})`);
+      assert.deepStrictEqual([fake.get(`marketing_offers/tb/${a.id}`).rev, fake.get(`marketing_offers/tb/${a.id}`).schedule.days, fake.get(`marketing_live/tb_centro/${a.id}`)], [before[0].rev, before[0].schedule.days, before[1]], 'the record and the mirror are unchanged');
+      assert.ok(wed.state === 'active', 'premise');
+      ok('an edit that creates an overlap is refused (named), the record and the mirror unchanged');
+    }
+    // the RACE: a clashing offer publishes AFTER the edit's pre-check, BEFORE its mirror txn ⇒ the in-txn judgement (the authority) refuses
+    // the edit and the record is put back — never two overlapping live offers
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps);   // K1, Fri + Sat 21:00–00:00
+      const wedDraft = await created(deps, { name: 'Miércoles noche', schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3], window: { from: 1200, to: 1320 } } });
+      let pub = null; let armed = true;
+      const lateDb = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === 'marketing_live/tb_centro') return { ...r, transaction: async (fn) => { armed = false; pub = await move(deps, `t-${OWNER}`, { offer_id: wedDraft.id, to: 'active', expected_rev: 1 }); return r.transaction(fn); } };
+        return r; } };
+      const r = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [3, 5, 6], window: { from: 1140, to: 1380 } } }) });
+      assert.strictEqual(pub && pub.status, 200, 'premise: «Miércoles noche» published between the edit\'s pre-check and its mirror txn');
+      assert.deepStrictEqual([r.status, r.body.error], [409, 'overlap'], `the in-txn judgement refuses the racing edit (${JSON.stringify(r.body)})`);
+      assert.deepStrictEqual(fake.get(`marketing_offers/tb/${a.id}`).schedule.days, [5, 6], 'the record is put back (the edit undone)');
+      assert.deepStrictEqual(fake.get(`marketing_live/tb_centro/${a.id}`).schedule.days, [5, 6], 'its mirror keeps the pre-edit days: never two overlapping live offers');
+      ok('a racing edit is refused INSIDE the per-branch txn (the authority) and undone — never two overlapping live offers');
+    }
+
+    // ── 5c. the fence's strict `>` (5f's review): a pause whose CAS LOSES to a concurrent activation at the SAME rev as its tombstone ⇒
+    //        that activation's mirror overwrites the tombstone (it is live, as its record says) ──
+    {
+      const { fake, db, deps } = await setup();
+      const a = await published(deps);   // rev 2, active
+      let edited = null; let armed = true;
+      const recPath = `marketing_offers/tb/${a.id}`;
+      const lateDb = { ref: (p) => { const r = db.ref(p);
+        if (armed && p === recPath) return { ...r, transaction: async (fn) => { armed = false; edited = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 90, spend_cents: null, weekly: false } }) }); return r.transaction(fn); } };
+        return r; } };
+      // the pause tombstones at rev 3 (pre.rev + 1), then — before its CAS — a live edit takes rev 3 and mirrors its rev-3 projection
+      const p = await move({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 });
+      assert.strictEqual(edited && edited.status, 200, `premise: the concurrent edit took rev 3 (${JSON.stringify(edited && edited.body)})`);
+      assert.deepStrictEqual([p.status, p.body.error], [409, 'superseded'], 'premise: the pause lost its CAS');
+      const rec = fake.get(recPath); const e = fake.get(`marketing_live/tb_centro/${a.id}`);
+      assert.deepStrictEqual([rec.state, rec.rev], ['active', 3], 'premise: the record is active at rev 3');
+      assert.ok(e && e.removed !== true && e.rev === 3, `the SAME-rev activation overwrites the tombstone: live, as its record says (${JSON.stringify(e)})`);
+      ok('the fence is strict: an activation at the tombstone\'s own rev (a lost pause CAS) overwrites it');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();
