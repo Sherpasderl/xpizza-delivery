@@ -37002,5 +37002,73 @@
   "kills_with": [
    "DS-F1"
   ]
+ },
+ {
+  "id": "rec-01",
+  "slice": "dish-stats",
+  "label": "the «%» from votes instead of up / votes (every rated dish reads 100 %)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "Math.round((100 * s.up) / s.votes)",
+  "to": "Math.round((100 * s.votes) / s.votes)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1"
+  ]
+ },
+ {
+  "id": "rec-02",
+  "slice": "dish-stats",
+  "label": "no 80 % floor: a low % shown as a recommendation (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return n >= REC_MIN ? n : null;",
+  "to": "return n >= 0 ? n : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1: 75 % is no recommendation"
+  ]
+ },
+ {
+  "id": "rec-03",
+  "slice": "dish-stats",
+  "label": "the badge VISIBLE on a sold-out dish (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span class=\"pill rec\"${sold ? ' style=",
+  "to": "<span class=\"pill rec\"${false ? ' style=",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC2"
+  ]
+ },
+ {
+  "id": "rec-04",
+  "slice": "dish-stats",
+  "label": "a badge for a dish WITHOUT stats (a placeholder %, rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!s || !Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null;",
+  "to": "if (!s) return REC_MIN; if (!Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-REC1"
+  ]
  }
 ]

@@ -289,6 +289,12 @@
     const isSold = (it) => isSoldBy(it, soldOf);
     const unit = cfg.unit && cfg.unit.length === 2 ? cfg.unit : ['plato', 'platos'];
     const unitOf = (n) => n + ' ' + (n === 1 ? unit[0] : unit[1]);
+    // PLAN-capp-dish-stats r0 (2), D-3 r3 9.1: «N % lo recomienda» from the served dish_stats (menu.dishStats, the producer's ≥ 20 votes)
+    // — N = round(100 × up / votes), shown only at N ≥ 80 (advisor 11-14, rule 8: a low % is no recommendation). A SOLD-OUT dish keeps the
+    // pill's slot hidden (rule 8: never a visible badge on it; frame 12: a dish that sells out mid-visit never changes its row's height)
+    const REC_MIN = 80;
+    const recOf = (it) => { const s = it && it.dish && menu.dishStats ? menu.dishStats[it.dish] : null; if (!s || !Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null; const n = Math.round((100 * s.up) / s.votes); return n >= REC_MIN ? n : null; };
+    const recPill = (it, sold) => { const n = recOf(it); return n === null ? '' : `<span class="pill rec"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>${n} % lo recomienda</span>`; };
     const badgeOf = (it) => { const k = BADGE_PRIORITY.find((t) => (it.tags || []).includes(t)); if (!k) return null; const served = menu.badges && menu.badges[k] && menu.badges[k].label; return { text: served || BADGE_FALLBACK[k], color: k === 'must_try' || k === 'crowd_favourite' ? 'var(--acc)' : 'var(--price)' }; };
 
     // ── hours (the store config's, on the injected clock) ──
@@ -348,7 +354,8 @@
       const marks = label ? `<span class="marks">${label}</span>` : '';
       const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
-      return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span></button>
+      const rp = recPill(it, sold);
+      return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span>${rp ? `<span class="pills">${rp}</span>` : ''}</button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;
     }
     // PLAN-capp-store-promo-feeinfo r0 — the store header as v6: the guest promo pill (:1617; reserved, hidden, while auth is
@@ -485,10 +492,10 @@
       return cells.length ? `<div class="cells${cells.length === 1 ? ' one' : ''}">${cells.join('')}</div>` : '';
     }
     function deskCardHtml(it) {
-      const b = badgeOf(it), sold = isSold(it);
+      const b = badgeOf(it), sold = isSold(it), rp = recPill(it, sold);
       const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
-      return `<div class="icard${sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn txt" ${open}><span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="pr">${esc(price)}</span>${b ? `<span class="pills"><span class="mark" style="color:${b.color}">${esc(b.text)}</span></span>` : ''}</button>`
+      return `<div class="icard${sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn txt" ${open}><span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="pr">${esc(price)}</span>${b || rp ? `<span class="pills">${b ? `<span class="mark" style="color:${b.color}">${esc(b.text)}</span>` : ''}${rp}</span>` : ''}</button>`
         + `${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="thumb noimg">${overlayHtml(it)}</div>`}</div>`;
     }
     function storeDeskHtml() {

@@ -3982,3 +3982,38 @@ test('DA3 rule 10 in the aside: no free-delivery claim without the predicate (gu
   p.w.history.back(); await popped();
   assert.ok(/Envío L /.test(p.text('.deskcart .ctot')) && !p.q('.deskcart .feelnk'), `🔴 DA3: priced — the aside never carries the guest line (frame 2a): ${p.text('.deskcart .ctot')}`);
 });
+
+// ── PLAN-capp-dish-stats r0 (2), the «%» badge (advisor 11-14: (c) now; «Más pedido» + the upsell wait for 3a's pricing-resolver context):
+// D-3 r3 9.1 draws «97 % lo recomienda» (.pill.rec) in the dish's pills — the phone row after the price, the desk card beside its
+// tag. N = round(100 × up / votes) from the served dish_stats (the producer's ≥ 20 votes); shown only at N ≥ 80 (advisor, rule 8). The
+// fixture is 3a's real chain (fixtures/dish-stats): dish A 19/20 (95 %) in stats_a, 23/24 (96 %) in stats_b; dish B 15/20 (75 %) ──
+const DSX = JSON.parse(readFileSync(join(HERE, 'fixtures/dish-stats/dish-stats.json'), 'utf8'));
+const dsEnv = (k) => JSON.parse(JSON.stringify(DSX.scenarios[k].envelope));
+const keyOfDish = (b, dishId) => { const d = b.ui.menu.dishes.find((x) => x.dish_id === dishId); assert.ok(d, `premise: the served dish ${dishId}`); return d.key; };
+test('dish-stats (2) REC1 (9.1): «N % lo recomienda» in the dish\'s pills — the phone row after the price, the desk card — only at N ≥ 80; none below, none without stats', () => {
+  for (const mount of [{}, DESK]) {
+    const where = mount.view ? 'desk' : 'phone';
+    const b = boot('x_pizza', { envelope: dsEnv('stats_a'), mount });
+    const a = keyOfDish(b, DSX.ratings.dish_a), bb = keyOfDish(b, DSX.ratings.dish_b), c = keyOfDish(b, DSX.ratings.dish_c);
+    const pill = b.q(`#dish-${a} .pills .pill.rec`);
+    assert.ok(pill, `🔴 DS-REC1: the badge (${where})`);
+    assert.equal(pill.textContent, '95 % lo recomienda', `🔴 DS-REC1: round(100 × 19 / 20) (${where})`);
+    if (!mount.view) assert.ok(b.q(`#dish-${a} .prrow + .pills`), 'the phone: after the price (9.1)');
+    assert.equal(b.q(`#dish-${bb} .pill.rec`), null, `🔴 DS-REC1: 75 % is no recommendation (${where})`);
+    assert.equal(b.q(`#dish-${c} .pill.rec`), null, `🔴 DS-REC1: no stats (below the producer's 20 votes) ⇒ no badge (${where})`);
+    assert.equal(boot('x_pizza', { envelope: dsEnv('plain'), mount }).q('.pill.rec'), null, `🔴 DS-REC1: no dish_stats ⇒ no badge anywhere (${where})`);
+  }
+  const b2 = boot('x_pizza', { envelope: dsEnv('stats_b') });
+  assert.equal(b2.q(`#dish-${keyOfDish(b2, DSX.ratings.dish_a)} .pill.rec`).textContent, '96 % lo recomienda', '🔴 DS-REC1: 23 / 24 rounds to 96');
+});
+test('dish-stats (2) REC2 (rule 8 + frame 12): a dish SOLD OUT keeps the badge\'s slot but never shows it (no visible badge on a sold-out dish; the row never changes height mid-visit)', () => {
+  const sold = new Set();
+  const b = boot('x_pizza', { envelope: dsEnv('stats_a'), unavailable: sold });
+  const a = keyOfDish(b, DSX.ratings.dish_a);
+  assert.ok(b.q(`#dish-${a} .pill.rec`) && b.q(`#dish-${a} .pill.rec`).getAttribute('aria-hidden') !== 'true', 'premise: shown while orderable');
+  sold.add(a); b.ui.render();
+  const p = b.q(`#dish-${a} .pill.rec`);
+  assert.ok(p, '🔴 DS-REC2: the slot is kept (the row keeps its height)');
+  assert.equal(p.getAttribute('aria-hidden'), 'true', '🔴 DS-REC2: hidden from assistive tech');
+  assert.equal(b.w.getComputedStyle(p).visibility, 'hidden', '🔴 DS-REC2: never visible on a sold-out dish');
+});
