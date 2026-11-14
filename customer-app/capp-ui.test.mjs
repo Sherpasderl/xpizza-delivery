@@ -497,17 +497,18 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null } = {}) {
-  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
-  const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA } = {}) {
+  const rd = src || ((f) => readFileSync(join(HERE, f), 'utf8'));   // src: another commit's files (the offers OFF golden)
+  const css = rd('capp.css');
+  const html = rd('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
-  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) w.eval(rd(f));
   if (pre) pre(w);   // window stubs the page has before the app boots (google.maps, console)
   const srv = scripted({ quoteOrder: [QUOTE], ...script });
   const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
   const ui = w.CappUI.mount(w.document, { envelope: PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
-    CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
+    CappCheckout: CKo, CappApi: CAo, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
     apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: rng || ((k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256)), setInterval: () => 0, clearInterval: () => {} }, ...mountOpts });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
@@ -3981,4 +3982,102 @@ test('DA3 rule 10 in the aside: no free-delivery claim without the predicate (gu
   await toCheckout(p); await settle(); assert.ok(p.q('.ostot .feelnk'), 'premise: the checkout carries the guest line (v6)');
   p.w.history.back(); await popped();
   assert.ok(/Envío L /.test(p.text('.deskcart .ctot')) && !p.q('.deskcart .feelnk'), `🔴 DA3: priced — the aside never carries the guest line (frame 2a): ${p.text('.deskcart .ctot')}`);
+});
+
+// ── PLAN-capp-marketing-offers Slice A (advisor 11-14; owner-approved MOCKUP-capp-offers-calm-vs-loud 5 A + MOCKUP-capp-marketing-offers
+// frames 1 / 2 / 4; copy approved 11-14): the quotes are 5f's REAL quoteOrder responses for THIS cart (fixtures/offer-quote) ──
+const OQ = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-quote/offer-quote.json'), 'utf8'));
+const OQ_CART = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-quote/cart.json'), 'utf8'));
+const OCX2 = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-changed/offer-changed.json'), 'utf8'));
+const CAPP_OFF_BASE = 'ca2b4415c39da8a3968df4f9db49161b85a50345';   // feat/capp-offer-changed: the capp before Slice A (the OFF golden's «today»)
+const { refLoader } = await import('./test/ref-require.mjs');
+const { execFileSync } = await import('node:child_process');
+// the quote answers ONLY the fixture's cart (the real body the capp sends), with the scenario for the body's mode
+const oqServer = (pick) => (body) => {
+  assert.deepEqual(body.items.map(({ name, qty, price, subtotal }) => ({ name, qty, price, subtotal })), OQ_CART.items.map(({ name, qty, price, subtotal }) => ({ name, qty, price, subtotal })), 'premise: the quoted cart is the fixture\'s');
+  return { status: 200, json: OQ.scenarios[pick(body)] };
+};
+async function oqCheckout(b) { b.ui.cart.inc(OQ_CART.key); b.ui.cart.inc(OQ_CART.key); b.ui.render(); await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle(); }
+const rowsOf = (b, sel) => b.qa(`${sel} .sumrow`).map((r) => b.text(r));
+test('offers 5 A: the checkout\'s «Descuento · 2 por 1 − L 340» row between Envío and Total, from the quote; Subtotal GROSS; Total = the quote\'s net', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  assert.equal(b.plain.key, OQ_CART.key, 'premise: the fixture\'s dish is the harness\'s plain dish');
+  await oqCheckout(b);
+  assert.deepEqual(rowsOf(b, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 2 por 1 − L 340', 'Total L 400'], '🔴 OF-UI-ROW: the drawn rows, in order');
+  const row = b.qa('.ostot .sumrow')[2];
+  assert.deepEqual([row.querySelector('.lbl').firstChild.nodeValue, row.querySelector('.lbl .ty').textContent, row.lastElementChild.className], ['Descuento', ' · 2 por 1', 'free'], 'the word in ink, the type muted, the amount in the «Gratis» green');
+  assert.ok(!b.text('.ostot').includes(OQ.scenarios.BOGO_DEL.offer.name), 'never the merchant-typed name');
+});
+test('offers 5 A: a type without its amount yet (lps, today\'s quote) ⇒ «Descuento» alone; the envío offer ⇒ no row, the v6 struck fee + «Gratis»', async () => {
+  const l = bootCo({ script: { quoteOrder: [oqServer(() => 'LPS_DEL')] } }); await oqCheckout(l);
+  assert.deepEqual(rowsOf(l, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento − L 50', 'Total L 690'], '🔴 OF-UI-FALLBACK');
+  assert.equal(l.q('.ostot .lbl .ty'), null);
+  const e = bootCo({ script: { quoteOrder: [oqServer(() => 'ENVIO_DEL')] } }); await oqCheckout(e);
+  assert.deepEqual(rowsOf(e, '.ostot'), ['Subtotal L 680', 'Envío L 60 Gratis', 'Total L 680'], '🔴 OF-UI-ENVIO: the envío offer is the Envío row, never a Descuento row');
+  assert.ok(e.q('.ostot .strike') && !e.q('.ostot .lbl'), 'struck fee, no Descuento row');
+});
+test('offers 5 A: the cart sheet reads the SAME quote — the same Descuento row, Total = the quote\'s net', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  await oqCheckout(b); b.w.history.back(); await popped();   // device back: «Entrega & Pago» → the cart sheet (S2b r2), the flow + its quote kept
+  assert.deepEqual(rowsOf(b, '#layer .ctot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 2 por 1 − L 340', 'Total L 400'], '🔴 OF-UI-CART');
+});
+// THE OFF GOLDEN: with no offer in the quote (offers off, or none applying) every money surface is BYTE-IDENTICAL to the capp before
+// Slice A — the base commit's own files (index.html, capp.css, capp-ui.js …, capp-checkout.js, capp-api.js), same script, same steps
+test('offers OFF golden: no offer ⇒ the checkout and the cart sheet are byte-identical to the base commit\'s', async () => {
+  const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const R = refLoader(ROOT, CAPP_OFF_BASE);
+  const run = async (o) => {
+    const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] }, ...o }); await oqCheckout(b);
+    const co = b.q('.screen').innerHTML; b.w.history.back(); await popped();
+    return { co, cart: b.q('#layer').innerHTML };
+  };
+  for (const k of ['OFF_DEL', 'UNDER_DEL']) assert.ok(!('offer' in OQ.scenarios[k]), `premise: ${k} carries no offer`);
+  const tip = await run({}), was = await run({ src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') });
+  assert.ok(was.co.includes('Total') && was.cart.includes('Total'), 'premise: both surfaces drawn');
+  assert.equal(tip.co, was.co, '🔴 OF-OFF-GOLDEN: the checkout');
+  assert.equal(tip.cart, was.cart, '🔴 OF-OFF-GOLDEN: the cart sheet');
+});
+// Q3 (frame 4): the order refused offer_changed (5f's REAL bodies) ⇒ the checkout re-quotes; a HIGHER Total asks «Confirmar» / «Volver»
+async function ocFilled(b) {
+  await oqCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000');
+  await b.click('[data-act="pay"][data-val="cash"]');
+}
+for (const form of ['cash_cap', 'gate']) test(`offers Q3 (${form}): offer_changed ⇒ re-quote ⇒ «La oferta ya no está disponible · Tu total ahora es L 740.»; «Confirmar» places at THAT Total; a second one is the generic sheet`, async () => {
+  let phase = 'BOGO_DEL';
+  const refusal = { status: OCX2.scenarios[form].status || 409, json: OCX2.scenarios[form].body };
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => phase)], createOrder: [refusal, refusal] } });
+  await ocFilled(b);
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 400', 'premise: priced with the offer');
+  phase = 'UNDER_DEL';   // the offer is gone: the server's next quote has none
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('createOrder')[0].body.expected_net_cents, 40000, 'premise: sent at the offer\'s Total');
+  const { clock: _alertIcon, ...sh } = sheetOf(b);   // the warn icon (v6 .errsheet, #i-alert)
+  assert.deepEqual(sh, { label: 'La oferta ya no está disponible', h2: 'La oferta ya no está disponible', p: 'Tu total ahora es L 740.', icon: 'icon warn',
+    acts: [['primary', 'Confirmar', 'oc-confirm'], ['btn2 wide', 'Volver', 'lclose']] }, '🔴 OF-SHEET: frame 4, the re-quoted Total');
+  assert.deepEqual(rowsOf(b, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Total L 740'], 'under the sheet: the checkout re-rendered without the Descuento row');
+  assert.equal(b.srv.of('createOrder').length, 1, '🔴 OF-NORESEND: nothing re-sent before «Confirmar»');
+  await b.click('#layer [data-act="oc-confirm"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('createOrder').length, 2, 'Confirmar places');
+  assert.equal(b.srv.of('createOrder')[1].body.expected_net_cents, 74000, '🔴 OF-CONFIRM: at the re-quoted Total, never the old one');
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu pedido', '🔴 OF-NOLOOP: a second offer_changed for the same order is the generic sheet');
+});
+test('offers Q3: «Volver» closes the sheet over the re-priced checkout; an equal-or-lower re-quote shows no sheet at all', async () => {
+  let phase = 'BOGO_DEL';
+  const refusal = { status: 409, json: OCX2.scenarios.cash_cap.body };
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => phase)], createOrder: [refusal] } });
+  await ocFilled(b); phase = 'UNDER_DEL';
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.q('#layer').innerHTML, '', 'Volver closes the sheet');
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 740', 'the checkout shows the re-quoted Total');
+  const s = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')], createOrder: [refusal] } });
+  await ocFilled(s); await ctaPlace(s); await s.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(s.q('#layer .errsheet'), null, '🔴 OF-LOWER: the same (or a lower) Total ⇒ no sheet, just the checkout');
+  assert.equal(s.text('.ostot .sumrow.tot'), 'Total L 400');
+});
+test('offers fixture cart: cart.json is still the capp\'s REAL quote-body items for 2× the plain dish (re-derived, no drift)', async () => {
+  const { cartOf } = await import('./fixtures/offer-quote/cart-of.mjs');
+  assert.deepEqual(await cartOf(), OQ_CART, '🔴 OQ-CART: regenerate cart.json and the offer-quote fixture');
 });

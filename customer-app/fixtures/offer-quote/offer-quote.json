@@ -1,0 +1,123 @@
+{
+ "ref": "feat/marketing-price-5f",
+ "sha": "2ce9bd1eb9bb1057b19ed89203699a2ec41b648f",
+ "blobs": {
+  "index.js": "53e340f608b2fbb009aee0029dbf5a60bb7ae2e1",
+  "marketing/offer-wire.js": "17df567a7262ad1cabacdccba89474db7689bc45",
+  "marketing/offer-price.js": "617ebba55217c3524d11d05fef6293833681ef34",
+  "delivery/delivery-wire.js": "272d3f65fcd3d2039d9233e6bb4962baa7fa4d1f"
+ },
+ "literal_sha256": "cde961159a544ca4f67ffadca16d72f1b426d86d09f091bde6242a1ac223b101",
+ "cart_sha256": "c632f45d76177a4483cc25169d27179e11fa7ab9e5593eaaf7bf5d1f3bb631b4",
+ "scenarios": {
+  "BOGO_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 40000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   },
+   "offer": {
+    "type": "bogo",
+    "name": "Oferta",
+    "discount_cents": 34000,
+    "waived_envio_cents": 0
+   }
+  },
+  "BOGO_PICK": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 34000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 0,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "pickup"
+   },
+   "offer": {
+    "type": "bogo",
+    "name": "Oferta",
+    "discount_cents": 34000,
+    "waived_envio_cents": 0
+   }
+  },
+  "LPS_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 69000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   },
+   "offer": {
+    "type": "lps",
+    "name": "Oferta",
+    "discount_cents": 5000,
+    "waived_envio_cents": 0
+   }
+  },
+  "ENVIO_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 68000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 6000,
+    "policy_version": 1,
+    "mode": "delivery"
+   },
+   "offer": {
+    "type": "envio",
+    "name": "Oferta",
+    "discount_cents": 0,
+    "waived_envio_cents": 6000
+   }
+  },
+  "UNDER_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 74000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   }
+  },
+  "OFF_DEL": {
+   "ok": true,
+   "total_cents": 68000,
+   "subtotal_cents": 59130,
+   "tax_cents": 8870,
+   "net_total_cents": 74000,
+   "quote_token": "<quote_token>",
+   "delivery": {
+    "delivery_cents": 6000,
+    "promo_discount_cents": 0,
+    "policy_version": 1,
+    "mode": "delivery"
+   }
+  }
+ },
+ "scenarios_sha256": "4466303b3af7f97ab42584db91c14e5af89450704616ec51f3beccdc790ada31"
+}

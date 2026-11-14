@@ -1,0 +1,28 @@
+{
+ "key": "D9XRZ89WJ6",
+ "items": [
+  {
+   "name": "Carnivora",
+   "dish_id": "D9XRZ89WJ6",
+   "qty": 1,
+   "price": 340,
+   "subtotal": 340,
+   "extras": [],
+   "extrasTotal": 0,
+   "item_key": "Carnivora"
+  },
+  {
+   "name": "Carnivora",
+   "dish_id": "D9XRZ89WJ6",
+   "qty": 1,
+   "price": 340,
+   "subtotal": 340,
+   "extras": [],
+   "extrasTotal": 0,
+   "item_key": "Carnivora"
+  }
+ ],
+ "menu": {
+  "Carnivora": 340
+ }
+}

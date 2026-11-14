@@ -927,6 +927,10 @@
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
       // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); a refused QUOTE has no sheet; the placement's sheets are below (onOutcome)
+      if (S.oc) {   // offers Q3: the re-quote after an offer_changed — the sheet only for a HIGHER Total, from the quote that just landed
+        const from = S.oc.from; S.oc = null; const T = r.kind === 'ok' ? totalsNow() : { ready: false };
+        if (T.ready && from !== null && T.total > from && (S.screen === 'checkout' || S.screen === 'tip')) { render(); showErr(ERR.offerChanged(T.total)); return; }
+      }
       if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
@@ -1045,6 +1049,14 @@
         : `<div class="sumrow"><span>Envío${ib} <span class="mute">· según tu dirección</span></span><span></span></div>`) + line;   // no address yet: the amount comes after the pin
       return `<div class="sumrow"><span>Envío${ib}</span><span>${moneyC(T.envio)}</span></div>` + line;
     }
+    // PLAN-capp-marketing-offers Slice A, 5 A (MOCKUP-capp-offers-calm-vs-loud / MOCKUP-capp-marketing-offers frame 1): ONE row between
+    // Envío and Propina/Total, only from a quote carrying a food discount (T.offer, capp-checkout offerOf) — «Descuento» in ink, the
+    // derived type muted, the amount in the v6 «Gratis» green with U+2212; the checkout, the cart sheet and the desk aside alike
+    function discRowHtml(T) {
+      if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';
+      const lab = C.offerLabel(T.offer, moneyC);
+      return `<div class="sumrow"><span class="lbl">${esc(C.OFFER_COPY.row)}${lab ? `<span class="ty">&nbsp;· ${esc(lab)}</span>` : ''}</span><span class="free">\u2212 ${moneyC(T.offer.discount_cents)}</span></div>`;
+    }
     // G-A (advisor 11-13 option (b)): the cart's rows come from the SAME quote as the checkout — only a quote matching the CURRENT
     // cart (C.totals refuses a subtotal mismatch) and the cart's own mode; else «—» and the same requote(), debounced (rapid edits ⇒
     // ONE request), asked only once an address exists. Total = the quote's net minus its tip (the cart draws no Propina row, v6)
@@ -1061,7 +1073,7 @@
       const floor = cfg.feeFromCents != null ? money(cfg.feeFromCents / 100) : null;
       const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)
         : `<div class="sumrow"><span>Envío</span><span class="r">${cfg.promoFree === true && authOf() === 'member' ? `<span class="strike">${floor}</span><span class="free">Gratis</span>` : `Envío desde ${floor}`}</span></div>`;
-      return `<div class="ctot">${sub}${fee}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
+      return `<div class="ctot">${sub}${fee}${discRowHtml(T)}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
     }
     const CART_QUOTE_MS = 350;
     let cartQT = null;
@@ -1111,7 +1123,7 @@
       const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
       const pedido = `<section class="fsec" aria-label="Resumen del pedido">${extraNoteHtml()}<div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
       ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
-      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${discRowHtml(T)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
       const fine = [terms ? `Al continuar aceptás los <a href="${esc(terms)}" target="_blank" rel="noopener">Términos de Sherpa</a>.` : '', del ? 'El restaurante prepara tu pedido; Sherpa lo entrega.' : ''].filter(Boolean).join(' ');
       return `<div class="flow" id="flow">${bar}<div class="col-a"><h1 class="flowtitle">Entrega &amp; Pago</h1>${entrega}${datos}${pago}</div>
@@ -1175,7 +1187,7 @@
       const tip = T.ready ? T.tip : C.tipCentsOf(f);
       const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>${extraNoteHtml()}
     <div class="osum flat">${sumRow}${sumBody}
-      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${discRowHtml(T)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
       const lp = lockedPay(); if (lp !== null) f.pay = lp;
       const payOff = (v) => (lp !== null && lp !== v ? ' disabled' : '');
@@ -1605,6 +1617,7 @@
       showErr(ERR.generic('err-requote'));
     }
     const ERR = {
+      offerChanged: (total) => ({ title: C.OFFER_COPY.sheetTitle, body: C.OFFER_COPY.sheetBody(moneyC(total)), icon: 'warn', acts: [{ act: 'oc-confirm', label: C.OFFER_COPY.sheetConfirm, primary: true }, { act: 'lclose', label: C.OFFER_COPY.sheetBack }] }),   // offers Q3
       offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
       closed: () => (sched() ? { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body + ' ' + C.CLOSED_SHEET.scheduleHint, icon: 'warn', acts: [{ act: 'err-sched', label: 'Programar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }
@@ -1729,6 +1742,14 @@
       if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }
       // one sheet for the failures the customer can't tell apart: the card checkout not opened, the payment reference not saved,
       // a generic refusal, an unexpected error
+      // offers Q3 (MOCKUP-capp-marketing-offers frame 4, copy owner-approved 11-14): the offer changed under the order (capp-api's typed
+      // offer_changed, any form) — nothing was charged; «Entrega & Pago» re-quotes, and ONLY a higher re-quoted Total asks «Confirmar» /
+      // «Volver» (a lower or equal one just re-renders the totals). A second offer_changed for the same order state is the generic sheet:
+      // never a loop
+      if (k === 'error' && out.offer_changed && S.ocSeen !== stateKey()) {
+        S.ocSeen = stateKey(); S.oc = { from: S.sendTotals && Number.isFinite(S.sendTotals.total) ? S.sendTotals.total : null };
+        backTo('checkout'); S.askedKey = null; S.quoteErr = null; S.q = null; requote(); return;
+      }
       if (k === 'stash_failed' || k === 'try_again' || k === 'refused' || k === 'error' || k === 'payment_not_completed') { backTo('checkout'); showErr(ERR.generic()); return; }
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
@@ -1895,6 +1916,7 @@
       }
       if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
       if (a === 'err-retry') { closeLayer(); send(); return true; }
+      if (a === 'oc-confirm') { closeLayer(); placeTap(); return true; }   // offers Q3: «Confirmar» = place at the re-quoted Total (placeTap's own gates + window)
       if (a === 'menu-reload') { closeLayer(); emit('menu_reload', { rid: cfg.restaurantId }); return true; }   // S3 A1 → the shell re-fetches and adopts (A2)
       if (a === 'extra-remove') { removeDenied(); return true; }   // S3 B1 → B2   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G

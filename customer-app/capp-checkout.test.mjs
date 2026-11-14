@@ -8,6 +8,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -299,4 +301,53 @@ test('tip r7 (OWNER 11-09): the in-app tip is CARD-ONLY — a cash delivery has 
   assert.deepEqual([C.tipCentsOf(f), C.orderBody(f, ctx).tip_choice], [4000, true], 'R7: card ⇒ the chosen tip counts again');
   const g = ready(); g.pay = 'cash';
   assert.equal(C.tipChosen(g), true, 'R7: a cash delivery with nothing chosen is complete');
+});
+
+// ── PLAN-capp-marketing-offers Slice A (advisor 11-14): the quote's offer, from 5f's REAL price path (fixtures/offer-quote) ──
+const OQ = JSON.parse(readFileSync(new URL('./fixtures/offer-quote/offer-quote.json', import.meta.url), 'utf8'));
+const OQ_CART = JSON.parse(readFileSync(new URL('./fixtures/offer-quote/cart.json', import.meta.url), 'utf8'));
+const oqCanon = (v) => (Array.isArray(v) ? v.map(oqCanon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, oqCanon(v[k])])) : v);
+const oqSha = (v) => createHash('sha256').update(JSON.stringify(oqCanon(v))).digest('hex');
+const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
+test('offer quote fixture: 5f\'s real quoteOrder responses for the capp cart, pinned (commit, blobs, cart, content)', () => {
+  assert.match(OQ.sha, /^[0-9a-f]{40}$/, 'premise: a full sha');
+  for (const [rel, b] of Object.entries(OQ.blobs)) assert.equal(git('rev-parse', `${OQ.sha}:xpizza-functions/${rel}`), b, `🔴 OQ-PIN: ${rel} is the blob at ${OQ.sha}`);
+  assert.equal(oqSha(OQ.scenarios), OQ.scenarios_sha256, '🔴 OQ-PIN: the content pin');
+  assert.equal(oqSha(OQ_CART), OQ.cart_sha256, '🔴 OQ-PIN: quoted for THIS cart.json');
+  for (const [k, r] of Object.entries(OQ.scenarios)) assert.equal(r.total_cents, OQ_CART.items.reduce((a, i) => a + Math.round(i.subtotal * 100), 0), `premise: ${k} food = the cart subtotal`);
+});
+const oqT = (k, mode = 'delivery') => { const f = ready(); if (mode === 'pickup') C.setMode(f, 'pickup'); return C.totals(f, { resp: OQ.scenarios[k], sig: 's', tipCents: C.tipCentsOf(f) }, OQ.scenarios[k].total_cents, 's'); };
+test('offer totals (5 A): the quote\'s offer rides the totals as sent; Subtotal stays GROSS; Total = the quote\'s net; no offer ⇒ today\'s exact object', () => {
+  const T = oqT('BOGO_DEL'), o = OQ.scenarios.BOGO_DEL.offer;
+  assert.deepEqual(T.offer, { type: 'bogo', discount_cents: o.discount_cents, waived_envio_cents: 0 }, '🔴 OF-ROW: the bogo discount from the quote');
+  assert.equal(T.subtotal, OQ.scenarios.BOGO_DEL.total_cents, 'Subtotal = the gross food');
+  assert.equal(T.total, OQ.scenarios.BOGO_DEL.net_total_cents, 'Total = the quote\'s net (never computed here)');
+  assert.deepEqual(oqT('ENVIO_DEL').offer, { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, 'the envío offer: no food discount, the fee waived');
+  assert.equal(oqT('ENVIO_DEL').envioFree, true, 'the envío offer strikes the fee (v6 «Gratis»), from the quote');
+  for (const k of ['UNDER_DEL', 'OFF_DEL']) {
+    const N = oqT(k);
+    assert.deepEqual(Object.keys(N), ['ready', 'subtotal', 'envio', 'envioFree', 'promoCents', 'tip', 'total'], `🔴 OF-NONE: ${k} — no offer key at all (OFF byte-identical)`);
+  }
+  const bad = (offer) => C.totals(ready(), { resp: { ...OQ.scenarios.BOGO_DEL, offer }, sig: 's', tipCents: C.tipCentsOf(ready()) }, OQ.scenarios.BOGO_DEL.total_cents, 's').offer;
+  for (const o2 of [null, 'x', { ...o, discount_cents: -1 }, { ...o, discount_cents: 1.5 }, { ...o, discount_cents: '34000' }, { ...o, type: 7 }, { ...o, waived_envio_cents: undefined }, { ...o, discount_cents: 0, waived_envio_cents: 0 }])
+    assert.equal(bad(o2), undefined, `🔴 OF-NOGUESS: a malformed / empty offer ${JSON.stringify(o2)} is no offer`);
+});
+test('offer copy (Q2, owner-approved 11-14): derived from the type and amounts — never the merchant-typed name', () => {
+  const money = (c) => `L ${c / 100}`, lab = (o) => C.offerLabel(o, money);
+  assert.deepEqual([{ type: 'bogo' }, { type: 'nuevos' }, { type: 'loyalty' }, { type: 'pct', pct: 15 }, { type: 'lps', min_cents: 30000 }].map(lab),
+    ['2 por 1', 'Primer pedido', 'Recompensa', '15 %', 'Pedido desde L 300'], 'the approved labels');
+  assert.deepEqual([{ type: 'pct' }, { type: 'lps' }, { type: 'pct', pct: 0 }, { type: 'pct', pct: 7.5 }, { type: 'lps', min_cents: '300' }, { type: 'Oferta' }, null].map(lab), [null, null, null, null, null, null, null],
+    '🔴 OF-FALLBACK: pct / lps without their amount (today\'s quote) ⇒ no label: «Descuento» alone, never a guessed type');
+  assert.equal(C.savedLine(oqT('BOGO_DEL'), money), 'Ahorrás L 340 · 2 por 1', '🔴 OF-SAVED: the met line = the quote\'s saving + the derived label');
+  assert.equal(C.savedLine(oqT('ENVIO_DEL'), money), 'Ahorrás L 60 · Envío gratis', '🔴 OF-SAVED-ENVIO: the waived envío is the quote\'s saving');
+  assert.equal(C.savedLine(oqT('LPS_DEL'), money), 'Ahorrás L 50', 'no label yet ⇒ the amount alone');
+  for (const k of ['UNDER_DEL', 'OFF_DEL']) assert.equal(C.savedLine(oqT(k), money), null, `${k}: no line`);
+  assert.ok(!JSON.stringify(Object.values(C.OFFER_COPY).map(String)).includes(OQ.scenarios.BOGO_DEL.offer.name), 'premise: the merchant name is nowhere in the copy');
+});
+// THE SHIP GATE (the portal pattern): red while ANY offer string awaits the owner — approved 11-14, values pinned exactly
+test('SHIP GATE: no offer string ships unapproved — the owner-approved copy, pinned', () => {
+  assert.deepEqual([...C.OFFER_COPY_PENDING], [], `🔴 placeholders still pending owner approval: ${C.OFFER_COPY_PENDING.join(', ')}`);
+  const K = C.OFFER_COPY;
+  assert.deepEqual([K.row, K.bogo, K.pct(15), K.lps('L 300'), K.nuevos, K.loyalty, K.sheetTitle, K.sheetBody('L 651'), K.sheetConfirm, K.sheetBack],
+    ['Descuento', '2 por 1', '15 %', 'Pedido desde L 300', 'Primer pedido', 'Recompensa', 'La oferta ya no está disponible', 'Tu total ahora es L 651.', 'Confirmar', 'Volver']);
 });

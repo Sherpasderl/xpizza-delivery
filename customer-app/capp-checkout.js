@@ -49,6 +49,35 @@
     body: 'Tu pedido no se envió.',
     scheduleHint: 'Podés programarlo para el próximo horario disponible.',   // S4 only
   };
+  // PLAN-capp-marketing-offers Slice A (owner-approved MOCKUP-capp-offers-calm-vs-loud 3 A / 5 A + MOCKUP-capp-marketing-offers frame 4;
+  // the COPY owner-approved 11-14 as recommended: Q2 the derived labels, Q3 the offer-changed sheet, Q8 ONE row style for the offer and
+  // the loyalty «Descuento»). The label is derived from the quote's type and amounts, never the merchant-typed name. pct / lps render
+  // their label only once the quote carries `pct` / `min_cents`; until then «Descuento» alone (honest, no guessed type)
+  const OFFER_COPY = Object.freeze({
+    row: 'Descuento', bogo: '2 por 1', pct: (pct) => `${pct} %`, lps: (min) => `Pedido desde ${min}`, nuevos: 'Primer pedido', loyalty: 'Recompensa', envio: 'Envío gratis',
+    saved: (amt, label) => (label ? `Ahorrás ${amt} · ${label}` : `Ahorrás ${amt}`),
+    sheetTitle: 'La oferta ya no está disponible', sheetBody: (total) => `Tu total ahora es ${total}.`, sheetConfirm: 'Confirmar', sheetBack: 'Volver',
+  });
+  const OFFER_COPY_PENDING = Object.freeze([]);   // the SHIP GATE: every key the owner has not approved (none since 11-14)
+  const offerLabel = (o, moneyC) => {
+    const t = o && o.type;
+    if (t === 'bogo' || t === 'nuevos' || t === 'loyalty' || t === 'envio') return OFFER_COPY[t];
+    if (t === 'pct') return Number.isSafeInteger(o.pct) && o.pct > 0 && o.pct < 100 ? OFFER_COPY.pct(o.pct) : null;
+    if (t === 'lps') return Number.isSafeInteger(o.min_cents) && o.min_cents > 0 && typeof moneyC === 'function' ? OFFER_COPY.lps(moneyC(o.min_cents)) : null;
+    return null;
+  };
+  const cents0 = (v) => Number.isSafeInteger(v) && v >= 0;
+  // the quote's offer block, as sent (index.js quoteOrder: { type, discount_cents, waived_envio_cents }) — only a well-formed one with a
+  // saving; anything else is no offer (no row, never a guessed amount)
+  function offerOf(resp) {
+    const o = resp && resp.offer;
+    if (!o || typeof o !== 'object' || typeof o.type !== 'string' || !cents0(o.discount_cents) || !cents0(o.waived_envio_cents)) return null;
+    if (o.discount_cents + o.waived_envio_cents <= 0) return null;
+    return { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents,
+      ...(Number.isSafeInteger(o.pct) ? { pct: o.pct } : {}), ...(Number.isSafeInteger(o.min_cents) ? { min_cents: o.min_cents } : {}) };   // the label's amounts, once 5f sends them
+  }
+  // 3 A met state: «Ahorrás L x · {label}» — x = the quote's own saving (food discount + the waived envío), never client arithmetic on a rule
+  const savedLine = (T, moneyC) => (T && T.ready && T.offer ? OFFER_COPY.saved(moneyC(T.offer.discount_cents + T.offer.waived_envio_cents), offerLabel(T.offer, moneyC)) : null);
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
   // S-picker (PLAN-intl-phone r2.3): a flow with a chosen country (f.cc — set only by the UI's picker, behind the runtime intlPhone)
@@ -243,8 +272,9 @@
     if (r.total_cents !== cartSubtotalCents) return { ready: false, reason: 'subtotal_mismatch' };   // re-quote; never show a guess
     const d = f.mode === 'delivery' && r.delivery ? r.delivery : null;
     const promo = d && Number(d.promo_discount_cents) > 0;
+    const offer = offerOf(r);   // Slice A: present only with an offer (no offer ⇒ today's exact object)
     return { ready: true, subtotal: r.total_cents, envio: d ? d.delivery_cents : 0, envioFree: !!promo, promoCents: promo ? d.promo_discount_cents : 0,
-      tip: tipCentsOf(f), total: r.net_total_cents };
+      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {}) };
   }
   // cash change against the QUOTED Total (lempiras in, cents out); null when nothing / too little was entered
   function changeCents(f, totalCents) {
@@ -269,5 +299,6 @@
 
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, TIP_DEFAULT_LEMPIRAS, tipDefault, tipped, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
-    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail };
+    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail,
+    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, savedLine };
 });

@@ -498,6 +498,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .sumrow{display:flex;justify-content:space-between;gap:12px;font-size:15px;padding:6px 0}
 .sumrow.tot{font-weight:700;font-size:16px;border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
 .sumrow .r{text-align:right;max-width:62%}
+.sumrow .lbl{display:inline-flex;align-items:center;min-width:0}.sumrow .lbl .ty{color:var(--mute);font-weight:400;white-space:nowrap}   /* offers 5 A: «Descuento · 2 por 1» */
 .free{color:var(--pop);font-weight:600}.strike{color:var(--mute);text-decoration:line-through;font-weight:400;margin-right:4px}
 .errsheet{padding:8px 20px 4px;display:flex;flex-direction:column;gap:10px}
 .errsheet h2{font:600 20px/1.25 var(--sans)}

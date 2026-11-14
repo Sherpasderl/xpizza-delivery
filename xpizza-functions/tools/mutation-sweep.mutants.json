@@ -23785,8 +23785,8 @@
   "slice": "s2a",
   "label": "Total computed as net + tip",
   "file": "../customer-app/capp-checkout.js",
-  "from": "      tip: tipCentsOf(f), total: r.net_total_cents };",
-  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f) };",
+  "from": "      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer",
+  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f), ...(offer",
   "command": [
    "node",
    "--test",
@@ -37207,6 +37207,108 @@
   ],
   "kills_with": [
    "OC-NOGUESS"
+  ]
+ },
+ {
+  "id": "of-01",
+  "slice": "capp-offers-sliceA",
+  "label": "the Descuento row drawn with no food discount (an envío-only offer gets «− L 0»)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';",
+  "to": "if (!T.ready || !T.offer || !(T.offer.discount_cents >= 0)) return '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-UI-ENVIO"
+  ]
+ },
+ {
+  "id": "of-02",
+  "slice": "capp-offers-sliceA",
+  "label": "the met line's amount computed by the client from the totals (not the quote's saving)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "moneyC(T.offer.discount_cents + T.offer.waived_envio_cents)",
+  "to": "moneyC(T.subtotal + T.envio - T.promoCents - T.total)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SAVED-ENVIO"
+  ]
+ },
+ {
+  "id": "of-04",
+  "slice": "capp-offers-sliceA",
+  "label": "the OFF golden broken: an empty slot left where the row would be",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';",
+  "to": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return T.ready ? '<div class=\"sumrow\" hidden></div>' : '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-OFF-GOLDEN: the checkout"
+  ]
+ },
+ {
+  "id": "of-05",
+  "slice": "capp-offers-sliceA",
+  "label": "the offer-changed sheet asked for an equal re-quoted Total",
+  "file": "../customer-app/capp-ui.js",
+  "from": "from !== null && T.total > from &&",
+  "to": "from !== null && T.total >= from &&",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-LOWER"
+  ]
+ },
+ {
+  "id": "of-06",
+  "slice": "capp-offers-sliceA",
+  "label": "no loop guard: a second offer_changed shows the sheet again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (k === 'error' && out.offer_changed && S.ocSeen !== stateKey()) {",
+  "to": "if (k === 'error' && out.offer_changed) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOLOOP"
+  ]
+ },
+ {
+  "id": "of-07",
+  "slice": "capp-offers-sliceA",
+  "label": "an empty (zero-saving) offer block kept as an offer",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (o.discount_cents + o.waived_envio_cents <= 0) return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOGUESS"
   ]
  }
 ]
