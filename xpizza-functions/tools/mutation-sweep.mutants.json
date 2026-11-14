@@ -36317,7 +36317,7 @@
   "slice": "vc",
   "label": "drain does not wait for WebCrypto digests in flight",
   "file": "../customer-app/test-clock.mjs",
-  "from": "      if (digestsInFlight()) { await digestsSettled(); continue; }\n",
+  "from": "      if (digestsInFlight()) { quiet = 0; await digestsSettled(); continue; }\n",
   "to": "",
   "command": [
    "node",

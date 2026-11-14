@@ -1,7 +1,8 @@
 // Test support for the customer-app suites (never loaded by the app; never packaged): the VIRTUAL clock (PLAN-capp-virtual-clock r0,
 // advisor 11-13). The cells wait on virtual time, not on the machine — a 300 ms debounce fires at +300 whatever the load.
 //   createClock(t0) → the timers the code under test is handed ({ setTimeout, clearTimeout, setInterval, clearInterval }) + now(),
-//   drain()         settle until QUIET: microtasks / setImmediate turns, WebCrypto digests in flight (the threadpool is outside any
+//   drain()         settle until QUIET (2 consecutive empty rounds): microtasks / setImmediate turns + one real 0 ms yield (the
+//                   environment's own 0 ms tasks: jsdom's popstate), WebCrypto digests in flight (the threadpool is outside any
 //                   clock), and the timers due at the CURRENT virtual time — never advancing it; bounded (a timer that re-arms
 //                   itself at the same instant is a failure, never a hang)
 //   jump(t)         a wall-clock jump, forward only (the passed timers fire at the next drain)
@@ -10,8 +11,10 @@
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
 
 trackDigests();
-const TURNS = 25, ROUNDS = 200;
-const turns = async () => { for (let i = 0; i < TURNS; i++) await new Promise((r) => setImmediate(r)); };
+const TURNS = 25, ROUNDS = 200, QUIET = 2;
+// one round: microtask / setImmediate turns, then ONE real 0 ms yield — the environment's own zero-delay tasks (jsdom delivers the
+// history traversal and its popstate on real 0 ms timers) land inside a round, never by timing luck; no virtual time passes
+const turns = async () => { for (let i = 0; i < TURNS; i++) await new Promise((r) => setImmediate(r)); await new Promise((r) => setTimeout(r, 0)); };
 
 export function createClock(t0 = 0) {
   let now = Number(t0) || 0, seq = 0;
@@ -25,11 +28,12 @@ export function createClock(t0 = 0) {
   }
   // the timers due NOW, one by one (each may arm more); the count fired
   function runDue() { let n = 0; for (let e = earliest(now); e; e = earliest(now)) { fire(e); n++; if (n > ROUNDS) break; } return n; }
+  // QUIET = that many consecutive rounds with no digest in flight and no virtual timer due (a two-hop environment chain lands)
   async function drain() {
-    for (let r = 0; r < ROUNDS; r++) {
+    for (let r = 0, quiet = 0; r < ROUNDS; r++) {
       await turns();
-      if (digestsInFlight()) { await digestsSettled(); continue; }
-      if (runDue() === 0) return;
+      if (digestsInFlight()) { quiet = 0; await digestsSettled(); continue; }
+      if (runDue() === 0) { if (++quiet >= QUIET) return; } else quiet = 0;
     }
     throw new Error(`drain: not quiet after ${ROUNDS} rounds — a timer re-arms itself at the same instant`);
   }

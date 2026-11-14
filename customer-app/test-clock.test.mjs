@@ -57,3 +57,11 @@ test('VC6 jump(t) moves the virtual time FORWARD only (a wall-clock jump): the t
   assert.deepEqual(seen, ['b', 'a'], '🔴 VC6: the passed timers fire at the next drain, in due order');
   assert.throws(() => c.jump(150), /forward/, '🔴 VC6: never backwards');
 });
+
+test('VC7 drain lets the ENVIRONMENT\'s own zero-delay task chains land (jsdom: the history traversal, then popstate, each a real 0 ms timer) — never virtual time', async () => {
+  const c = createClock(0); let landed = false;
+  setTimeout(() => setTimeout(() => { landed = true; }, 0), 0);   // a TWO-hop environment chain, as jsdom's traversal → popstate
+  await c.drain();
+  assert.equal(landed, true, '🔴 VC7: the environment\'s 0 ms task landed within drain');
+  assert.equal(c.now(), 0, 'no virtual time passed');
+});

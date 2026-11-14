@@ -297,6 +297,53 @@ const VIRTUAL = new Set([
   'G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a verified existing account ⇒ member, the device marker + the profile cache; an ordinary sign-out clears the cache, keeps the marker',
   'G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid\'s cache is never used',
   'Codex G6 r1 #1: a sign-out — and a close mid-completion — reaches the MOUNTED checkout: its next send carries no member token',
+  // chunk 2 (file order 47–92: Codex G6 r1–r4, S4 shell, frames 15–18, G7, Part B, D-2 desktop, Pedidos entry points, D-4a routing)
+  'Codex G6 r2 #2 — the ALLOW-list: a restored uid is a member ONLY with its completion mark; the mark is written at «Listo», cleared by a confirmed sign-out',
+  'Codex G6 r2 #2 — a REJECTED sign-out admits nothing: still not a member at the next restore, and the sign-out is retried',
+  'Codex G6 r1 #3: a member apply delayed by a slow token never lands after a sign-out or a switch to another account',
+  'Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload',
+  'Codex G6 r4: a guest exit after a complete sign-in leaves NO mark and no member (its sign-out stands)',
+  'S4 shell: runtime.schedulingLive drives the Inicio cues (frame 3 B\'s sentence + «Programar pedido»); absent ⇒ none, as before',
+  'S4 frame G in the shell (schedulingLive + G6): a guest\'s «Programar» in the mounted checkout opens the sheet with ONLY the G=B subtitle and the guest exit; G6 without the flag keeps its member-only gate',
+  'S7a-2 frames 16 / 17 / 18: every menu down ⇒ «No pudimos buscar platos» + [Reintentar] under the directory\'s matches; no city ⇒ «{N} restaurantes»; no recents ⇒ the search .empty (no button)',
+  'S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir {restaurante}» over Inicio, the row still pressed; «Reintentar» re-fetches and enters; «Cerrar» releases the row',
+  'G7 setPromos fake (Codex G7 r1 #4): as strict as the real handler — today\'s restaurant_id shape, a tokenless call, a non-boolean value and a GET are refused; the client\'s request passes',
+  'G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event',
+  'G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»',
+  'G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable',
+  'G7 Codex r1 #3: an EXISTING account\'s stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server\'s value, cached',
+  'G7 Codex r1 #3: a NEW account\'s promotions choice, saved by completeProfile, reaches the Cuenta — the switch LIVE at that value',
+  'G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)',
+  'G7 Codex r1 #3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent',
+  'G7 decision 7 / Codex r1 #2: while the session RESOLVES, a profile on this device draws the member GEOMETRY with neutral placeholders — never its name, phone or email; none ⇒ the guest\'s',
+  'G7 Codex r1 #2: ANOTHER account restores on this device — the previous account\'s cached profile is never shown and is purged',
+  'G7 Codex r1 #2: a SIGNED-OUT device — the cached profile is never shown; the guest\'s Cuenta once the SDK answers; the cache purged',
+  'G7 Codex r1 #5: auth says member, the ID token still pending — the Cuenta draws the member\'s cached profile at once (never the guest card), the switch live once the member is applied',
+  'G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT',
+  'G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out',
+  'G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)',
+  'G7 flag absent: without runtime.signup a member\'s Cuenta stays the HOST\'s tab event, as before',
+  'Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the .cc button); absent ⇒ the «+504» span',
+  'D-2 view: ONE breakpoint (≥1024) read synchronously; a crossing notifies once after the debounce; no matchMedia ⇒ phone',
+  'D-2 mount: the desktop class is on #app BEFORE the first paint returns (no pop-in); the phone never gets it',
+  'D-2 store (v6 :1628): desktop ⇒ the deskcart aside inside storewrap, no close button; an item edit refreshes it (v6 syncPill :1726); phone ⇒ no aside',
+  'D-2 checkout (v6 :1886-1887): desktop ⇒ col-b = «Tu pedido» (MOVED, once), col-a without it; phone ⇒ no col-b, «Tu pedido» once in col-a',
+  'D-2 resize: crossing the breakpoint re-renders the view and PRESERVES state — the cart, the screen, a typed field',
+  'D-2 no-regression: below the breakpoint the store and the checkout are BYTE-IDENTICAL to a shell with no viewport signal at all',
+  'Pedidos (owner 11-01): every entry point — tabbar / desknav, the guest card row, the member Cuenta row — opens the «Pedidos» screen, desktop AND phone',
+  'D-2 the signup surface follows the breakpoint (its .app host carries desk too, both ways)',
+  'D-2 r1 #1: desktop → phone with an ASIDE control focused ⇒ focus moves to the visible phone equivalent (the cart bar) and the menu scroll is kept; phone → desktop with the cart bar focused ⇒ focus moves into the aside',
+  'D-2 r1 #2: the aside «Editar» returns focus to THAT aside control when the dish sheet closes (never the hidden cart bar)',
+  'D-2 r1 #3: browse-only ⇒ the ASIDE\'s ordering controls are disabled like the cart sheet\'s (ONE selector source), also after a syncPill refresh',
+  'D-4a reflection: every screen change REPLACES the pathname — the sentinel state, history.length and the search untouched',
+  'D-4a sentinel unchanged: a device Back runs ONE in-app back; a BLOCKED back («Enviando…») changes nothing and the URL keeps the locked path',
+  'D-4a precedence: a payment RETURN owns the boot — the owner store resolves it, the deep-linked store is never entered; persisted ⇒ the boot strips the query, memory ⇒ the query survives every reflection',
+  'D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ the checkout through the tap path; the URL kept',
+  'D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends',
+  'D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store',
+  'D-4a unverified ≠ absent: offline / 503 / partial keep the link PENDING (URL kept, nothing entered); only a fresh COMPLETE directory without the store ⇒ silent Inicio',
+  'D-4a generation: a user navigation CANCELS a pending cold link — a late verification never enters the old target',
+  'D-4a native / routing off: no replaceState from the router and no hydration (byte-identical boot)',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
 afterEach(() => { VC = null; CLOCK_DEFAULT = false; });
@@ -327,10 +374,12 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
   // clock: true ⇒ the shell's timers AND its app time are the virtual clock (a cell moving S.clock.t forward is a wall-clock jump)
-  if (vclock) { VC = createClock(now ? now.t : T0); VC_BOOTED.add(CUR); }
-  const clock = vclock ? { get t() { return VC.now(); }, set t(v) { VC.jump(v); } } : (now || { t: T0 });
+  // the cell's OWN clock instance is captured (vc): work a cell leaves running past its end reads that clock, never the next cell's
+  const vc = vclock ? createClock(now ? now.t : T0) : null;
+  if (vc) { VC = vc; VC_BOOTED.add(CUR); }
+  const clock = vc ? { get t() { return vc.now(); }, set t(v) { vc.jump(v); } } : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: vclock ? VC : { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vclock ? { timeout: (ms) => new Promise((r) => VC.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
