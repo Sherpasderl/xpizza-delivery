@@ -110,14 +110,21 @@ const SERVER_OFFER = new WeakSet();
 const isServerOfferCtx = (o) => !!o && typeof o === 'object' && SERVER_OFFER.has(o);
 const mint = (o) => { SERVER_OFFER.add(Object.freeze(o)); return o; };
 
-function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null, excluded = null }) {
+// The cart offerFor AND nextOfferFor price against — ONE setup: the OFF switch, no stacking on a reward, whole lempiras or nothing.
+function cartOf({ cfg, live, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null }) {
   if (!cfg || cfg.offers_enabled !== true) return null;
   if (reward) return null;
   if (!isObj(live) || !Array.isArray(items) || !items.length) return null;
   const food = Math.round(Number(baseTotalL) * L);
   if (!Number.isSafeInteger(food) || food <= 0 || food % L !== 0 || food !== Number(baseTotalL) * L) return null;   // whole lempiras or nothing
   let units;
-  const f = { food, delivery: isServerDeliveryCtx(deliveryContext) ? deliveryContext : null, units: () => (units === undefined ? (units = dishUnitsOf(items, rid, tables, baseTotalL)) : units) };
+  return { food, delivery: isServerDeliveryCtx(deliveryContext) ? deliveryContext : null, units: () => (units === undefined ? (units = dishUnitsOf(items, rid, tables, baseTotalL)) : units) };
+}
+
+function offerFor(args) {
+  const { live, nowMs, excluded = null } = args;
+  const f = cartOf(args);
+  if (!f) return null;
   let best = null;
   for (const id of Object.keys(live).sort()) {
     if (excluded && excluded.has(id)) continue;   // step 2: an offer whose cap is reached (offer-wire reads its usage) is not a candidate
@@ -129,7 +136,39 @@ function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, del
     if (!best || total > best.total) best = { c, s, total };   // ids ascending: a tie keeps the smallest
   }
   if (!best) return null;
-  return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents, caps: best.c.caps });
+  return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents, caps: best.c.caps,
+    ...(best.c.type === 'pct' ? { pct: best.c.params.pct } : {}), ...(best.c.type !== 'envio' && Number.isSafeInteger(best.c.params.min_cents) && best.c.params.min_cents > 0 ? { min_cents: best.c.params.min_cents } : {}) });   // the quote's label facts (advisor 11-14)
+}
+
+/* offer_next (capp offers Slice A, advisor 11-14): the best live offer whose ONLY unmet condition is its minimum — every other condition
+   decided by the SAME savingOf, evaluated as if the food were exactly at that minimum. remaining_cents = minimum − food. Best = the
+   largest saving; a tie ⇒ the smaller remaining, then the smaller id. → { offer_id, caps, discount_cents, waived_envio_cents, shown } | null
+   (none, offers off, a reward, not whole lempiras). */
+function nextOfferFor(args) {
+  const { live, nowMs, excluded = null } = args;
+  const f = cartOf(args);
+  if (!f) return null;
+  let best = null;
+  for (const id of Object.keys(live).sort()) {
+    if (excluded && excluded.has(id)) continue;
+    const c = entryOf(id, live[id]);
+    if (!c || !liveAt(c, nowMs)) continue;
+    const min = Number.isSafeInteger(c.params.min_cents) ? c.params.min_cents : null;
+    if (!(min > f.food)) continue;                          // no minimum, or already met (then offerFor decides)
+    const s = savingOf(c, { ...f, food: min });
+    if (!s) continue;
+    const value = s.discount_cents + s.waived_envio_cents; const remaining = min - f.food;
+    if (!best || value > best.value || (value === best.value && remaining < best.remaining)) best = { c, s, value, remaining };
+  }
+  if (!best) return null;
+  // `shown` is what a quote exposes; the rest is for the caller's cap check (offer-usage capReached reads caps + the amounts)
+  return { offer_id: best.c.id, caps: best.c.caps, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents,
+    shown: { type: best.c.type, remaining_cents: best.remaining, ...(best.s.discount_cents > 0 ? { off_cents: best.s.discount_cents } : {}), ...(best.s.waived_envio_cents > 0 ? { waived_envio_cents: best.s.waived_envio_cents } : {}) } };
+}
+
+// The quote's offer (capp Slice A, advisor 11-14): the label facts only — never the name, the id, the rev (minimal data, as the poll).
+function quoteOfferOf(o) {
+  return { type: o.type, ...(Number.isInteger(o.pct) ? { pct: o.pct } : {}), ...(Number.isSafeInteger(o.min_cents) ? { min_cents: o.min_cents } : {}), discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents };
 }
 
 // ── the ONE food breakdown with an offer (the core, both recorded-total sites and the factura read it) ───────────────────────────
@@ -162,4 +201,4 @@ const cents = (v) => Number.isSafeInteger(v) && v >= 0;
 const pollOfferOf = (o) => (o && typeof o === 'object' && TYPES_PRICED.includes(o.type) && cents(o.discount_cents) && cents(o.waived_envio_cents)
   ? { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents } : null);
 
-module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };
+module.exports = { offerFor, nextOfferFor, quoteOfferOf, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };

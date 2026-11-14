@@ -172,6 +172,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     assert.strictEqual(q.json.total_cents, gross, `🔴 E2 ${rid}: quote total_cents = the GROSS cart (the capp's compare)`);
     assert.deepStrictEqual([q.json.offer && q.json.offer.discount_cents, q.json.net_total_cents], [d, gross - d + FEE], `E2 ${rid}: the offer block + the discounted net`);
     assert.ok(!('offer_id' in q.json.offer), `E2 ${rid}: no offer id to the customer (Q9)`);
+    assert.deepStrictEqual([q.json.offer, 'offer_next' in q.json], [{ type: 'pct', pct: 20, discount_cents: d, waived_envio_cents: 0 }, false], `🔴 E2 ${rid}: the quote's offer = the label facts (pct), no name; an applied offer ⇒ no offer_next (advisor 11-14)`);
     const cb = bodyOf(rid, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
     await clean(); const c = await post(app.createOrder, cb);
     assert.strictEqual(c.status, 200, `E2 ${rid} cash: ${c.text.slice(0, 200)}`);
@@ -361,6 +362,21 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     assert.strictEqual(((await rtdb.ref(`marketing_usage/${xid}`).get()).val() || {}).redemptions || 0, before, 'E13: nothing counted');
   }
   ok('E13 the SDK placement refuses a changed offer with the same 409 offer_changed body; no provider call, nothing counted');
+
+  // ── E14. offer_next (capp Slice A): a quote under an offer's minimum names it and what is missing; at the minimum it applies ──
+  {
+    for (const [id, e] of Object.entries((await rtdb.ref(`marketing_live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id);
+    const one = cartOf(THIRD, 1); const unit = one.cart.subtotalCents();
+    await publish(THIRD, { type: 'lps', params: { off_cents: 5000, min_cents: 2 * unit } });
+    await clean(); offerCaches();
+    const under = await quote(THIRD, one.s.items);
+    assert.ok(under.json && under.json.ok && !under.json.offer, `E14 premise: under the minimum, no offer (${under.text.slice(0, 160)})`);
+    assert.deepStrictEqual(under.json.offer_next, { type: 'lps', remaining_cents: unit, off_cents: 5000 }, `🔴 E14: offer_next names the offer and what is missing (${JSON.stringify(under.json.offer_next)})`);
+    await clean(); offerCaches();
+    const at = await quote(THIRD, cartOf(THIRD, 2).s.items);
+    assert.deepStrictEqual([at.json.offer, 'offer_next' in at.json], [{ type: 'lps', min_cents: 2 * unit, discount_cents: 5000, waived_envio_cents: 0 }, false], `🔴 E14: at the minimum the offer applies (min_cents shown), no offer_next (${at.text.slice(0, 200)})`);
+  }
+  ok('E14 offer_next under the minimum (type, remaining, off); at the minimum the lps offer applies with its min_cents and no offer_next');
 
   // ── E6. a legacy-form order ⇒ no offer ──
   {

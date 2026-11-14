@@ -199,6 +199,28 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.strictEqual((await place(w2, items, null)).offer, null, `${L}: none left ⇒ full price`);
   });
 
+  await cell('MW-NEXT: a QUOTE with no offer carries offer_next (the best one only its minimum away); an applied offer, a placement, offers off ⇒ none; a capped next is skipped', async (L) => {
+    const OU = require('./offer-usage');
+    const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } });
+    const items = [line('Pepperoni', 2)];   // L 440
+    const { dqo } = await quote(w, items);
+    assert.deepStrictEqual([OW.offerOf(dqo), dqo.offer_next], [null, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }], `${L}: under the minimum`);
+    const p = await place(w, items, null);
+    assert.ok(!p.dq || !('offer_next' in p.dq), `${L}: a placement never carries offer_next`);
+    const applied = await quote(w, [line('Pepperoni', 3)]);   // L 660 ≥ L 500
+    assert.ok(OW.offerOf(applied.dqo) && !('offer_next' in applied.dqo), `${L}: an applied offer ⇒ no offer_next`);
+    const capped = await xworld();
+    const big = await capped.publish({ type: 'lps', params: { off_cents: 9000, min_cents: 50000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
+    await capped.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 60000 } });
+    const bigOffer = OP.offerFor({ cfg: { offers_enabled: true }, live: capped.fake.get(`marketing_live/${RID}`), nowMs: NOW + 3600000, items: [line('Pepperoni', 3)], rid: RID, tables: TABLES, baseTotalL: foodL([line('Pepperoni', 3)]) });
+    assert.strictEqual(bigOffer.offer_id, big, `${L}: premise — the big one applies at L 660`);
+    assert.ok((await OU.holdCounters(capped.db, bigOffer, { salesCents: 66000, nowMs: NOW + 3600000 })).ok, `${L}: premise — its one use held`);
+    OW._resetCaches();
+    assert.deepStrictEqual((await quote(capped, items)).dqo.offer_next, { type: 'lps', remaining_cents: 16000, off_cents: 5000 }, `${L}: the capped one is skipped`);
+    const off = await xworld({ offers_enabled: false }); OW._resetCaches();   // the per-instance config cache held «on»
+    assert.ok(!('offer_next' in (await quote(off, items)).dqo), `${L}: offers off ⇒ absent`);
+  });
+
   FINISHED = true;
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`offer-wire: OK (${n})`);

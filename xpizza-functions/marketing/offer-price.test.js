@@ -194,12 +194,13 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
       assert.strictEqual(await pick(w, [line(K2, 2)]), null, `${L}: ${o.type}/${o.audience}`);
     }
   });
-  await cell('OP-CTX: the result is a SERVER offer ctx (a JSON copy is not one); it carries id, rev, type, name and the amounts only', async (L) => {
+  await cell('OP-CTX: the result is a SERVER offer ctx (a JSON copy is not one); it carries id, rev, type, name, the amounts and the label facts (pct / min_cents) only', async (L) => {
     const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const o = await pick(w, [line(K2, 2)]);
     assert.ok(OP.isServerOfferCtx(o), L);
     assert.strictEqual(OP.isServerOfferCtx(JSON.parse(JSON.stringify(o))), false, `${L}: a copy`);
-    assert.deepStrictEqual(Object.keys(o).sort(), ['caps', 'discount_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], L);
+    assert.deepStrictEqual(Object.keys(o).sort(), ['caps', 'discount_cents', 'min_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `${L} (+ the label fact min_cents for lps, advisor 11-14)`);
+    assert.strictEqual(o.min_cents, 20000, L);
     assert.deepStrictEqual([o.offer_id, o.rev, o.name], [id, w.live()[id].rev, 'Oferta'], L);
   });
   await cell('OP-MALFORMED: a corrupt mirror (not an object / a bad id / a missing rev / a bad schedule) applies nothing and never throws', async (L) => {
@@ -218,6 +219,36 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.deepStrictEqual(OP.pollOfferOf(stored), { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, L);
     assert.ok(typeof stored.name === 'string' && !('name' in OP.pollOfferOf(stored)), `${L}: the stored record has a name; the poll never carries it`);
     for (const bad of [undefined, null, 'x', {}, { ...stored, discount_cents: -100 }, { ...stored, type: 'nope' }, { ...stored, waived_envio_cents: 1.5 }]) assert.strictEqual(OP.pollOfferOf(bad), null, `${L}: ${JSON.stringify(bad)}`);
+  });
+
+  await cell('OP-QUOTE-SHAPE: the quote shows {type, pct?, min_cents?, discount_cents, waived_envio_cents} — pct for a pct offer, min_cents for an lps one; never a name, id or rev (advisor 11-14)', async (L) => {
+    const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    const lps = await pick(w, [line(K2, 2)]);
+    assert.deepStrictEqual(OP.quoteOfferOf(lps), { type: 'lps', min_cents: 20000, discount_cents: 5000, waived_envio_cents: 0 }, `${L}: lps`);
+    const w2 = await world(); await w2.publish({ type: 'pct', params: { pct: 20, max_cents: 10000 } });
+    assert.deepStrictEqual(OP.quoteOfferOf(await pick(w2, [line(K2, 2)])), { type: 'pct', pct: 20, discount_cents: 8800, waived_envio_cents: 0 }, `${L}: pct`);
+    const w3 = await world(); await w3.publish({ type: 'envio', params: { min_cents: 20000 } });
+    assert.deepStrictEqual(OP.quoteOfferOf(await pick(w3, [line(K2, 2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `${L}: envío`);
+    assert.ok(typeof lps.name === 'string' && !('name' in OP.quoteOfferOf(lps)) && !('offer_id' in OP.quoteOfferOf(lps)) && !('rev' in OP.quoteOfferOf(lps)), `${L}: the minted offer has a name; the quote never carries it`);
+  });
+  await cell('OP-NEXT: offer_next names the best live offer whose ONLY unmet condition is its minimum — the SAME eligibility (savingOf at the minimum)', async (L) => {
+    const next = async (w, items, more = {}) => (OP.nextOfferFor({ cfg: await w.cfg(), live: w.live(), nowMs: NOW + HOUR, items, rid: 'tb_centro', tables: TABLES, baseTotalL: food(items), deliveryContext: null, reward: null, ...more }) || { shown: null }).shown;
+    const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } });
+    assert.deepStrictEqual([await pick(w, [line(K2, 2)]), await next(w, [line(K2, 2)])], [null, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }], `${L}: under the minimum (L 440 of L 500)`);
+    const at = await world(); await at.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 44000 } });
+    assert.deepStrictEqual([brief(await pick(at, [line(K2, 2)])), await next(at, [line(K2, 2)])], [{ type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, null], `${L}: at the minimum the offer applies, no next`);
+    const two = await world(); await two.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }); await two.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 60000 } });
+    assert.deepStrictEqual(await next(two, [line(K2, 2)]), { type: 'lps', remaining_cents: 16000, off_cents: 8000 }, `${L}: two ⇒ the best saving`);
+    const ev = await world(); await ev.publish({ type: 'envio', params: { min_cents: 50000 } });
+    assert.deepStrictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio() }), { type: 'envio', remaining_cents: 6000, waived_envio_cents: 6000 }, `${L}: an envío offer`);
+    assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ mode: 'pickup' }) }), null, `${L}: envío on a pickup — another condition unmet ⇒ none`);
+    assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: envío already free (Sherpa's promo) ⇒ none`);
+    const pc = await world(); await pc.publish({ type: 'pct', params: { pct: 20 } });
+    assert.strictEqual(await next(pc, [line(K1)]), null, `${L}: a pct offer has no minimum ⇒ never next`);
+    const off = await world({ offers_enabled: false }); await off.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }).catch(() => {});
+    assert.strictEqual(await next(off, [line(K2, 2)]), null, `${L}: offers off ⇒ none`);
+    const [a, b] = [await two.publish({ type: 'lps', params: { off_cents: 9000, min_cents: 70000 } }), null]; void b;
+    assert.deepStrictEqual(await next(two, [line(K2, 2)], { excluded: new Set([a]) }), { type: 'lps', remaining_cents: 16000, off_cents: 8000 }, `${L}: an excluded (capped) candidate is skipped`);
   });
 
   FINISHED = true;

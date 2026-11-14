@@ -157,7 +157,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
-  "now": "        ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),\n        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dqo.ctx), ...(issued.ok && OFW.offerOf(dqo) ? { offer: { type: OFW.offerOf(dqo).type, name: OFW.offerOf(dqo).name, discount_cents: OFW.offerOf(dqo).discount_cents, waived_envio_cents: OFW.offerOf(dqo).waived_envio_cents } } : {}),   // marketing: total_cents stays the GROSS food (the capp's subtotal compare, promo §10); the discount is its own block; net_total_cents is discounted (Q9: no offer id to the customer)\n      });\n",
+  "now": "        ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),\n        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dqo.ctx), ...(issued.ok && OFW.offerOf(dqo) ? { offer: require('./marketing/offer-price').quoteOfferOf(OFW.offerOf(dqo)) } : {}), ...(issued.ok && !OFW.offerOf(dqo) && dqo.offer_next ? { offer_next: dqo.offer_next } : {}),   // marketing: total_cents stays the GROSS food (the capp's subtotal compare, promo §10); the discount is its own block; net_total_cents is discounted (Q9: no offer id to the customer)\n      });\n",
   "was": "        ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),\n        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx),\n      });\n"
  },
  {

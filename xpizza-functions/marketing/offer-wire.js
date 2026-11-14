@@ -76,7 +76,19 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
         excluded.add(offer.offer_id); offer = null;
       }
     }
-    if (!offer) return dq;
+    if (!offer) {
+      // a QUOTE with no offer may name the next one (capp Slice A, advisor 11-14): only its minimum unmet, a capped one skipped as above
+      if (placement || !dq || typeof dq !== 'object') return dq;
+      const live = await mirrorOf(db, rid, nowMs, { cached: true });
+      const skip = new Set();
+      for (let i = 0; i <= OM_LIVE_MAX; i += 1) {
+        const n = OP.nextOfferFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, excluded: skip });
+        if (!n) return dq;
+        if (!OU.capReached((await db.ref(`marketing_usage/${n.offer_id}`).once('value')).val(), n, nowMs)) return { ...dq, offer_next: n.shown };
+        skip.add(n.offer_id);
+      }
+      return dq;
+    }
     const c = waivedCtx(ctx, offer);
     if (c === CANNOT) return dq;                         // never half an offer
     return { ...(dq || {}), ctx: c, offer };
