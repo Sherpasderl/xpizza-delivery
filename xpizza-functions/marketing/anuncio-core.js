@@ -3,7 +3,8 @@
 // refuses 409 anuncio_disabled while platform_config/marketing.anuncio_enabled is not true; a booking carries NO charge field (the
 // restaurant ledger posts it later from state + days; DECISIONS 4747).
 //   getAnuncioWeeks  GET  ?rid=                          marketing.read → { weeks: [{ week, starts_at, cancel_until, state }], price_cents, eligibility }
-//   anuncioBook      POST { rid, week }                  marketing.edit → one booking; the slot by a create-if-absent transaction
+//   anuncioBook      POST { rid, week }                  marketing.edit → one booking; the slot by a create-if-absent transaction; the cap
+//                                                        (≤ 2 booked weeks in any 4-week window, owner 11-14) ⇒ 409 { error: 'cap_reached', next_week }
 //   anuncioCancel    POST { rid, booking_id }            marketing.edit → before the deadline only; frees ONLY its own slot
 // STORAGE (server-only):
 //   anuncio_slots/{week}                 = { rid, booking_id }                 ONE per week, platform-wide (Q8)
@@ -53,13 +54,13 @@ async function getAnuncioWeeksCore(deps, req) {
   if (on.fail) return on.fail;
   const t = now();
   const weeks = AM.bookableWeeks(t);
-  let slots, eligibility;
+  let slots, eligibility, mine;
   try {
-    [slots, eligibility] = await Promise.all([Promise.all(weeks.map((w) => val(db, slotPath(w)))), eligibilityOf(db, rid, on.cfg)]);
+    [slots, eligibility, mine] = await Promise.all([Promise.all(weeks.map((w) => val(db, slotPath(w)))), eligibilityOf(db, rid, on.cfg), val(db, bookingsPath(rid))]);
   } catch (_) { return UNAVAILABLE(); }
   return reply(200, { ok: true, price_cents: on.cfg.anuncio_price_cents, eligibility,
     weeks: weeks.map((w, i) => ({ week: w, starts_at: AM.weekBounds(w).start, cancel_until: AM.cancelDeadline(w),
-      state: !isObj(slots[i]) ? 'free' : slots[i].rid === rid ? 'mine' : 'taken' })) });
+      state: !isObj(slots[i]) ? (AM.capProblem(mine, w) ? 'capped' : 'free') : slots[i].rid === rid ? 'mine' : 'taken' })) });
 }
 
 // ── anuncioBook ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -79,9 +80,13 @@ async function anuncioBookCore(deps, req) {
   let elig, mine;
   try { [elig, mine] = await Promise.all([eligibilityOf(db, body.rid, on.cfg), val(db, bookingsPath(body.rid))]); } catch (_) { return UNAVAILABLE(); }
   if (!elig.eligible) return reply(409, { error: 'not_eligible', reasons: elig.reasons });
-  const live = Object.entries(isObj(mine) ? mine : {}).filter(([, b]) => isObj(b));
-  const prune = live.filter(([, b]) => { const st = AM.bookingStatus(b, t); return (st === 'ended' || st === 'cancelled') && Number.isSafeInteger(b.booked_at) && t - AM.weekBounds(b.week).end > AM.BOOKING_RETAIN_MS; }).map(([id]) => id);
-  if (live.length - prune.length >= AM.BOOKINGS_MAX) return reply(409, { error: 'too_many_bookings' });
+  const pruneOf = (all) => Object.entries(all).filter(([, b]) => isObj(b)).filter(([, b]) => { const st = AM.bookingStatus(b, t); return (st === 'ended' || st === 'cancelled') && Number.isSafeInteger(b.booked_at) && t - AM.weekBounds(b.week).end > AM.BOOKING_RETAIN_MS; }).map(([id]) => id);
+  const full = (all) => Object.values(all).filter(isObj).length - pruneOf(all).length >= AM.BOOKINGS_MAX;
+  const capped = (all) => reply(409, { error: 'cap_reached', next_week: AM.nextCapWeek(all, t) });
+  const mineNow = isObj(mine) ? mine : {};
+  // the cheap pre-checks, before the slot is touched (the record transaction below decides on the CURRENT node)
+  if (full(mineNow)) return reply(409, { error: 'too_many_bookings' });
+  if (AM.capProblem(mineNow, body.week)) return capped(mineNow);
   // THE slot: ONE transaction, create-if-absent. Another restaurant's ⇒ week_taken. This rid's own slot with no booking record (a crash
   // between the slot and the record) ⇒ the record is written under the slot's booking id (repair, idempotent); with one ⇒ already_booked.
   let last = null;
@@ -102,13 +107,34 @@ async function anuncioBookCore(deps, req) {
   const bookingId = last.why === 'write' ? proposed : last.cur.booking_id;
   if (!AM.BOOKING_ID_RE.test(String(bookingId))) return reply(409, { error: 'slot_malformed' });
   const record = { v: 1, rid: body.rid, week: body.week, price_cents: on.cfg.anuncio_price_cents, state: 'reserved', booked_by: a.ctx.uid, booked_at: t, cancel_deadline: AM.cancelDeadline(body.week) };
+  // THE record: ONE transaction on the branch's WHOLE bookings node (≤ BOOKINGS_MAX entries) — create-only, the room and the cap decided
+  // on the current node, so two books of different weeks at once can't both pass the cap; the prune rides the same write.
+  let rlast = null;
   let rec;
   try {
-    rec = await db.ref(`${bookingsPath(body.rid)}/${bookingId}`).transaction((cur) => (cur === null ? record : undefined));   // create-only
-  } catch (_) { return UNAVAILABLE(); }
-  if (!(rec && rec.committed)) return reply(409, { error: 'already_booked', booking_id: bookingId });
-  if (prune.length) { try { await db.ref(bookingsPath(body.rid)).update(Object.fromEntries(prune.map((id) => [id, null]))); } catch (_) { /* retried by the next booking */ } }
-  return reply(200, { ok: true, booking: { id: bookingId, ...record, status: AM.bookingStatus(record, t) } });
+    rec = await db.ref(bookingsPath(body.rid)).transaction((cur) => {
+      const d = { why: null, all: null };
+      rlast = d;
+      const all = isObj(cur) ? cur : {};
+      if (all[bookingId] != null) { d.why = 'already_booked'; return undefined; }
+      if (full(all)) { d.why = 'too_many_bookings'; return undefined; }
+      if (AM.capProblem(all, body.week)) { d.why = 'cap_reached'; d.all = all; return undefined; }
+      d.why = 'write';
+      const next = { ...all, [bookingId]: record };
+      for (const id of pruneOf(all)) delete next[id];
+      return next;
+    });
+  } catch (_) { rec = null; }
+  const rwhy = rlast && rlast.why;
+  if (rwhy === 'write' && rec && rec.committed) return reply(200, { ok: true, booking: { id: bookingId, ...record, status: AM.bookingStatus(record, t) } });
+  if (rwhy === 'already_booked') return reply(409, { error: 'already_booked', booking_id: bookingId });
+  // refused (or failed) after THIS call wrote the slot ⇒ release it, only while it still names this call's booking id
+  if (last.why === 'write') {
+    try { await db.ref(slotPath(body.week)).transaction((cur) => (cur === null ? null : isObj(cur) && cur.booking_id === proposed ? null : undefined)); } catch (_) { /* reads as mine; a re-book repairs it */ }
+  }
+  if (rwhy === 'cap_reached') return capped(rlast.all);
+  if (rwhy === 'too_many_bookings') return reply(409, { error: 'too_many_bookings' });
+  return UNAVAILABLE();
 }
 
 // ── anuncioCancel ───────────────────────────────────────────────────────────────────────────────────────────────────────────

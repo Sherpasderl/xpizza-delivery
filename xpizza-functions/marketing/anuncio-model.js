@@ -30,6 +30,26 @@ function bookableWeeks(nowMs) {
 }
 const isBookable = (week, nowMs) => typeof week === 'string' && WEEK_RE.test(week) && bookableWeeks(nowMs).includes(week);
 
+// THE booking cap (owner 11-14, PLAN-3a-anuncio-cap r0): a branch holds at most `weeks` booked weeks in ANY rolling `window`-week span
+// (consecutive allowed within it). Every booking counts but a cancelled one, whatever its status (reserved / active / ended). The span
+// AND the window starts both derive from the one `window` constant. Sherpa-set: a constant, not merchant data.
+const ANUNCIO_CAP = Object.freeze({ weeks: 2, window: 4 });
+const WEEK_MS = 7 * 86400000;
+const weekIndex = (week) => Math.round(weekBounds(week).start / WEEK_MS);   // whole weeks (HN has no DST)
+const heldWeeks = (bookings) => Object.values(isObj(bookings) ? bookings : {}).filter((b) => isObj(b) && b.state !== 'cancelled' && WEEK_RE.test(String(b.week))).map((b) => b.week);
+// may this branch book `week` given its bookings? → null | 'cap_reached'
+function capProblem(bookings, week) {
+  const i = weekIndex(week); const w = ANUNCIO_CAP.window;
+  const held = heldWeeks(bookings).filter((x) => x !== week).map(weekIndex);
+  for (let s = i - (w - 1); s <= i; s++) if (held.filter((x) => x >= s && x <= s + w - 1).length + 1 > ANUNCIO_CAP.weeks) return 'cap_reached';
+  return null;
+}
+// the first bookable week this branch does not hold and the cap allows (slot occupancy not read) → week | null
+function nextCapWeek(bookings, nowMs) {
+  const held = new Set(heldWeeks(bookings));
+  return bookableWeeks(nowMs).find((w) => !held.has(w) && !capProblem(bookings, w)) || null;
+}
+
 // the rating term, from public_stats/{rid} (rating fields exist only at ≥ 10 ratings — the PUBLIC threshold) → { ok, rating, count, reasons }
 function ratingEligibility(stats, thresholds) {
   const t = isObj(thresholds) ? thresholds : null;
@@ -61,5 +81,5 @@ function bookingStatus(b, nowMs) {
 // the days of a booking's week that were not shown (the pro-rata input the ledger will read): { day: 'hidden' } entries
 const hiddenDays = (b) => Object.entries(isObj(b) && isObj(b.days) ? b.days : {}).filter(([d, v]) => DAY_RE.test(d) && isObj(v) && v.state === 'hidden').map(([d]) => d).sort();
 
-module.exports = { WEEKS_AHEAD, BOOKINGS_MAX, BOOKING_RETAIN_MS, BOOKING_ID_RE, WEEK_RE, cancelDeadline, bookableWeeks, isBookable,
+module.exports = { WEEKS_AHEAD, BOOKINGS_MAX, BOOKING_RETAIN_MS, BOOKING_ID_RE, WEEK_RE, ANUNCIO_CAP, cancelDeadline, bookableWeeks, isBookable, capProblem, nextCapWeek,
   ratingEligibility, anuncioVisible, bookingStatus, hiddenDays, weekOf, weekBounds };
