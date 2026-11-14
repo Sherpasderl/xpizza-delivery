@@ -36318,5 +36318,85 @@
   "kills_with": [
    "FIG-STACK"
   ]
+ },
+ {
+  "id": "push-01",
+  "slice": "capp-push",
+  "label": "the soft ask at first launch (before any order)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (!on || offeredThisVisit || !(ordersPlaced >= 1)) return false;",
+  "to": "if (!on || offeredThisVisit) return false;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ASK"
+  ]
+ },
+ {
+  "id": "push-02",
+  "slice": "capp-push",
+  "label": "a token kept on the device after sign-out",
+  "file": "../customer-app/capp-push.js",
+  "from": "      write({ token: null });\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET"
+  ]
+ },
+ {
+  "id": "push-03",
+  "slice": "capp-push",
+  "label": "a tapped push with a malformed order id opens it",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (id && ORDER_ID.test(id)) cb(",
+  "to": "if (id) cb(",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-TAP"
+  ]
+ },
+ {
+  "id": "push-04",
+  "slice": "capp-push",
+  "label": "the system prompt even when already granted",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'prompt' || st === 'prompt-with-rationale') st = (await plugin.requestPermissions()).receive;",
+  "to": "st = (await plugin.requestPermissions()).receive;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE"
+  ]
+ },
+ {
+  "id": "push-05",
+  "slice": "capp-push",
+  "label": "the push flag on the WEB build (owner Q5: no web push)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "...(f.push === true && rt.mode === 'native' ? { push: true } : {}),",
+  "to": "...(f.push === true ? { push: true } : {}),",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FLAG"
+  ]
  }
 ]

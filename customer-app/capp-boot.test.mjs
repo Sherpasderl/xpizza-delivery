@@ -166,3 +166,11 @@ test('web sign-in: a web-mode runtime with the signup flag carries the sign-in c
   assert.ok(web.signup.firebase === RT0.firebase && Object.keys(web.signup.endpoints).length === CappSignupApi.ENDPOINTS.length, 'the manifest\'s Firebase config + every sign-in endpoint');
   assert.equal('signup' in Boot.runtimeFor(RT({ mode: 'web', flags: { guestCardOnly: true } }), CappSignupApi), false, 'no flag ⇒ no sign-in (today\'s web build)');
 });
+
+// PLAN-capp-push r1 (owner 11-14): the `push` flag reaches the shell ONLY on the native build (web push: no — iOS web needs an installed PWA)
+test('push flag: native + flag ⇒ runtime.push; the web build NEVER (even flagged); no flag ⇒ absent (dark)', () => {
+  assert.equal(Boot.runtimeFor(RT({ flags: { push: true } }), CappSignupApi).push, true, '🔴 PUSH-FLAG: native + flag');
+  assert.equal('push' in Boot.runtimeFor(RT({ mode: 'web', flags: { push: true } }), CappSignupApi), false, '🔴 PUSH-FLAG: never on the web (owner Q5)');
+  assert.equal('push' in Boot.runtimeFor(RT(), CappSignupApi), false, 'no flag ⇒ dark');
+  assert.equal('push' in Boot.runtimeFor(RT({ flags: { push: 'true' } }), CappSignupApi), false, 'only a literal true');
+});

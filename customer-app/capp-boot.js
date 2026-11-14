@@ -71,7 +71,8 @@
       ...(f.schedulingLive === true ? { schedulingLive: true } : {}),
       ...(f.intlPhone === true ? { intlPhone: true } : {}),
       ...(f.guestCardOnly === true ? { guestCardOnly: true } : {}),
-      ...(f.ratings === true ? { ratings: true } : {}),   // C-2: the rating sheet + its entries (dark until the rating server is live)
+      ...(f.ratings === true ? { ratings: true } : {}),
+      ...(f.push === true && rt.mode === 'native' ? { push: true } : {}),   // PLAN-capp-push r1: the client core (capp-push.js) — NATIVE only, dark until the mockup + 3a's callables   // C-2: the rating sheet + its entries (dark until the rating server is live)
       // S2: the in-app card screens + their endpoints (CONTRACT-sdk-customer §3 + CONTRACT-sdk-checkout r3; dark until D4 is live)
       ...(f.sdkPay === true ? { sdkPay: { endpoints: Object.fromEntries(SDK_ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
       ...(f.signup === true ? { signup: { firebase: rt.firebase, endpoints: Object.fromEntries(CappSignupApi.ENDPOINTS.map((n) => [n, url(n)])) } } : {}),
