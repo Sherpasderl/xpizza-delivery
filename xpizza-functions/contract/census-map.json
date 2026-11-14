@@ -848,6 +848,8 @@
   "platform-config/rtdb-encoding.js#decodeFields": "infra",
   "ratings/aggregate.js#bucketFromOrders": "ratings",
   "ratings/aggregate.js#publish": "ratings",
+  "ratings/aggregate.js#meritDay": "ratings",
+  "ratings/aggregate.js#storeStars": "ratings",
   "ratings/merchant-comments.js#merchantRatingCommentsCore": "ratings",
   "ratings/merchant-comments.js#getMerchantRatingComments": "ratings",
   "ratings/merchant-reviews.js#merchantReviewsCore": "ratings",

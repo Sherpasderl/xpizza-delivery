@@ -7331,6 +7331,7 @@
     "xpizza-functions/pselfupdate-client.test.js",
     "xpizza-functions/quote-order.test.js",
     "xpizza-functions/ratings/aggregate-producer.test.js",
+    "xpizza-functions/ratings/merit-facts.test.js",
     "xpizza-functions/ratings/ratings-grace.guard.test.js",
     "xpizza-functions/recon-close-fulfilled.test.js",
     "xpizza-functions/reorder-price-snapshot.test.js",
