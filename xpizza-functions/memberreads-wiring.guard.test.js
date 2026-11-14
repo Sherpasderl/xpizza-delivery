@@ -1,7 +1,7 @@
 'use strict';
-// PLAN-3a-capp-member-reads (1)+(2) — index.js wiring guard for 3a's member-reads exports (advisor ruling 2026-11-13, option 2).
-// PROOF: tools/memberreads-module-inverse.js removes EXACTLY 3a's two index.js insertions (5a84271f3: getMyFavorites + setFavorite;
-// 32a4ce6e2: getMyLastTip), so index.js minus them === 604e96ab5:index.js byte-for-byte. Sensitivity: a byte inside a hunk, a duplicated
+// PLAN-3a-capp-member-reads (1)+(2) + PLAN-3a-addr S-ADDR-2 — index.js wiring guard for 3a's member exports (advisor ruling 2026-11-13, option 2).
+// PROOF: tools/memberreads-module-inverse.js removes EXACTLY 3a's index.js insertions (5a84271f3: getMyFavorites + setFavorite;
+// 32a4ce6e2: getMyLastTip; S-ADDR-2: useMyAddress), so index.js minus them === 604e96ab5:index.js byte-for-byte. Sensitivity: a byte inside a hunk, a duplicated
 // hunk and a byte outside every hunk are each detected; a one-byte change to an export breaks the proof (and every fold guard that
 // composes this layer). Registration: every fold guard that pins index.js to a fixed train revision composes this layer.
 // Run: node memberreads-wiring.guard.test.js
@@ -35,12 +35,12 @@ assert.strictEqual(unapplyMemberReadsModule('tb-unowned.js', 'x\n'), 'x\n', 'an 
 }
 ok('a byte inside a hunk, a duplicated hunk, a byte outside, an unowned file and a ONE-BYTE export change are each detected');
 
-// wired: the three exports exist where the hunks say, through the member-auth modules
-for (const [name, mod] of [['getMyFavorites', 'my-favorites'], ['setFavorite', 'my-favorites'], ['getMyLastTip', 'my-last-tip']]) {
+// wired: the four exports exist where the hunks say, through the member-auth modules
+for (const [name, mod] of [['getMyFavorites', 'my-favorites'], ['setFavorite', 'my-favorites'], ['getMyLastTip', 'my-last-tip'], ['useMyAddress', 'my-address']]) {
   assert.ok(new RegExp(`exports\\.${name} = onRequest\\(`).test(src), `🔴 ${name} onRequest missing`);
   assert.ok(src.includes(`require('./${mod}')`), `🔴 ${mod} require missing`);
 }
-ok('wired: getMyFavorites, setFavorite and getMyLastTip are onRequest exports over my-favorites / my-last-tip');
+ok('wired: getMyFavorites, setFavorite, getMyLastTip and useMyAddress are onRequest exports over my-favorites / my-last-tip / my-address');
 
 // registration: the fold guards that pin index.js to a fixed train revision compose this layer (the s2bext / s1srv pattern)
 {

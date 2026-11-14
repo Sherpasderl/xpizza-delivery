@@ -279,6 +279,7 @@
     "xpizza-functions/menu-warm-wiring.guard.test.js",
     "xpizza-functions/menus.test.mjs",
     "xpizza-functions/mirrorkeys-wiring.guard.test.js",
+    "xpizza-functions/my-address.test.js",
     "xpizza-functions/n3-weekend-message.test.js",
     "xpizza-functions/n4-cancel-verify.test.js",
     "xpizza-functions/o1b-wiring.guard.test.js",
@@ -2836,6 +2837,7 @@
   "merchant/merchant-transitions.js",
   "merchant/merchant-validate.js",
   "merchant/merchant-wiring.js",
+  "my-address.js",
   "my-favorites.js",
   "my-last-tip.js",
   "my-orders.js",
@@ -7010,6 +7012,10 @@
    "lifts": []
   },
   "merchant/merchant-wiring.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "my-address.js": {
    "pins": [],
    "lifts": []
   },

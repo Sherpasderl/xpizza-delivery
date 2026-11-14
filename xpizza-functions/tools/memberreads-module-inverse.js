@@ -1,7 +1,7 @@
 'use strict';
 // PLAN-3a-capp-member-reads (1)+(2) — the test-only INVERSE of 3a's index.js additions on train asm9 (base 604e96ab5; rebuilt there from asm8 b6f6b82b1, where index.js is byte-identical): the
-// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) and the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), both pure insertions inside checkout's
-// endpoints block. Generated from each commit's own `git show -U0 <commit> -- index.js` (added lines only); unapplying both returns
+// getMyFavorites / setFavorite exports (5a84271f3; asm8 ccdec7d6) the getMyLastTip export (32a4ce6e2; asm8 7e708d3a), and PLAN-3a-addr's useMyAddress export (b08f3c30e), all pure insertions inside checkout's
+// endpoints block. Generated from each commit's own `git show -U0 <commit> -- index.js` (added lines only); unapplying them returns
 // index.js to 604e96ab5 byte-for-byte (memberreads-wiring.guard). Composed into the index.js fold chains of the wiring guards that pin
 // index.js to a fixed train revision (the s2bext / s1srv pattern; advisor ruling 2026-11-13, option 2): inside each s1srv call (as the s1srv layer's
 // argument), or at the raw read where no inverse was composed. Any other file passes through untouched.
@@ -19,6 +19,13 @@ const HUNKS = Object.freeze([
   "label": "(2) last tip: getMyLastTip export",
   "file": "index.js",
   "now": "// PLAN-3a-capp-member-reads (2): the member's last tip with the token in the x-firebase-id-token HEADER — replaces the capp's RTDB REST\n// `?auth=<ID token>` read (rule 20); member-only through member-auth; ONE leaf read; the capp's lastTip() swaps to it in the same release\nexports.getMyLastTip = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },\n  require('./my-last-tip').makeMyLastTip({ getDatabase, getAuth, checkRateLimit }).getMyLastTip,\n);\n",
+  "was": ""
+ },
+ {
+  "commit": "b08f3c30e",
+  "label": "(S-ADDR-2) address selection: useMyAddress export",
+  "file": "index.js",
+  "now": "// PLAN-3a-addr S-ADDR-2: the «en uso» address selection, persisted as default_address — member-only through member-auth, the token in\n// the x-firebase-id-token header; body exactly { id }; ONE parent transaction on user_profiles/{uid} (the sweep fence, never resurrects a purge)\nexports.useMyAddress = onRequest(\n  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },\n  require('./my-address').makeMyAddress({ getDatabase, getAuth, checkRateLimit }).useMyAddress,\n);\n",
   "was": ""
  }
 ]);
