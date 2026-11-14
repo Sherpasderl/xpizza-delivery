@@ -344,6 +344,53 @@ const VIRTUAL = new Set([
   'D-4a unverified ≠ absent: offline / 503 / partial keep the link PENDING (URL kept, nothing entered); only a fresh COMPLETE directory without the store ⇒ silent Inicio',
   'D-4a generation: a user navigation CANCELS a pending cold link — a late verification never enters the old target',
   'D-4a native / routing off: no replaceState from the router and no hydration (byte-identical boot)',
+  // chunk 3 (file order 93–138: D-4a locks/holds, store + home promo and the token timers, Pedido recibido, store-update)
+  'D-4a cold /pago, every UNREADABLE lock case (Codex r2 #4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends',
+  'D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too',
+  'D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delayed directory never mounts the store (nor re-arms the sentinel)',
+  'D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)',
+  'D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending',
+  'D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store',
+  'D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout',
+  'D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears',
+  'store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ',
+  'store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing',
+  'store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)',
+  'store promo: nothing invented — an unpriced store draws no pill, no fee text, no ⓘ; a priced store without a zone draws no ⓘ',
+  'store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY values (no quote yet) — never «undefined» / «NaN»',
+  'store promo r1 #1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved',
+  'store promo r1 #2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill',
+  'store promo r1 #2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept',
+  'home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved',
+  'home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store\'s card, no guest pill',
+  'store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both',
+  'store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)',
+  'store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)',
+  'until(): a condition still false at the deadline REJECTS with a descriptive error (never a silent pass)',
+  'store promo r3: token RECOVERY mid-quote — the quote\'s member header and the store\'s «Envío gratis» appear TOGETHER (the notifier patches in place)',
+  'store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote',
+  'store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved',
+  'store promo r3: the token timers are HANDLES — none left after a sign-out, a uid change or destroy',
+  'store promo r4 #1: a held quote token RELEASED AFTER a sign-out — no member header, member null (identity rechecked after the await)',
+  'store promo r4 #2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn',
+  'store promo r4 #5: a real UID SWITCH cancels the old identity\'s token timers',
+  'store promo r5: a SIGN-OUT queued from the token notifier — no quote dispatch carries Ana\'s token while the member is null',
+  'store promo r5: a UID SWITCH queued from the token notifier — no quote dispatch carries Ana\'s token while she is not the identity',
+  'Pedido recibido: a placed cash order ⇒ the shell\'s order screen — «Pedido recibido», the sent lines + Envío + Total, the delivery details; the store left; close ⇒ Inicio',
+  'Pedido recibido: «Orden #N» from order_tracking/{token}/display_number via the shared order-number module (the exact public path; nothing before it lands)',
+  'Pedido recibido: «Ayuda» opens wa.me/<runtime.supportWhatsapp> with the order number pre-filled; «Compartir seguimiento» copies <the context\'s tracker>/<token>; both absent without their config',
+  'Pedido recibido · frame 7: a guest card order\'s paid return shows the account offer (phone + email pre-filled); «Crear mi cuenta» redeems the grant and signs in — the offer gone',
+  'Pedido recibido · live: the order screen follows order_tracking/{token} in place — preparing → stacked (is_active_drop false) → out with the driver → delivered (the stream closed); the window «Llega a – b» from S5\'s prep',
+  'Pedido recibido · live: a claim with no driver name says the tracker\'s calm copy (status-view); the cancelled path ⇒ «Pedido cancelado» and the stream closed; leaving the screen closes the stream',
+  'store-update state 2: the installed app\'s 426 on a send ⇒ the calm sheet «Actualizá la app para hacer pedidos» + «Abrir App Store» (opens the store URL) + «Ahora no» (closes; nothing re-sent)',
+  'store-update state 3: a 426 while the identity is kept in flight ⇒ «Actualizá la app para seguir» + «Tu carrito también se guarda.» — no order reference',
+  'store-update: WITHOUT a store (no runtime.store_urls yet, or the website) a 426 shows NO store sheet — today\'s shared behaviour stays (advisor ruling (i))',
+  'store-update: with a store, the shared coordinator gets a NO-RELOAD adapter (a bundled app cannot reload itself newer; the store sheet replaces its notice)',
+  'store-update state 4: back from the store on a NEW build ⇒ the cart says «App actualizada. Tu carrito sigue aquí.» once; closed ⇒ gone; the same build ⇒ never',
+  'store-update state 1: with a store AND the «newer build» signal — the Inicio line A «Hay una versión nueva de la app.» + «Actualizar» (opens the store, hidden until the next day); the Cuenta row B; no signal ⇒ neither',
+  'store-update state 4 (frozen): back on a new build with a cart FROZEN for a placement ⇒ «App actualizada. Estamos revisando tu pedido.» above frame 10\'s line, its controls still disabled',
+  'store-update r2 (state 3 safety): the in-flight sheet keeps the retained placement record and the cart byte-for-byte (nothing cleared by the sheet)',
+  'store-update r2 (round trip): «Abrir App Store» records the store; the NEW build reopens THAT store with its cart open and the «App actualizada» line; the same build never; a first install is never «updated»',
 ]);
 beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = VIRTUAL.has(t.name); });
 afterEach(() => { VC = null; CLOCK_DEFAULT = false; });
@@ -375,9 +422,12 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   };
   // clock: true ⇒ the shell's timers AND its app time are the virtual clock (a cell moving S.clock.t forward is a wall-clock jump)
   // the cell's OWN clock instance is captured (vc): work a cell leaves running past its end reads that clock, never the next cell's
-  const vc = vclock ? createClock(now ? now.t : T0) : null;
+  // a LATER boot in the same cell (a relaunch) continues from the previous boot's virtual time — time never runs backwards
+  const vc = vclock ? createClock(now ? now.t : (VC ? VC.now() : T0)) : null;
   if (vc) { VC = vc; VC_BOOTED.add(CUR); }
-  const clock = vc ? { get t() { return vc.now(); }, set t(v) { vc.jump(v); } } : (now || { t: T0 });
+  // a cell that brings its OWN app-time object (now: { t }) owns app time — it stays manual, as on the real harness (the virtual
+  // clock drives the timers and flush only); otherwise the app's time IS the virtual clock (S.clock.t forward = a jump)
+  const clock = vc ? (now || { get t() { return vc.now(); }, set t(v) { vc.jump(v); } }) : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
     auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
