@@ -24,14 +24,6 @@ export const hasEditor = (b) => has(b, 'catalog.read_editor');
 // ── time ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const local = (ms) => new Date(ms - HN_OFFSET_MS);
 const pad2 = (n) => String(n).padStart(2, '0');
-// THE portal clock (advisor 11-13: ONE 12-hour formatter, the customer app's «p. m.» form — capp-order.js / form-live-status.js):
-// «3:10 p. m.», «12:05 a. m.». Inicio uses it; Sucursales' 24 h strings (hhmm) move to it in the Figtree text-fit pass.
-export function clock12(ms) {
-  if (!Number.isFinite(ms)) return '';
-  const t = local(ms);
-  const h = t.getUTCHours();
-  return `${(h % 12) || 12}:${pad2(t.getUTCMinutes())} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
-}
 export function hhmm(ms) {
   if (!Number.isFinite(ms)) return '';
   const t = local(ms);

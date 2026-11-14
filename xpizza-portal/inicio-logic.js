@@ -2,7 +2,7 @@
 // No clock of its own (every `now` is passed in), no DOM. Honduras time throughout (UTC-6 all year, the server's clock). Rule 8: only
 // sourced figures — the money / count formats are Ventas' own (ventas-logic.js), the figures are getSalesStats' (compare previous_week).
 import { lempiras, count } from './ventas-logic.js';
-import { clock12 } from './branch-logic.js';   // THE portal clock («3:10 p. m.»; advisor 11-13)
+import { clock12 } from './portal-time.js';   // THE portal clock («3:10 p. m.»; advisor 11-13)
 
 // the frames' words are literal; the greetings the frame does not draw are ⟦inicio.key⟧ until the owner approves them (SHIP GATE)
 export const INICIO_COPY = Object.freeze({ goodMorning: null, goodEvening: null });
