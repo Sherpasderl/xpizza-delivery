@@ -128,4 +128,27 @@ function offerFor({ cfg, live, nowMs, items, rid, tables = null, baseTotalL, del
   return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents });
 }
 
-module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf };
+// ── the ONE food breakdown with an offer (the core, both recorded-total sites and the factura read it) ───────────────────────────
+// No offer (or a zero discount) ⇒ EXACTLY orderBreakdownCents(total, rid) — the same call, so OFF is byte-identical. An offer ⇒ the ISV
+// split of what the customer PAYS (tax-inclusive, the same function) and, for a platform-factura restaurant only (rule 19), the fiscal
+// rebaja = gross subtotal − paid subtotal (the reward precedent, rewards-redeem-pricing.js: FULL net − PAID net).
+const discountOf = (offer) => (isServerOfferCtx(offer) && offer.discount_cents > 0 ? offer.discount_cents : 0);
+const foodLempiras = (totalL, offer) => totalL - discountOf(offer) / L;
+function foodBreakdown(totalL, rid, offer) {
+  const { orderBreakdownCents } = require('../order-money');
+  const d = discountOf(offer);
+  if (!d) return orderBreakdownCents(totalL, rid);
+  const paid = orderBreakdownCents(totalL - d / L, rid);
+  if (!require('../factura/eligibility').usesPlatformFactura(rid)) return paid;
+  const gross = orderBreakdownCents(totalL, rid);
+  return { ...paid, desc_rebaja_cents: gross.subtotal_cents - paid.subtotal_cents };
+}
+// The order's frozen fact (PLAN §1.9): what applied, by whom funded — never the mirror's params.
+const frozenOf = (offer) => ({ offer_id: offer.offer_id, rev: offer.rev, type: offer.type, name: offer.name, discount_cents: offer.discount_cents,
+  waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant' });
+
+// A STORED order's frozen offer re-entered as a server ctx (offer-wire storedOfferOf validates the record first) — the card retry path.
+const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'envio']);
+const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
+
+module.exports = { offerFor, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, TYPES_PRICED };

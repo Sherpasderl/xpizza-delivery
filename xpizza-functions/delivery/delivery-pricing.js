@@ -18,7 +18,7 @@
 //   · delivery needs pin { lat, lng, confirmed: true } — confirmed is the client's word (a UX fact the server cannot
 //     verify); the server requires it and valid coordinates, nothing more
 //   · pickup → envío 0
-//   · free_delivery ON + an authenticated customer → promo_discount_cents = delivery_cents (Sherpa-funded); guests pay
+//   · free_delivery ON + an authenticated customer → promo_discount_cents = delivery_cents (Sherpa-funded); guests pay · MARKETING (PLAN-5f-marketing-price Q3): promo_discount_cents is «the delivery discount AMOUNT, its funder in delivery_discount_funder» ('sherpa' | 'restaurant', present only when > 0) — readers decide who pays from THAT field
 // Driver pay is unaffected (flat L 70, S8).
 
 const crypto = require('crypto'); const Z = require('./zones'); const LIM = require('./limits');   // envío step 2: drawn no-delivery zones (PLAN-envio-zones-step2-r2); the restaurant limit (PLAN-envio-restaurant-limit-r5)
@@ -68,7 +68,7 @@ function quoteDelivery({ pricing, hub, mode, pin, customerUid, maxKm = null }) {
   if (band < 0 || (typeof maxKm === 'number' && km > maxKm)) return { refusal: 'outside_delivery_bands' }; if (pricing.zonesInvalid) return { refusal: 'delivery_zones_invalid' }; if (pricing.zones && Z.inZone(pricing.zones, pin)) return { refusal: 'no_delivery_zone' };   // step 2: after the limit; pickup returned above
   const delivery_cents = pricing.bands[band].cents;
   const promo = pricing.free_delivery && typeof customerUid === 'string' && customerUid ? 'free_delivery' : null;
-  return { ctx: mint({ mode: 'delivery', delivery_cents, promo_discount_cents: promo ? delivery_cents : 0, policy_version: pricing.policy_version,
+  return { ctx: mint({ mode: 'delivery', delivery_cents, promo_discount_cents: promo ? delivery_cents : 0, ...(promo ? { delivery_discount_funder: 'sherpa' } : {}), policy_version: pricing.policy_version,
     km: Math.round(km * 1000) / 1000, band, promo, place: placeOf('delivery', hub, pin), customer: uidOrNull(customerUid) }) };
 }
 
@@ -103,7 +103,7 @@ function storedCtx(order) {
   if (!s || typeof s !== 'object' || !Number.isSafeInteger(order.delivery_cents) || !Number.isSafeInteger(order.promo_discount_cents)) return null;
   return mint({ mode: s.mode, delivery_cents: order.delivery_cents, promo_discount_cents: order.promo_discount_cents, policy_version: s.policy_version,
     ...(s.mode === 'delivery' ? { km: s.km, band: s.band, promo: s.promo || null } : {}), place: null, customer: null,
-    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}) });   // S2: the tip the checkout was issued with
+    ...(Number.isSafeInteger(order.tip_cents) && order.tip_cents > 0 ? { tip_cents: order.tip_cents } : {}), ...(order.promo_discount_cents > 0 && (order.delivery_discount_funder === 'sherpa' || order.delivery_discount_funder === 'restaurant') ? { delivery_discount_funder: order.delivery_discount_funder } : {}) });   // S2: the tip the checkout was issued with · marketing Q3: the funder the checkout was issued with
 }
 
 // The net envío the customer pays: max(0, delivery − promo).
@@ -112,11 +112,11 @@ const netDeliveryCents = (ctx) => (ctx ? Math.max(0, ctx.delivery_cents - ctx.pr
 // the envío (netDeliveryCents stays envío-only); computeServerNet and the order breakdown add it once, separately.
 const tipCentsOf = (c) => (c && Number.isSafeInteger(c.tip_cents) && c.tip_cents > 0 ? c.tip_cents : 0);
 // A server ctx carrying this request's tip — a NEW minted object (the original stays untouched). tip 0 → the same ctx.
-const withTip = (ctx, tip) => (ctx && tip > 0 ? mint({ ...ctx, tip_cents: tip }) : ctx);
+const withTip = (ctx, tip) => (ctx && tip > 0 ? mint({ ...ctx, tip_cents: tip }) : ctx); const withDeliveryDiscount = (ctx, cents, funder) => (isServerDeliveryCtx(ctx) && ctx.mode === 'delivery' && ctx.promo_discount_cents === 0 && Number.isSafeInteger(cents) && cents > 0 && cents === ctx.delivery_cents && funder === 'restaurant' ? mint({ ...ctx, promo_discount_cents: cents, delivery_discount_funder: funder }) : ctx);   // marketing Q3: a restaurant «Envío gratis» offer waives the WHOLE fee on a server ctx with no Sherpa promo (ruling 4757) — a new minted ctx; anything else → the same ctx
 
 // Only a ctx MADE HERE is money (computeServerNet ignores any other object — a request body can never mint one).
 const SERVER_CTX = new WeakSet();
 const isServerDeliveryCtx = (c) => !!c && typeof c === 'object' && SERVER_CTX.has(c);
 const mint = (ctx) => { SERVER_CTX.add(ctx); return ctx; };
 
-module.exports = { ...LIM, haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip };
+module.exports = { ...LIM, haversineKm, readPricing, quoteDelivery, netDeliveryCents, isServerDeliveryCtx, deliveryBindingMismatch, storedCtx, placeOf, tipCentsOf, withTip, withDeliveryDiscount };
