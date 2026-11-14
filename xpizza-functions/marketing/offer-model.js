@@ -26,7 +26,6 @@ const LIMITS = Object.freeze({
 });
 const OFFER_ID_RE = /^o_[a-z2-7]{12}$/;
 const KEY_MAX = 200;
-const WEEK_MIN = 7 * 1440;
 const HN_OFFSET_MS = 6 * 3600000;   // Honduras: UTC−6, no DST (lib/hn-date.js)
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -195,19 +194,9 @@ function resolveCats(menu, cats) {
 const liveProjection = (rec, brandId) => (!typeSupported(rec.type) ? null : stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule }));
 
 // ── the weekly overlap rule (mockup 3 «1 con cruce») ────────────────────────────────────────────────────────────────────────────
-// An offer's weekly minutes: for each day d, [d·1440 + from, d·1440 + to) where a window ending at or before its start runs past
-// midnight (it belongs to the day it STARTS on, «vie/sáb 21:00–00:00»); no window = the whole day. Intervals wrap at the week's end.
-function weeklyIntervals(schedule) {
-  const out = [];
-  for (const d of schedule.days) {
-    const base = d * 1440;
-    let a = 0, b = 1440;
-    if (schedule.window) { a = schedule.window.from; b = schedule.window.to; if (b <= a) b += 1440; }
-    const s = base + a, e = base + b;
-    if (e <= WEEK_MIN) out.push([s, e]); else { out.push([s, WEEK_MIN]); out.push([0, e - WEEK_MIN]); }
-  }
-  return out;
-}
+// An offer's weekly minutes — the ONE definition now lives in marketing/offer-rules.js (shared with the capp; advisor 11-14, 5f moved it
+// unchanged — OR-PARITY pins it to this file's b62765981 implementation); re-exported here so every existing caller is untouched.
+const { weeklyIntervals } = require('./offer-rules');
 const datesMeet = (a, b) => (a.end === null || b.start === null || b.start < a.end) && (b.end === null || a.start === null || a.start < b.end);
 function schedulesOverlap(a, b) {
   if (!datesMeet(a, b)) return false;
