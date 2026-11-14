@@ -151,4 +151,4 @@ function makeMyOrders(deps) {
   return { getMyOrders };
 }
 
-module.exports = { makeMyOrders, projectRow, decodeCursor, LIMIT_MAX };
+module.exports = { makeMyOrders, projectRow, projectReceipt, decodeCursor, LIMIT_MAX };   // projectReceipt: the REAL receipt projector for capp's suite (advisor 11-14), the function the handler itself calls

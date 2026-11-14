@@ -97,7 +97,7 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
     ok('store path: badge_priority reaches the built structure and reward_icon the built dish; prices and extras identical with and without them');
   }
 
-  // ── 5. served: published → buildPublicMenu → assertWholeBody, marker 1d.3 ──
+  // ── 5. served: published → buildPublicMenu → assertWholeBody, marker 1d.4 (1d.3 since plan 4; 1d.4 since (3)) ──
   const publish = async (rid, source) => {
     const db = makeDb();
     const { inputs, built } = buildSourceCandidate(rid, source);
@@ -106,17 +106,17 @@ const refuses = (fn, re, label) => assert.throws(fn, (e) => re.test(String(e && 
   };
   const deps = { known: new Set(['x_pizza', 'la_musa']), isActive: async () => true };
   {
-    assert.strictEqual(REPRESENTATION_VERSION, '1d.3');
+    assert.strictEqual(REPRESENTATION_VERSION, '1d.4');   // plan 4 advanced it to 1d.3; PLAN-3a-capp-member-reads (3) to 1d.4 (dish_stats)
     assert.deepStrictEqual(BODY_CONTRACT.badge_priority.type, 'array');
     const lm = await buildPublicMenu(await publish('la_musa', LM2), 'la_musa', deps);
-    assert.strictEqual(lm.representation_version, '1d.3');
+    assert.strictEqual(lm.representation_version, '1d.4');
     assert.deepStrictEqual(lm.body.badge_priority, TAG_PRIORITY, 'carried from the structure');
     const lm0 = await buildPublicMenu(await publish('la_musa', LM), 'la_musa', deps);
     assert.ok(!('badge_priority' in lm0.body), 'a version without one serves none (not required)');
     assert.notStrictEqual(lm.etag, lm0.etag, 'the field is inside the etag');
     const xp = await buildPublicMenu(await publish('x_pizza', XP2), 'x_pizza', deps);
     assert.strictEqual(xp.body.dishes.find((d) => d.name === 'Mushroom').reward_icon, 'mushroom');
-    ok('served at 1d.3: la_musa carries badge_priority (absent when unauthored; inside the etag); x_pizza\'s dish carries reward_icon');
+    ok('served at 1d.4: la_musa carries badge_priority (absent when unauthored; inside the etag); x_pizza\'s dish carries reward_icon');
   }
 
   // ── 5b. the reconciler's read (overlayIdentity:false) is the served body minus EXACTLY the identity overlay ──

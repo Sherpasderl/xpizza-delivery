@@ -24,8 +24,9 @@ const FN = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);          // Wed 2026-10-21 18:00 America/Tegucigalpa
 export const PLAN_ETAG = {                                // PLAN-shared-order-form.FINAL §10.3
-  x_pizza: '"ce08dc10eb5ac354087f42e3b849999ffd3b912ba6ea2f4256b083dec7916098"',   // S2-core (§1.6 / R3): the served body carries extras_by_item {} when empty — was "80284300…12db2" (S1d)
-  la_musa: '"27fae80408b4f08da43b0fdaf4837c31904abd8bd65c866c1c3406ad9693961a"',   // S2-core (R3): the public deny lists only extras inside each dish's offered groups — was "cea5849b…5b1e" (S1d)
+  // re-pinned for the 1d.4 representation bump (3a (3), advisor 2026-11-13); every client takes one 200 on deploy
+  x_pizza: '"ad550e2de2fbc330cd7b5585c1c1729ccf1cf236adabcd56eb06434dfb1d1c1a"',   // 1d.4 — was "ce08dc10…6098" (S2-core: extras_by_item {} when empty; before it "80284300…12db2", S1d)
+  la_musa: '"25982b2d104eed8d07def3d6286d92c4146a4226db3149ea15f8fca1f474d684"',   // 1d.4 — was "27fae804…961a" (S2-core: the deny lists only offered-group extras; before it "cea5849b…5b1e", S1d)
 };
 
 export const PREAMBLE = `(function(){
@@ -82,6 +83,52 @@ export async function provisionBrand(rid) {
   const built = await getRestaurantMenu(db, rid);
   return { rid, etag: m.etag, envelope: { rid: m.rid, representation_version: m.representation_version, menu: m.body },
     tables: { restaurantId: rid, ...buildTablesFromDocs(built.items, built.extras) }, eligible: redeemEligibleFrom(rid, built) };
+}
+
+// S-B dish_qty for capp's dish-stats fixture (advisor 2026-11-14): createOrder's OWN dish-identity input —
+//   dishQtyOf(body.items, rid, contextOf(pricingTables), keyModeOfTables(pricingTables))   (index.js createOrder)
+// built by the REAL pricing resolver (catalog reader + the D4-a context source + verifier) over a real seeded publish of `rid`,
+// CERTIFIED by the real identity bootstrap (an uncertified version's context is not usable as identity ⇒ dish_qty null). The context
+// attaches the way production's does: the first resolution starts its background build (with its own registry verification), a
+// later one carries it.
+// A world of its OWN — provisionBrand's served envelope (and its pinned ETag) is untouched. → { tables, context, keyMode }.
+export async function provisionContext(rid) {
+  const { makeDb } = require(join(FN, 'catalog/firestore-fake'));
+  const { publishVersion } = require(join(FN, 'catalog/catalog-publish'));
+  const { buildPublishCandidate } = require(join(FN, 'tools/publish-version'));
+  const { bootstrapIdentityStamps } = require(join(FN, 'catalog/identity-bootstrap'));
+  const { createCatalogReader } = require(join(FN, 'catalog/catalog'));
+  const { getRestaurantDocs, getActiveVersionId } = require(join(FN, 'catalog/catalog-firestore'));
+  const { createPricingResolver, contextOf } = require(join(FN, 'catalog/pricing-tables'));
+  const { createContextSource } = require(join(FN, 'catalog/context-source'));
+  const { createCatalogVerifier } = require(join(FN, 'catalog/catalog-verifier'));
+  const { keyModeOfTables } = require(join(FN, 'menu-pricing'));
+  const { buildSourceFromCode } = require(join(FN, 'tools/seed-source-store'));
+  const { sourceRefOf, canonicalize } = require(join(FN, 'catalog/source-store'));
+  const db = makeDb();
+  await sourceRefOf(db, rid).set(canonicalize(buildSourceFromCode(rid)));   // the stored source the identity bootstrap enriches (the dish-stats recipe)
+  await seededMint(async () => {
+    const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1b' });
+    await publishVersion(db, rid, input, { expected });
+  });
+  await bootstrapIdentityStamps(db, rid, { attempt: 'capp-dish-stats' });
+  const rtdb = { ref: () => ({ get: async () => ({ val: () => null, exists: () => false }), once: async () => ({ val: () => null, exists: () => false }) }) };   // no persisted mirror node: the live route builds
+  // the verifier reads the identity registry as db.doc(path) inside a READ-ONLY transaction's getAll (catalog-verifier.js); the
+  // in-memory Firestore has neither, so they are spelled with its own collection/doc refs: the same documents, read the same way
+  const docRef = (path) => path.split('/').reduce((r, seg, i) => (i % 2 === 0 ? r.collection(seg) : r.doc(seg)), db);
+  const vdb = { ...db, doc: docRef, runTransaction: (fn, o) => db.runTransaction((tx) => fn({ ...tx, getAll: (...refs) => Promise.all(refs.map((r) => r.get())) }), o) };
+  const verifier = createCatalogVerifier({ db: vdb });
+  const source = createContextSource({ db, rtdb, verifier, log: () => {} });
+  const resolver = createPricingResolver({
+    reader: createCatalogReader({ getRestaurantDocs: (r) => getRestaurantDocs(db, r), getActiveVersionId: (r) => getActiveVersionId(db, r) }),
+    alarm: () => {}, context: { resolve: (served) => source.resolve(served) } });
+  for (let i = 0; i < 100; i++) {
+    const tables = await resolver.getPricingTables(rid);
+    const context = contextOf(tables);
+    if (context && context.usableAsIdentity === true) return { tables, context, keyMode: keyModeOfTables(tables) };
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`provisionContext(${rid}): the resolver never attached a usable context`);
 }
 
 /* THE REWARD SERVER: the real quoteRedemptionCore (rewards-redeem-intake.js) over the PUBLISHED catalog's tables
