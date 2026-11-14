@@ -107,7 +107,7 @@ async function quoteOrder(req) {
   return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
     ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}), ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx) });
 }
-// opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
+// opts: { directory: 'complete' | <scenario>, failLogos: bool (fx D6), sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
   // C-1a SBS: a scene may serve a directory-2 body it built with the REAL ratings chain (scenes-c1.mjs) instead of a pinned scenario
   const scen = opts.directoryBody ? { status: 200, body: opts.directoryBody, headers: { ETag: opts.directoryEtag || '"sbs-c1"' } } : FX.scenarios[opts.directory || 'complete'];
@@ -142,6 +142,7 @@ export function router(opts = {}) {
       return null;
     }
     if (ORDER_SITES.has(u.origin)) return orderSiteFile(u.origin, p);
+    if (opts.failLogos && req.url.startsWith(ASSET_SBS) && /-logo\.[a-z]+(\?|$)/.test(req.url)) return { status: 404, body: '', type: 'text/plain' };   // fx D6: the logo FAILS to load (the browser's real error event)
     if (req.url.startsWith(ASSET_SBS)) return assetFile(decodeURIComponent(req.url.slice(ASSET_SBS.length).split('?')[0]));
     if (host === 'maps.googleapis.com') return { status: 503, body: '', type: 'text/javascript' };
     if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
@@ -264,7 +265,7 @@ export const S2_VIEWS = {
   F: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('expired') }),
   G: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('declined') }),
 };
-// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
+// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow' | 'network', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
 // the priced-order fields placeSdkOrder requires — CONTRACT-sdk-checkout §2.1 «as chargeOnlineOrder»: read from the server's OWN
 // validateOrderPayload `required` list (index.js), never a copy, plus its order_id / order_type rules
 const ORDER_REQUIRED = (() => {
@@ -350,6 +351,9 @@ export function s2Extra(opts = {}) {
       // S3 SBS: the server's item refusal, pre-admission (opts.refusal = { status, json } built by the server's OWN writers — resolve-lines /
       // extras-intake — in scenes-s3.mjs); served once, as the server answers the one tap
       if (opts.place === 'refuse') { if (!opts.refusal || placed.has('__refused')) return null; placed.set('__refused', true); if (opts.onRefuse) opts.onRefuse(); return json(opts.refusal.json, opts.refusal.status); }
+      // fx D4: the answer is UNKNOWN — the server received the placement (its attempt is in flight: a later status read answers
+      // bank_pending, as the server would) and the RESPONSE is lost on the network (sbs.mjs fails the request: ConnectionFailed)
+      if (opts.place === 'network') { placed.set(b.order_id, SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })); return { fail: true }; }
       if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
       const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
     }
