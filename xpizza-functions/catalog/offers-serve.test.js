@@ -1,0 +1,171 @@
+'use strict';
+// PLAN-3a-capp-offers-read r0 Q1 — `offers` in the SERVED public menu, through the REAL buildPublicMenu over a catalog published by the
+// real publisher (the dish-stats recipe); the offers by the REAL marketing cores (save → publish → the price path's marketing_live
+// mirror), membership by the REAL roster writer, the switch by the REAL config writer, the catalog mirror by the REAL mirror writer.
+// The RTDB double is the producer's (ratings/_rtdb-fake: production transactions). Run: node catalog/offers-serve.test.js
+const assert = require('assert');
+const crypto = require('crypto');
+const { makeDb } = require('./firestore-fake');
+const { publishVersion } = require('./catalog-publish');
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceRefOf, canonicalize } = require('./source-store');
+const { buildPublicMenu, REPRESENTATION_VERSION } = require('./public-menu');
+const { getRestaurantMenu } = require('./catalog-menu');
+const { makeRtdbMirror } = require('./mirror-rtdb');
+const { makeRtdbMirrorReader } = require('./snapshot-fallback');
+const { fakeDb } = require('../ratings/_rtdb-fake');
+const R = require('../access/roster');
+const CFG = require('../marketing/config');
+const OM = require('../marketing/offer-model');
+const C = require('../marketing/offers-core');
+const OS = require('./offers-serve');
+
+let n = 0; let FINISHED = false;
+const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  ✗ offers-serve: exited without completing (a hang)\n'); process.exitCode = 1; } });
+const quiet = async (f) => { const w = console.warn; console.warn = () => {}; try { return await f(); } finally { console.warn = w; } };
+const RID = 'x_pizza';
+const base = { known: new Set([RID]), isActive: async () => true };
+const NOW = Date.UTC(2026, 10, 16, 18);   // Mon 16 Nov 2026 12:00 HN
+const DAY = 86400000;
+const OWNER = 'ownerOs01';
+const verifyIdToken = async () => ({ uid: OWNER });
+const req = (body) => ({ method: 'POST', body, get: (h) => (h === 'authorization' ? 'Bearer t' : undefined) });
+
+async function world({ on = true } = {}) {
+  const fs = makeDb();
+  await sourceRefOf(fs, RID).set(canonicalize(buildSourceFromCode(RID)));
+  const { input, expected } = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'offers-serve' });
+  await publishVersion(fs, RID, input, { expected });
+  const menu = await getRestaurantMenu(fs, RID);
+  const db = fakeDb();
+  db.set('brands/xb', { name: 'XB', active: true, locations: { [RID]: 'member' }, activation: { state: 'on', since: 1 } });
+  db.set(`restaurants/${RID}/identity`, { brand_id: 'xb', name: 'X', active: true, version: 1 });
+  assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, 'xb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@x.hn' } })).ok, true, 'premise: roster');
+  await makeRtdbMirror(db)(RID, { version: 'v1', seq: 1, rid: RID, menu: Object.fromEntries(menu.items.map((it) => [it.key, it.price])), extras: {} });
+  assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
+  const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) };
+  return { fs, db, deps, menu };
+}
+const offer = (o = {}) => ({ name: 'Oferta', type: 'pct', params: { pct: 10 }, audience: 'all', branches: [RID], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, ...o });
+async function live(deps, o) {
+  const s = await C.marketingOfferSaveCore(deps, req({ rid: RID, expected_rev: 0, offer: offer(o) }));
+  assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
+  const p = await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
+  assert.strictEqual(p.status, 200, `premise: published (${JSON.stringify(p.body)})`);
+  return s.body.offer.id;
+}
+// the menu as the endpoint serves it, with the offers memo settled (the decoration never blocks: the first serve starts the read)
+async function served(fs, db, { at = NOW, memo = new Map(), read } = {}) {
+  const inflight = new Map();
+  const o = { rtdb: db, memo, inflight, now: () => at, ...(read ? { read } : {}) };
+  await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+  await Promise.all([...inflight.values()]);
+  return quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+}
+const { canonicalJson } = require('./canonical-json');   // public-menu.js's own (line 31)
+const etagOf = (rid, body) => `"${crypto.createHash('sha256').update(`${rid} ${REPRESENTATION_VERSION} ${canonicalJson(body)}`).digest('hex')}"`;
+function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`; if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`; return JSON.stringify(v); }
+
+(async () => {
+  try {
+    // ── 1. OFF: no key; the body and ETag are the undecorated ones (byte-identical) ──
+    {
+      const { fs, db, deps } = await world({ on: false });
+      await C.marketingOfferSaveCore(deps, req({ rid: RID, expected_rev: 0, offer: offer() }));   // refused: offers off
+      const off = await served(fs, db);
+      const undecorated = await served(fs, db, { read: async () => { throw new Error('down'); } });   // the read failing: the pre-offers serve
+      assert.ok(!('offers' in off.body), 'OFF: no offers key');
+      assert.deepStrictEqual([off.body, off.etag], [undecorated.body, undecorated.etag], 'OFF: body + ETag byte-identical to the undecorated serve');
+      assert.strictEqual(off.etag, etagOf(RID, off.body), 'premise: the ETag is over rid + representation + the canonical body (public-menu.js)');
+      ok('OFF: the key is absent and the body + ETag are byte-identical to the undecorated menu');
+    }
+
+    // ── 2. ON: exactly the all-audience live offers, in the public shape; ON moves the ETag by itself ──
+    {
+      const { fs, db, deps, menu } = await world();
+      const before = await served(fs, db);
+      assert.ok(!('offers' in before.body), 'premise: no live offer yet ⇒ no key');
+      const k0 = menu.items[0].key;
+      const otherCat = menu.items.find((it) => it.display.cat !== menu.items[0].display.cat).display.cat;   // a category without k0 (the overlap rule)
+      await live(deps, { name: 'Diez por ciento', params: { pct: 10, max_cents: 15000 } });
+      await live(deps, { name: 'Envío', type: 'envio', params: { min_cents: 30000 } });
+      await live(deps, { name: '2x1', type: 'bogo', params: { items: [k0], free_per_order: 1 } });
+      await live(deps, { name: 'Pizzas', type: 'bogo', params: { cats: [otherCat], free_per_order: 1 }, schedule: { start: NOW + 2 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
+      await live(deps, { name: 'Bienvenida', type: 'nuevos', audience: 'new', params: { off_cents: 5000 } });
+      await live(deps, { name: 'Vuelve', type: 'pct', audience: 'returning', params: { pct: 15 } });
+      const paused = await live(deps, { name: 'Pausada', type: 'lps', params: { off_cents: 5000, min_cents: 30000 } });
+      assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: paused, to: 'paused_owner', expected_rev: 2 }))).status, 200, 'premise: paused');
+      const on = await served(fs, db);
+      const sched = { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] };
+      assert.deepStrictEqual(on.body.offers, [
+        { type: 'bogo', params: { items: [k0], free_per_order: 1 }, schedule: sched },
+        { type: 'envio', params: { min_cents: 30000 }, schedule: sched },
+        { type: 'pct', params: { pct: 10, max_cents: 15000 }, schedule: sched },
+        { type: 'bogo', params: { cats: [otherCat], free_per_order: 1 }, schedule: { start: NOW + 2 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } },
+      ], 'served: the all-audience live offers only, public params (a category offer serves its cats), sorted by start then type');
+      assert.ok(!JSON.stringify(on.body.offers).match(/Diez|Envío|2x1|Pizzas|"name"|"caps"|"rev"|brand_id|o_[a-z2-7]{12}/), 'never a name, caps, rev, brand or offer id');
+      assert.notStrictEqual(on.etag, before.etag, 'ON: the body moves the ETag by itself (no representation bump)');
+      assert.strictEqual(on.etag, etagOf(RID, on.body), 'the ETag is over the served body');
+      ok('ON: exactly the all-audience live offers (not nuevos / returning / paused), public shape, no name / caps / ids; the ETag follows the body');
+      assert.deepStrictEqual(OS.offerFlagOf(RID, { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: NOW }]]), now: () => NOW }), { types: ['bogo', 'envio', 'pct'] }, 'the directory flag: the distinct types, no amounts');
+      ok('offerFlagOf: { types } of the served offers (for the directory owner to wire)');
+      const later = await served(fs, db, { at: NOW + 31 * DAY });
+      assert.deepStrictEqual(later.body.offers.map((o) => o.type), ['bogo'], 'past their end ⇒ ended offers are not served (the open-ended category offer stays)');
+      ok('an offer past its end is never served');
+    }
+
+    // ── 3. a paused offer is never priced (advisor Q-C): the price path's mirror loses it at once, even while a memo still serves it ──
+    {
+      const { fs, db, deps } = await world();
+      const id = await live(deps, { name: 'Diez' });
+      const memo = new Map();
+      const first = await served(fs, db, { memo });
+      assert.strictEqual(first.body.offers.length, 1, 'premise: served');
+      assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: id, to: 'paused_owner', expected_rev: 2 }))).status, 200);
+      assert.strictEqual(db.get(`marketing_live/${RID}/${id}`) ?? null, null, 'paused ⇒ the PRICE PATH\'s mirror has no entry: never priced');
+      const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), now: () => NOW + 30 * 1000 } }));
+      assert.strictEqual(within.body.offers.length, 1, 'within the 60 s memo the menu may still show it — the accepted staleness (the quote refuses)');
+      const after = await served(fs, db, { memo, at: NOW + 61 * 1000 });
+      assert.ok(!('offers' in after.body), 'past the memo the menu drops it');
+      ok('a paused offer is never priced: the price path\'s mirror drops it at once; the menu follows within its memo (accepted staleness)');
+    }
+
+    // ── 4. never failing: an outage / timeout / config outage ⇒ the key is absent ──
+    {
+      const { fs, db } = await world();
+      for (const [why, read] of [['an outage', async () => { throw new Error('down'); }], ['a timeout', () => new Promise(() => {})], ['a malformed read', async () => 'garbage']]) {
+        const o = { rtdb: db, memo: new Map(), inflight: new Map(), now: () => NOW, read, timeoutMs: 20 };
+        await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+        await Promise.all([...o.inflight.values()]);
+        const r = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: o }));
+        assert.ok(!('offers' in r.body), `${why} ⇒ no offers key (the menu is served)`);
+      }
+      db.set('platform_config/marketing', 'garbage');
+      assert.ok(!('offers' in (await served(fs, db)).body), 'a malformed config ⇒ off ⇒ no key');
+      ok('an outage, a timeout, a malformed read or config ⇒ the key is absent; the menu is always served');
+    }
+
+    // ── 5. the byte budget: the latest-starting offers drop first ──
+    {
+      const long = (i) => `legacy dish name ${String(i).padStart(2, '0')} `.padEnd(190, 'x');
+      const live = {};
+      for (let i = 0; i < 10; i++) {
+        const v = OM.validateAuthored(offer({ type: 'bogo', params: { items: Array.from({ length: 10 }, (_, j) => long(i * 10 + j)), free_per_order: 1 }, schedule: { start: NOW + (i + 1) * DAY, days: [1] } }), { isRid: () => true });
+        assert.ok(v.ok, 'premise: a valid offer');
+        live[`o_${String.fromCharCode(97 + i).repeat(12)}`] = OM.liveProjection({ ...v.value, rev: 2, state: 'active' }, 'xb');
+      }
+      const sel = OS.selectOffers({ on: true, live }, NOW);
+      assert.ok(sel.length < 10 && Buffer.byteLength(canonical(sel)) <= OS.OFFERS_BYTES, `the served field fits OFFERS_BYTES (${sel.length} kept)`);
+      assert.deepStrictEqual(sel.map((o) => o.schedule.start), Array.from({ length: sel.length }, (_, i) => NOW + (i + 1) * DAY), 'the earliest-starting are kept; the latest drop first');
+      ok(`the worst case is bounded: ${sel.length} of 10 maximal offers fit ${OS.OFFERS_BYTES} B, the latest-starting dropped`);
+    }
+
+    FINISHED = true;
+    console.log(`offers-serve: ${n}/${n} ok`);
+  } catch (e) {
+    console.error(`  ✗ ${e.message}`);
+    process.exitCode = 1;
+  }
+})();

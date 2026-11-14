@@ -85,6 +85,7 @@ const BODY_CONTRACT = Object.freeze({
   // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
   dish_stats: { type: 'object' },   /* (3): a decoration (catalog/dish-stats-serve.js), omitted on any trouble — never required */
   photos: { type: 'object' }, avail_identity: { required: true, type: 'object' }, item_keys: { type: 'object' },   /* S1d: { [String(dish.id)]: item_key }, endpoint-only (never the bake's body) */   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule
+  offers: { type: 'array' },        /* PLAN-3a-capp-offers-read Q1: a decoration (catalog/offers-serve.js), ABSENT when offers are off — never required */
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -261,6 +262,9 @@ async function buildPublicMenu(db, rid, deps = {}) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.
     console.warn('public_menu_identity_absent', JSON.stringify({ rid: restaurantId, reason: enriched.reason }));
   }
+  /* PLAN-3a-capp-offers-read Q1 — OFFERS, on the same branch and for the same reason (they move by the minute: a baked copy would freeze
+     them). No representation bump (advisor Q-A): absent when off, so the body and the ETag are unchanged; on, the body moves the ETag. */
+  if (deps.overlayIdentity !== false) body = await require('./offers-serve').withOffers(restaurantId, body, deps.offers || {});
 
   /* PLAN-3a-capp-member-reads (3) — DISH_STATS, last, and only where it can be joined: on the endpoint's overlay branch AFTER the
      overlay applied (the served dishes carry dish_id). Never on the overlayIdentity:false bake / reconciler path (stats move daily: a

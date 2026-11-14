@@ -27,12 +27,6 @@ const DISH_STATS_MAX = 8;   // set by the worst-case cell: 8 × worst case = 2,8
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isCount = (v, min = 0) => Number.isInteger(v) && v >= min && v <= COUNT_MAX;
 
-function withTimeout(promise, ms) {
-  let timer = null;
-  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('dish_stats_timeout')), ms); });
-  return Promise.race([promise, timeout]).finally(() => { if (timer) clearTimeout(timer); });
-}
-
 // the served dish ids of a body (the overlay's dish_id), in body order
 function servedDishIds(body) {
   const out = new Set();
@@ -76,48 +70,12 @@ function selectDishStats(raw, body) {
   return kept.length ? Object.fromEntries(kept) : null;
 }
 
-// per-instance state: rid → { at, ok, raw } (memo) and rid → promise (in flight)
-const MEMO = new Map();
-const INFLIGHT = new Map();
-
-// ONE bounded background read for rid (in-flight dedupe). Never rejects; fills the memo: → { ok, raw, at }
-function startRead(rid, deps) {
-  const inflight = deps.inflight || INFLIGHT;
-  if (inflight.has(rid)) return inflight.get(rid);
-  // the RTDB handle: deps.rtdb, else the Admin app's, resolved LAZILY inside the guarded promise (photos/edit-io.js's pattern) — so
-  // getPublicMenu's index.js call is unchanged, and an unavailable handle is a failed read (omitted), never a failed menu
-  const read = deps.read || ((r) => (deps.rtdb || require('firebase-admin/database').getDatabase()).ref(`public_stats/${r}/dish_stats`).once('value').then((s) => s.val()));
-  const p = withTimeout(Promise.resolve().then(() => read(rid)), deps.timeoutMs || DISH_STATS_TIMEOUT_MS)
-    .then((raw) => ({ ok: true, raw }), () => ({ ok: false, raw: null }))
-    .then((r) => {
-      const memo = deps.memo || MEMO; const prev = memo.get(rid);
-      // a FAILED read keeps the LAST SUCCESS beside it (served while within the staleness cap); a success replaces both
-      const lastOk = r.ok ? null : (prev && prev.ok ? { raw: prev.raw, at: prev.at } : (prev && prev.lastOk) || null);
-      const rec = { ...r, at: deps.now ? deps.now() : Date.now(), ...(lastOk ? { lastOk } : {}) }; memo.set(rid, rec); inflight.delete(rid);
-      if (!rec.ok) console.warn('public_menu_dish_stats_absent', JSON.stringify({ rid, reason: 'read_failed' }));
-      return rec;
-    });
-  inflight.set(rid, p);
-  return p;
-}
-
-/* NON-BLOCKING (5f review, advisor 11-13, rule 7: no awaited network on the menu's path). The menu NEVER waits for public_stats:
-   - a FRESH memo (ok ≤ 10 min / failure ≤ 60 s) is served as it is (a failure ⇒ no field);
-   - otherwise a background read is STARTED (deduped; bounded by its own 1.5 s deadline) and NOT awaited;
-     · a STALE success memo is served meanwhile (stale-while-revalidate: the field does not vanish for one request every
-       10 min, which would flip the ETag and cost every client a 200) — and a FAILED refresh keeps it, but only up to
-       STALE_MAX (60 min) past its expiry; after that the field is omitted until a refresh succeeds (advisor 11-13);
-     · with no usable memo (a cold instance, or after a failure) this response carries NO dish_stats; the next one has it.
-   The ETag is computed over the body actually served, so it always reflects what was sent. */
-function memoFor(rid, deps) {
-  const now = deps.now ? deps.now() : Date.now();
-  const memo = (deps.memo || MEMO).get(rid);
-  const fresh = memo && now - memo.at < (memo.ok ? OK_TTL_MS : FAIL_TTL_MS);
-  if (!fresh) startRead(rid, deps);   // background: never awaited here
-  // the newest SUCCESS (this memo, or the one a failed refresh kept), served only within OK_TTL + STALE_MAX of its read
-  const ok = memo && (memo.ok ? memo : memo.lastOk);
-  return ok && now - ok.at < OK_TTL_MS + STALE_MAX_MS ? ok : null;
-}
+// the memo + background read (catalog/serve-memo.js, shared with the offers decoration): exactly this module's former memoFor / startRead
+const SM = require('./serve-memo').createServeMemo({ okTtlMs: OK_TTL_MS, failTtlMs: FAIL_TTL_MS, staleMaxMs: STALE_MAX_MS, timeoutMs: DISH_STATS_TIMEOUT_MS,
+  timeoutError: 'dish_stats_timeout', absentLog: 'public_menu_dish_stats_absent',
+  // the RTDB handle: deps.rtdb, else the Admin app's, resolved LAZILY inside the guarded promise (photos/edit-io.js's pattern)
+  defaultRead: (r, deps) => (deps.rtdb || require('firebase-admin/database').getDatabase()).ref(`public_stats/${r}/dish_stats`).once('value').then((s) => s.val()) });
+const memoFor = SM.memoFor;
 
 // buildPublicMenu's hook: the body with `dish_stats` when the memo holds qualifying stats, else the body unchanged. Never throws,
 // never awaits a read.
@@ -133,4 +91,4 @@ async function withDishStats(rid, body, deps = {}) {
   }
 }
 
-module.exports = { withDishStats, selectDishStats, allowEntry, DISH_STATS_MAX, DISH_STATS_BYTES, DISH_STATS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, STALE_MAX_MS, COUNT_MAX, _state: { MEMO, INFLIGHT } };
+module.exports = { withDishStats, selectDishStats, allowEntry, DISH_STATS_MAX, DISH_STATS_BYTES, DISH_STATS_TIMEOUT_MS, OK_TTL_MS, FAIL_TTL_MS, STALE_MAX_MS, COUNT_MAX, _state: SM.state };

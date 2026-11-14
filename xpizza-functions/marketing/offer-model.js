@@ -239,4 +239,5 @@ module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
   validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
   weeklyIntervals, schedulesOverlap, dishesOf, usesCats, resolveCats, statusOf, hnDow,
+  paramsOf, scheduleOf,   // the ONE params / schedule rule, for the public offers read (catalog/offers-serve.js)
 };
