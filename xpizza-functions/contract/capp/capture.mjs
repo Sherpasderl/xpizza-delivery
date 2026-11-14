@@ -85,6 +85,52 @@ export async function provisionBrand(rid) {
     tables: { restaurantId: rid, ...buildTablesFromDocs(built.items, built.extras) }, eligible: redeemEligibleFrom(rid, built) };
 }
 
+// S-B dish_qty for capp's dish-stats fixture (advisor 2026-11-14): createOrder's OWN dish-identity input —
+//   dishQtyOf(body.items, rid, contextOf(pricingTables), keyModeOfTables(pricingTables))   (index.js createOrder)
+// built by the REAL pricing resolver (catalog reader + the D4-a context source + verifier) over a real seeded publish of `rid`,
+// CERTIFIED by the real identity bootstrap (an uncertified version's context is not usable as identity ⇒ dish_qty null). The context
+// attaches the way production's does: the first resolution starts its background build (with its own registry verification), a
+// later one carries it.
+// A world of its OWN — provisionBrand's served envelope (and its pinned ETag) is untouched. → { tables, context, keyMode }.
+export async function provisionContext(rid) {
+  const { makeDb } = require(join(FN, 'catalog/firestore-fake'));
+  const { publishVersion } = require(join(FN, 'catalog/catalog-publish'));
+  const { buildPublishCandidate } = require(join(FN, 'tools/publish-version'));
+  const { bootstrapIdentityStamps } = require(join(FN, 'catalog/identity-bootstrap'));
+  const { createCatalogReader } = require(join(FN, 'catalog/catalog'));
+  const { getRestaurantDocs, getActiveVersionId } = require(join(FN, 'catalog/catalog-firestore'));
+  const { createPricingResolver, contextOf } = require(join(FN, 'catalog/pricing-tables'));
+  const { createContextSource } = require(join(FN, 'catalog/context-source'));
+  const { createCatalogVerifier } = require(join(FN, 'catalog/catalog-verifier'));
+  const { keyModeOfTables } = require(join(FN, 'menu-pricing'));
+  const { buildSourceFromCode } = require(join(FN, 'tools/seed-source-store'));
+  const { sourceRefOf, canonicalize } = require(join(FN, 'catalog/source-store'));
+  const db = makeDb();
+  await sourceRefOf(db, rid).set(canonicalize(buildSourceFromCode(rid)));   // the stored source the identity bootstrap enriches (the dish-stats recipe)
+  await seededMint(async () => {
+    const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: '1b' });
+    await publishVersion(db, rid, input, { expected });
+  });
+  await bootstrapIdentityStamps(db, rid, { attempt: 'capp-dish-stats' });
+  const rtdb = { ref: () => ({ get: async () => ({ val: () => null, exists: () => false }), once: async () => ({ val: () => null, exists: () => false }) }) };   // no persisted mirror node: the live route builds
+  // the verifier reads the identity registry as db.doc(path) inside a READ-ONLY transaction's getAll (catalog-verifier.js); the
+  // in-memory Firestore has neither, so they are spelled with its own collection/doc refs: the same documents, read the same way
+  const docRef = (path) => path.split('/').reduce((r, seg, i) => (i % 2 === 0 ? r.collection(seg) : r.doc(seg)), db);
+  const vdb = { ...db, doc: docRef, runTransaction: (fn, o) => db.runTransaction((tx) => fn({ ...tx, getAll: (...refs) => Promise.all(refs.map((r) => r.get())) }), o) };
+  const verifier = createCatalogVerifier({ db: vdb });
+  const source = createContextSource({ db, rtdb, verifier, log: () => {} });
+  const resolver = createPricingResolver({
+    reader: createCatalogReader({ getRestaurantDocs: (r) => getRestaurantDocs(db, r), getActiveVersionId: (r) => getActiveVersionId(db, r) }),
+    alarm: () => {}, context: { resolve: (served) => source.resolve(served) } });
+  for (let i = 0; i < 100; i++) {
+    const tables = await resolver.getPricingTables(rid);
+    const context = contextOf(tables);
+    if (context && context.usableAsIdentity === true) return { tables, context, keyMode: keyModeOfTables(tables) };
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`provisionContext(${rid}): the resolver never attached a usable context`);
+}
+
 /* THE REWARD SERVER: the real quoteRedemptionCore (rewards-redeem-intake.js) over the PUBLISHED catalog's tables
    and allowlist, against an in-memory RTDB provisioned with the account's balance, the global redemption flag
    and an empty 86 list. The caller is verified the way the handler verifies it: only the ID token this rig
