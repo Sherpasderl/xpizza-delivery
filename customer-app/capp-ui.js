@@ -971,6 +971,7 @@
         if (T.ready && from !== null && T.total > from && (S.screen === 'checkout' || S.screen === 'tip')) { render(); showErr(ERR.offerChanged(T.total)); return; }
       }
       if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
+      nudgeSettle(key);   // Codex offers-ui r1 P1-2: EVERY settled quote settles the store line too (a checkout / tip landing included)
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
     // ── gates (capp-checkout missingStep, G0 first) ──
@@ -1109,9 +1110,11 @@
       if (S.mode !== 'delivery') {   // offers (advisor 11-14 (b)): a pickup cart quotes like delivery — the Total reserved «—» until it lands
         offerFlow();
         const P0 = cartAddr() ? totalsNow() : { ready: false }, P = P0.ready && P0.subtotal === Math.round(total * 100) ? P0 : { ready: false };
-        const failed = !P.ready && (!cartAddr() || stateKey() === S.cartQErr);   // nothing priced and nothing asked: today's honest subtotal Total
+        const failed = !P.ready && (!cartAddr() || stateKey() === S.cartQErr);
         if (!P.ready && !failed) cartQuoteSoon();
-        return `<div class="ctot">${sub}${discRowHtml(P)}<div class="sumrow tot"><span>Total</span><span>${P.ready ? moneyC(P.total - P.tip) : failed ? money(total) : '—'}</span></div></div>`;
+        // Codex offers-ui r1 P1-3: a failed (or unaskable) quote keeps «—» — with an offer live the subtotal is NOT what the order costs, so
+        // the cart never shows a client total; the checkout asks again
+        return `<div class="ctot">${sub}${discRowHtml(P)}<div class="sumrow tot"><span>Total</span><span>${P.ready ? moneyC(P.total - P.tip) : '—'}</span></div></div>`;
       }
       const addr = cartAddr(), T0 = addr ? totalsNow() : { ready: false };
       const T = T0.ready && T0.subtotal === Math.round(total * 100) ? T0 : { ready: false };
@@ -2471,6 +2474,9 @@
         if (dead) return;
         const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
+        // Codex offers-ui r1 P1-2: another identity ⇒ the store line is cleared at once (never a saving priced for someone else) and the
+        // cart re-quoted for this one (the uid is in the state key)
+        if (((prevCtx && prevCtx.uid) || null) !== ((memberCtx && memberCtx.uid) || null) && hasOffers()) { S.nudge = null; paintNudge(); offersCartChanged(); }
         if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) { sdkIdentity(); tipIdentity(); }   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
@@ -2503,7 +2509,9 @@
         if (rr.blocked) return { blocked: true, step: rr.step };
         if (rr.cleared) { render(); return { cleared: true }; }
         if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
-        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
+        offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit
+        return r; },
       // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /
       // freeze predicate), never over a cart mid-placement
       replaceCart(snapshot) { if (dead || lockedNow()) return { locked: true }; return this.restore(snapshot); },

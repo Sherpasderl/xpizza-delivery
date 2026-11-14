@@ -37498,5 +37498,73 @@
   "kills_with": [
    "B3-ONE"
   ]
+ },
+ {
+  "id": "of-20",
+  "slice": "capp-offers-sliceA",
+  "label": "a quote settling inside the checkout leaves the store line stale (Codex r1 P1-2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      nudgeSettle(key);   // Codex offers-ui r1 P1-2: EVERY settled quote settles the store line too (a checkout / tip landing included)\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SETTLE-CO"
+  ]
+ },
+ {
+  "id": "of-21",
+  "slice": "capp-offers-sliceA",
+  "label": "an identity change keeps the previous identity's saving line (Codex r1 P1-2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "&& hasOffers()) { S.nudge = null; paintNudge(); offersCartChanged(); }",
+  "to": "&& false) { S.nudge = null; paintNudge(); offersCartChanged(); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-IDENT"
+  ]
+ },
+ {
+  "id": "of-22",
+  "slice": "capp-offers-sliceA",
+  "label": "a failed pickup quote shows the client subtotal as the Total (Codex r1 P1-3)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${P.ready ? moneyC(P.total - P.tip) : '—'}</span>",
+  "to": "<span>${P.ready ? moneyC(P.total - P.tip) : failed ? money(total) : '—'}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-PICK-FAIL"
+  ]
+ },
+ {
+  "id": "of-23",
+  "slice": "capp-offers-sliceA",
+  "label": "a restored cart is never offers-quoted (Codex r1 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-RESTORE"
+  ]
  }
 ]

@@ -4220,3 +4220,49 @@ test('offers 4 B3: the provable case on the sheet — 2 ⇒ «L 340 ~~L 680~~ ·
   await sheetAt2(o);
   assert.equal(o.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-WINDOW-UI: outside its window ⇒ no pill, no strike');
 });
+// ── Codex offers-ui r1 (REVISE) — P1-1 / P1-2 / P1-3 / P2 ──
+test('Codex r1 P1-1: the strike comes ONLY from a served offer — an offer missing from menu.offers (e.g. at its cap, not served) ⇒ no strike, today\'s button', async () => {
+  for (const [what, env] of [['no offers key', PROV.x_pizza.envelope], ['only another offer served', offersEnv('LPS_UNDER')]]) {
+    const b = bootCo({ envelope: env, now: B3_NOW }); const s = await sheetAt2(b);
+    assert.equal(b.q('#detail-scroll .detail-pricerow'), null, `🔴 B3-SERVED: ${what} ⇒ no pill, no strike`);
+    assert.equal(s.cta, `Agregar · L ${2 * OQ_CART.items[0].price}`, `${what}: today's gross button`);
+  }
+});
+test('Codex r1 P1-2: a quote that settles while the checkout is open settles the store line too — back on the store, no stale «Ahorrás»', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL'), async (body) => { await held; return oqServer(() => 'OFF_DEL')(body); }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('[data-act="mode"][data-val="pickup"]'); await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 2, 'premise: the newer (pickup) quote is in flight');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', 'premise: in the checkout while it is pending');
+  release(); await settle(); b.timers.flush(); await settle();
+  b.w.history.back(); await popped(); b.w.history.back(); await popped();
+  assert.equal(b.ui.state.screen, 'store', 'premise: back on the store');
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-SETTLE-CO: the offer-less quote settled the line (no stale saving)');
+});
+test('Codex r1 P1-2: an identity change clears the line AT ONCE and re-quotes the cart for the new identity', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).on, true, 'premise: met'); const n0 = b.srv.of('quoteOrder').length;
+  b.ui.setMember({ uid: 'u_other', name: 'Otra', phone: '50499990001' });
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-IDENT: cleared at once (never a saving priced for someone else)');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, n0 + 1, '🔴 OF-IDENT: re-quoted for the new identity');
+});
+test('Codex r1 P1-3: a FAILED pickup quote keeps the cart\'s Total «—» — never the client subtotal as a total', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), script: { quoteOrder: [{ status: 200, json: { ok: false, error: 'pricing_unavailable' } }] } });
+  await b.click('[data-act="mode"][data-val="pickup"]'); await addTwo(b); await b.click('#cart-bar'); await quoteLand(b);
+  assert.ok(b.srv.of('quoteOrder').length >= 1, 'premise: the quote was asked (and refused)');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-PICK-FAIL: no client total');
+});
+test('Codex r1 P2: a RESTORED cart asks the same debounced store-page offers quote as an edit', async () => {
+  const a = bootCo({ envelope: offersEnv('BOGO') }); a.ui.cart.inc(OQ_CART.key); a.ui.cart.inc(OQ_CART.key); const snap = J(a.ui.snapshot());
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  b.ui.restore(snap); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, 'debounced');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 1, '🔴 OF-RESTORE: the restored cart is quoted');
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', '🔴 OF-RESTORE: its line');
+});
