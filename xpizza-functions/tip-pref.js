@@ -10,6 +10,10 @@
 // `at` is the accepted order's RESOLVED numeric created_at (read back after commit — never the ServerValue placeholder), so
 // a retry of an older order can never replace a newer choice (the transaction keeps the newer `at`).
 // Non-fatal by contract: any failure is logged and swallowed; the order response never depends on it.
+// PLAN-3a-capp-member-reads R2.5 / R3.4: the transaction runs on the PARENT user_private/{uid}. Account deletion replaces exactly that
+// node with { deleted_at } in one atomic update, so the two serialize: a late write aborts on an OBSERVED deleted_at and can never
+// resurrect last_tip under a deleted account. The updater null-normalizes — an absent parent / a cold transaction cache returns
+// { last_tip } (committed only if the server is null too, else RTDB re-runs it with the real node, keeping every sibling).
 const { normTip } = require('./tip');
 
 function prefOf({ uid, body, orderType }) {
@@ -20,7 +24,7 @@ function prefOf({ uid, body, orderType }) {
   return Number.isNaN(t) ? null : { cents: t };
 }
 
-// the transaction updater: replace only when nothing valid is stored or the stored `at` is strictly older
+// the last_tip rule: replace only when nothing valid is stored or the stored `at` is strictly older
 function newer(cur, next) {
   const curAt = cur && typeof cur === 'object' && Number.isFinite(cur.at) ? cur.at : null;
   return curAt === null || next.at > curAt ? next : undefined;
@@ -34,7 +38,12 @@ async function recordLastTip(db, { uid, body, orderType, orderId, createdAtPath 
     const at = snap.val();
     if (!Number.isFinite(at)) return { written: false, reason: 'no_created_at' };
     const next = { cents: p.cents, at };
-    const tx = await db.ref(`user_private/${uid}/last_tip`).transaction((cur) => newer(cur, next));
+    const tx = await db.ref(`user_private/${uid}`).transaction((cur) => {
+      const p = cur && typeof cur === 'object' ? cur : {};
+      if (p.deleted_at != null) return undefined;                 // the account is deleted: abort, never resurrect
+      const n = newer(p.last_tip, next);
+      return n === undefined ? undefined : { ...p, last_tip: n };
+    });
     return { written: !!(tx && tx.committed) };
   } catch (e) {
     console.warn('tip-pref: last_tip not recorded (non-fatal)', e && e.message);

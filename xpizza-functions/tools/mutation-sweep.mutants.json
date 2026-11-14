@@ -30328,8 +30328,8 @@
   "slice": "sec",
   "label": "security backlog: the inactivity sweep writes no deleted_uids again (the gap: deleted_uids-only checks miss swept accounts)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
-  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, sweepCutoff == null ? at : null), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -30448,8 +30448,8 @@
   "slice": "sec",
   "label": "security backlog: r2 P1-c: the two tombstones written in TWO steps (a failure between them leaves user_private.deleted_at without deleted_uids)",
   "file": "signup-endpoints.js",
-  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`ratings_redact_pending/${uid}/at`]: now });",
-  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`ratings_redact_pending/${uid}/at`]: now });",
+  "from": "await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });",
+  "to": "await db.ref(`user_private/${uid}`).set({ deleted_at: at }); await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });",
   "command": [
    "node",
    "deletion-tombstone.test.js"
@@ -32756,10 +32756,10 @@
  {
   "id": "sc-2",
   "slice": "sc",
-  "label": "S-C favorites: a deleted_uids-tombstoned account can still write favorites",
+  "label": "S-C favorites: a deleted_uids-tombstoned account can still READ favorites (writes are server-only since R2.2)",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
-  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -32768,10 +32768,10 @@
  {
   "id": "sc-3",
   "slice": "sc",
-  "label": "S-C favorites: a sweep-claimed account can still write favorites",
+  "label": "S-C favorites: a sweep-claimed account can still READ favorites (writes are server-only since R2.2)",
   "file": "../xpizza-reference/database.rules.json",
-  "from": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
-  "to": "\".write\": \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
+  "from": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()\"",
+  "to": "\".read\":  \"auth != null && auth.token.handheld !== true && auth.token.customer === true && auth.uid === $uid && !root.child('deleted_uids').child($uid).exists() && !root.child('user_private').child($uid).child('deleted_at').exists()\"",
   "command": [
    "node",
    "favorites-rules.guard.test.js"
@@ -33261,13 +33261,14 @@
   "id": "smr-8",
   "slice": "smr",
   "label": "the shared predicate accepts a handheld token as a customer (writer + reader)",
-  "file": "ratings/rate-order.js",
-  "from": "if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;",
-  "to": "if (!dec || dec.customer !== true || !dec.uid) return null;",
+  "file": "member-auth.js",
+  "from": "  if (!dec || dec.customer !== true || dec.handheld === true || typeof dec.uid !== 'string' || !dec.uid) return null;\n",
+  "to": "  if (!dec || dec.customer !== true || typeof dec.uid !== 'string' || !dec.uid) return null;\n",
   "command": [
    "node",
    "ratings/my-rating.test.js"
-  ]
+  ],
+  "kills_with": "a handheld token ⇒"
  },
  {
   "id": "smr-9",

@@ -50,6 +50,24 @@ const UNAUTH = { status: 401, reason: 'unauthenticated' };
   assert.strictEqual(await isMemberTombstoned(fakeDb(), U), false);
   ok('the exported steps: verifiedMemberUid refuses a handheld token; isMemberTombstoned sees the sweep claim');
 
+  // 5. Codex asm9b r1 P2: EACH tombstone read failing alone (an outage) ⇒ refused — the predicate rejects (its callers answer 503), it
+  //    never resolves to a uid, and nothing is written
+  for (const failing of [`deleted_uids/${U}`, `user_private/${U}/deleted_at`, `user_profiles/${U}/deleting_at`]) {
+    const base = fakeDb({ user_profiles: { [U]: { name: 'Ana' } } });
+    const writes = [];
+    const db = { reads: base.reads, ref: (p) => ({
+      once: async () => { if (p === failing) { base.reads.push(p); throw new Error('rtdb unavailable'); } return base.ref(p).once(); },
+      set: async () => { writes.push(p); }, update: async () => { writes.push(p); }, transaction: async () => { writes.push(p); }, remove: async () => { writes.push(p); } }) };
+    let out = 'resolved';
+    try { out = await memberUidOf(db, 'good', verify); } catch (_) { out = 'rejected'; }
+    assert.strictEqual(out, 'rejected', `🔴 ${failing} unreadable ⇒ refused (rejected), never a uid (${JSON.stringify(out)})`);
+    let t = 'resolved';
+    try { t = await isMemberTombstoned(db, U); } catch (_) { t = 'rejected'; }
+    assert.strictEqual(t, 'rejected', `🔴 ${failing} unreadable ⇒ isMemberTombstoned rejects (never a guessed «live»)`);
+    assert.deepStrictEqual(writes, [], `🔴 ${failing} unreadable ⇒ nothing written`);
+  }
+  ok('an outage on EACH tombstone read alone ⇒ refused (the predicate rejects; never a uid, never «live»); nothing written');
+
   FINISHED = true;
   console.log(`\nmember-auth: OK (${n})`);
 })().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\nmember-auth: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

@@ -85,6 +85,16 @@ const tickets = (db) => Object.values(db.get('support_tickets') || {});
   }
   ok('ownership: the member (customerUidOf + customer_uid) and the guest (the order\'s tracking_token) file; another member, a member on a guest order, a wrong / prefix / foreign token, no proof, a handheld, staff, an unknown order and a tombstoned member ⇒ ONE generic 403, nothing written');
 
+  // ── 1b. the advisor's follow-up to PLAN-3a-capp-member-reads R2.1: the member proof is member-auth's predicate — the sweep claim
+  //        (user_profiles/{uid}/deleting_at) and user_private/{uid}/deleted_at refuse a member ticket too, nothing written ──
+  for (const tomb of [`user_profiles/${A}/deleting_at`, `user_private/${A}/deleted_at`]) {
+    const db = fakeDb(); await place(db, A, 'XPZ-m'); db.set(tomb, 5);
+    const r = await call(h(db), { token: `tok-${A}`, body: { order_id: 'XPZ-m', reason: 'late', channel: 'inapp' } });
+    assert.strictEqual(r.code, 403, `🔴 ${tomb} ⇒ ${r.code}`); assert.deepStrictEqual(r.body, GENERIC);
+    assert.strictEqual(tickets(db).length, 0, `🔴 ${tomb}: nothing written`);
+  }
+  ok('member-auth predicate (R2.1 follow-up): the sweep claim (deleting_at) and user_private/deleted_at refuse a member ticket — the ONE generic 403, nothing written');
+
   // ── 2. the ticket: no identity; exactly the contract fields ──
   {
     const db = fakeDb(); await place(db, A, 'XPZ-m');
@@ -165,4 +175,4 @@ const tickets = (db) => Object.values(db.get('support_tickets') || {});
 
   FINISHED = true;
   console.log(`support-tickets: OK (${n})`);
-})().catch((e) => { process.stderr.write(`support-tickets: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`support-tickets: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

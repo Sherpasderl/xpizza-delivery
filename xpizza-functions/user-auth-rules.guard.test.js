@@ -74,8 +74,8 @@ assert.ok(/!root\.child\('user_private'\)\.child\(\$uid\)\.child\('deleted_at'\)
   `BC1: user_profiles write must also block a uid tombstoned in user_private (got: ${up['.write']})`); ok('BC1: user_profiles write blocks a uid with user_private/{uid}/deleted_at');
 {
   const upv = rules.user_private;
-  assert.deepStrictEqual(Object.keys(upv), ['$uid'], 'user_private: only $uid'); assert.deepStrictEqual(upv.$uid, { '.read': 'auth != null && auth.token.handheld !== true && auth.uid === $uid', '.write': false });
-  ok('user_private/$uid: owner-read, NO write at any depth (no descendant grant)');
+  assert.deepStrictEqual(Object.keys(upv), ['$uid'], 'user_private: only $uid'); assert.deepStrictEqual(upv.$uid, { '.read': "auth != null && auth.token.handheld !== true && auth.uid === $uid && !data.child('deleted_at').exists() && !root.child('deleted_uids').child($uid).exists() && !root.child('user_profiles').child($uid).child('deleting_at').exists()", '.write': false });
+  ok('user_private/$uid: owner-read — never under ANY of the three tombstones (deleted_at, deleted_uids, the sweep claim; Codex asm9b r1 P1-2: as the endpoint) — NO write at any depth (no descendant grant)');
   for (const k of ['auth_links', 'link_tickets', 'auth_challenges', 'signup_config']) {
     assert.strictEqual(rules[k]['.read'], false, k); assert.strictEqual(rules[k]['.write'], false, k);
     assert.ok(!JSON.stringify(rules[k]).replace(/"\.read":false|"\.write":false/g, '').includes('.read') && !JSON.stringify(rules[k]).replace(/"\.read":false|"\.write":false/g, '').includes('.write'), `${k}: no nested grant`);
