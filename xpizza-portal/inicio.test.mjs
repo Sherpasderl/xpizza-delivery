@@ -25,7 +25,8 @@ export const S2_REF = 'd601ce505';
 function refTree(ref) {
   const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
   const dir = mkdtempSync(join(tmpdir(), 'portal-s2ref-'));
-  execFileSync('tar', ['-x', '-C', dir], { input: execFileSync('git', ['archive', '--format=tar', ref, 'xpizza-functions'], { cwd: repo, maxBuffer: 1 << 28 }) });
+  // the functions tree + the two order forms its seed reads (catalog/form-menu-source.js)
+  execFileSync('tar', ['-x', '-C', dir], { input: execFileSync('git', ['archive', '--format=tar', ref, 'xpizza-functions', 'xpizza-orders/index.html', 'la-musa-orders/index.html'], { cwd: repo, maxBuffer: 1 << 28 }) });
   symlinkSync(join(repo, 'xpizza-functions', 'node_modules'), join(dir, 'xpizza-functions', 'node_modules'));
   process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }); } catch (_) { /* best effort */ } });
   return createRequire(join(dir, 'xpizza-functions', 'package.json'));
@@ -292,9 +293,56 @@ test('SHIP GATE: no placeholder ships — every Inicio string is owner-approved 
   assert.deepEqual(pending, [], `🔴 placeholders still pending owner approval: ${pending.join(', ')}`);
 });
 
-// KNOWN_RED (advisor 11-13): the S3 equivalence — the review screen's SERVER-line count for a saved draft === branches[i].pending_count,
-// through 5f's REAL writer at a pinned ref. A `todo` until 5f sends that ref with the build (5f 11-13: «a pinned ref with the build»);
-// then it becomes a plain cell, and every facet the review folds or dedups gets an explicit ruling.
-test('KNOWN_RED · S3 equivalence: the review\'s server-line count === pending_count (5f\'s real writer, pinned ref)', { todo: 'KNOWN_RED until 5f S3 (pending_count on getMyBranches) lands with a pinned ref' }, () => {
-  assert.fail('5f S3 ref not pinned yet');
+// S3 EQUIVALENCE (advisor 11-13; 5f S3 LANDED at 8e94f0aa8): the server's pending_count for a SAVED draft === the review screen's
+// line count (review.js reviewModel(...).total — the «Revisar y publicar» sentences, folded as the screen folds them). Each facet is a
+// REAL save through 5f's real editCatalogCore (test/_s2core-harness, the production precondition decoder), the count read back with
+// the real PS.readPendingCount; the screen's count comes from the portal's own review model over the SAME diff. A facet that differs is
+// reported for a ruling (never silently aligned). The review context mirrors app.js productReviewCtx's option map (variantOf → parent).
+export const S3_REF = '8e94f0aa8';
+test('S3 equivalence (REAL save + REAL recorder at 5f 8e94f0aa8): pending_count === the review screen\'s line count, facet by facet', async () => {
+  const fq = refTree(S3_REF);
+  const H = fq('./test/_s2core-harness'); const PS = fq('./catalog/pending-summary');
+  H.SW.extrasAuthoring = true;
+  const { runInThisContext } = await import('node:vm');
+  const { readFileSync } = await import('node:fs');
+  for (const f of ['extras-eligibility.js', 'exposure-transitions.js']) runInThisContext(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8'));
+  const { reviewModel } = await import('./review.js');
+  const E = await import('./editor.js'); const IE = await import('./item-edit-logic.js');
+  const ctxOf = (src) => { const items = src.items.filter((r) => r && r.display && typeof r.key === 'string'); const k = new Map(items.map((r) => [String(r.display.id), r.key])); const par = new Map(); const ix = new Map();
+    for (const r of items) { if (r.display.variantOf == null) continue; const pk = k.get(String(r.display.variantOf)); if (pk) { par.set(r.key, pk); ix.set(r.key, ix.size); } }
+    return { optionParent: (x) => par.get(x) || null, optionIndex: (x) => ix.get(x) || 0, extraName: (x) => x, structure: { nameOf: (x) => x, categoryName: (x) => String(x) } }; };
+  const quiet = async (fn) => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await fn(); } finally { console.log = l; console.warn = w; } };
+  const isLauncher = (d, i) => !!(d.structure.variant_items || {})[String(i.display.id)];
+  const plain = (d) => d.items.filter((i) => i.display && i.display.variantOf == null && !isLauncher(d, i));
+  const reprice = (it, n) => { it.price += n; it.display.price = it.price; };
+  const viaDrawer = (n) => (source) => { const d = E.createDraft(JSON.parse(JSON.stringify(source))); const xs = E.draftSource(d).extras.filter((e) => e.display && e.display.cat === 'Salsas').map((e) => e.key);
+    const st = IE.open(d, 'dimsum_01', [], { extrasAuthoring: true, extrasCatalog: true }); for (const x of xs.slice(0, n)) IE.set(st, 'extraOn', { key: x, on: false });
+    assert.deepEqual(IE.save(d, st), { ok: true }, 'premise: the drawer writer saved'); return E.draftSource(d); };
+  const FACETS = {
+    'three prices': (d) => plain(d).slice(0, 3).forEach((it) => reprice(it, 7)),
+    'a description': (d) => { plain(d)[0].display.desc = 'Otra descripción'; },
+    'a name': (d) => { plain(d)[1].display.name += ' Nueva'; },
+    'price + description on one dish': (d) => { const it = plain(d)[0]; reprice(it, 7); it.display.desc = 'Otra'; },
+    'an option\'s price': (d) => reprice(d.items.find((i) => i.display && i.display.variantOf != null), 9),
+    'an extra\'s price': (d) => { const x = d.extras.find((e) => e && e.display); x.price = (x.price || 0) + 5; if (x.display) x.display.price = x.price; },
+    'a section move': (d) => { const it = plain(d)[0]; it.display.cat = d.structure.categories.find((c) => String(c.id) !== String(it.display.cat)).id; delete it.display.subcat; },
+    'a subsection move': (d) => { const it = plain(d).find((i) => i.display.subcat); const c = d.structure.categories.find((x) => String(x.id) === String(it.display.cat)); it.display.subcat = c.subcats.find((x) => x !== it.display.subcat); },
+    'a launcher + its options renamed': (d) => { const l = d.items.find((i) => i.display && isLauncher(d, i)); l.display.name += ' X';
+      for (const id of d.structure.variant_items[String(l.display.id)].variantIds) { const o = d.items.find((i) => String(i.display.id) === String(id) || i.ref === id); if (o) o.display.name += ' X'; } },
+    'a launcher\'s description': (d) => { d.items.find((i) => i.display && isLauncher(d, i)).display.desc = 'Nueva desc'; },
+  };
+  const got = {};
+  for (const [name, f] of [...Object.entries(FACETS), ['one dish extra off (the drawer)', viaDrawer(1)], ['two dish extras off (the drawer)', viaDrawer(2)]]) {
+    const w = H.world('la_musa');
+    const src = (await w.draft()).source;
+    const r = await quiet(() => (name.endsWith('(the drawer)') ? w.save(f(src)) : w.save(f)));
+    assert.equal(r.status, 200, `premise: the real save of «${name}» ${JSON.stringify(r.body).slice(0, 160)}`);
+    got[name] = [await PS.readPendingCount(w.fs, 'la_musa'), reviewModel(r.body.diff, ctxOf((await w.draft()).source)).total];
+  }
+  for (const [name, [pc, total]] of Object.entries(got)) assert.ok(Number.isInteger(pc) && pc > 0, `premise: a fresh count for «${name}» (got ${pc})`);
+  assert.deepEqual(Object.fromEntries(Object.entries(got).map(([k, [pc]]) => [k, pc])), Object.fromEntries(Object.entries(got).map(([k, [, t]]) => [k, t])),
+    '🔴 pending_count === the review screen\'s line count, every facet');
+});
+test('S3 equivalence — facets NOT yet exercised (the seeds / harness cannot produce them here): each needs its real save before it counts as proven', { todo: 'additions, removals, S2 attachments, the extras-order structure line, photos, S3 choices, S4 sections; and a section move that ALSO changes the subsection (no seed has two subsectioned sections)' }, () => {
+  assert.fail('not exercised');
 });
