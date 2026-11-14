@@ -1,7 +1,7 @@
-// PLAN-portal-fonts r1.1 §5 — the portal's self-hosted Archivo, static guards (light; in test:portal). The ONE pipeline
+// PLAN-portal-fonts r1.1 §5 + PLAN-font-figtree-portal-r0 (owner 11-13: Figtree everywhere) — the portal's self-hosted Figtree, static guards (light; in test:portal). The ONE pipeline
 // (platform/fonts, PLAN-forms-fonts-preconnect r6.1) generates the assets; this asserts the portal wires them exactly:
 // no Google font host anywhere, optional only, the baseline's RANGE descriptor verbatim, preload = the manifest's set on BOTH
-// entry pages, the metric-matched fallbacks named right after 'Archivo', CSP style/font-src 'self', the hashed .woff2 immutable,
+// entry pages, the metric-matched fallbacks named right after 'Figtree', CSP style/font-src 'self', the hashed .woff2 immutable,
 // and the preconnects tied to their source constants. Run: node --test xpizza-portal/portal-fonts.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,16 +27,17 @@ test('no Google font host anywhere: the entry pages, the stylesheets, the CSP', 
   assert.ok(csp.length > 50, 'non-vacuity: the CSP was read');
 });
 
-test('the generated css: the pinned baseline\'s faces VERBATIM (range 600 800, font-stretch 100%), font-display optional only; the pipeline --check is clean', () => {
+test('the generated css: the pinned baseline\'s faces VERBATIM (variable 300 900), font-display optional only; the pipeline --check is clean', () => {
   const css = read(P.cssName);
   assert.equal(css, P.css, 'portal-fonts.css is exactly what the pipeline produces');
+  assert.equal(man.surfaces.portal.baseline, 'baseline/figtree', 'the ONE shared Figtree pin (capp + driver use the same bytes)');
   const { css: baseline } = loadBaseline('portal', man);
   const base = parseBaseline(baseline);
-  assert.equal(base.length, 3, 'three subsets: vietnamese, latin-ext, latin');
+  assert.deepEqual(base.map((f) => f.subset), ['latin-ext', 'latin'], 'two subsets: latin-ext, latin');
   for (const f of base) {
-    assert.equal(f.weight, '600 800', `${f.subset}: the RANGE descriptor, as Google declares it (no weight trap: 750 / 800 render as requested)`);
-    assert.equal(f.stretch, '100%');
-    assert.ok(css.includes(`font-family:'Archivo';font-style:normal;font-weight:600 800;font-stretch:100%;font-display:optional;`), f.subset);
+    assert.equal(f.weight, '300 900', `${f.subset}: the variable RANGE as Google declares it (400–800 incl. 650 / 750 render as requested)`);
+    assert.equal(f.stretch, undefined, 'no font-stretch descriptor in the Figtree baseline');
+    assert.ok(css.includes(`font-family:'Figtree';font-style:normal;font-weight:300 900;font-display:optional;`), f.subset);
     assert.ok(css.includes(`unicode-range:${f.unicodeRange}`), `${f.subset}: the unicode-range verbatim`);
   }
   const displays = [...css.matchAll(/font-display:([a-z]+)/g)].map((m) => m[1]);
@@ -44,22 +45,25 @@ test('the generated css: the pinned baseline\'s faces VERBATIM (range 600 800, f
   assert.deepEqual(check(man), [], 'build-fonts --check: pinned files, css, OFL, site identity (both surfaces)');
   const woff = readdirSync(join(DIR, 'fonts')).filter((n) => n.endsWith('.woff2')).sort();
   assert.deepEqual(woff, [...P.files.keys()].sort(), 'exactly the pinned files, no orphan');
-  assert.ok(existsSync(join(DIR, 'fonts', 'OFL.txt')) && read('fonts/OFL.txt').includes('The Archivo Project Authors'), 'the OFL notice with Archivo\'s copyright');
+  assert.ok(existsSync(join(DIR, 'fonts', 'OFL.txt')) && read('fonts/OFL.txt').includes('The Figtree Project Authors'), 'the OFL notice with Figtree\'s copyright');
+  assert.ok(!read('fonts/OFL.txt').includes('Archivo'), 'Archivo has left');
 });
 
-test('every fallback face carries all four metric overrides; --disp names them right after \'Archivo\' in BOTH stylesheets; --body untouched', () => {
-  const fb = [...P.css.matchAll(/@font-face\{font-family:'(Archivo Fallback[^']*)';([^}]*)\}/g)];
-  assert.equal(fb.length, 2, 'Arial Bold + Roboto Bold');
-  for (const [, name, body] of fb) for (const o of ['size-adjust', 'ascent-override', 'descent-override', 'line-gap-override']) assert.match(body, new RegExp(`${o}:[0-9.]+%`), `${name}: ${o}`);
+test('every fallback face carries all four metric overrides; --body names them right after \'Figtree\' in BOTH stylesheets; --disp = var(--body)', () => {
+  const fb = [...P.css.matchAll(/@font-face\{font-family:'(Figtree Fallback[^']*)';font-weight:([0-9 ]+);([^}]*)\}/g)];
+  assert.deepEqual(fb.map((m) => `${m[1]}|${m[2]}`), ['Figtree Fallback|400 550', 'Figtree Fallback|600 800', 'Figtree Fallback Roboto|400 550', 'Figtree Fallback Roboto|600 800'],
+    'Arial / Arial Bold + Roboto / Roboto Bold: regular and bold bands, so weights are real, never synthesized');
+  for (const [, name, , body] of fb) for (const o of ['size-adjust', 'ascent-override', 'descent-override', 'line-gap-override']) assert.match(body, new RegExp(`${o}:[0-9.]+%`), `${name}: ${o}`);
   for (const f of SHEETS) {
     const css = read(f);
-    assert.match(css, /--disp:'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif;/, `${f}: the fallbacks right after the face, the rest of the stack unchanged`);
-    assert.match(css, /--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;/, `${f}: --body has no hosted face and is not touched`);
+    assert.match(css, /--body:'Figtree','Figtree Fallback','Figtree Fallback Roboto',system-ui,-apple-system,'Segoe UI',sans-serif;/, `${f}: ONE family — Figtree, its fallbacks right after it`);
+    assert.match(css, /--disp:var\(--body\);/, `${f}: --disp is the same family (every rule keeps its token and weight)`);
+    assert.doesNotMatch(css, /Archivo|Söhne/, `${f}: Archivo and the never-loaded Söhne leave every stack`);
   }
 });
 
 test('preload ⇔ the manifest\'s critical set, on BOTH entry pages (as=font, type=font/woff2, crossorigin), before the stylesheets; the font heads are identical', () => {
-  assert.deepEqual(P.preload, ['fonts/archivo-latin.7150c0ec5a.woff2'], 'the latin subset only (Spanish UI)');
+  assert.deepEqual(P.preload, ['fonts/figtree-latin.8330490a01.woff2'], 'the latin subset only (Spanish UI)');
   const heads = PAGES.map((page) => {
     const links = linksOf(read(page));
     const pre = links.filter((l) => attr(l, 'rel') === 'preload');
@@ -110,6 +114,10 @@ test('preconnects: www.gstatic.com + the Functions origin (tied to their source 
 // requested weights, and every §4 state is in it (P-crop only with the dish-photos B tip)
 test('the committed census (platform/fonts/census/portal.census.json): gate (b) per declaration × requested weight, every state', () => {
   const c = JSON.parse(readFileSync(join(DIR, '..', 'platform/fonts/census/portal.census.json'), 'utf8'));
+  // the census must have MEASURED the hosted face — a record of the previous face is stale evidence (the subsets' ranges can start
+  // alike, so a range match alone would pass it): re-captured in the heavy slot (portal-fonts.cdp.mjs) after every face change
+  const hosted = Object.keys(man.surfaces.portal.families);
+  assert.deepEqual([...new Set(c.gateB.map((x) => x.family))], hosted, `🔴 the census measured ${[...new Set(c.gateB.map((x) => x.family))]} but the portal hosts ${hosted} — re-capture it (heavy slot)`);
   assert.ok(c.repeats >= 3 && c.repeatsAgree === true, 'three repeats, identical');
   const weights = new Set();
   for (const f of SHEETS) for (const m of read(f).matchAll(/\{([^{}]*font-family\s*:\s*var\(--disp\)[^{}]*)\}/g)) for (const x of m[1].matchAll(/font-weight\s*:\s*(\d{3})/g)) weights.add(Number(x[1]));

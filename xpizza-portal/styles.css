@@ -23,8 +23,8 @@
     --green-text:#0B7C47; --red-text:#C73123;
     --tint:rgba(14,159,91,.07); --tint2:rgba(14,159,91,.13); --rbar-bg:#FFFFFF;
     --shadow:0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26); --shadow-lg:0 44px 96px -40px rgba(10,10,11,.34);
-    --body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;
-    --disp:'Archivo','Archivo Fallback','Archivo Fallback Roboto','Söhne','Helvetica Neue',system-ui,sans-serif; --r:14px;
+    --body:'Figtree','Figtree Fallback','Figtree Fallback Roboto',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --disp:var(--body); --r:14px;
     --focus:0 0 0 2px var(--board),0 0 0 4px var(--ink);
     /* ENVÍO (MOCKUP-portal-envio-v2): the map box's ground and the legend swatches' fills */
     --env-map:#F1F2EC; --env-band:rgba(14,159,91,.25); --env-limit:rgba(14,159,91,.12); --env-out:rgba(10,10,11,.1); --env-other:#FFFFFF;
