@@ -294,3 +294,13 @@ test('the cap is NEVER computed here: the weeks\' states are the server\'s verba
   const rec = AL.classifyBookRecovery({ week: WK[3] }, { status: 200, body: { ok: true, price_cents: 45000, eligibility: {}, weeks: [{ week: WK[3], state: 'capped' }] } }, g, BOOK_AT);
   assert.equal(rec.outcome, 'not_landed', 'a capped week after an unknown book: nothing landed');
 });
+
+test('the cap copy is the owner\'s, verbatim (approved 11-14, PLAN-portal-marketing-r1 §8)', () => {
+  assert.deepEqual(Object.keys(AL.CAP_COPY), ['capRule', 'capped', 'capReached', 'capNext', 'capNone']);
+  assert.equal(AL.CAP_COPY.capRule, 'Para que todos los restaurantes tengan su turno, podés tener hasta 2 semanas en cualquier período de 4.');
+  assert.equal(AL.CAP_COPY.capped, 'Fuera de tu límite');
+  assert.equal(AL.CAP_COPY.capReached, 'Ya tenés 2 semanas en este período de 4.');
+  assert.equal(AL.CAP_COPY.capNext('12 abr'), 'Podés reservar desde la semana del 12 abr, si sigue libre.');
+  assert.equal(AL.CAP_COPY.capNone, 'Vas a poder reservar más adelante, cuando se abran nuevas semanas o si cancelás una de las tuyas.');
+  assert.ok(Object.isFrozen(AL.CAP_COPY));
+});

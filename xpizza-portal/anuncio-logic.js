@@ -23,6 +23,16 @@
 //                          term arrives with merit-5f as a NEW code — an unknown code renders «No disponible», never eligible)
 //   offers-core.js:237     getMarketing's bookings: { id, week, status, price_cents, cancel_deadline, hidden_days }
 
+// THE CAP's copy — OWNER-APPROVED 11-14 verbatim (PLAN-portal-marketing-r1 §8); the drawing half shows it, nothing here decides it.
+// {fecha} is the server's next_week, worded by the screen (the week's start). Every other Anuncio string stays a ⟦key⟧ (SHIP GATE).
+export const CAP_COPY = Object.freeze({
+  capRule: 'Para que todos los restaurantes tengan su turno, podés tener hasta 2 semanas en cualquier período de 4.',
+  capped: 'Fuera de tu límite',
+  capReached: 'Ya tenés 2 semanas en este período de 4.',
+  capNext: (fecha) => `Podés reservar desde la semana del ${fecha}, si sigue libre.`,
+  capNone: 'Vas a poder reservar más adelante, cuando se abran nuevas semanas o si cancelás una de las tuyas.',
+});
+
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isInt = (v, lo, hi) => Number.isSafeInteger(v) && v >= lo && v <= hi;
 const WEEK_RE = /^W\d{4}-\d{2}-\d{2}$/;
