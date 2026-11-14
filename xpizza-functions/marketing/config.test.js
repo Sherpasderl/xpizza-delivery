@@ -38,11 +38,11 @@ const SET = { offers_enabled: true, anuncio_enabled: false, collections_enabled:
     for (let i = 2; i < 14; i++) assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: i, config: SET, actor: 'cli:op', now: 8 + i })).ok, true);
     assert.strictEqual(fake.get(CFG.PATH).history.length, CFG.HISTORY_MAX, 'the history is bounded');
     ok('CAS: stale expected superseded; history newest first and bounded');
-    for (const bad of [{ ...SET, offers_enabled: 'true' }, { ...SET, anuncio_price_cents: 450.5 }, { ...SET, thresholds: { rating_min: 6, min_ratings: 10 } }, { ...SET, extra: 1 }]) {
-      assert.deepStrictEqual(await CFG.writeMarketingConfig(db, { expected: 14, config: bad, actor: 'cli:op', now: 30 }), { ok: false, code: 'bad_config' }, `refused: ${JSON.stringify(bad)}`);
-    }
     for (const node2 of [{ ...SET }, { policy_version: 0, ...SET }, { policy_version: 3, ...SET, collections_enabled: 1 }, 'on', { policy_version: 3, ...SET, thresholds: null }]) {
       assert.deepStrictEqual(CFG.parseConfig(node2), { ...CFG.OFF }, `a malformed stored node is OFF: ${JSON.stringify(node2)}`);
+    }
+    for (const bad of [{ ...SET, offers_enabled: 'true' }, { ...SET, anuncio_price_cents: 450.5 }, { ...SET, thresholds: { rating_min: 6, min_ratings: 10 } }, { ...SET, extra: 1 }]) {
+      assert.deepStrictEqual(await CFG.writeMarketingConfig(db, { expected: 14, config: bad, actor: 'cli:op', now: 30 }), { ok: false, code: 'bad_config' }, `refused: ${JSON.stringify(bad)}`);
     }
     fake.put(CFG.PATH, 'garbage');
     assert.deepStrictEqual(await CFG.writeMarketingConfig(db, { expected: 14, config: SET, actor: 'cli:op', now: 31 }), { ok: false, code: 'current_malformed' }, 'a malformed stored node is never overwritten blindly');
