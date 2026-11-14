@@ -70,7 +70,7 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
 const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
 const get = (deps, tok, rid) => C.getMarketingCore(deps, req(tok, undefined, 'GET', { rid }));
 const offer = (o = {}) => ({ name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: '21:00', to: '00:00' } }, caps: { redemptions: 50, spend_cents: null, weekly: false }, ...o });
+  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, spend_cents: null, weekly: false }, ...o });
 const save = (deps, tok, body) => C.marketingOfferSaveCore(deps, req(tok, { rid: 'tb_centro', expected_rev: 0, ...body }));
 const move = (deps, tok, body) => C.marketingOfferSetStateCore(deps, req(tok, { rid: 'tb_centro', ...body }));
 const created = async (deps, o) => { const r = await save(deps, `t-${OWNER}`, { offer: offer(o) }); assert.strictEqual(r.status, 200, `premise: created (${JSON.stringify(r.body)})`); return r.body.offer; };
@@ -126,7 +126,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.ok(OM.OFFER_ID_RE.test(d.id), 'an opaque offer id');
       const rec = fake.get(`marketing_offers/tb/${d.id}`);
       assert.deepStrictEqual(rec, { v: 1, rev: 1, name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: '21:00', to: '00:00' } }, caps: { redemptions: 50, weekly: false },
+        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, weekly: false },
         state: 'draft', created_by: OWNER, created_at: NOW, updated_at: NOW }, 'the stored draft: exact keys, nulls absent, no price copy');
       assert.deepStrictEqual(mirrored(fake), [], 'a draft has no live mirror');
       assert.deepStrictEqual([d.status, d.state, d.rev], ['draft', 'draft', 1]);
@@ -139,7 +139,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ type: 'nuevos', params: { off_cents: 5000 }, audience: 'all' }, 'nuevos_is_new'],
         [{ name: '   ' }, 'bad_name'],
         [{ schedule: { start: NOW + DAY, end: NOW, days: [1] } }, 'bad_schedule'],
-        [{ schedule: { start: NOW + DAY, days: [1], window: { from: '10:00', to: '10:00' } } }, 'bad_schedule'],
+        [{ schedule: { start: NOW + DAY, days: [1], window: { from: 600, to: 600 } } }, 'bad_schedule'],
         [{ caps: { redemptions: 0, weekly: false } }, 'bad_caps'],
         [{ extra: 1 }, 'bad_shape'],
       ];
@@ -192,11 +192,11 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const a = await published(deps);
       const edit = (o, rev) => save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: rev, offer: offer(o) });
       for (const [o, field] of [[{ name: 'Otro nombre' }, 'name'], [{ caps: { redemptions: 40, spend_cents: null, weekly: false } }, 'caps'], [{ caps: { redemptions: 50, spend_cents: 1000, weekly: false } }, 'caps'],
-        [{ schedule: { start: NOW + DAY, end: NOW + 20 * DAY, days: [5, 6], window: { from: '21:00', to: '00:00' } } }, 'schedule'], [{ params: { items: [K2], free_per_order: 1 } }, 'params']]) {
+        [{ schedule: { start: NOW + DAY, end: NOW + 20 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }, 'schedule'], [{ params: { items: [K2], free_per_order: 1 } }, 'params']]) {
         const r = await edit(o, 2);
         assert.deepStrictEqual([r.status, r.body.error, r.body.field], [409, 'live_edit_not_allowed', field], `live edit of ${field} refused`);
       }
-      const up = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false }, schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: '21:00', to: '00:00' } } }, 2);
+      const up = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false }, schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } }, 2);
       assert.deepStrictEqual([up.status, up.body.offer.rev, up.body.offer.caps.redemptions, up.body.offer.schedule.end], [200, 3, 80, null], 'caps up + no end ⇒ allowed');
       assert.deepStrictEqual(fake.get(`marketing_live/tb_centro/${a.id}`), OM.liveProjection(fake.get(`marketing_offers/tb/${a.id}`), 'tb'), 'the mirror follows the edit');
       ok('live edit: only a raised cap and a later end; the mirror follows');
@@ -206,18 +206,18 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
     {
       const { deps } = await setup();
       await published(deps);   // K1, Fri+Sat 21:00–00:00
-      const sat = await created(deps, { name: 'Pizza sábado noche', schedule: { start: NOW + DAY, days: [6], window: { from: '23:30', to: '01:00' } } });
+      const sat = await created(deps, { name: 'Pizza sábado noche', schedule: { start: NOW + DAY, days: [6], window: { from: 1410, to: 60 } } });
       const r = await move(deps, `t-${OWNER}`, { offer_id: sat.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([r.status, r.body.error, r.body.with], [409, 'overlap', ['2 por 1 en clásicas']], 'the same dish on overlapping hours ⇒ overlap, named');
-      const sun = await created(deps, { name: 'Domingo madrugada', schedule: { start: NOW + DAY, days: [0], window: { from: '00:00', to: '02:00' } } });
+      const sun = await created(deps, { name: 'Domingo madrugada', schedule: { start: NOW + DAY, days: [0], window: { from: 0, to: 120 } } });
       assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: sun.id, to: 'active', expected_rev: 1 })).status, 200, 'Sat 21:00–00:00 ends AT midnight: Sunday 00:00 does not clash');
       const other = await created(deps, { name: 'Otro plato', params: { items: [K2], free_per_order: 1 } });
       assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: other.id, to: 'active', expected_rev: 1 })).status, 200, 'another dish never clashes');
-      const later = await created(deps, { name: 'Diciembre', schedule: { start: NOW + 31 * DAY, days: [5, 6], window: { from: '21:00', to: '00:00' } } });
+      const later = await created(deps, { name: 'Diciembre', schedule: { start: NOW + 31 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
       assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: later.id, to: 'active', expected_rev: 1 })).status, 200, 'dates that do not meet never clash');
       ok('overlap: same dish × overlapping hours refused with names; midnight edge, other dishes and later dates pass');
-      const k2sat = await published(deps, { name: 'Sábado tarde K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [6], window: { from: '23:00', to: '01:00' } } });
-      const k2sun = await created(deps, { name: 'Domingo K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [0], window: { from: '00:30', to: '02:00' } } });
+      const k2sat = await published(deps, { name: 'Sábado tarde K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [6], window: { from: 1380, to: 60 } } });
+      const k2sun = await created(deps, { name: 'Domingo K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [0], window: { from: 30, to: 120 } } });
       const wrap = await move(deps, `t-${OWNER}`, { offer_id: k2sun.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([wrap.status, wrap.body.error, wrap.body.with], [409, 'overlap', ['Sábado tarde K2']], 'Saturday 23:00–01:00 runs into SUNDAY: the week wraps');
       void k2sat;

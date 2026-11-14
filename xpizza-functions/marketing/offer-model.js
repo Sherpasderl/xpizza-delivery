@@ -20,7 +20,6 @@ const LIMITS = Object.freeze({
   start_skew_ms: 60000,
 });
 const OFFER_ID_RE = /^o_[a-z2-7]{12}$/;
-const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const KEY_MAX = 200;
 const WEEK_MIN = 7 * 1440;
 const HN_OFFSET_MS = 6 * 3600000;   // Honduras: UTC−6, no DST (lib/hn-date.js)
@@ -32,7 +31,6 @@ const exactKeys = (o, req, opt = []) => isObj(o) && req.every((k) => k in o) && 
 const nul = (v) => (v === undefined ? null : v);
 const keyOk = (k) => typeof k === 'string' && k.length >= 1 && k.length <= KEY_MAX;
 const uniq = (a) => new Set(a).size === a.length;
-const minOf = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 
 // the offer's NAME as the merchant typed it: trimmed, 1..40, no control characters
 function nameOf(v) {
@@ -77,7 +75,8 @@ function paramsOf(type, p) {
   return null;
 }
 
-// schedule { start: ms|null (null only in a draft), end: ms|null, days: [0..6] (0 = Sunday, HN), window: {from,to}|null }
+// schedule { start: ms|null (null only in a draft), end: ms|null, days: [0..6] (0 = Sunday, HN), window: {from,to}|null }, the
+// window in MINUTES after HN midnight (0..1439): stored as numbers so no reader parses a clock string (the portal formats it)
 function scheduleOf(s) {
   if (!exactKeys(s, ['days'], ['start', 'end', 'window'])) return null;
   const start = nul(s.start), end = nul(s.end), window = nul(s.window);
@@ -86,7 +85,7 @@ function scheduleOf(s) {
   if (!Array.isArray(s.days) || s.days.length < 1 || !s.days.every((d) => isInt(d, 0, 6)) || !uniq(s.days)) return null;
   let win = null;
   if (window !== null) {
-    if (!exactKeys(window, ['from', 'to']) || !HHMM_RE.test(window.from) || !HHMM_RE.test(window.to) || window.from === window.to) return null;
+    if (!exactKeys(window, ['from', 'to']) || !isInt(window.from, 0, 1439) || !isInt(window.to, 0, 1439) || window.from === window.to) return null;
     win = { from: window.from, to: window.to };
   }
   return { start, end, days: [...s.days].sort((a, b) => a - b), window: win };
@@ -174,7 +173,7 @@ function weeklyIntervals(schedule) {
   for (const d of schedule.days) {
     const base = d * 1440;
     let a = 0, b = 1440;
-    if (schedule.window) { a = minOf(schedule.window.from); b = minOf(schedule.window.to); if (b <= a) b += 1440; }
+    if (schedule.window) { a = schedule.window.from; b = schedule.window.to; if (b <= a) b += 1440; }
     const s = base + a, e = base + b;
     if (e <= WEEK_MIN) out.push([s, e]); else { out.push([s, WEEK_MIN]); out.push([0, e - WEEK_MIN]); }
   }

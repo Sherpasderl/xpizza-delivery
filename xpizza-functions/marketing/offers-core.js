@@ -127,6 +127,14 @@ async function writeMirrors(db, brandId, offerId, rec, prevBranches = []) {
   try { await db.ref().update(up); return true; } catch (_) { return false; }
 }
 
+// Q4: the brand's ended offers older than 180 days (by their last write) — removed by the next create, in ONE update of the brand node
+const endedToPrune = (all, t) => Object.entries(isObj(all) ? all : {})
+  .filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
+async function pruneEnded(db, brandId, ids) {
+  if (!ids.length) return;
+  try { await db.ref(offersPath(brandId)).update(Object.fromEntries(ids.map((id) => [id, null]))); } catch (_) { /* retried by the next create */ }
+}
+
 const bodyOf = (req) => (isObj(req && req.body) ? req.body : {});
 const offerView = (id, rec, nowMs) => ({
   id, rev: rec.rev, state: rec.state, status: OM.statusOf(rec, nowMs),
@@ -196,9 +204,8 @@ async function marketingOfferSaveCore(deps, req) {
   if (creating) {   // the brand's bound (every state counts) + Q4: ended offers older than 180 days leave with this write
     let all;
     try { all = (await val(db, offersPath(brandId))) || {}; } catch (_) { return UNAVAILABLE(); }
-    const entries = Object.entries(isObj(all) ? all : {});
-    prune = entries.filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
-    if (entries.length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
+    prune = endedToPrune(all, t);
+    if (Object.keys(isObj(all) ? all : {}).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
   }
   let prevRec = null;
   if (!creating) {   // an active / paused offer: the live-edit allowlist is checked against the record the CAS will see
@@ -224,7 +231,7 @@ async function marketingOfferSaveCore(deps, req) {
   });
   if (w.fail) return w.fail;
   if (w.rec.state === 'active' && !(await writeMirrors(db, brandId, offerId, w.rec, isObj(prevRec) ? prevRec.branches : []))) return UNAVAILABLE();
-  if (prune.length) { try { await db.ref().update(Object.fromEntries(prune.map((id) => [`${offersPath(brandId)}/${id}`, null]))); } catch (_) { /* retried by the next create */ } }
+  await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
 
@@ -290,9 +297,8 @@ async function marketingOfferRepeatCore(deps, req) {
   const value = OM.authoredOf(src, opts);
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
-  const entries = Object.entries(all);
-  const prune = entries.filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
-  if (entries.length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
+  const prune = endedToPrune(all, t).filter((id) => id !== body.offer_id);   // never the offer being repeated
+  if (Object.keys(all).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
   const offerId = newOfferId();
   const draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, 0, (cur, d) => {
@@ -300,7 +306,7 @@ async function marketingOfferRepeatCore(deps, req) {
     return OM.stripNulls({ v: 1, rev: 1, ...draft, state: 'draft', repeated_from: body.offer_id, created_by: ctx.uid, created_at: t, updated_at: t });
   });
   if (w.fail) return w.fail;
-  if (prune.length) { try { await db.ref().update(Object.fromEntries(prune.filter((id) => id !== body.offer_id).map((id) => [`${offersPath(brandId)}/${id}`, null]))); } catch (_) { /* retried by the next create */ } }
+  await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
 
