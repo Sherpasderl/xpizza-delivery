@@ -1,10 +1,10 @@
 {
  "source": {
-  "commit": "268de114f155d886c3af83ca2cf59bef911fe7dd",
+  "commit": "30fc29c9f77913a0dfeb70c2c15446221789b6d3",
   "blobs": {
    "create-order-build.js": "a5647c78b1ecffd9cf51ca4472c3aa890a440f0e",
    "reorder-normalize.js": "2a53ac21f06b8c547ae5d458f68427adcd3c2f2b",
-   "my-orders.js": "f24aaa6bc06c80b2add97b324afbbdbf0379809c",
+   "my-orders.js": "32e89fdd661bc99c2ce6e3c266b8e2025a9a26e8",
    "member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607",
    "menu-pricing.js": "bfb1bc924d1a33521638fbb5463d2c5883060549",
    "factura/pricing.js": "88532bfa3fe9f09a2b6573e01013806a69399ae5"
@@ -91,7 +91,102 @@
      }
     }
    }
+  },
+  "LM-V1": {
+   "body": [
+    {
+     "id": "dimsum_01",
+     "qty": 2,
+     "extras": [
+      {
+       "id": "rice_white",
+       "qty": 1
+      }
+     ]
+    },
+    {
+     "id": "dimsum_02",
+     "qty": 1
+    }
+   ],
+   "items": [
+    {
+     "key": "dimsum_01",
+     "qty": 2,
+     "options": [
+      {
+       "id": "rice_white",
+       "qty": 1
+      }
+     ]
+    },
+    {
+     "key": "dimsum_02",
+     "qty": 1
+    }
+   ],
+   "price_snapshot": {
+    "v": 2,
+    "lines": [
+     {
+      "unit_cents": 24900,
+      "line_cents": 54800,
+      "extras": [
+       {
+        "k": "rice_white",
+        "c": 5000
+       }
+      ]
+     },
+     {
+      "unit_cents": 24800,
+      "line_cents": 24800
+     }
+    ]
+   },
+   "receipt": {
+    "status": 200,
+    "body": {
+     "ok": true,
+     "receipt": {
+      "order_id": "LM-V1",
+      "ts": 1792371900000,
+      "restaurant": "la_musa",
+      "order_type": "pickup",
+      "status": "delivered",
+      "lines": null,
+      "items_text": "2x Sichuan Spicy Wonton (L249) [+ 1x Arroz blanco], 1x Pork Belly Buns (L248)",
+      "totals": {
+       "subtotal_cents": 56348,
+       "tax_cents": 8452,
+       "total_cents": 64800
+      },
+      "tender": {
+       "method": "card"
+      },
+      "price_snapshot": {
+       "v": 2,
+       "lines": [
+        {
+         "unit_cents": 24900,
+         "line_cents": 54800,
+         "extras": [
+          {
+           "k": "rice_white",
+           "c": 5000
+          }
+         ]
+        },
+        {
+         "unit_cents": 24800,
+         "line_cents": 24800
+        }
+       ]
+      }
+     }
+    }
+   }
   }
  },
- "scenarios_sha256": "1bdd55b6fb83d47e759af7de647a80db83f8a1f8795f7bf35e60cc7f583b9870"
+ "scenarios_sha256": "107328ef214aa7e06ba1d47f4452ad19a37a8e07f5009f4d5ef887c4128616c2"
 }

@@ -5,6 +5,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import { createClock } from './test-clock.mjs';
 import { placeRealWith } from './test/place-real.mjs';
+import { refLoader } from './test/ref-require.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -2267,22 +2268,12 @@ function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items
   attachCustomerAttribution(u, orderId, uid, { now: ts, total, orderType, items_text, restaurantId, items, tables: null });   // the REAL writer
   return u[`user_orders/${uid}/${orderId}`];
 }
-// the RECEIPT detail mode, as 3a's my-orders.js@75eed212 (APPROVED) projects it — verbatim logic: priced lines only when every one is
-// well-formed, present integer totals only, the tender cash / card (never a reference), the address for a delivery only; + 3a's (4)
-// step 1 (my-orders.js@268de114f :94, R3.2): the entry's price_snapshot passes through VERBATIM (the reorder reads it from here)
-const RCPT_TOTALS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
-const RCPT_TENDER = { cash: 'cash', card_delivery: 'card', online: 'card' };
-function projectReceipt(id, entry, o) {
-  const isInt = (v) => Number.isSafeInteger(v), str = (v) => (typeof v === 'string' ? v : null), num = (v) => (Number.isFinite(v) ? v : null);
-  let lines = null;
-  if (Array.isArray(o.items) && o.items.length) { lines = []; for (const l of o.items) { if (!l || typeof l !== 'object' || !isInt(l.qty) || l.qty < 1 || typeof l.description !== 'string' || !isInt(l.line_gross_cents)) { lines = null; break; } lines.push({ qty: l.qty, description: l.description, line_cents: l.line_gross_cents }); } }
-  const totals = {}; for (const k of RCPT_TOTALS) if (isInt(o[k])) totals[k] = o[k];
-  const method = RCPT_TENDER[o.payment_method] || null, type = str(o.order_type);
-  return { order_id: id, ...(Number.isFinite(o.display_number) ? { display_number: o.display_number } : {}), ts: num(entry.ts), restaurant: str(entry.restaurant), order_type: type, status: str(o.status),
-    lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
-    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}),
-    ...(entry.price_snapshot !== undefined ? { price_snapshot: entry.price_snapshot } : {}) };
-}
+// the RECEIPT detail mode = 3a's REAL projector (advisor 11-14): my-orders.js projectReceipt, loaded from the PINNED 3a ref with every
+// file it requires from that same commit (test/ref-require.mjs) — not yet in this base. The ref is the ONE 3a ref that also produced
+// fixtures/c3r-v2 (its handler's receipts): the pin cell («C-3r v2 RCPT-PIN») holds both to the same blob. Replaces the hand-copied replica
+const MO3A_REF = '30fc29c9f77913a0dfeb70c2c15446221789b6d3', MO3A_BLOB = '32e89fdd661bc99c2ce6e3c266b8e2025a9a26e8';
+const MO3A = refLoader(ROOT, MO3A_REF);
+const { projectReceipt } = MO3A.require('xpizza-functions/my-orders.js');
 // «Volver a pedir» (getMyOrders' approved delta): each recipe line gains dish_id = the store's canonical dish id for its stored key,
 // from the REAL resolver (canonical-binding identityMap) over a D4-a context — here built from the SERVED menu (each dish's legacy key
 // by the real itemPricingKey → its served dish_id); no context ⇒ null on every line (the server's own rule)
@@ -4917,6 +4908,43 @@ const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 
 const V2R = { 'XP-V1': C3V2.receipt };
 const pvNotes = (S) => S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
 const recipeOfEntry = (e) => J(e.items).map((l) => ({ key: l.key, qty: l.qty, ...(l.options ? { options: l.options } : {}) }));
+const C3J = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8'));
+test('C-3r v2 RCPT-PIN: the receipt projector the fakes serve is 3a\'s REAL one, from the SAME 3a ref + blob that produced fixtures/c3r-v2', () => {
+  assert.equal(MO3A.blob('xpizza-functions/my-orders.js'), MO3A_BLOB, '🔴 RCPT-PIN: the composed my-orders.js is the pinned blob');
+  assert.equal(C3J.source.commit, MO3A_REF, '🔴 RCPT-PIN: the fixture was generated at the same 3a ref');
+  assert.equal(C3J.source.blobs['my-orders.js'], MO3A_BLOB, '🔴 RCPT-PIN: the fixture\'s handler ran the same my-orders.js');
+  const r = J(projectReceipt('P1', { ts: 1, restaurant: 'la_musa', price_snapshot: { v: 2, lines: [] } }, { order_type: 'pickup', status: 'delivered', payment_method: 'card_delivery' }));
+  assert.deepEqual(r.price_snapshot, { v: 2, lines: [] }, 'premise: 3a step 1\'s passthrough is in the composed projector');
+});
+// the la_musa gap (advisor 11-14): an ID-keyed order (k = the extra's ID) through the REAL writer (place-real, LM-V1's body) and 3a's
+// REAL receipt (LM-V1, served verbatim); the reorder is eligible through the store's own D4-a context (servedCtx)
+const LMV1 = C3J.scenarios['LM-V1'];
+async function lmReorder(patch) {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'LM-V1', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: LMV1.receipt.body.receipt.items_text, body: LMV1.body });
+  const { S } = await pedidosBoot(db, { orders, contextFor: (rid) => servedCtx(rid), envelope: (rid) => (rid === 'la_musa' ? 'hold' : 'ok'), receipts: { 'LM-V1': LMV1.receipt } });
+  assert.deepEqual(recipeOfEntry(db.u_ana['LM-V1']), recipeOfEntry(LMV1), 'premise: the receipt\'s snapshot is aligned with THIS row\'s recipe (id-keyed: dimsum_01 + rice_white, dimsum_02)');
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  assert.ok(S.q('.orow [data-act="reorder"][data-oid="LM-V1"]'), 'premise: the la_musa row is reorderable (its dish_ids from the context)');
+  S.click('.orow [data-act="reorder"][data-oid="LM-V1"]'); await flush();
+  const env = J(PROV.la_musa.envelope); patch(env.menu); S.release('la_musa', env); await flush(); await flush(); await flush();
+  return { S, db };
+}
+test('C-3r v2 la_musa (id-keyed k): the EXTRA rice_white 50→60 ⇒ the frame-13 note for the configuration WITH it, exact (249 + 50 → 249 + 60), from 3a\'s real receipt; the plain lines unchanged', async () => {
+  const { S } = await lmReorder((m) => { m.extras.find((x) => x.id === 'rice_white').price = 60; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Sichuan Spicy Wonton', 'extra', 29900, 30900]], '🔴 C3R-V2-LM: the configured unit from the receipt\'s committed prices, by the extra\'s ID');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Sichuan Spicy Wonton + Arroz Blanco: antes L 299, ahora L 309.'], '🔴 C3R-V2-LM: the one frame-13 line, exact');
+    assert.equal(S.ui.store().ui.cart.count(), 3, 'the whole order is back: 2 + 1');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 la_musa (id-keyed k): the DISH dimsum_02 248→258 and the extra unchanged ⇒ only the plain line\'s note, exact', async () => {
+  const { S } = await lmReorder((m) => { m.dishes.find((d) => d.id === 'dimsum_02').price = 258; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Pork Belly Buns', 'plain', 24800, 25800]], '🔴 C3R-V2-LM dish: only the changed dish, exact');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Pork Belly Buns: antes L 248, ahora L 258.'], '🔴 C3R-V2-LM dish: the one frame-13 line');
+  } finally { S.w.close(); }
+});
 test('C-3r v2 §4.3 (3a\'s real v2 receipt): an EXTRA\'s price changed since the order ⇒ the frame-13 note for the configuration WITH it, exact (299 + 50 → 299 + 60); the plain one unchanged', async () => {
   const { S } = await g1Reorder((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; }, { receipts: V2R });
   try {

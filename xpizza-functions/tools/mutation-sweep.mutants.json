@@ -37106,5 +37106,22 @@
   "kills_with": [
    "C3R-V2-ALIGN"
   ]
+ },
+ {
+  "id": "c3v2-09",
+  "slice": "c3r-v2",
+  "label": "the v2 k matched by the extra's NAME, not the recipe option key (x_pizza's name-keyed k hides it; la_musa's k is the ID)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "            optOf[e.key] = op.v;   // the menu extra → its recipe option key (the v2 snapshot's k)",
+  "to": "            optOf[e.key] = e.name;   // the menu extra → its recipe option key (the v2 snapshot's k)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-LM: the configured unit"
+  ]
  }
 ]

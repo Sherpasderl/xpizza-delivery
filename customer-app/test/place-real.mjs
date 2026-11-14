@@ -2,13 +2,14 @@
 // writes it — delivery-pricing / delivery-wire (the breakdown), factura pricing, create-order-build (the order + the user_orders entry with
 // its price_snapshot through attachCustomerAttribution), materialize (the online confirm) — from WHICHEVER functions tree the caller
 // loads into RC: the capp suites pass this repo's; fixtures/c3r-v2/gen-c3r-v2.mjs passes 3a's snapshot-v2 tree (the v2 writer).
-// Moved verbatim from capp-s7a2.test.mjs (placeReal); only RC and T0 became parameters.
+// Moved verbatim from capp-s7a2.test.mjs (placeReal); only RC and T0 became parameters. `body` (the advisor's la_musa C-3r v2 scenario):
+// the createOrder items as the client sends them — absent ⇒ the original fixed body (x_pizza 2× Margherita + Mozzarella; la_musa one dish).
 import assert from 'node:assert/strict';
 
-export function placeRealWith(RC, T0, db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number } = {}) {
+export function placeRealWith(RC, T0, db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number, body: bodyIn } = {}) {
   const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, promo_discount_cents: promo, ...(tip ? { tip_cents: tip } : {}) }) : null;   // Codex rcpt r1 #2: promo EXPLICIT (an absent key ⇒ storedCtx null ⇒ no envío / tip)
   const bd = RC.DW.withDelivery({ ctx }, { total_cents: 64800, subtotal_cents: 56348, tax_cents: 8452 });
-  const body = rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
+  const body = bodyIn ? JSON.parse(JSON.stringify(bodyIn)) : rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
   const fp = rid === 'x_pizza' ? RC.FP.pricedLineItems(body, RC.MP.MENU_BY_RESTAURANT.x_pizza, RC.MP.EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
   const u = RC.CB.buildCreateOrderUpdates({ orderId: id, orderType: type, now: ts, trackingToken: 'tk_' + id, total: bd.total_cents / 100, lat: type === 'delivery' ? 14.07 : null, lng: type === 'delivery' ? -87.19 : null,
     fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text, notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira, Tegucigalpa', address_details: 'casa azul', address_area: 'Palmira' } : { pickup_time: 'asap' }) },
