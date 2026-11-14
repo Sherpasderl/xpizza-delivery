@@ -35437,7 +35437,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": "SDKUI-reload-switch"
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-u16",
@@ -35465,9 +35465,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": [
-   "SDKUI-restore"
-  ]
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-u18",
@@ -35527,10 +35525,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": [
-   "SDKUI-reload-switch",
-   "SDKUI-restore"
-  ]
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-r15",

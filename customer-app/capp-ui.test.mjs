@@ -3498,6 +3498,36 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
   assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
 });
 
+// vclock step-8a F-1 (advisor 11-14): the two cells above cannot tell the switch's stored inputs from the card order's own (sdkRestore
+// rebuilds the same checkout from sdkInputs). Here they DIFFER: the customer edits the recipient and notes AFTER the decline, then
+// switches to cash — after a reload the completed switch places what the customer last saw (advisor r3 C: the switch's inputs win)
+test('vclock F-1: the recipient and notes edited AFTER the decline ride the cash switch through a reload — never the card order\'s inputs', async () => {
+  const storage = memStore(), HOST = HOSTED_KEYS;
+  const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
+  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
+  await b1.click('[data-act="type"][data-val="pickup"]'); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
+  await b1.click('[data-act="more"]'); await b1.type('#f-notes', 'Sin cebolla'); await settle();
+  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
+  const old = b1.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.deepEqual([b1.srv.of('placeSdkOrder')[0].body.customer_name, b1.srv.of('placeSdkOrder')[0].body.notes], ['Otra persona', 'Sin cebolla'], 'premise: the card order carries the first inputs');
+  // «Probar otra tarjeta» → the chooser, closed → the checkout: the customer changes the recipient and the notes, then picks cash
+  await b1.click('#layer [data-act="decl-other_card"]'); await b1.click('#layer [data-act="paysheet-close"]'); await settle();
+  assert.ok(b1.q('#f-name') && b1.q('#f-notes'), 'premise: back on the checkout, the recipient and notes fields still open');
+  await b1.type('#f-name', 'Tercera persona');
+  await b1.type('#f-notes', 'Sin tomate'); await settle();
+  await b1.click('[data-act="paysheet"]'); await b1.click('#layer [data-act="paypick"][data-card="cash"]'); await settle();
+  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  assert.ok(b1.srv.of('cancelSdkPending').length >= 1 && !b1.srv.of('createOrder').length, 'premise: the switch is pending (not yet safe), nothing placed');
+  const b2 = bootSdk({ storage, config: HOST, script: { cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  const co = b2.srv.of('createOrder')[0];
+  assert.ok(co && co.body.replaces_order_id === old && co.body.payment_method === 'cash', 'premise: the completed switch placed the NEW cash order');
+  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Tercera persona', 'Sin tomate'], '🔴 SDKUI-F1: the switch\'s stored inputs (edited after the decline) win over the card order\'s');
+});
+
 
 // ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2, 11-09): the step opens WITH a choice — the member's last tip
 // (server-side, user_private/{uid}/last_tip, one authenticated leaf read started at checkout open) else L 20; resolved BEFORE the
