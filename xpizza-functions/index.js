@@ -7853,6 +7853,12 @@ exports.getMyLastTip = onRequest(
   { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
   require('./my-last-tip').makeMyLastTip({ getDatabase, getAuth, checkRateLimit }).getMyLastTip,
 );
+// PLAN-3a-addr S-ADDR-2: the «en uso» address selection, persisted as default_address — member-only through member-auth, the token in
+// the x-firebase-id-token header; body exactly { id }; ONE parent transaction on user_profiles/{uid} (the sweep fence, never resurrects a purge)
+exports.useMyAddress = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  require('./my-address').makeMyAddress({ getDatabase, getAuth, checkRateLimit }).useMyAddress,
+);
 // S-B (NOTE-S-B-aggregates-build): the INCREMENTAL public_stats producer — closes each complete HN day from rating_index (the
 // fulfilled-order log) into a server-only bucket, sums 30 / 90 days, publishes counts only; repeat-customer keys are HMAC'd under an
 // OTP_SALT-derived key (HKDF) and expire with their 90-day bucket. A per-rid failure is LOUD and never blocks the other restaurants.
