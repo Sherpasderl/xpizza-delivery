@@ -190,8 +190,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "2afb434a89f326cf69c837df3e75a58abf7d28a13efd4c452ef410737698a864",
-   "bytes": 188031
+   "sha256": "088ebcbf6c110c4c773952dfd37aabfdc49d1d54aff82af293bf2df55065c2ac",
+   "bytes": 188558
   }
  },
  "diff_aid": {
@@ -3415,6 +3415,18 @@
    ],
    [
     "",
+    ".mk5b-icolock",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-icolock",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".mk5b-inp",
     "background",
     "var(--card)"
@@ -3460,6 +3472,12 @@
     ".mk5b-lbl",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-lbllock",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -3560,6 +3578,24 @@
    [
     "",
     ".mk5b-pvwhen",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".mk5b-ro b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5b-ro",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mk5b-ro",
     "color",
     "var(--mute)"
    ],

@@ -13,7 +13,7 @@ import { token } from './auth.js';
 import { getMyBranches, getMarketingRaw } from './api.js';
 import { el, svg, button, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
-import { openBuilder, closeBuilder, builderOpen } from './marketing-builder.js';
+import { openBuilder, openEditor, closeBuilder, builderOpen } from './marketing-builder.js';
 
 // ── what v5 draws that this build does NOT (advisor 11-14) ─────────────────────────────────────────────────────────────────────
 export const SOURCE_GATE = Object.freeze([
@@ -302,6 +302,7 @@ function onRowAction(a, id) {
   const o = S.offers.find((x) => x.id === id);
   if (!o) return;
   if (a === 'continue') startBuilder({ offer: o });
+  if (a === 'edit' && can('marketing.edit') && S.host && !builderOpen()) openEditor(S.host, builderCtx(), o);   // O2c: the running offer's dialog
 }
 
 document.addEventListener('click', (e) => {   // a click outside an open pill / Acciones menu closes it

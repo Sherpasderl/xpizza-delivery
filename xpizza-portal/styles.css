@@ -1401,6 +1401,13 @@
   .mk5b-lbl{display:flex;align-items:center;gap:4px;font-weight:700;font-size:14.5px;line-height:1.3;color:var(--ink)}
   .mk5b-rlbl{display:flex;align-items:center;gap:4px;font-weight:700;font-size:14.5px;line-height:1.3;transition:color .15s}   /* the row label: colour from .mk5b-rowh (ink), accent on hover — no crossing */
   .mk5b-layer{display:contents}
+  /* v5 3c: a LOCKED row (the running offer's fixed facts) and the read-only start date */
+  .mk5b-rowlock{cursor:default}
+  .mk5b-icolock{background:var(--card);color:var(--mute2)}
+  .mk5b-lbllock{color:var(--mute)}
+  .mk5b-lock .mk5b-chev{transform:none}
+  .mk5b-ro{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--mute);line-height:1.45;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:var(--card)}
+  .mk5b-ro b{color:var(--ink);font-weight:650;white-space:nowrap}
   .mk5b-val{display:block;font-size:13.5px;color:var(--mute);line-height:1.45;margin-top:3px;overflow-wrap:anywhere;text-wrap:pretty}
   .mk5b-chg{color:var(--accent);font-size:13px;white-space:nowrap;flex:none;font-weight:650;text-decoration:underline;text-underline-offset:2px;background:none;border:none;padding:0;cursor:pointer;font-family:inherit}
   .mk5b-rows{margin-top:18px;display:flex;flex-direction:column;gap:8px}

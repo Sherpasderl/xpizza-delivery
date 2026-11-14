@@ -386,3 +386,59 @@ test('the calendar: Sunday-first, past days inert, a pick moves Inicio and the H
   esc(); await settle();
   assert.equal(dlg(p), null, 'Esc #3: the dialog');
 });
+
+
+// ═══ O2c · «Editar oferta activa» (v5 3c, ruling (a): v5 EXACT — the server widening is 3a's) ═════════════════════════════════════
+async function openEdit(p, name) {
+  p.mods.marketing.clock.now = () => NOW;
+  const row = [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === name);
+  p.btn('Acciones', row).click(); await settle();
+  p.btn('Editar', row).click(); await settle(60);
+}
+test('Editar on a running offer: v5\'s dialog — the lede, the locked rows (lock, «fijo mientras está activa»), Límites open, Horario editable', async () => {
+  const b = await world();
+  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  const d = dlg(p);
+  assert.equal(d.querySelector('h2').textContent, 'Editar oferta activa');
+  assert.equal(d.querySelector('.mk5b-lede').textContent, 'Mientras está activa podés subir los topes y cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.');
+  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Almuerzo');
+  const locked = [...d.querySelectorAll('.mk5b-lock')].map((r) => [r.dataset.row, r.querySelector('.mk5b-val').textContent, r.querySelector('.mk5b-rowh').getAttribute('aria-label')]);
+  assert.deepEqual(locked.map((x) => x[0]), ['br', 'typ', 'aud'], 'Sucursales · Descuento · Clientes locked');
+  assert.equal(locked[1][1], '15 % · hasta L 100 por pedido · fijo mientras está activa');
+  assert.equal(locked[0][2], 'Sucursales, fijo mientras está activa');
+  assert.equal(d.querySelectorAll('.mk5b-lock button').length, 0, 'a locked row does not expand');
+  assert.ok(rowEl(p, 'caps').classList.contains('mk5b-open'), 'Límites opens first');
+  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-help').textContent, 'Solo se pueden subir.', '🔴 the counters wait for 5f (gated)');
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  assert.ok([...rowEl(p, 'sch').querySelectorAll('.mk5b-chip')].every((c) => !c.disabled), 'days + franja editable (ruling (a))');
+  assert.match(rowEl(p, 'sch').querySelector('.mk5b-ro').textContent, /^Empezó el\d+ nov 2026$/, 'Inicio read-only');
+  assert.deepEqual([...d.querySelectorAll('.mk5b-foot .mk5b-fine')].map((x) => x.textContent), ['Para cambiar el descuento, los clientes o las sucursales, terminá esta oferta y creá una nueva (o usá Repetir).', 'Los cambios aplican de inmediato en la app.']);
+});
+
+test('Editar: a cap may only go UP — a lower one blocks inline; a higher one saves through the REAL core («Cambios guardados»); a day change waits for 3a (the interim panel)', async () => {
+  const b = await world();
+  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  const capIn = () => rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
+  capIn().value = '50'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
+  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-block').textContent, 'Un tope solo puede subir: poné un valor mayor o igual al actual.');
+  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, 'blocked');
+  capIn().value = '150'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
+  assert.ok(!dlg(p).querySelector('.mk5b-go').disabled);
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(120);
+  assert.equal(dlg(p), null);
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Cambios guardados');
+  const saved = Object.values(b.fake.get('marketing_offers/tb')).find((r) => r.name === 'Almuerzo');
+  assert.equal(saved.caps.redemptions, 150, 'the real core stored the raised cap');
+  await openEdit(p, 'Almuerzo');
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  [...rowEl(p, 'sch').querySelectorAll('.mk5b-chip')].find((c) => c.textContent.endsWith('Sáb')).click(); await settle();
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(120);
+  assert.ok(dlg(p), 'the server refused: the dialog stays');
+  assert.equal(dlg(p).querySelector('.mk5b-err').textContent, 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.', 'the interim panel until 3a widens its allowlist');
+});

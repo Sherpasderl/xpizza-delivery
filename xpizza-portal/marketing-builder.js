@@ -28,7 +28,8 @@ const hnDay0 = (ms) => { const d = new Date(ms - HN); return Date.UTC(d.getUTCFu
 const ymd = (ms) => { const d = new Date(ms - HN); return [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()]; };
 const longDate = (ms) => { const d = new Date(ms - HN); return `${WD3[d.getUTCDay()]} ${d.getUTCDate()} ${MON3[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 // v5's suggested values per type (the cards' «Ej.» lines)
-const PV_NOTE = '(en la vista previa).';   // v5's Nombre help ends «…de la oferta (en la vista previa).» — held apart so the call scanner never reads «oferta (» as a call
+const PV_NOTE = '(en la vista previa).';
+const OR_REPEAT = '(o usá Repetir).';   // v5 3c's fine print ends «…creá una nueva (o usá Repetir).» — held apart for the call scanner   // v5's Nombre help ends «…de la oferta (en la vista previa).» — held apart so the call scanner never reads «oferta (» as a call
 const SUGGEST = Object.freeze({ pct: { pct: 15, max: '100' }, lps: { off: '50', min: '300' }, bogo: { free_per_order: 1 }, envio: { min: '350' }, nuevos: { off: '50' } });
 // the refusal keys the server answers on a save / publish, worded plainly (no v5 frame draws them: minimal, flagged to the advisor)
 const REFUSAL_WORD = Object.freeze({
@@ -38,6 +39,8 @@ const REFUSAL_WORD = Object.freeze({
   unknown_dish: () => 'Un producto ya no está en el menú publicado de una sucursal. Quitalo y volvé a revisar.',
   menu_unavailable: () => 'No pudimos leer el menú de una sucursal. Probá de nuevo en un momento.',
   start_past: () => 'La fecha de inicio ya pasó. Elegí una fecha nueva en «Horario».',
+  schedule: () => 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.',   // interim (3a widening pending)
+  live_edit: () => 'Por ahora no se puede cambiar eso en una oferta activa. Terminá esta oferta y creá una nueva.',   // interim (3a widening pending)
   off: () => 'Las ofertas no están disponibles en este momento.',
 });
 
@@ -49,7 +52,7 @@ const B = { open: false, host: null, ctx: null, mode: 'new', offer: null, form: 
 // ctx: { branches: [{ rid, name, address }], brandName, token, toast(text), onDone() } · type: an offer type · offer: a draft to continue
 export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
   B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
-  if (offer) { B.mode = 'draft'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; }
+  if (offer) { B.mode = 'draft'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.custom = isCustom(B.form.window); }
   else {
     B.mode = 'new'; B.offer = null;
     B.form = { ...ML.emptyForm(type), ...SUGGEST[type], branches: ctx.branches.map((b) => b.rid), start: hnDay0(now()), end: null, weekly: true };
@@ -108,12 +111,13 @@ function render() {
   scrim.addEventListener('click', (e) => { if (e.target === scrim) closeBuilder(); });
   const dlg = el('div', 'mk5b-dlg'); dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'ofT');
   const hd = el('div', 'mk5b-hd');
-  const ht = el('div'); const h2 = el('h2', null, B.mode === 'draft' ? 'Seguir editando' : 'Nueva oferta'); h2.id = 'ofT';
-  ht.append(h2, el('p', 'mk5b-lede', 'Revisá cada fila. Todo viene con valores sugeridos.'));
+  const edit = B.mode === 'edit';
+  const ht = el('div'); const h2 = el('h2', null, edit ? 'Editar oferta activa' : B.mode === 'draft' ? 'Seguir editando' : 'Nueva oferta'); h2.id = 'ofT';
+  ht.append(h2, el('p', 'mk5b-lede', edit ? EDIT_LEDE : 'Revisá cada fila. Todo viene con valores sugeridos.'));
   const x = el('button', 'mk5b-x'); x.type = 'button'; x.setAttribute('aria-label', 'Cerrar'); x.append(svg(X)); x.addEventListener('click', closeBuilder);
   hd.append(ht, x);
   const body = el('div', 'mk5b-body');
-  body.append(formCol(w), previewCol(w));
+  body.append(edit ? editFormCol(w) : formCol(w), previewCol(w));
   dlg.append(hd, body);
   scrim.append(dlg);
   const kids = [scrim];
@@ -268,6 +272,14 @@ function scheduleBody(w) {
   tog.addEventListener('click', () => upd(noEnd ? { end: hnDay0(Math.max(B.form.start || now(), now())) + 7 * DAY - 1, weekly: false } : { end: null, weekly: true }));
   av.append(al, tog);
   out.push(av);
+  out.push(...daysAndSlots());
+  const sum = el('div', 'mk5b-sum'); sum.append(svg(CAL));
+  const st = el('span'); st.append(el('b', null, w.schedSummary.strong), document.createTextNode(w.schedSummary.rest ? ` · ${w.schedSummary.rest}` : ''));
+  sum.append(st); out.push(sum);
+  return out;
+}
+function daysAndSlots() {
+  const out = [];
   const df = el('div', 'mk5b-fld'); df.append(el('span', 'mk5b-flab', 'Días de la semana'));
   const dc = el('div', 'mk5b-chips');
   for (const [d, word] of DAY_CHIPS) {
@@ -300,11 +312,10 @@ function scheduleBody(w) {
       timeField('Hasta', win ? win.to : 1410, (m) => upd({ window: { from: (B.form.window || {}).from ?? 1200, to: m } })));
     out.push(cu);
   }
-  const sum = el('div', 'mk5b-sum'); sum.append(svg(CAL));
-  const st = el('span'); st.append(el('b', null, w.schedSummary.strong), document.createTextNode(w.schedSummary.rest ? ` · ${w.schedSummary.rest}` : ''));
-  sum.append(st); out.push(sum);
   return out;
 }
+// a stored window that is none of v5's named franjas reopens on «Personalizado»
+const isCustom = (w) => !!w && !SLOTS.some(([, f, t]) => Number.isInteger(f) && f === w.from && t === w.to);
 const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 function timeField(label, minutes, onChange) {
   const fld = el('div', 'mk5b-fld');
@@ -408,7 +419,7 @@ function datePopover() {
   const pop = el('div', 'mk5b-dpop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', dp.which === 'start' ? 'Elegir la fecha de inicio' : 'Elegir la fecha de fin');
   pop.style.left = `${Math.max(16, dp.x)}px`; pop.style.top = `${dp.top}px`;
   const today = hnDay0(now());
-  const min = dp.which === 'end' ? Math.max(today, B.form.start || today) : today;
+  const min = dp.which === 'end' ? Math.max(today, B.form.start || today, B.mode === 'edit' && E.prev && E.prev.end !== null ? hnDay0(E.prev.end) : 0) : today;   // edit: Fin later only
   const hd = el('div', 'mk5b-dphd');
   const prev = el('button', 'mk5b-dpnav'); prev.type = 'button'; prev.setAttribute('aria-label', 'Mes anterior'); prev.append(svg(PREV));
   const [ty, tm] = ymd(min);
@@ -488,7 +499,7 @@ const rid0 = () => B.form.branches[0];
 const reread = () => getMarketingRaw({ rid: rid0(), token: B.ctx.token });
 function wordOf(c) {
   if (c.outcome === 'unknown') return 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.';
-  const f = REFUSAL_WORD[c.reason] || REFUSAL_WORD[c.code];   // a bad_request carries its reason (start_past …)
+  const f = REFUSAL_WORD[c.reason] || REFUSAL_WORD[c.field] || REFUSAL_WORD[c.code];   // a bad_request carries its reason (start_past …)
   return f ? f(c) : 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.';
 }
 // create (or save the draft being continued) → the saved offer | a refusal / unknown worded on the sheet
@@ -540,3 +551,118 @@ export function programmedToast(o, at = now()) {
 }
 
 export const _builderState = B;   // test-only
+
+// ── O2c · «Editar oferta activa» (v5 3c): the same dialog over a running offer — locked rows vs the editable ones ─────────────────
+// What may change is the SERVER's live-edit allowlist (3a offer-model liveEditProblem): a cap RAISED and the end moved LATER (or
+// removed). Everything else is a locked row (the lock in place of the chevron, «fijo mientras está activa», not expandable). The
+// day chips and the franja are EDITABLE as v5 draws them (advisor 11-14, ruling (a): 3a widens its allowlist to days + window + the
+// weekly flag; until that lands the server refuses with 'schedule', shown as the interim panel). The usage counters wait for 5f.
+const LOCK = [{ tag: 'rect', x: 5, y: 11, width: 14, height: 10, rx: 2 }, 'M8 11V7a4 4 0 0 1 8 0v4'];
+const EDIT_LEDE = 'Mientras está activa podés subir los topes y cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.';
+const E = { prev: null };
+export function openEditor(host, ctx, offer) {
+  B.host = host; B.ctx = ctx; B.open = true; B.row = 'caps'; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  B.mode = 'edit'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.menu = null; B.custom = isCustom(B.form.window);
+  E.prev = ML.formFromOffer(offer);
+  B.layer = el('div', 'mk5b-layer');
+  host.append(B.layer);
+  render();
+  const x = B.layer.querySelector('.mk5b-x'); if (x && x.focus) x.focus();
+}
+// what the dialog itself blocks: only what stays forbidden after 3a's widening — a cap LOWERED, the end moved EARLIER (v5 3c).
+// The days / franja / weekly flag are sent; the server decides (its interim 'schedule' refusal is a panel).
+function editProblem() {
+  const a = ML.offerFromForm(E.prev), b = ML.offerFromForm(B.form);
+  if (!a.ok || !b.ok) return 'invalid';
+  const up = (x, y) => y === null || (x !== null && y >= x);
+  if (!up(a.offer.caps.redemptions, b.offer.caps.redemptions) || !up(a.offer.caps.spend_cents, b.offer.caps.spend_cents)) return 'caps';
+  const pe = a.offer.schedule.end, ne = b.offer.schedule.end;
+  if (!(ne === null || (pe !== null && ne >= pe))) return 'end';
+  return null;
+}
+function lockedRow(id, label, value, icon = null) {
+  const r = el('div', 'mk5b-row mk5b-lock'); r.dataset.row = id;
+  const h = el('div', 'mk5b-rowh mk5b-rowlock'); h.setAttribute('role', 'group'); h.setAttribute('aria-label', `${label}, fijo mientras está activa`);
+  const ic = el('span', 'mk5b-ico mk5b-icolock'); ic.append(svg(...(icon || ROW_ICON[id] || [SPARK])));
+  const tx = el('span', 'mk5b-txt'); tx.append(el('span', 'mk5b-rlbl mk5b-lbllock', label), el('span', 'mk5b-val', `${value} · fijo mientras está activa`));
+  const ch = el('span', 'mk5b-chev'); ch.append(svg(...LOCK));
+  h.append(ic, tx, ch);
+  r.append(h);
+  return r;
+}
+export function editFormCol(w) {
+  const f = el('div', 'mk5b-form');
+  const typ = el('div', 'mk5b-type');
+  const ti = el('span', 'mk5b-tico'); ti.append(svg(...ICONS_OF(w.icon)));
+  const started = Number.isSafeInteger(B.offer.schedule && B.offer.schedule.start) ? B.offer.schedule.start : null;
+  const st = ML.statusView(B.offer);
+  const since = started ? `${started <= now() ? 'desde' : 'empieza'} el ${new Date(started - HN).getUTCDate()} ${MON3[new Date(started - HN).getUTCMonth()]}` : '';
+  const tt = el('span', 'mk5b-txt'); tt.append(el('span', 'mk5b-lbl', B.offer.name), el('span', 'mk5b-val', `Oferta ${st ? st.word.toLowerCase() : ''}${since ? ` · ${since}` : ''}`));
+  typ.append(ti, tt);
+  const rows = el('div', 'mk5b-rows');
+  rows.append(lockedRow('br', 'Sucursales', w.branchText), lockedRow('typ', w.rowLabel, w.sumType, ICONS_OF(w.icon)));
+  if (B.form.type === 'bogo') rows.append(lockedRow('prod', 'Productos', w.prodSummary));
+  if (B.form.type !== 'nuevos') rows.append(lockedRow('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', '')));
+  rows.append(row('caps', 'Límites', w.caps.summary, editCapsBody(w)));
+  rows.append(row('sch', 'Horario', w.sumSched, editScheduleBody(w)));
+  f.append(typ, rows, editFoot());
+  return f;
+}
+function editCapsBody(w) {
+  const two = el('div', 'mk5b-two');
+  two.append(numField('Tope de canjes', null, B.form.cap_redemptions, (v) => upd({ cap_redemptions: Number.parseInt(String(v).replace(/\D/g, ''), 10) || null }), { unitAfter: 'canjes', cfg: false }));
+  two.append(numField(w.caps.spendLabel, 'L', B.form.cap_spend, (v) => upd({ cap_spend: v }), { cfg: false }));
+  const out = [el('p', 'mk5b-help', 'Solo se pueden subir.'), two];   // v5's counters («Hoy lleva N canjes y L X…»): the 5f usage read, gated
+  if (editProblem() === 'caps') out.push(el('div', 'mk5b-block', 'Un tope solo puede subir: poné un valor mayor o igual al actual.'));   // v5: «a lower value is rejected inline (not drawn)»
+  return out;
+}
+function editScheduleBody(w) {
+  const out = [el('p', 'mk5b-help', 'Hora de tu restaurante.')];
+  const noEnd = B.form.end === null;
+  const dates = el('div', `mk5b-dates${noEnd ? ' mk5b-noend' : ''}`);
+  const ro = el('div', 'mk5b-fld'); ro.append(el('span', 'mk5b-flab', 'Inicio'));
+  const box = el('div', 'mk5b-ro');
+  const s0 = B.form.start;
+  box.append(el('span', 'mk5b-unit', s0 && s0 <= now() ? 'Empezó el' : 'Empieza el'), el('b', null, s0 ? `${new Date(s0 - HN).getUTCDate()} ${MON3[new Date(s0 - HN).getUTCMonth()]} ${new Date(s0 - HN).getUTCFullYear()}` : '—'));
+  ro.append(box);
+  dates.append(ro, dateField('Fin', 'end', noEnd ? null : B.form.end, { disabled: noEnd }));
+  out.push(dates);
+  const av = el('div', 'mk5b-avail');
+  const al = el('div', 'mk5b-albl'); al.append(el('b', null, 'Sin fecha de fin'), el('span', null, 'Queda activa hasta que la pausés o la termines'));
+  const tog = el('button', `mk5b-tog${noEnd ? '' : ' mk5b-togoff'}`); tog.type = 'button'; tog.setAttribute('role', 'switch'); tog.setAttribute('aria-checked', noEnd ? 'true' : 'false'); tog.setAttribute('aria-label', 'Sin fecha de fin');
+  tog.append(el('i', 'mk5b-knob'));
+  tog.addEventListener('click', () => upd(noEnd ? { end: E.prev.end, weekly: false } : { end: null, weekly: true }));   // as the builder (v5 item 8)
+  if (noEnd && E.prev.end === null) tog.disabled = true;   // an offer that never had an end cannot be given one (an EARLIER end)
+  av.append(al, tog);
+  out.push(av);
+  out.push(...daysAndSlots());   // editable, as v5 3c draws them (ruling (a))
+  const sum = el('div', 'mk5b-sum'); sum.append(svg(CAL));
+  const st = el('span'); st.append(el('b', null, w.schedSummary.strong), document.createTextNode(w.schedSummary.rest ? ` · ${w.schedSummary.rest}` : ''));
+  sum.append(st); out.push(sum);
+  return out;
+}
+function editFoot() {
+  const ft = el('div', 'mk5b-foot');
+  ft.append(el('p', 'mk5b-fine', `Para cambiar el descuento, los clientes o las sucursales, terminá esta oferta y creá una nueva ${OR_REPEAT}`),
+    el('p', 'mk5b-fine', 'Los cambios aplican de inmediato en la app.'));
+  const p = editProblem();
+  const go = el('button', 'mk5b-go', 'Guardar cambios'); go.type = 'button'; go.disabled = !!p || B.busy;
+  go.addEventListener('click', () => saveEdit());
+  ft.append(go);
+  if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); ft.append(e); }
+  return ft;
+}
+async function saveEdit() {
+  if (B.busy || editProblem()) return;
+  const r = ML.offerFromForm(B.form);
+  if (!r.ok) return;
+  B.busy = true; B.err = null; render();
+  const a = { op: 'save', offerId: B.offer.id, expectedRev: B.offer.rev };
+  const s = await ML.settleWrite(a, () => offerSaveRaw({ rid: rid0(), offerId: B.offer.id, expectedRev: B.offer.rev, offer: r.offer, token: B.ctx.token }), reread);
+  if (!B.open) return;
+  B.busy = false;
+  if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
+  closeBuilder();
+  B.ctx.toast('Cambios guardados');
+  B.ctx.onDone && B.ctx.onDone();
+}
