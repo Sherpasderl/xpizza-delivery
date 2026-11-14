@@ -65,7 +65,7 @@ async function wipe() {
   await rtdb.ref().remove();
 }
 // volatile values: the clock, nonces, attempt ids, tokens — replaced by a marker so the comparison is about money and shape
-const VOLATILE = /(_at$|_ms$|^ts$|time|token|attempt_id|quote_id|nonce|uuid|^at$)/i;
+const VOLATILE = /(_at$|_ms$|^ts$|time|token|attempt_id|quote_id|nonce|uuid|^at$|version_id$)/i;   // version_id: each publish mints its own (v-<ms>-<random>)
 function norm(v, k = '') {
   if (VOLATILE.test(k) && v != null) return '<v>';
   if (typeof v === 'number' && v > 1e12) return '<ms>';
