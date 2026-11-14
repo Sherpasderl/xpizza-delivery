@@ -44,6 +44,7 @@ async function world({ on = true } = {}) {
   db.set(`restaurants/${RID}/identity`, { brand_id: 'xb', name: 'X', active: true, version: 1 });
   assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, 'xb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@x.hn' } })).ok, true, 'premise: roster');
   await makeRtdbMirror(db)(RID, { version: 'v1', seq: 1, rid: RID, menu: Object.fromEntries(menu.items.map((it) => [it.key, it.price])), extras: {} });
+  await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // 5f's go-live gate (32a95e405): offers ON needs the owner's marker
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) };
   return { fs, db, deps, menu };
