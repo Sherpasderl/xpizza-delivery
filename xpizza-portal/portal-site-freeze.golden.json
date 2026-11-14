@@ -8,6 +8,8 @@
   "aceptar.html",
   "aceptar.js",
   "aceptar.test.mjs",
+  "anuncio-logic.js",
+  "anuncio-logic.test.mjs",
   "api-assert-live.test.mjs",
   "api.js",
   "api.test.mjs",

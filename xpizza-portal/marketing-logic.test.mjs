@@ -354,10 +354,12 @@ test('live_drift: an active offer whose pause half-ran is NOT applied; a non-act
   assert.equal(ML.driftOf({ state: 'active' }), null, 'no flag, no drift');
 });
 
-test('the Anuncio stays DARK: no portal source names its endpoints, and the read model drops the bookings', async () => {
+test('the Anuncio stays DARK: only api.js calls its endpoints, no shipped module imports those calls, and the offers model drops the bookings', async () => {
   const src = readdirSync(DIR).filter((f) => /\.(js|html|mjs)$/.test(f) && !/\.test\.mjs$/.test(f));
-  // a compact projection (the first hit, or null) — a failing whole-file match would carry the file into the report
-  for (const f of src) assert.equal((readFileSync(join(DIR, f), 'utf8').match(/getAnuncioWeeks|anuncioBook|anuncioCancel/) || [null])[0], null, `${f} reaches no Anuncio endpoint`);
+  // compact projections (the first hit, or null) — a failing whole-file match would carry the file into the report
+  const hit = (f, re) => (readFileSync(join(DIR, f), 'utf8').match(re) || [null])[0];
+  for (const f of src) if (f !== 'api.js') assert.equal(hit(f, /rawCall\('(getAnuncioWeeks|anuncioBook|anuncioCancel)'|cloudfunctions\.net\/(getAnuncioWeeks|anuncioBook|anuncioCancel)/), null, `${f} calls no Anuncio endpoint (api.js only)`);
+  for (const f of src) assert.equal(hit(f, /import\s*\{[^}]*\b(getAnuncioWeeksRaw|anuncioBookRaw|anuncioCancelRaw)\b[^}]*\}\s*from/), null, `${f}: no shipped module imports an Anuncio call`);
   const m = ML.readModel({ ok: true, switches: { offers_enabled: true, anuncio_enabled: true }, offers: [], bookings: [{ id: 'x' }] });
   assert.deepEqual(m, { kind: 'ok', offers: [], dropped: 0 }, 'no bookings in the model');
   assert.deepEqual(ML.readModel(null), { kind: 'unreadable' });

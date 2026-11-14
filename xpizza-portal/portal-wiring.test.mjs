@@ -105,6 +105,7 @@ test('every module the portal ships is reachable from an entry page (index.html,
 // APPROVED by the advisor 11-14 on one condition: the DRAWING commit that wires a module removes its entry here.
 const AWAITING_SCREENS = Object.freeze({
   'marketing-logic.js': 'Marketing «Ofertas» (advisor 11-14): its screens wait for the owner\'s approval of MOCKUP-portal-marketing v5',
+  'anuncio-logic.js': 'Marketing «Anuncio» (advisor 11-14): DARK — no charge exists until the restaurant ledger + the Pagos statement do; screens wait for MOCKUP-portal-marketing v5',
 });
 
 test('the CSP allows exactly the hosts the code actually talks to', () => {
