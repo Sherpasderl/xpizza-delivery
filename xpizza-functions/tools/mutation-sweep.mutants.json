@@ -37129,7 +37129,7 @@
   "slice": "c2-rider-name",
   "label": "the null fallback dropped (a nameless delivery reads «Tu repartidor, »)",
   "file": "../customer-app/capp-rate.js",
-  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, ${esc(vm.driverName)}` : 'Tu repartidor de Sherpa'}</span>",
+  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, <span class=\"who\">${esc(vm.driverName)}</span>` : 'Tu repartidor de Sherpa'}</span>",
   "to": "<span class=\"t\">Tu repartidor, ${esc(vm.driverName || '')}</span>",
   "command": [
    "node",
@@ -37139,6 +37139,40 @@
   ],
   "kills_with": [
    "RN-FALLBACK"
+  ]
+ },
+ {
+  "id": "rn-02",
+  "slice": "c2-rider-name",
+  "label": "the rider's name may split mid-name (no nowrap — owed SBS 11-14, 16b)",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{white-space:nowrap}",
+  "to": ".rate .rrow2 .t .who{white-space:normal}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "never split inside the name"
+  ]
+ },
+ {
+  "id": "rn-03",
+  "slice": "c2-rider-name",
+  "label": "the rider's name not its own unit",
+  "file": "../customer-app/capp-rate.js",
+  "from": "`Tu repartidor, <span class=\"who\">${esc(vm.driverName)}</span>`",
+  "to": "`Tu repartidor, ${esc(vm.driverName)}`",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "the name is its own unit"
   ]
  }
 ]

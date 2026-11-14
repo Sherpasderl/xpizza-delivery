@@ -4111,6 +4111,19 @@ test('C-2 rider name: a delivered DELIVERY whose rider has a first name ⇒ «Tu
     assert.equal(line, 'Tu repartidor, María José', '🔴 RN-1: the rider\'s first name, as served');
   } finally { S.w.close(); }
 });
+// owed SBS 11-14 (16b; advisor ruling): at the 24-char maximum the name wrapped mid-name («…María Fernanda / Guadalupe»). The name is
+// ONE no-wrap unit after the comma: when the line cannot hold it, it breaks AFTER the comma — the full name alone on line 2, never split
+test('C-2 rider name (16b): the name is ONE no-wrap unit after «Tu repartidor, » — a 24-char name (the writer\'s max) never splits', async () => {
+  const NAME = 'María Fernanda Guadalupe';
+  const { S, line } = await riderSheet('XP-N9', async ({ orders }) => { const w = await stampRider(orders, 'XP-N9', 'drv_9', NAME); assert.equal(w.first, NAME, 'premise: 24 chars kept whole by the writer'); });
+  try {
+    assert.equal(NAME.length, 24); assert.equal(line, `Tu repartidor, ${NAME}`, 'the approved copy, unchanged');
+    const t = S.q('#layer [data-act="rate-del"]').closest('.rrow2').querySelector('.t'), who = t.querySelector('.who');
+    assert.ok(who && who.textContent === NAME, '🔴 RN-WRAP: the name is its own unit');
+    assert.equal(S.w.getComputedStyle(who).whiteSpace, 'nowrap', '🔴 RN-WRAP: never split inside the name');
+    assert.equal(who.previousSibling && who.previousSibling.nodeValue, 'Tu repartidor, ', 'the break opportunity is the space after the comma');
+  } finally { S.w.close(); }
+});
 test('C-2 rider name: no first name on the rider\'s account (the writer stamps none) ⇒ the fallback «Tu repartidor de Sherpa»', async () => {
   const { S, line, orders } = await riderSheet('XP-N2', async ({ orders }) => { await stampRider(orders, 'XP-N2', 'drv_2', undefined); });
   try {

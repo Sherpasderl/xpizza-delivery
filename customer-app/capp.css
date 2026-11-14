@@ -1286,6 +1286,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
    screen and the Pedidos past rows */
 .rate{display:flex;flex-direction:column;gap:16px;padding:4px 20px 8px}
 .rate h2{font:700 24px/1.15 var(--rhd);letter-spacing:-.01em;margin:0;outline:none}
+.rate .rrow2 .t .who{white-space:nowrap}   /* C-2 (owed SBS 11-14, 16b): the rider's name is ONE unit — a long one breaks after the comma, never inside */
 .rate .sub{font-size:14.5px;color:var(--mute);line-height:1.45;margin:-8px 0 0}
 .rate .lbl{display:block;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .rate .lbl .opthint{font-weight:500;letter-spacing:0;text-transform:none}   /* NOT .opt — the global bordered option box (SBS asm9 D3) */
