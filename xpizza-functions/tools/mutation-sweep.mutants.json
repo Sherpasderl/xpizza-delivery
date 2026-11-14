@@ -37429,5 +37429,74 @@
   "kills_with": [
    "B3-NORULES"
   ]
+ },
+ {
+  "id": "of-16",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: an odd count struck",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!Number.isSafeInteger(n) || n < 2 || n % 2 !== 0) return { strike: null };",
+  "to": "    if (!Number.isSafeInteger(n) || n < 2) return { strike: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-PARITY",
+   "B3-ODD"
+  ]
+ },
+ {
+  "id": "of-17",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the offer's window ignored",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule || rules.inWindow(f.schedule, nowMs) !== true) return null;",
+  "to": "    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-WINDOW-UI"
+  ]
+ },
+ {
+  "id": "of-18",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the marginal saving ignores the cart's eligible units",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "held = (Array.isArray(cartUnits) ? cartUnits : []).filter((u) => items.has(u.key)).map((u) => u.unit);",
+  "to": "held = [].filter((u) => items.has(u.key)).map((u) => u.unit);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-PARITY"
+  ]
+ },
+ {
+  "id": "of-19",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: several served offers still struck",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!Array.isArray(offers) || offers.length !== 1) return null;",
+  "to": "    if (!Array.isArray(offers) || offers.length < 1) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-ONE"
+  ]
  }
 ]

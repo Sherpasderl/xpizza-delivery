@@ -639,7 +639,7 @@
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
     }
     // 4 B3: the server's own rules (OfferRules, synced) over the served offers and the cart's eligible units — null without them
-    const offerRules = () => opts.OfferRules || (typeof self !== 'undefined' && self.OfferRules) || null;
+    const offerRules = () => opts.OfferRules || (typeof self !== 'undefined' && self.OfferRules) || (typeof require === 'function' ? require('./offer-rules.js') : null);   // the server's own module, synced (5f fed4eb9ce)
     function b3Of(it, n) {
       if (!hasOffers() || !mods() || it.group || it.parent) return null;
       const d = menu.dish(it.id), key = C.pricingKeyOf(d, menu.availIdentity);

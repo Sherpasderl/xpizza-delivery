@@ -497,16 +497,17 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA, envelope = null } = {}) {
-  const rd = src || ((f) => readFileSync(join(HERE, f), 'utf8'));   // src: another commit's files (the offers OFF golden)
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA, envelope = null, noRules = false, now: nowFn = NOON } = {}) {
+  const rd = src || ((f) => readFileSync(join(HERE, f), 'utf8'));
+  const hasFile = (f) => { try { rd(f); return true; } catch (_) { return false; } };   // src: another commit's files (the offers OFF golden)
   const css = rd('capp.css');
   const html = rd('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
-  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) w.eval(rd(f));
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'offer-rules.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) { if (f === 'offer-rules.js' && (noRules || !hasFile(f))) continue; w.eval(rd(f)); }   // offer-rules.js: as the pages load it (index/shell.html); absent at the OFF golden's base
   if (pre) pre(w);   // window stubs the page has before the app boots (google.maps, console)
   const srv = scripted({ quoteOrder: [QUOTE], ...script });
   const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
-  const ui = w.CappUI.mount(w.document, { envelope: envelope || PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
+  const ui = w.CappUI.mount(w.document, { envelope: envelope || PROV[rid].envelope, now: nowFn, onEvent: (n, d) => events.push([n, d]),
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
     CappCheckout: CKo, CappApi: CAo, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
@@ -4155,22 +4156,67 @@ test('offers part 2: the menu fingerprint leaves out `offers` (an offers-only re
 });
 // ── 4 B3 (advisor 11-14 scope): the strike needs the SERVER's own rules (OfferRules = 5f's marketing/offer-rules.js, synced) — until
 // that module is on the page the sheet is today's, byte for byte; the strike cells follow the module's SHA ──
+const OR = require('./offer-rules.js');   // the synced copy of 5f's marketing/offer-rules.js (fed4eb9ce)
+const B3_NOW = () => new Date(OQ.live.BOGO.now_ms);   // inside the fixture offer's window (5f's world clock)
 const sheetAt2 = async (b) => { await b.click(`.txtbtn[data-id="${OQ_CART.key}"]`); await b.click('#detail-step [data-delta="1"]'); return { body: b.q('#detail-scroll').innerHTML, cta: b.text('#detail-cta') }; };
 test('offers 4 B3: no OfferRules on the page ⇒ no pill, no strike — the offered dish\'s sheet at 2 is today\'s (never a guessed price)', async () => {
-  const b = bootCo({ envelope: offersEnv('BOGO') }), s = await sheetAt2(b);
+  const b = bootCo({ envelope: offersEnv('BOGO'), noRules: true, now: B3_NOW }), s = await sheetAt2(b);
   assert.equal(b.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-NORULES: no price row without the server\'s rules');
   assert.equal(s.cta, `Agregar · L ${2 * OQ_CART.items[0].price}`, 'the button: today\'s gross pair');
   const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
   const R = refLoader(ROOT, CAPP_OFF_BASE);
-  const was = await sheetAt2(bootCo({ envelope: offersEnv('BOGO'), src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') }));
+  const was = await sheetAt2(bootCo({ envelope: offersEnv('BOGO'), now: B3_NOW, src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') }));
   assert.deepEqual(s, was, '🔴 B3-NORULES: byte-identical to the base commit\'s sheet');
 });
 test('offers 4 B3 model: bogoPreview without rules / with several offers / not offered ⇒ null (the provable case only)', () => {
   const offers = offersEnv('BOGO').menu.offers, key = OQ_CART.items[0].item_key, base = { offers, key, priceCents: 34000, n: 2, cartUnits: [], nowMs: OQ.live.BOGO.now_ms };
   assert.equal(CK.bogoPreview({ ...base, rules: null }), null, '🔴 B3-NORULES-MODEL');
-  const stub = { bogoSaving: () => { throw new Error('premise: never reached'); }, inWindow: () => { throw new Error('premise: never reached'); } };
-  assert.equal(CK.bogoPreview({ ...base, rules: stub, offers: [...offers, ...offers] }), null, '🔴 B3-ONE: two served offers ⇒ no strike');
-  assert.equal(CK.bogoPreview({ ...base, rules: stub, key: 'Otra' }), null, 'a dish outside the offer');
+  assert.ok(CK.bogoPreview({ ...base, rules: OR }).strike, 'premise: the provable case strikes');
+  assert.equal(CK.bogoPreview({ ...base, rules: OR, offers: [...offers, ...offers] }), null, '🔴 B3-ONE: two served offers ⇒ no strike');
+  assert.equal(CK.bogoPreview({ ...base, rules: OR, key: 'Otra' }), null, 'a dish outside the offer');
   assert.equal(CK.pricingKeyOf({ item_key: 'K', name: 'N', id: 7 }, 'id'), 'K', 'item_key wins');
   assert.deepEqual([CK.pricingKeyOf({ name: 'N', id: 7 }, 'id'), CK.pricingKeyOf({ name: 'N', id: 7 }, 'name'), CK.pricingKeyOf({ name: 'N', id: 7 }, null)], ['7', 'N', null], 'else the availIdentity field; unknown ⇒ none');
+});
+test('offers 4 B3: offer-rules.js is 5f\'s server module BYTE-IDENTICAL (fed4eb9ce, blob pinned) — rule 4, never a client copy', () => {
+  const F5 = 'fed4eb9ce7ba2e28d48f9812ab3d968006b0f40e', blob = execFileSync('git', ['hash-object', join(HERE, 'offer-rules.js')], { cwd: ROOT, encoding: 'utf8' }).trim();
+  assert.equal(blob, 'd496d1f456e74ba75659039db3bec786c72a8d7d', '🔴 OR-PIN: the synced copy\'s blob');
+  assert.equal(blob, execFileSync('git', ['rev-parse', `${F5}:xpizza-functions/marketing/offer-rules.js`], { cwd: ROOT, encoding: 'utf8' }).trim(), '🔴 OR-PIN: = the server module at 5f');
+  for (const f of ['index.html', 'shell.html']) assert.ok(readFileSync(join(HERE, f), 'utf8').includes('<script src="offer-rules.js"></script>'), `${f} loads it`);
+});
+test('offers 4 B3 parity: the sheet\'s saving = what 5f\'s REAL offerFor discounts for the cart + n units minus the cart alone (fixture live offer)', () => {
+  const F5 = 'fed4eb9ce7ba2e28d48f9812ab3d968006b0f40e', OP = refLoader(ROOT, F5).require('xpizza-functions/marketing/offer-price.js');
+  const L = OQ.live.BOGO, line = OQ_CART.items[0], price = Math.round(line.price * 100), tables = { restaurantId: 'x_pizza', menu: OQ_CART.menu, extras: {} };
+  const server = (k) => { if (!k) return 0; const items = Array.from({ length: k }, () => ({ ...line })); const o = OP.offerFor({ cfg: { offers_enabled: true }, live: L.raw, nowMs: L.now_ms, items, rid: 'x_pizza', tables, baseTotalL: k * line.price }); return o ? o.discount_cents : 0; };
+  const offers = offersEnv('BOGO').menu.offers; let checked = 0;
+  for (let k = 0; k <= 3; k++) for (let n = 1; n <= 6; n++) {
+    const p = CK.bogoPreview({ rules: OR, offers, key: line.item_key, priceCents: price, n, cartUnits: Array.from({ length: k }, () => ({ key: line.item_key, unit: price })), nowMs: L.now_ms });
+    const marginal = server(k + n) - server(k);
+    const want = n % 2 === 0 && marginal > 0 ? { pay: n * price - marginal, was: n * price } : null;
+    assert.deepEqual(p && p.strike, want, `🔴 B3-PARITY: cart ${k} + staged ${n}`); checked++;
+  }
+  assert.equal(checked, 24);
+});
+test('offers 4 B3 parity: OfferRules.inWindow ≡ 3a\'s inWindowNow (9a6d4a78d) over the week, windows and overnight wraps', () => {
+  const A = refLoader(ROOT, A3).require('xpizza-functions/catalog/offers-serve.js');
+  const start = Date.UTC(2026, 10, 1), scheds = [{ start, end: null, days: [0, 1, 2, 3, 4, 5, 6] }, { start, end: start + 20 * 864e5, days: [5, 6], window: { from: 1260, to: 0 } },
+    { start, end: null, days: [1, 3], window: { from: 690, to: 900 } }, { start: start + 5 * 864e5, end: null, days: [0], window: { from: 1380, to: 120 } }, OQ.live.BOGO.raw[Object.keys(OQ.live.BOGO.raw)[0]].schedule];
+  let n = 0, inside = 0;
+  for (const sc of scheds) for (let t = start - 864e5; t < start + 21 * 864e5; t += 37 * 60e3) { const a = OR.inWindow(sc, t), b = A.inWindowNow({ window: null, end: null, ...sc }, t); assert.equal(a, b, `🔴 B3-WINDOW: ${JSON.stringify(sc)} @ ${t}`); n++; if (a) inside++; }
+  assert.ok(n > 4000 && inside > 0 && inside < n, `premise: both sides seen (${inside}/${n})`);
+});
+test('offers 4 B3: the provable case on the sheet — 2 ⇒ «L 340 ~~L 680~~ · 2 por 1» and «Agregar · L 340»; odd ⇒ the pill, no strike; out of its window ⇒ today\'s sheet', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), now: B3_NOW }); const p = OQ_CART.items[0].price;
+  await sheetAt2(b);
+  assert.equal(b.text('#detail-scroll .detail-pricerow'), `L ${p} L ${2 * p} 2 por 1`, '🔴 B3-STRIKE: the pair price, the struck gross, the pill');
+  assert.equal(b.q('#detail-scroll .detail-price s.was').textContent, `L ${2 * p}`);
+  assert.equal(b.text('#detail-cta'), `Agregar · L ${p}`, '🔴 B3-CTA: the clean button at the pair price (v6 label)');
+  await b.click('#detail-step [data-delta="1"]');
+  assert.equal(b.q('#detail-scroll .detail-price s.was'), null, '🔴 B3-ODD: 3 ⇒ no strike');
+  assert.ok(b.q('#detail-scroll .tag-offer-fill'), 'the pill stays (the dish is offered)');
+  assert.equal(b.text('#detail-cta'), `Agregar · L ${(3 * p).toLocaleString('en-US')}`, 'odd ⇒ today\'s gross button');
+  await b.click('#detail-step [data-delta="1"]');
+  assert.equal(b.text('#detail-scroll .detail-price'), `L ${(3 * p).toLocaleString('en-US')} L ${(4 * p).toLocaleString('en-US')}`, 'free_per_order 1: 4 ⇒ one free');
+  const o = bootCo({ envelope: offersEnv('BOGO') });   // NOON: before the offer starts
+  await sheetAt2(o);
+  assert.equal(o.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-WINDOW-UI: outside its window ⇒ no pill, no strike');
 });
