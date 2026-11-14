@@ -1,4 +1,4 @@
-// C-3r v2 — THE RECEIPT FIXTURE, produced by 3a's REAL price_snapshot v2 writer and getMyOrders handler (feat/snapshot-v2-3a) — never
+// C-3r v2 — THE RECEIPT FIXTURE, produced by 3a's REAL price_snapshot v2 writer and getMyOrders handler (feat/my-orders-3a = snapshot-v2-3a + rider-first-name-3a, the ONE 3a ref) — never
 // hand-written. 3a's tree is not in this base, so this generator runs against an extracted tree of that commit:
 //   git archive <sha> | tar -x -C <dir>;  ln -s <this repo>/xpizza-functions/node_modules <dir>/xpizza-functions/node_modules
 //   node customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs <dir>/xpizza-functions <full sha>
