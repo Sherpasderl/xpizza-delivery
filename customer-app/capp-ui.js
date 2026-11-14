@@ -295,6 +295,9 @@
     const REC_MIN = 80;
     const recOf = (it) => { const s = it && it.dish && menu.dishStats ? menu.dishStats[it.dish] : null; if (!s || !Number.isInteger(s.votes) || s.votes < 1 || !Number.isInteger(s.up)) return null; const n = Math.round((100 * s.up) / s.votes); return n >= REC_MIN ? n : null; };
     const recPill = (it, sold) => { const n = recOf(it); return n === null ? '' : `<span class="pill rec"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>${n} % lo recomienda</span>`; };
+    // D-3 r3 9.1 «Más pedido» (dish-stats (2a)): the producer's top_rank (the store's top 3 by 30-day orders), FIRST in the pills;
+    // a sold-out dish keeps the slot hidden (as «N %»)
+    const popPill = (it, sold) => { const s = it && it.dish && menu.dishStats ? menu.dishStats[it.dish] : null; return s && s.top_rank ? `<span class="pill pop"${sold ? ' style="visibility:hidden" aria-hidden="true"' : ''}>Más pedido</span>` : ''; };
     const badgeOf = (it) => { const k = BADGE_PRIORITY.find((t) => (it.tags || []).includes(t)); if (!k) return null; const served = menu.badges && menu.badges[k] && menu.badges[k].label; return { text: served || BADGE_FALLBACK[k], color: k === 'must_try' || k === 'crowd_favourite' ? 'var(--acc)' : 'var(--price)' }; };
 
     // ── hours (the store config's, on the injected clock) ──
@@ -354,7 +357,7 @@
       const marks = label ? `<span class="marks">${label}</span>` : '';
       const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
-      const rp = recPill(it, sold);
+      const rp = popPill(it, sold) + recPill(it, sold);
       return `<div class="row${isSold(it) ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn" ${open}>${marks}<span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="prrow"><span class="pr">${esc(price)}</span></span>${rp ? `<span class="pills">${rp}</span>` : ''}</button>
     ${it.img ? `<div class="thumb"><button class="openimg" ${open} aria-label="Ver ${esc(it.n)}" tabindex="-1"><img src="${esc(it.img)}" alt="" loading="lazy"></button>${overlayHtml(it)}</div>` : `<div class="ovl-inline">${overlayHtml(it)}</div>`}</div>`;
     }
@@ -492,7 +495,7 @@
       return cells.length ? `<div class="cells${cells.length === 1 ? ' one' : ''}">${cells.join('')}</div>` : '';
     }
     function deskCardHtml(it) {
-      const b = badgeOf(it), sold = isSold(it), rp = recPill(it, sold);
+      const b = badgeOf(it), sold = isSold(it), rp = popPill(it, sold) + recPill(it, sold);
       const price = sold ? 'Agotado' : it.group ? 'desde ' + money(Math.min(...it.group.choices.map((c) => c.p))) : money(it.p);
       const open = `data-act="open" data-id="${esc(it.id)}"`;
       return `<div class="icard${sold ? ' sold-out' : ''}" id="dish-${esc(it.id)}"><button class="txtbtn txt" ${open}><span class="nm">${esc(it.n)}</span>${it.d ? `<span class="ds">${esc(it.d)}</span>` : ''}<span class="pr">${esc(price)}</span>${b || rp ? `<span class="pills">${b ? `<span class="mark" style="color:${b.color}">${esc(b.text)}</span>` : ''}${rp}</span>` : ''}</button>`
@@ -700,6 +703,31 @@
       ? `<button class="lnedit ${cls}" data-act="edit" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Editar ${esc(d.item.n)}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}<span class="ln-ed">Editar</span></button>`
       : `<div class="lnstatic ${cls}"><span class="ln-n">${esc(d.item.n)}</span>${d.extras ? `<span class="ln-x">+ ${esc(d.extras)}</span>` : ''}</div>`);
     const lineStep = (d, sold = false) => `<div class="cstep"><button data-act="rev" data-rev="-1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Quitar uno de ${esc(d.item.n)}">${d.n <= 1 ? TRASH(14) : '−'}</button><span>${d.n}</span><button data-act="rev" data-rev="1" data-key="${esc(d.key)}" data-grp="${esc(d.g)}" aria-label="Agregar otro igual: ${esc(d.item.n)}"${sold ? ' disabled aria-disabled="true"' : ''}>+</button></div>`;
+    // D-3 r3 9.5 «Suelen pedirse juntos» (dish-stats (2b); the cart only — the sheet and the desk aside, right before the totals): the
+    // union of the cart dishes' served pairs (the producer's ≥ 15 co-orders), ranked by count, kept only where the LIVE menu takes it
+    // now: a plain dish (a choice launcher opens its dialog elsewhere), not sold, under L 100, not in the cart — at most 3. Decided when
+    // the sheet opens / when the aside first shows a cart, then FROZEN while it stays (rule 7: a «+» never reflows the section). No
+    // data ⇒ no section (rule 8); a blocked cart (sold line, too long) shows none
+    const UPSELL_MAX = 3, UPSELL_UNDER = 100;
+    const byDish = (dishId) => { for (const s of sections) for (const it of s.items) if (it.dish === dishId) return it; return null; };
+    function upsellPick() {
+      const st = menu.dishStats || {}, lines = displayLines();
+      const dishOf = (k) => { const d = menu.dish(k); return !d ? null : d.dish_id || (d.variantOf && (menu.dish(d.variantOf) || {}).dish_id) || null; };
+      const inDish = new Set(lines.map((d) => dishOf(d.key)).filter(Boolean));   // a row's key and its dish_id name the same dish
+      const best = new Map();
+      for (const id of inDish) for (const p of (st[id] && st[id].pairs) || []) if (!inDish.has(p.dishId)) best.set(p.dishId, Math.max(best.get(p.dishId) || 0, p.count));
+      const out = [];
+      for (const [id] of [...best].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))) {
+        const it = byDish(id);
+        if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;
+        out.push(it.id); if (out.length === UPSELL_MAX) break;
+      }
+      return out;
+    }
+    function upsellHtml(ids) {
+      const its = (ids || []).map(find).filter(Boolean); if (!its.length) return '';
+      return `<div class="upsell"><h3>Suelen pedirse juntos</h3><div class="ucards">${its.map((it) => { const so = isSold(it); return `<button class="ucard" data-act="upsell-add" data-id="${esc(it.id)}" aria-label="Agregar ${esc(it.n)}"${so ? ' disabled aria-disabled="true"' : ''}><span class="ph">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : ''}<span class="qty-add-btn" aria-hidden="true">+</span></span><span class="nm">${esc(it.n)}</span><span class="pr">${so ? 'Agotado' : money(it.p)}</span></button>`; }).join('')}</div></div>`;
+    }
     function cartInner(desk = false) {   // v6 :1743 — desk ⇒ the aside: no close button, no «Ver el menú» on the empty state
       const lines = displayLines(), mode = S.mode;
       // the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27): a line whose dish is unavailable NOW — after a
@@ -718,6 +746,7 @@
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
+      if (!lines.length && desk) S.upsellDesk = null;
       if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
@@ -729,6 +758,8 @@
           + '<div class="sheetbar"><button class="primary" data-act="frozen-status">Ver estado del pedido</button></div>';
       }
       const off = over || soldDishes.length > 0;
+      if (desk && S.upsellDesk == null) S.upsellDesk = upsellPick();
+      const ups = off ? '' : upsellHtml(desk ? S.upsellDesk : S.upsell);
       // the owner's frame 13 (approved 2026-10-27; the forms' Plan 5 pattern, b8ba8467): a configuration whose unit price changed
       // since the customer last saw it — ONE calm note line PER CHANGED CONFIGURATION (r3.4-1; Codex s7a2 r1 #6), named as its cart
       // line shows it («Carnivora + Pepperoni») with ITS configured unit prices, and each changed line's OLD subtotal struck above the
@@ -740,7 +771,7 @@
       return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
-        + cnote + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
+        + cnote + ups + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
         + `<div class="sheetbar"><button class="primary${soldDishes.length ? ' sold-wait' : ''}" data-act="checkout"${off ? ' disabled aria-disabled="true"' : ''}>Ir al checkout</button></div>`;
     }
     function runStoreSearch(q) {
@@ -748,7 +779,7 @@
       const nq = norm(q).trim(); const hits = nq ? sections.flatMap((s) => s.items).filter((it) => norm(it.n + ' ' + (it.d || '')).includes(nq)) : [];
       box.innerHTML = !nq ? '' : hits.length ? `<div class="rcount">${hits.length} resultado${hits.length === 1 ? '' : 's'}</div>${hits.map(rowHtml).join('')}` : `<div class="noresults">Nada con «${esc(q)}». Probá otra palabra.</div>`;
     }
-    function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') pushHist(); returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
+    function openLayer(kind) { if (kind === 'cart' && S.layerKind !== 'cart') { pushHist(); S.upsell = upsellPick(); } returnTo = descOf(doc.activeElement); S.layerKind = kind; renderLayer(true); }   // the cart is a back step (P openCart :1752)
     // THE layer teardown (Codex guest r2 #2): every way a layer goes away — closeLayer, a browser / device Back — runs it: the pin map is
     // dropped, and a code sheet's pending verification is invalidated (its late success never sends)
     function layerTeardown() {
@@ -1800,7 +1831,7 @@
       S.screen = top.screen; render();
       if (top.layer) openLayerNoPush(top.layer);
     }
-    function openLayerNoPush(kind) { returnTo = null; S.layerKind = kind; renderLayer(true); }
+    function openLayerNoPush(kind) { if (kind === 'cart' && S.layerKind !== 'cart') S.upsell = upsellPick(); returnTo = null; S.layerKind = kind; renderLayer(true); }
     function back() { if (ownHist()) { skipPop++; histN--; try { if (H) H.back(); else hist().back(); } catch (_) {} } backInternal(); }
     function onPop(e) {
       if (skipPop > 0) { skipPop--; return; }
@@ -2249,6 +2280,7 @@
       }
       if (S.screen === 'tip' && !S.layerKind && tipAct(t)) return;
       if (act === 'inc') { const it = find(id); if (it && it.group) { openDetail(id); return; } if (!it || isSold(it)) { renderStoreKeep(); return; } if (mutate(() => cart.inc(id))) { S.expanded.add(id); bumpPill(); } renderStoreKeep(); return; }
+      if (act === 'upsell-add') { const it = find(id); if (!it || isSold(it)) return; if (it.group) { openDetail(id); return; } if (mutate(() => cart.inc(id))) bumpPill(); renderStoreKeep(); if (S.layerKind === 'cart') { const d = descOf(t); renderLayer(); focusTo(refind(d)); } return; }   // 9.5's «+»: the store's add path
       if (act === 'dec') { const it = find(id); if (it && it.group) { openLayer('cart'); return; } mutate(() => cart.dec(id)); renderStoreKeep(); return; }
       if (act === 'badge') { S.expanded.add(id); renderStoreKeep(); return; }
       if (act === 'open') { returnTo = descOf(t); openDetail(id); return; }

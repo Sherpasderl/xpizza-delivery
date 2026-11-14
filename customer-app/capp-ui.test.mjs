@@ -4017,3 +4017,66 @@ test('dish-stats (2) REC2 (rule 8 + frame 12): a dish SOLD OUT keeps the badge\'
   assert.equal(p.getAttribute('aria-hidden'), 'true', '🔴 DS-REC2: hidden from assistive tech');
   assert.equal(b.w.getComputedStyle(p).visibility, 'hidden', '🔴 DS-REC2: never visible on a sold-out dish');
 });
+
+// ── dish-stats (2a/2b) (advisor 11-14: 3a's provisionContext ⇒ REAL orders' dish_qty through createOrder's dishQtyOf ⇒ the producer):
+// D-3 r3 9.1 «Más pedido» (.pill.pop, before «N %») where the dish holds a top_rank; 9.5 «Suelen pedirse juntos» (cart only): the
+// union of the cart dishes' pairs ranked by count, ON THE LIVE MENU orderable, not sold, under L 100, not in the cart — at most 3, the
+// sheet and the desk aside, decided when the cart opens (no reflow while open); «+» = the store's own add path ──
+const lmKey = (b, dishId) => keyOfDish(b, dishId);
+test('dish-stats (2a) POP (9.1): «Más pedido» on the store\'s top-3 by 30-day orders (before «N %»), phone row and desk card; an orders_30d-only dish carries none; sold out ⇒ the slot kept hidden', () => {
+  for (const mount of [{}, DESK]) {
+    const where = mount.view ? 'desk' : 'phone', O = DSX.orders;
+    const b = boot('x_pizza', { envelope: dsEnv('xp_orders'), mount });
+    const pills = (id) => [...b.qa(`#dish-${keyOfDish(b, id)} .pills .pill`)].map((p) => p.textContent);
+    assert.deepEqual(pills(O.a), ['Más pedido', '95 % lo recomienda'], `🔴 DS-POP: top_rank 1, «Más pedido» first (${where})`);
+    assert.deepEqual(pills(O.b), ['Más pedido'], `🔴 DS-POP: top_rank 2 (75 % is no recommendation) (${where})`);
+    assert.deepEqual(pills(O.d), ['Más pedido'], `🔴 DS-POP: top_rank 3 (${where})`);
+    assert.deepEqual(pills(O.e), [], `🔴 DS-POP: 21 orders but not top 3 ⇒ none (${where})`);
+  }
+  const sold = new Set(); const b = boot('x_pizza', { envelope: dsEnv('xp_orders'), unavailable: sold }); const k = keyOfDish(b, DSX.orders.d);
+  sold.add(k); b.ui.render();
+  const p = b.q(`#dish-${k} .pill.pop`); assert.ok(p && p.getAttribute('aria-hidden') === 'true' && b.w.getComputedStyle(p).visibility === 'hidden', '🔴 DS-POP: sold out ⇒ kept, hidden');
+});
+const upsellCards = (b, scope = '#layer') => [...b.qa(`${scope} .upsell .ucard`)].map((c) => [c.dataset.id, c.querySelector('.nm').textContent, c.querySelector('.pr').textContent]);
+function lmCart(extra = {}) {
+  const b = boot('la_musa', { envelope: dsEnv('lm_pairs'), ...extra });
+  b.ui.cart.inc(lmKey(b, DSX.la_musa.main)); b.ui.render();
+  return b;
+}
+test('dish-stats (2b) UPS1 (9.5): the cart sheet\'s «Suelen pedirse juntos» = the main\'s pairs by count (Toña 17, Coca Cola 16, Salvavida 15), names + live prices, before the totals; «+» adds through the store\'s path and the list does NOT reflow; the next open drops the one now in the cart', () => {
+  const b = lmCart(); const L = DSX.la_musa;
+  b.click('#cart-bar');
+  assert.equal(b.q('#layer .upsell h3') && b.q('#layer .upsell h3').textContent, 'Suelen pedirse juntos', '🔴 DS-UPS: 9.5\'s section');
+  const ids = upsellCards(b).map((c) => c[0]), want = [L.toña, L.coca, L.salva].map((d) => lmKey(b, d));
+  assert.deepEqual(ids, want, '🔴 DS-UPS: ranked by co-orders, at most 3');
+  const kids = [...b.q('#layer .sheet').querySelectorAll('.upsell, .ctot')].map((e) => e.className.split(' ')[0]);
+  assert.deepEqual(kids, ['upsell', 'ctot'], 'before the totals (9.5)');
+  const before = b.ui.cart.count();
+  b.click(`#layer .ucard[data-id="${lmKey(b, L.coca)}"]`);
+  assert.equal(b.ui.cart.count(), before + 1, '🔴 DS-UPS: «+» adds ONE (the store\'s inc)');
+  assert.deepEqual(upsellCards(b).map((c) => c[0]), want, '🔴 DS-UPS: no reflow while the sheet is open (Q3, rule 7)');
+  b.click('#layer [data-act="cartclose"]'); b.click('#cart-bar');
+  assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.toña, L.salva].map((d) => lmKey(b, d)), '🔴 DS-UPS: the next open leaves out what the cart now holds');
+});
+test('dish-stats (2b) UPS2: no stats ⇒ no section; a SOLD partner and one whose LIVE price rose to L 100+ since the daily publish are left out', () => {
+  const plain = boot('la_musa', { envelope: dsEnv('lm_plain') }); plain.ui.cart.inc(keyOfDish(plain, DSX.la_musa.main)); plain.ui.render(); plain.click('#cart-bar');
+  assert.equal(plain.q('#layer .upsell'), null, '🔴 DS-UPS: no data ⇒ no section (never a placeholder)');
+  const L = DSX.la_musa, sold = new Set();
+  const s = lmCart({ unavailable: sold }); sold.add(lmKey(s, L.toña)); s.ui.render(); s.click('#cart-bar');
+  assert.deepEqual(upsellCards(s).map((c) => c[0]), [L.coca, L.salva].map((d) => lmKey(s, d)), '🔴 DS-UPS: a sold partner is left out');
+  const env = dsEnv('lm_pairs'); env.menu.dishes.find((d) => d.dish_id === L.toña).price = 120;   // the price moved since the publish (as the repriced cells do)
+  const p = boot('la_musa', { envelope: env }); p.ui.cart.inc(keyOfDish(p, L.main)); p.ui.render(); p.click('#cart-bar');
+  assert.deepEqual(upsellCards(p).map((c) => c[0]), [L.coca, L.salva].map((d) => keyOfDish(p, d)), '🔴 DS-UPS: a partner now at L 100+ is left out (the LIVE price)');
+});
+test('dish-stats (2b) UPS3 (9.5 desk): the desk aside carries the same section right before its totals', () => {
+  const b = lmCart({ mount: DESK }); const L = DSX.la_musa;
+  assert.deepEqual(upsellCards(b, '.deskcart').map((c) => c[0]), [L.toña, L.coca, L.salva].map((d) => lmKey(b, d)), '🔴 DS-UPS desk: the aside');
+  const kids = [...b.q('.deskcart').children].map((e) => e.className.split(' ')[0]);
+  assert.equal(kids.indexOf('upsell') + 1, kids.indexOf('ctot'), 'right before the totals (9.5)');
+});
+test('dish-stats (2b) UPS4: two mains in the cart ⇒ the UNION of their pairs, each partner at its best count, ranked (Sprite 18, Toña 17, Coca Cola 16 over Agua 16 by id) and capped at 3', () => {
+  const L = DSX.la_musa, b = lmCart(); const m2 = lmKey(b, L.main2);
+  assert.ok(m2 && b.q(`#dish-${m2} [data-act="inc"]`), 'premise: the second main is a plain dish (its own «+»)');
+  b.ui.cart.inc(m2); b.ui.render(); b.click('#cart-bar');
+  assert.deepEqual(upsellCards(b).map((c) => c[0]), [L.sprite, L.toña, L.coca].map((d) => lmKey(b, d)), '🔴 DS-UPS: the union, ranked, at most 3');
+});

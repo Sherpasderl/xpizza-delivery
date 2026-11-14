@@ -37070,5 +37070,141 @@
   "kills_with": [
    "DS-REC1"
   ]
+ },
+ {
+  "id": "pop-01",
+  "slice": "dish-stats",
+  "label": "«Más pedido» on a dish without a top_rank (any dish with stats)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "return s && s.top_rank ? `<span class=\"pill pop\"",
+  "to": "return s ? `<span class=\"pill pop\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-POP: 21 orders but not top 3"
+  ]
+ },
+ {
+  "id": "pop-02",
+  "slice": "dish-stats",
+  "label": "a sold-out dish keeps «Más pedido» VISIBLE (rule 8)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "`<span class=\"pill pop\"${sold ? ' style=\"visibility:hidden\" aria-hidden=\"true\"' : ''}>Más pedido</span>`",
+  "to": "`<span class=\"pill pop\">Más pedido</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-POP: sold out"
+  ]
+ },
+ {
+  "id": "ups-01",
+  "slice": "dish-stats",
+  "label": "a partner already in the cart is offered again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "for (const p of (st[id] && st[id].pairs) || []) if (!inDish.has(p.dishId)) best.set(",
+  "to": "for (const p of (st[id] && st[id].pairs) || []) best.set(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: the next open leaves out"
+  ]
+ },
+ {
+  "id": "ups-02",
+  "slice": "dish-stats",
+  "label": "a partner at L 100+ (the live price) is offered",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || it.group || isSold(it)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a partner now at L 100+"
+  ]
+ },
+ {
+  "id": "ups-03",
+  "slice": "dish-stats",
+  "label": "no cap: a 4th card",
+  "file": "../customer-app/capp-ui.js",
+  "from": "out.push(it.id); if (out.length === UPSELL_MAX) break;",
+  "to": "out.push(it.id);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: the union, ranked, at most 3"
+  ]
+ },
+ {
+  "id": "ups-04",
+  "slice": "dish-stats",
+  "label": "a sold partner is offered",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!it || it.group || isSold(it) || !(it.p < UPSELL_UNDER)) continue;",
+  "to": "if (!it || it.group || !(it.p < UPSELL_UNDER)) continue;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: a sold partner"
+  ]
+ },
+ {
+  "id": "ups-05",
+  "slice": "dish-stats",
+  "label": "the sheet's section recomputed on every render (reflows on «+», rule 7)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const ups = off ? '' : upsellHtml(desk ? S.upsellDesk : S.upsell);",
+  "to": "const ups = off ? '' : upsellHtml(desk ? S.upsellDesk : upsellPick());",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: no reflow"
+  ]
+ },
+ {
+  "id": "ups-06",
+  "slice": "dish-stats",
+  "label": "«+» adds nothing",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (mutate(() => cart.inc(id))) bumpPill(); renderStoreKeep(); if (S.layerKind === 'cart')",
+  "to": "if (false) bumpPill(); renderStoreKeep(); if (S.layerKind === 'cart')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^dish-stats \\(2[ab]\\)",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DS-UPS: «+» adds ONE"
+  ]
  }
 ]
