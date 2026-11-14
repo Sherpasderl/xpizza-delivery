@@ -184,6 +184,29 @@ const DEV = (i) => `fcm_device_${String(i).padStart(2, '0')}_` + 'x'.repeat(40);
       ok('pruneCustomerToken: compare-and-clear on the claim — a late prune never removes a newer registration');
     }
 
+    // ── 10. account deletion AND the 180-day sweep (the REAL deleteAccountCore) remove every device + the prefs (and the push consent)
+    //        of THAT person in the same atomic update; another person's are untouched ──
+    {
+      const SE = require('./signup-endpoints');
+      const ACCOUNT = require('./account-lib');
+      for (const via of ['deleteAccount', 'the inactivity sweep']) {
+        const w = world();
+        await w.register(A, DEV(1), { promociones: true }); await w.register(A, DEV(2)); await w.register(B, DEV(3));
+        assert.strictEqual(devices(w.db, A).length, 2, 'premise: A holds two devices');
+        const ups = [];
+        const orig = w.db.ref;
+        w.db.ref = (p) => { const r = orig(p); if (p === '' || p === '/' || p === undefined) return { ...r, update: async (patch) => { ups.push(Object.keys(patch)); return r.update(patch); } }; return r; };
+        const done = await quietly(() => SE.deleteAccountCore(w.db, ACCOUNT, { uid: A, phoneHash: null, now: CLOCK, ...(via === 'deleteAccount' ? {} : { sweepCutoff: CLOCK }), revoke: async () => {} }));
+        w.db.ref = orig;
+        assert.strictEqual(done, true, `premise: ${via} ran`);
+        assert.deepStrictEqual([devices(w.db, A), w.db.get(`${CP.PREFS}/${A}`) ?? null], [[], null], `${via}: every device and the prefs (with the push consent) are gone`);
+        const atomic = ups.find((keys) => keys.includes(`user_profiles/${A}`));
+        assert.ok(atomic && [CP.hashOf(DEV(1)), CP.hashOf(DEV(2))].every((h) => atomic.includes(`${CP.TOKENS}/${h}`)) && atomic.includes(`${CP.PREFS}/${A}`), `${via}: the tokens + prefs ride the SAME atomic update as the profile (${JSON.stringify(atomic)})`);
+        assert.strictEqual(devices(w.db, B).length, 1, `${via}: another person's device is untouched`);
+      }
+      ok('account deletion and the sweep (the REAL deleteAccountCore) remove the person\'s devices + prefs in the SAME atomic update; others untouched');
+    }
+
     FINISHED = true;
     console.log(`customer-push: ${n}/${n} ok`);
   } catch (e) {
