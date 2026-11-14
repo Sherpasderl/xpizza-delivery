@@ -36917,5 +36917,56 @@
   "kills_with": [
    "🔴 SDK-fifo: no deadlock"
   ]
+ },
+ {
+  "id": "w1-01",
+  "slice": "wake",
+  "label": "the overlay ring carries the GLOBAL class «ring» again (the spinner animation reaches it) — W1",
+  "file": "../customer-app/capp-splash.js",
+  "from": "<path class=\"cs-ring\"",
+  "to": "<path class=\"ring\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-8"
+  ]
+ },
+ {
+  "id": "w1-02",
+  "slice": "wake",
+  "label": "the overlay state class is the generic «gone» (shared with .rcard.gone) — W1",
+  "file": "../customer-app/capp-splash.js",
+  "from": "classList.add('cs-gone')",
+  "to": "classList.add('gone')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-9"
+  ]
+ },
+ {
+  "id": "w1-03",
+  "slice": "wake",
+  "label": "a global rule widened onto an overlay class (the spinner on the halo) — W1",
+  "file": "../customer-app/capp.css",
+  "from": ".ring{width:44px;",
+  "to": ".ring,.cs-halo{width:44px;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-8"
+  ]
  }
 ]

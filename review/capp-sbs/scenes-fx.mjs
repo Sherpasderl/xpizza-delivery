@@ -98,16 +98,17 @@ const D4 = check('D4', `const h = document.querySelector('#layer .errsheet h2');
 
 // ── «wake» (bundle N) ──
 // the SAME computed frame on both pages: the needle angle, the ring's scale, the halo, the pivot, the mark's size + centring, the colours
-const WAKE_PROBE = (root) => `(() => { const sp = ${root}; if (!sp) throw new Error('no overlay'); const m = sp.querySelector('svg.mark'), R = sp.getBoundingClientRect(), M = m.getBoundingClientRect();
+// px: the overlay's class prefix — the app's are cs- (W1: scoped so no global rule reaches them); the mockup keeps its own names
+const WAKE_PROBE = (root, px = '') => `(() => { const sp = ${root}; if (!sp) throw new Error('no overlay'); const m = sp.querySelector('svg.${px}mark'), R = sp.getBoundingClientRect(), M = m.getBoundingClientRect();
   const mx = (el) => { const t = getComputedStyle(el).transform; if (!t || t === 'none') return [1, 0, 0, 1]; return t.match(/matrix\\(([^)]+)\\)/)[1].split(',').map(Number); };
   const ang = (el) => { const v = mx(el); return +(Math.atan2(v[1], v[0]) * 180 / Math.PI).toFixed(2); }, sc = (el) => { const v = mx(el); return +Math.hypot(v[0], v[1]).toFixed(4); };
   const op = (el) => +(+getComputedStyle(el).opacity).toFixed(3);
   // the ring PATH itself (its own computed animation / transform) and where it actually renders: its centre vs the mark's (a class
   // collision — the app's global spinner .ring — rotated it about the viewBox origin; the group's scale alone never showed it)
-  const rp = sp.querySelector('.ring'), RB = rp.getBoundingClientRect();
-  return { needle: ang(sp.querySelector('.needle')), ring: sc(sp.querySelector('.ringg')), ringPath: { anim: getComputedStyle(rp).animationName, rot: ang(rp), off: [Math.round(RB.left + RB.width / 2 - (M.left + M.width / 2)), Math.round(RB.top + RB.height / 2 - (M.top + M.height / 2))] }, halo: [op(sp.querySelector('.halo')), sc(sp.querySelector('.halo'))], pivot: op(sp.querySelector('.pivot')),
+  const rp = sp.querySelector('.${px}ring'), RB = rp.getBoundingClientRect();
+  return { needle: ang(sp.querySelector('.${px}needle')), ring: sc(sp.querySelector('.${px}ringg')), ringPath: { anim: getComputedStyle(rp).animationName, rot: ang(rp), off: [Math.round(RB.left + RB.width / 2 - (M.left + M.width / 2)), Math.round(RB.top + RB.height / 2 - (M.top + M.height / 2))] }, halo: [op(sp.querySelector('.${px}halo')), sc(sp.querySelector('.${px}halo'))], pivot: op(sp.querySelector('.${px}pivot')),
     mark: [Math.round(M.width), Math.round(M.height)], off: [Math.round(M.left + M.width / 2 - (R.left + R.width / 2)), Math.round(M.top + M.height / 2 - (R.top + R.height / 2))],
-    bg: getComputedStyle(sp).backgroundColor, stroke: getComputedStyle(sp.querySelector('.ring')).stroke, north: getComputedStyle(sp.querySelector('.north')).fill }; })()`;
+    bg: getComputedStyle(sp).backgroundColor, stroke: getComputedStyle(sp.querySelector('.${px}ring')).stroke, north: getComputedStyle(sp.querySelector('.${px}north')).fill }; })()`;
 const seek = (root, t) => `${root}.getAnimations({ subtree: true }).forEach((a) => { a.pause(); a.currentTime = ${t}; })`;
 const wakeMock = (t) => (theme) => ({ file: 'MOCKUP-capp-splash-animation.html', label: `wake A · ${theme} · t = ${t} ms`, vw: 1400, vh: 1100,
   // the page auto-plays at 300 ms (READY 1 400 ms): wait it out, then restart THIS phone's overlay in its frame-0 state and seek it to t
@@ -129,7 +130,7 @@ const wakeVerify = (row) => { const a = row.probe, b = row.mockProbe; if (!a || 
   if (bad.length) throw new Error('wake frame ≠ mockup A: ' + bad.join('; ')); };
 const wakeFrame = (t) => ({ name: `wake-frame-t${t}`, pkg: 'N', width: 390, height: 844, block: ['/capp-splash.js'], themes: ['light', 'dark'], settle: 200,
   steps: [{ until: 'document.getElementById("csplash") && document.getElementById("csplash").getAnimations({ subtree: true }).length >= 5', ms: 8000 }, { run: seek('document.getElementById("csplash")', t) }, { wait: 100 }],
-  probe: WAKE_PROBE('document.getElementById("csplash")'), mock: wakeMock(t), verify: wakeVerify,
+  probe: WAKE_PROBE('document.getElementById("csplash")', 'cs-'), mock: wakeMock(t), verify: wakeVerify,
   injections: 'NATIVE bundle · capp-splash.js BLOCKED (the CSS alone; every animation paused + seeked to t on BOTH pages)',
   note: `t = ${t} ms: the computed needle / ring / halo / pivot / mark / colours must equal the mockup's variant A at the same t` });
 // Codex P2: with the controller ABSENT the overlay's own CSS ceiling hides it — visible at its start + 3.8 s, gone (opacity 0, hidden) at + 4.25 s
@@ -152,7 +153,7 @@ const wakeCapVerify = (row) => { const p = row.probe, bad = [];
 // the normal exit: READY (the shell's first settled screen) ⇒ .exit at once ⇒ .gone after the 200 ms fade; well inside the 4 s cap
 const WAKE_TIMES_PRE = `(() => { const T = window.__wake = { ready: null, exit: null, gone: null };
   new MutationObserver(() => { const r = document.documentElement; if (r && T.ready === null && r.getAttribute('data-capp-ready') === '1') T.ready = performance.now();
-    const el = document.getElementById('csplash'); if (el) { if (T.exit === null && el.classList.contains('exit')) T.exit = performance.now(); if (T.gone === null && el.classList.contains('gone')) T.gone = performance.now(); } })
+    const el = document.getElementById('csplash'); if (el) { if (T.exit === null && el.classList.contains('cs-exit')) T.exit = performance.now(); if (T.gone === null && el.classList.contains('cs-gone')) T.gone = performance.now(); } })
   .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-capp-ready', 'class'] }); })()`;
 const WAKE_TIMES = `(async () => { const t0 = performance.now(); while (!(window.__wake && window.__wake.gone !== null) && performance.now() - t0 < 6000) await new Promise((r) => setTimeout(r, 50));
   const w = window.__wake || {}; const R = (v) => (v === null || v === undefined ? null : Math.round(v)); return { ready: R(w.ready), exit: R(w.exit), gone: R(w.gone), controller: typeof window.CappSplash }; })()`;

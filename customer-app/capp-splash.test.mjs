@@ -25,7 +25,7 @@ test('WAKE-1 one source: the overlay mark is the native icon/splash geometry, by
   assert.deepEqual(vars(light[0]), { bg: BA.PALETTE.light.bg, m1: BA.PALETTE.light.m1, m2: BA.PALETTE.light.m2 }, '🔴 WAKE-1: the light recipe = the splash palette');
   assert.deepEqual(vars(dark[0]), { bg: BA.PALETTE.dark.bg, m1: BA.PALETTE.dark.m1, m2: BA.PALETTE.dark.m2 }, '🔴 WAKE-1: the dark recipe = the splash palette');
   for (const [k, ms] of [['a-settle', '720ms'], ['a-ring', '900ms'], ['a-halo', '900ms'], ['a-pivot', '240ms']]) assert.ok(new RegExp(`animation:${k} ${ms}`).test(css), `🔴 WAKE-1: Variant A's ${k} ${ms}`);
-  assert.ok(/@media \(prefers-reduced-motion:reduce\)\{[^}]*\.csplash \.needle[^}]*animation:none/.test(css), '🔴 WAKE-1: reduced motion ⇒ nothing moves');
+  assert.ok(/@media \(prefers-reduced-motion:reduce\)\{[^}]*\.csplash \.cs-needle[^}]*animation:none/.test(css), '🔴 WAKE-1: reduced motion ⇒ nothing moves');
 });
 
 // the packager reads files AT a commit; the cell overlays the working tree (the test files' own pattern) so it judges THIS change
@@ -57,20 +57,20 @@ test('WAKE-3 READY fades it (200 ms) and removes it; a READY BEFORE start is hon
   const hid = [], A = page({ capacitor: { Plugins: { SplashScreen: { hide: () => hid.push(1) } } } });
   SP.start({ doc: A.w.document, win: A.w, timers: A.T });
   assert.deepEqual(hid, [1], '🔴 WAKE-3: the native plugin hidden at once (one splash on screen)');
-  assert.ok(!A.el().classList.contains('exit'), 'playing until READY');
+  assert.ok(!A.el().classList.contains('cs-exit'), 'playing until READY');
   SP.signalReady(A.w.document, A.w);
-  assert.ok(A.el().classList.contains('exit'), '🔴 WAKE-3: READY ⇒ the fade');
-  A.run(200); assert.ok(A.el().classList.contains('gone'), '🔴 WAKE-3: removed after 200 ms');
+  assert.ok(A.el().classList.contains('cs-exit'), '🔴 WAKE-3: READY ⇒ the fade');
+  A.run(200); assert.ok(A.el().classList.contains('cs-gone'), '🔴 WAKE-3: removed after 200 ms');
   assert.ok(!A.timers.some((t) => t.on), 'no timer left (the cap cleared)');
   const B = page({ ready: true });
   SP.start({ doc: B.w.document, win: B.w, timers: B.T });
-  assert.ok(B.el().classList.contains('exit'), '🔴 WAKE-3: a READY that came first ⇒ the fade at once');
+  assert.ok(B.el().classList.contains('cs-exit'), '🔴 WAKE-3: a READY that came first ⇒ the fade at once');
 });
 test('WAKE-4 the hard cap: no READY by 4 s ⇒ it fades regardless (a stuck boot never traps the customer); reduced motion fades in 150 ms', () => {
   const A = page();
   SP.start({ doc: A.w.document, win: A.w, timers: A.T });
   assert.ok(A.timers.some((t) => t.on && t.ms === 4000), '🔴 WAKE-4: the 4 s cap armed');
-  A.run(4000); assert.ok(A.el().classList.contains('exit'), '🔴 WAKE-4: the cap fades it');
+  A.run(4000); assert.ok(A.el().classList.contains('cs-exit'), '🔴 WAKE-4: the cap fades it');
   const R = page({ reduced: true });
   SP.start({ doc: R.w.document, win: R.w, timers: R.T }); SP.signalReady(R.w.document, R.w);
   assert.ok(R.timers.some((t) => t.on && t.ms === 150) && !R.timers.some((t) => t.on && t.ms === 200), '🔴 WAKE-4: reduced motion ⇒ 150 ms');
@@ -85,7 +85,7 @@ test('WAKE-5 the boot starts the splash in the INSTALLED app (runtime.mode nativ
     w.CAPP_RUNTIME = { mode, functions_base: 'https://fn.test', menu_endpoint: 'getPublicMenu' };
     w.eval(SPLASH_SRC); w.eval(BOOT_SRC);
     assert.equal(mounted, null, 'premise: the mount ran');
-    const ex = w.document.getElementById('csplash').classList.contains('exit');
+    const ex = w.document.getElementById('csplash').classList.contains('cs-exit');
     assert.equal(ex, mode === 'native', `🔴 WAKE-5: ${mode} ⇒ ${mode === 'native' ? 'started (READY during the mount fades it)' : 'never started'}`);
   }
 });
@@ -99,4 +99,45 @@ test('WAKE-7 (Codex r1 P2): the page owns an INDEPENDENT ceiling — if capp-spl
   assert.ok(kf && /opacity:0/.test(kf[1]) && /visibility:hidden/.test(kf[1]), '🔴 WAKE-7: the cap ends invisible AND hidden (never a lingering layer)');
   const rm = css.match(/@media \(prefers-reduced-motion:reduce\)\{[^@]*?\}\}/)[0];
   assert.ok(!/\.csplash\{[^}]*animation:none/.test(rm), '🔴 WAKE-7: reduced motion never disables the ceiling (only the mark\'s motion)');
+});
+
+// ── W1 (the functional SBS 11-14, CLASSIFICATION-fx.md): the overlay's `<path class="ring">` matched the app's GLOBAL spinner rule
+// `.ring{…animation:spin .9s linear infinite}` — the ring orbited the mark's top-left every 0.9 s. Advisor: SCOPE the overlay's class
+// names (a unique prefix) + a cell on the cascade + a guard that no other capp rule can reach them. jsdom computes no animations, so
+// the cells walk the REAL stylesheets (the CSSOM, @media included) and match each rule against the REAL overlay markup ──
+const CSS_FILES = ['capp.css', 'capp-fonts.css'];   // the stylesheets the native page loads
+const WAKE_KF = new Set(['a-settle', 'a-ring', 'a-halo', 'a-pivot', 'cs-cap']);
+const STATE_CLASSES = [...readFileSync(join(HERE, 'capp-splash.js'), 'utf8').matchAll(/classList\.add\('([\w-]+)'\)/g)].map((m) => m[1]);
+function overlayDoc() {
+  const w = new JSDOM(`<!doctype html><html><head>${CSS_FILES.map((f) => `<style>${readFileSync(join(HERE, f), 'utf8')}</style>`).join('')}</head><body>${SP.markupHtml()}</body></html>`).window;
+  const rules = [], kf = new Set();
+  const walk = (list) => { for (const r of list) { if (r.type === 7 /* KEYFRAMES */) kf.add(r.name); else if (r.selectorText !== undefined) rules.push(r); else if (r.cssRules) walk(r.cssRules); } };
+  for (const s of w.document.styleSheets) walk(s.cssRules);
+  return { w, rules, kf };
+}
+const overlayClasses = () => { const { w } = overlayDoc(); const el = w.document.getElementById('csplash'); return new Set([...[el, ...el.querySelectorAll('*')].flatMap((e) => [...e.classList]), ...STATE_CLASSES]); };
+test('WAKE-8 (W1): every animation that reaches an overlay element is the wake\'s own (a-settle / a-ring / a-halo / a-pivot / cs-cap) — never another rule\'s (the global spinner\'s «spin»), in the base and every state', () => {
+  const { w, rules, kf } = overlayDoc(), el = w.document.getElementById('csplash');
+  assert.ok(kf.has('spin') && [...WAKE_KF].every((k) => kf.has(k)), 'premise: the sheets carry the spinner\'s keyframes and the wake\'s');
+  assert.ok(STATE_CLASSES.length >= 2, 'premise: the controller\'s state classes (exit, gone)');
+  const bad = [];
+  for (const state of [[], ...STATE_CLASSES.map((c) => [c])]) {
+    el.className = ['csplash', ...state].join(' ');
+    for (const r of rules) {
+      const v = `${r.style.getPropertyValue('animation')} ${r.style.getPropertyValue('animation-name')}`.trim(); if (!v) continue;
+      const names = [...kf].filter((k) => new RegExp(`(^|[\\s,])${k.replace(/[-]/g, '\\-')}([\\s,]|$)`).test(v)); if (!names.length) continue;
+      for (const e of [el, ...el.querySelectorAll('*')]) { let hit = false; try { hit = e.matches(r.selectorText); } catch (_) { hit = false; }
+        if (hit) for (const n of names) if (!WAKE_KF.has(n)) bad.push(`${r.selectorText} → <${e.tagName.toLowerCase()} class="${e.getAttribute('class')}"> «${n}»${state.length ? ` (state ${state})` : ''}`); }
+    }
+  }
+  assert.deepEqual(bad, [], '🔴 WAKE-8: a foreign animation reaches the overlay');
+});
+test('WAKE-9 (W1 guard): the overlay\'s class names — its markup and its state classes — share NO name with any other capp rule (a rule outside .csplash can never reach it)', () => {
+  const { rules } = overlayDoc(), mine = overlayClasses(), clash = new Set();
+  assert.ok(mine.size >= 10, 'premise: the overlay\'s classes');
+  for (const r of rules) for (const sel of r.selectorText.split(',')) {
+    if (/[.#]csplash\b/.test(sel)) continue;
+    for (const m of sel.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) if (mine.has(m[1])) clash.add(`.${m[1]} in «${sel.trim()}»`);
+  }
+  assert.deepEqual([...clash], [], '🔴 WAKE-9: an overlay class is also another capp rule\'s');
 });
