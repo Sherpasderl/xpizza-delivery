@@ -4,6 +4,7 @@
 //   markupHtml()   the overlay, painted with the FIRST frame: platform/native/package-capp.js writes it into the NATIVE page right
 //                  after #app (the website's page never carries it). Same background + mark (104 px) as the native splash, so the
 //                  native → web switch is invisible. The animation itself is CSS (capp.css .csplash): it plays from first paint.
+//                  Every class it carries is cs-prefixed (W1, 11-14: a global rule must never reach it — WAKE-8/9).
 //   start(o)       the exit only (no timers besides READY and the cap): at READY — the shell's `capp:ready` (the first settled screen
 //                  painted: the store list from cache or network, its error frame, a store, an order) — the overlay fades (200 ms;
 //                  150 ms under reduced motion) and is removed; a READY that came before start() is read from the root's
@@ -25,9 +26,9 @@
   const READY_EVENT = 'capp:ready', READY_ATTR = 'data-capp-ready';
 
   function markupHtml() {
-    return `<div class="csplash" id="csplash" aria-hidden="true"><svg class="mark" viewBox="0 0 48 48" aria-hidden="true"><circle class="halo" cx="24" cy="24" r="${RING_R}"/>`
-      + `<g class="ringg"><path class="ring" d="${RING}"/></g><g class="needle"><path class="north" d="${NORTH}"/><path class="south" d="${SOUTH}"/></g>`
-      + `<circle class="pivot" cx="24" cy="24" r="${PIVOT_R}"/></svg></div>`;
+    return `<div class="csplash" id="csplash" aria-hidden="true"><svg class="cs-mark" viewBox="0 0 48 48" aria-hidden="true"><circle class="cs-halo" cx="24" cy="24" r="${RING_R}"/>`
+      + `<g class="cs-ringg"><path class="cs-ring" d="${RING}"/></g><g class="cs-needle"><path class="cs-north" d="${NORTH}"/><path class="cs-south" d="${SOUTH}"/></g>`
+      + `<circle class="cs-pivot" cx="24" cy="24" r="${PIVOT_R}"/></svg></div>`;
   }
 
   // the shell's ONE «first screen ready» signal (once): the root attribute (a late listener reads it) + the event
@@ -50,8 +51,8 @@
       if (done) return; done = true;
       if (cap !== null) T.clearTimeout(cap);
       win.removeEventListener(READY_EVENT, finish);
-      el.classList.add('exit');   // the CSS fades it; a still-settling needle snaps north in the same fade
-      T.setTimeout(() => { el.classList.add('gone'); }, reduced() ? FADE_RM_MS : FADE_MS);
+      el.classList.add('cs-exit');   // the CSS fades it; a still-settling needle snaps north in the same fade
+      T.setTimeout(() => { el.classList.add('cs-gone'); }, reduced() ? FADE_RM_MS : FADE_MS);
     }
     if (doc.documentElement.getAttribute(READY_ATTR) === '1') finish();
     else { win.addEventListener(READY_EVENT, finish); cap = T.setTimeout(finish, CAP_MS); }
