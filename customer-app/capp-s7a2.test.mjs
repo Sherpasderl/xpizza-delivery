@@ -5410,8 +5410,25 @@ test('C1b-P2 (9.4, 16b): a «Para vos» card\'s meta = «● Abierto · Pediste 
     const metas = [...pv.querySelectorAll('.rcard')].map((c) => [c.dataset.rid, txt(c.querySelector('.meta'))]);
     assert.deepEqual(metas, [['x_pizza', 'Abierto · Pediste el 11 nov'], ['la_musa', 'Abierto']], `🔴 C1B-P2: 9.4's one line (${desk ? 'desk' : 'phone'})`);
     const other = [...d.querySelectorAll('.hsec:not(.paravos) .rcard[data-rid="x_pizza"] .meta')].map(txt);
-    assert.ok(other.length && other.every((t) => /cierra/.test(t)), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
+    // the other rows keep THEIR line: «cierra» on the phone; the desk's one line has none (offers' SBS asm9 D1 — CH-ABIERTO-3 pins both)
+    assert.ok(other.length && other.every((t) => (desk ? /^Abierto · \S/.test(t) && !/cierra/.test(t) : /cierra/.test(t))), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
   }
+});
+// CH-ABIERTO-3 (advisor 11-15): the «Abierto» meta line was HAND-RESOLVED in the offers ⨯ push merge 8839193d (offers: the desk hides
+// «cierra»; push: a «Para vos» card hides «cierra» AND the fee, and adds «Pediste el …»). Each intent pinned on the real renderer
+test('CH-ABIERTO-3 (the 8839193d resolution): «Para vos» ⇒ no «cierra», no fee, «Pediste el»; desk ⇒ the fee, no «cierra»; phone ⇒ both', () => {
+  const x = rowsOf(SC.complete.body).find((r) => r.rid === 'x_pizza');
+  const fee = txt(dom(`<b>${CappHome.feeHtml(CappHome.storeOf(x), 'member')}</b>`).querySelector('b'));
+  assert.ok(fee, 'premise: x_pizza shows a fee to a member');
+  const metas = (desk) => { const d = dom(CappHome.homeHtml(pvVm(desk)));
+    return { pv: txt(d.querySelector('.hsec[aria-label="Para vos"] .rcard[data-rid="x_pizza"] .meta')), all: txt(d.querySelector('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')) }; };
+  for (const desk of [false, true]) {
+    const m = metas(desk);
+    assert.ok(!/cierra/.test(m.pv) && !m.pv.includes(fee) && /Pediste el 11 nov/.test(m.pv), `🔴 CH-ABIERTO-3 (a): «Para vos» (${desk ? 'desk' : 'phone'}) = no «cierra», no fee, «Pediste el»: ${m.pv}`);
+  }
+  const dk = metas(true), ph = metas(false);
+  assert.ok(dk.all.includes(fee) && !/cierra/.test(dk.all), `🔴 CH-ABIERTO-3 (b): the desk, not «Para vos» = the fee, no «cierra»: ${dk.all}`);
+  assert.ok(/cierra/.test(ph.all) && ph.all.includes(fee), `🔴 CH-ABIERTO-3 (c): the phone, not «Para vos» = «cierra» and the fee: ${ph.all}`);
 });
 test('C1b-P3 (9.4): the PHONE «Para vos» header carries the row\'s «›» (rownext — the same control as every phone row)', () => {
   const pv = dom(CappHome.homeHtml(pvVm(false))).querySelector('.hsec[aria-label="Para vos"]');

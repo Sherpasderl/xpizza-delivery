@@ -37916,6 +37916,42 @@
   ]
  },
  {
+  "id": "c1bp-ch1",
+  "slice": "c1b",
+  "label": "the 8839193d «Abierto» resolution reverted to the OFFERS parent (no «Para vos» hide, no again)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "to": "<b>Abierto</b>${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^CH-ABIERTO-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 CH-ABIERTO-3 (a)"
+  ]
+ },
+ {
+  "id": "c1bp-ch2",
+  "slice": "c1b",
+  "label": "the 8839193d «Abierto» resolution reverted to the PUSH parent (the desk shows «cierra»)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "to": "<b>Abierto</b>${pv ? '' : ` · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^CH-ABIERTO-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 CH-ABIERTO-3 (b)"
+  ]
+ },
+ {
   "id": "r11-01",
   "slice": "rule11-eta",
   "label": "the store / checkout ETA back to v6's lone «≈ N min» (rule 11)",
