@@ -64,54 +64,65 @@ ok(`every hashing site of an edited module names a registered inverse (${Object.
 }
 
 {
-  // PROVENANCE PINS (advisor 11-15, option 2): a fixture generator that hashes an EXTRACTED tree at a fixed sha is not a live pin —
-  // but only when tools/provenance-pins.json registers it AND (a) it hashes under its argv root with a 40-hex sha argument,
-  // (b) the fixture's recorded blob is the module's blob at that sha, (c) a consumer test asserts against that immutable sha.
+  // PROVENANCE PINS (advisor 11-15, option 2; r2 «reviewed content pins»): a fixture generator that hashes an EXTRACTED tree at a
+  // fixed sha is not a live pin — but only when tools/provenance-pins.json registers it with the sha256 of the generator AND of its
+  // consumer test as reviewed, both still byte-identical, and (b) the fixture's recorded blob is the module's blob at that sha.
   // Synthetic world: a generator, its fixture and its consumer, pinned to HEAD's my-orders.js (an edited module).
   const { execFileSync } = require('child_process');
+  const crypto = require('crypto');
   const { verdict } = require('./tools/form-source-inventory');
   const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
+  const h = (s) => crypto.createHash('sha256').update(s).digest('hex');
   const M = 'my-orders.js';
   assert.ok(inv.server_modules_edited.includes(M), `premise: ${M} is an edited server module`);
   const HEAD = git('rev-parse', 'HEAD'), BLOB = git('rev-parse', `HEAD:xpizza-functions/${M}`);
   const OLD = git('log', '--format=%H', '-2', 'HEAD', '--', `xpizza-functions/${M}`).split('\n')[1];
   const SITE = 'customer-app/fixtures/zz-prov/gen-zz.mjs', FIX = 'customer-app/fixtures/zz-prov/zz.json', CON = 'customer-app/zz-prov.test.mjs';
-  const gen = (root = 'FN') => "const FN = process.argv[2], SHA = process.argv[3];\nif (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n"
-    + `const blob = (rel) => { const b = readFileSync(join(${root}, rel)); return createHash('sha1').update(\`blob \${b.length}\\0\`).update(b).digest('hex'); };\nconst out = { sha: SHA, blobs: { '${M}': blob('${M}') } };\n`;
+  const GEN = "const FN = process.argv[2], SHA = process.argv[3];\nif (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n"
+    + `const blob = (rel) => { const b = readFileSync(join(FN, rel)); return createHash('sha1').update(\`blob \${b.length}\\0\`).update(b).digest('hex'); };\nconst out = { sha: SHA, blobs: { '${M}': blob('${M}') } };\n`;
   const fix = (sha = HEAD, blob = BLOB) => JSON.stringify({ sha, blobs: { [M]: blob } });
-  const con = "const Z = JSON.parse(readFileSync(new URL('./fixtures/zz-prov/zz.json', import.meta.url), 'utf8'));\n"
+  const CONSRC = "const Z = JSON.parse(readFileSync(new URL('./fixtures/zz-prov/zz.json', import.meta.url), 'utf8'));\n"
     + "for (const [r, b] of Object.entries(Z.blobs)) assert.equal(git('rev-parse', `${Z.sha}:xpizza-functions/${r}`), b, 'pin');\n";
-  const ROW = { site: SITE, module: M, fixture: FIX, sha_field: 'sha', blobs_field: 'blobs', consumer: CON };
-  const world = (o = {}) => build({ extra: { [SITE]: o.site ?? gen(), [FIX]: o.fix ?? fix(), ...(o.con === null ? {} : { [CON]: o.con ?? con }) }, provenance: o.rows ?? [ROW] });
+  const ROW = { site: SITE, module: M, fixture: FIX, sha_field: 'sha', blobs_field: 'blobs', consumer: CON, site_sha256: h(GEN), consumer_sha256: h(CONSRC) };
+  const world = (o = {}) => build({ extra: { [SITE]: o.site ?? GEN, [FIX]: o.fix ?? fix(), ...(o.con === null ? {} : { [CON]: o.con ?? CONSRC }) }, provenance: { rows: o.rows ?? [ROW] } });
   const pp = (w) => w.provenance_pins.find((p) => p.site === SITE);
   const isUnreg = (w) => w.unregistered.some((u) => u.module === M && u.site === SITE);
+  const refused = (w, check) => isUnreg(w) && pp(w).status === 'refused' && pp(w).check === check && verdict(w) === 1;
 
-  // the real registry: the two rows, each reported (dormant until its generator is in the tree)
+  // the real registry: the two rows, each with both reviewed content hashes, each reported (dormant until its generator is in the tree)
   const real = JSON.parse(fs.readFileSync(path.join(__dirname, 'tools/provenance-pins.json'), 'utf8'));
-  assert.deepStrictEqual(real.map((r) => `${r.site}|${r.module}`).sort(), ['customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs|my-orders.js', 'customer-app/fixtures/offer-quote/gen-offer-quote.mjs|delivery/delivery-wire.js'], 'the registry is the two advisor-approved rows');
-  assert.deepStrictEqual(inv.provenance_pins.map((p) => `${p.site}|${p.module}`).sort(), real.map((r) => `${r.site}|${r.module}`).sort(), '🔴 PROV-REPORT: every registry row is reported');
+  assert.ok(/re-register/i.test(real._doc || ''), 'the registry documents its re-register step');
+  assert.deepStrictEqual(real.rows.map((r) => `${r.site}|${r.module}`).sort(), ['customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs|my-orders.js', 'customer-app/fixtures/offer-quote/gen-offer-quote.mjs|delivery/delivery-wire.js'], 'the registry is the two advisor-approved rows');
+  assert.ok(real.rows.every((r) => /^[0-9a-f]{64}$/.test(r.site_sha256) && /^[0-9a-f]{64}$/.test(r.consumer_sha256)), 'every row pins its generator and consumer by sha256');
+  assert.deepStrictEqual(inv.provenance_pins.map((p) => `${p.site}|${p.module}`).sort(), real.rows.map((r) => `${r.site}|${r.module}`).sort(), '🔴 PROV-REPORT: every registry row is reported');
 
   const ctl = world({ rows: [] });
   assert.ok(isUnreg(ctl) && verdict(ctl) === 1, '🔴 PROV-CTL: an unregistered extracted-tree hash site still exits 1');
-  const live = build({ extra: { 'xpizza-functions/zz-synthetic.guard.test.js': "const sha = (s) => require('crypto').createHash('sha256').update(s).digest('hex');\nassert.strictEqual(sha(read('my-orders.js')), 'x');" }, provenance: [ROW] });
+  const live = build({ extra: { 'xpizza-functions/zz-synthetic.guard.test.js': "const sha = (s) => require('crypto').createHash('sha256').update(s).digest('hex');\nassert.strictEqual(sha(read('my-orders.js')), 'x');" }, provenance: { rows: [ROW] } });
   assert.ok(live.unregistered.some((u) => u.module === M && u.site === 'xpizza-functions/zz-synthetic.guard.test.js') && verdict(live) === 1, '🔴 PROV-CTL: an unregistered LIVE-tree hash site still exits 1 beside a valid registry');
   const good = world();
-  assert.ok(!isUnreg(good) && pp(good).status === 'ok' && verdict(good) === 0, `🔴 PROV-OK: a registered provenance pin passing (a)(b)(c) is accepted: ${JSON.stringify(pp(good))}`);
+  assert.ok(!isUnreg(good) && pp(good).status === 'ok' && verdict(good) === 0, `🔴 PROV-OK: a registered pin with both reviewed hashes and the right blob is accepted: ${JSON.stringify(pp(good))}`);
   assert.strictEqual(pp(good).live_differs, false, 'PROV-INFO: pinned at HEAD ⇒ the live blob is the pinned blob');
   const stale = world({ fix: fix(OLD, git('rev-parse', `${OLD}:xpizza-functions/${M}`)) });
   assert.ok(pp(stale).status === 'ok' && pp(stale).live_differs === true && verdict(stale) === 0, '🔴 PROV-INFO: a pin at an older sha is reported live_differs, never a failure');
 
-  const a = world({ site: `${gen()}const liveSrc = readFileSync(join(ROOT, 'xpizza-functions', '${M}'));\n` });
-  assert.ok(isUnreg(a) && pp(a).status === 'refused' && pp(a).check === 'a' && verdict(a) === 1, `🔴 PROV-A: a registered site hashing the LIVE tree is refused: ${JSON.stringify(pp(a))}`);
-  const a2 = world({ site: gen().replace("if (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n", '') });
-  assert.ok(isUnreg(a2) && pp(a2).check === 'a' && verdict(a2) === 1, `🔴 PROV-A: a registered site without a 40-hex sha argument is refused: ${JSON.stringify(pp(a2))}`);
-  const b = world({ fix: fix(HEAD, '0'.repeat(40)) });
-  assert.ok(isUnreg(b) && pp(b).status === 'refused' && pp(b).check === 'b' && verdict(b) === 1, `🔴 PROV-B: a fixture blob that is not the module at its sha is refused: ${JSON.stringify(pp(b))}`);
-  const c = world({ con: "const Z = JSON.parse(readFileSync(new URL('./fixtures/zz-prov/zz.json', import.meta.url), 'utf8'));\nassert.ok(Z.blobs);\n" });
-  assert.ok(isUnreg(c) && pp(c).status === 'refused' && pp(c).check === 'c' && verdict(c) === 1, `🔴 PROV-C: a consumer that never asserts against the sha is refused: ${JSON.stringify(pp(c))}`);
+  const g = world({ site: `${GEN}// reviewed? no\n` });
+  assert.ok(refused(g, 'generator_changed'), `🔴 PROV-GEN: an edited generator is refused until re-registered: ${JSON.stringify(pp(g))}`);
+  const c = world({ con: `${CONSRC}assert.ok(true);\n` });
+  assert.ok(refused(c, 'consumer_changed'), `🔴 PROV-CON: an edited consumer is refused until re-registered: ${JSON.stringify(pp(c))}`);
   const c2 = world({ con: null });
-  assert.ok(isUnreg(c2) && pp(c2).check === 'c' && verdict(c2) === 1, `🔴 PROV-C: a missing consumer is refused: ${JSON.stringify(pp(c2))}`);
-  ok('provenance pins: the 2 registry rows reported; an unregistered site (extracted or live tree) exits 1; a registered pin passing (a)(b)(c) is accepted, a stale one only flagged live_differs; (a) live-tree / no-sha, (b) wrong blob, (c) no sha assertion / no consumer are each refused');
+  assert.ok(refused(c2, 'consumer_changed'), `🔴 PROV-CON: a missing consumer is refused: ${JSON.stringify(pp(c2))}`);
+  const b = world({ fix: fix(HEAD, '0'.repeat(40)) });
+  assert.ok(refused(b, 'fixture_blob'), `🔴 PROV-B: a fixture blob that is not the module at its sha is refused: ${JSON.stringify(pp(b))}`);
+  // Codex r1's four bypasses, each now a byte change to a reviewed file ⇒ refused by construction
+  const attacks = {
+    'stray read with a space': { site: `${GEN}const L = readFileSync (join(ROOT, 'xpizza-functions', '${M}'));\n` },
+    'argv fallback to the live tree': { site: GEN.replace('process.argv[2]', "process.argv[2] || join(process.cwd(), 'xpizza-functions')") },
+    'consumer by ${HEAD} / assert.ok(git)': { con: CONSRC.replace('${Z.sha}', '${HEAD}') },
+    '40-hex only in a comment': { site: GEN.replace("if (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n", '// [0-9a-f]{40}\n') },
+  };
+  for (const [k, o] of Object.entries(attacks)) { const w = world(o); assert.ok(isUnreg(w) && pp(w).status === 'refused' && verdict(w) === 1, `🔴 PROV-R1: Codex r1 bypass «${k}» is refused: ${JSON.stringify(pp(w))}`); }
+  ok('provenance pins (reviewed content pins): the 2 registry rows reported with both hashes; an unregistered site (extracted or live tree) exits 1; a registered pin is accepted, a stale one only flagged live_differs; an edited generator, an edited or missing consumer and a wrong fixture blob are each refused; Codex r1\'s 4 bypasses are refused');
 }
 
 console.log(`\nform-source-inventory.guard: OK (${n})`);

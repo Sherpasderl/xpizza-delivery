@@ -1,4 +1,9 @@
-[
- { "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs", "module": "delivery/delivery-wire.js", "fixture": "customer-app/fixtures/offer-quote/offer-quote.json", "sha_field": "sha", "blobs_field": "blobs", "consumer": "customer-app/capp-checkout.test.mjs" },
- { "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs", "module": "my-orders.js", "fixture": "customer-app/fixtures/c3r-v2/c3r-v2.json", "sha_field": "source.commit", "blobs_field": "source.blobs", "consumer": "customer-app/capp-s7a2.test.mjs" }
-]
+{
+ "_doc": "Provenance pins (form-source-inventory.js): each row is a generator that hashes an EXTRACTED tree at a fixed sha, honoured only while the generator and consumer test are byte-identical to the reviewed versions (sha256 below). To re-register after a reviewed change: set site_sha256 / consumer_sha256 to `shasum -a 256 <file>` of the newly reviewed files, as its own reviewed diff.",
+ "rows": [
+  { "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs", "module": "delivery/delivery-wire.js", "fixture": "customer-app/fixtures/offer-quote/offer-quote.json", "sha_field": "sha", "blobs_field": "blobs", "consumer": "customer-app/capp-checkout.test.mjs",
+    "site_sha256": "a0cf2ce137aca1a6e8a43ccb445526266abe68a073421598ce9d3c9eb5a4333b", "consumer_sha256": "9dc0ec136c031cd158ac7198848cafcd6f29d545d1c351697a29a963fa8d7a71", "reviewed_at": "8839193d9a1be97a173faafe31a2f70361e400a8" },
+  { "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs", "module": "my-orders.js", "fixture": "customer-app/fixtures/c3r-v2/c3r-v2.json", "sha_field": "source.commit", "blobs_field": "source.blobs", "consumer": "customer-app/capp-s7a2.test.mjs",
+    "site_sha256": "e0a62c31d79a6af707e7920342a5a08977276971aa2ce8e3e25f15f674abac37", "consumer_sha256": "8c10ce0223acb861e7081aa458b92cab212d156d313b2f4bbfb24eeca329ad32", "reviewed_at": "8839193d9a1be97a173faafe31a2f70361e400a8" }
+ ]
+}
