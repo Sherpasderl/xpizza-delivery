@@ -80,7 +80,7 @@ async function load() {
   S.csvNote = '';   // a CSV note belongs to its period
   if (S.body) S.dim = true; else S.status = 'loading';
   render();
-  await RD.loadStats({ uid: S.ctx.uid, rids: ids, range: r, assertLive: assertWhile(g), keep: () => ep === S.authEp, compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
+  await RD.loadStats({ uid: S.ctx.uid, rids: ids, range: r, assertLive: assertWhile(g), keep: () => ep === S.authEp && g === S.gen, compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
     token: S.ctx.token, api: API, cache: S.cache, now, ui: {
     paint: ({ body, freshAt, source }) => { if (g !== S.gen) return; if (source === 'network') authorised(ids); S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
     stamp: ({ freshAt }) => { if (g !== S.gen) return; authorised(ids); S.freshAt = freshAt; S.dim = false; S.range = r; render(); },

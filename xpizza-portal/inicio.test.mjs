@@ -104,7 +104,7 @@ const TODAY = '2026-11-12';
 const NOW = T.dayStartMs(TODAY) + 15 * 3600000;   // 15:00 Honduras
 const at = (date, h, m = 0) => T.dayStartMs(date) + h * 3600000 + m * 60000;
 const keyer = makeCustomerKeyer('s'.repeat(40));
-async function statsWorld() {
+export async function statsWorld() {
   const orders = {};
   const add = (o) => { orders[o.order_id] = o; return o; };
   add(F.deliver(F.pickup(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-11-05', 19), phone: '88880001', totalCents: 31000, items: [{ name: 'Pepperoni 12″', qty: 2, unit: 155 }] }), at('2026-11-05', 19, 20)), at('2026-11-05', 19, 40)));
@@ -115,7 +115,7 @@ async function statsWorld() {
   const rtdb = makeRtdb(orders);
   await J.runStatsRollup({ rtdb, fsdb, keyer, listRestaurants: async () => ['r_a', 'r_b'], log: () => {} }, { nowMs: NOW, mode: 'range', from: '2026-11-01', to: '2026-11-11', commit: true });
   const legacy = (rid) => ({ name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } });
-  const MEMBERS = new Map([['brands/r_a', legacy('r_a')], ['brands/r_b', legacy('r_b')], ['brand_members/r_a/owners/uA', { granted_at: 1, granted_by: 'x' }], ['brand_members/r_b/owners/uA', { granted_at: 1, granted_by: 'x' }]]);
+  const MEMBERS = new Map([['brands/r_a', legacy('r_a')], ['brands/r_b', legacy('r_b')], ['brands/r_c', legacy('r_c')], ['brand_members/r_c/owners/uA', { granted_at: 1, granted_by: 'x' }], ['brand_members/r_a/owners/uA', { granted_at: 1, granted_by: 'x' }], ['brand_members/r_b/owners/uA', { granted_at: 1, granted_by: 'x' }]]);
   const memberDb = { ref: (p) => ({ once: async () => { const v = MEMBERS.has(p) ? MEMBERS.get(p) : null; return { exists: () => v !== null, val: () => v }; } }) };
   const liveCache = A.makeLiveCache();
   return async (query, authz) => {
@@ -140,21 +140,24 @@ test('the figures model from the REAL answer: Ventas / Pedidos with «el jueves 
 });
 
 // ── the page, through the REAL shell (+ app.js / ventas.js), with inicio.js loaded as index.html loads it ────────────
-function storage() {
-  const m = new Map();
+function storage(m = new Map()) {
   globalThis.sessionStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k),
     key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } };
+  return m;
 }
 const MENU = () => okJson({ source: { restaurant_id: 'r_a', schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
-const pinClock = (s) => s.replace(/Date\.now\(\)/g, String(NOW));
+const pinClock = (s) => s.replace(/Date\.now\(\)/g, `(globalThis.__inicioNow ?? ${NOW})`);   // NOW, or a test's moved clock
 const all = (n) => (n && n.children ? n.children : []).flatMap((c) => (c && typeof c === 'object' ? [c, ...all(c)] : []));
 const cls = (root, c) => all(root).filter((n) => String(n._class || '').split(/\s+/).includes(c));
 const btnText = (root, t) => all(root).find((n) => n.tag === 'button' && textOf(n) === t);
 const has = (n, c) => String(n._class).split(/\s+/).includes(c);
-async function page(branches, { withInicio = true, pause = null, statsFail = false } = {}) {
-  storage();
+// opts (Codex backfill cells): `store` (a sessionStorage Map to reuse / preset), `hold` ({ getSalesStats, getMyBranches }: one-shot held
+// answers — a Promise each), branches may be a function (the fresh E1 changes between reads); `reloads` counts window.location.reload()
+async function page(branches, { withInicio = true, pause = null, statsFail = false, store, hold = {}, writes = false } = {}) {
+  const sess = storage(store);
   const byId = installDom();
-  globalThis.window.location = { reload: () => {} };
+  let reloads = 0;
+  globalThis.window.location = { reload: () => { reloads += 1; } };
   globalThis.window.scrollTo = () => {};
   globalThis.__branchesDirect = true;
   const serve = await statsWorld();
@@ -165,13 +168,14 @@ async function page(branches, { withInicio = true, pause = null, statsFail = fal
     const query = Object.fromEntries(u.searchParams);
     const body = opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : null;
     calls.push({ fn, query, body });
+    if (hold[fn]) { const h = hold[fn]; delete hold[fn]; await h; }
     if (fn === 'getSalesStats') {
       if (statsFail) return errJson(503, { error: 'unavailable' });
       const out = await serve(query, (opts && opts.headers && opts.headers.Authorization) || '');
       return { ok: out.status === 200, status: out.status, json: async () => out.body, text: async () => JSON.stringify(out.body), headers: { get: () => null } };
     }
     if (fn === 'setBranchPause') return pause ? pause(body) : errJson(404, {});
-    if (fn === 'getMyBranches') return okJson({ brands: [{ brand_id: 'marca_v', name: 'Pizzería Del Valle' }], branches });
+    if (fn === 'getMyBranches') return okJson({ brands: [{ brand_id: 'marca_v', name: 'Pizzería Del Valle' }], branches: typeof branches === 'function' ? branches() : branches, ...(writes ? { membership_writes_enabled: true } : {}) });
     if (fn === 'getEditableCatalog') return MENU();
     if (fn === 'getBranchAvailability') return okJson({ branches: [] });
     return errJson(404, { error: 'not_found' });
@@ -180,7 +184,7 @@ async function page(branches, { withInicio = true, pause = null, statsFail = fal
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uA' } }));
   document.dispatchEvent(new CustomEvent('portal:signed-in'));
   await settle(40);
-  return { byId, calls, mods, view: byId.get('viewinicio'), stats: () => calls.filter((c) => c.fn === 'getSalesStats') };
+  return { byId, calls, mods, sess, hold, reloads: () => reloads, view: byId.get('viewinicio'), stats: () => calls.filter((c) => c.fn === 'getSalesStats') };
 }
 
 test('LANDING: with inicio.js loaded (index.html), the portal opens on Inicio — first in the nav, current; Productos hidden', async () => {
@@ -211,18 +215,18 @@ test('s-inicio — the greeting, the date, the pill, the three REAL figures; one
   assert.deepEqual(figs, [['Ventas', truth.sales.value, truth.sales.vs], ['Pedidos', truth.orders.value, truth.orders.vs], ['Ticket promedio', truth.ticket.value, null]],
     '🔴 the page draws the server\'s figures, labels as drawn');
 });
-test('1b — nothing paused: «Todo en orden · No hay nada pendiente en tus sucursales.», no count; «Editar producto» is the one quick action', async () => {
-  const p = await page([branch('r_a', 'Centro')]);
+test('1b — nothing paused, every result KNOWN (Codex backfill item 6): «Todo en orden»; ONE branch ⇒ the title alone (interim (b), advisor 11-15); no count; «Editar producto» is the one quick action', async () => {
+  const p = await page([branch('r_a', 'Centro', { pending_count: 0 })]);
   const ok = p.view.querySelector('.in-ok');
   assert.ok(ok, '🔴 the calm empty state');
   assert.equal(textOf(ok.querySelector('b')), 'Todo en orden');
-  assert.equal(textOf(all(ok).find((n) => n.tag === 'span' && !has(n, 'in-okico'))), 'No hay nada pendiente en tus sucursales.');
+  assert.equal(all(ok).find((n) => n.tag === 'span' && !has(n, 'in-okico')), undefined, 'ONE branch: no «… en tus sucursales» claim wider than the scope');
   assert.equal(cls(p.view, 'in-cnt').length, 0, 'no «N pendientes» on an empty list');
   assert.deepEqual(cls(p.view, 'in-quick').map(textOf), ['Editar producto'], '🔴 only the sourced quick action (Crear oferta / Editar horario / Ayuda wait)');
 });
 test('a paused branch: «Sucursal Centro está en pausa desde las 3:10 pm» + «Reanudar» → the REAL pause request; the row goes and 1b shows', async () => {
   const since = NOW - 3600e3 + 10 * 60e3;   // 14:10
-  const p = await page([branch('r_a', 'Centro', { control: PAUSED(since) })], { pause: (b) => okJson({ ok: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null } }) });
+  const p = await page([branch('r_a', 'Centro', { control: PAUSED(since), pending_count: 0 })], { pause: (b) => okJson({ ok: true, control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null } }) });
   const row = p.view.querySelector('.in-row');
   assert.ok(row, '🔴 the pause row');
   assert.equal(textOf(row.querySelector('.in-rt')), `Sucursal Centro está en pausa ${IL.when(since)}`);
@@ -252,14 +256,16 @@ test('«Editar producto» opens Productos; Rendimiento hides Inicio; coming back
   assert.ok(!has(p.view, 'hidden'), 'back on Inicio');
   assert.equal(p.stats().filter((c) => c.query.restaurantId === 'r_a' && c.query.compare === 'previous_week').length, 1, '🔴 cached: no second read inside the session');
 });
-test('several branches: «Todas las sucursales» is the default (ann 2) — ONE merged read (S2 restaurantIds), the REAL merged figures; the list spans every branch', async () => {
+test('several branches (Codex backfill item 4): ONE authorized branch is the default (per-branch first, DECISIONS 11-13) — one read for it; «Todas» stays offered: ONE merged read (S2 restaurantIds), the REAL merged figures; the list spans every branch', async () => {
   const p = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { control: PAUSED(null) })]);
   const opts = all(cls(p.view, 'in-menu')[0]).filter((n) => n.tag === 'button').map(textOf);
   assert.deepEqual(opts, ['Todas las sucursales', 'Centro', 'Los Próceres'], 'the frame\'s options');
-  assert.equal(textOf(p.view.querySelector('.in-pill')), 'Todas las sucursales', '🔴 the drawn default');
+  assert.equal(textOf(p.view.querySelector('.in-pill')), 'Centro', '🔴 item 4: one authorized branch by default, never the merged «Todas»');
+  assert.deepEqual(p.stats().map((r) => [r.query.restaurantId, r.query.restaurantIds]), [['r_a', undefined]], 'item 4: one per-branch read');
+  btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
   const reqs = p.stats();
-  assert.equal(reqs.length, 1, 'one read');
-  assert.deepEqual([reqs[0].query.restaurantIds, reqs[0].query.restaurantId, reqs[0].query.compare], ['r_a,r_b', undefined, 'previous_week'], '🔴 the merged form, never restaurantId with it');
+  assert.equal(reqs.length, 2, 'then one merged read');
+  assert.deepEqual([reqs[1].query.restaurantIds, reqs[1].query.restaurantId, reqs[1].query.compare], ['r_a,r_b', undefined, 'previous_week'], '🔴 the merged form, never restaurantId with it');
   const serve = await statsWorld();
   const out = await serve({ restaurantIds: 'r_a,r_b', ...IL.statsQuery(TODAY) }, 'Bearer TK-test');
   assert.equal(out.status, 200, 'premise: the real S2 core merges');
@@ -278,8 +284,10 @@ test('picking one branch reads THAT branch alone; its list is its own', async ()
 });
 test('«Todas» where the member cannot read every branch: no merged figures (absent), the list still shows', async () => {
   const p = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { caps: ['location.pause'], control: PAUSED(null) })]);
+  assert.equal(textOf(p.view.querySelector('.in-pill')), 'Centro', 'premise: the readable branch is the default');
+  btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
   assert.equal(cls(p.view, 'in-figs').length, 0, '🔴 no figure without a source for every branch');
-  assert.equal(p.stats().length, 0, 'no read');
+  assert.equal(p.stats().filter((r) => r.query.restaurantIds).length, 0, 'no merged read');
   assert.equal(cls(p.view, 'in-row').length, 1, 'the pause row');
 });
 test('the figures cannot be read: no number is invented — the three slots keep their labels, the values read «—»', async () => {
@@ -345,4 +353,104 @@ test('S3 equivalence (REAL save + REAL recorder at 5f 8e94f0aa8): pending_count 
 });
 test('S3 equivalence — facets NOT yet exercised (the seeds / harness cannot produce them here): each needs its real save before it counts as proven', { todo: 'additions, removals, S2 attachments, the extras-order structure line, photos, S3 choices, S4 sections; and a section move that ALSO changes the subsection (no seed has two subsectioned sections)' }, () => {
   assert.fail('not exercised');
+});
+
+// ═══ Codex backfill FULL HIGH (advisor 11-15) on 1da090e00..f905f5171 — REVISE: the cells (RED at 84e949b18), the real stats chain ═══
+const ABC = () => [branch('r_a', 'Centro'), branch('r_b', 'Los Próceres'), branch('r_c', 'El Trapiche')];
+test('N2a a removed branch never stays in a cached «Todas»: the fresh list (A,B) lands while unsaved work defers the reload (the shell\'s applyDeferred repaint) ⇒ a NEW merged read for A,B', async () => {
+  const store = new Map([['sherpa.portal.branches.uA', JSON.stringify({ brands: [{ brand_id: 'marca_v', name: 'Pizzería Del Valle' }], branches: ABC(), membership_writes_enabled: true })]]);
+  let release; const fresh = new Promise((r) => { release = r; });
+  const p = await page(() => ABC().slice(0, 2), { store, hold: { getMyBranches: fresh }, writes: true });   // W on: the shell's applyDeferred repaints in place
+  btnText(cls(p.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
+  assert.deepEqual(p.stats().at(-1).query.restaurantIds.split(',').sort(), ['r_a', 'r_b', 'r_c'], 'premise: «Todas» over the cached list');
+  p.mods.shell._shellState.dirty.add('test-unsaved');   // the reload waits for unsaved work: the fresh list repaints the views in place
+  try {
+    release(); await settle(40);
+    assert.equal(p.reloads(), 0, 'premise: no page reload (deferred)');
+    assert.deepEqual(p.stats().at(-1).query.restaurantIds.split(',').sort(), ['r_a', 'r_b'], 'N2a: the fresh scope (C removed) is read anew — never the cached A,B,C total');
+  } finally {
+    p.mods.shell._shellState.dirty.delete('test-unsaved');   // the shell's wait-to-reload interval then fires once and stops (no hang)
+    await new Promise((r) => setTimeout(r, 1100));
+  }
+});
+test('N2b after Honduras midnight yesterday\'s figures never show under today: the new day starts with empty slots and its own read', async () => {
+  globalThis.__inicioNow = NOW;
+  try {
+    const p = await page([branch('r_a', 'Centro')]);
+    assert.ok(cls(p.view, 'in-fn').some((n) => !has(n, 'wait') && textOf(n).startsWith('L ')), 'premise: today\'s figures');
+    globalThis.__inicioNow = T.dayStartMs('2026-11-13') + 60e3;   // 00:01 HN, the next day
+    let release; p.hold.getSalesStats = new Promise((r) => { release = r; });
+    p.mods.shell.goto('suc'); await settle(5); p.mods.shell.goto('inicio'); await settle(20);
+    assert.ok(cls(p.view, 'in-fn').every((n) => has(n, 'wait')), 'N2b: the new day\'s slots wait (no yesterday under today)');
+    release(); await settle(30);
+    assert.equal(p.stats().at(-1).query.from, '2026-11-13', 'its own read');
+  } finally { delete globalThis.__inicioNow; }
+});
+test('N3 an account change while the read is in flight: the stale answer is never applied nor cached — the new context reads its own', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const p = await page([branch('r_a', 'Centro')], { hold: { getSalesStats: held } });
+  assert.equal(p.stats().length, 1, 'premise: the first read is in flight');
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uA' } }));
+  document.dispatchEvent(new CustomEvent('portal:signed-in'));
+  await settle(40);
+  p.mods.shell.goto('inicio'); await settle(20);   // the new context opens the home while the stale read is still in flight
+  release(); await settle(40);
+  assert.equal(p.stats().length, 2, 'N3: the new context read its own figures (the stale read neither blocked nor filled it)');
+  p.mods.shell.goto('suc'); await settle(5); p.mods.shell.goto('inicio'); await settle(20);
+  assert.equal(p.stats().length, 2, 'N3: and the stale answer was never cached as the new context\'s (no third read needed, none sent)');
+});
+test('N5 a day the roll-up never computed is UNAVAILABLE («—»), never «L 0» / «0»; a COMPUTED day with no sales is the fact «L 0» — the REAL core', async () => {
+  const serve = await statsWorld();
+  const miss = await serve({ restaurantId: 'r_a', ...IL.statsQuery('2026-10-08') }, 'Bearer TK-test');
+  assert.ok(miss.body.missing_days.includes('2026-10-08') && miss.body.kpis.sales_cents === 0, 'premise: the real core answers zeros + the day missing');
+  assert.deepEqual(IL.figures(miss.body, '2026-10-08'), IL.NO_FIGURES, 'N5: unavailable');
+  const zero = await serve({ restaurantId: 'r_b', ...IL.statsQuery('2026-11-10') }, 'Bearer TK-test');
+  assert.deepEqual([zero.body.missing_days, IL.figures(zero.body, '2026-11-10').sales.value, IL.figures(zero.body, '2026-11-10').orders.value], [[], 'L 0', '0'], 'a computed empty day is the fact');
+});
+test('N6 «Todo en orden» only over KNOWN results: pending_count absent or a control «unknown» ⇒ no claim; «Todas» all known ⇒ the sentence', async () => {
+  const a = await page([branch('r_a', 'Centro')]);
+  assert.equal(a.view.querySelector('.in-ok'), null, 'N6: pending_count unknown ⇒ no claim');
+  const b = await page([branch('r_a', 'Centro', { pending_count: 0, control: { state: 'unknown' } })]);
+  assert.equal(b.view.querySelector('.in-ok'), null, 'N6: control unknown ⇒ no claim');
+  const c = await page([branch('r_a', 'Centro', { pending_count: 0 }), branch('r_b', 'Los Próceres', { pending_count: 0 })]);
+  btnText(cls(c.view, 'in-menu')[0], 'Todas las sucursales').click(); await settle(30);
+  const ok = c.view.querySelector('.in-ok');
+  assert.ok(ok && textOf(ok).includes('No hay nada pendiente en tus sucursales.'), 'N6: «Todas», every result known ⇒ the sentence');
+});
+// a REAL pending count: one real save at 5f S3 (8e94f0aa8), the count by the real recorder
+async function realPending() {
+  const fq = refTree(S3_REF); const H = fq('./test/_s2core-harness'); const PS = fq('./catalog/pending-summary');
+  const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {};
+  try {
+    const wd = H.world('la_musa');
+    const r = await wd.save((d) => { const it = d.items.find((i) => i.display && i.display.variantOf == null); it.price += 7; it.display.price = it.price; });
+    assert.equal(r.status, 200, 'premise: the real save');
+    const n = await PS.readPendingCount(wd.fs, 'la_musa');
+    assert.ok(Number.isInteger(n) && n > 0, 'premise: a real count');
+    return n;
+  } finally { console.log = l; console.warn = w; }
+}
+test('N7 «Revisar» opens THAT branch\'s menu: its own editor ⇒ Productos; another branch ⇒ the guarded select + a one-shot landing; refused ⇒ nothing', async () => {
+  const n = await realPending();
+  const own = await page([branch('r_a', 'Centro', { pending_count: n }), branch('r_b', 'Los Próceres')]);
+  btnText(own.view, 'Revisar').click(); await settle(10);
+  assert.ok(!has(own.byId.get('viewmenu'), 'hidden'), 'N7: the row\'s own branch (the editor\'s) ⇒ Productos');
+  const other = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { pending_count: n })]);
+  btnText(cls(other.view, 'in-menu')[0], 'Los Próceres').click(); await settle(20);
+  btnText(other.view, 'Revisar').click(); await settle(10);
+  const read = (m, k) => (m.has(k) ? JSON.parse(m.get(k)) : null);
+  assert.deepEqual([(read(other.sess, 'sherpa.portal.sel.uA') || {}).scope, read(other.sess, 'sherpa.portal.land.uA'), other.reloads()], ['r_b', 'menu', 1], 'N7: Los Próceres selected through the guarded reload, landing on Productos');
+  const blocked = await page([branch('r_a', 'Centro'), branch('r_b', 'Los Próceres', { pending_count: n })]);
+  btnText(cls(blocked.view, 'in-menu')[0], 'Los Próceres').click(); await settle(20);
+  blocked.mods.shell._shellState.dirty.add('test-unsaved');   // canLeave refuses (unsaved edits)
+  btnText(blocked.view, 'Revisar').click(); await settle(10);
+  assert.deepEqual([blocked.sess.has('sherpa.portal.land.uA'), blocked.reloads()], [false, 0], 'N7: refused ⇒ no landing marker, no reload');
+});
+test('N7b the landing marker is consumed EXACTLY ONCE: the next page opens on Productos, the one after on Inicio', async () => {
+  const store = new Map([['sherpa.portal.land.uA', JSON.stringify('menu')]]);
+  const first = await page([branch('r_a', 'Centro')], { store });
+  assert.ok(!has(first.byId.get('viewmenu'), 'hidden') && has(first.view, 'hidden'), 'N7b: the marked page lands on Productos');
+  assert.equal(store.has('sherpa.portal.land.uA'), false, 'N7b: consumed');
+  const second = await page([branch('r_a', 'Centro')], { store });
+  assert.ok(!has(second.view, 'hidden'), 'N7b: the next page lands on Inicio again');
 });

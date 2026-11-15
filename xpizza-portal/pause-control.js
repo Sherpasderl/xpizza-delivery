@@ -2,7 +2,7 @@
 // pausas.js (PORTAL-UI 1a S3), now on each branch's page (§2.2) — a branch's action («Pausar sucursal» / «Reanudar pedidos»), the
 // #pausemodal confirm (Motivo + Hasta) and send → setBranchPause → the handheld/CLI pause writer, unmodified. The page that shows it
 // passes three hooks: the branches it may act on (candidates), a repaint, and where a failure box goes (showError).
-import { setBranchPause } from './api.js';
+import { setBranchPause, getMyBranches } from './api.js';
 import * as L from './branch-logic.js';
 import { $, el, button, errBox, OFFLINE } from './ops-dom.js';
 
@@ -17,7 +17,7 @@ export function pauseLanding(sel, opts = {}) {
 export function pauseControl(ctx, hooks) {
   const { candidates, repaint, showError } = hooks;
   const clearError = typeof hooks.clearError === 'function' ? hooks.clearError : () => {};
-  const V = { modal: null, busy: new Set() };
+  const V = { modal: null, busy: new Set(), reads: new Map() };
   const scrim = $('pausescrim');
   const modal = $('pausemodal');
 
@@ -78,31 +78,54 @@ export function pauseControl(ctx, hooks) {
   scrim.addEventListener('click', (e) => { if (e.target === scrim) closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && V.modal) closeModal(); });
 
+  // a control the page can paint as a FACT: an object whose state is a known one — never «unknown»
+  const definite = (c) => !!c && typeof c === 'object' && typeof c.state === 'string' && c.state !== '' && c.state !== 'unknown';
   async function send(b, body, okText) {
     if (V.busy.has(b.rid)) return;
     const gen = ctx.gen();
     V.busy.add(b.rid);
     ctx.setBusy(`pause-${b.rid}`, true);
-    clearError();
+    clearError(b.rid);
     repaint();
     // codex 1a r1 P1-1: released on EVERY settlement; an obsolete one (auth generation bumped) only skips the UI updates
+    let out = null, err = null;
     try {
-      const out = await setBranchPause({ rid: b.rid, ...body, token: ctx.token });
-      V.busy.delete(b.rid);
-      ctx.setBusy(`pause-${b.rid}`, false);
-      if (!ctx.alive(gen)) return;
-      if (out && out.control) ctx.patchBranch(b.rid, { control: out.control });
-      ctx.toast(okText);
+      out = await setBranchPause({ rid: b.rid, ...body, token: ctx.token });
     } catch (e) {
-      V.busy.delete(b.rid);
-      ctx.setBusy(`pause-${b.rid}`, false);
-      if (!ctx.alive(gen)) return;
-      repaint();
-      const box = (e && e.status === 409)
-        ? errBox('Otra persona cambió el estado.', 'Recargá para ver cómo quedó.', () => window.location.reload())
-        : (e && e.kind === 'Unavailable') ? errBox(OFFLINE[0], OFFLINE[1]) : errBox('No se pudo cambiar el estado', 'Volvé a intentar; si sigue igual, escribinos por WhatsApp.');
-      showError(box);
+      err = e;   // judged below: an ambiguous transport failure, or a definite refusal (a panel, never a toast)
     }
+    ctx.setBusy(`pause-${b.rid}`, false);
+    if (!ctx.alive(gen)) { V.busy.delete(b.rid); return; }
+    // Codex backfill P1 (advisor 11-15, rule 17's spirit): an AMBIGUOUS outcome — the reply lost in transport (status 0), a malformed 200,
+    // or the server's own control.state «unknown» — is UNKNOWN: no success toast, the neutral box, the actions kept disabled until the
+    // AUTHORITATIVE control state is read back
+    if (err ? (err.kind === 'Unavailable' && !err.status) : !(out && out.ok === true && definite(out.control))) { unconfirmed(b, gen); return; }
+    V.busy.delete(b.rid);
+    if (!err) { ctx.patchBranch(b.rid, { control: out.control }); ctx.toast(okText); return; }
+    repaint();
+    const box = (err.status === 409)
+      ? errBox('Otra persona cambió el estado.', 'Recargá para ver cómo quedó.', () => window.location.reload())
+      : (err.kind === 'Unavailable') ? errBox(OFFLINE[0], OFFLINE[1]) : errBox('No se pudo cambiar el estado', 'Volvé a intentar; si sigue igual, escribinos por WhatsApp.');
+    showError(box, b.rid);   // Codex backfill P2: the box belongs to the branch it was SUBMITTED for
+  }
+  // the authoritative re-read (getMyBranches), the newest per branch wins: the state AS READ, then the actions; a failed / unknown read
+  // leaves the box and keeps the actions disabled (advisor 11-15). Copy: two approved strings (review.js + the Pausar 409 body), (a).
+  async function unconfirmed(b, gen) {
+    showError(errBox('No pudimos confirmar el resultado', 'Recargá para ver cómo quedó.'), b.rid);
+    const seq = (V.reads.get(b.rid) || 0) + 1;
+    V.reads.set(b.rid, seq);
+    let e1 = null;
+    try {
+      e1 = await getMyBranches({ token: ctx.token });
+    } catch (_) {
+      e1 = null;   // the re-read failed: still unknown
+    }
+    if (!ctx.alive(gen) || V.reads.get(b.rid) !== seq) return;   // a newer re-read (or another context) decides
+    const row = e1 && Array.isArray(e1.branches) ? e1.branches.find((x) => x && x.rid === b.rid) : null;
+    if (!row || !definite(row.control)) { repaint(); return; }   // still unknown: the box stays, the actions stay disabled
+    V.busy.delete(b.rid);
+    clearError(b.rid);
+    ctx.patchBranch(b.rid, { control: row.control });
   }
 
   // INICIO (PLAN-portal-inicio-r0 ann 3): «Reanudar» acts in place from the home — the SAME request, toast and failure boxes as the

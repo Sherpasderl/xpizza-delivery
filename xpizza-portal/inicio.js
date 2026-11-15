@@ -23,14 +23,16 @@ const MENU_D = 'M4 6h16M4 12h16M4 18h10';   // the menu row's icon (i-menu)
 const S = { ctx: null, host: null, pc: null, rid: null, menu: false, err: null, cache: new Map(), gen: 0, shown: false };
 
 const branches = () => (S.ctx ? L.scopeBranches(S.ctx.sel) : []);
-const ALL = 'all';   // «Todas las sucursales» (ann 2: the default with several branches; S2 merges its figures on the server)
+const ALL = 'all';   // «Todas las sucursales» (S2 merges its figures on the server) — offered, never the default (Codex backfill item 4)
 const MULTI_MAX = 20;   // the server's cap for one merged read (stats-api MULTI_MAX)
 function pillRid() {
   const bs = branches();
   if (!bs.length) return null;
   if (bs.length === 1) return bs[0].rid;
   if (S.rid === ALL || (S.rid && bs.some((b) => b.rid === S.rid))) return S.rid;
-  return ALL;
+  // Codex backfill item 4 (owner 11-13, PLAN-portal-inicio-r0 DECISIONS: per-branch first): ONE authorized branch by default
+  const first = bs.find((b) => L.can(b, 'stats.read'));
+  return (first || bs[0]).rid;
 }
 // the branches a figure read covers: one, or every branch in scope for «Todas» — ONLY when the member may read each of them
 function statRids(scope) {
@@ -40,27 +42,35 @@ function statRids(scope) {
   return pick.map((b) => b.rid);
 }
 
+// Codex backfill item 2: a figure is keyed by the FULL scope — the account, the authorized branch set it covers and the Honduras date —
+// so a removed branch never stays in a cached «Todas», another account never reads this one's, and yesterday's never shows under today
+const cacheKey = (rid, rids, today) => JSON.stringify([S.ctx && S.ctx.uid, rid, rids, today]);
+const keyNow = (rid) => { const rids = statRids(rid); return rids ? cacheKey(rid, rids, todayHN(Date.now())) : null; };
 async function load(rid, { force = false } = {}) {
   const rids = statRids(rid);
   if (!rids) return;
-  const hit = S.cache.get(rid);
   const now = Date.now();
-  if (hit && (hit.state === 'loading' || (!force && now - hit.at < FRESH_MS))) return;
-  S.cache.set(rid, { state: 'loading', figs: hit ? hit.figs : null, at: hit ? hit.at : 0 });
-  const gen = ++S.gen;
   const today = todayHN(now);
+  const key = cacheKey(rid, rids, today);
+  const hit = S.cache.get(key);
+  const g0 = S.ctx.gen();   // Codex backfill item 3: the context this read STARTED in — checked before the dispatch and before the apply
+  // a read in flight from THIS context is awaited; one from an older context (an account / selection change) never blocks the new read
+  if (hit && ((hit.state === 'loading' && hit.g0 === g0) || (hit.state === 'ok' && !force && now - hit.at < FRESH_MS))) return;
+  S.cache.set(key, { state: 'loading', figs: hit ? hit.figs : null, at: hit ? hit.at : 0, g0 });
+  const gen = ++S.gen;
   let figs;
   try {
-    const assertLive = () => { if (!S.ctx.alive(S.ctx.gen())) throw Object.assign(new Error('obsolete'), { kind: 'obsolete' }); };
+    const assertLive = () => { if (!S.ctx.alive(g0)) throw Object.assign(new Error('obsolete'), { kind: 'obsolete' }); };
     const body = rid === ALL
       ? await getSalesStatsMulti({ rids, ...IL.statsQuery(today), token: S.ctx.token, assertLive })
       : await getSalesStats({ rid, ...IL.statsQuery(today), token: S.ctx.token, assertLive });
     figs = IL.figures(body, today);
   } catch (e) {
-    if (e && e.kind === 'obsolete') return;
+    if (e && e.kind === 'obsolete') { if (S.cache.get(key) && S.cache.get(key).g0 === g0) S.cache.delete(key); return; }
     figs = hit && hit.figs ? hit.figs : IL.NO_FIGURES;   // a failed refresh keeps what was shown; a first failure shows «—»
   }
-  S.cache.set(rid, { state: 'ok', figs, at: now });
+  if (!S.ctx.alive(g0)) { if (S.cache.get(key) && S.cache.get(key).g0 === g0) S.cache.delete(key); return; }   // the context changed in flight: never applied, never cached
+  S.cache.set(key, { state: 'ok', figs, at: now });
   if (gen === S.gen || S.rid === rid) render();
 }
 
@@ -91,8 +101,9 @@ function pill() {
 }
 
 function figuresBlock(rid) {
-  if (!statRids(rid)) return null;   // no source for this member on this scope: the block is absent
-  const hit = S.cache.get(rid);
+  const key = keyNow(rid);
+  if (!key) return null;   // no source for this member on this scope: the block is absent
+  const hit = S.cache.get(key);
   const f = hit && hit.figs ? hit.figs : null;
   const box = el('div', 'in-figs');
   for (const [label, key] of [['Ventas', 'sales'], ['Pedidos', 'orders'], ['Ticket promedio', 'ticket']]) {
@@ -116,10 +127,15 @@ function reviewCol(rid) {
   col.append(sect);
   if (S.err) { S.err.classList.add('in-err'); col.append(S.err); }
   if (!rows.length) {
+    // Codex backfill item 6: the claim only over KNOWN results (every in-scope branch's control readable and its pending_count a number)
+    // and only as wide as the scope: «Todas» keeps the sentence; ONE branch shows the title alone (interim (b), advisor 11-15 — the owner
+    // decides «No hay nada pendiente en {Sucursal}.»). Unknown ⇒ no claim at all.
+    if (!IL.allKnown(branches(), rid === ALL ? null : rid)) return col;
     const ok = el('div', 'in-ok');
     const ic = el('span', 'in-okico'); ic.append(svg(OK_D));
     const t = el('div');
-    t.append(el('b', null, 'Todo en orden'), el('span', null, 'No hay nada pendiente en tus sucursales.'));
+    t.append(el('b', null, 'Todo en orden'));
+    if (rid === ALL) t.append(el('span', null, 'No hay nada pendiente en tus sucursales.'));
     ok.append(ic, t);
     col.append(ok);
     return col;
@@ -133,7 +149,7 @@ function reviewCol(rid) {
     if (r.kind === 'menu') {
       const go = el('button', 'in-act', 'Revisar');
       go.type = 'button';
-      go.addEventListener('click', () => S.ctx.goto('menu'));
+      go.addEventListener('click', () => openMenuOf(r.rid));   // Codex backfill item 7: THAT branch's menu, through the guarded flow
       row.append(go);
     }
     if (r.resume) {
@@ -147,6 +163,14 @@ function reviewCol(rid) {
     col.append(row);
   }
   return col;
+}
+
+// the row's branch's menu: its own editor already open ⇒ Productos; another branch ⇒ the shell's guarded select (canLeave → reload) with a
+// one-shot landing on Productos — a refused select changes nothing
+function openMenuOf(rid) {
+  if (!S.ctx || !S.ctx.sel) return;
+  if (rid === S.ctx.editorRid) { S.ctx.goto('menu'); return; }
+  S.ctx.select({ brand_id: S.ctx.sel.brand_id, scope: rid, land: 'menu' });
 }
 
 function quickCol() {
@@ -175,6 +199,9 @@ function render() {
   two.append(reviewCol(rid), quickCol());
   page.append(two);
   S.host.replaceChildren(page);
+  // the scope changed under the page (a fresh branch list, a new day): its own key has no entry yet ⇒ read it (the slots wait, no reflow)
+  const k = keyNow(rid);
+  if (S.shown && k && !S.cache.has(k)) load(rid);
 }
 
 function show() {
