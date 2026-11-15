@@ -399,17 +399,20 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
   }
   ok('S2 (r6.2 §3): absence is never cached; read bounds +2 (absent) / +1 (cold, present) / +0 (memoized) / +2 then memoized');
 
-  // ── 38. r5 §2 defence in depth: a DISCLOSED node is never served by v1 — even unstamped (a config with disclosure_v 1 + ack but no
-  //        cut-over, which the real writer never produces, seeded raw) ──
+  // ── 38. r5 §2 + Codex r1 P1: the real writer can store disclosure 1 ONLY with post_cutover — so v1's disclosure skip is defence in
+  //        depth behind the stamp. Every config the writer can read (the real enable, and raw ones it never produces: v1 with no
+  //        cut-over, a malformed cut-over) ⇒ a disclosure-1 request is either stored 0 or stamped; v1 serves neither a disclosed row ──
   {
-    const db = fakeDb(SEED);
-    db.set(RC.PATH, { disclosure_v: 1, policy_ack: ACK });
-    await ratedAt(db, A, 'XPZ-ds', 10 * H, { comment: 'Con nombre', disclosure: 1 });
-    await ratedAt(db, B, 'XPZ-an', 11 * H, { comment: 'Sin nombre' });
-    assert.deepStrictEqual([db.get('ratings_v2/XPZ-ds/disclosure'), db.get('ratings_v2/XPZ-ds/post_cutover')], [1, undefined], 'premise: disclosed and unstamped');
-    assert.deepStrictEqual(await texts(handler(db)), ['Sin nombre'], 'a disclosed rating is never served by v1 (even unstamped)');
+    for (const [label, cfg] of [['the real enable', null], ['v1 + ack, no cut-over (raw)', { disclosure_v: 1, policy_ack: ACK }], ['a malformed cut-over (raw)', { disclosure_v: 1, policy_ack: ACK, disclosure_cutover_at: 'x' }]]) {
+      const db = fakeDb(SEED);
+      if (cfg) db.set(RC.PATH, cfg); else await enable(db);
+      await ratedAt(db, A, 'XPZ-ds', C + H, { comment: 'Pidió nombre', disclosure: 1 });
+      const nd = { d: db.get('ratings_v2/XPZ-ds/disclosure'), p: db.get('ratings_v2/XPZ-ds/post_cutover') };
+      assert.ok(nd.d === 0 || nd.p === true, `disclosed ⇒ stamped (${label}): ${JSON.stringify(nd)}`);
+      if (nd.d === 1) assert.deepStrictEqual(await texts(handler(db)), [], `a disclosed rating is never served by v1 (${label})`);
+    }
   }
-  ok('S2 (r5 §2): a disclosed rating never reaches v1, even without the post_cutover stamp');
+  ok('S2 (r5 §2): the real writer never stores a disclosed rating without post_cutover; a disclosed rating never reaches v1');
 
   FINISHED = true;
   console.log(`merchant-comments: OK (${n})`);

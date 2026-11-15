@@ -413,8 +413,8 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
       assert.strictEqual(V2.parseRequest(bad).ok, false, `🔴 accepted ${JSON.stringify(bad)}`);
     const run = async (setup, body) => { const db = fakeDb(); await place(db, A, 'XPZ-d1'); await fulfil(db, 'XPZ-d1'); await setup(db); const r = await rate(db, A, { order_id: 'XPZ-d1', store: 5, ...body }); assert.strictEqual(r.httpStatus, 200); return node(db, 'XPZ-d1').disclosure; };
     assert.strictEqual(await run(async () => {}, { disclosure: 1 }), 0, 'disclosure stamp dark: disclosure_v absent ⇒ not stamped');
-    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1 }), { disclosure: 1 }), 0, 'disclosure stamp: disclosure_v 1 WITHOUT a policy_ack ⇒ not stamped');
-    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1, policy_ack: { at: 0, by: '', policy_url: 'u' } }), { disclosure: 1 }), 0, 'disclosure stamp: a malformed ack (at 0, by \'\') ⇒ not stamped');
+    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1, disclosure_cutover_at: 1500 }), { disclosure: 1 }), 0, 'disclosure stamp: disclosure_v 1 WITHOUT a policy_ack ⇒ not stamped');
+    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1, policy_ack: { at: 0, by: '', policy_url: 'u' }, disclosure_cutover_at: 1500 }), { disclosure: 1 }), 0, 'disclosure stamp: a malformed ack (at 0, by \'\') ⇒ not stamped');
     assert.strictEqual(await run(async (db) => enable(db, 1500), { disclosure: 1 }), 1, 'disclosure stamp: the real writer\'s enable + a request with disclosure 1 ⇒ stamped 1');
     assert.strictEqual(await run(async (db) => enable(db, 1500), {}), 0, 'disclosure stamp: no request field ⇒ 0 even when enabled');
   }
@@ -511,6 +511,22 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     }
   }
   ok('r6.2 §1: an unreadable config or a malformed cut-over ⇒ the rating is written and stamped post_cutover (disclosure 0) — at rateOrder AND the legacy thumb');
+
+  // ── 26b. Codex r1 P1: a MALFORMED cut-over (or disclosure_v 1 with NO cut-over — raw nodes the writer never produces) never grants
+  //         disclosure: a first request WITH disclosure 1 stores 0, at rateOrder AND the legacy thumb; the write is kept ──
+  {
+    for (const [label, cfg, post] of [['"x"', { disclosure_cutover_at: 'x' }, true], ['0', { disclosure_cutover_at: 0 }, true], ['-1', { disclosure_cutover_at: -1 }, true],
+      ['1.5', { disclosure_cutover_at: 1.5 }, true], ['absent', {}, undefined]]) {
+      const g = fakeDb(); g.set('platform_config/ratings', { disclosure_v: 1, policy_ack: ACK, ...cfg });
+      await place(g, A, 'XPZ-q1'); await fulfil(g, 'XPZ-q1', 'delivered', 1000);
+      const r = await rate(g, A, { order_id: 'XPZ-q1', store: 5, disclosure: 1 }, { now: 2000 });
+      assert.deepStrictEqual([r.httpStatus, stampOf(g, 'XPZ-q1')], [200, { disclosure: 0, post_cutover: post }], `a ${label} cutover with disclosure_v 1 + a valid ack: rateOrder WITH disclosure 1 ⇒ stored 0 (post_cutover ${post})`);
+      await place(g, A, 'XPZ-q2'); g.set('orders/XPZ-q2/status', 'delivered');
+      const t = await rate(g, A, { order_id: 'XPZ-q2', thumb: 'up' }, { now: 2000 });
+      assert.deepStrictEqual([t.httpStatus, stampOf(g, 'XPZ-q2')], [200, { disclosure: 0, post_cutover: post }], `a ${label} cutover: the legacy thumb ⇒ written, disclosure 0 (post_cutover ${post})`);
+    }
+  }
+  ok('Codex r1 P1: disclosure needs a VALID cut-over too — malformed or absent ⇒ stored 0 (the write kept; malformed still stamped post_cutover)');
 
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);

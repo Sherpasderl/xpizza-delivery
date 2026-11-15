@@ -20,7 +20,8 @@ const validCutover = (v) => Number.isSafeInteger(v) && v > 0;
 const validAck = (a) => isObj(a) && Number.isSafeInteger(a.at) && a.at > 0 && nonEmpty(a.by) && nonEmpty(a.policy_url);
 
 // The rating writers' gate, from ONE read of the node (an RTDB transaction cannot read another path):
-//   disclose    ⇔ disclosure_v === 1 AND a well-formed policy_ack (else the request's disclosure is ignored: anonymous, the safe side);
+//   disclose    ⇔ disclosure_v === 1 AND a well-formed policy_ack AND a VALID cut-over (Codex r1 P1: a malformed or missing cut-over —
+//                 raw states the writer never produces — never grants it); else the request's disclosure is ignored (anonymous);
 //   postCutover ⇔ a cut-over EXISTS at this read — no clock is trusted (r6.2 §1). An unreadable config or a malformed cut-over ⇒ the
 //                 rating is still written, stamped post_cutover (never served as anonymous) and undisclosed (public_stats only).
 async function readWriteGate(db) {
@@ -29,7 +30,7 @@ async function readWriteGate(db) {
   if (cfg === null || cfg === undefined) return { disclose: false, postCutover: false };
   if (!isObj(cfg)) return { disclose: false, postCutover: true };
   const cut = cfg.disclosure_cutover_at;
-  return { disclose: cfg.disclosure_v === 1 && validAck(cfg.policy_ack), postCutover: cut !== undefined && cut !== null };
+  return { disclose: cfg.disclosure_v === 1 && validAck(cfg.policy_ack) && validCutover(cut), postCutover: cut !== undefined && cut !== null };
 }
 
 // The owner's write as ONE transaction updater. payload = the desired node (a whole-node replacement: an omitted cut-over is carried
