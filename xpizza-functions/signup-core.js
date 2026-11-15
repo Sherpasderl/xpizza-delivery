@@ -193,10 +193,25 @@ async function linkIdentity(db, { kind, key, uid, now }) {
   return { link: outcome };
 }
 
+// ── the STRUCTURED name (Calificaciones v2, PLAN-3a-merchant-reviews-v2 r3 §3): given_name + family_name in user_private/{uid}, written
+// ONLY inside the fenced transactions below (completeProfile, setMyName). Deletion replaces user_private/{uid} with { deleted_at } in
+// its one atomic update, so a name never outlives the account; a write racing it re-runs on the tombstone and aborts. Both or neither,
+// each 1..NAME_MAX after trim. Never derived from user_profiles/{uid}/name (that field is untouched here).
+const NAME_MAX = 40;
+// → { ok, value: { given_name, family_name } | null } (null = no name sent) | { ok: false }
+function nameFields(givenName, familyName) {
+  if (givenName === undefined && familyName === undefined) return { ok: true, value: null };
+  const g = typeof givenName === 'string' ? givenName.trim() : ''; const f = typeof familyName === 'string' ? familyName.trim() : '';
+  if (!g || !f || g.length > NAME_MAX || f.length > NAME_MAX) return { ok: false };
+  return { ok: true, value: { given_name: g, family_name: f } };
+}
+
 // ── completeProfile: ONE transaction on user_private/{uid}; aborts on the tombstone ──
 // the terms + promos versions come from restaurants/{rid}/legal (server config), the timestamps from the server clock.
-async function completeProfile(db, { uid, rid, email, acceptTerms, promos, now }) {
+async function completeProfile(db, { uid, rid, email, acceptTerms, promos, now, givenName, familyName }) {
   if (acceptTerms !== true || typeof promos !== 'boolean') return { ok: false, reason: 'bad_request' };
+  const nm = nameFields(givenName, familyName);
+  if (!nm.ok) return { ok: false, reason: 'bad_request' };
   const em = normEmail(email);
   if (!validEmail(em)) return { ok: false, reason: 'bad_email' };
   const legal = await legalFor(db, rid);
@@ -211,7 +226,19 @@ async function completeProfile(db, { uid, rid, email, acceptTerms, promos, now }
       promos: { value: promos, copy_version: legal.promos_copy_version, at: now } };
     // email_source: kept as the provider's when the customer kept the provider's email; anything typed is 'typed'
     const source = cur && cur.email === em && typeof cur.email_source === 'string' ? cur.email_source : 'typed';
-    return { ...(cur || {}), email: em, email_verified: verified, email_source: source, consent, last_active: now };
+    return { ...(cur || {}), email: em, email_verified: verified, email_source: source, consent, last_active: now, ...(nm.value || {}) };
+  });
+  return r.committed ? { ok: true } : { ok: false, reason: reason || 'aborted' };
+}
+// ── setMyName: a later edit of the structured name — ONE transaction on user_private/{uid}; aborts on the tombstone ──
+async function setMyName(db, { uid, givenName, familyName }) {
+  const nm = nameFields(givenName, familyName);
+  if (!nm.ok || !nm.value) return { ok: false, reason: 'bad_request' };
+  let reason = null;
+  const r = await db.ref(`user_private/${uid}`).transaction((cur) => {
+    if (cur && cur.deleted_at != null) { reason = 'deleted'; return; }
+    reason = null;
+    return { ...(cur || {}), ...nm.value };
   });
   return r.committed ? { ok: true } : { ok: false, reason: reason || 'aborted' };
 }
@@ -364,6 +391,6 @@ async function hasSignupData(db, uid) {
   return !!g;
 }
 
-module.exports = { SIGNUP, PLATFORM_SCOPE, isScope, loginTouch, sweepClaim, isTombstoned, completionState, profileOf, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
+module.exports = { SIGNUP, PLATFORM_SCOPE, NAME_MAX, setMyName, isScope, loginTouch, sweepClaim, isTombstoned, completionState, profileOf, sha256, audiencesFor, legalFor, signupConfig, verifyGoogleIdToken, startGoogle, consumeChallenge, isLive,
   touchActivity, googleSignIn, bindTicket, redeemTicket, linkIdentity, completeProfile, noteProviderEmail, verifiedEmailOf, setPromos, tombstone, removeLinks, pruneExpired, hasSignupData,
   normEmail, validEmail };

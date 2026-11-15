@@ -7,7 +7,9 @@
 //
 //   googleStart      POST {restaurant_id, session_id}              → {ok, nonce} | {ok:false, reason}
 //   googleSignIn     POST {restaurant_id, session_id, id_token}    → {ok, linked:true, token, name} | {ok, linked:false, ticket, email, name}
-//   completeProfile  POST {restaurant_id, email, accept_terms, promos}  (customer ID token) → {ok} | {ok:false, reason}
+//   completeProfile  POST {restaurant_id, email, accept_terms, promos, given_name?, family_name?}  (customer ID token) → {ok} | {ok:false, reason}
+//   setMyName        POST {given_name, family_name[, context:'platform']}  (customer ID token) → {ok} | {ok:false, reason}
+//                    reviews v2 (PLAN-3a-merchant-reviews-v2 r3 §3): the structured name, written only in the fenced user_private txn
 //   setPromos        POST {restaurant_id, value}                         (customer ID token) → {ok} | {ok:false, reason}
 //                    platform: POST {context:'platform', value}          (customer ID token) → {ok, value} (the stored value) | {ok:false, reason}
 //   getSignupConfig  GET  ?restaurant_id=                           → {terms_url, privacy_url, legal_ready, google_enabled, email_login_enabled}
@@ -104,10 +106,24 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
       // S3a ADDITIVE `name` (1..80, trimmed): written server-side so the app needs no Database SDK; the forms never send it
       const nm = b.name === undefined ? undefined : (typeof b.name === 'string' ? b.name.trim() : '');
       if (nm !== undefined && !(nm.length >= 1 && nm.length <= 80)) return res.status(400).json({ ok: false, reason: 'bad_request' });
-      const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now() });
+      const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now(), givenName: b.given_name, familyName: b.family_name });
       if (r.ok && nm !== undefined) await db.ref(`user_profiles/${uid}/name`).set(nm);
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('completeProfile', e && e.message); return res.status(500).json({ ok: false }); }
+  };
+
+  // reviews v2 (r3 §3): a later edit of the structured name. The name is account-level (no restaurant scope); the app's
+  // context:'platform' is tolerated, nothing else beside the two fields.
+  const setMyName = async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}; const db = getDatabase();
+      if (Object.keys(b).some((k) => !['given_name', 'family_name', 'context'].includes(k)) || (b.context !== undefined && b.context !== 'platform')) return res.status(400).json({ ok: false, reason: 'bad_request' });
+      if (await limited(db, 'profile', req, res)) return;   // the profile family's per-IP limit, as completeProfile / setPromos
+      const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+      const r = await S.setMyName(db, { uid, givenName: b.given_name, familyName: b.family_name });
+      return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
+    } catch (e) { console.error('setMyName', e && e.message); return res.status(500).json({ ok: false }); }
   };
 
   const setPromos = async (req, res) => {
@@ -134,7 +150,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
     } catch (e) { console.error('getSignupConfig', e && e.message); res.set('Cache-Control', 'no-store'); return res.status(500).json({ ok: false }); }
   };
 
-  return { googleStart, googleSignIn, completeProfile, setPromos, getSignupConfig };
+  return { googleStart, googleSignIn, completeProfile, setMyName, setPromos, getSignupConfig };
 }
 
 // ── hooks called from the existing endpoints ──

@@ -78,7 +78,7 @@ async function served(db, { at, phone, dish = { d1: 1 }, uid = null, status = 'd
   assert.deepStrictEqual(u[`orders/${id}`].dish_qty, dish, 'premise: the intake hunk stamped dish_qty');
   await db.ref().update(u);
   db.set(`orders/${id}/status`, status);
-  if (status === 'delivered' || status === 'completed') await stampRatingFulfilment(db, { orderId: id, status, now: at });
+  if (status === 'delivered' || status === 'completed') await stampRatingFulfilment(db, { orderId: id, status, eventTime: at });
   return id;
 }
 const PRICES = { d1: 9000, d2: 5000, d3: 15000 };

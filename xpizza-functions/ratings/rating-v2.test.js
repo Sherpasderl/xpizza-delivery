@@ -68,7 +68,7 @@ async function place(db, uid, id, { rid = 'x_pizza', items } = {}) {
   if (uid) attachCustomerAttribution(u, id, uid, { now: 1, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: body });
   await db.ref().update(u);
 }
-const fulfil = async (db, id, status = 'delivered', now = 1000) => { db.set(`orders/${id}/status`, status); return stampRatingFulfilment(db, { orderId: id, status, now }); };
+const fulfil = async (db, id, status = 'delivered', now = 1000) => { db.set(`orders/${id}/status`, status); return stampRatingFulfilment(db, { orderId: id, status, eventTime: now }); };
 const rate = (db, uid, body, { now = 2000, resolveContext = async (rid) => usableCtx(rid) } = {}) => rateOrderCore(db, { body, idToken: `tok-${uid}`, now, verifyIdToken, resolveContext });
 const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
 
@@ -233,10 +233,10 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     const db = fakeDb(); await place(db, null, 'XPZ-r'); db.set('orders/XPZ-r/status', 'completed');
     let fail = true;
     const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2/XPZ-r') return r; return { ...r, transaction: async (fn) => { if (fail) { fail = false; throw new Error('injected'); } return r.transaction(fn); } }; } };
-    await assert.rejects(stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1000 }), /injected/, '🔴 a failed stamp PROPAGATES (never swallowed)');
+    await assert.rejects(stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1000 }), /injected/, '🔴 a failed stamp PROPAGATES (never swallowed)');
     assert.strictEqual(db.get('ratings_v2/XPZ-r'), undefined, 'nothing written by the failed attempt');
-    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1100 }), 'stamped', 'the retry stamps');
-    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1200 }), 'kept', 'a further retry is a no-op (set-once)');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1100 }), 'stamped', 'the retry stamps');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1200 }), 'kept', 'a further retry is a no-op (set-once)');
     assert.strictEqual(node(db, 'XPZ-r').fulfilled_at, 1100);
   }
   ok('Codex r1 P2: a failed fulfilment stamp propagates (the trigger retries it); the retry stamps once; further retries are no-ops');
@@ -527,6 +527,39 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     }
   }
   ok('Codex r1 P1: disclosure needs a VALID cut-over too — malformed or absent ⇒ stored 0 (the write kept; malformed still stamped post_cutover)');
+
+  // ── 27. r3 §4: fulfilled_at = the ORDER's own terminal timestamp (delivered_at from the REAL driver writer), else the event time —
+  //        never the trigger's wall clock; clamped ≤ the event time; set once ──
+  {
+    const DC = await import(path.join(FN, '..', 'xpizza-driver', 'driver-complete.js'));
+    const deliverAt = async (db, id, at) => db.ref().update(DC.buildCompleteTaskUpdates({ driverId: 'drv1', taskId: `t-${id}`, task: { type: 'delivery', order_id: id, status: 'accepted' }, allTasks: {}, now: at }));
+    const HN_DAY = (ms) => new Date(ms - 6 * 3600e3).toISOString().slice(0, 10);
+    const D = Date.UTC(2026, 10, 14, 5, 30);   // 23:30 HN on Fri 13 Nov
+    const db = fakeDb(); await place(db, A, 'XPZ-ft1');
+    await deliverAt(db, 'XPZ-ft1', D);
+    assert.strictEqual(await stampRatingFulfilment(db, { orderId: 'XPZ-ft1', status: 'delivered', eventTime: D + 2 * 3600e3 }), 'stamped', 'premise: stamped 2 h late');
+    assert.strictEqual(node(db, 'XPZ-ft1').fulfilled_at, D, 'fulfilment time: an event processed 2 h late across HN midnight ⇒ the order\'s delivered_at');
+    assert.strictEqual(HN_DAY(node(db, 'XPZ-ft1').fulfilled_at), '2026-11-13', 'fulfilment time: the order\'s HN day');
+    assert.ok(db.get(`rating_index/x_pizza/${V2.indexKey(D, 'XPZ-ft1')}`), 'the index key encodes the order\'s own time');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft1', status: 'delivered', eventTime: D + 5 * 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft1').fulfilled_at, D, 'fulfilment time: a retried event ⇒ the same stamp');
+    // no terminal timestamp (a completed pickup: no writer sets completed_at) ⇒ the event time
+    await place(db, A, 'XPZ-ft2'); db.set('orders/XPZ-ft2/status', 'completed');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft2', status: 'completed', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft2').fulfilled_at, D + 3600e3, 'fulfilment time: no completed_at ⇒ the event time');
+    // a device clock AHEAD of the event (delivered_at > event time) ⇒ clamped to the event time; a malformed one ⇒ the event time
+    await place(db, A, 'XPZ-ft3'); await deliverAt(db, 'XPZ-ft3', D + 9 * 3600e3);
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft3', status: 'delivered', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft3').fulfilled_at, D + 3600e3, 'fulfilment time: a delivered_at after the event ⇒ clamped to the event time');
+    await place(db, A, 'XPZ-ft4'); await deliverAt(db, 'XPZ-ft4', D); db.set('orders/XPZ-ft4/delivered_at', 'x');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft4', status: 'delivered', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft4').fulfilled_at, D + 3600e3, 'fulfilment time: a malformed delivered_at ⇒ the event time');
+    // no usable event time ⇒ the trigger fails (and retries); nothing is stamped from a wall clock
+    await place(db, A, 'XPZ-ft5'); await deliverAt(db, 'XPZ-ft5', D);
+    await assert.rejects(stampRatingFulfilment(db, { orderId: 'XPZ-ft5', status: 'delivered', eventTime: NaN }), /event time/, 'fulfilment time: no event time ⇒ a thrown error (retried), never a wall clock');
+    assert.strictEqual(db.get('ratings_v2/XPZ-ft5'), undefined, 'nothing stamped without an event time');
+  }
+  ok('r3 §4: fulfilled_at = the order\'s delivered_at (the real driver writer) clamped ≤ the event time, else the event time; set once; never a wall clock');
 
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);

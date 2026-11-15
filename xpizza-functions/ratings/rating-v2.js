@@ -117,12 +117,12 @@ function withdrawUpdater({ now }, out) {
   };
 }
 // fulfilment stamp: set-if-absent fulfilled_at (members AND guests); creates the node if absent; a deleted node is never touched.
-function fulfilmentUpdater({ restaurantId, now }, out) {
+function fulfilmentUpdater({ restaurantId, fulfilledAt }, out) {
   return (raw) => {
     const cur = normalize(raw);
     if (cur && (cur.state === STATES.DELETED || Number.isFinite(cur.fulfilled_at))) { out.outcome = 'kept'; return raw; }
     out.outcome = 'stamped';
-    return cur ? { ...cur, fulfilled_at: now } : freshNode({ restaurantId, fulfilledAt: now });
+    return cur ? { ...cur, fulfilled_at: fulfilledAt } : freshNode({ restaurantId, fulfilledAt });
   };
 }
 // account deletion: state=deleted (TERMINAL) and the comment + identity REDACTED in place; the node stays as the deletion fence.
@@ -157,6 +157,15 @@ async function readCountable(db, orderId) {
   return countable(node, tomb) ? node : null;
 }
 
+// Calificaciones v2 (PLAN-3a-merchant-reviews-v2 r3 §5): MERCHANT-visible eligibility, stricter than countable — a node read through
+// readCountable (live, owner not tombstoned) is a review only with an owner, a first submission, and something the restaurant can read:
+// stars 1..5, a non-empty comment, or ≥ 1 dish vote. Never: a fulfilment placeholder, delivery-only feedback, a legacy thumb alone,
+// a guest node (no owner_uid).
+const reviewEligible = (node) => !!node && typeof node === 'object' && typeof node.owner_uid === 'string' && node.owner_uid !== ''
+  && Number.isFinite(node.rated_at)
+  && ((Number.isInteger(node.store) && node.store >= 1 && node.store <= 5) || (typeof node.comment === 'string' && node.comment.trim() !== '')
+    || (!!node.dishes && typeof node.dishes === 'object' && Object.values(node.dishes).some(isThumb)));
+
 // S-A customer read (getMyRating): the WINDOW facts of a node — fulfilled_at + state ONLY, never a payload field — so the C-2 sheet
 // knows whether the order is rateable without the payload leaving through anything but readCountable.
 async function readRatingWindow(db, orderId) {
@@ -176,6 +185,8 @@ function indexKey(fulfilledAt, orderId) {
   if (!Number.isSafeInteger(fulfilledAt) || fulfilledAt < 0 || fulfilledAt > INV_TS || typeof orderId !== 'string' || !ORDER_ID_RE.test(orderId)) return null;
   return `${String(INV_TS - fulfilledAt).padStart(13, '0')}-${orderId}`;
 }
+// the 13-digit inverted-time PREFIX of every index key fulfilled at ms `t` (a key-range bound for a time window; newest = smallest)
+const indexPrefix = (t) => (Number.isSafeInteger(t) && t >= 0 && t <= INV_TS ? String(INV_TS - t).padStart(13, '0') : null);
 function indexRef(db, rid) {
   if (typeof rid !== 'string' || !RID_KEY_RE.test(rid)) throw new Error('indexRef: bad restaurant id');
   return db.ref(`${INDEX_ROOT}/${rid}`);
@@ -191,5 +202,5 @@ async function indexNode(db, orderId, raw) {
   return 'indexed';
 }
 
-module.exports = { countable, ratingRef, ownedRatingIds, readCountable, readRatingWindow, indexKey, indexRef, indexNode, INDEX_KEY_RE, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
+module.exports = { countable, reviewEligible, ratingRef, ownedRatingIds, readCountable, readRatingWindow, indexKey, indexPrefix, indexRef, indexNode, INDEX_KEY_RE, ORDER_ID_RE, V1_THUMB, WINDOW_MS, COMMENT_MAX, DISHES_MAX, STATES, FULFILLED, parseRequest, freshNode, normalize,
   v1Updater, v2Updater, withdrawUpdater, fulfilmentUpdater, deletionUpdater };

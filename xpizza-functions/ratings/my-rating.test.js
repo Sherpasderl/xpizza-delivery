@@ -52,7 +52,7 @@ async function place(db, uid, id) {
   if (uid) attachCustomerAttribution(u, id, uid, { now: 1, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: 'x_pizza', items: body });
   await db.ref().update(u);
 }
-const fulfil = async (db, id, now) => { db.set(`orders/${id}/status`, 'delivered'); return stampRatingFulfilment(db, { orderId: id, status: 'delivered', now }); };
+const fulfil = async (db, id, now) => { db.set(`orders/${id}/status`, 'delivered'); return stampRatingFulfilment(db, { orderId: id, status: 'delivered', eventTime: now }); };
 const rate = (db, uid, body, now) => rateOrderCore(db, { body, idToken: `tok-${uid}`, now, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
 const DISH = 'x_pizza-dish-' + Object.keys(MENU_BY_RESTAURANT.x_pizza).indexOf('Margherita');
 const rl = [];

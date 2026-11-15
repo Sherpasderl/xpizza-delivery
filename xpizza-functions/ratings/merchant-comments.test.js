@@ -80,7 +80,7 @@ async function place(db, uid, id, rid = 'x_pizza') {
   if (uid) attachCustomerAttribution(u, id, uid, { now: 1, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: body });
   await db.ref().update(u);
 }
-const fulfil = async (db, id, now) => { db.set(`orders/${id}/status`, 'delivered'); return stampRatingFulfilment(db, { orderId: id, status: 'delivered', now }); };
+const fulfil = async (db, id, now) => { db.set(`orders/${id}/status`, 'delivered'); return stampRatingFulfilment(db, { orderId: id, status: 'delivered', eventTime: now }); };
 const rate = (db, uid, body, now) => rateOrderCore(db, { body, idToken: `tok-${uid}`, now, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
 // a rated order, all through the real writers
 async function rated(db, uid, id, { rid = 'x_pizza', at, comment, store = 5 }) {
