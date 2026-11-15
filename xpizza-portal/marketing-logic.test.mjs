@@ -401,7 +401,7 @@ test('recovery of a create / repeat: no record carrying OUR op_id ⇒ UNKNOWN (n
 });
 function memStorage({ setFails = false } = {}) {
   const m = new Map();
-  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (setFails) throw new Error('QuotaExceededError'); m.set(k, String(v)); }, removeItem: (k) => m.delete(k), m };
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (setFails) throw new Error('QuotaExceededError'); m.set(k, String(v)); }, removeItem: (k) => m.delete(k), clear: () => m.clear(), m };
 }
 test('the ops ledger (RULE A + B): a SENT op is frozen with its payload under its OWN key; reused until proven; another tab adopts it and never erases it; a failed write keeps memory; 6-day expiry; rev-proven known-id writes', async () => {
   const shared = memStorage();
