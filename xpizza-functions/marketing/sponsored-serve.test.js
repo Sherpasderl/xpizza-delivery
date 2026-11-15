@@ -83,6 +83,26 @@ const H24 = { sun: ALL_DAY, mon: ALL_DAY, tue: ALL_DAY, wed: ALL_DAY, thu: ALL_D
     }
     ok('a WARM instance: the Anuncio turned off, or the switch read failing, ⇒ null at the next switch read, whatever the memo holds');
 
+    // ── 2c. the READ's OWN switch check (defense in depth behind the switch memo): the switch memo still says ON (fresh, < REFRESH_AT),
+    //        the owner has just turned the Anuncio OFF — or the config read fails — and the sponsored memo misses ⇒ its read serves nothing ──
+    {
+      const db = await world();
+      await eligible(db, 'tb_centro');
+      await book(db, `t-${OWNER}`, 'tb_centro', W);
+      const sw = {};
+      assert.deepStrictEqual(await served(db, MON_NOON, new Map(), sw), { rid: 'tb_centro' }, 'premise: ON sponsors (the switch memo primed ON)');
+      assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 })).ok, true, 'premise: the REAL config writer turned the Anuncio OFF');
+      const t1 = MON_NOON + 1000;
+      assert.strictEqual(SW.switchOn('anuncio_enabled', { rtdb: db, now: () => t1, switchState: sw }), true, 'premise: the switch memo still says ON (fresh)');
+      assert.strictEqual(await served(db, t1, new Map(), sw), null, 'switch memo ON, the Anuncio OFF, sponsored memo miss: the read itself sponsors nothing');
+      const sw2 = {};
+      await CFG.writeMarketingConfig(db, { expected: 2, config: { offers_enabled: false, anuncio_enabled: true, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 3 });
+      assert.deepStrictEqual(await served(db, MON_NOON, new Map(), sw2), { rid: 'tb_centro' }, 'premise: back ON, the switch memo primed ON');
+      const down = { ...db, ref: (p) => (p === 'platform_config/marketing' ? { once: async () => { throw new Error('config down'); } } : db.ref(p)) };
+      assert.strictEqual(await served(down, t1, new Map(), sw2), null, 'switch memo ON, config read FAILS, sponsored memo miss: the read itself sponsors nothing');
+      ok('the read\'s own switch check: a fresh-ON switch memo never sponsors past an Anuncio OFF or a config outage');
+    }
+
     // ── 3. no booking this week (only next week's) ⇒ null ──
     {
       const db = await world();
