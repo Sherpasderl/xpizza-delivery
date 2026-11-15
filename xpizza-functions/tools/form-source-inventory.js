@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const acorn = require('acorn');
 
 const FN = path.join(__dirname, '..');
 const ROOT = path.join(FN, '..');
@@ -84,7 +85,8 @@ function deps(file, src) {
   return out;
 }
 
-// `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only
+// `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only; `only` (module names) limits the
+// edited-module scan to those modules and `revParse` replaces the git rev-parse — the guard's provenance cells only (speed / a spy)
 // PROVENANCE PINS (advisor 11-15; r2 «reviewed content pins»): a fixture generator that hashes an EXTRACTED tree of a fixed commit
 // records history, not the live module, so an edit to the live module cannot break it and an inverse could only be a hand-built proof.
 // tools/provenance-pins.json registers each such (site, module) with the sha256 of the WHOLE generator and of its consumer test's
@@ -95,7 +97,9 @@ const PROV = path.join(__dirname, 'provenance-pins.json');
 const dig = (o, f) => f.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
 const sha256 = (s) => (s == null ? null : require('crypto').createHash('sha256').update(s).digest('hex'));
 // the consumer's REVIEWED REGION: the exact bytes between `// PROVENANCE-PIN:BEGIN <id>` and `// PROVENANCE-PIN:END <id>`, each a bare line
-// comment, exactly one of each, in order, live code (not inside a block comment) and not comment-only. Anything else: why the region is void.
+// comment, exactly one of each, in order. Liveness is read from the SYNTAX TREE (acorn; Codex r2 P2-1), never lexically: the consumer must
+// parse (else consumer_unparseable, fail closed), no comment other than the two markers may overlap the region, and the region must hold
+// at least one top-level `test(...)` statement. Anything else: why the region is void.
 function regionOf(src, id) {
   if (src == null) return { reason: 'marker_missing' };
   const lines = src.split('\n');
@@ -105,38 +109,48 @@ function regionOf(src, id) {
   if (b.length > 1 || e.length > 1) return { reason: 'marker_duplicate' };
   if (lines[b[0]].trim() !== `// PROVENANCE-PIN:BEGIN ${id}` || lines[e[0]].trim() !== `// PROVENANCE-PIN:END ${id}`) return { reason: 'marker_malformed' };
   if (e[0] < b[0]) return { reason: 'marker_order' };
-  const before = lines.slice(0, b[0]).join('\n');
-  if (before.lastIndexOf('/*') > before.lastIndexOf('*/')) return { reason: 'block_comment' };
-  const body = lines.slice(b[0] + 1, e[0]);
-  if (!body.some((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l))) return { reason: 'comment_only' };
-  return { text: body.map((l) => `${l}\n`).join('') };
+  const comments = [];
+  let ast;
+  try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', onComment: comments, ranges: true }); } catch (_) { return { reason: 'consumer_unparseable' }; }
+  const lineStart = (n) => lines.slice(0, n).reduce((a, l) => a + l.length + 1, 0);
+  const rS = lineStart(b[0] + 1), rE = lineStart(e[0]);
+  const isMarker = (c, n) => c.type === 'Line' && c.start >= lineStart(n) && c.end <= lineStart(n) + lines[n].length;
+  if (comments.some((c) => c.start < rE && c.end > rS && !isMarker(c, b[0]) && !isMarker(c, e[0]))) return { reason: 'region_commented' };
+  const live = ast.body.some((st) => st.start >= rS && st.end <= rE && st.type === 'ExpressionStatement' && st.expression.type === 'CallExpression'
+    && st.expression.callee.type === 'Identifier' && st.expression.callee.name === 'test');
+  if (!live) return { reason: 'no_test_call' };
+  return { text: src.slice(rS, rE) };
 }
-function provenance(rows, srcOf) {
+function provenance(rows, srcOf, revParse) {
   return rows.map((r) => {
     const site = srcOf(r.site);
     if (site == null) return { site: r.site, module: r.module, status: 'absent' };
     const refuse = (check, why) => ({ site: r.site, module: r.module, status: 'refused', check, why });
     if (sha256(site) !== r.site_sha256) return refuse('generator_changed', `${r.site} is not the reviewed generator (re-register)`);
     const reg = regionOf(srcOf(r.consumer), r.consumer_region);
-    if (reg.reason) return { ...refuse('consumer_changed', `${r.consumer}: no valid PROVENANCE-PIN region ${r.consumer_region} (${reg.reason})`), reason: reg.reason };
+    if (reg.reason) return { ...refuse(reg.reason === 'consumer_unparseable' ? 'consumer_unparseable' : 'consumer_changed', `${r.consumer}: no valid PROVENANCE-PIN region ${r.consumer_region} (${reg.reason})`), reason: reg.reason };
     if (sha256(reg.text) !== r.consumer_sha256) return { ...refuse('consumer_changed', `${r.consumer}: region ${r.consumer_region} is not the reviewed one (re-register)`), reason: 'region_bytes' };
     let fx; try { fx = JSON.parse(srcOf(r.fixture)); } catch (_) { return refuse('fixture_blob', `fixture ${r.fixture} unreadable`); }
     const sha = dig(fx, r.sha_field), blob = (dig(fx, r.blobs_field) || {})[r.module];
-    let want = null; try { want = execFileSync('git', ['rev-parse', '-q', '--verify', `${sha}:xpizza-functions/${r.module}`], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch (_) { /* refused below */ }
-    if (!/^[0-9a-f]{40}$/.test(sha || '') || !want || blob !== want) return refuse('fixture_blob', `fixture blob ${blob} ≠ ${sha}:${r.module} (${want})`);
+    // Codex r2 P2-3: the sha is validated BEFORE it reaches git (an argv array, never a shell)
+    if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) return { ...refuse('fixture_blob', `fixture sha ${JSON.stringify(sha)} is not a full 40-hex sha`), reason: 'sha_format' };
+    const want = revParse(`${sha}:xpizza-functions/${r.module}`);
+    if (!want || blob !== want) return { ...refuse('fixture_blob', `fixture blob ${blob} ≠ ${sha}:${r.module} (${want})`), reason: 'blob_mismatch' };
     const live = read(path.join(FN, r.module));
     const liveBlob = live === '' ? null : require('crypto').createHash('sha1').update(`blob ${Buffer.byteLength(live)}\0`).update(live).digest('hex');
     return { site: r.site, module: r.module, status: 'ok', sha, blob, consumer: r.consumer, live_differs: liveBlob !== blob };
   });
 }
 
-function build({ extra = {}, provenance: provRows } = {}) {
+const gitRevParse = (spec) => { try { return execFileSync('git', ['rev-parse', '-q', '--verify', spec], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch (_) { return null; } };
+
+function build({ extra = {}, provenance: provRows, revParse = gitRevParse, only = null } = {}) {
   const SELF = new Set([__filename, OUT, path.join(FN, 'form-source-inventory.guard.test.js')]);   // the tool, its output and its guard (whose synthetic sources would match)
   const files = walk(ROOT).filter((f) => !SELF.has(f));
   const src = new Map(files.map((f) => [f, read(f)]));
   for (const [r, text] of Object.entries(extra)) { const abs = path.join(ROOT, r); if (!src.has(abs)) files.push(abs); src.set(abs, text); }
   const srcOf = (r) => { const abs = path.join(ROOT, r); return src.has(abs) ? src.get(abs) : (fs.existsSync(abs) ? read(abs) : null); };
-  const provPins = provenance((provRows || (fs.existsSync(PROV) ? JSON.parse(read(PROV)) : { rows: [] })).rows, srcOf);
+  const provPins = provenance((provRows || (fs.existsSync(PROV) ? JSON.parse(read(PROV)) : { rows: [] })).rows, srcOf, revParse);
   const provOk = new Set(provPins.filter((p) => p.status === 'ok').map((p) => `${p.site}|${p.module}`));
   const direct = new Map(files.map((f) => [f, directSurfaces(f, src.get(f))]));
   const edges = new Map(files.map((f) => [f, deps(f, src.get(f))]));
@@ -172,7 +186,8 @@ function build({ extra = {}, provenance: provRows } = {}) {
   const changed = execFileSync('git', ['diff', '--name-only', BASE, '--', 'xpizza-functions/'], { cwd: ROOT, encoding: 'utf8' })
     .split('\n').filter(Boolean)
     .filter((p) => /\.js$/.test(p) && !isTest(p) && !/\/tools\//.test(p) && !/\/test\//.test(p) && !/\/contract\//.test(p) && fs.existsSync(path.join(ROOT, p)))
-    .map((p) => p.replace(/^xpizza-functions\//, '')).sort();
+    .map((p) => p.replace(/^xpizza-functions\//, '')).sort()
+    .filter((m) => !only || only.includes(m));
   const inverses = fs.readdirSync(__dirname).filter((n) => /-inverse\.js$/.test(n))
     .map((n) => ({ name: `tools/${n}`, src: read(path.join(__dirname, n)) }));
   const server = {};
