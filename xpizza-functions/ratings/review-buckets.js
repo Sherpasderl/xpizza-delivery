@@ -7,18 +7,21 @@
 // - SCAN: per day ONE key range of the server-only rating_index (inverted fulfilment time ⇒ a day is contiguous), each candidate
 //   through rating-v2.readCountable with its restaurant_id RE-VERIFIED; undisclosed ratings are read (the index cannot tell) but
 //   never counted.
-// - BUDGET: REVIEW_WINDOW_BUDGET index entries per rid per run. The NEWEST 8 days (the edit window + 1) are refreshed first, then
-//   older days from rating_buckets/{rid}/_resume onwards; when the budget runs out the next day is saved as _resume (ONE loud log
-//   line, never an abort) and the next run continues there, so every day is refreshed within a few runs.
+// - BUDGET: the NEWEST 8 days (the edit window + 1) are refreshed first, whole days, within REVIEW_WINDOW_BUDGET index entries; the
+//   OLDER days then continue from rating_buckets/{rid}/_resume = { day, after, acc, since } — a KEY CURSOR inside the day, the partial
+//   counts so far and the run that started the day — with what is left, but never less than RESUME_RESERVE (Codex S4 r1 P2-2: so the
+//   resume point advances on EVERY run even when the newest days take most of the budget). A run reads ≤ budget + reserve entries.
+//   A day finished across runs is stamped with the run that STARTED it (freshness stays conservative). One loud log line when the
+//   older pass stops before the end; never an abort.
 // The producer calls it in its OWN try per rid, before closing days, so it never depends on (or blocks) public_stats.
 const V2 = require('./rating-v2');
 const RW = require('./review-window');
 
 const ROOT = 'rating_buckets';
 const REVIEW_WINDOW_BUDGET = 30000;
+const RESUME_RESERVE = 5000;   // the older-days pass always gets at least this many entries per run (forward progress)
 const RECENT_DAYS = 8;
 const CONCURRENCY = 8;
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const RESUME = '_resume';
 
 async function pool(items, fn) {
@@ -26,27 +29,38 @@ async function pool(items, fn) {
   for (let i = 0; i < items.length; i += CONCURRENCY) out.push(...(await Promise.all(items.slice(i, i + CONCURRENCY).map(fn))));
   return out;
 }
-// the index entries of one HN day, at most `max` + 1 (so the caller can tell the budget ran out)
-async function dayEntries(db, rid, day, max) {
+// the index rows [{ key, id }] of one HN day after key `after` (null = from the day's start), at most `max` + 1 (so the caller can tell
+// whether the day goes on)
+async function dayRows(db, rid, day, after, max) {
   const start = RW.dayStart(day); const end = start + RW.DAY;
-  const snap = await V2.indexRef(db, rid).orderByKey().startAt(`${V2.indexPrefix(end - 1)}-`).endAt(`${V2.indexPrefix(start)}-~`).limitToFirst(max + 1).once('value');
-  const ids = []; snap.forEach((c) => { ids.push(c.val()); });
-  return ids;
+  let q = V2.indexRef(db, rid).orderByKey();
+  q = after ? q.startAfter(after) : q.startAt(`${V2.indexPrefix(end - 1)}-`);
+  const snap = await q.endAt(`${V2.indexPrefix(start)}-~`).limitToFirst(max + 1).once('value');
+  const rows = []; snap.forEach((c) => { rows.push({ key: c.key, id: c.val() }); });
+  return rows;
 }
-// one day's bucket from its ids: { n1..n5 (non-zero), at }
-async function dayBucket(db, rid, ids, nowMs) {
+// the counts { n1..n5 (non-zero) } of these ids, added to `acc`
+async function addCounts(db, rid, ids, acc = {}) {
   const nodes = await pool(ids, (id) => (typeof id === 'string' && V2.ORDER_ID_RE.test(id) ? V2.readCountable(db, id) : null));
-  const b = {};
+  const b = { ...acc };
   for (const nd of nodes) {
     if (!nd || nd.restaurant_id !== rid || !V2.reviewEligible(nd) || nd.disclosure !== 1) continue;
     if (!(Number.isInteger(nd.store) && nd.store >= 1 && nd.store <= 5)) continue;
     b[`n${nd.store}`] = (b[`n${nd.store}`] || 0) + 1;
   }
-  return { ...b, at: nowMs };
+  return b;
+}
+const KEY_RE = V2.INDEX_KEY_RE;
+// a stored _resume → { day, after, acc, since } | null (a legacy bare day string resumes at that day's start)
+function resumeOf(v, older) {
+  if (typeof v === 'string' && older.includes(v)) return { day: v, after: null, acc: {}, since: null };
+  if (!v || typeof v !== 'object' || !older.includes(v.day)) return null;
+  const acc = v.acc && typeof v.acc === 'object' ? Object.fromEntries(Object.entries(v.acc).filter(([k, n]) => /^n[1-5]$/.test(k) && Number.isSafeInteger(n) && n > 0)) : {};
+  return { day: v.day, after: typeof v.after === 'string' && KEY_RE.test(v.after) ? v.after : null, acc, since: Number.isSafeInteger(v.since) ? v.since : null };
 }
 
-// → { rid, refreshed, dropped, resume }
-async function buildReviewBuckets({ db, nowMs, budget = REVIEW_WINDOW_BUDGET }, rid) {
+// → { rid, refreshed, dropped, resume (the day the next run continues in, or null) }
+async function buildReviewBuckets({ db, nowMs, budget = REVIEW_WINDOW_BUDGET, reserve = RESUME_RESERVE }, rid) {
   V2.indexRef(db, rid);   // validates the rid (throws on a malformed one) before any write
   const range = RW.builderRange(nowMs);
   const days = RW.daysOf(range.start, range.end);   // oldest first
@@ -61,23 +75,33 @@ async function buildReviewBuckets({ db, nowMs, budget = REVIEW_WINDOW_BUDGET }, 
 
   const newest = days.slice(-RECENT_DAYS).reverse();               // today first
   const older = days.slice(0, -RECENT_DAYS).reverse();             // newest older day first
-  const saved = (await db.ref(`rating_buckets/${rid}/${RESUME}`).once('value')).val();
-  const from = typeof saved === 'string' && DAY_RE.test(saved) ? older.indexOf(saved) : -1;
-  const queue = [...newest, ...(from >= 0 ? older.slice(from) : older)];
-  let left = budget; let refreshed = 0; let resume = null;
-  for (const day of queue) {
-    const ids = await dayEntries(db, rid, day, left);
-    if (ids.length > left) { resume = day; break; }
-    left -= ids.length;
-    await db.ref(`rating_buckets/${rid}/${day}`).set(await dayBucket(db, rid, ids, nowMs));
+  let left = budget; let refreshed = 0;
+  // 1. the newest days, whole, within the budget
+  for (const day of newest) {
+    const rows = await dayRows(db, rid, day, null, left);
+    if (rows.length > left) { console.log(`review buckets: budget reached for ${rid} in the newest days at ${day}`); left = 0; break; }
+    left -= rows.length;
+    await db.ref(`rating_buckets/${rid}/${day}`).set({ ...(await addCounts(db, rid, rows.map((r) => r.id))), at: nowMs });
     refreshed += 1;
   }
-  if (resume !== null) {
-    console.log(`review buckets: budget reached for ${rid} — ${refreshed} day(s) refreshed, resuming at ${resume}`);
-    if (!older.includes(resume)) resume = older.length ? older[0] : null;   // still in the newest days: older ones start fresh next run
+  // 2. the older days from the saved cursor, with what is left but never less than the reserve
+  let room = Math.max(left, reserve);
+  const state = resumeOf((await db.ref(`rating_buckets/${rid}/${RESUME}`).once('value')).val(), older);
+  let next = null;
+  for (let i = state ? older.indexOf(state.day) : 0; i < older.length; i++) {
+    const day = older[i]; const cont = state && state.day === day;
+    const after = cont ? state.after : null; const since = cont && state.since !== null ? state.since : nowMs;
+    const rows = await dayRows(db, rid, day, after, room);
+    const take = rows.slice(0, room);
+    const acc = await addCounts(db, rid, take.map((r) => r.id), cont ? state.acc : {});
+    room -= take.length;
+    if (rows.length > take.length) { next = { day, after: take.length ? take[take.length - 1].key : after, acc, since }; break; }   // the day goes on
+    await db.ref(`rating_buckets/${rid}/${day}`).set({ ...acc, at: since });
+    refreshed += 1;
   }
-  await db.ref(`rating_buckets/${rid}/${RESUME}`).set(resume);
-  return { rid, refreshed, dropped, resume };
+  if (next) console.log(`review buckets: budget reached for ${rid} — ${refreshed} day(s) refreshed, resuming in ${next.day}`);
+  await db.ref(`rating_buckets/${rid}/${RESUME}`).set(next);
+  return { rid, refreshed, dropped, resume: next ? next.day : null };
 }
 
-module.exports = { buildReviewBuckets, REVIEW_WINDOW_BUDGET, RECENT_DAYS, ROOT };
+module.exports = { buildReviewBuckets, REVIEW_WINDOW_BUDGET, RESUME_RESERVE, RECENT_DAYS, ROOT };

@@ -263,6 +263,24 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
   }
   ok('customer_kind: new / (none) / frequent by earlier FULFILLED orders here; a cancelled one never counts');
 
+  // ── 7b. Codex S3 r1 P2-1: customer_kind is a property of the REVIEW — its own history boundary (the orders before THAT review's
+  //        order), identical under every filter / page / window; a bounded read that cannot establish it ⇒ no tag (never a guess) ──
+  {
+    const db = await world(); await named(db, A, 'Ana', 'Pérez');
+    await rated(db, A, 'XPZ-e1', { at: NOW - 100 * H, comment: 'e1', store: 4 });
+    await rated(db, A, 'XPZ-e2', { at: NOW - 99 * H, comment: 'e2', store: 4 });
+    await rated(db, A, 'XPZ-r1', { at: NOW - 98 * H, store: 1, comment: 'r1' });   // 2 earlier fulfilled here ⇒ frequent
+    for (let i = 0; i < 55; i++) await place(db, A, `LMS-x${String(i).padStart(2, '0')}`, { rid: 'la_musa', at: NOW - 90 * H + i * 60e3 });   // 55 orders elsewhere after it
+    await rated(db, A, 'XPZ-r2', { at: NOW - 10 * H, store: 5, comment: 'r2' });
+    const h = handler(db);
+    const kindOf = async (query, c) => (await all(h, { rids: 'x_pizza', weeks: '1', ...query })).rows.find((r) => r.comment === c).customer_kind;
+    assert.strictEqual(await kindOf({}, 'r1'), 'frequent', 'Codex repro: unfiltered, the older review keeps its OWN history (2 earlier fulfilled orders) ⇒ frequent');
+    assert.strictEqual(await kindOf({ stars: '1' }, 'r1'), 'frequent', 'Codex repro: with stars=1 the same review reads the same');
+    for (const q of [{}, { stars: '1' }, { stars: '1,5' }, { comment: 'with' }, { weeks: '4' }]) assert.strictEqual(await kindOf(q, 'r1'), 'frequent', `filter invariance: ${JSON.stringify(q)} ⇒ the same customer_kind`);
+    assert.strictEqual(await kindOf({}, 'r2'), undefined, 'the newest review: its 50-entry window (55 orders elsewhere) cannot establish its count ⇒ no tag, never a guess');
+  }
+  ok('customer_kind is the review\'s own: identical under every filter; unestablishable within the bounded read ⇒ omitted');
+
   // ── 8. dishes (r2 §4): one entry per purchased dish, the vote or null; a dish that left the menu ⇒ name null ──
   {
     const db = await world(); await named(db, A, 'Ana', 'Pérez');
@@ -393,7 +411,8 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
     const privateReads = db.reads.filter((r) => r.path.startsWith('user_private/'));
     assert.strictEqual(privateReads.length, 2 * b1.reviews.length, 'read budget: the name read only for returned rows (2 leaves each), never for an undisclosed candidate');
     assert.ok(!privateReads.some((r) => r.path.includes(B)), 'an undisclosed rating\'s owner is never read');
-    assert.ok(db.reads.filter((r) => r.kind === 'childQuery').length <= 1, 'read budget: ONE history query per owner');
+    const hq = db.reads.filter((r) => r.kind === 'childQuery');
+    assert.ok(hq.length <= b1.reviews.filter((r) => r.customer).length && hq.every((r) => r.last === 50) && hq.reduce((x, r) => x + r.n, 0) <= 1000, `read budget: ≤ ONE history query per named row, ≤ 50 entries each, ≤ 1,000 in total (${hq.length})`);
   }
   ok('read budget: ≤ 60 index entries in total (6 per rid at 10 rids), ≤ 60 nodes + tombstones, name / order / history reads only for returned named rows');
 
@@ -403,7 +422,7 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
   const RW = require('./review-window');
   const W1 = RW.windowOf(1, NOW);                       // the closed week Mon 2 – Sun 8 Nov
   const inW1 = (k) => W1.start + 12 * H + k * 37 * 60e3; // distinct fulfilment times inside that week
-  const build = (db, rid = 'x_pizza', { now = NOW, budget } = {}) => RB.buildReviewBuckets({ db, nowMs: now, ...(budget ? { budget } : {}) }, rid);
+  const build = (db, rid = 'x_pizza', { now = NOW, budget, reserve } = {}) => RB.buildReviewBuckets({ db, nowMs: now, ...(budget ? { budget } : {}), ...(reserve ? { reserve } : {}) }, rid);
   const ov = async (db, query = { rids: 'x_pizza', weeks: '1' }, { now = NOW } = {}) => (await list(handler(db, { now }), query)).overview;
   const publish = (db, rid = 'x_pizza') => { const doc = { v: 1, rating_count: 12, rating_avg: 4.2, rating_count_30d: 3 }; db.set(`public_stats/${rid}`, doc); return doc; };
 
@@ -496,7 +515,7 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
     let runs = 0;
     try {
       for (; runs < 10; runs++) {
-        const r = await build(db, 'x_pizza', { budget: 12 }).catch((e) => ({ error: e.message }));
+        const r = await build(db, 'x_pizza', { budget: 12, reserve: 3 }).catch((e) => ({ error: e.message }));
         assert.ok(!r.error, `budget: never an abort (${r.error})`);
         if (!r.resume) break;
       }
@@ -507,6 +526,37 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
     assert.ok(days.every((d) => { const b = db.get(`rating_buckets/x_pizza/${d}`); return b && b.at === NOW; }), 'budget: after the rotation every day of the range is refreshed');
   }
   ok('S4: above the budget the builder rotates (newest 8 days, then _resume) with a loud line, never an abort; every day refreshed within a few runs');
+
+  // ── 20b. Codex S4 r1 P2-2 (its repro, scaled ×1/290): every day holds MORE entries than the newest-8 refresh leaves — the resume point
+  //         still advances on EVERY run (a key cursor inside the day + a guaranteed reserve) and catches up in bounded runs; a day built
+  //         across runs carries its exact counts, stamped with the run that started it ──
+  {
+    const db = await world();
+    const K = 12, BUDGET = 100, RESERVE = 10;   // the newest 8 days take 96 of 100 ⇒ only 4 left, < one day of 12
+    const days = RW.daysOf(RW.builderRange(NOW).start, NOW);
+    let k = 0;
+    for (const d of days) for (let i = 0; i < K; i++) { const id = `XPZ-st${String(k++).padStart(4, '0')}`; const at = RW.dayStart(d) + 3 * H + i * 60e3; await place(db, null, id, { at: at - H }); await finish(db, id, at); }
+    const split = days[days.length - 30];   // an older day whose 3 named 5★ ratings will be counted across two runs
+    for (let i = 0; i < 3; i++) await rated(db, UIDS[i], `XPZ-sp${i}`, { at: RW.dayStart(split) + 20 * H + i * 60e3, store: 5 });
+    const olderEntries = (days.length - 8) * K + 3;
+    const bound = Math.ceil(olderEntries / RESERVE) + 2;
+    const pos = (r) => JSON.stringify(db.get('rating_buckets/x_pizza/_resume') || null);
+    const log = console.log; console.log = () => {};
+    let prev = pos(); let runs = 0; let r;
+    try {
+      for (; runs < bound; runs++) {
+        r = await RB.buildReviewBuckets({ db, nowMs: NOW + runs, budget: BUDGET, reserve: RESERVE }, 'x_pizza');
+        const cur = pos();
+        assert.notStrictEqual(cur, prev, `stall: the resume point advances on every run (run ${runs}: ${cur})`);
+        prev = cur;
+        if (!r.resume) break;
+      }
+    } finally { console.log = log; }
+    assert.ok(runs < bound, `stall: caught up within ${bound} runs (took ${runs + 1})`);
+    assert.strictEqual(db.get(`rating_buckets/x_pizza/${split}`).n5, 3, 'a day built across runs carries its exact counts');
+    assert.ok(days.every((d) => { const b = db.get(`rating_buckets/x_pizza/${d}`); return b && Number.isFinite(b.at); }), 'every day of the range was built');
+  }
+  ok('Codex P2-2: above the budget the resume point advances on every run (key cursor + reserve) and catches up in bounded runs; split days stay exact');
 
   // ── 21. freshness: a day not rebuilt within its band ⇒ overview_state stale (never served stale); a deleted account leaves the bars ──
   {

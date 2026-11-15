@@ -20,7 +20,9 @@
 //   candidate goes through rating-v2.readCountable (live, owner not tombstoned) and reviewEligible, its restaurant_id re-verified.
 //   An undisclosed node is skipped: it never fills a page slot, never reaches a row, and costs no read beyond its node + tombstone.
 // ROW — { rid, stars, comment, rated_on (HN 'YYYY-MM-DD'), edited } for every disclosed row; + { customer («Ana P.»), tone (0–4),
-//   customer_kind ('new' | 'frequent', else absent), dishes [{ name, thumb }], total_cents } ONLY when both structured name fields
+//   customer_kind ('new' | 'frequent', else absent — a property of the REVIEW: the orders before THAT review's own order, one bounded
+//   query per review; a full 50-entry window that cannot establish the count ⇒ absent, never a guess; Codex S3 r1 P2-1),
+//   dishes [{ name, thumb }], total_cents } ONLY when both structured name fields
 //   exist (user_private, read live). Never: order id, uid, phone, email, full surname, profile name, address, items_text, the delivery
 //   thumb, legacy_thumb, state, rev, index keys or any millisecond time.
 // CURSOR — sealed (sealed-cursor.js, its own HKDF label) over { v, uid, rids, weeks, stars, comment, start, k, done }: refused
@@ -199,15 +201,16 @@ async function merchantReviewsCore({ db, verifyIdToken, checkRateLimit, salt, re
     return customerOf(g.val(), fam.val());
   }));
   const named = picked.map((p, i) => ({ ...p, customer: names[i] })).filter((p) => p.customer);
-  // per named row: the order's dish_qty + total_cents and the history ts; ONE user_orders query per owner (the newest ts among its rows)
+  // per named row: the order's dish_qty + total_cents and the history ts; then ONE user_orders query per REVIEW (its own boundary:
+  // the HISTORY entries before its own order), shared only between rows of the same owner AND the same order time
   const facts = await Promise.all(named.map(async (p) => {
     const [dq, tc, ts] = await Promise.all([`orders/${p.oid}/dish_qty`, `orders/${p.oid}/total_cents`, `user_orders/${p.nd.owner_uid}/${p.oid}/ts`].map((x) => db.ref(x).once('value')));
     return { dishQty: dq.val(), total: tc.val(), orderTs: ts.val() };
   }));
-  const byOwner = new Map();
-  named.forEach((p, i) => { if (Number.isSafeInteger(facts[i].orderTs)) byOwner.set(p.nd.owner_uid, Math.max(byOwner.get(p.nd.owner_uid) || 0, facts[i].orderTs)); });
-  const history = new Map(await Promise.all([...byOwner].map(async ([owner, maxTs]) => [owner,
-    Object.entries((await db.ref(`user_orders/${owner}`).orderByChild('ts').endBefore(maxTs).limitToLast(HISTORY).once('value')).val() || {})])));
+  const bounds = new Map();   // `${owner} ${orderTs}` → the entries before it (≤ HISTORY)
+  named.forEach((p, i) => { if (Number.isSafeInteger(facts[i].orderTs)) bounds.set(`${p.nd.owner_uid} ${facts[i].orderTs}`, [p.nd.owner_uid, facts[i].orderTs]); });
+  const history = new Map(await Promise.all([...bounds].map(async ([k, [owner, ts]]) => [k,
+    Object.entries((await db.ref(`user_orders/${owner}`).orderByChild('ts').endBefore(ts).limitToLast(HISTORY).once('value')).val() || {})])));
   const contexts = new Map();
   const contextOf = async (rid) => {
     if (!contexts.has(rid)) contexts.set(rid, (async () => { try { return typeof resolveContext === 'function' ? await resolveContext(rid) : null; } catch (_) { return null; } })());
@@ -217,8 +220,10 @@ async function merchantReviewsCore({ db, verifyIdToken, checkRateLimit, salt, re
     const { dishQty, total, orderTs } = facts[i];
     let kind;
     if (Number.isSafeInteger(orderTs)) {
-      const earlier = (history.get(p.nd.owner_uid) || []).filter(([id, e]) => id !== p.oid && e && e.restaurant === p.rid && FULFILLED.has(e.status) && Number.isFinite(e.ts) && e.ts < orderTs).length;
-      kind = earlier === 0 ? 'new' : earlier >= FREQUENT_MIN ? 'frequent' : undefined;
+      const before = history.get(`${p.nd.owner_uid} ${orderTs}`) || [];
+      const earlier = before.filter(([id, e]) => id !== p.oid && e && e.restaurant === p.rid && FULFILLED.has(e.status) && Number.isFinite(e.ts) && e.ts < orderTs).length;
+      // ≥ 2 found is certain; fewer is certain only when the window was NOT full (the whole history before the order was read)
+      kind = earlier >= FREQUENT_MIN ? 'frequent' : before[HISTORY - 1] !== undefined ? undefined : earlier === 0 ? 'new' : undefined;   // a 50th entry ⇒ the window was full
     }
     const context = await contextOf(p.rid);
     const dishes = dishQty && typeof dishQty === 'object' ? Object.keys(dishQty).sort().map((cid) => ({ name: labelFor('dish', cid, context), thumb: p.nd.dishes && (p.nd.dishes[cid] === 1 || p.nd.dishes[cid] === -1) ? p.nd.dishes[cid] : null })) : [];

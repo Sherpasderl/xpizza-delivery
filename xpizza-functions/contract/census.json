@@ -52,7 +52,7 @@
   "sendSites": 24,
   "fieldsWritten": 119,
   "opaqueWrites": 25,
-  "opaque": 151,
+  "opaque": 152,
   "projections": 153,
   "sentinel": 38,
   "timers": {
@@ -22875,7 +22875,7 @@
   },
   {
    "id": "xpizza-functions/ratings/merchant-reviews.js#merchantReviewsCore#restaurant_id#0",
-   "line": 181,
+   "line": 183,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -22885,7 +22885,7 @@
   },
   {
    "id": "xpizza-functions/ratings/merchant-reviews.js#merchantReviewsCore>anon#total#0",
-   "line": 217,
+   "line": 220,
    "kind": "destructure",
    "facts": [
     "MONEY",
@@ -22897,7 +22897,7 @@
   },
   {
    "id": "xpizza-functions/ratings/merchant-reviews.js#merchantReviewsCore>anon>anon#status#0",
-   "line": 220,
+   "line": 224,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22910,7 +22910,7 @@
   },
   {
    "id": "xpizza-functions/ratings/merchant-reviews.js#getMerchantReviews#status#0",
-   "line": 246,
+   "line": 251,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -22923,7 +22923,7 @@
   },
   {
    "id": "xpizza-functions/ratings/merchant-reviews.js#getMerchantReviews#status#1",
-   "line": 246,
+   "line": 251,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -23240,8 +23240,8 @@
    "exempt": true
   },
   {
-   "id": "xpizza-functions/ratings/review-buckets.js#dayBucket#restaurant_id#0",
-   "line": 41,
+   "id": "xpizza-functions/ratings/review-buckets.js#addCounts#restaurant_id#0",
+   "line": 47,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -55926,6 +55926,14 @@
    "rule": "server:infra"
   },
   {
+   "file": "xpizza-functions/ratings/merchant-reviews.js",
+   "fn": "merchantReviewsCore>anon",
+   "base": "before",
+   "line": 226,
+   "how": "computed",
+   "rule": "server:ratings"
+  },
+  {
    "file": "xpizza-functions/ready-time-predict-core.js",
    "fn": "runLabelAndUpdate",
    "base": "order",
@@ -59644,7 +59652,7 @@
   },
   {
    "key": "xpizza-functions/ratings/merchant-reviews.js:makeMerchantReviews>anon:Date.now()",
-   "line": 239,
+   "line": 244,
    "class": "business-sample"
   },
   {

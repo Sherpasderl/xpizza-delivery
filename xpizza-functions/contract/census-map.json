@@ -831,7 +831,7 @@
   "ratings/merchant-reviews.js#getMerchantReviews": "ratings",
   "ratings/merchant-reviews.js#merchantReviewsCore>anon": "ratings",
   "ratings/merchant-reviews.js#merchantReviewsCore>anon>anon": "ratings",
-  "ratings/review-buckets.js#dayBucket": "ratings",
+  "ratings/review-buckets.js#addCounts": "ratings",
   "ratings/my-rating.js#myRatingCore": "ratings",
   "ratings/my-rating.js#getMyRating": "ratings",
   "ratings/rating-v2.js#indexNode": "ratings",

@@ -36222,5 +36222,20 @@
   "kills_with": [
    "R11-HOME"
   ]
+ },
+ {
+  "id": "signup-35",
+  "slice": "signup",
+  "label": "reviews v2 S3 (advisor 11-15): setMyName is not rate-limited",
+  "file": "signup-endpoints.js",
+  "from": "      if (await limited(db, 'profile', req, res)) return;   // the profile family's per-IP limit, as completeProfile / setPromos\n",
+  "to": "",
+  "kills_with": [
+   "setMyName is rate-limited"
+  ],
+  "command": [
+   "node",
+   "signup-name.test.js"
+  ]
  }
 ]
