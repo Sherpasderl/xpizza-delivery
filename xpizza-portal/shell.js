@@ -23,6 +23,9 @@ import { mountEquipos } from './equipos.js';
 const SEL_KEY = (uid) => `sherpa.portal.sel.${uid}`;
 const CACHE_KEY = (uid) => `sherpa.portal.branches.${uid}`;
 const EDITOR_KEY = (uid, b) => `sherpa.portal.editor.${uid}.${b}`;
+// a one-shot landing (Codex Inicio backfill item 7): «Revisar» on another branch's menu row selects that branch (the guarded reload) and
+// asks the reloaded page to open on Productos instead of the home — set ONLY after canLeave agreed; consumed exactly ONCE at the landing
+const LAND_KEY = (uid) => `sherpa.portal.land.${uid}`;
 const BLOCKED_TEXT = 'Guardá o descartá tus cambios antes de cambiar de sucursal.';   // D13
 
 const S = {
@@ -44,6 +47,7 @@ function clearPersisted(uid) {
   if (!uid) return;
   store.del(SEL_KEY(uid));
   store.del(CACHE_KEY(uid));
+  store.del(LAND_KEY(uid));
   try {
     for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith(`sherpa.portal.editor.${uid}.`)) sessionStorage.removeItem(k); }
     sessionStorage.removeItem(`sherpa.portal.envio.${uid}`);   // ENVÍO (Codex r1 F4): the admin pricing cache never outlives its session
@@ -81,8 +85,9 @@ export function requestReload() {
 // a NEW selection → persisted, then a guarded reload. Blocked → nothing changes.
 export function select(next) {
   if (!S.uid || !next) return false;
-  if (!canLeave()) { showBlocked(true); return false; }
+  if (!canLeave()) { showBlocked(true); return false; }   // refused: nothing is stored — no selection, no landing marker
   store.set(SEL_KEY(S.uid), { brand_id: next.brand_id, scope: next.scope });
+  if (next.land === 'menu') store.set(LAND_KEY(S.uid), 'menu');
   reload();
   return true;
 }
@@ -258,7 +263,11 @@ function apply(e1, { persist = true } = {}) {
   const strip = renderViews();
   // INICIO (owner 11-13: the landing page): the first selection of a page opens the home; its figures fill fixed slots, so the reveal
   // waits on nothing Productos-only (the strip and the catalog keep loading behind it)
-  if (HOME && S.views.inicio && !S.landed) { S.landed = true; goto('inicio'); settleThenReady(); return; }
+  if (HOME && S.views.inicio && !S.landed) {
+    S.landed = true;
+    const land = store.get(LAND_KEY(S.uid)); store.del(LAND_KEY(S.uid));   // consumed exactly once, whatever it held
+    if (land !== 'menu') { goto('inicio'); settleThenReady(); return; }
+  }
   settleThenReady(strip, catalog);
 }
 

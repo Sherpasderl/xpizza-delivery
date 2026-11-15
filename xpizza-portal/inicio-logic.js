@@ -33,7 +33,10 @@ export const statsQuery = (today) => ({ from: today, to: today, granularity: 'da
 export const money = (cents) => lempiras(Number.isFinite(cents) ? cents : NaN);
 const weekdayOf = (date) => WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()];
 // ann 1: three figures; the line under Ventas / Pedidos is the same weekday last week (a fact, not a projection); none under Ticket
+// Codex backfill item 5: a day the roll-up never computed comes back as zeros with the day in `missing_days` — UNAVAILABLE, never «L 0» /
+// «0»; a body with no kpis is the same. (A COMPUTED day with no sales is a fact and reads «L 0».)
 export function figures(body, today) {
+  if (!body || !body.kpis || typeof body.kpis !== 'object' || (Array.isArray(body.missing_days) && body.missing_days.includes(today))) return NO_FIGURES;
   const k = body && body.kpis ? body.kpis : {};
   const c = body && body.comparison && body.comparison.kpis ? body.comparison.kpis : null;
   const day = weekdayOf(today);
@@ -45,6 +48,12 @@ export function figures(body, today) {
   };
 }
 export const NO_FIGURES = Object.freeze({ sales: { value: '—' }, orders: { value: '—' }, ticket: { value: '—' } });
+// Codex backfill item 6: «Todo en orden» claims only over KNOWN results — every in-scope branch's control readable (a known state) and its
+// pending_count a number (S3; absent / null = unknown). `scopeRid` null = every branch the page shows.
+export function allKnown(branches, scopeRid) {
+  const bs = (Array.isArray(branches) ? branches : []).filter((b) => b && (scopeRid == null || b.rid === scopeRid));
+  return bs.length > 0 && bs.every((b) => b.control && typeof b.control.state === 'string' && b.control.state !== 'unknown' && Number.isInteger(b.pending_count));
+}
 
 // ann 3: «Para revisar» — only REAL attention items with a source today: a paused branch (getMyBranches control), with since-when;
 // «Reanudar» only where the member may resume (location.pause). `scopeRid` null = every branch the page shows.

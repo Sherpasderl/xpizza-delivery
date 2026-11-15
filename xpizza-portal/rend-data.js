@@ -59,8 +59,9 @@ export const sameBody = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(ca
 
 // ONE load of the tab's stats. api: { getSalesStats, getSalesStatsMulti } (api.js); ui: { paint({ body, freshAt, source }),
 // stamp({ freshAt }), fail({ error, hasBody }) }. → the final { source: 'cache+same' | 'cache+swap' | 'network' | 'error' | 'dropped', … }
-// `keep` (optional): the answer's ticket — false once the screen was refused after the request left; such an answer writes NOTHING (no cache
-// entry, no paint), so an older success can never refill what a 401 / 403 cleared (codex Ventas r2 P1)
+// `keep` (optional): the answer's ticket — false once the screen was refused after the request left OR a newer request replaced it (the
+// branch / period moved: latest wins); such an answer — success OR failure — writes NOTHING (no cache entry, no paint, no fail), so an
+// older answer can never overwrite a newer scope or refill what a 401 / 403 cleared (codex Ventas r2 P1; Codex backfill 11-15 P1)
 export async function loadStats({ uid, rids, range, compare, token, assertLive, keep = () => true, api, cache, now = () => Date.now(), ui }) {
   const scope = scopeOf(rids);
   if (!scope || !uid) throw new Error('loadStats: a uid and at least one branch');
@@ -72,10 +73,11 @@ export async function loadStats({ uid, rids, range, compare, token, assertLive, 
   try {
     body = scope.kind === 'one' ? await api.getSalesStats({ rid: scope.rid, ...q }) : await api.getSalesStatsMulti({ rids: scope.rids, ...q });
   } catch (error) {
+    if (!keep()) return { source: 'dropped' };   // Codex Inicio/Rendimiento backfill P1: a stale failure never paints over a newer scope
     ui.fail({ error, hasBody: !!cached });
     return { source: 'error', error, cached: !!cached };
   }
-  if (!keep()) return { source: 'dropped' };
+  if (!keep()) return { source: 'dropped' };   // … nor a stale success (no cache write, no paint)
   const fetchedAt = now();
   if (cache) cache.put(key, body, fetchedAt);
   const freshAt = freshness(body, fetchedAt);

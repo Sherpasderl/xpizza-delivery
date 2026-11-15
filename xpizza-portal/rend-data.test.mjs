@@ -224,3 +224,20 @@ test('V1 figures + «Productos más vendidos» from the REAL body: three figures
   const rows = RL.topProducts(b);
   assert.deepEqual(rows.map((x) => [x.name, x.qty, x.sales, x.width]), [['Pepperoni 12″', '2', 'L 310', 100], ['Carnívora 18″', '1', 'L 270', 87]], 'ranked by sales; the bar is its sales against the top');
 });
+
+// Codex backfill FULL HIGH (advisor 11-15) on 0d9ddc44c, P1: the liveness gates BOTH callbacks — a request the screen replaced (its branch /
+// period moved: `keep` false) never paints over the newer scope, whether its REAL answer is a failure or a success; nothing is cached
+test('K-stale: a REPLACED request\'s real answer — a 503 or a 200 — calls neither ui.fail nor ui.paint and writes no cache (latest wins)', async () => {
+  for (const [label, w, want] of [['failure', { keyerFails: true }, 'fail'], ['success', {}, 'paint']]) {
+    route({ serve: await world(w) });
+    const cache = RD.makeCache(store());
+    let live = 1;
+    const u = ui();
+    const p = RD.loadStats({ uid: 'uA', rids: ['r_a'], range: OLD, compare: 'none', token, keep: () => live === 1, api: API, cache, now: () => NOW, ui: u });
+    live = 2;   // a newer branch / period was asked before this one answered
+    const r = await p;
+    assert.equal(r.source, 'dropped', `K-stale (${label}): dropped`);
+    assert.equal(u.log.filter((e) => e.ev === want).length, 0, `K-stale (${label}): no ui.${want} over the newer scope`);
+    assert.equal(cache.get(RD.cacheKey('uA', RD.scopeOf(['r_a']), OLD, 'none')), null, `K-stale (${label}): nothing cached`);
+  }
+});
