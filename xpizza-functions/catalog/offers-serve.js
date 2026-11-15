@@ -55,7 +55,7 @@ const SM = require('./serve-memo').createServeMemo({ okTtlMs: OK_TTL_MS, failTtl
 
 // ONE mirror entry → its public shape, or null (never served: another audience, malformed, ended)
 function publicOffer(e, nowMs) {
-  if (!isObj(e) || e.audience !== 'all' || !OM.TYPES.includes(e.type) || e.type === 'nuevos') return null;
+  if (!isObj(e) || e.audience !== 'all' || !OM.typeSupported(e.type) || e.type === 'nuevos') return null;   // v1 types only: an envío entry is never served (owner 11-15)
   const params = OM.paramsOf(e.type, e.params, true);
   const s = isObj(e.schedule) ? OM.scheduleOf({ days: e.schedule.days, start: nul(e.schedule.start), end: nul(e.schedule.end), window: nul(e.schedule.window) }) : null;
   if (!params || !s || s.start === null) return null;

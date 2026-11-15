@@ -52,7 +52,7 @@ async function world({ on = true, legacy = false } = {}) {
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) };
   return { fs, db, deps, menu };
 }
-const offer = (o = {}) => ({ name: 'Oferta', type: 'pct', params: { pct: 10 }, audience: 'all', branches: [RID], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, ...o });
+const offer = (o = {}) => ({ name: 'Oferta', type: 'pct', params: { pct: 10 }, audience: 'all', branches: [RID], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o });
 async function live(deps, o) {
   const s = await C.marketingOfferSaveCore(deps, req({ rid: RID, expected_rev: 0, offer: offer(o) }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
@@ -191,7 +191,6 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const k0 = menu.items[0].key;
       const otherCat = menu.items.find((it) => it.display.cat !== menu.items[0].display.cat).display.cat;   // a category without k0 (the overlap rule)
       await live(deps, { name: 'Diez por ciento', params: { pct: 10, max_cents: 15000 } });
-      await live(deps, { name: 'Envío', type: 'envio', params: { min_cents: 30000 } });
       await live(deps, { name: '2x1', type: 'bogo', params: { items: [k0], free_per_order: 1 } });
       await live(deps, { name: 'Pizzas', type: 'bogo', params: { cats: [otherCat], free_per_order: 1 }, schedule: { start: NOW + 2 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
       await live(deps, { name: 'Bienvenida', type: 'nuevos', audience: 'new', params: { off_cents: 5000 } });
@@ -202,7 +201,6 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const sched = { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] };
       assert.deepStrictEqual(on.body.offers, [
         { type: 'bogo', params: { items: [k0], free_per_order: 1 }, schedule: sched },
-        { type: 'envio', params: { min_cents: 30000 }, schedule: sched },
         { type: 'pct', params: { pct: 10, max_cents: 15000 }, schedule: sched },
         { type: 'bogo', params: { cats: [otherCat], free_per_order: 1 }, schedule: { start: NOW + 2 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } },
       ], 'served: the all-audience live offers only, public params (a category offer serves its cats), sorted by start then type');
@@ -220,9 +218,15 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const satNight = NOW + 5 * DAY + 10 * 3600000;          // Sat 21 Nov 22:00 HN: inside 21:00–00:00
       assert.ok(!JSON.stringify((await flagAt(satNight))).match(/name|items|cats|caps|schedule|days|start|window|max_cents|free_per_order|"rev"|brand|o_[a-z2-7]{12}/), 'no private field ever appears (no max_cents, items, schedule, name, id)');
       const tue = NOW + DAY;                                   // Tue 17 Nov 12:00 HN: the all-day offers are in window; the Fri/Sat 21:00–00:00 one is not
-      assert.deepStrictEqual((await flagAt(tue)), { offers: [{ type: 'envio', min_cents: 30000 }, { type: 'pct', pct: 10 }, { type: 'bogo' }] },
-        'the flag: envío carries its minimum (rule 10), pct its percent, bogo no amount; the out-of-window category offer is absent');
+      assert.deepStrictEqual((await flagAt(tue)), { offers: [{ type: 'pct', pct: 10 }, { type: 'bogo' }] },
+        'the flag: pct its percent, bogo no amount (envío is refused in v1); the out-of-window category offer is absent');
       assert.deepStrictEqual((await flagAt(satNight)).offers.filter((o) => o.type === 'bogo').length, 2, 'inside its window the category offer joins');
+      // defence in depth (Codex 11-15): an ACTIVE envío mirror entry (legacy shape — no v1 writer can make one) is never served
+      const envEntry = { rev: 2, brand_id: 'xb', name: 'Envío', type: 'envio', params: { min_cents: 30000 }, audience: 'all', schedule: sched };
+      assert.strictEqual(OS.publicOffer(envEntry, tue), null, 'publicOffer never serves an envío entry (v1 types only)');
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'e'.repeat(12)}`).set(envEntry);
+      assert.ok(!(await flagAt(tue)).offers.some((o) => o.type === 'envio'), 'an active envío mirror entry never reaches the directory flag');
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'e'.repeat(12)}`).set(null);
       assert.deepStrictEqual((await flagAt(NOW + 5 * DAY)).offers.filter((o) => o.type === 'bogo').length, 1, 'Saturday noon: outside 21:00–00:00 ⇒ absent');
       assert.strictEqual((await flagAt(NOW + 31 * DAY)), null, 'past their end (and outside the open-ended category offer\'s Fri/Sat window) ⇒ no flag at all');
       ok('offerFlagOf: { offers: [{ type, pct? , off_cents?, min_cents? }] } inside the window now; ended / out-of-window absent; no private field');

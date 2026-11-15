@@ -94,8 +94,11 @@ async function resolveDishes(deps, value) {
 // THE live judgement — ONE rule, inside the brand transaction: this offer against one branch's CURRENT live
 // set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids). A tombstone is
 // never live; this offer's OWN entry is never judged (an edit may overlap itself).
-function liveJudgement(offerId, value, live) {
-  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r) && r.removed !== true);
+// LIVE = a projection (never a tombstone) whose schedule has not ENDED at server time `t`: nothing flips an offer past its end, so an
+// expired entry never holds a branch slot or clashes (portal-ui / advisor 11-14)
+const isLive = (e, t) => isObj(e) && e.removed !== true && !(isObj(e.schedule) && Number.isSafeInteger(e.schedule.end) && e.schedule.end <= t);
+function liveJudgement(offerId, value, live, t) {
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isLive(r, t));
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesOf(value));
   if (!mine.size) return null;
@@ -109,18 +112,20 @@ const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with 
 // branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
 const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array.isArray(x)) ? [...v].sort() : v).map(canon).join(',')}]` :   // set-valued params (items, cats) normalised: order never matters
    isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
-function duplicateOf(all, offerId, proj, branches, schedule) {
+// both sides through the STORED params rule (a «sin mínimo» envío is stored params-less: RTDB drops {}) — Codex brand-root r1 P2-1
+const paramsKey = (type, p) => canon(OM.paramsOf(type, p, true));
+function duplicateOf(all, offerId, proj, branches, schedule, t) {
   const held = {};
   for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
     for (const [id, e] of Object.entries(isObj(m) ? m : {})) {
-      if (id === offerId || !isObj(e) || e.removed === true) continue;
+      if (id === offerId || !isLive(e, t)) continue;
       (held[id] = held[id] || { rids: new Set(), e }).rids.add(rid);
     }
   }
   const mine = new Set(branches);
   for (const [id, h] of Object.entries(held)) {
     const e = h.e;
-    if (e.type !== proj.type || canon(e.params) !== canon(proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
+    if (e.type !== proj.type || paramsKey(e.type, e.params) !== paramsKey(proj.type, proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
     if (OM.schedulesOverlap(schedule, { start: e.schedule.start ?? null, end: e.schedule.end ?? null, days: e.schedule.days || [], window: e.schedule.window ?? null })) return id;
   }
   return null;
@@ -134,6 +139,16 @@ const OP_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const OP_TTL_MS = 7 * 86400000;
 const isOpId = (v) => typeof v === 'string' && OP_RE.test(v);   // a STRING first
 const OP_CONFLICT = () => reply(409, { error: 'op_id_conflict' });
+const OPS_MAX = 200;   // live claims per brand — the brand txn stays bounded under a burst (Codex brand-root r1 P2-2)
+const TOO_MANY_PENDING = () => reply(429, { error: 'too_many_pending' });
+// THE one way a claim is written: expired claims leave first (on EVERY claiming txn, a refusal-only one included); past OPS_MAX live
+// claims ⇒ the 429 to abort with (nothing written) | null
+function putClaim(next, opId, claim, t) {
+  for (const [k, c] of Object.entries(next.ops)) if (!liveClaim(c, t)) delete next.ops[k];
+  if (!Object.prototype.hasOwnProperty.call(next.ops, opId) && Object.keys(next.ops).length >= OPS_MAX) return TOO_MANY_PENDING();
+  next.ops[opId] = claim;
+  return null;
+}
 async function brandTxn(db, brandId, step) {
   let out = null;
   let tx;
@@ -166,13 +181,13 @@ function claimCheck(node, opId, kind, sourceId, t) {
 const refusedReply = (r) => reply(409, { error: r.error, ...(r.rid ? { rid: r.rid } : {}), ...(r.with ? { with: r.with } : {}), ...(r.offer_id ? { offer_id: r.offer_id } : {}) });
 // the record `rec` of `offerId` going active — THE judgement on the whole brand's current live set: the DUPLICATE first (it needs the
 // branch set, visible only here), then each branch's overlap + MAX_LIVE → null | { verdict, rid }
-function judgeActive(node, brandId, offerId, rec) {
+function judgeActive(node, brandId, offerId, rec, t) {
   const value = OM.authoredOf(rec, opts);
   const proj = OM.liveProjection(rec, brandId);
   const all = isObj(node.live) ? node.live : {};
-  const dup = duplicateOf(all, offerId, proj, value.branches, value.schedule);
+  const dup = duplicateOf(all, offerId, proj, value.branches, value.schedule, t);
   if (dup) return { verdict: { error: 'duplicate', offer_id: dup }, rid: value.branches[0] };
-  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid]); if (v) return { verdict: v, rid }; }
+  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid], t); if (v) return { verdict: v, rid }; }
   return null;
 }
 // write the record AND its mirror into `next` (one step): active ⇒ the projection on its branches + a tombstone on every other branch it
@@ -181,13 +196,24 @@ function writeOffer(next, brandId, offerId, rec, t, keep = []) {
   next.offers[offerId] = OM.stripNulls(rec);
   const held = Object.keys(next.live).filter((rid) => isObj(next.live[rid]) && next.live[rid][offerId] != null);
   for (const rid of new Set([...rec.branches, ...held])) {
-    next.live[rid] = { ...(isObj(next.live[rid]) ? next.live[rid] : {}), [offerId]: rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId) : { removed: true, rev: rec.rev } };
+    const proj = rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId) : null;   // null for a v1-unsupported type
+    next.live[rid] = { ...(isObj(next.live[rid]) ? next.live[rid] : {}), [offerId]: proj || { removed: true, rev: rec.rev } };
   }
   for (const id of endedToPrune(next.offers, t).filter((x) => x !== offerId && !keep.includes(x))) {
     delete next.offers[id];
     for (const rid of Object.keys(next.live)) if (isObj(next.live[rid]) && next.live[rid][id] != null) { next.live[rid] = { ...next.live[rid] }; delete next.live[rid][id]; }
   }
   for (const [k, c] of Object.entries(next.ops)) if (!liveClaim(c, t)) delete next.ops[k];
+  tidyExpired(next, t);
+}
+// every committing brand txn tombstones the expired projections it sees (at their own rev; a later genuine edit is a higher rev)
+function tidyExpired(next, t) {
+  for (const [rid, m] of Object.entries(next.live)) {
+    if (!isObj(m)) continue;
+    for (const [id, e] of Object.entries(m)) {
+      if (isObj(e) && e.removed !== true && !isLive(e, t)) { next.live[rid] = { ...next.live[rid], [id]: { removed: true, rev: e.rev } }; }
+    }
+  }
 }
 const endedToPrune = (offers, t) => Object.entries(isObj(offers) ? offers : {})
   .filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
@@ -204,7 +230,9 @@ function refuse(node, opId, kind, sourceId, offerId, verdict, rid, t) {
   const why = { error: verdict.error, rid, ...(verdict.with ? { with: verdict.with } : {}), ...(verdict.offer_id ? { offer_id: verdict.offer_id } : {}) };
   if (opId === undefined) return { abort: refusedReply(why) };
   const next = draftNode(node);
-  next.ops[opId] = { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why };
+  const full = putClaim(next, opId, { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why }, t);
+  if (full) return { abort: full };
+  tidyExpired(next, t);
   return { next, result: refusedReply(why) };
 }
 
@@ -237,7 +265,7 @@ async function getMarketingCore(deps, req) {
     .map(([id, rec]) => {
       // a read-only consistency flag (the record and its mirror are written together, so it should never be set): an alert if it is
       const m = live[id];
-      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;
+      const drift = rec.state === 'active' && OM.statusOf(rec, t) !== 'ended' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isLive(m, t);   // ended by schedule: no projection expected
       if (drift) console.warn('marketing_live_drift', JSON.stringify({ offer: id, rev: rec.rev, mirror_rev: isObj(m) ? m.rev : null }));
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
@@ -276,12 +304,15 @@ async function marketingOfferSaveCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
   if (denied) return denied;
   const dish = await resolveDishes(deps, v.value);
-  if (dish.fail) return dish.fail;
+  // a CLAIMED create answers its replay first: a preparation failure (a dish left the menu after a lost reply) waits for the claim
+  // check inside the txn (Codex brand-root r1 P2-3)
+  if (dish.fail && !(creating && body.op_id !== undefined)) return dish.fail;
   const value = dish.value;
   const t = now();
   const proposed = creating ? newOfferId() : body.offer_id;
   return brandTxn(db, brandId, (node) => {
     if (creating) { const c = claimCheck(node, body.op_id, 'create', null, t); if (c) return c; }   // the replay FIRST (before any validation)
+    if (dish.fail) return { abort: dish.fail };   // no replay: the deferred preparation failure
     const cur = isObj(node.offers) ? node.offers[proposed] : null;
     let rec;
     if (creating) {
@@ -295,19 +326,20 @@ async function marketingOfferSaveCore(deps, req) {
       if (cur.rev !== body.expected_rev) return { abort: reply(409, { error: 'superseded', current_rev: cur.rev }) };
       if (cur.state === 'ended') return { abort: reply(409, { error: 'ended' }) };
       if (cur.state !== 'draft') { const p = OM.liveEditProblem(OM.authoredOf(cur, opts), value); if (p) return { abort: reply(409, { error: 'live_edit_not_allowed', field: p }) }; }
-      rec = { ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t };
+      rec = { ...cur, ...value, schedule: value.schedule, rev: cur.rev + 1, updated_at: t };
+      delete rec.caps;   // v1: an old record's caps leave on its next save
       if (program && cur.state !== 'active') { rec.state = 'active'; delete rec.paused_at; }   // update AND program in ONE write
     }
     // program: the publish validation applies to a record being PROGRAMMED (a create, a draft, a paused one) — never to a live edit
     if (program && !(isObj(cur) && cur.state === 'active')) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return { abort: reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }) }; }
     rec = OM.stripNulls(rec);
     if (rec.state === 'active') {
-      const j = judgeActive(node, brandId, proposed, rec);
+      const j = judgeActive(node, brandId, proposed, rec, t);
       if (j) return creating ? refuse(node, body.op_id, 'create', null, proposed, j.verdict, j.rid, t) : { abort: judgementReply(j.verdict, j.rid) };
     }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t);
-    if (creating && body.op_id !== undefined) next.ops[body.op_id] = { offer_id: proposed, kind: 'create', at: t };
+    if (creating && body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'create', at: t }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
   });
 }
@@ -345,13 +377,14 @@ async function marketingOfferSetStateCore(deps, req) {
     if (cur.rev !== pre.rev) return { abort: reply(409, { error: 'superseded', current_rev: cur.rev }) };
     if (!MOVES[cur.state].includes(body.to)) return { abort: reply(409, { error: 'bad_transition' }) };
     if (body.to === 'active') {   // publish / resume: the schedule is still ahead (a draft), a paused offer not past its end
+      if (!OM.typeSupported(cur.type)) return { abort: reply(409, { error: 'type_not_supported' }) };   // an old envío record (owner 11-15)
       if (cur.state === 'draft') { const p = OM.validatePublishable(OM.authoredOf(cur, opts), t); if (!p.ok) return { abort: reply(400, { error: 'bad_request', field: p.field, reason: p.reason }) }; }
       if (cur.state === 'paused_owner' && cur.schedule.end != null && cur.schedule.end <= t) return { abort: reply(409, { error: 'ended' }) };
     }
     const rec = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') rec.ended_reason = 'owner'; else delete rec.ended_reason;
     if (body.to === 'paused_owner') rec.paused_at = t; else delete rec.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
-    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec); if (j) return { abort: judgementReply(j.verdict, j.rid) }; }
+    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t); if (j) return { abort: judgementReply(j.verdict, j.rid) }; }
     const next = draftNode(node);
     writeOffer(next, brandId, body.offer_id, rec, t);
     return { next, result: reply(200, { ok: true, offer: offerView(body.offer_id, rec, t) }) };
@@ -382,21 +415,24 @@ async function marketingOfferRepeatCore(deps, req) {
   const value = OM.authoredOf(src, opts);
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
+  if (!OM.typeSupported(value.type)) return reply(400, { error: 'bad_request', field: 'type', reason: 'type_not_supported' });   // never repeat an old envío
   // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, the max timestamp) — before anything is written
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
+  let prepFail = null;
   if (program) {
     const sc = isObj(body.schedule) ? body.schedule : {};
     if (Object.keys(sc).some((k) => k !== 'start' && k !== 'end') || sc.start === undefined || sc.start === null) return reply(400, { error: 'bad_request', field: 'schedule' });
     const programSchedule = OM.scheduleOf({ days: value.schedule.days, start: sc.start, end: sc.end === undefined ? null : sc.end, window: value.schedule.window });
     if (!programSchedule) return reply(400, { error: 'bad_request', field: 'schedule' });
     const dish = await resolveDishes(deps, { ...value, schedule: programSchedule });   // a category offer is re-resolved (frozen from here)
-    if (dish.fail) return dish.fail;
-    draft = dish.value;
+    if (dish.fail && body.op_id === undefined) return dish.fail;
+    if (dish.fail) prepFail = dish.fail; else draft = dish.value;   // a CLAIMED repeat: the failure waits for the claim check (P2-3)
   }
   const proposed = newOfferId();
   return brandTxn(db, brandId, (node) => {
     const c = claimCheck(node, body.op_id, 'repeat', sourceId, t);   // the replay FIRST (before any validation or capacity)
     if (c) return c;
+    if (prepFail) return { abort: prepFail };   // no replay: the deferred preparation failure
     const s = isObj(node.offers) ? node.offers[sourceId] : null;
     if (!(isObj(s) && OM.recordOk(s, opts))) return { abort: reply(404, { error: 'not_found' }) };
     if (s.rev !== src.rev) return { abort: reply(409, { error: 'superseded', current_rev: s.rev }) };
@@ -405,12 +441,12 @@ async function marketingOfferRepeatCore(deps, req) {
     const keep = endedToPrune(node.offers, t).filter((id) => id !== sourceId);   // never the offer being repeated
     if (Object.keys(isObj(node.offers) ? node.offers : {}).length - keep.length >= OM.LIMITS.offers_max) return { abort: reply(409, { error: 'too_many_offers' }) };
     const rec = OM.stripNulls({ v: 1, rev: 1, ...draft, state: program ? 'active' : 'draft', repeated_from: sourceId, created_by: ctx.uid, created_at: t, updated_at: t });
-    if (program) { const j = judgeActive(node, brandId, proposed, rec); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
+    if (program) { const j = judgeActive(node, brandId, proposed, rec, t); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t, [sourceId]);
-    if (body.op_id !== undefined) next.ops[body.op_id] = { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId };
+    if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
   });
 }
 
-module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)
+module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX, writeOffer };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)

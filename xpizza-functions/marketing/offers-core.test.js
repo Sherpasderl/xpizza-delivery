@@ -99,7 +99,7 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
 const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
 const get = (deps, tok, rid) => C.getMarketingCore(deps, req(tok, undefined, 'GET', { rid }));
 const offer = (o = {}) => ({ name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, spend_cents: null, weekly: false }, ...o });
+  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, ...o });   // v1: no caps (owner 11-15: offers launch without spend caps)
 const save = (deps, tok, body) => C.marketingOfferSaveCore(deps, req(tok, { rid: 'tb_centro', expected_rev: 0, ...body }));
 const move = (deps, tok, body) => C.marketingOfferSetStateCore(deps, req(tok, { rid: 'tb_centro', ...body }));
 const created = async (deps, o) => { const r = await save(deps, `t-${OWNER}`, { offer: offer(o) }); assert.strictEqual(r.status, 200, `premise: created (${JSON.stringify(r.body)})`); return r.body.offer; };
@@ -155,7 +155,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.ok(OM.OFFER_ID_RE.test(d.id), 'an opaque offer id');
       const rec = fake.get(`marketing_brand/tb/offers/${d.id}`);
       assert.deepStrictEqual(rec, { v: 1, rev: 1, name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, weekly: false },
+        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } },
         state: 'draft', created_by: OWNER, created_at: NOW, updated_at: NOW }, 'the stored draft: exact keys, nulls absent, no price copy');
       assert.deepStrictEqual(mirrored(fake), [], 'a draft has no live mirror');
       assert.deepStrictEqual([d.status, d.state, d.rev], ['draft', 'draft', 1]);
@@ -169,27 +169,35 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ name: '   ' }, 'bad_name'],
         [{ schedule: { start: NOW + DAY, end: NOW, days: [1] } }, 'bad_schedule'],
         [{ schedule: { start: NOW + DAY, days: [1], window: { from: 600, to: 600 } } }, 'bad_schedule'],
-        [{ caps: { redemptions: 0, weekly: false } }, 'bad_caps'],
         // money (advisor 11-14): whole lempiras, positive; absent = none — never a 0 sentinel
         [{ type: 'pct', params: { pct: 10, max_cents: 0 } }, 'bad_params'],
         [{ type: 'pct', params: { pct: 10, max_cents: 5050 } }, 'bad_params'],
         [{ type: 'lps', params: { off_cents: 5050, min_cents: 30000 } }, 'bad_params'],
-        [{ type: 'envio', params: { min_cents: 0 } }, 'bad_params'],
+        // v1 types (owner 11-15): «envío gratis» waits for the payout ledger — refused before its params are even judged
+        [{ type: 'envio', params: { min_cents: 0 } }, 'type_not_supported'],
+        [{ type: 'envio', params: {} }, 'type_not_supported'],
+        [{ type: 'envio', params: { min_cents: 30000 } }, 'type_not_supported'],
         [{ type: 'nuevos', params: { off_cents: 99 }, audience: 'new' }, 'bad_params'],
-        [{ caps: { redemptions: 5, spend_cents: 75050, weekly: false } }, 'bad_caps'],
+        // v1 caps (owner 11-15): ANY caps value but absent / null is refused — never stored, never half-enforced
+        [{ caps: { weekly: false } }, 'caps_not_supported'],
+        [{ caps: { redemptions: 50, spend_cents: null, weekly: false } }, 'caps_not_supported'],
+        [{ caps: {} }, 'caps_not_supported'],
+        [{ caps: 0 }, 'caps_not_supported'],
         [{ extra: 1 }, 'bad_shape'],
       ];
       for (const [o, reason] of bad) {
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.reason], [400, reason], `validation: ${reason} (${JSON.stringify(o)})`);
       }
+      { const z = await save(deps, `t-${OWNER}`, { offer: offer({ caps: null }) });
+        assert.deepStrictEqual([z.status, z.body.offer && 'caps' in z.body.offer, 'caps' in (fake.get(`marketing_brand/tb/offers/${z.body.offer && z.body.offer.id}`) || {})], [200, false, false], `caps: null ⇒ accepted, nothing stored (${JSON.stringify(z.body)})`); }
       const both = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], items: [K1], free_per_order: 1 } }) });
       assert.deepStrictEqual([both.status, both.body.reason], [400, 'bad_params'], 'the builder sends items OR cats, never both (items are the server\'s)');
-      for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }], [{ type: 'envio', params: {} }, {}]]) {
+      for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }]]) {
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.offer && r.body.offer.params], [200, want], `money: ${JSON.stringify(o.params)} ⇒ stored ${JSON.stringify(want)} (absent = none)`);
       }
-      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
+      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps absent / null only (else caps_not_supported), exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
     }
 
     // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
@@ -213,7 +221,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_sur/${r.body.offer.id}/params/items`), want, 'publish RE-RESOLVES: the new dish is in the mirror');
       CATALOG.tb_centro.push(['i_eeeeeeeeeeee', 200, 'pizzas']);   // a dish added AFTER publishing
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), want, 'frozen: a dish added after publish is NOT covered');
-      const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], caps: { redemptions: 60, spend_cents: null, weekly: false } }) });
+      const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
       assert.strictEqual(re.status, 200, `a re-save of the live category offer is allowed (${JSON.stringify(re.body)})`);
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), [...want, 'i_eeeeeeeeeeee'].sort(), '…and covers the dish added since');
       ok('publish re-resolves; frozen between; a re-save of the live offer picks up a dish added since');
@@ -231,7 +239,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([p.status, p.body.offer.state, p.body.offer.status, p.body.offer.rev], [200, 'active', 'scheduled', 2], 'publish ⇒ active, shown «scheduled» before its start');
       const rec = fake.get(`marketing_brand/tb/offers/${d.id}`);
       for (const rid of ['tb_centro', 'tb_sur']) assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/${rid}/${d.id}`), OM.liveProjection(rec, 'tb'), `the mirror of ${rid} is the record's projection`);
-      assert.deepStrictEqual(Object.keys(fake.get(`marketing_brand/tb/live/tb_centro/${d.id}`)).sort(), ['audience', 'brand_id', 'caps', 'name', 'params', 'rev', 'schedule', 'type'], 'the mirror carries no state, author or timestamps');
+      assert.deepStrictEqual(Object.keys(fake.get(`marketing_brand/tb/live/tb_centro/${d.id}`)).sort(), ['audience', 'brand_id', 'name', 'params', 'rev', 'schedule', 'type'], 'the mirror carries no state, author, timestamps or caps');
       ok('publish: active, every branch mirrored with the exact projection');
       const stale = await move(deps, `t-${OWNER}`, { offer_id: d.id, to: 'paused_owner', expected_rev: 1 });
       assert.deepStrictEqual([stale.status, stale.body], [409, { error: 'superseded', current_rev: 2 }], 'a stale rev ⇒ superseded');
@@ -273,20 +281,32 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('pause / end: the mirror goes first — a failed removal is a 503 with the record still active, never a paused offer still priced');
     }
 
-    // ── 5. the live-edit allowlist (caps up, end later) ──
+    // ── 5. the live-edit allowlist (end later; v1 has no caps) ──
     {
       const { fake, deps } = await setup();
       const a = await published(deps);
       const edit = (o, rev) => save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: rev, offer: offer(o) });
-      for (const [o, field] of [[{ name: 'Otro nombre' }, 'name'], [{ caps: { redemptions: 40, spend_cents: null, weekly: false } }, 'caps'], [{ caps: { redemptions: 50, spend_cents: 1000, weekly: false } }, 'caps'],
+      for (const [o, field] of [[{ name: 'Otro nombre' }, 'name'],
         [{ schedule: { start: NOW + DAY, end: NOW + 20 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }, 'schedule'], [{ params: { items: [K2], free_per_order: 1 } }, 'params']]) {
         const r = await edit(o, 2);
         assert.deepStrictEqual([r.status, r.body.error, r.body.field], [409, 'live_edit_not_allowed', field], `live edit of ${field} refused`);
       }
-      const up = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false }, schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } }, 2);
-      assert.deepStrictEqual([up.status, up.body.offer.rev, up.body.offer.caps.redemptions, up.body.offer.schedule.end], [200, 3, 80, null], 'caps up + no end ⇒ allowed');
+      const capped = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false } }, 2);
+      assert.deepStrictEqual([capped.status, capped.body.reason], [400, 'caps_not_supported'], 'a live edit carrying caps ⇒ 400 caps_not_supported');
+      const up = await edit({ schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } }, 2);
+      assert.deepStrictEqual([up.status, up.body.offer.rev, 'caps' in up.body.offer, up.body.offer.schedule.end], [200, 3, false, null], 'a caps-less live edit (no end) ⇒ allowed');
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`), OM.liveProjection(fake.get(`marketing_brand/tb/offers/${a.id}`), 'tb'), 'the mirror follows the edit');
-      ok('live edit: only a raised cap and a later end; the mirror follows');
+      ok('live edit: only a later end (caps refused); the mirror follows');
+      // an OLD record that still HAS caps (stored before v1 dropped them): read, projected and edited caps-less — never refused, never carried
+      const recPath = `marketing_brand/tb/offers/${a.id}`;
+      await fake.ref(`${recPath}/caps`).set({ redemptions: 50, weekly: false });
+      const pz = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 3 });
+      const rs = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 4 });
+      assert.deepStrictEqual([pz.status, rs.status, 'caps' in rs.body.offer], [200, 200, false], `an old capped record pauses / resumes; the view has no caps (${JSON.stringify([pz.body, rs.body])})`);
+      assert.ok(!('caps' in (fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`) || {})), 'the re-projected live node of an old capped record carries no caps');
+      const old = await edit({ schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1200, to: 0 } } }, 5);
+      assert.deepStrictEqual([old.status, 'caps' in (fake.get(recPath) || {}), 'caps' in (fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`) || {})], [200, false, false], `an old capped record edited caps-less ⇒ 200, caps dropped from the record and the mirror (${JSON.stringify(old.body)})`);
+      ok('an old record with caps: pause / resume / caps-less live edit all work; caps leave the record and never reach the mirror');
     }
 
     // ── 5b. owner-approved v5 «Editar oferta activa»: days + window MAY change on a live offer (start stays locked, end later-only);
@@ -339,7 +359,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       let edited = null; let armed = true;
       const recPath = `marketing_brand/tb/offers/${a.id}`;
       const lateDb = { ref: (p) => { const r = db.ref(p);
-        if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false; edited = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 90, spend_cents: null, weekly: false } }) }); return r.transaction(fn); } };
+        if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false; edited = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) }); return r.transaction(fn); } };
         return r; } };
       // the pause tombstones at rev 3 (pre.rev + 1), then — before its CAS — a live edit takes rev 3 and mirrors its rev-3 projection
       const p = await move({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 });
@@ -447,13 +467,13 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const entryPath = `marketing_brand/tb/live/tb_centro/${a.id}`;
       const lateDb = { ref: (p) => { const r = db.ref(p);
         if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false;   // the OLDER edit's brand txn is about to run
-          newer = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 99, spend_cents: null, weekly: false } }) });
+          newer = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
           return r.transaction(fn); } };
         return r; } };
-      const older = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 70, spend_cents: null, weekly: false } }) });
+      const older = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 35 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
       assert.deepStrictEqual([older.status, older.body.error, newer && newer.status], [409, 'superseded', 200], `the newer edit wins; the older one's ONE txn sees rev 3 ⇒ superseded (${JSON.stringify([older.body, newer && newer.body])})`);
       const e = fake.get(entryPath); const rec = fake.get(`marketing_brand/tb/offers/${a.id}`);
-      assert.deepStrictEqual([rec.rev, e.rev, e.caps.redemptions], [3, 3, 99], `the older txn never overwrites the newer projection (live = the record's rev 3) (${JSON.stringify(e)})`);
+      assert.deepStrictEqual([rec.rev, e.rev, e.schedule.end], [3, 3, NOW + 40 * DAY], `the older txn never overwrites the newer projection (live = the record's rev 3) (${JSON.stringify(e)})`);
       ok('the brand txn is rev-guarded: an older edit never overwrites a newer one\'s projection');
     }
 
@@ -650,11 +670,11 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([f2.status, f2.body.error, f2.body.offer_id], [409, 'duplicate', id1], 'the same-op retry re-judges and answers the refusal (never a 200 active with no mirror)');
       assert.strictEqual(fake.get(`marketing_brand/tb/ops/${OP3}/refused/error`), 'duplicate', '…and records it on the claim');
       ok('a failed refusal write ⇒ 503; the same-op retry re-judges and records the refusal');
-      // P2-3: the replay runs BEFORE the publish validation; the start-in-future rule never applies to a LIVE edit (caps / end)
+      // P2-3: the replay runs BEFORE the publish validation; the start-in-future rule never applies to a LIVE edit (end later)
       const late = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer: pct(), op_id: OP1, program: true });
       assert.strictEqual(late.status, 200, 'a same-op retry after the start passed REPLAYS (never 400 start_past)');
-      const liveEdit = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer_id: id1, expected_rev: again.body.offer.rev, offer: pct({ caps: { redemptions: 90, spend_cents: null, weekly: false } }), program: true });
-      assert.strictEqual(liveEdit.status, 200, `program on an ALREADY LIVE offer (a caps edit after its start) is never refused start_past (${JSON.stringify(liveEdit.body)})`);
+      const liveEdit = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer_id: id1, expected_rev: again.body.offer.rev, offer: pct({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }), program: true });
+      assert.strictEqual(liveEdit.status, 200, `program on an ALREADY LIVE offer (an end-later edit after its start) is never refused start_past (${JSON.stringify(liveEdit.body)})`);
       ok('P2-3: replay precedes the publish validation; a live edit with program is never refused start_past');
       // P2-4: set-valued params are normalised (item order) and the DUPLICATE is judged first on every path — draft programming included
       const bogo = (items, o = {}) => offer({ name: 'Dos por uno', params: { items, free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: { from: 600, to: 720 } }, ...o });
@@ -674,6 +694,105 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([bad.status, bad.body.field], [400, 'schedule'], 'a timestamp beyond the shared model\'s maximum ⇒ 400 schedule');
       assert.strictEqual(fake.get(`marketing_brand/tb/ops/${OPS}`) ?? null, null, 'and NO claim was written for it');
       ok('P2-5: the repeat\'s schedule is validated by the shared model before any claim or write');
+    }
+
+    // ── 5n. Codex brand-root r1 (3 × P2) ──
+    {
+      // v1 (owner 11-15): envío is refused on EVERY authored path — create, create + program, and an edit of a draft into envío
+      const { fake, deps } = await setup();
+      const env = () => offer({ name: 'Envío gratis', type: 'envio', params: {} });
+      const e1 = await save(deps, `t-${OWNER}`, { offer: env(), op_id: 'op_' + 'e'.repeat(20), program: true });
+      assert.deepStrictEqual([e1.status, e1.body.field, e1.body.reason], [400, 'type', 'type_not_supported'], `envío create + program ⇒ 400 type_not_supported (${JSON.stringify(e1.body)})`);
+      const d = await created(deps, { name: 'Diez', type: 'pct', params: { pct: 10 } });
+      const e2 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Diez', type: 'envio', params: {} }) });
+      assert.deepStrictEqual([e2.status, e2.body.reason], [400, 'type_not_supported'], 'a draft edited INTO envío ⇒ 400 type_not_supported');
+      assert.deepStrictEqual(Object.keys((fake.get('marketing_brand/tb/offers')) || {}), [d.id], 'nothing envío was ever stored');
+      ok('v1: envío refused on create, create + program and edit (type_not_supported); nothing stored');    }
+    {
+      // P2-2a: 120 refusals over 120 days — expired claims are pruned on EVERY committing txn, refusal-only ones included
+      const { fake, deps } = await setup();
+      const pctNoEnd = (t) => offer({ name: 'Diez siempre', type: 'pct', params: { pct: 10 }, schedule: { start: t + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } });
+      assert.strictEqual((await save(deps, `t-${OWNER}`, { offer: pctNoEnd(NOW), program: true })).status, 200, 'premise: the live offer');
+      for (let i = 1; i <= 120; i++) {
+        const t = NOW + i * DAY;
+        const r = await save({ ...deps, now: () => t }, `t-${OWNER}`, { offer: pctNoEnd(t), op_id: `op_day${String(i).padStart(3, '0')}_${'d'.repeat(12)}`, program: true });
+        assert.deepStrictEqual([r.status, r.body.error], [409, 'duplicate'], `premise: day ${i} refused as a duplicate`);
+      }
+      const ops = Object.keys(fake.get('marketing_brand/tb/ops') || {});
+      assert.ok(ops.length <= 8, `refusal claims older than 7 days are pruned by the refusal txns themselves: ${ops.length} left (never 120)`);
+      ok('Codex P2-2a: 120 refusals over 120 days leave only the last 7 days of claims');
+      // P2-2b: a burst (day 200: every earlier claim expired) — live claims per brand are capped; past the cap ⇒ 429 too_many_pending, NOTHING written
+      const TB = NOW + 200 * DAY; const bdeps = { ...deps, now: () => TB };
+      for (let i = 0; i < C.OPS_MAX; i++) {
+        const r = await save(bdeps, `t-${OWNER}`, { offer: pctNoEnd(TB), op_id: `op_burst${String(i).padStart(4, '0')}_${'b'.repeat(10)}`, program: true });
+        if (r.status !== 409) assert.fail(`premise: burst ${i} refused as a duplicate (${JSON.stringify(r.body)})`);
+      }
+      assert.strictEqual(Object.keys(fake.get('marketing_brand/tb/ops')).length, C.OPS_MAX, 'premise: the cap is reached');
+      const before = clone(fake.get('marketing_brand/tb'));
+      const over = await save(bdeps, `t-${OWNER}`, { offer: pctNoEnd(TB), op_id: 'op_burstover_' + 'z'.repeat(10), program: true });
+      assert.deepStrictEqual([over.status, over.body.error], [429, 'too_many_pending'], `past the cap ⇒ 429 too_many_pending (${JSON.stringify(over.body)})`);
+      assert.deepStrictEqual(fake.get('marketing_brand/tb'), before, 'and nothing written');
+      const fresh = await save(bdeps, `t-${OWNER}`, { offer: offer({ name: 'Otra', type: 'pct', params: { pct: 25 }, schedule: { start: TB + DAY, end: TB + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }), op_id: 'op_burstnew_' + 'y'.repeat(10) });
+      assert.deepStrictEqual([fresh.status, fresh.body.error], [429, 'too_many_pending'], 'a NEW claimed create is refused too while the cap holds');
+      ok('Codex P2-2b: a burst is capped at OPS_MAX live claims ⇒ 429 too_many_pending, nothing written');
+    }
+    {
+      // P2-3: a lost reply, then the dish leaves the menu: the same-op retry REPLAYS (never 400 unknown_dish) — repeat AND create
+      const { fake, db, deps } = await setup();
+      const src = await published(deps, { name: 'Fuente K2', params: { items: [K2], free_per_order: 1 } });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: src.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const ROP = 'op_' + 'q'.repeat(20), COP = 'op_' + 'w'.repeat(20);
+      const rep = () => C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', source_id: src.id, op_id: ROP, program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 9 * DAY } }));
+      const r1 = await rep();
+      assert.strictEqual(r1.status, 200, `premise: repeat + program succeeded (${JSON.stringify(r1.body)})`);
+      const c1 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Crear K2', params: { items: [K2], free_per_order: 2 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: null } }), op_id: COP });
+      assert.strictEqual(c1.status, 200, 'premise: a claimed create succeeded');
+      await makeRtdbMirror(db)('tb_centro', { version: 'v2', seq: 2, rid: 'tb_centro', menu: { [K1]: 150, [K3]: 90 }, extras: {} });   // K2 leaves the menu
+      const gone = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Nuevo K2', params: { items: [K2], free_per_order: 3 } }) });
+      assert.deepStrictEqual([gone.status, gone.body.reason], [400, 'unknown_dish'], 'premise: K2 is no longer on the menu');
+      const r2 = await rep();
+      assert.deepStrictEqual([r2.status, r2.body.offer && r2.body.offer.id], [200, r1.body.offer.id], `the repeat retry REPLAYS its committed offer (never 400 unknown_dish) (${JSON.stringify(r2.body)})`);
+      const c2 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Crear K2', params: { items: [K2], free_per_order: 2 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: null } }), op_id: COP });
+      assert.deepStrictEqual([c2.status, c2.body.offer && c2.body.offer.id], [200, c1.body.offer.id], `the create retry REPLAYS too (${JSON.stringify(c2.body)})`);
+      // a NEW op_id has no claim to replay: the deferred failure answers (400 unknown_dish) and NOTHING is written (no claim, no record)
+      const pre = clone(fake.get('marketing_brand/tb'));
+      const nr = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', source_id: src.id, op_id: 'op_' + 'v'.repeat(20), program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 9 * DAY } }));
+      assert.deepStrictEqual([nr.status, nr.body.reason], [400, 'unknown_dish'], `a NEW-op repeat on a dish off the menu ⇒ the deferred 400 (${JSON.stringify(nr.body)})`);
+      const nc = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Nuevo K2', params: { items: [K2], free_per_order: 3 } }), op_id: 'op_' + 'u'.repeat(20) });
+      assert.deepStrictEqual([nc.status, nc.body.reason], [400, 'unknown_dish'], `a NEW-op create on a dish off the menu ⇒ the deferred 400 (${JSON.stringify(nc.body)})`);
+      assert.deepStrictEqual(fake.get('marketing_brand/tb'), pre, 'the deferred failures wrote nothing');
+      ok('Codex P2-3: a same-op retry replays before the dish preparation can fail (repeat and create)');
+    }
+
+    // ── 5o. portal-ui (advisor): an offer past its schedule END is not live — it never holds a branch slot, and a txn tidies it ──
+    {
+      const { fake, deps } = await setup();
+      const ids = [];
+      for (let i = 0; i < 10; i++) ids.push((await save(deps, `t-${OWNER}`, { offer: offer({ name: `Corta ${i}`, type: 'pct', params: { pct: 5 + 5 * i }, schedule: { start: NOW + DAY, end: NOW + 2 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true })).body.offer.id);
+      assert.strictEqual(ids.filter(Boolean).length, 10, 'premise: ten offers programmed, each ending NOW + 2 days');
+      const T3 = NOW + 3 * DAY; const later = { ...deps, now: () => T3 };
+      assert.ok(ids.every((id) => { const e = fake.get(`marketing_brand/tb/live/tb_centro/${id}`); return e && e.removed !== true; }), 'premise: no job ended them — their entries are still projections');
+      const eleventh = await save(later, `t-${OWNER}`, { offer: offer({ name: 'Después', type: 'lps', params: { off_cents: 5000, min_cents: 30000 }, schedule: { start: T3 + DAY, end: T3 + 9 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true });
+      assert.strictEqual(eleventh.status, 200, `entries past their schedule end never count toward live_max (${JSON.stringify(eleventh.body)})`);
+      assert.ok(ids.every((id) => fake.get(`marketing_brand/tb/live/tb_centro/${id}/removed`) === true), 'the brand txn tombstoned the expired entries it saw (the node stays tidy)');
+      const listed = (await get(later, `t-${OWNER}`, 'tb_centro')).body.offers.filter((o) => ids.includes(o.id));
+      assert.deepStrictEqual([listed.length, listed.every((o) => o.status === 'ended' && o.live_drift === undefined)], [10, true], 'the portal lists them «Terminada», never as drift');
+      ok('portal-ui: an offer past its end never holds a live slot; any brand txn tombstones it; the read shows it ended, no drift');
+    }
+    {
+      // the same for a REFUSAL-only txn (a claimed refusal writes; it tidies too) and for the duplicate judgement
+      const { fake, deps } = await setup();
+      const short = (o = {}) => offer({ name: 'Diez corta', type: 'pct', params: { pct: 10 }, schedule: { start: NOW + DAY, end: NOW + 2 * DAY, days: [5, 6], window: null }, ...o });
+      const a = await save(deps, `t-${OWNER}`, { offer: short(), program: true });
+      assert.strictEqual(a.status, 200, 'premise: programmed, ending NOW + 2 days');
+      const T3 = NOW + 3 * DAY;
+      const live = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Veinte', type: 'pct', params: { pct: 20 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: null } }), program: true });
+      assert.strictEqual(live.status, 200, 'premise: a long-running competitor (written BEFORE the short one expires: no later successful write)');
+      assert.ok((fake.get(`marketing_brand/tb/live/tb_centro/${a.body.offer.id}/removed`) ?? null) === null, 'premise: the short one is still a projection');
+      const ref = await save({ ...deps, now: () => T3 }, `t-${OWNER}`, { offer: offer({ name: 'Veinte', type: 'pct', params: { pct: 20 }, schedule: { start: T3 + DAY, end: NOW + 30 * DAY, days: [5, 6], window: null } }), op_id: 'op_' + 'x'.repeat(16) + 'tidy', program: true });
+      assert.deepStrictEqual([ref.status, ref.body.error, ref.body.offer_id], [409, 'duplicate', live.body.offer.id], 'premise: a claimed refusal (the live competitor, never the expired one)');
+      assert.strictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${a.body.offer.id}/removed`), true, 'a refusal-only txn tombstones the expired entry too');
+      ok('the expired-entry tidy runs on a refusal-only txn too');
     }
 
     // ── 6. the overlap rule + MAX_LIVE ──
@@ -697,27 +816,71 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       void k2sat;
       ok('overlap across the week boundary (Saturday night into Sunday)');
       for (let i = 0; i < 5; i++) await published(deps, { name: `Pct ${i}`, type: 'pct', params: { pct: 10 + 5 * i } });   // distinct params: never a duplicate
-      const eleventh = await created(deps, { name: 'Once', type: 'envio', params: {} });   // no minimum = the field absent
+      const eleventh = await created(deps, { name: 'Once', type: 'lps', params: { off_cents: 5000, min_cents: 30000 } });
       const t = await move(deps, `t-${OWNER}`, { offer_id: eleventh.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([t.status, t.body.error], [409, 'too_many_live'], 'the 11th live offer on a branch ⇒ too_many_live');
       ok('MAX_LIVE: 10 scheduled+live offers per branch');
     }
 
-    // ── 6a. RTDB never stores an empty object: a «sin mínimo» envío (params {}) is stored params-less — it still reads back, lists and serves ──
+    // ── 5q. Codex (portal-ui Ofertas r6.1, against e3c5f7366): a create whose record txn COMMITTED but reported an error answered 200 from a
+    //        replay WITHOUT settling the mirror. Since the brand root (c4538460a) the record, its mirror and the claim are ONE transaction,
+    //        so a commit carries its mirror; an ambiguous outcome is a 503 (never 200), and the same-op retry replays with the mirror there ──
+    {
+      const { fake, db, deps } = await setup();
+      const wrap = (mode) => ({ ref: (p) => { const r = db.ref(p);
+        if (p !== 'marketing_brand/tb') return r;
+        return { ...r, transaction: async (fn) => { if (mode === 'pre') throw new Error('network: never sent'); await r.transaction(fn); throw new Error('ambiguous: committed, reply lost'); } }; } });
+      const OPC = 'op_' + 'q'.repeat(20);
+      const c1 = await save({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer: offer({ name: 'Ambigua' }), op_id: OPC, program: true });
+      assert.deepStrictEqual([c1.status, c1.body.error], [503, 'unavailable'], `a create + program whose txn committed but errored ⇒ 503, never 200 (${JSON.stringify(c1.body)})`);
+      const recs = Object.entries(fake.get('marketing_brand/tb/offers') || {});
+      assert.deepStrictEqual([recs.length, recs[0] && recs[0][1].state, mirrored(fake)], [1, 'active', [`tb_centro/${recs[0] && recs[0][0]}`]], 'premise: it DID commit — and the commit carries its mirror (one transaction)');
+      const c2 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Ambigua' }), op_id: OPC, program: true });
+      assert.deepStrictEqual([c2.status, c2.body.offer && c2.body.offer.state], [200, 'active'], 'the same-op retry REPLAYS 200 …');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${c2.body.offer.id}`), OM.liveProjection(fake.get(`marketing_brand/tb/offers/${c2.body.offer.id}`), 'tb'), '… with the live mirror present BEFORE the 200');
+      ok('5q: a committed-but-errored create ⇒ 503; the replay answers 200 only with the mirror already live');
+      const id = c2.body.offer.id; const r0 = c2.body.offer.rev;
+      const e1 = await save({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer_id: id, expected_rev: r0, offer: offer({ name: 'Ambigua', schedule: { start: NOW + DAY, end: NOW + 45 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
+      assert.deepStrictEqual([e1.status, e1.body.error], [503, 'unavailable'], 'a committed-but-errored live EDIT ⇒ 503, never 200');
+      assert.deepStrictEqual([fake.get(`marketing_brand/tb/offers/${id}/rev`), fake.get(`marketing_brand/tb/live/tb_centro/${id}/rev`), fake.get(`marketing_brand/tb/live/tb_centro/${id}/schedule/end`)], [r0 + 1, r0 + 1, NOW + 45 * DAY], 'the edit committed WITH its mirror (record and mirror at the same rev)');
+      const p1 = await move({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer_id: id, to: 'paused_owner', expected_rev: r0 + 1 });
+      assert.deepStrictEqual([p1.status, fake.get(`marketing_brand/tb/offers/${id}/state`), mirrored(fake)], [503, 'paused_owner', []], 'a committed-but-errored pause ⇒ 503; record and mirror moved together');
+      ok('5q: a committed-but-errored edit / pause ⇒ 503; record and mirror always move together');
+      const n0 = JSON.stringify(fake.get('marketing_brand/tb'));
+      const x = await save({ ...deps, db: wrap('pre') }, `t-${OWNER}`, { offer: offer({ name: 'Nunca', params: { items: [K2], free_per_order: 1 } }), op_id: 'op_' + 'x'.repeat(20), program: true });
+      assert.deepStrictEqual([x.status, x.body.error, JSON.stringify(fake.get('marketing_brand/tb')) === n0], [503, 'unavailable', true], `a txn that errors WITHOUT committing ⇒ 503 and nothing written — never a 200 (${JSON.stringify(x.body)})`);
+      ok('5q: an uncommitted txn error ⇒ 503, nothing written, never 200');
+    }
+
+    // ── 6a. an OLD envío record (stored by the pre-v1 writer, before envío was refused — RTDB drops its empty params): it still reads
+    //        back and lists, it can be ended, but it can NEVER be activated, repeated or projected (owner 11-15) ──
     {
       const { fake, deps } = await setup();
-      const e = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Envío gratis', type: 'envio', params: {} }), program: true });
-      assert.strictEqual(e.status, 200, `premise: programmed (${JSON.stringify(e.body)})`);
-      const id = e.body.offer.id;
-      assert.strictEqual(fake.get(`marketing_brand/tb/offers/${id}`).params, undefined, 'premise: stored as RTDB stores it — no params node');
-      const listed = (await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.find((o) => o.id === id);
-      assert.deepStrictEqual([listed && listed.params, listed && listed.live_drift], [{}, undefined], 'the portal read lists it with params {} (never dropped as malformed, never drift)');
-      const ended = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'paused_owner', expected_rev: 1 });
-      assert.strictEqual(ended.status, 200, `a params-less envío is never current_malformed on a later move (${JSON.stringify(ended.body)})`);
-      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: 2 })).status, 200, 'and resumes');
-      const served = require('../catalog/offers-serve').publicOffer(fake.get(`marketing_brand/tb/live/tb_centro/${id}`), NOW + 2 * DAY);
-      assert.deepStrictEqual(served && [served.type, served.params], ['envio', {}], 'the public reader serves the stored entry (params {})');
-      ok('a «sin mínimo» envío survives RTDB\'s empty-object drop: read back, listed, moved and served');
+      const draftId = 'o_' + 'a'.repeat(12), liveId = 'o_' + 'b'.repeat(12), endedId = 'o_' + 'c'.repeat(12);
+      const base = { v: 1, name: 'Envío gratis', type: 'envio', audience: 'all', branches: ['tb_centro'], created_by: OWNER, created_at: NOW, updated_at: NOW };
+      const sched = { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } };
+      await fake.ref(`marketing_brand/tb/offers/${draftId}`).set({ ...base, rev: 1, state: 'draft', schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${liveId}`).set({ ...base, rev: 2, state: 'paused_owner', paused_at: NOW, schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${endedId}`).set({ ...base, rev: 3, state: 'ended', ended_reason: 'owner', schedule: { ...sched, start: NOW - 30 * DAY, end: NOW - DAY } });
+      const listed = (await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.filter((o) => o.type === 'envio');
+      assert.deepStrictEqual(listed.map((o) => [o.id, o.params]).sort(), [[draftId, {}], [liveId, {}], [endedId, {}]], 'an old params-less envío still reads back and lists (params {}, never malformed)');
+      for (const [id, rev] of [[draftId, 1], [liveId, 2]]) {
+        const a = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: rev });
+        assert.deepStrictEqual([a.status, a.body.error], [409, 'type_not_supported'], `an old envío (${id === draftId ? 'draft' : 'paused'}) can never be activated (${JSON.stringify(a.body)})`);
+      }
+      const rp = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: endedId, program: true, schedule: { start: NOW + 2 * DAY } }));
+      assert.deepStrictEqual([rp.status, rp.body.reason], [400, 'type_not_supported'], `an old ended envío can never be repeated (${JSON.stringify(rp.body)})`);
+      assert.deepStrictEqual(mirrored(fake), [], 'no envío ever reaches the live mirror');
+      const end = await move(deps, `t-${OWNER}`, { offer_id: liveId, to: 'ended', expected_rev: 2 });
+      assert.strictEqual(end.status, 200, `an old envío can still be ENDED (${JSON.stringify(end.body)})`);
+      assert.strictEqual(OM.liveProjection({ ...base, rev: 9, state: 'active', schedule: sched }, 'tb'), null, 'liveProjection never projects an envío record');
+      ok('an old envío record: listed, endable, never activated / repeated / projected');
+      // Codex 11-15 (a surviving mutant): an ACTIVE record whose projection is null (an unsupported type) is TOMBSTONED in the mirror,
+      // never written as a null entry — writeOffer directly (no public path can activate envío, so the fallback is only reachable here)
+      const next = { offers: {}, live: {}, ops: {} };
+      C.writeOffer(next, 'tb', draftId, { ...base, rev: 7, state: 'active', schedule: sched }, NOW);
+      assert.deepStrictEqual(next.live.tb_centro && next.live.tb_centro[draftId], { removed: true, rev: 7 }, 'an active envío record is tombstoned, never projected or nulled');
+      ok('writeOffer: an active record with a null projection ⇒ a tombstone');
     }
 
     // ── 6b. the race (advisor 11-14, rule 5): two clashing publishes at once — the per-branch transaction lets exactly one through ──
