@@ -13,20 +13,31 @@ const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
 const E1 = (rids) => ({ brands: [{ brand_id: 'marca', name: 'Marca' }], branches: rids.map((rid, i) => ({ rid, brand_id: 'marca', name: ['Centro', 'Sur'][i] || rid, state: 'member', role: 'owner', caps: ['stats.read'] })) });
 
-async function tab({ rids = ['r_a', 'r_b'], keyerFails = false, hold = null } = {}) {
+async function tab({ rids = ['r_a', 'r_b'], keyerFails = false, hold = null, badCsv = false, owned = null } = {}) {
   const win = new JSDOM('<!doctype html><span id="shopname">Pizzería Del Valle</span><main id="host"></main>', { url: 'https://portal.test/', pretendToBeVisual: true }).window;
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? win : win[k], configurable: true, writable: true });
   }
-  const calls = route({ serve: await world({ keyerFails }) }, (fn) => (fn === 'getMyBranches' ? okJson(E1(rids)) : null));
+  const calls = route({ serve: await world({ keyerFails }) }, (fn, q) => {
+    if (fn === 'getMyBranches') return okJson(E1(owned || rids));
+    if (badCsv && q.format === 'csv') return { ok: true, status: 200, text: async () => 'fecha,otra_cosa\r\n2026-11-01,1\r\n', headers: { get: () => null } };   // a header off the allowlist
+    return null;
+  });
+  const saves = [];   // what the page hands the browser to save: { name, text }
+  globalThis.URL.createObjectURL = (blob) => { saves.push({ blob }); return `blob:t${saves.length}`; };   // the module saves through THIS global URL
+  globalThis.URL.revokeObjectURL = () => {};
+  win.HTMLAnchorElement.prototype.click = function () { const last = saves[saves.length - 1]; if (last) last.name = this.download; };
   const V = await import(`./ventas-tab.js?t=${Date.now()}${Math.random()}`);
   const host = win.document.getElementById('host');
-  const token = async () => { if (hold) await hold; return 'TK-test'; };
+  const T = { hold, onToken: null };
+  const token = async () => { if (T.hold) await T.hold; const f = T.onToken; if (f) { T.onToken = null; queueMicrotask(f); } return 'TK-test'; };
   V.mountVentasTab(host, { uid: 'uA', rid: rids[0], name: 'Pizzería Del Valle', token, now: () => NOW });
   await settle(hold ? 10 : 80);
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const text = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : null);
-  return { win, V, host, calls, q, qa, text, stats: () => calls.filter((c) => /^getSalesStats/.test(c.fn)) };
+  // the saved BYTES (Blob.text() would strip a leading BOM — decode with ignoreBOM to see exactly what the browser writes)
+  const saved = async () => Promise.all(saves.filter((x) => x.name).map(async (x) => ({ name: x.name, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(await x.blob.arrayBuffer()) })));
+  return { win, V, host, calls, q, qa, text, T, saved, stats: () => calls.filter((c) => /^getSalesStats/.test(c.fn)) };
 }
 const figs = (t) => t.qa('.vd-fig').map((f) => [t.text(f.querySelector('.vd-kl')), t.text(f.querySelector('.vd-kn'))]);
 
@@ -232,7 +243,7 @@ test('V3a the figures carry the comparison line (the Inicio idiom): «+35.5 % ·
 test('V3a every shipped section, one job each, from the REAL answer (one branch): Entrega y recogida · Forma de pago · Horas de más pedidos · Clientes · Cancelaciones · Tiempos · the footnote', async () => {
   const t = await tab({ rids: ['r_a'] });
   await toDetail(t);
-  assert.deepEqual(t.qa('.vd-dsect h2').map((h) => t.text(h)), ['Entrega y recogida', 'Forma de pago', 'Horas de más pedidos', 'Clientes', 'Cancelaciones', 'Tiempos'], 'Descargar comes in V3b');
+  assert.deepEqual(t.qa('.vd-dsect h2').map((h) => t.text(h)), ['Entrega y recogida', 'Forma de pago', 'Horas de más pedidos', 'Clientes', 'Cancelaciones', 'Tiempos', 'Descargar'], 'every shipped section, «Descargar» last (V3b)');
   assert.ok(t.q('.vd-split'), 'one segmented bar');
   assert.ok(kv(t, '.vd-type').every(([l]) => /^(A domicilio|Para recoger) · \d+ %$/.test(l)), 'the share of ALL sales, «78 %»');
   assert.deepEqual(t.qa('.vd-pay .vd-payl span:first-child').map((x) => t.text(x).split(' · ')[0]), ['Efectivo', 'Tarjeta al entregar', 'En línea']);
@@ -250,4 +261,75 @@ test('V3a «Todas»: Clientes says «Por sucursal» (the multi read omits custom
   assert.equal(t.text(t.q('.vd-cust .vd-softp span')), 'Por sucursal. Elegí una sucursal arriba para ver clientes nuevos y recurrentes.');
   [...t.host.querySelectorAll('.vd-cust .vd-lnk')].find((b) => t.text(b) === 'Elegir sucursal').click(); await settle();
   assert.ok(t.q('.vd-menu.vd-show'), 'the branch menu opens');
+});
+
+// ═══ V3b · «Descargar» + the shipped page's safety, carried over before ventas.js hands the page to the tab ════════════════════════
+const dl = (t, label) => [...t.host.querySelectorAll('.vd-file')].find((r) => t.text(r.querySelector('.vd-fileb')) === label).querySelector('.vd-lnk');
+const csvCalls = (t) => t.stats().filter((c) => c.query.format === 'csv');
+test('V3b «Descargar» (one branch): the two shipped exports — the daily CSV saved byte-for-byte behind a BOM, under the server\'s file name', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  assert.deepEqual(t.qa('.vd-dsect h2').map((h) => t.text(h)).at(-1), 'Descargar');
+  assert.deepEqual(t.qa('.vd-file').map((r) => [t.text(r.querySelector('.vd-fileb')), t.text(r.querySelector('.vd-filed'))]),
+    [['Resumen diario (CSV)', 'Totales por día del período elegido.'], ['Pedidos (CSV)', 'Detalle por pedido · hasta 31 días por descarga.']]);
+  dl(t, 'Resumen diario (CSV)').click(); await settle(150);
+  const [f] = await t.saved();
+  assert.equal(f.name, 'ventas_r_a_2026-10-30_2026-11-12.csv', 'the server\'s file name');
+  assert.ok(f.text.startsWith('\uFEFFfecha,ventas_L,'), `a BOM, then the server's exact header (${JSON.stringify(f.text.slice(0, 30))})`);
+  dl(t, 'Pedidos (CSV)').click(); await settle(150);
+  assert.equal((await t.saved())[1].name, 'pedidos_r_a_2026-10-30_2026-11-12.csv');
+});
+test('V3b orders over 31 days: refused BEFORE any request, with the shipped sentence', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await choose(t, 'Personalizado');
+  let pop = await openCal(t, 'from'); pop.querySelectorAll('.cal-nav')[0].click(); await settle(); dayBtn(t.q('.cal-pop'), 1).click(); await settle();
+  pop = await openCal(t, 'to'); pop.querySelectorAll('.cal-nav')[1].click(); await settle(); dayBtn(t.q('.cal-pop'), 12).click(); await settle(120);   // 1 oct – 12 nov: 43 days
+  await toDetail(t);
+  const n = csvCalls(t).length;
+  dl(t, 'Pedidos (CSV)').click(); await settle(80);
+  assert.equal(csvCalls(t).length, n, 'no request');
+  assert.equal(t.text(t.q('.vd-csvnote')), 'El detalle de pedidos se descarga de hasta 31 días por vez. Elegí un período más corto.');
+  assert.equal((await t.saved()).length, 0);
+});
+test('V3b the CSV allowlist: a header off the reviewed list is NEVER saved (the shipped note)', async () => {
+  const t = await tab({ rids: ['r_a'], badCsv: true });
+  await toDetail(t);
+  dl(t, 'Resumen diario (CSV)').click(); await settle(120);
+  assert.equal((await t.saved()).length, 0, 'nothing saved');
+  assert.equal(t.text(t.q('.vd-csvnote')), 'No pudimos preparar el archivo. Avisanos y lo revisamos.');
+});
+test('V3b «Todas»: «Descargar» is per branch (the server exports one branch) — «Por sucursal …» + «Elegir sucursal» (Q-V3a)', async () => {
+  const t = await tab();
+  await toDetail(t);
+  assert.equal(t.text(t.q('.vd-dl .vd-softp span')), 'Por sucursal. Elegí una sucursal arriba para descargar.');
+  assert.equal(t.qa('.vd-file').length, 0, 'no export on «Todas»');
+  [...t.host.querySelectorAll('.vd-dl .vd-lnk')].find((b) => t.text(b) === 'Elegir sucursal').click(); await settle();
+  assert.ok(t.q('.vd-menu.vd-show'), 'the branch menu opens');
+});
+test('V3b 🔴 a sign-out INSIDE the token await (the last await before a request) sends NOTHING — a load and an export', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  let release; t.T.hold = new Promise((r) => { release = r; });
+  const n = t.stats().length;
+  dl(t, 'Resumen diario (CSV)').click(); await settle(10);
+  t.q('.vd-pill').click(); await settle(); t.qa('.vd-menu.vd-show .vd-opt')[0].click(); await settle(10);   // a load, waiting on the token too
+  t.win.document.dispatchEvent(new t.win.CustomEvent('portal:auth', { detail: { uid: 'otra' } }));
+  release(); await settle(120);
+  assert.equal(t.stats().length, n, 'not one request left after the auth change');
+  assert.equal((await t.saved()).length, 0, 'nothing saved');
+});
+test('V3b 🔴 an auth change queued as a MICROTASK between the token and the fetch sends NOTHING (codex S2 r2, carried over)', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  const n = t.stats().length;
+  t.T.onToken = () => t.win.document.dispatchEvent(new t.win.CustomEvent('portal:auth', { detail: { uid: null } }));
+  dl(t, 'Resumen diario (CSV)').click(); await settle(120);
+  assert.equal(t.stats().length, n, 'no request');
+  assert.equal((await t.saved()).length, 0);
+});
+test('V3b a 403 (a branch the account does not own): the shipped owner-only message, and no export is offered', async () => {
+  const t = await tab({ rids: ['r_zz'], owned: ['r_zz'] });
+  assert.match(t.text(t.q('.vd-err b')), /^(Solo el dueño ve las ventas|No tenés acceso a este local)$/, 'the shipped NotAuthorized copy');
+  assert.equal(t.qa('.vd-err button').length, 0, 'nothing to retry: the server is the authority');
+  assert.equal(t.q('.vd-more'), null, 'no «Más detalle», so no export is offered');
 });

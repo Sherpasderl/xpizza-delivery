@@ -202,8 +202,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "54571541999d45758d935e11cc8aba3bc344d720fba126dfe58d7ddc141ef0d3",
-   "bytes": 181684
+   "sha256": "92cb7a98bec52cecd0b4dea8e1307d0d2fb784a24c1abab053226e97bcfe432f",
+   "bytes": 182787
   }
  },
  "diff_aid": {
@@ -5536,6 +5536,12 @@
    ],
    [
     "",
+    ".vd-csvnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".vd-dpbtn",
     "background",
     "var(--board-2)"
@@ -5560,9 +5566,27 @@
    ],
    [
     "",
+    ".vd-fico",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-fico",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".vd-figs",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-filed",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

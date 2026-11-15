@@ -4,15 +4,18 @@
 // then a silent revalidate). ventas.js keeps its nav / auth / restaurant handling and hands the page here (its fold layer).
 // V2 «Personalizado» (frame 4): Desde / Hasta on THE portal calendar (portal-calendar.js); the body untouched until a valid pair.
 // V3a «Más detalle» (frames 11 / 11b): its own page — «Ventas» back, the same pills, the figures WITH the comparison, every shipped
-// section. ABSENT until V3b: «Descargar».
+// section; V3b «Descargar» (the shipped CSV exports for one branch; «Todas» ⇒ «Por sucursal», Q-V3a) and the shipped page's safety:
+// every request carries assertLive (an auth change inside the token await sends nothing), a CSV 403 refuses both exports.
 import { el, svg } from './ops-dom.js';
-import { getSalesStats, getSalesStatsMulti, getMyBranches } from './api.js';
-import { todayHN, validateCustom, ventasMessage } from './ventas-logic.js';
+import { getSalesStats, getSalesStatsMulti, getMyBranches, fetchSalesCsv } from './api.js';
+import { todayHN, validateCustom, ventasMessage, daysBetween, csvHeaderOk, joinCsvPages, csvFilename, ORDERS_CSV_MAX_DAYS } from './ventas-logic.js';
 import { calendarPopover } from './portal-calendar.js';
 import * as RL from './rend-logic.js';
 import * as RD from './rend-data.js';
 
 const NS = 'http://www.w3.org/2000/svg';
+const FILE = 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5', DL = 'M12 4v11M7 10l5 5 5-5M5 20h14';
+const ABORT = 'ventas_tab_obsolete';
 const BACK = 'M15 18l-6-6 6-6', CHEV = 'M9 6l6 6-6 6', DOWN = 'M6 9l6 6 6-6', CHART = 'M4 19V5M4 19h16M8 15l4-5 3 3 5-6', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
 const WD3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const longDay = (d) => `${WD3[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()]} ${+d.slice(8, 10)} ${MON3[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
@@ -22,7 +25,7 @@ const BAD_LINE = `${BAD[0]} · ${String(BAD[1]).replace(/\.$/, '')}`;
 const PRESETS = RL.REND_PRESETS;   // Hoy · 7 · 14 · 30 · Personalizado (Q2)
 const API = { getSalesStats, getSalesStatsMulti };
 const S = { host: null, ctx: null, gen: 0, preset: RL.REND_DEFAULT_PRESET, branch: 'all', branches: [], menu: null,
-  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, cache: null, custom: { from: null, to: null }, cal: null, cerr: '' };
+  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, failErr: null, cache: null, csvBusy: null, csvNote: '', csvRefused: false, custom: { from: null, to: null }, cal: null, cerr: '' };
 const now = () => (S.ctx && S.ctx.now ? S.ctx.now() : Date.now());
 const today = () => todayHN(now());
 // the requested range: a preset's, or a VALID custom pair (else null — nothing is requested)
@@ -42,7 +45,10 @@ export function mountVentasTab(host, ctx) {
   branchesOf(S.gen).then(() => load());
 }
 export function unmountVentasTab() { S.gen += 1; S.host = null; S.menu = null; }
-document.addEventListener('portal:auth', () => { S.gen += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; });
+document.addEventListener('portal:auth', () => { S.gen += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; S.csvBusy = null; S.csvNote = ''; S.csvRefused = false; });
+// THE liveness of a request: its generation — moved by every auth event, branch / period change, mount — checked synchronously right
+// before fetch (api.js assertLive): a context change inside the token await sends nothing (the shipped page's rule, codex S2 r2)
+const assertWhile = (g) => () => { if (g !== S.gen) throw Object.assign(new Error(ABORT), { kind: ABORT }); };
 
 // the restaurant's branches the owner reads sales for (getMyBranches), the page's own first; one only ⇒ no branch pill
 async function branchesOf(g) {
@@ -60,13 +66,14 @@ async function load() {
   const g = S.gen;
   const r = range();
   if (!r) { render(); return; }   // «Personalizado» without a valid pair: nothing is requested, the body untouched
+  S.csvNote = '';   // a CSV note belongs to its period
   if (S.body) S.dim = true; else S.status = 'loading';
   render();
-  await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
+  await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, assertLive: assertWhile(g), compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
     token: S.ctx.token, api: API, cache: S.cache, now, ui: {
     paint: ({ body, freshAt }) => { if (g !== S.gen) return; S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
     stamp: ({ freshAt }) => { if (g !== S.gen) return; S.freshAt = freshAt; S.dim = false; S.range = r; render(); },
-    fail: ({ error, hasBody }) => { if (g !== S.gen) return; S.dim = false; if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; } render(); },
+    fail: ({ error, hasBody }) => { if (g !== S.gen || (error && error.kind === ABORT)) return; S.dim = false; if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; S.failErr = error; } render(); },
   } }).catch(() => { if (g === S.gen) { S.status = 'error'; S.body = null; S.dim = false; render(); } });
 }
 function pick(kind, v) {
@@ -241,6 +248,11 @@ function emptyCard() {
 }
 function errCard() {
   const c = el('div', 'vd-ok vd-err'); c.setAttribute('role', 'alert');
+  if (S.status === 'denied') {   // the server is the authority: the shipped owner-only copy, nothing to retry
+    const [t1, t2] = ventasMessage('NotAuthorized', S.failErr && S.failErr.body && S.failErr.body.error);
+    c.append(el('b', null, t1), el('span', null, t2));
+    return c;
+  }
   c.append(el('b', null, 'No pudimos cargar las ventas'), el('span', null, 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.'));
   const all = S.branch === 'all' && S.branches.length > 1;
   if (all) c.append(el('span', null, 'Como una de tus sucursales no respondió, no mostramos un total parcial de «Todas las sucursales».'));
@@ -387,10 +399,71 @@ function renderDetail() {
     const ca = el('div', 'vd-canc'); ca.append(dsect('Cancelaciones'), kvRows('vd-canckv', m.cancellations));
     const ti = el('div', 'vd-times'); ti.append(dsect('Tiempos'), kvRows('vd-timeskv', m.times.rows)); if (m.times.coverage) ti.append(el('p', 'vd-cov', m.times.coverage));
     three.append(cu, ca, ti); body.append(three);
+    body.append(downloads());
     body.append(el('p', 'vd-foot', m.foot));
   }
   out.push(body);
   S.host.replaceChildren(...out);
+}
+// ── V3b · «Descargar»: the shipped exports, carried over (ventas.js exportCsv) — one branch; «Todas» ⇒ «Por sucursal» (Q-V3a) ────────
+const csvRid = () => (S.branches.length === 1 ? S.branches[0].rid : S.branch !== 'all' ? S.branch : null);
+function downloads() {
+  const box = el('div', 'vd-dl'); box.append(dsect('Descargar'));
+  if (!csvRid()) {
+    const sp = el('p', 'vd-softp'); sp.append(el('span', null, 'Por sucursal. Elegí una sucursal arriba para descargar.'));
+    const l = el('button', 'vd-lnk', 'Elegir sucursal'); l.type = 'button'; l.addEventListener('click', (e) => { e.stopPropagation(); S.menu = 'br'; render(); });
+    sp.append(l); box.append(sp); return box;
+  }
+  for (const [kind, title, desc] of [['daily', 'Resumen diario \u0028CSV)', 'Totales por día del período elegido.'], ['orders', 'Pedidos \u0028CSV)', `Detalle por pedido · hasta ${ORDERS_CSV_MAX_DAYS} días por descarga.`]]) {
+    const row = el('div', 'vd-file'); const i = el('span', 'vd-fico'); i.append(svg(FILE));
+    const tx = el('div', 'vd-filet'); tx.append(el('b', 'vd-fileb', title), el('span', 'vd-filed', desc));
+    const b = el('button', 'vd-lnk'); b.type = 'button'; b.append(svg(DL), el('span', null, S.csvBusy === kind ? 'Preparando…' : 'Descargar'));
+    b.disabled = !!S.csvBusy || S.csvRefused;
+    b.addEventListener('click', () => exportCsv(kind));
+    row.append(i, tx, b); box.append(row);
+  }
+  if (S.csvNote) { const n = el('p', 'vd-csvnote', S.csvNote); n.setAttribute('role', 'status'); box.append(n); }
+  return box;
+}
+async function exportCsv(kind) {
+  const r = range(), rid = csvRid();
+  if (!rid || !r || S.csvBusy || S.csvRefused) return;   // the handler itself refuses, not only the button
+  if (kind === 'orders' && daysBetween(r.from, r.to) + 1 > ORDERS_CSV_MAX_DAYS) {
+    S.csvNote = `El detalle de pedidos se descarga de hasta ${ORDERS_CSV_MAX_DAYS} días por vez. Elegí un período más corto.`;
+    render(); return;
+  }
+  const g = S.gen;
+  const alive = () => g === S.gen;
+  S.csvBusy = kind; S.csvNote = ''; render();
+  let note = '';
+  try {
+    const pages = [];
+    let cursor, name = null;
+    for (let page = 0; ; page++) {
+      if (page >= 200) throw Object.assign(new Error('too_many_pages'), { kind: 'Unavailable' });
+      const res = await fetchSalesCsv({ rid, from: r.from, to: r.to, kind, cursor, token: S.ctx.token, assertLive: assertWhile(g) });
+      if (!alive()) return;   // right after the await: nothing for an ended context
+      if (!csvHeaderOk(kind, res.text)) throw Object.assign(new Error('csv_header'), { kind: 'CsvHeader' });
+      pages.push(res.text);
+      name = name || res.filename;
+      if (kind !== 'orders' || !res.nextCursor) break;
+      cursor = res.nextCursor;
+    }
+    save(kind === 'orders' ? joinCsvPages(pages) : pages[0], name || csvFilename(kind, rid, r));
+  } catch (e) {
+    if (!alive() || (e && e.kind === ABORT)) return;
+    if (e && e.kind === 'NotAuthorized') S.csvRefused = true;   // a CSV 403 refuses BOTH exports
+    note = e && e.kind === 'CsvHeader' ? 'No pudimos preparar el archivo. Avisanos y lo revisamos.' : ventasMessage(e && e.kind, e && e.body && e.body.error).join('. ');
+  } finally {
+    if (alive()) { S.csvBusy = null; S.csvNote = note; render(); }
+  }
+}
+// a UTF-8 BOM leads the file so Excel reads it as UTF-8 (owner decision 2026-10-06); the server's bytes follow unchanged
+function save(text, name) {
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8' }));
+  const a = el('a', 'hidden'); a.href = url; a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 export const _ventasTabState = S;   // test-only
 export const _render = () => render();   // test-only

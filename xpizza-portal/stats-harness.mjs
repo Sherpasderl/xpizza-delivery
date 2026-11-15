@@ -56,8 +56,14 @@ export function route(serveRef, extra = null) {
     calls.push({ fn: u.pathname.split('/').pop(), query });
     if (extra) { const x = await extra(u.pathname.split('/').pop(), query); if (x) return x; }
     const out = await serveRef.serve(query, (opts && opts.headers && opts.headers.Authorization) || '');
+    const ok = out.status >= 200 && out.status < 300;
+    if (out.contentType) {   // a CSV answer, as portal/functions.js serves it: the text, Content-Disposition, the core's headers (X-Next-Cursor)
+      const hs = { 'content-disposition': out.filename ? `attachment; filename="${out.filename}"` : null };
+      for (const [k, v] of Object.entries(out.headers || {})) hs[k.toLowerCase()] = v;
+      return { ok, status: out.status, text: async () => out.body, json: async () => { throw new Error('not json'); }, headers: { get: (n) => hs[String(n).toLowerCase()] ?? null } };
+    }
     const text = JSON.stringify(out.body);
-    return { ok: out.status >= 200 && out.status < 300, status: out.status, json: async () => JSON.parse(text) };
+    return { ok, status: out.status, json: async () => JSON.parse(text), text: async () => text, headers: { get: () => null } };
   };
   return calls;
 }
