@@ -198,7 +198,7 @@
   "slice": "task7",
   "label": "publishVersion stops validating the candidate pre-publish",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys }), `${rid} (pre-publish)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure, key_mode: input && input.key_mode, frozen_keys: input && input.frozen_keys, frozen_extra_keys: input && input.frozen_extra_keys }), `${rid} (pre-publish)`);",
   "to": "  void assertCandidateValid;"
  },
  {
@@ -206,7 +206,7 @@
   "slice": "task7",
   "label": "the pre-flip gate drops the validator and only re-reads",
   "file": "catalog/catalog-publish.js",
-  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
+  "from": "  assertCandidateValid(rid, candidateSource(rid, { items: served.items, extras: served.extras, structure: served.structure, key_mode: served.keyMode, frozen_keys: served.frozenKeys, frozen_extra_keys: served.frozenExtraKeys }),\n    `${rid}/versions/${versionId} (pre-flip)`);",
   "to": "  void candidateSource;"
  },
  {
@@ -31233,8 +31233,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
   "command": [
    "node",
    "--test",
@@ -31244,7 +31244,7 @@
   "kills_with": [
    "SU-endpoints"
   ],
-  "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos"
+  "repointed": "2026-11-02 (capp, the full light chain): ENDPOINTS grew getMyOrders (Pedidos) and getMyRating / rateOrder (C-2); the mutation still drops ONLY setPromos · C-1b: the endpoint list gains getMyFavorites + setFavorite; the mutant still drops setPromos"
  },
  {
   "id": "g7-17",
@@ -32025,13 +32025,14 @@
   "id": "mo-1",
   "slice": "mo",
   "label": "getMyOrders: any verified token (the customer claim dropped)",
-  "file": "my-orders.js",
-  "from": "if (dec && dec.customer === true && typeof dec.uid",
-  "to": "if (dec && typeof dec.uid",
+  "file": "member-auth.js",
+  "from": "if (!dec || dec.customer !== true || dec.handheld === true",
+  "to": "if (!dec || dec.handheld === true",
   "command": [
    "node",
    "my-orders.test.js"
-  ]
+  ],
+  "kills_with": "a non-customer (staff) token ⇒"
  },
  {
   "id": "mo-2",
@@ -32110,12 +32111,13 @@
   "slice": "mo",
   "label": "getMyOrders: a tombstoned account still reads its history",
   "file": "my-orders.js",
-  "from": "      if (await S.isTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });\n",
+  "from": "      if (await MA.isMemberTombstoned(db, uid)) return res.status(403).json({ ok: false, reason: 'deleted' });\n",
   "to": "",
   "command": [
    "node",
    "my-orders.test.js"
-  ]
+  ],
+  "kills_with": "🔴 deleted_uids/"
  },
  {
   "id": "mo-9",
@@ -35728,9 +35730,9 @@
  {
   "id": "c1a-04",
   "slice": "c1a",
-  "label": "the heart shown to a member / an unresolved session before C-1b (a heart that cannot save)",
+  "label": "the heart shown to an UNRESOLVED session (a heart that cannot save — C-1b keeps it reserved until the session is admitted)",
   "file": "../customer-app/capp-ui.js",
-  "from": "const heartOff = () => (authOf() === 'guest' ?",
+  "from": "const heartOff = () => (heartShown() ?",
   "to": "const heartOff = () => (true ?",
   "command": [
    "node",
@@ -35740,7 +35742,8 @@
   ],
   "kills_with": [
    "C1-T7"
-  ]
+  ],
+  "repointed": "C-1b: a member's heart is live; the reserved slot is now the unresolved session's"
  },
  {
   "id": "c1a-05",
@@ -37600,6 +37603,931 @@
   ],
   "kills_with": [
    "OF-NOPIN"
+  ]
+ },
+ {
+  "id": "r20-01",
+  "slice": "r20",
+  "label": "the member last-tip read puts the ID token back in the URL (rule 20)",
+  "file": "../customer-app/capp-api.js",
+  "from": "sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "to": "sfetch(`${E.getMyLastTip}?context=platform&auth=${encodeURIComponent(tok)}`, { method: 'GET' })",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=tip r6 F4",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TIP-F4 (rule 20)"
+  ]
+ },
+ {
+  "id": "c1b-01",
+  "slice": "c1b",
+  "label": "a sign-out / member switch leaves the previous member's book on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (favConf && favConf.who) { try { storage && storage.removeItem(FAV_KEY(favConf.who)); } catch (_) {} }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F5",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F5"
+  ]
+ },
+ {
+  "id": "c1b-02",
+  "slice": "c1b",
+  "label": "a refused toggle is NOT reverted (the heart lies about the server)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "favPend.delete(rid); favShow();   // the UI falls back to confirmed",
+  "to": "favShow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F3"
+  ],
+  "repointed": "Codex asm9b r1: the rollback is per rid and ordering-protected; the mutant still never reverts"
+ },
+ {
+  "id": "c1b-03",
+  "slice": "c1b",
+  "label": "the «Para vos» row recomputed live (a row inserted into a visible Inicio — pop-in)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (!pvVisit) {\n        const listed",
+  "to": "      if (true) {\n        const listed",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F1"
+  ]
+ },
+ {
+  "id": "c1b-04",
+  "slice": "c1b",
+  "label": "a member's saved store shows an EMPTY heart",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const heartOn = () => authOf() === 'member' && !!SOC && typeof SOC.isFav === 'function' && SOC.isFav() === true;",
+  "to": "const heartOn = () => false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b F4",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F4"
+  ]
+ },
+ {
+  "id": "cx9b-01",
+  "slice": "c1b",
+  "label": "a toggle whose token read outlived the identity is dispatched anyway (under the NEXT member) — Codex P1",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it",
+  "to": "if (dead || !S.fav) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P1 \\(identity\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: nothing dispatched"
+  ]
+ },
+ {
+  "id": "cx9b-02",
+  "slice": "c1b",
+  "label": "a stale answer (A→B→A) lands on the later session — Codex P1",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)",
+  "to": "if (dead || !S.fav) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P1 \\(A",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: the stale refusal never speaks"
+  ]
+ },
+ {
+  "id": "cx9b-03",
+  "slice": "c1b",
+  "label": "a read that started before a save settled overwrites it (r1: read → save → answer; r2 schedule 1: save pending at read-start) — Codex P2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const keep = (rid) => favPend.has(rid) || (favEnd.get(rid) || 0) > start;",
+  "to": "const keep = (rid) => favPend.has(rid);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P2 \\(read × save|Codex r2 P2 schedule 1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P2: the late snapshot",
+   "r2 S1"
+  ]
+ },
+ {
+  "id": "cx9b-04",
+  "slice": "c1b",
+  "label": "«Para vos» inserted into a visible Inicio after a delayed admission (rule 7) — Codex P2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (!pvVisit && !S.fav) { pvVisit = []; return []; }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex P2 \\(rule 7",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P2 (rule 7)"
+  ]
+ },
+ {
+  "id": "cx9c-02",
+  "slice": "c1b",
+  "label": "a read answer never updates CONFIRMED (another device's favorite never lands) — Codex r2 race",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "favConf = { who: uid, favorites, recent: r.recent }; favShow();",
+  "to": "favShow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: a read racing a write",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 race: the read lands la_musa"
+  ]
+ },
+ {
+  "id": "cx9c-03",
+  "slice": "c1b",
+  "label": "taps are not coalesced: a second write per rid is sent while one is in flight — Codex r2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (p) { p.want = on; favShow(); return; }",
+  "to": "if (p) { p.want = on; favShow(); favPump(rid, favGen); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: rapid taps coalesce",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 coalesce: on/off/on"
+  ]
+ },
+ {
+  "id": "cx9c-04",
+  "slice": "c1b",
+  "label": "the settled write is never followed by the latest wish (on/off ends on) — Codex r2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      for (;;) {\n        const p = favPend.get(rid); if (!p) return;",
+  "to": "      for (let once = 0; once < 1; once++) {\n        const p = favPend.get(rid); if (!p) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2: rapid taps coalesce",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 coalesce: on/off ⇒"
+  ]
+ },
+ {
+  "id": "cx9c-05",
+  "slice": "c1b",
+  "label": "a failed save keeps its optimistic wish as truth (on, off, both fail ⇒ favorited) — Codex r2 P2 schedule 2",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "favPend.delete(rid); favShow();   // the UI falls back to confirmed",
+  "to": "favConf = { ...favConf, favorites: withFav(favConf.favorites, rid, !favConf.favorites.includes(rid)) }; favPend.delete(rid); favShow();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r2 P2 schedule 2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "r2 S2"
+  ]
+ },
+ {
+  "id": "c1bp-01",
+  "slice": "c1b",
+  "label": "a «Para vos» card keeps the home card meta (closing time + fee) — C1b-P2, 16b",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra",
+  "to": "<b>Abierto</b>${false ? '' : `${vm.desk ? '' : ` · cierra",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P2"
+  ]
+ },
+ {
+  "id": "c1bp-02",
+  "slice": "c1b",
+  "label": "the phone «Para vos» header has no «›» — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "<button class=\"nxt\" data-act=\"rownext\" aria-label=\"Ver más de Para vos\">${IC.chev}</button>",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: the header «›»"
+  ]
+ },
+ {
+  "id": "c1bp-03",
+  "slice": "c1b",
+  "label": "the desk «Para vos» is not paged (every card in the grid) — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "${pv.slice(pvPg * PAGE, pvPg * PAGE + PAGE).map(",
+  "to": "${pv.map(",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: the first page = 4 cards",
+   "C1B-P3: the desk's first page = 4 cards"
+  ]
+ },
+ {
+  "id": "c1bp-04",
+  "slice": "c1b",
+  "label": "the desk «Para vos» arrows never shown — C1b-P3",
+  "file": "../customer-app/capp-home.js",
+  "from": "pvPages > 1 ? arrowsD('pv-prev'",
+  "to": "false ? arrowsD('pv-prev'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: ‹ disabled, › live on the first page",
+   "C1B-P3: › shows the next page"
+  ]
+ },
+ {
+  "id": "c1bp-05",
+  "slice": "c1b",
+  "label": "the «Para vos» page survives into the next Inicio visit — C1b-P3",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "pvVisit = null; S.pvPage = 0; }",
+  "to": "pvVisit = null; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C1b-P",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-P3: a new Inicio visit starts at the first page"
+  ]
+ },
+ {
+  "id": "r11-01",
+  "slice": "rule11-eta",
+  "label": "the store / checkout ETA back to v6's lone «≈ N min» (rule 11)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "    const etaTxt = (mode) => { const w = winTxt(mode === 'delivery' ? cfg.etaDel : cfg.etaPick); return w && mode !== 'delivery' ? `Listo en ${w}` : w; };",
+  "to": "    const etaTxt = (mode) => (mode === 'delivery' ? (cfg.etaDel ? `≈ ${cfg.etaDel[0]} min` : '') : (cfg.etaPick ? `Listo en ≈ ${cfg.etaPick[1]} min` : ''));",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rule 11 guard",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "R11-STORE"
+  ]
+ },
+ {
+  "id": "r11-02",
+  "slice": "rule11-eta",
+  "label": "Inicio's pickup time back to «Listo en ≈ N min» (rule 11)",
+  "file": "../customer-app/capp-home.js",
+  "from": "(r.etaPick && r.etaPick[1] > r.etaPick[0] ? `Listo en ${r.etaPick[0]}–${r.etaPick[1]} min` : '')",
+  "to": "(r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rule 11 guard",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "R11-HOME"
+  ]
+ },
+ {
+  "id": "fav-copy-01",
+  "slice": "c1b-favorites",
+  "label": "the 50-favorites cap back to the 11-13 placeholder (owner-approved copy 11-14)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "'Llegaste a 50 favoritos. Quitá uno para guardar otro.'",
+  "to": "'Llegaste al máximo de favoritos.'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F3"
+  ]
+ },
+ {
+  "id": "ws-01",
+  "slice": "web-signin",
+  "label": "the website built without member sign-in (owner 11-14)",
+  "file": "../customer-app/netlify.toml",
+  "from": "--out dist --flags guestCardOnly,signup\"",
+  "to": "--out dist --flags guestCardOnly\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "member sign-in ON"
+  ]
+ },
+ {
+  "id": "ws-02",
+  "slice": "web-signin",
+  "label": "the ID token in the last-tip URL (rule 20)",
+  "file": "../customer-app/capp-api.js",
+  "from": "sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "to": "sfetch(`${E.getMyLastTip}?context=platform&auth=${tok}`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "R20-URL"
+  ]
+ },
+ {
+  "id": "fig-01",
+  "slice": "capp-figtree",
+  "label": "the shell page drops its one Figtree preload",
+  "file": "../customer-app/shell.html",
+  "from": "<link rel=\"preload\" href=\"fonts-figtree/figtree-latin.8330490a01.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-PRELOAD"
+  ]
+ },
+ {
+  "id": "fig-02",
+  "slice": "capp-figtree",
+  "label": "the hashed Figtree files no longer cached immutably (the old /fonts/* path)",
+  "file": "../customer-app/netlify.toml",
+  "from": "for = \"/fonts-figtree/*\"",
+  "to": "for = \"/fonts/*\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-CACHE"
+  ]
+ },
+ {
+  "id": "fig-03",
+  "slice": "capp-figtree",
+  "label": "the Figtree stack loses its metric-matched fallbacks (a swap reflow on a cold load)",
+  "file": "../customer-app/capp.css",
+  "from": "--fig:'Figtree','Figtree Fallback','Figtree Fallback Roboto',ui-sans-serif",
+  "to": "--fig:'Figtree',ui-sans-serif",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-STACK"
+  ]
+ },
+ {
+  "id": "push-01",
+  "slice": "capp-push",
+  "label": "the soft ask at first launch (before any order)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (!on || offeredThisVisit || !(ordersPlaced >= 1)) return false;",
+  "to": "if (!on || offeredThisVisit) return false;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ASK"
+  ]
+ },
+ {
+  "id": "push-02",
+  "slice": "capp-push",
+  "label": "a token kept on the device after sign-out",
+  "file": "../customer-app/capp-push.js",
+  "from": "      write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET"
+  ]
+ },
+ {
+  "id": "push-03",
+  "slice": "capp-push",
+  "label": "a tapped push with a malformed order id opens it",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (id && ORDER_ID.test(id)) cb(",
+  "to": "if (id) cb(",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-TAP"
+  ]
+ },
+ {
+  "id": "push-04",
+  "slice": "capp-push",
+  "label": "the system prompt even when already granted",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'prompt' || st === 'prompt-with-rationale') st = (await plugin.requestPermissions()).receive;",
+  "to": "st = (await plugin.requestPermissions()).receive;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE"
+  ]
+ },
+ {
+  "id": "push-05",
+  "slice": "capp-push",
+  "label": "the push flag on the WEB build (owner Q5: no web push)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "...(f.push === true && rt.mode === 'native' ? { push: true } : {}),",
+  "to": "...(f.push === true ? { push: true } : {}),",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FLAG"
+  ]
+ },
+ {
+  "id": "push-06",
+  "slice": "capp-push",
+  "label": "the card returns after «Ahora no» without limit (owner Q2: at most twice)",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (n > RETURNS_MAX) return false;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-RETURNS"
+  ]
+ },
+ {
+  "id": "push-07",
+  "slice": "capp-push",
+  "label": "the register call drops ?context=platform",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken, query: 'context=platform' });",
+  "to": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered"
+  ]
+ },
+ {
+  "id": "push-09",
+  "slice": "capp-push",
+  "label": "a token the server refused still counts as registered",
+  "file": "../customer-app/capp-push.js",
+  "from": "      write({ server: ok });   // a token",
+  "to": "      void ok;   // a token",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ACK: refused"
+  ]
+ },
+ {
+  "id": "push-10",
+  "slice": "capp-push",
+  "label": "sign-out leaves the token alive on the phone",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (on) { try { await plugin.unregister(); } catch (_) {} }",
+  "to": "      if (on) { void 0; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the server forgets it, then the phone deletes it"
+  ]
+ },
+ {
+  "id": "push-11",
+  "slice": "capp-push",
+  "label": "sign-out keeps the previous person's opt-in",
+  "file": "../customer-app/capp-push.js",
+  "from": "write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });",
+  "to": "write({ token: null, server: null });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the next member opts in for themselves"
+  ]
+ },
+ {
+  "id": "push-12",
+  "slice": "capp-push",
+  "label": "an Ajustes denial is not remembered",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });",
+  "to": "if (st === 'denied' && s.state !== 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: turned off in Ajustes"
+  ]
+ },
+ {
+  "id": "push-13",
+  "slice": "capp-push",
+  "label": "allowing again in Ajustes leaves the switches dead",
+  "file": "../customer-app/capp-push.js",
+  "from": "else if (st !== 'denied' && s.state === 'denied') write({ state: null });",
+  "to": "else if (st !== 'denied' && s.state === 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: allowed again"
+  ]
+ },
+ {
+  "id": "push-14",
+  "slice": "capp-push",
+  "label": "a new install_id at every register",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (typeof cur === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(cur)) return cur;",
+  "to": "void cur;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-INSTALL: stable across a sign-out"
+  ]
+ },
+ {
+  "id": "push-15",
+  "slice": "capp-push",
+  "label": "register without install_id",
+  "file": "../customer-app/capp-push.js",
+  "from": "app_build: appBuild, install_id: installId(), pedidos",
+  "to": "app_build: appBuild, pedidos",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE: the 6b contract body"
+  ]
+ },
+ {
+  "id": "push-16",
+  "slice": "capp-push",
+  "label": "stale_prefs loses the server's current prefs",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        if (r.status === 409 && r.json && r.json.reason === 'stale_prefs') return { ok: false, reason: 'stale_prefs', prefs: prefsOf(r.json.prefs) };\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API-REV: stale ⇒ the current prefs back"
+  ]
+ },
+ {
+  "id": "push-17",
+  "slice": "capp-push",
+  "label": "a malformed install_id is sent",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": " || !(typeof install_id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(install_id))",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "a malformed install_id is never sent"
+  ]
+ },
+ {
+  "id": "push-18",
+  "slice": "capp-push",
+  "label": "prefs without their rev",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "? { pedidos: p.pedidos, promociones: p.promociones, rev: p.rev } : null);",
+  "to": "? { pedidos: p.pedidos, promociones: p.promociones } : null);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered (prefs initialized, rev 1)"
+  ]
+ },
+ {
+  "id": "push-19",
+  "slice": "capp-push",
+  "label": "the denied rows are not inert",
+  "file": "../customer-app/capp-push.js",
+  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ic}",
+  "to": "      ? `<div class=\"rowbtn\">${ic}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-UI: F2c"
+  ]
+ },
+ {
+  "id": "push-20",
+  "slice": "capp-push",
+  "label": "the denied subtitle loses to the opt-in one",
+  "file": "../customer-app/capp-push.js",
+  "from": "    if (x.denied) return COPY.rowDenied;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ROW: denied wins"
+  ]
+ },
+ {
+  "id": "push-s01",
+  "slice": "capp-push",
+  "label": "the card on a guest's / any order (no member gate)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const pushUi = () => !!(S.member && pushCore() && push.available());",
+  "to": "    const pushUi = () => !!(pushCore() && push.available());",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-GATE"
+  ]
+ },
+ {
+  "id": "push-s02",
+  "slice": "capp-push",
+  "label": "the card anywhere in the sheet (not under the status line)",
+  "file": "../customer-app/capp-order.js",
+  "from": "${segbar}${statusrow}${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}",
+  "to": "${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}${segbar}${statusrow}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: right under the status line"
+  ]
+ },
+ {
+  "id": "push-s03",
+  "slice": "capp-push",
+  "label": "the order line ignores push",
+  "file": "../customer-app/capp-order.js",
+  "from": "${typeof c.pushLine === 'string' && c.pushLine ? esc(c.pushLine) : 'Te avisamos por WhatsApp'}",
+  "to": "Te avisamos por WhatsApp",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: the order line once push is on"
+  ]
+ },
+ {
+  "id": "push-s04",
+  "slice": "capp-push",
+  "label": "a stale save overwrites blindly (no re-apply)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        keepPrefs({ ok: true, prefs: r.prefs }); cur = r.prefs;\n",
+  "to": "        return false;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-7"
+  ]
+ },
+ {
+  "id": "push-s05",
+  "slice": "capp-push",
+  "label": "a 503 read leaves the switches live",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "} else if (r && r.reason === 'unavailable') S.pushDown = true;",
+  "to": "}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-8: both inert"
+  ]
+ },
+ {
+  "id": "push-s06",
+  "slice": "capp-push",
+  "label": "an opt-in over existing prefs drops the person's choice",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true;",
+  "to": "void sp;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-9"
+  ]
+ },
+ {
+  "id": "push-s07",
+  "slice": "capp-push",
+  "label": "sign-out without forgetting the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      await pushForget();   // the server forgets",
+  "to": "      void 0;   // the server forgets",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-5: 3a forgot the token"
+  ]
+ },
+ {
+  "id": "push-s08",
+  "slice": "capp-push",
+  "label": "«Abrir Ajustes» raises no host event",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'push-settings') { emit('open-os-settings', {}); return; }",
+  "to": "if (a === 'push-settings') return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-4: the host opens Ajustes"
+  ]
+ },
+ {
+  "id": "push-s09",
+  "slice": "capp-push",
+  "label": "the Cuenta row placed before Direcciones",
+  "file": "../customer-app/capp-home.js",
+  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-3: right after Direcciones"
+  ]
+ },
+ {
+  "id": "push-s10",
+  "slice": "capp-push",
+  "label": "a tapped push opens nothing",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });",
+  "to": "      push.onTap(() => {});",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-6: the tap opens its live screen"
   ]
  }
 ]

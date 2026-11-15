@@ -33,7 +33,10 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BASE = '1d862e17';
+// BASE → 827373d6 (advisor 11-15, the forked-lane rule): feat/capp-offers-r20 = the offers line + a MERGE of feat/capp-push (the
+// r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
+// merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
+const BASE = '827373d6';
 const CAPP_TIP = 'f792274e';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
@@ -143,7 +146,8 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
   // key omit list, and a failure must not dump it
   const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
-  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  // owner 11-14 (PLAN-capp-web-signin r0, accepted): members sign in on the WEBSITE — the web build carries `signup` (phone + WhatsApp)
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly,signup"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target, member sign-in ON (owner 11-14)');
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
@@ -234,11 +238,8 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {
-  // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
-  // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
-  // asm9 (advisor 11-13: ONE capp tip): heldcopy × C-1a both edit capp-ui.js from 579feee4 — a CLEAN 3-way auto-merge (git
-  // merge-file of 579feee4 / ^1 / ^2 reproduces the committed blob byte for byte; no hand edit): heldOther(heldSdk()) + the C-1a acts
-  'db677478 customer-app/capp-ui.js': 'asm9 heldcopy × C-1a: the clean auto-merge of both lines (merge-file-identical), no resolution edit',
+  // (empty at BASE 604e96ab: the asm8 195147ff and asm9 11273d0c entries name merges BELOW the base — in the RC the lane branches from —
+  // so they would read as stale; advisor ruling 11-13, option (a), as at the 11-12 BASE move)
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
@@ -304,4 +305,22 @@ test('no fixed real sleep in the customer-app suites: no Promise settled by a re
   const bad = Object.entries(found).filter(([f, l]) => !SLEEP_WAIVED[f] || l.length !== SLEEP_WAIVED[f][0]).map(([f, l]) => `${f}:${l.join(',')}`);
   assert.deepEqual(bad, [], '🔴 SLEEP: a fixed real sleep in a customer-app suite (wait on the virtual clock, or on an event)');
   assert.deepEqual(Object.keys(SLEEP_WAIVED).filter((f) => !found[f]), [], '🔴 SLEEP: a stale waiver (its sleep is gone — drop it)');
+});
+
+// rule 20 (owner; PLAN-capp-web-signin r0 — the WEBSITE now signs members in): NO script the web shell loads builds a URL that carries a
+// token — an ID / custom / access token goes in a HEADER, never a query (a URL lands in browser history, devtools, proxy logs). The
+// scan covers every <script src> of shell.html (the packager's web file list, package-capp.js) — a token-shaped query parameter fed
+// from code (`?auth=${…}`, `&token=' + …`) is red; TIP-F4 (capp-ui) pins the one historical offender (last_tip) dynamically
+test('rule 20 (web sign-in): no script of the web shell puts a token in a URL query', () => {
+  const shell = readFileSync(join(ROOT, 'customer-app', 'shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/^https?:/.test(f));
+  assert.ok(scripts.length >= 10 && scripts.includes('capp-api.js') && scripts.includes('capp-signup-api.js'), 'premise: the shell\'s scripts');
+  const TOKQ = /[?&](?:auth|token|id_?token|access_?token|custom_?token|tok)=(?:\$\{|['"`]\s*\+)/i;
+  const hits = [];
+  for (const f of scripts) {
+    const src = readFileSync(join(ROOT, 'customer-app', f), 'utf8');
+    src.split('\n').forEach((ln, i) => { if (TOKQ.test(ln) && !/^\s*\/\//.test(ln)) hits.push(`${f}:${i + 1}`); });
+  }
+  assert.deepEqual(hits, [], '🔴 R20-URL: a token built into a URL query');
+  assert.ok(TOKQ.test("fetch(`${base}/x.json?auth=${encodeURIComponent(tok)}`)") && TOKQ.test("u + '&token=' + t"), 'non-vacuity: the former offender\'s shape is caught');
 });

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Sherpa — Portal del comercio</title>
-<link rel="preload" href="fonts/archivo-latin.7150c0ec5a.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="./portal-fonts.css">   <!-- PLAN-portal-fonts r1.1: self-hosted Archivo, font-display:optional (platform/fonts) -->
+<link rel="preload" href="fonts/figtree-latin.8330490a01.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./portal-fonts.css">   <!-- PLAN-portal-fonts r1.1 + PLAN-font-figtree-portal-r0: self-hosted Figtree (variable), font-display:optional (platform/fonts) -->
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://us-central1-xpizza-delivery.cloudfunctions.net" crossorigin>   <!-- the Firebase SDK import + the first authenticated call; ratified by the §3.1 origin trace -->
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>   <!-- the SDK's restored-session account lookup starts before the editor paints (perf/portal.origins.json, T2) -->
@@ -14,6 +14,7 @@
 <script src="sherpa-client.js"></script>
 <script src="gate-early.js"></script>
 <script src="extras-eligibility.js"></script>   <!-- S4 (S2 §1.6): THE ONE extras rule, a byte copy of the server's (tools/sync-client.js); before the modules that read it -->
+<script src="exposure-transitions.js"></script>   <!-- STRUCTURE S2: THE Extras-page writer, a byte copy of the server's (tools/sync-client.js); after the rule it reads -->
 </head>
 <body>
 
@@ -106,6 +107,8 @@
       <div><h1>Productos</h1><p class="lede" id="menulede">Tu menú, como lo ven tus clientes.</p></div>
       <div class="topact ops hidden" id="menulock"><span class="lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Solo lectura · agotados sí</span></div>
     </div>
+    <!-- STRUCTURE S2: «Menú» / «Extras» (MOCKUP frame X) — shown only with the server's extrasCatalog switch -->
+    <div class="bar hidden" id="prodtabs"><div class="tabs" role="tablist" aria-label="Productos"><button class="tab on" type="button" role="tab" aria-selected="true" id="tabmenu">Menú</button><button class="tab" type="button" role="tab" aria-selected="false" id="tabextras">Extras</button></div></div>
     <!-- PLAN-portal-team-invites T-d: the owner's «… envió N cambios para publicar» banner (pubreq.js) -->
     <div class="hidden" id="pubreq"></div>
     <!-- PORTAL-UI 1a: «Agotados ahora» per branch (availability.js) -->
@@ -117,6 +120,17 @@
       <div class="detail" id="detail">
         <div class="empty" id="detailempty"><b>Cargando tu menú…</b>Un momento.</div>
       </div>
+    </div>
+    <!-- STRUCTURE S2: X2, the remove confirm (extras-view.js openRemoveConfirm) -->
+    <div class="scrim" id="xscrim"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="xcf-t" aria-describedby="xcf-d"></div></div>
+    <!-- STRUCTURE S2: X3 «Crear grupo» (extras-view.js renderCreateGroup) -->
+    <div class="scrim mk-cscrim" id="xcreate"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="xcg-t"></div></div>
+    <div class="scrim mk-bscrim" id="xattach"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="xat-t"></div></div>
+    <!-- STRUCTURE S2: the «Extras» page (extras-view.js) — its own rail + detail, in place of the menu's -->
+    <div class="split hidden" id="xsplit">
+      <div class="rail" id="xrail"></div>
+      <div class="detail" id="xdetail"></div>
+      <p class="vsr" id="xlive" role="status" aria-live="polite"></p>
     </div>
   </main>
 

@@ -119,6 +119,8 @@
   // c: { entry: 'app' | 'link', now, dark, offerHtml, helpOk, shareOk, pay? }
   //    pay (S2, an sdk_auth_v1 order under runtime.sdkPay — CappPayAdjust's pieces, built by the shell): { notice, rows, statusSub }
   //    — absent ⇒ the screen is byte-identical to the base (a cell compares against the pinned original)
+  //    pushLine / pushAsk (MOCKUP-capp-push r1, frames 1 + 1d): push on ⇒ the num line's tail is pushLine (CappPush.COPY); the soft
+  //    card (CappPush.askHtml, built by the shell) sits under the status line of «Pedido recibido» only — absent ⇒ byte-identical
   function orderHtml(o, c) {
     const del = o.mode === 'delivery', ph = schedPhase(o, c.now), sc = ph ? SCHED[ph] : null;
     const st = sc ? 'new' : (o.status || 'new');
@@ -140,7 +142,7 @@
     const windowLine = FINAL.has(st) || !wl.v ? '' : `<div class="mk-window">${esc(wl.k)} <b>${esc(wl.v)}</b></div>`;
     const title = sc ? sc.t : st === 'new' ? 'Pedido recibido' : cc.t;
     const num = sc ? `<div class="mk-num"><span>${esc(sc.line)}</span></div>`
-      : o.display_number != null && String(o.display_number) !== '' ? `<div class="mk-num">Orden #${esc(o.display_number)} <span>· Te avisamos por WhatsApp</span></div>` : '';
+      : o.display_number != null && String(o.display_number) !== '' ? `<div class="mk-num">Orden #${esc(o.display_number)} <span>· ${typeof c.pushLine === 'string' && c.pushLine ? esc(c.pushLine) : 'Te avisamos por WhatsApp'}</span></div>` : '';
     // S2 D (MOCKUP-capp-S2-adjustment r3): «Nuevo total aceptado» leads the status subline (owner: a status line only)
     const pay = c.pay && typeof c.pay === 'object' && typeof c.pay.rows === 'string' && c.pay.rows ? c.pay : null, sub = (t) => (pay && pay.statusSub ? `${esc(pay.statusSub)}${t ? ' · ' + esc(t) : ''}` : esc(t));
     const statusrow = sc ? `<div class="mk-status mute" style="font-size:13.5px;text-align:center">${sub(sc.s)}</div>`
@@ -180,7 +182,7 @@
     ${deskOrder ? num : ''}${share}<button class="btn2 again" data-act="order-again">Hacer otro pedido</button>${c.entry === 'link' ? '<div class="credit">Enviado por <b>Sherpa</b></div>' : ''}`;
     if (c.past && c.tailOnly) return tail;   // past-only (Codex rcpt r2): the live screen ignores hold / tailOnly
     const sheet = `<div class="mk-sheet"><div class="mk-handle"></div><div class="mk-title${cc.ok && !sc ? ' success' : ''}${cc.danger && !sc ? ' danger' : ''}">${esc(title)}</div>${windowLine}
-    ${deskOrder ? '' : num}${segbar}${statusrow}${pay && pay.notice ? pay.notice : ''}${driverCard}${c.rateHtml || ''}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
+    ${deskOrder ? '' : num}${segbar}${statusrow}${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}${pay && pay.notice ? pay.notice : ''}${driverCard}${c.rateHtml || ''}${c.offerHtml || ''}${del ? '' : details}${c.past && c.hold ? '<div data-rc-tail></div>' : tail}</div>`;
     return `<div class="scroller"><div class="orderwrap">${map}${sheet}</div></div>`;
   }
 

@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive, requestPublish } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
+import { setExtraName, createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
 import { parsePrice } from './editor.js';
 import { pendingTexts, loadedName } from './editor.js';   // S4 — the session's unpublished text edits (row tags, the bar); a product's loaded name
@@ -12,7 +12,7 @@ import { pendingTexts, loadedName } from './editor.js';   // S4 — the session'
 import { setCategoryNames, pendingRenames, categoriesUnnamed, categoryNameProblem } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
-import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
+import { movedGroups, reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
 // DISH PHOTOS B (PLAN-dish-photos r2 §3) — the photo state, field, crop step and upload controller
 import * as PL from './photo-logic.js';
@@ -23,7 +23,8 @@ import { setPhoto, draftPhotos, origPhotos, pendingPhotos, canEditDraft } from '
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null, savedRenames: [], savedOther: false,
+  productRemoval: false, liveOrder: null, pendingRemovals: [], rewardKeys: new Set(), removalStash: new Map() };
 
 // ── DISH PHOTOS B — per-load photo facts (getEditableCatalog E-P3) and the upload controller ─────────────────────────────
 //   enabled   photosEnabled === true (the server's PHOTOS_UPLOADS): the uploader is drawn only then (no control without effect)
@@ -78,6 +79,11 @@ function showEmpty(title, detail) {
 import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 // a drawer's top-right close: the approved 32×32 X icon box (aria-label «Cerrar», no text) — ONE builder (ops-dom), shared with photo.js; availability.js's .adwx is the same button + icon('close')
 import { closeIcon } from './ops-dom.js';
+// STRUCTURE S2: the «Extras» page — its model (a pure reader of the draft) and its DOM
+import { extrasPageModel, createGroupForm, createGroupView, setCreateField, settleForm, createGroupOp, extraRowCheck, addExtraRow, addExtraOp, moveGroupOrder, groupOrderTo, groupOrders, extrasOutcomeCtx, deletionRows, rekeyId } from './extras-logic.js';
+import { renderExtrasPage, openRemoveConfirm, openDiscardConfirm, renderCreateGroup, renderAttachSheet, openDeletionsReview, enProductos, closeXConfirm, openRemoveProductConfirm } from './extras-view.js';
+import { applyExposureOps, mergeDeletionClaim } from './editor.js';
+import { canRemoveProduct, removeProduct, undoRemoveProduct, pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows } from './editor.js';   // «Quitar del menú» (PLAN-portal-remove-product r3)
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -393,6 +399,9 @@ function releaseEditLock(ticket) {
 // skipped publish clearing the live one's spinner, a stale publish stranding busy='1', a save's
 // release un-inerting the drawer while a review was pending.
 function syncUi() {
+  // STRUCTURE S2 (SBS-class defect, P-6 cell): after a locked write the Extras page kept its disabled controls — repaint it when the edit
+  // state it was painted under has changed (a no-op otherwise: typing never pays for it)
+  if (prodTab === 'xpage' && state.draft && xPaintedCanEdit !== null && xPaintedCanEdit !== canEditDraft(state.draft)) paintProductTabs();
   const owned = editLockHolder !== null;
   // "Is a request on the wire" is not quite the question. After an auth change or a tenant switch the
   // request genuinely IS still in flight — but it belongs to a world the merchant has left, and this
@@ -524,7 +533,7 @@ function repaintFromDraft() {
   // portal mockup screen 2), not in the list as products of their own: they are folded out here, NEW and PUBLISHED groups
   // alike, so the section count counts products. An orphan bucket left empty by that (an unsaved option has no section of
   // its own — the server derives it) is not shown.
-  state.groups = groupByCategory(src)
+  state.groups = groupByCategory(listSource())   // «Quitar del menú» (R3): a dish pending removal stays in its place until publish
     .map((g) => ({ ...g, items: g.items.filter((it) => !isNewGroupOption(state.draft, it, state.additionKeys) && !listIsGroupOption(it)) }))
     .filter((g) => g.items.length || (categoriesOf().some((c) => c && String(c.id) === g.category.id)));
   // the extras ARRAY, not a {key: price} map — the rows need their display records to show a name
@@ -556,6 +565,23 @@ function applyAddProductFacts(data) {
   // S4 (S2-DESIGN §1.1) — the text-edit switch (absent / not true = today's drawer), the names a rename may not take (already
   // normalized by the server; absent = the C5 check waits for «Guardar»), and the SAVED draft's unpublished text edits
   state.textEditEnabled = !!(data && data.textEditEnabled === true);
+  // STRUCTURE S1 (R5): the server's per-product extras switch; absent ⇒ OFF — the checklist and «Sin extras» stay dark
+  state.extrasAuthoring = !!(data && data.extrasAuthoring === true);
+  // advisor Q8 (11-11): whether the server serves the Extras page (getEditableCatalog extrasCatalog); absent ⇒ OFF — S1's «Opciones» line
+  state.extrasCatalog = !!(data && data.extrasCatalog === true);
+  // STRUCTURE S2 (§3.4, P-1): the deletion baseline the save checks a removal claim against — served verbatim, null when unreadable
+  const db0 = data && data.deletionBase;
+  state.deletionBase = db0 && typeof db0 === 'object' && typeof db0.version === 'string' && Number.isInteger(db0.generation) ? { version: db0.version, generation: db0.generation } : null;
+  // «Quitar del menú» (PLAN-portal-remove-product r3 §9; 5f P-R5 / P-R9 / P-R1 / P-R2): the switch, the ORIGINAL live order, the SAVED
+  // draft's removals and the reward dishes — strictly from the server, served only while the switch is on; absent ⇒ off / unreadable / none
+  state.productRemoval = !!(data && data.productRemoval === true);
+  const lo = state.productRemoval ? data.liveOrder : null;
+  state.liveOrder = lo && Array.isArray(lo.items) && lo.items.every((k) => typeof k === 'string') && Array.isArray(lo.rewards) && lo.rewards.every((k) => typeof k === 'string')
+    ? { items: [...lo.items], rewards: [...lo.rewards] } : null;
+  state.pendingRemovals = state.productRemoval && Array.isArray(data.pendingRemovals)
+    ? data.pendingRemovals.filter((r) => r && typeof r.key === 'string' && r.row && typeof r.row === 'object' && r.row.key === r.key) : [];
+  state.rewardKeys = new Set(state.productRemoval && Array.isArray(data.rewardKeys) ? data.rewardKeys.filter((k) => typeof k === 'string') : []);
+  state.removalStash = new Map();             // a new draft: this session's «Deshacer» snapshots end with the draft they came from
   state.reservedNames = state.textEditEnabled && data && Array.isArray(data.reservedNames) ? data.reservedNames.filter((n) => typeof n === 'string') : null;
   state.savedTexts = Array.isArray(data && data.pendingTexts) ? data.pendingTexts.filter((t) => t && typeof t.key === 'string' && Array.isArray(t.fields)) : [];
 }
@@ -626,8 +652,9 @@ const photoNameOf = (key) => {
   return n || (typeof key === 'string' && key.startsWith('tmp:') ? 'Nuevo producto' : String(key));
 };
 // render.js asks per row: today's placeholder (null) unless uploads are on or the dish has a photo to show
-function rowPhoto(it, { name, open, upload }) {
-  const v = photoViewOf(rowId(it));
+function rowPhoto(it, { name, open, upload, pending }) {
+  // «Quitar del menú» (Codex HIGH r1 P3): a pending row draws the photo it had — the removal snapshot's entry, not the draft's (gone)
+  const v = pending === undefined ? photoViewOf(rowId(it)) : photoViewOf(rowId(it), { ...draftPhotos(state.draft), ...(pending ? { [rowId(it)]: pending } : {}) });
   const enabled = photo.enabled && state.platformPending !== true;   // F-2: a photo is content like a price — read-only while Sherpa updates
   if (!enabled && !(v.kind === 'photo' && (v.url || v.neutral))) return null;
   return { thumb: rowThumb({ view: v, name, enabled, onOpen: open, onUpload: upload, onImgError: onPhotoImgError }), tag: rowTag(v) };
@@ -1042,8 +1069,7 @@ async function resetToLive(rid, expectedRevision) {
   if (failed && failed.code === 'platform_changes_pending') {
     state.platformPending = true;
     paint(); refreshBar();
-    showOutcome(outcomeFor(failed, 'edit'));
-    $('scrim').classList.add('show');
+    if (showOutcome(outcomeFor(failed, 'edit'))) $('scrim').classList.add('show');
     syncUi();
     return;
   }
@@ -1134,8 +1160,12 @@ function refreshBar() {
   // DISH PHOTOS B (P7) — «1 cambio sin publicar · 1 foto»: the photo share of the count, said where the count is
   const nPhotos = state.draft ? pendingPhotos(state.draft).length : 0;
   if (nPhotos) { const sfx = document.createElement('span'); sfx.textContent = PL.COPY.barSuffix(nPhotos); $('rbtxt').append(sfx); }
+  // X4 (MOCKUP x4) — «1 cambio sin publicar · 1 grupo»: the groups that moved, by the review's own «Orden» rule
+  const go = n > 0 && state.draft ? groupOrders(state.draft) : null;
+  const nGroups = go ? movedGroups(go.was, go.now).length : 0;
+  if (nGroups) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nGroups} ${nGroups === 1 ? 'grupo' : 'grupos'}`; $('rbtxt').append(sfx); }
   // S4 (mockup B) — «1 cambio sin publicar · 1 producto»: the products with unpublished text, said where the count is
-  const nTexts = n > 0 ? textEditedKeys().size : 0;
+  const nTexts = n > 0 ? new Set([...textEditedKeys().keys(), ...pendingRemovalMap().keys()]).size : 0;   // «Quitar del menú»: a dish edited AND removed counts once
   if (nTexts) { const sfx = document.createElement('span'); sfx.textContent = ` · ${nTexts} ${nTexts === 1 ? 'producto' : 'productos'}`; $('rbtxt').append(sfx); }
   // T-d (mockup v8 D2): who publishes, said where the merchant decides — text only
   if (state.publishViaRequest) { const note = document.createElement('span'); note.textContent = ' · el dueño confirma y publica con la autorización fiscal'; $('rbtxt').append(note); }
@@ -1181,12 +1211,308 @@ function cellChanged(changed, k) {
   return !!(g && g.options.some((o) => changed.has(`item::${rowId(o)}`)));
 }
 
+// ── STRUCTURE S2 — «Menú» / «Extras» (PLAN-portal-structure-S2-ui r3 §2 items 1–3; MOCKUP frame X) ─────────────────────────────
+// Which tab and which group are VIEW state (never the draft). The tabs exist only with the server's extrasCatalog switch; without it
+// Productos is today's page exactly.
+let prodTab = 'menu';
+// a source that carries a removal claim must save with the served baseline (LEDGER R-A clause 3; the claim is read only by
+// editor.js mergeDeletionClaim)
+const baseFor = (src) => (mergeDeletionClaim(src, null) && state.deletionBase ? { version: state.deletionBase.version, generation: state.deletionBase.generation } : null);
+let extrasGroup = null;
+// STRUCTURE S2 §5.2 REVIEW-DELETIONS — «Confirmar y seguir» arms ONE acknowledged resend; the next save consumes it
+let reviewAck = false;
+const takeReviewAck = () => { const r = reviewAck; reviewAck = false; return r; };
+// STRUCTURE S2 §5.2 — the server's line FIX-EXTRA brought to an extra's row ({ id, text }); editing that row clears it
+let extrasRowError = null;
+// a detail field's restore key held across a LOCKED write (inputs disabled, repainted): restored on a later paint while nothing else holds
+// focus; re-keyed by P-6 adoption; dropped the moment the merchant focuses anything else (focus is never stolen)
+let xFocusK = null;
+// the edit state the Extras page was last painted under: its controls bake `disabled` in, so syncUi repaints it when that state changes
+let xPaintedCanEdit = null;
+// ── X3 «Crear grupo» (plan §2 items 5 / 5b, §3.5): the form is LOCAL state until «Crear grupo» sends ONE group.create op ───────
+let createForm = null;
+let createError = null;
+const X3_CODES = { group_name_taken: 'Ya hay un grupo con ese nombre.', extras_group_empty: 'Agregá al menos un extra.' };
+const x3Dirty = (f) => !!f && (f.name.trim() !== '' || f.rows.some((r) => r.name.trim() || r.raw.trim()) || f.mode !== 'none' || f.marked.length > 0);
+function x3Focusables() { return [...$('xcreate').querySelectorAll('input, select, button')].filter((x) => !x.disabled); }
+function x3Key(e) {
+  if (!createForm || $('xscrim').classList.contains('show')) return;   // the discard confirm, if open, owns the keys
+  if (e.key === 'Escape') { e.preventDefault(); x3Dismiss(); return; }
+  if (e.key !== 'Tab') return;
+  const f = x3Focusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+// the backdrop (Codex S2 UI r1 P2-12): the same dismissal as Escape — clean closes, dirty asks the discard confirm
+function x3Scrim(e) { if (e.target === $('xcreate') && !$('xscrim').classList.contains('show')) x3Dismiss(); }
+function openCreateGroup() {
+  createForm = createGroupForm(); createError = null;
+  $('xcreate').classList.add('show');
+  document.addEventListener('keydown', x3Key, true); $('xcreate').addEventListener('click', x3Scrim);
+  paintCreateGroup(true);
+}
+function closeCreateGroup(refocus) {
+  createForm = null; createError = null;
+  $('xcreate').classList.remove('show'); $('xcreate').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', x3Key, true); $('xcreate').removeEventListener('click', x3Scrim);
+  if (refocus) { const a = $('xrail') && $('xrail').querySelector('.railadd'); if (a) a.focus(); }
+}
+function x3Dismiss() {
+  if (!createForm) return;
+  if (!x3Dirty(createForm)) { closeCreateGroup(true); return; }
+  const back = document.activeElement;
+  openDiscardConfirm({ onDiscard: () => closeCreateGroup(true), onKeep: () => { if (back && back.isConnected) back.focus(); } });
+}
+function x3Set(field, v) { createForm = setCreateField(createForm, field, v); createError = null; paintCreateGroup(false); }
+function x3Create() {
+  const op = createGroupOp(state.draft, createForm);
+  const r = applyExposureOps(state.draft, [op], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { createError = X3_CODES[r.code] || 'No pudimos aplicar el cambio. Recargá la página.'; paintCreateGroup(false); return; }
+  extrasGroup = op.group;
+  closeCreateGroup(false);
+  paint(); refreshBar();
+  const on = $('xrail').querySelector('.railitem.on'); if (on) on.focus();
+}
+function paintCreateGroup(first) {
+  if (!createForm) return;
+  const modal = $('xcreate').querySelector('.modal');
+  const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
+  const at = ae && typeof ae.selectionStart === 'number' ? ae.selectionStart : null;
+  createForm = settleForm(draftSource(state.draft), createForm);
+  const v = { ...createGroupView(state.draft, createForm), formError: createError };
+  const r = renderCreateGroup(modal, v, {
+    name: bound((x) => x3Set('name', x)), row: bound((i, patch) => x3Set('row', { i, ...patch })), addRow: bound(() => x3Set('addRow')),
+    removeRow: bound((i) => x3Set('removeRow', i)), mode: bound((m) => x3Set('mode', m)), cat: bound((c) => x3Set('cat', c)),
+    mark: bound((key, on) => x3Set('mark', { key, on })), markAll: bound((cat) => x3Set('markAll', { cat })), markNone: bound((cat) => x3Set('markNone', { cat })),
+    cancel: x3Dismiss, create: bound(x3Create),
+  });
+  if (first) { r.first.focus(); return; }
+  const back = k ? [...modal.querySelectorAll('[data-k]')].find((x) => x.dataset.k === k) : null;
+  if (back) { back.focus(); if (at !== null) { try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } } }
+}
+
+// ── «Agregar extra» (plan §2 item 3, §3.5 row 2): the inline row is LOCAL state until it commits ONE extra.add ─────────────────
+// an extra row's held price text (Codex S2 UI r1 P2-8), in the per-load state.rawPrice beside the Menú page's
+const extraPriceK = (id) => `extra::${JSON.stringify(id)}`;
+let extraAdd = null;
+let extraAddK = null;
+let extraAddError = null;
+const addDirty = () => !!extraAdd && (extraAdd.name.trim() !== '' || extraAdd.raw.trim() !== '');
+// §3.5: ONE predicate ORs every local editor's «dirty while»; every leave path consults it first
+function localDirty() { return x3Dirty(createForm) || addDirty(); }
+const focusDetail = (k) => { const x = [...$('xdetail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === k); if (x) x.focus(); };
+const focusAddBtn = () => { const b = $('xdetail').querySelector('.dhead .dright .btn'); if (b) b.focus(); };
+function addOpen() {
+  if (!extraAdd || extraAdd.group !== extrasGroup) { extraAdd = addExtraRow(extrasGroup); extraAddError = null; }
+  paint();
+  focusDetail('xadd:n');
+}
+function addInput(field, v) {
+  extraAdd = { ...extraAdd, [field]: v }; extraAddK = field === 'name' ? 'xadd:n' : 'xadd:p'; extraAddError = null;
+  return extraRowCheck(extraAdd);
+}
+function addCommit(refocus) {
+  const op = addExtraOp(extraAdd);
+  if (!op) return;
+  const r = applyExposureOps(state.draft, [op], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { extraAddError = 'No pudimos aplicar el cambio. Recargá la página.'; paint(); focusDetail(extraAddK || 'xadd:n'); return; }
+  extraAdd = null; extraAddK = null;
+  paint(); refreshBar();
+  if (refocus) focusAddBtn();
+}
+function addCancel() { extraAdd = null; extraAddK = null; extraAddError = null; paint(); focusAddBtn(); }
+// focus leaving the row commits it when complete; an incomplete row stays (§3.5)
+function addLeave() { if (extraAdd && addExtraOp(extraAdd)) addCommit(false); }
+// a leave path on the Extras page: a complete row commits first (focus left it); a dirty one asks the portal's discard confirm
+function leaveExtras(go) {
+  addLeave();
+  if (!localDirty()) { extraAdd = null; return go(); }   // the continuation's own result (the review flow's promise): callers may await it
+  openDiscardConfirm({ onDiscard: () => { extraAdd = null; extraAddK = null; extraAddError = null; go(); }, onKeep: () => focusDetail(extraAddK || 'xadd:n') });
+}
+
+// ── X4 / X4b — the ONE group order (plan §2 item 8): every move is ONE group.order naming every group, rebuilt from the draft ────
+let railOpen = null;
+let railError = null;
+const focusGrip = (g) => { const x = [...$('xrail').querySelectorAll('button.rgrip')].find((n) => n.dataset.grip === g); if (x) x.focus(); };
+function x4Write(next, g, from) {
+  const r = applyExposureOps(state.draft, [{ op: 'group.order', order: next }], { extrasCatalog: state.extrasCatalog === true });
+  if (!r.ok) { railError = { group: g, text: 'No pudimos aplicar el cambio. Recargá la página.' }; railOpen = null; paint(); focusGrip(g); return; }
+  railError = null;
+  paint(); refreshBar();
+  $('xlive').textContent = `${g} · ${next.indexOf(g) + 1}.\u00ba lugar`;
+  // focus STAYS on the pressed control of the moved group's row (an end it just reached is aria-disabled, still focusable)
+  if (from === 'up' || from === 'down') {
+    const k = (d) => `x4:${d}:${g}`;
+    const mine = from === 'up' ? 'up' : 'dn';
+    const at = [...$('xrail').querySelectorAll('[data-k]')];
+    const pick = at.find((n) => n.dataset.k === k(mine));
+    if (pick) pick.focus();
+  } else focusGrip(g);
+}
+const railOrder = () => groupOrders(state.draft).now;
+function x4Move(g, delta, from) { const next = moveGroupOrder(railOrder(), g, delta); if (next) x4Write(next, g, from); }
+function x4Drop(g, index) { const next = groupOrderTo(railOrder(), g, index); if (next) x4Write(next, g, 'drop'); else focusGrip(g); }
+function x4Toggle(g) { railOpen = railOpen === g ? null : g; railError = null; paint(); focusGrip(g); }
+function x4Close(g) { railOpen = null; paint(); focusGrip(g); }
+
+// ── B «Agregar grupo de extras» (plan §2 item 6, §3.5): the checked set is LOCAL until «Agregar N grupos» records the attaches in
+// the drawer COPY (setGroupAttached — never the draft; «Guardar» composes them). Cancelar / Escape / the backdrop: an explicit cancel.
+let attachPick = null;
+function bFocusables() { return [...$('xattach').querySelectorAll('input, button')].filter((x) => !x.disabled); }
+function bKey(e) {
+  if (!attachPick) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); bClose(true); return; }
+  if (e.key !== 'Tab') return;
+  const f = bFocusables(); const i = f.indexOf(document.activeElement);
+  if (i === -1 || (e.shiftKey && i === 0) || (!e.shiftKey && i === f.length - 1)) { e.preventDefault(); f[e.shiftKey ? f.length - 1 : 0].focus(); }
+}
+function bScrim(e) { if (e.target === $('xattach')) bClose(true); }
+function bOpen(s, action, after) {
+  attachPick = { s, action, after, checked: new Set() };
+  $('xattach').classList.add('show');
+  document.addEventListener('keydown', bKey, true); $('xattach').addEventListener('click', bScrim);
+  bPaint(true);
+}
+function bClose(refocus) {
+  const p = attachPick; attachPick = null;
+  $('xattach').classList.remove('show'); $('xattach').querySelector('.modal').replaceChildren();
+  document.removeEventListener('keydown', bKey, true); $('xattach').removeEventListener('click', bScrim);
+  if (refocus && p && p.action && p.action.isConnected) p.action.focus();
+}
+function bPaint(first) {
+  if (!attachPick) return;
+  const ae = document.activeElement; const k = ae && ae.dataset ? ae.dataset.k : null;
+  const sheet = IE.attachSheet(state.draft, attachPick.s);
+  const v = { dish: attachPick.s.base.name || attachPick.s.key, rows: sheet.rows.map((r) => ({ ...r, checked: attachPick.checked.has(r.group) })) };
+  const r = renderAttachSheet($('xattach').querySelector('.modal'), v, {
+    toggle: bound((g, on) => { if (on) attachPick.checked.add(g); else attachPick.checked.delete(g); bPaint(false); }),
+    cancel: () => bClose(true),
+    add: bound(() => {
+      const p = attachPick; const order = sheet.rows.map((x) => x.group).filter((g) => p.checked.has(g));
+      for (const g of order) IE.setGroupAttached(p.s, g, true);
+      bClose(false); p.after();
+    }),
+    create: bound(() => { bClose(false); requestClose(() => { closeDrawer(); setProdTab('xpage'); openCreateGroup(); }); }),
+  });
+  if (first) { r.first.focus(); return; }
+  const back = k ? [...$('xattach').querySelectorAll('[data-k]')].find((x) => x.dataset.k === k) : null;
+  if (back) back.focus();
+}
+
+// rule 16b (SBS 11-12): a card's subtitle wraps BETWEEN its « · » parts, never inside one — «en 4 pro…» hid the count once «Editar en
+// Extras» shared the header line at 390 px, and a free wrap would orphan a word («en 4 / productos»)
+function setSegs(host, text) {
+  const parts = String(text).split(' \u00b7 ');
+  host.replaceChildren();
+  // the « ·» stays at the END of its part (a line never starts with «·»); the space after it is the only break
+  parts.forEach((p, i) => { if (i) host.append(document.createTextNode(' ')); const sp = document.createElement('span'); sp.className = 'mk-seg'; sp.textContent = i < parts.length - 1 ? `${p} \u00b7` : p; host.append(sp); });
+}
+
+function svgPlusIcon() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M12 5v14M5 12h14'); s.append(p);
+  return s;
+}
+
+function setProdTab(t) {
+  const next = t === 'xpage' ? 'xpage' : 'menu';
+  if (prodTab === 'xpage' && next !== 'xpage') { leaveExtras(() => { prodTab = next; paint(); }); return; }
+  prodTab = next; paint();
+}
+function paintProductTabs() {
+  if (!$('prodtabs') || !$('xsplit')) return;   // a page without the S2 markup (and today's tests' trimmed shells): Productos as today
+  const on = state.extrasCatalog === true && !!state.draft;
+  if (!on) prodTab = 'menu';
+  $('prodtabs').classList.toggle('hidden', !on);
+  for (const [id, t] of [['tabmenu', 'menu'], ['tabextras', 'xpage']]) {
+    const b = $(id); const sel = prodTab === t; b.classList.toggle('on', sel); b.setAttribute('aria-selected', sel ? 'true' : 'false');
+  }
+  const menuSplit = $('rail').parentElement;
+  const onXpage = prodTab === 'xpage';
+  menuSplit.classList.toggle('hidden', onXpage);
+  $('xsplit').classList.toggle('hidden', !onXpage);
+  if (!onXpage) return;
+  const model = extrasPageModel(state.draft, { group: extrasGroup });
+  extrasGroup = model.selected;
+  if (extraAdd && extraAdd.group !== extrasGroup) extraAdd = null;
+  model.open = railOpen && model.rail.some((r) => r.group === railOpen) ? railOpen : null;
+  model.railError = railError;
+  model.rowError = extrasRowError;
+  // Codex S2 UI r1 P2-8: a price typed that is not a price stays in its field with the row's line, while the draft's price is not one
+  model.heldPrice = (id, price) => {
+    const k = extraPriceK(id);
+    if (!state.rawPrice.has(k) || (Number.isInteger(price) && price >= 1)) return null;
+    const raw = String(state.rawPrice.get(k));   // a copy of the held text (a string), never the map's reference
+    return { raw: `${raw}`, line: extraRowCheck({ name: '-', raw: `${raw}` }).priceError };
+  };
+  model.adding = extraAdd ? { name: extraAdd.name, raw: extraAdd.raw, check: { ...extraRowCheck(extraAdd), error: extraAddError } } : null;
+  // a repaint keeps the focused field (a typed price, the inline row) or the focused rail group
+  const ae = document.activeElement;
+  const keepK = ae && ae.dataset && $('xdetail').contains(ae) ? ae.dataset.k : null;
+  const keepG = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.group : null;
+  const keepGrip = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.grip : null;
+  const keepRailK = ae && ae.dataset && $('xrail').contains(ae) ? ae.dataset.k : null;
+  renderExtrasPage($('xrail'), $('xdetail'), model, {
+    select: bound((g) => leaveExtras(() => { extrasGroup = g; paint(); })),
+    create: bound(() => openCreateGroup()),
+    move: bound(x4Move), drop: bound(x4Drop), gripToggle: bound(x4Toggle), gripClose: bound(x4Close),
+    addOpen: bound(addOpen), addInput, addCommit: bound(() => addCommit(true)), addCancel: bound(addCancel), addLeave: bound(addLeave),
+    // a price on the Extras page: today's guarded setter (a new, keyless extra by its ref); repainted, the caret kept in its field
+    // a «Nuevo» (keyless) row's name (advisor 11-12): the guarded keyless-only setter; repainted, the caret kept in its field
+    name: bound((id, raw, input) => {
+      const at = input.selectionStart; const k = input.dataset.k;
+      setExtraName(state.draft, id, raw);
+      if (extrasRowError && JSON.stringify(extrasRowError.id) === JSON.stringify(id)) extrasRowError = null;
+      paint(); refreshBar();
+      const back = [...$('xdetail').querySelectorAll('input[aria-label="Nombre del extra"]')].find((x) => x.dataset.k === k);
+      if (back) { back.focus(); try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } }
+    }),
+    price: bound((id, raw, input) => {
+      const at = input.selectionStart; const k = input.dataset.k;
+      if (extrasRowError && JSON.stringify(extrasRowError.id) === JSON.stringify(id)) extrasRowError = null;
+      if (extraRowCheck({ name: '-', raw }).priceError) state.rawPrice.set(extraPriceK(id), String(raw)); else state.rawPrice.delete(extraPriceK(id));
+      setExtraPrice(state.draft, id, raw);
+      paint(); refreshBar();
+      const back = [...$('xdetail').querySelectorAll('.price input')].find((x) => x.dataset.k === k);
+      if (back) { back.focus(); try { back.setSelectionRange(at, at); } catch (_) { /* not a text field */ } }
+    }),
+    // X2: «¿Quitar {extra} de {grupo}?» — «Quitar» removes it through the ONE mutator (a published extra's identity joins the claim)
+    remove: bound((row, trash) => {
+      const g = model.detail.group, n = model.detail.reach;
+      openRemoveConfirm({ title: `¿Quitar ${row.name} de ${g}?`, sub: `Extras \u00b7 ${enProductos(n || 0)}`,
+        body: n === 1 ? 'Desaparece del menú en el producto que usa este grupo. Tus pedidos pasados no cambian.'
+          : `Desaparece del menú en los ${n || 0} productos que usan este grupo. Tus pedidos pasados no cambian.`,
+        returnTo: trash,
+        onConfirm: bound(() => {
+          const r = applyExposureOps(state.draft, [{ op: 'extra.remove', ...row.id }], { extrasCatalog: state.extrasCatalog === true });
+          paint(); refreshBar();
+          const back = $('xrail').querySelector('.railitem.on'); if (back) back.focus();
+          return r.ok === true;
+        }),
+      });
+    }),
+  }, { canEdit: canEditDraft(state.draft), baseReadable: state.deletionBase !== null });
+  xPaintedCanEdit = canEditDraft(state.draft);
+  // `ae` is the focus BEFORE this repaint: a held key is used only when nothing held focus then
+  const held = !keepK && xFocusK && (!ae || ae === document.body) ? xFocusK : null;
+  if (!keepK && !held) xFocusK = null;   // the merchant is elsewhere now
+  const want = keepK || held;
+  if (want) {
+    focusDetail(want);
+    const landed = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.k === want;
+    xFocusK = landed ? null : want;   // a disabled target (a write in flight): hold it for the next paint
+  } else if (keepRailK) { const x = [...$('xrail').querySelectorAll('[data-k]')].find((n) => n.dataset.k === keepRailK); if (x) x.focus(); }
+  else if (keepGrip) focusGrip(keepGrip);
+  else if (keepG !== null && keepG !== undefined) { const g = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === keepG); if (g) g.focus(); }
+}
+
 function paint() {
+  paintProductTabs();
   // the held-state mockup (Codex r1): the drawer's hold follows the pending name on EVERY paint — publish, discard and undo all
   // repaint — not only on a drawer render, so it can never outlive the name change it marks
   $('drawer').classList.toggle('namehold', renamesPending());
   renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; if (state.renameEdit && state.renameEdit.catId !== id) state.renameEdit = null; paint(); });
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
+  const pend = pendingRemovalMap();
   paintNameCall();
   // PLAN-public-menu-display T1 — the section-name control for the section on screen (mockup R1–R3b), or none: no draft, no
   // section of its own (the uncategorized bucket), or no section named yet (then the R1c callout is the one way in).
@@ -1225,6 +1551,7 @@ function paint() {
     photoOf: rowPhoto,             // DISH PHOTOS B — null with uploads off and no photo: today's placeholder
     textTagOf: rowTextTag,         // S4 (B) — «Nombre sin publicar» / «Cambios sin publicar», only with the text-edit switch on
     onPhoto: bound((id) => { photoExpandedKey = null; openDrawer(id); pickPhoto(id, null); }),   // the camera: the drawer with the picker open
+    pendingOf: (it) => (pend.has(rowId(it)) ? { onUndo: bound(() => undoRemoval(rowId(it))), photo: pend.get(rowId(it)).photo || null, error: undoRefused === rowId(it) ? UNDO_REFUSED : null } : null),   // «Quitar del menú» (R3): + the snapshot's photo (Codex HIGH r1 P3)
   });
   // F-2 — a Sherpa-written draft gets the calm notice INSTEAD of the reset offer; a merchant's own unpublishable draft keeps today's
   if (state.platformPending) offerPlatformNotice($('detail'));
@@ -1471,6 +1798,60 @@ function endEditSession() {
 // a new load: the S2 §1.1 facts fail closed — today's drawer, no served names, no saved text edits — and any open copy goes
 // The products with unpublished text: this session's (the draft vs what was loaded) ∪ the SAVED draft's (pendingTexts, S2 §1.1)
 // — key → the fields; empty without the switch (today's list).
+// ── «Quitar del menú» (PLAN-portal-remove-product r3 §3.3 / §4 / §9; MOCKUP-portal-remove-product frames R1–R5) ─────────────────
+// §2's switches (the server's, with the text-edit drawer; the readable baseline) — the served collections travel positionally
+const removalOn = () => ({ on: state.productRemoval === true && state.textEditEnabled === true, baseReadable: state.deletionBase !== null });
+// The dishes pending removal, key → a COPY of what «Deshacer» restores (this session's snapshot first, else the saved draft's P-R1 entry)
+const pendingRemovalMap = () => (state.productRemoval === true && state.draft ? pendingRemovalsOf(state.draft, state.removalStash, state.pendingRemovals) : new Map());
+// The list's DISPLAY projection (never sent): the pending rows back at their live places, by the same rebuild a restore runs
+const listSource = () => removalListSource(state.draft, pendingRemovalMap(), state.liveOrder);
+// a removed dish's row (a copy) for the review's names and places
+const removedRowFor = (k) => removedRowOf(state.draft, pendingRemovalMap(), k);
+// «{categoría} · {subcategoría}» (the category alone without a subcategory) — R2's place and U5's second column
+const dishPlace = (row) => (row && row.display ? [row.display.cat == null ? null : categoryName(row.display.cat), typeof row.display.subcat === 'string' && row.display.subcat ? row.display.subcat : null].filter(Boolean).join(' \u00b7 ') : '');
+function svgTrashIcon() {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'); s.append(p);
+  return s;
+}
+// R2 / R5: the confirm (the served rewardKeys decide the reward line — P-R2, never derived here)
+function openRemoveProduct(key, from) {
+  const row = (draftSource(state.draft).items || []).find((r) => r && r.key === key);
+  if (!row) return;
+  const reward = state.rewardKeys.has(key);
+  openRemoveProductConfirm({ name: `${row.display.name}`, place: dishPlace(row), reward, returnTo: from,
+    onConfirm: bound(() => confirmRemoveProduct(key)) });
+}
+// «Quitar»: the removal (all or nothing), its snapshot stashed for «Deshacer», the dish's upload stopped, and the drawer closed — the
+// confirmed removal supersedes an uncommitted copy with no second confirm (D-3). Focus lands on the row's «Deshacer».
+function confirmRemoveProduct(key) {
+  const r = removeProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (!r.ok) { if (state.drawerKey === key) renderDrawer(); return; }   // the predicate moved under the open confirm: nothing written
+  state.removalStash.set(key, r.snap);
+  undoRefused = null;
+  if (uploader.jobOf(key)) uploader.cancel(key);
+  closeDrawer();
+  repaintFromDraft();
+  const u = [...document.querySelectorAll('#detail .irow.mk-pend .mk-undo')].find((b) => b.dataset.k === key);
+  if (u) u.focus();
+}
+// a refused «Deshacer» (Codex HIGH r1 P2: its refs no longer resolve) — the row's line, view state only (never the draft); the generic
+// refusal until the owner rules a line of its own
+let undoRefused = null;
+const UNDO_REFUSED = 'No pudimos aplicar el cambio. Recargá la página.';
+// «Deshacer» (R3): the dish back from its snapshot, its stamp withdrawn, both orders rebuilt from the served live order (§4.2)
+function undoRemoval(key) {
+  const snap = pendingRemovalMap().get(key);
+  if (!snap) return;
+  const r = undoRemoveProduct(state.draft, key, snap, state.liveOrder);
+  if (!r.ok) { undoRefused = key; paint(); return; }   // nothing restored; the row says so
+  undoRefused = null;
+  state.removalStash.delete(key);
+  repaintFromDraft();
+  const c = document.querySelector(`#detail .irow > [data-k="item::${CSS.escape(key)}"]`);
+  const chev = c && c.parentNode.querySelector('.rowchev');
+  if (chev) chev.focus();
+}
 function textEditedKeys() {
   const out = new Map();
   if (state.textEditEnabled !== true || !state.draft) return out;
@@ -1497,19 +1878,55 @@ function productReviewCtx() {
     const pk = keyOfId.get(String(r.display.variantOf));
     if (pk) { parent.set(r.key, pk); index.set(r.key, index.size); }
   }
-  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0) };
+  // STRUCTURE S1 (advisor 11-12): the server's checklist lines name extras by key — their display names, from the draft
+  const extraNames = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display).map((x) => [x.key, x.display.name]));
+  // STRUCTURE S2: the «Estructura» rows' names (the server diff names dishes by key and sections by id) — the draft's, ungated: the
+  // server sends S2 fields only for an S2 op
+  const structure = { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
+    categoryName, sectionOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; } };
+  // Codex S2 UI r1 P1-4: each extra's group, so a checklist key its group's detach drops folds into that «Estructura» row
+  const extraGroups = new Map((draftSource(state.draft).extras || []).filter((x) => x && typeof x.key === 'string' && x.display && x.display.cat != null).map((x) => [x.key, `${x.display.cat}`]));
+  return { optionParent: (k) => parent.get(k) || null, optionIndex: (k) => (index.has(k) ? index.get(k) : 0), extraName: (k) => extraNames.get(k) || null,
+    extraGroup: (k) => extraGroups.get(k) || null, structure, productRemoval: state.productRemoval === true };   // «Quitar del menú» (R4): the served switch
 }
 function productReviewOpts() {
   if (state.textEditEnabled !== true) return null;   // switch off: today's review rows exactly
   const items = ((draftSource(state.draft) || {}).items || []).filter((r) => r && r.display && typeof r.key === 'string');
-  const section = (k) => { const r = items.find((x) => x.key === k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
-  return { nameOf: (k) => { const r = items.find((x) => x.key === k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
+  const section = (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r ? { cat: r.display.cat == null ? null : `${r.display.cat}`, subcat: typeof r.display.subcat === 'string' ? `${r.display.subcat}` : null } : { cat: null, subcat: null }; };
+  return { nameOf: (k) => { const r = items.find((x) => x.key === k) || removedRowFor(k); return r && typeof r.display.name === 'string' && r.display.name.trim() ? `${r.display.name}` : String(k); },
     categoryName, sectionOf: section };
+}
+// Codex S2 r1 P1-2 — the auth boundary ends the Extras page's LOCAL world too: every local editor (the inline row, X3, B, the rail
+// pair), every open sheet / confirm on #xscrim with its document listeners, the armed acknowledged resend and the view state. Nothing
+// person A typed, opened or acknowledged survives for person B; no continuation runs (the confirms close without onGo / onCancel).
+function resetExtrasLocal() {
+  closeXConfirm();
+  // a page without the S2 markup (today's trimmed shells) has no sheets to close
+  if ($('xcreate') && (createForm || $('xcreate').classList.contains('show'))) closeCreateGroup(false);
+  if ($('xattach') && (attachPick || $('xattach').classList.contains('show'))) bClose(false);
+  createForm = null; createError = null; attachPick = null;
+  extraAdd = null; extraAddK = null; extraAddError = null;
+  railOpen = null; railError = null; extrasRowError = null;
+  reviewAck = false; xFocusK = null; xPaintedCanEdit = null;
+  extrasGroup = null; prodTab = 'menu';
+  // A's painted page goes too (a hidden #xsplit still holds A's rows and their handlers until a repaint)
+  if ($('xrail')) $('xrail').replaceChildren();
+  if ($('xdetail')) $('xdetail').replaceChildren();
 }
 function resetEditFacts() {
   state.textEditEnabled = false;
+  state.extrasAuthoring = false;
+  state.extrasCatalog = false;
+  state.deletionBase = null;
   state.reservedNames = null;
   state.savedTexts = [];
+  state.productRemoval = false;
+  state.liveOrder = null;
+  state.pendingRemovals = [];
+  state.rewardKeys = new Set();
+  state.removalStash = new Map();
+  undoRefused = null;   // a refused «Deshacer» line ends with the world
+  resetExtrasLocal();
   endEditSession();
 }
 // The product's photo as this drawer shows it: the draft's map with the copy's entry in place of the stored one.
@@ -1525,11 +1942,39 @@ function warnTri() {
   for (const d of ['M12 3l9 16H3z', 'M12 10v4', 'M12 17.5v.01']) { const p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); svg.append(p); }
   return svg;
 }
+// STRUCTURE S1 — the «Opciones» copy (MOCKUP-portal-structure-edit v2, table H) and the cards' fold state (view-only, per drawer
+// session: never part of the copy, never dirty)
+const OPC_COPY = Object.freeze({
+  noneOff: 'Apagalo si este producto no lleva extras', noneOn: 'Este producto no ofrece ningún extra',
+  req: 'Elección requerida · el cliente elige 1', ext: 'Extras · opcionales',
+  allOn: 'Todos activos en este producto', markAll: 'Marcar todos', none: 'Ninguno', appOnly: 'Solo en la app Sherpa',
+  gap: 'No pudimos cargar los extras.',
+});
+// table H (Codex build r1 #9): «En el menú cada opción se llama «{producto} - {opción}», «… - {opción}»: el nombre se arma solo.» — the
+// recommended option first (the mockup's «Mediana»), else the first; then the one after it
+function opcNameLine(options, g) {
+  const opts = Array.isArray(options) ? options : [];
+  if (!opts.length) return '';
+  const rec = (k) => { const row = g && g.options.find((x) => x.key === k); return !!(row && row.display && Array.isArray(row.display.tags) && row.display.tags.includes('recommended')); };
+  const i = Math.max(0, opts.findIndex((o) => rec(o.key)));
+  const a = opts[i], b = opts.length > 1 ? opts[(i + 1) % opts.length] : null;
+  return `En el menú cada opción se llama «${a.fullName}»${b ? `, «… - ${b.choice}»` : ''}: el nombre se arma solo.`;
+}
+const opcFolded = new Set();
+const opcN = (n) => `${n} ${n === 1 ? 'opción' : 'opciones'}`;
+const opcProducts = (n) => `en ${n} ${n === 1 ? 'producto' : 'productos'}`;
+// an extras card's header line: open → the group's reach; folded (A3) → also how many are active here, or how many there are
+function opcExtSub(c, open) {
+  if (open) return `${OPC_COPY.ext} · ${opcProducts(c.usedBy)}`;
+  return `${OPC_COPY.ext} · ${c.active < c.size ? `${c.active} de ${c.size} activos` : opcN(c.size)} · ${opcProducts(c.usedBy)}`;
+}
 function renderEditDrawer(d, it, keepScroll) {
   const key = rowId(it);
   if (!editSess || editSess.closed || editSess.key !== key || editSess.draft !== state.draft) {
     endEditSession();
-    editSess = IE.open(state.draft, key, state.reservedNames);
+    // the copy carries BOTH server switches: extrasCatalog turns on its group ops (B's attach, «Quitar de este producto») — without it
+    // setGroupAttached stays dark by design, so an app that forgot to pass it would record nothing
+    editSess = IE.open(state.draft, key, state.reservedNames, { extrasAuthoring: state.extrasAuthoring === true, extrasCatalog: state.extrasCatalog === true });
   }
   const s = editSess;
   if (!s) return false;                       // not a product this drawer edits (an option, an unsaved addition): today's drawer
@@ -1607,48 +2052,8 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fSub);
   }
 
-  // a product with a required choice (F): the derived option names, each with its counter and — kept (advisor Q1) — its price
-  if (v0.options) {
-    const g = choiceGroup(state.draft, key);
-    const fOpt = mk('div', 'fld');
-    const lr3 = mk('div', 'mk-lrow');
-    R.optCnt = mk('span', 'mk-cnt', 'precio por opción');
-    lr3.append(mk('label', null, 'Opciones'), R.optCnt);
-    const block = mk('div', 'modblock');
-    const mh = mk('div', 'modh', `${(g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección'} · elección requerida`);
-    mh.append(mk('span', 'mk-modhr', 'Se mueve con su producto'));
-    block.append(mh);
-    R.opts = [];
-    for (const o of v0.options) {
-      const row = mk('div', 'mk-dopt');
-      const dn = mk('span', 'mk-dn');
-      const base = document.createTextNode('');
-      dn.append(base, mk('span', null, ` - ${o.choice}`));
-      const cnt = mk('span', 'mk-cnt');
-      const dp = mk('span', 'dp');
-      const pr = mk('span', 'mopr');
-      const ieOptPrice = document.createElement('input');
-      ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.placeholder = 'Sin precio'; ieOptPrice.value = o.price;
-      ieOptPrice.setAttribute('aria-label', `Precio de ${o.choice}`);
-      ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.key, raw: ieOptPrice.value }); syncEdit(); }));
-      focusKey(ieOptPrice, `ie-opt::${o.key}`);
-      pr.append(mk('span', 'mc', 'L'), ieOptPrice);
-      dp.append(pr);
-      row.append(dn, cnt, dp);
-      block.append(row);
-      R.opts.push({ key: o.key, row, base, cnt, pi: ieOptPrice });
-    }
-    const lab = mk('label', 'mgflag mgflag-same');
-    const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
-    ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
-    focusKey(ieSame, 'ie-same');
-    lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
-    R.same = ieSame;
-    fOpt.append(lr3, block, lab, mk('div', 'mk-sub', 'El nombre de cada opción se arma solo: nombre del producto + opción. Cambia junto con el producto.'));
-    errSlot(fOpt, 'options'); R.ctl.options = R.opts.map((o) => o.pi);
-    R.optBlock = block;
-    body.append(fOpt);
-  } else {
+  // a plain product: its price, as today (a product with a required choice prices its options, in «Opciones» below)
+  if (!v0.options) {
     const fPr = mk('div', 'fld pr');
     fPr.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
     const iePrice = document.createElement('input');
@@ -1659,8 +2064,215 @@ function renderEditDrawer(d, it, keepScroll) {
     body.append(fPr);
   }
 
-  // the extras groups, as today — their prices through the copy (advisor Q2)
-  for (const g of optionGroups(state.draft)) body.append(groupBlock(g, s));
+  // STRUCTURE S1 — «Opciones» (MOCKUP-portal-structure-edit v2 frame A / A2 / A3): «Sin extras», the required choice (R1: today's
+  // option-price inputs kept inside its card until S3), one card per extras group the dish offers, with the per-dish checklist
+  // (R4: today's editable prices until S2). Each card folds on its own (view-only). No grip (R2); no pencil, «Editar en Extras»,
+  // «Quitar de este producto» or dish actions until S2 / S3 — no dead control.
+  const ex = v0.extras;
+  // S2 (Codex S2 UI r1 P2-5): with the server's Extras page the field stays for a dish with ZERO groups — its «Agregar grupo de extras»
+  // is the only way to attach one
+  if (v0.options || ex.show || state.extrasCatalog === true) {
+    const fOpc = mk('div', 'fld');
+    const lrO = mk('div', 'mk-lrow');
+    lrO.append(mk('label', null, 'Opciones'), mk('span', 'mk-cnt', state.extrasCatalog === true ? 'El orden de los grupos se define en Extras' : 'en el orden que las ve el cliente'));   // mockup v3 (owner 11-11): the order is set on the Extras page — once that page exists
+    const box = mk('div', `mk-opc${ex.none ? ' mk-off' : ''}`);
+    const folded = (id) => opcFolded.has(`${s.id}|${id}`);
+    const fold = (id) => { const k = `${s.id}|${id}`; if (opcFolded.has(k)) opcFolded.delete(k); else opcFolded.add(k); relayout(); refocus([`ie-fold::${id}`]); };
+    const header = (id, name, sub, subCls, open, lead = null) => {
+      const gh = mk('div', 'mk-gh');
+      const ieFoldName = document.createElement('button'); ieFoldName.type = 'button'; ieFoldName.className = 'mk-gt';
+      ieFoldName.setAttribute('aria-expanded', String(open));
+      const st = mk('span', subCls); setSegs(st, sub);
+      ieFoldName.append(mk('b', 'mk-gtn', name), st);
+      ieFoldName.addEventListener('click', bound(() => fold(id)));
+      focusKey(ieFoldName, `ie-fold::${id}`);
+      const act = mk('div', 'mk-gact');
+      const ieFoldChev = document.createElement('button'); ieFoldChev.type = 'button'; ieFoldChev.className = 'mk-ib mk-chev';
+      ieFoldChev.setAttribute('aria-label', `${open ? 'Ocultar' : 'Mostrar'} ${name}`); ieFoldChev.setAttribute('aria-expanded', String(open));
+      ieFoldChev.append(svgChevron());
+      ieFoldChev.addEventListener('click', bound(() => fold(id)));
+      if (lead) act.append(lead);   // S2 frame A: «Editar en Extras» before the chevron
+      act.append(ieFoldChev);
+      gh.append(ieFoldName, act);
+      return { gh, st };
+    };
+    R.opc = { cards: [] };
+    if (ex.gap) box.append(mk('p', 'mk-opcgap', OPC_COPY.gap));   // Codex build r1 #8: said, never a silent absence
+    else if (ex.show) {
+      const sw = mk('div', 'mk-opcsw');
+      const lbl = mk('div', 'mk-opcl');
+      lbl.append(mk('b', 'mk-opcb', 'Sin extras'), mk('span', 'mk-opcs', ex.none ? OPC_COPY.noneOn : OPC_COPY.noneOff));
+      const ieNoExtras = document.createElement('button'); ieNoExtras.type = 'button'; ieNoExtras.className = 'tog';
+      if (!ex.none) ieNoExtras.classList.add('off');
+      ieNoExtras.setAttribute('role', 'switch'); ieNoExtras.setAttribute('aria-checked', String(ex.none)); ieNoExtras.setAttribute('aria-label', 'Sin extras');
+      ieNoExtras.append(document.createElement('i'));
+      lockControl(ieNoExtras, !ex.authoring);   // R5: shown, inert, until the server's switch is on (locked: setDrawerInert keeps it off)
+      ieNoExtras.addEventListener('click', bound(() => { IE.set(s, 'extrasNone', !s.work.extrasNone); relayout(); refocus(['ie-sinextras']); }));
+      focusKey(ieNoExtras, 'ie-sinextras');
+      sw.append(lbl, ieNoExtras);
+      box.append(sw);
+    }
+    if (v0.options) {
+      const g = choiceGroup(state.draft, key);
+      const label = (g && typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección';
+      const open = !folded('req');
+      const card = mk('div', `mk-grp mk-req${open ? ' mk-open' : ''}`);
+      const h = header('req', label, `${OPC_COPY.req}${open ? '' : ` · ${opcN(v0.options.length)}`}`, 'mk-gts mk-greq', open);
+      card.append(h.gh);
+      R.opts = [];
+      R.optCnt = mk('span', 'mk-cnt');   // the F2 line's counter class (kept for syncEdit's red), not drawn
+      if (open) {
+        const block = mk('div', 'mk-gb');
+        for (const o of v0.options) {
+          const row = mk('div', 'mk-dopt');
+          // advisor 11-12 (S1 SBS, mockup v3): the row names the CHOICE; the full name lives in the helper line (and the counter)
+          const dn = mk('span', 'mk-dn', o.choice);
+          const opRow = g && g.options.find((x) => x.key === o.key);
+          if (opRow && opRow.display && Array.isArray(opRow.display.tags) && opRow.display.tags.includes('recommended')) dn.append(mk('span', 'mk-rec', 'Recomendada'));
+          const cnt = mk('span', 'mk-cnt');
+          const dp = mk('span', 'dp');
+          const pr = mk('span', 'mopr');
+          const ieOptPrice = document.createElement('input');
+          ieOptPrice.type = 'text'; ieOptPrice.inputMode = 'numeric'; ieOptPrice.placeholder = 'Sin precio'; ieOptPrice.value = o.price;
+          ieOptPrice.setAttribute('aria-label', `Precio de ${o.choice}`);
+          ieOptPrice.addEventListener('input', bound(() => { IE.set(s, 'optionPrice', { key: o.key, raw: ieOptPrice.value }); syncEdit(); }));
+          focusKey(ieOptPrice, `ie-opt::${o.key}`);
+          pr.append(mk('span', 'mc', 'L'), ieOptPrice);
+          dp.append(pr);
+          row.append(dn, cnt, dp);
+          block.append(row);
+          R.opts.push({ key: o.key, row, cnt, pi: ieOptPrice });
+        }
+        const lab = mk('label', 'mgflag mgflag-same mk-gsame');
+        const ieSame = document.createElement('input'); ieSame.type = 'checkbox';
+        ieSame.addEventListener('change', bound(() => { IE.set(s, 'samePrice', ieSame.checked); syncEdit(); }));
+        focusKey(ieSame, 'ie-same');
+        lab.append(ieSame, document.createTextNode('Mismo precio para todas'));
+        R.same = ieSame;
+        R.gsub = mk('div', 'mk-gsub', opcNameLine(v0.options, g));
+        block.append(lab, R.gsub);
+        card.append(block);
+        R.ctl.options = R.opts.map((x) => x.pi);
+      }
+      R.optBlock = card;
+      errSlot(card, 'options');
+      box.append(card);
+    }
+    for (const c of ex.cards) {
+      const id = `x::${c.cat}`;
+      const open = !folded(id);
+      const card = mk('div', `mk-grp mk-ext${open ? ' mk-open' : ''}`);
+      // STRUCTURE S2 (plan §2 item 7, MOCKUP frame A) — ONLY with the server's Extras page: «Editar en Extras» in the header, «Quitar de
+      // este producto» at the foot, the prices read-only (R4 ends: an extra is repriced on the Extras page); without it, S1 exactly
+      const s2 = state.extrasCatalog === true;
+      let ieEditInExtras = null;
+      if (s2) {
+        ieEditInExtras = document.createElement('button'); ieEditInExtras.type = 'button'; ieEditInExtras.className = 'mk-lnk mk-gol';
+        ieEditInExtras.textContent = 'Editar en Extras'; ieEditInExtras.setAttribute('aria-label', `Editar ${c.cat} en Extras`);
+        ieEditInExtras.addEventListener('click', bound(() => requestClose(() => { closeDrawer(); extrasGroup = c.cat; setProdTab('xpage'); const r = [...$('xrail').querySelectorAll('.railitem')].find((n) => n.dataset.group === c.cat); if (r) r.focus(); })));
+        focusKey(ieEditInExtras, `ie-gol::${c.cat}`);
+      }
+      const h = header(id, c.cat, opcExtSub(c, open), 'mk-gts', open, ieEditInExtras);
+      card.append(h.gh);
+      const ref = { cat: c.cat, open, st: h.st, rows: [] };
+      if (open) {
+        const gb = mk('div', 'mk-gb');
+        const sum = mk('div', 'mk-gsum');
+        ref.sum = mk('span', 'mk-gsumt');
+        ref.app = mk('span', 'mk-apponly');
+        ref.app.append(mk('span', 'mk-apdot'), document.createTextNode(OPC_COPY.appOnly));
+        ref.sum.append(document.createTextNode(''), ref.app);
+        const ieAllExtras = document.createElement('button'); ieAllExtras.type = 'button'; ieAllExtras.className = 'mk-lnk';
+        ref.lnk = ieAllExtras;
+        lockControl(ieAllExtras, c.disabled);   // dark (R5) or under «Sin extras» (A2) — locked, so an un-inert never re-enables it
+        ieAllExtras.addEventListener('click', bound(() => {
+          const cur = IE.view(state.draft, s).extras.cards.find((x) => x.cat === c.cat);
+          IE.set(s, 'extraGroupOn', { cat: c.cat, on: !cur || cur.active !== cur.size }); syncEdit();
+        }));
+        focusKey(ieAllExtras, `ie-all::${c.cat}`);
+        sum.append(ref.sum, ieAllExtras);
+        gb.append(sum);
+        for (const r of c.rows) {
+          if (r.isNew) {   // S2 §3.3 (Codex S2 UI r1 P2-6): a NEW extra — checked, inert, the approved line; nothing it could write
+            const row = mk('div', 'mopt mk-xopt mk-xoptnew');
+            const lab = mk('label', 'mk-xchk');
+            const cbNew = document.createElement('input'); cbNew.type = 'checkbox'; cbNew.checked = true; lockControl(cbNew, true);
+            const nmCol = mk('span', 'mk-xnmcol'); nmCol.append(mk('span', 'mk-xnm', r.name), mk('span', 'mk-xnewl', 'Nuevo · se elige por producto al publicarlo'));
+            lab.append(cbNew, nmCol);
+            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));
+            gb.append(row);
+            continue;
+          }
+          const row = mk('div', 'mopt mk-xopt');
+          const lab = mk('label', 'mk-xchk');
+          const ieExtraOn = document.createElement('input'); ieExtraOn.type = 'checkbox'; ieExtraOn.checked = r.on; lockControl(ieExtraOn, c.disabled);
+          ieExtraOn.addEventListener('change', bound(() => { IE.set(s, 'extraOn', { key: r.key, on: ieExtraOn.checked }); syncEdit(); }));
+          focusKey(ieExtraOn, `ie-x::${r.key}`);
+          lab.append(ieExtraOn, mk('span', 'mk-xnm', r.name));
+          if (s2) {   // S2: the group's price, read-only here (repriced on the Extras page)
+            row.append(lab, mk('span', 'mk-mp', r.price ? `L ${r.price}` : ''));
+            gb.append(row);
+            ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: null });
+            continue;
+          }
+          // R4: the group's price, editable as today (it is the group's, not the dish's — shown for an unchecked extra too)
+          const pr = mk('span', 'mopr');
+          const ieExtraPrice = document.createElement('input');
+          ieExtraPrice.type = 'text'; ieExtraPrice.inputMode = 'numeric'; ieExtraPrice.placeholder = 'Sin precio'; ieExtraPrice.value = r.price || '';
+          ieExtraPrice.setAttribute('aria-label', `Precio de ${r.name}`);
+          ieExtraPrice.addEventListener('input', bound(() => { IE.set(s, 'extraPrice', { key: r.key, raw: ieExtraPrice.value }); syncEdit(); }));
+          focusKey(ieExtraPrice, `ie-xp::${r.key}`);
+          pr.append(mk('span', 'mc', 'L'), ieExtraPrice);
+          row.append(lab, pr);
+          gb.append(row);
+          ref.rows.push({ key: r.key, row, cb: ieExtraOn, pi: ieExtraPrice });
+        }
+        if (s2) {   // «Quitar de este producto»: detach.item into the COPY; off with the writer's line when the copy refuses it
+          const foot = mk('div', 'mk-gfoot');
+          const refused = IE.detachRefusal(state.draft, s, c.cat);
+          const ieDetach = document.createElement('button'); ieDetach.type = 'button'; ieDetach.className = 'mk-lnk danger'; ieDetach.textContent = 'Quitar de este producto';
+          lockControl(ieDetach, !s.extrasAuthoring || !!refused);
+          ieDetach.addEventListener('click', bound(() => { IE.setGroupAttached(s, c.cat, false); relayout(); refocus(['ie-badd']); }));
+          focusKey(ieDetach, `ie-detach::${c.cat}`);
+          foot.append(ieDetach);
+          if (refused) foot.append(mk('div', 'ferr mk-ferr', refused));
+          gb.append(foot);
+        }
+        card.append(gb);
+      }
+      R.opc.cards.push(ref);
+      box.append(card);
+    }
+    // STRUCTURE S2 — B: the dish action under the cards (MOCKUP frame B: .mk-adds > .railadd), ONLY with the server's Extras page;
+    // off with the writer's line when the COPY refuses an attach (the X3b predicate)
+    if (state.extrasCatalog === true) {
+      const adds = mk('div', 'mk-adds');
+      const sheet = IE.attachSheet(state.draft, s);
+      const ieAddGroup = document.createElement('button'); ieAddGroup.type = 'button'; ieAddGroup.className = 'railadd';
+      ieAddGroup.append(svgPlusIcon(), document.createTextNode('Agregar grupo de extras'));
+      lockControl(ieAddGroup, !ex.authoring || !sheet.canAdd);
+      ieAddGroup.addEventListener('click', bound(() => bOpen(s, ieAddGroup, () => { relayout(); refocus(['ie-badd']); })));
+      focusKey(ieAddGroup, 'ie-badd');
+      adds.append(ieAddGroup);
+      if (!sheet.canAdd && sheet.reason) adds.append(mk('div', 'ferr mk-ferr', sheet.reason));
+      box.append(adds);
+    }
+    fOpc.append(lrO, box);
+    body.append(fOpc);
+  }
+  // «Quitar del menú» (R1 / R1b): the body's last child, under a hairline — only when §2's ONE predicate shows it; §2 row 6 (no readable
+  // baseline, or no served live order) draws it disabled with S2's approved line under it. The press writes nothing (R2 confirms).
+  const rp = canRemoveProduct(state.draft, key, removalOn(), state.liveOrder, state.additionKeys);
+  if (rp.show) {
+    const act = mk('div', 'mk-rmact');
+    const ieRemove = document.createElement('button'); ieRemove.className = 'btn ghost mk-quiet-danger'; ieRemove.type = 'button';
+    ieRemove.append(svgTrashIcon(), document.createTextNode('Quitar del menú'));
+    if (rp.enabled) ieRemove.addEventListener('click', bound(() => openRemoveProduct(key, ieRemove)));
+    else lockControl(ieRemove, true);
+    act.append(ieRemove);
+    if (!rp.enabled) act.append(mk('div', 'ferr mk-ferr', 'No pudimos leer el menú publicado. Recargá la página.'));
+    body.append(act);
+  }
 
   const foot = mk('div', 'dwf');
   const ieCancel = document.createElement('button'); ieCancel.className = 'btn ghost'; ieCancel.type = 'button'; ieCancel.textContent = 'Cancelar';
@@ -1725,15 +2337,38 @@ function syncEdit() {
     const bad = !!v.errors.options;
     R.optBlock.classList.toggle('mk-inv', bad);
     R.optCnt.classList.toggle('mk-cnterr', bad);   // the mockup's `.fld.invalid .mk-cnt` red (F2)
-    v.options.forEach((o, i) => {
-      const r = R.opts[i];
-      r.base.textContent = o.fullName.slice(0, o.fullName.length - ` - ${o.choice}`.length);
+    // STRUCTURE S1 (Codex build r1 #2): a FOLDED required-choice card draws no option rows — only the ones drawn are synced
+    v.options.forEach((o) => {
+      const r = R.opts.find((x) => x.key === o.key);
+      if (!r) return;
       r.cnt.textContent = o.counter;
+      r.cnt.hidden = !(o.nearLimit || o.tooLong);   // an inline warning only near / past the limit
       r.cnt.classList.toggle('over', o.tooLong);
       r.row.classList.toggle('over', o.tooLong);
       if (r.pi.value !== o.price && document.activeElement !== r.pi) r.pi.value = o.price;
     });
-    R.same.checked = v.same === true;
+    if (R.same) R.same.checked = v.same === true;
+    if (R.gsub) R.gsub.textContent = opcNameLine(v.options, choiceGroup(state.draft, s.key));
+  }
+  // STRUCTURE S1 — the extras cards follow the copy in place (counts, the summary, the link, each row's check and price)
+  if (R.opc) {
+    for (const ref of R.opc.cards) {
+      const c = v.extras.cards.find((x) => x.cat === ref.cat);
+      if (!c) continue;
+      setSegs(ref.st, opcExtSub(c, ref.open));
+      if (!ref.open) continue;
+      const custom = c.active < c.size;
+      ref.sum.firstChild.textContent = custom ? `${c.active} de ${c.size} activos en este producto` : OPC_COPY.allOn;
+      ref.app.hidden = !custom;
+      ref.lnk.textContent = custom ? OPC_COPY.markAll : OPC_COPY.none;
+      for (const r of ref.rows) {
+        const row = c.rows.find((x) => x.key === r.key);
+        if (!row) continue;
+        r.cb.checked = row.on;
+        r.row.classList.toggle('mk-xoff', !row.on);
+        if (r.pi && r.pi.value !== (row.price || '') && document.activeElement !== r.pi) r.pi.value = row.price || '';   // S2: read-only text (no input) with extrasCatalog
+      }
+    }
   }
   R.save.disabled = !v.save.enabled;
   if (v.save.title) R.save.title = v.save.title; else R.save.removeAttribute('title');
@@ -1754,7 +2389,9 @@ function saveEdit() {
   if (!r.ok) { syncEdit(); return; }
   editSess = null; editUpload = null; editRefs = null;
   closeDrawer();
-  paint(); refreshBar();
+  // STRUCTURE S2 (§3.2): «Guardar» swaps in the composed document (the writer returns a new one), so the list is re-derived from
+  // the draft — never painted from row objects the swap replaced
+  repaintFromDraft();
 }
 
 // ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────
@@ -2234,6 +2871,7 @@ $('discard').addEventListener('click', () => {
   if (copyDirty()) return;   // unsaved edits: the whole bar waits (frame 1)
   if (canEditDraft(state.draft)) uploader.abortAll();   // DISH PHOTOS B — an upload in flight belongs to the edits thrown away
   discard(state.draft);
+  state.removalStash.clear();                           // «Quitar del menú»: the in-session removals went with the thrown-away edits
   endEditSession();                                     // S4: the drawer's working copy goes with the thrown-away edits
   $('drawer').classList.remove('show');
   repaintFromDraft();
@@ -2247,6 +2885,7 @@ $('discard').addEventListener('click', () => {
 // The screen never re-derives the diff from the local draft. A client-side diff would be a second
 // opinion about money, and publishEdited re-checks the server's one anyway: the two disagreeing is
 // how a merchant approves a change they were never shown.
+// S2 §5.2: `reviewed` — the merchant re-confirmed the full deletion list (REVIEW-DELETIONS); takeReviewAck consumes it, ONE resend
 async function openReviewFlow() {
   if (copyDirty()) return;   // unsaved edits: never review around an open, dirty copy (the bar is inert; this is the admission)
   if (state.publishViaRequest) return sendToOwnerFlow();   // T-d: this caller sends; the owner's path below is untouched
@@ -2286,6 +2925,8 @@ async function openReviewFlow() {
       source: submitted,
       baseSourceUpdateTime: state.sourceUpdateTime,
       token,
+      loadedBase: baseFor(submitted),   // S2 §3.4
+      reviewed: takeReviewAck(),
     });
     if (gen !== opGeneration) return;        // auth changed, tenant switched, or a newer review began
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
@@ -2296,6 +2937,7 @@ async function openReviewFlow() {
     // by key.
     if (res && res.source) {
       adopt(state.draft, res.source);
+      adoptExtraRefs(res.extraRefs);
       for (const a of ((diff && diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
       state.drawerError = null;
       repaintFromDraft();
@@ -2307,7 +2949,8 @@ async function openReviewFlow() {
     // Computed BEFORE the record is minted, because the record is immutable once it exists — the whole
     // evidence set is fixed at the moment it is created, rather than assembled field by field
     // afterwards where anything could join in.
-    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent });   // S4: a group's options fold under its «Nombre en factura»
+    const att = attestationModel(diff, { usesPlatformFactura: state.usesPlatformFactura, legacy: photo.legacy, optionParent: productReviewCtx().optionParent,
+      extraName: productReviewCtx().extraName, fiscalAckRequired: res && res.fiscalAckRequired });   // P-R8: the SAVE's word, never re-derived   // S4: a group's options fold under its «Nombre en factura»
     const minted = mintReview({
       diff,
       editToken: res && res.token,
@@ -2350,8 +2993,7 @@ async function openReviewFlow() {
       // outcomeFor means every server error on the write path lands somewhere the merchant can act on,
       // whichever call produced it. The generic durable panel catches anything unmapped.
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit'));
-      $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);   // settled; the ticket is the UI's again (or nobody's)
     // LIFECYCLE: the lock is held while the review is LIVE — the modal open, the merchant attesting —
@@ -2397,7 +3039,7 @@ function closeReview() {
   // "writes nothing at all", and the second is harder to notice.
   if (state.draft) repaintFromDraft();
 }
-$('review').addEventListener('click', openReviewFlow);
+$('review').addEventListener('click', () => leaveExtras(openReviewFlow));   // S2 §3.5: the Extras page's local editors first (a complete row commits; a dirty one asks)
 
 $('pubback').addEventListener('click', closeReview);
 
@@ -2513,7 +3155,7 @@ async function runPublish() {
     out = await attempt;
   } catch (e) {
     if (gen !== opGeneration) return;     // stale: auth changed or a newer review began mid-flight
-    showOutcome(outcomeFor(e, 'publish'));
+    showOutcome(outcomeFor(e, 'publish', extrasOutcomeCtx(state.draft)));
     return;
   } finally {
     endWrite(writeId, lock, gen);
@@ -2620,10 +3262,11 @@ async function sendToOwnerFlow() {
     const submitted = JSON.parse(JSON.stringify(draftSource(state.draft)));
     writeId = beginWrite(lock);
     const rid = state.draftRid;
-    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token });
+    const res = await editCatalog({ rid, source: submitted, baseSourceUpdateTime: state.sourceUpdateTime, token, loadedBase: baseFor(submitted), reviewed: takeReviewAck() });   // S2 §3.4 · §5.2
     if (gen !== opGeneration) return;
     if (res && res.source) {
       adopt(state.draft, res.source);
+      adoptExtraRefs(res.extraRefs);
       // the saved additions are now known by key — still unpublished, still removable (the review flow's bookkeeping)
       for (const a of ((res.diff && res.diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
     }
@@ -2642,8 +3285,7 @@ async function sendToOwnerFlow() {
     document.dispatchEvent(new CustomEvent('portal:publish-request-sent'));   // pubreq.js: «Enviado al dueño para publicar»
   } catch (e) {
       if (gen !== opGeneration) return;      // a stale failure must not paint over the current world
-      showOutcome(outcomeFor(e, 'edit'));
-      $('scrim').classList.add('show');
+      if (showOutcome(outcomeFor(e, 'edit', extrasOutcomeCtx(state.draft)))) $('scrim').classList.add('show');
   } finally {
     endWrite(writeId, lock, gen);
     releaseEditLock(lock);                   // nothing stays live: no review holds the draft on this path
@@ -2664,6 +3306,69 @@ function productRefusal(outcome) {
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir' }, productLine: line };
 }
 // C-1: the sections the order page shows, read again — ONLY renderedCategories is taken; the merchant's draft is never replaced
+// STRUCTURE S2 §5.2 REVIEW-DELETIONS (frame X2b): the published menu moved under a removal claim. (1) re-read getEditableCatalog's
+// deletionBase / deletionClaim ONLY (generation + rid checked; the draft kept); (2) show the FULL list from that read; (3) «Confirmar y seguir»
+// resends the SAME request (the owner's save, or the manager's send) acknowledged, with the fresh base; (4) the review from the server's
+// fresh diff. «Cancelar» keeps the draft. A second refusal lands here again — never a loop of silent resends.
+// U1 / U5 — the dishes a deletion list can name, by identity id: the loaded draft, the draft now, P-R1 and this session's snapshots
+function removedDishes() {
+  const out = new Map();
+  for (const r of removalDishRows(state.draft, pendingRemovalMap())) {
+    const id = r.display.identity_id;
+    if (typeof id === 'string' && id && !out.has(id)) out.set(id, { name: typeof r.display.name === 'string' ? r.display.name : '', place: dishPlace(r) });
+  }
+  return out;
+}
+async function reviewDeletions(outcome) {
+  releaseEditLock(state.reviewLock);
+  state.reviewLock = null;
+  $('scrim').classList.remove('show');
+  clearReview();
+  reviewAck = false;
+  const rid = state.draftRid, gen = opGeneration;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (gen !== opGeneration || rid !== state.draftRid) return;   // another world now
+  const base = fresh && fresh.deletionBase;
+  const read = !!(base && typeof base.version === 'string' && base.version && Number.isInteger(base.generation));
+  // Codex r1 P1-1: the fresh baseline is the SHEET's until «Confirmar y seguir» — «Cancelar» keeps the previous one (an unreviewed save never
+  // carries a base the merchant did not confirm the deletion list against)
+  const freshBase = read ? { version: base.version, generation: base.generation } : null;
+  const served = read && fresh.deletionClaim && Array.isArray(fresh.deletionClaim.ids) ? fresh.deletionClaim.ids : [];
+  const ids = [...served, ...(Array.isArray(outcome.existingIds) ? outcome.existingIds : []), ...mergeDeletionClaim(draftSource(state.draft), 'ids')];
+  openDeletionsReview({
+    rows: deletionRows(state.draft, ids, removedDishes()),
+    line: read ? null : 'No pudimos leer el menú publicado. Recargá la página.',
+    onCancel: () => { reviewAck = false; },
+    onGo: bound(() => { if (freshBase) state.deletionBase = freshBase; reviewAck = true; if (state.publishViaRequest) sendToOwnerFlow(); else openReviewFlow(); }),
+  });
+}
+// P-6 (plan r3 §3.3, Codex r2 #5): after a save is adopted, the view state keyed by a NEW extra's ref follows it to its allocated key —
+// ONLY through the save answer's extraRefs (rekeyId); a ref the map does not name is DROPPED (its price is already in the adopted source).
+// Covers the FIX-EXTRA row line and the focused detail field's restore key (data-k), so the repaint keeps focus on the SAME row.
+function rekeyK(k, extraRefs) {   // a detail field's restore key ('{"ref":…}' or 'xnm:{"ref":…}') → its keyed price field, or null (dropped)
+  if (typeof k !== 'string') return k;
+  const pre = k.startsWith('xnm:') ? 'xnm:' : '';
+  let id = null;
+  try { id = JSON.parse(k.slice(pre.length)); } catch (_) { return k; }   // not an extra row's field
+  if (!id || typeof id !== 'object' || typeof id.ref !== 'string') return k;
+  const next = rekeyId(id, extraRefs);
+  return next ? JSON.stringify(next) : null;   // a keyed row has no name field: its price
+}
+function adoptExtraRefs(extraRefs) {
+  for (const ref of Object.keys(extraRefs && typeof extraRefs === 'object' ? extraRefs : {})) {   // a held price text follows its row to the key (P2-8)
+    const from = extraPriceK({ ref });
+    if (!state.rawPrice.has(from)) continue;
+    const v = String(state.rawPrice.get(from));
+    state.rawPrice.delete(from); const next = rekeyId({ ref }, extraRefs); if (next) state.rawPrice.set(extraPriceK(next), v);
+  }
+  if (extrasRowError) { const id = rekeyId(extrasRowError.id, extraRefs); extrasRowError = id ? { id, text: extrasRowError.text } : null; }
+  if (xFocusK) xFocusK = rekeyK(xFocusK, extraRefs);
+  const ae = document.activeElement;
+  if (!ae || !ae.dataset || typeof ae.dataset.k !== 'string' || !$('xdetail') || !$('xdetail').contains(ae)) return;
+  const k = rekeyK(ae.dataset.k, extraRefs);
+  if (k) ae.dataset.k = k; else delete ae.dataset.k;
+}
 async function rereadSections() {
   const rid = state.draftRid, gen = opGeneration;
   let fresh = null;
@@ -2671,8 +3376,11 @@ async function rereadSections() {
   if (gen !== opGeneration || rid !== state.draftRid || !fresh || !Array.isArray(fresh.renderedCategories)) return;
   state.renderedCategories = fresh.renderedCategories.filter((c) => typeof c === 'string');
 }
+// Returns true when it painted a panel in the review modal (the caller shows the modal), false when it handed off to the X2b recovery
+// sheet — which closes the review: re-showing it would stack two dialogs (SBS round 2, the real browser).
 function showOutcome(outcome) {
   outcome = productRefusal(outcome);
+  if (outcome && outcome.action && outcome.action.id === PUBLISH_ACTIONS.REVIEW_DELETIONS) { reviewDeletions(outcome); return false; }
   // A panel is a SETTLED state: the operation is over and the merchant is deciding what to do next.
   // Editing is theirs again, and the recovery transitions must be able to acquire the lock.
   releaseEditLock(state.reviewLock);
@@ -2714,6 +3422,28 @@ function showOutcome(outcome) {
       // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
       restorePublishFooter();
       await runPublish();
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX_EXTRA) {
+      // STRUCTURE S2 §5.2 — an EXTRA needs a correction: the «Extras» tab, that extra's group, its row with the server's line under it
+      // (focus: a new row's name, a published row's price); extras_group_empty → the group the server named, its «Agregar extra» row open
+      $('scrim').classList.remove('show');
+      clearReview();
+      const ctx = extrasOutcomeCtx(state.draft);
+      const named = outcome.target && ctx.isExtra(outcome.target) ? outcome.target : null;
+      const g = outcome.group || (named ? ctx.groupOf(named) : null);
+      if (g) extrasGroup = g;
+      extraAdd = null; extraAddK = null;
+      extrasRowError = named ? { id: outcome.targetIs === 'ref' ? { ref: named } : { key: named }, text: outcome.detail } : null;
+      prodTab = 'xpage';
+      paint(); syncUi();
+      if (outcome.code === 'extras_group_empty' && outcome.group) { addOpen(); return; }
+      if (extrasRowError) {
+        const k = JSON.stringify(extrasRowError.id);
+        const all = [...$('xdetail').querySelectorAll('[data-k]')];
+        const ctl = all.find((x) => x.dataset.k === `xnm:${k}`) || all.find((x) => x.dataset.k === k);
+        if (ctl) ctl.focus();
+      }
       return;
     }
     if (id === PUBLISH_ACTIONS.FIX && outcome.productLine) {
@@ -2760,6 +3490,7 @@ function showOutcome(outcome) {
     // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id
     // the state machine emits is handled above; this is the guard for one it does not emit yet.
   }));
+  return true;
 }
 // 🔴 AN ACKNOWLEDGEMENT IS A PERSON'S SIGNATURE, so it cannot outlive the person. Owner A ticks
 // Autorizo, signs out, owner B signs in on the same browser — without this, A's tick publishes under
@@ -2815,7 +3546,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite || uploader.busy(), publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note)
+    pendingCount: (state.draft ? pendingCount(state.draft, state.additionKeys) + pendingRenames(state.draft).length : 0) + (copyDirty() ? 1 : 0) + (localDirty() ? 1 : 0), focusedTag: a ? a.tagName : null };   // + an unsaved open copy (addendum note) · S2 §3.5: the Extras page's local editors
 }
 try {
   const S = window.SherpaClient;
@@ -2836,7 +3567,30 @@ export function openEditor(rid, { name = rid, sales } = {}) {
 }
 // The self-update guard, reused verbatim to block a branch switch while the merchant has unsaved work or an operation open.
 export const editorCanLeave = () => portalCanReload(portalReloadFacts());
+// STRUCTURE S2 §3.5 — the reload / close (beforeunload): the browser's own prompt while unsaved work exists (a pending change, an open
+// copy, the Extras page's local editors) or a write is in flight. Not on focus alone (that rule is the self-update's, not a close).
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('beforeunload', (e) => {   // a host without it (a test shell): no prompt, never a crash
+  const f = portalReloadFacts();
+  if (!(f.pendingWrite || f.publishing || f.pendingCount > 0)) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // PLAN-portal-shell-no-shift (Codex r2 P1): shell.js presents its recovery box after a boot failure / the discovery deadline;
 // the editor's held catalog LOAD belongs to an abandoned world and must not repaint over it — reads only (Codex r3).
 document.addEventListener('portal:abandon', () => { readGeneration += 1; });
+// STRUCTURE S2: the «Menú» / «Extras» tabs — VIEW state only (which page shows), never a write, so not world-bound; ← / → move between
+// them (the tablist pattern)
+const tabKey = (t) => (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const next = t === 'menu' ? 'xpage' : 'menu';
+  setProdTab(next);
+  const nb = $(next === 'menu' ? 'tabmenu' : 'tabextras'); if (nb) nb.focus();
+};
+if ($('tabmenu') && $('tabextras')) {
+  $('tabmenu').addEventListener('click', () => setProdTab('menu'));
+  $('tabextras').addEventListener('click', () => setProdTab('xpage'));
+  $('tabmenu').addEventListener('keydown', tabKey('menu'));
+  $('tabextras').addEventListener('keydown', tabKey('xpage'));
+}

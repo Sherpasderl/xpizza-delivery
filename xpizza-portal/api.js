@@ -125,11 +125,15 @@ export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('s
 // what buildRequest does for every call and the server ignores it — but the body is what is read.
 
 // Save the draft and get back the server's diff + the edit token bound to it. Does NOT publish.
-export async function editCatalog({ rid, source, baseSourceUpdateTime, token }) {
+// STRUCTURE S2 (§3.4; LEDGER R-A): `loadedBase` — the deletion baseline getEditableCatalog served — rides as
+// deleted_ids_loaded_base whenever the caller passes one (it does whenever the draft carries a removal claim)
+export async function editCatalog({ rid, source, baseSourceUpdateTime, token, loadedBase = null, reviewed = false }) {
   return apiFetch('editCatalog', {
     rid,
     token,
-    body: { restaurantId: rid, source, baseSourceUpdateTime },
+    // S2 §5.2 REVIEW-DELETIONS: `reviewed` — the merchant re-read the full deletion list and confirmed it («Confirmar y seguir»): the ack that
+    // re-binds the claim to the live base (it defeats the server's echo test — edit-catalog-handler.js)
+    body: { restaurantId: rid, source, baseSourceUpdateTime, ...(loadedBase ? { deleted_ids_loaded_base: loadedBase } : {}), ...(reviewed ? { deleted_ids_reviewed: true } : {}) },
   });
 }
 

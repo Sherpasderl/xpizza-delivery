@@ -19,7 +19,7 @@
 // with my idea of the diff rather than with the diff.
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { reviewModel, ackSetFrom, renderReview } from './review.js';
+import { reviewModel, ackSetFrom, renderReview, STRUCTURE_CAPS } from './review.js';
 
 const SERVER_DIFF = () => ({
   added: [],
@@ -1082,15 +1082,12 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   assert.ok(codes.length >= 15, `the server source was actually read (${codes.length} codes)`);
   // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
   // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
-  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
-  // per-product extras (stage 2): unreachable from this portal ONLY while the platform extras-authoring switch is OFF — it
-  // sends no tmp-ref override, no extras_policy toggle and no deny_extras change. The exemption is TIED to the switch: turning
-  // authoring on (with the extras form) turns this test red until both codes have designed panels.
-  const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
-  const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
-  if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
+  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent', 'structure_unexplained']);   // S2-core accounting: the portal writers never produce a residual (proven by the zero-residual cells)
+  // per-product extras: STRUCTURE S1 (Codex build r1 #7) built the extras form, so both codes have designed panels NOW,
+  // independent of the platform switch (no exemption tied to it any more)
   // S1c opaque minting: mint_unavailable has its designed panel now (advisor 11-11, for the MINT_OPAQUE flip bbd11fc3) — no exemption
   // tied to the minting switch any more
+  // STRUCTURE S2 §5.2: the Extras page exists — existing_extra_removed / extras_group_empty have designed panels (the switch-tied exemption is gone)
   // PLAN-public-menu-display T1: a category rename beside another change (rename_not_alone) is unreachable from this portal
   // ONLY while it has no category-rename control — it never writes a category's name. The exemption is TIED to that: the
   // first portal source line that assigns a category `.name` turns this test red until the code has a designed panel.
@@ -1287,6 +1284,94 @@ test('T1: rename_not_alone has its designed panel, and the SAVE path keeps its w
   }
   // non-vacuity: another publish-worded panel IS still restated on the save path
   assert.strictEqual(outcomeFor({ code: 'store_unavailable', status: 503, body: {} }, 'edit').title, 'No se pudo guardar el borrador');
+});
+
+// ── STRUCTURE S1 (Codex build r1 #7): the per-product extras refusals have their own panels, whatever the platform switch says ──
+test('S1 — extras_not_supported_yet / exposure_ref_mismatch: designed panels, never the generic one (on a save and on a publish)', () => {
+  for (const op of ['edit', 'publish']) {
+    const a = outcomeFor({ code: 'extras_not_supported_yet', status: 409, body: { error: 'extras_not_supported_yet', field: 'deny_extras' } }, op);
+    assert.equal(a.generic, false, op);
+    assert.equal(a.title, 'Todavía no se pueden cambiar los extras de un producto');
+    assert.equal(a.detail, 'Tus otros cambios siguen acá.');
+    const b = outcomeFor({ code: 'exposure_ref_mismatch', status: 400, body: { error: 'exposure_ref_mismatch', field: 'deny_extras' } }, op);
+    assert.equal(b.generic, false, op);
+    assert.equal(b.title, 'No pudimos guardar las opciones de un producto nuevo');
+    // on a SAVE the publish-flavoured detail is restated by outcomeFor (as for every RESET panel, e.g. structure_changed)
+    if (op === 'publish') assert.equal(b.detail, 'Volvé al menú publicado y aplicá tus cambios de nuevo; si sigue igual, escribinos.');
+    assert.equal(b.action.id, PUBLISH_ACTIONS.RESET, 'deterministic: the way out is the published menu, never a retry');
+  }
+});
+
+// ── STRUCTURE S2 §5.2 — the Extras page's server refusals (PLAN-portal-structure-S2-ui r3 §5.2; copy: the plan's table + frame H) ──
+const xErr = (code, status, body) => Object.assign(err(code, status), { body: { error: code, ...(body || {}) } });
+const EXTRA_CTX = { isExtra: (t) => t === 'tmp:x-0001' || t === 'arroz_blanco' };
+test('S2 §5.2 — 🔴 EVERY S2 server refusal lands on a designed panel — derived from the SERVER sources (the Extras page exists: no switch-tied exemption)', () => {
+  const files = ['extras-allocate.js', 'extras-validate.js', 'structure-budget.js', 'structure-gate.js', 'identity-partition.js', 'edit-catalog-handler.js'];
+  const src = files.map((f) => readFileSync(new URL(`../xpizza-functions/catalog/${f}`, import.meta.url), 'utf8')).join('\n');
+  const codes = [...new Set([...src.matchAll(/(?:refuse|AddProductError|PartitionRefusal)\('([a-z_]+)'/g), ...src.matchAll(/error: '(deleted_ids_[a-z_]+)'/g)].map((m) => m[1]))];
+  assert.ok(codes.includes('extra_name_unsafe') && codes.includes('deleted_ids_base_moved') && codes.includes('structure_caps'), `the server sources were read (${codes.join(', ')})`);
+  // unreachable from this portal (one writer shape) or a SERVER fault the merchant cannot fix — the generic panel is the honest answer:
+  // the writer's own shapes; the identity-partition invariants (the server's accounting, never a merchant input); the add-product I/O not
+  // wired (503); the live pointer unreadable while persisting a claim (deleted_ids_no_baseline)
+  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'structure_unexplained', 'deleted_ids_malformed', 'unknown_op',
+    'add_product_unavailable', 'deleted_ids_no_baseline', ...codes.filter((c) => c.startsWith('identity_partition_'))]);
+  // train/portal-structure (S2b merged): the server's own word — a refusal raised with { status: 503 } is retryable (MINT's
+  // mint_unavailable, raised by S2b's extras allocator too) and lands on its designed RETRY panel (pinned below by name)
+  const TRANSIENT = new Set([...src.matchAll(/refuse\('([a-z_]+)'[^;]*?status:\s*503/g)].map((m) => m[1]));
+  for (const c of codes) {
+    if (GENERIC_BY_DESIGN.has(c) || TRANSIENT.has(c)) continue;
+    const o = outcomeFor(xErr(c, 409, { field: 'extras' }), 'edit', EXTRA_CTX);
+    assert.strictEqual(o.generic, false, `${c} lands on a designed panel`);
+    assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is deterministic — RETRY would be refused again`);
+  }
+});
+test('S2 §5.2 — an EXTRA’s name refusal (the target names an extra row) is the extra’s copy and FIX-EXTRA «Corregir el nombre»; a product’s keeps FIX', () => {
+  const cases = [
+    ['extra_name_unsafe', 'Ese nombre no se puede usar', 'El nombre no puede llevar , | + [ ]. Cambialo, por favor.'],
+    ['name_taken', 'Ese nombre ya está en tu menú', 'Elegí otro nombre para el extra nuevo.'],
+    ['name_needs_new_id', 'Ese nombre ya lo usó un extra que quitaste', 'Usá otro nombre.'],
+  ];
+  for (const [c, title, detail] of cases) {
+    const o = outcomeFor(xErr(c, 409, { ref: 'tmp:x-0001', field: 'name' }), 'edit', EXTRA_CTX);
+    assert.deepStrictEqual([o.title, o.detail, o.action.id, o.action.label, o.target], [title, detail, PUBLISH_ACTIONS.FIX_EXTRA, 'Corregir el nombre', 'tmp:x-0001'], `${c}: the extra's panel`);
+  }
+  const byKey = outcomeFor(xErr('name_needs_new_id', 409, { key: 'arroz_blanco', field: 'name' }), 'edit', EXTRA_CTX);
+  assert.strictEqual(byKey.action.id, PUBLISH_ACTIONS.FIX_EXTRA, 'an extra named by its KEY is an extra too');
+  const product = outcomeFor(xErr('name_taken', 409, { ref: 'tmp:product-1', field: 'name' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([product.action.id, product.title], [PUBLISH_ACTIONS.FIX, 'Ese nombre ya está en tu menú'], 'a product keeps FIX (no extra ever opens a dish, no dish an extra)');
+  assert.notStrictEqual(product.detail, 'Elegí otro nombre para el extra nuevo.');
+});
+test('S2 §5.2 — the group, the removal, the switch, the caps, the size: each code’s panel and action', () => {
+  const ge = outcomeFor(xErr('extras_group_empty', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([ge.title, ge.detail, ge.action.id, ge.action.label], ['Un grupo necesita al menos un extra', 'Agregá un extra o no lo crees.', PUBLISH_ACTIONS.FIX_EXTRA, 'Agregar un extra']);
+  assert.strictEqual(outcomeFor(xErr('extras_group_empty', 409, { field: 'extras', group: 'Salsas' }), 'edit', EXTRA_CTX).group, 'Salsas', 'the group, when the server names it');
+  const rm = outcomeFor(xErr('existing_extra_removed', 409, { key: 'arroz_blanco' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([rm.title, rm.detail, rm.action.id], ['Volvé a quitar el extra desde la página de Extras', 'Tu borrador no coincide con el menú publicado.', PUBLISH_ACTIONS.RESET]);
+  const off = outcomeFor(xErr('extras_catalog_not_supported_yet', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([off.title, off.detail, off.action.id, off.action.label], ['Agregar extras todavía no está disponible', 'Tus otros cambios siguen acá.', PUBLISH_ACTIONS.FIX, 'Entendido']);
+  const ops = outcomeFor(xErr('structure_caps', 409, { field: 'ops' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([ops.title, ops.detail, ops.action.id, ops.action.label], ['Son demasiados cambios a la vez', 'Publicá parte de los cambios primero.', PUBLISH_ACTIONS.BACK, 'Entendido']);
+  const big = outcomeFor(xErr('structure_bytes', 409, { field: 'source' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([big.title, big.detail, big.action.id, big.action.label], ['El menú quedó demasiado grande', 'Quitá algunos extras o reglas.', PUBLISH_ACTIONS.FIX, 'Entendido']);
+});
+test('S2 §5.2 — the three deletion refusals are ONE recovery sheet: REVIEW-DELETIONS «El menú publicado cambió» (save or publish)', () => {
+  for (const [c, s] of [['deleted_ids_base_moved', 409], ['deleted_ids_unbound', 409], ['deleted_ids_stale_baseline', 400]]) {
+    for (const op of ['edit', 'publish']) {
+      const o = outcomeFor(xErr(c, s, c === 'deleted_ids_stale_baseline' ? { existing_ids: ['a', 'b'], declared_against: 'v1@1', live: 'v2@2' } : {}), op, EXTRA_CTX);
+      assert.deepStrictEqual([o.title, o.detail, o.action.id, o.action.label], ['El menú publicado cambió', 'Antes de seguir, confirmá lo que se quita:', PUBLISH_ACTIONS.REVIEW_DELETIONS, 'Confirmar y seguir'], `${c} (${op})`);
+    }
+  }
+  assert.deepStrictEqual(outcomeFor(xErr('deleted_ids_stale_baseline', 400, { existing_ids: ['a', 'b'] }), 'edit', EXTRA_CTX).existingIds, ['a', 'b'], 'the stored claim’s ids ride along (the full list)');
+});
+test('S2 §5.2 — the caps panels: the three owner-approved lines, the numbers from ONE constant pinned to the SERVER\u2019s LIMITS', () => {
+  const { LIMITS } = createRequire(import.meta.url)('../xpizza-functions/catalog/structure-budget.js');
+  assert.deepStrictEqual({ ...STRUCTURE_CAPS }, { groups: LIMITS.groups, perGroup: LIMITS.perGroup, extras: LIMITS.extras }, 'the copy\u2019s numbers ARE the server\u2019s caps');
+  const g = outcomeFor(xErr('structure_caps', 409, { field: 'extra_categories' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([g.title, g.detail, g.action.label], ['Llegaste al máximo de grupos', 'Podés tener hasta 20 grupos de extras.', 'Entendido']);
+  const pg = outcomeFor(xErr('structure_caps', 409, { field: 'extras_in_group', group: 'Salsas' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([pg.title, pg.detail, pg.group], ['Llegaste al máximo de extras en un grupo', 'Un grupo puede tener hasta 30 extras.', 'Salsas'], 'a group over its cap (5f: field extras_in_group + group)');
+  const all = outcomeFor(xErr('structure_caps', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
+  assert.deepStrictEqual([all.title, all.detail], ['Llegaste al máximo de extras', 'Podés tener hasta 600 extras.'], 'the menu over its cap (field extras = menu-wide only)');
 });
 
 // ── S1c opaque minting (advisor 11-11): a minted-key collision is TRANSIENT — its own panel, «Reintentar», whatever the switch says ──

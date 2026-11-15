@@ -52,7 +52,7 @@ const isPreconditionFailure = (e) =>
 // with the Firestore code that produces it; the default is identity, for stubs that deal in opaque
 // strings. This is deliberately injected rather than imported: the core stays free of firebase-admin.
 // An add-product refusal, typed and field-mapped for the portal.
-const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}) });
+const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}), ...(e.group != null ? { group: e.group } : {}) });
 
 async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v, addProduct = null, photos = null }, body, req) {
   const rid = body && body.restaurantId;
@@ -106,13 +106,13 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   const stored = (snap.data && snap.data()) || {};
   // S0: the key mode is server-owned — a draft may echo the stored one, never change or add one; an absent one keeps it.
   const keyModeOwn = serverOwnedKeyMode(source, stored);
-  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled;   // S1a: the rename map is server-owned too
+  if (!keyModeOwn.ok) return reply(409, { error: keyModeOwn.error }); const fkOwn = FK.serverOwnedFrozenKeys(source, stored); if (!fkOwn.ok) return reply(409, { error: fkOwn.error }); const textEdit = textEditCapabilities().enabled; const choiceOn = require('./platform-structure').structureCapabilities().choiceEdit; const FXK = require('./frozen-extra-keys'); const fxOwn = FXK.serverOwnedFrozenExtraKeys(source, stored); if (!fxOwn.ok) return reply(409, { error: fxOwn.error }); const mintExtras = require('./extra-identity').extraIdentityCapabilities().mintExtras;   // S1a: the rename map is server-owned too · S3: the choice switch   · S2b §3: the extras map is server-owned too
 
   // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
   // same commit as the draft below.
-  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key
+  let candidate = canonicalize(FK.withFrozenKeys(withServerKeyMode(source, keyModeOwn.key_mode), fkOwn.frozen_keys)); if (textEdit || choiceOn) { candidate = canonicalize(AP.rederiveOptionNames(candidate)); const rec = FK.recordRenames({ draft: candidate, live, stored, textEdit: textEdit || choiceOn }); if (!rec.ok) return reply(409, rec.key ? require('./edit-preflight').attributor(candidate)(rec.key, 'name', rec.error) : { error: rec.error }); candidate = canonicalize(FK.withFrozenKeys(candidate, rec.frozen_keys)); } candidate = canonicalize(FXK.withFrozenExtraKeys(candidate, fxOwn.frozen_extra_keys)); if (mintExtras) { const xr = FXK.recordExtraRenames({ draft: candidate, live: { extras: liveRes.extraRecords }, stored }); if (!xr.ok) return reply(409, { error: xr.error, key: xr.key }); const np = FXK.renameNameProblems(candidate, liveRes.extraRecords)[0]; if (np) return reply(400, np); candidate = canonicalize(FXK.withFrozenExtraKeys(candidate, xr.frozen_extra_keys)); }   // S1a: with the switch on, a group renames as one unit, new text is capped, and every rename is recorded under its kept key   · S2b §0/§1.3: a rename recorded under its kept key
   let hwmPlan = null; { const op = RK.opaqueNameProblems({ items: candidate.items, activeItems: live.items })[0]; if (op) return reply(400, { error: 'name_previously_used', field: 'name', ...op }); }   // S1c (codex r1): never a name in the minted-key syntax
-  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
+  try { require('./source-accounting').accountLeaves({ next: candidate, stored }); } catch (e) { if (e instanceof AP.AddProductError) return refusal(e); throw e; } let extraRefs = {}; let refOfKey = {}; { const xa = await require('./extras-allocate').forSave({ candidate, stored, live, extrasLive: liveRes.extraRecords, addProduct, rid, switchOn: require('./platform-structure').structureCapabilities().extrasCatalog }); if (xa.error) return refusal(xa.error); if (xa.unavailable) return reply(503, { error: 'store_unavailable', retryable: true }); candidate = xa.source; extraRefs = xa.refs || {}; }   // fresh additions: allocated key → the tmp reference the portal still holds · S2-core §3.1: new extras allocated (switch-gated)
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
@@ -129,7 +129,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
         hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k),
         // the validator's own sinks: item fields by FIELD_SINKS.item; a group's label / prompt by FIELD_SINKS.variant (body)
         fieldProblem: (f, v) => checkValue(v, Object.prototype.hasOwnProperty.call(FIELD_SINKS.item, f) ? FIELD_SINKS.item[f] : FIELD_SINKS.variant.label),
-        authoring: groupCapabilities().authoring, mint: mintOn ? { newKey: MO.mintKey, reserved: await addProduct.readReservedKeys(rid) } : null });
+        authoring: groupCapabilities().authoring, mint: mintOn ? { newKey: MO.mintKey, reserved: await addProduct.readReservedKeys(rid) } : null, prepareExisting: choiceOn ? require('./choice-compare').prepareExistingGroups : null });
       candidate = res.source; if (mintOn && res.allocatedNow.length && (await addProduct.registryKeysTaken(rid, res.allocatedNow, keyMode)).size) return reply(503, { error: 'mint_unavailable', retryable: true });   // S1c: the minted tokens, checked against the registry after allocation
       refOfKey = res.refs || {};
       if (res.allocatedNow.length) hwmPlan = { ref: hwmRef, snap: hwmSnap, value: res.hwm };
@@ -160,7 +160,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     }
     let enabled;
     try { enabled = (await photos.enabled()) === true; } catch (_) { enabled = false; }
-    if (!enabled && !PS.sameStates(photoMap, stored.photos || null)) {
+    if (!enabled && !PS.sameStates(photoMap, stored.photos || null) && !(await require('./catalog-edit').removalPhotoChangesOk({ map: photoMap, stored: stored.photos || null, opts: require('./catalog-edit').removalDiffOptions(live, candidate), storedItems: stored.items, candidateItems: candidate.items, readActive: () => photos.readActive(rid, baseActiveVersionId) }))) {   // B-5 / A-4 (RULED): a declared removal's own photo leaving, or a withdrawn removal's ACTIVE photo returning, is not an upload
       return reply(409, { error: 'photo_change_disabled', detail: 'photo changes are switched off; the photos already in the draft are kept' });
     }
   }
@@ -359,16 +359,16 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     try { activePhotos = await photos.readActive(rid, baseActiveVersionId); } catch (_) { return reply(503, { error: 'live_version_unavailable', retryable: true }); }
   }
   try {
-    AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });
-    AP.compareToActive({
+    require('./source-accounting').accountAuthored({ next, stored, draftRecords: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });   // S2-core (Codex build r1 P1-3): the AUTHORED source is accounted first
+    require('./choice-compare').compareToActive(rid, {
       draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure, ...(photos ? { photos: photoMap } : {}) },
       activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure, ...(photos ? { photos: activePhotos } : {}) },
       draftAuthored: Object.keys(next.structure || {}),
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring, textEdit,   // per-product extras (the narrow deny_extras / extras_policy exception)
-    });
+      extrasAuthoring: extrasCapabilities().authoring, textEdit, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception) · S2-core: the Extras-page claims
+    }); require('./structure-budget').enforce({ rid, source: next, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure }, active: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, photos: photoMap });   // S2-core §4: caps + byte budgets, before the write
   } catch (e) {
     if (e instanceof AP.AddProductError) {
       if (e.key && !e.ref && Object.prototype.hasOwnProperty.call(refOfKey, e.key)) e.ref = refOfKey[e.key];
@@ -424,7 +424,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // Everything below is read-only and in memory: the live catalog and the built draft were read and built
   // BEFORE the write (above).
   // DISH PHOTOS A2 step 9: the reviewed diff carries the photo lines (active meta/photos vs the stored draft map) when wired
-  const diff = catalogDiff(photos ? { ...live, photos: activePhotos } : live, photos ? { ...draftBuilt, photos: photoMap } : draftBuilt); if (textEdit) { const xc = require('./extras-consequences').extrasConsequences({ live: { items: live.items, extras: liveRes.extraRecords, structure: live.structure }, draft: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure } }); if (xc.length) diff.consequences = xc; }   // S2-6: the extras consequences ride the reviewed (token-bound) diff; the publish recomputes them identically
+  const diff = require('./review-diff').reviewDiff({ live, liveExtraRecords: liveRes.extraRecords, draftBuilt, draftExtraRecords, photos: photos ? { active: activePhotos, draft: photoMap } : null, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, removal: require('./catalog-edit').removalDiffOptions(live, next) });   // S2-core §1.6: THE one canonical review diff (consequences ungated; the publish and the manager request compute the same)
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
      while the two were the same bytes, which stopped being true the moment the server began owning a
@@ -446,7 +446,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   }));
   // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
   // keys and ids, canonical order) before it builds the review.
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next, ...(Object.keys(extraRefs).length ? { extraRefs } : {}), ...(require('./catalog-edit').fiscalAckWaived({ live, draftBuilt, draft: next, diff, liveExtraRecords: liveRes.extraRecords, draftExtraRecords, activePhotos, draftPhotos: photoMap }) ? { fiscalAckRequired: false } : {}) });   // S2-core (P-6): { tmp ref: key } for the extras this save allocated   // Q-12 (RULED): the publish gate's own answer, never re-derived by the portal; absent ⇒ today
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };

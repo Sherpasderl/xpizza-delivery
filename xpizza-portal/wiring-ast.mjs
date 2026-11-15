@@ -102,7 +102,7 @@ export function analyse(src) {
 // Calls that may RECEIVE a state reference, in any argument position. Each is a pure reader or one of
 // the editor's guarded setters, which enforce the canEdit boundary themselves.
 export const ALLOWED_CONSUMERS = new Set([
-  'setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo',
+  'setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo',
   'draftSource', 'pendingChanges', 'pendingCount', 'isPublishable', 'canEditDraft', 'createDraft',
   'optionGroups', 'groupUsage', 'reviewModel', 'attestationModel', 'canPublish', 'pickRid',
   'releaseEditLock', 'loadMenu', 'publisher.run',
@@ -131,6 +131,26 @@ export const ALLOWED_CONSUMERS = new Set([
   // DISH PHOTOS B — the draft photo map's ONE setter (canEdit-guarded in editor.js; it writes only source.photos, from a pid
   // the server returned or the removed / restored states) and its pure readers
   'setPhoto', 'draftPhotos', 'origPhotos', 'pendingPhotos',
+  // (STRUCTURE S1's draftExtrasChanges / extrasOfReview are gone — advisor 11-12: the checklist review lines are the SERVER's)
+  // STRUCTURE S2 — the Extras page's model is a pure READER of the draft; applyExposureOps is the ONE Extras writer (canEditContent-
+  // guarded, all or nothing, the server switch) — the draft is passed in, never kept
+  'extrasPageModel', 'applyExposureOps',
+  // X3: the «Crear grupo» form's view and its ONE op are pure READERS of the draft (the op is applied by applyExposureOps)
+  'createGroupView', 'createGroupOp',
+  // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
+  'groupOrders',
+  // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
+  'IE.attachSheet',
+  // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
+  'IE.detachRefusal',
+  // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
+  'extrasOutcomeCtx',
+  // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
+  'deletionRows',
+  // «Quitar del menú» (PLAN-portal-remove-product r3): the ONE predicate (a pure reader), the removal and its undo (canEditContent-guarded
+  // editor.js writers, all or nothing — the served live order and saved additions are only read), and the read side's pure readers
+  // (pending snapshots, the list projection, a removed row, the dish rows) — each hands back COPIES, never a reference into state
+  'canRemoveProduct', 'removeProduct', 'undoRemoveProduct', 'pendingRemovalsOf', 'removalListSource', 'removedRowOf', 'removalDishRows',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -143,6 +163,8 @@ export const ALLOWED_METHOD_CHAINS = new Set([
   // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
   'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
   'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
+  // «Quitar del menú» — a membership read of the served reward dishes; the session's undo snapshots (census-counted)
+  'state.rewardKeys.has', 'state.removalStash.set', 'state.removalStash.delete', 'state.removalStash.clear',
 ]);
 // 🔴 PROPERTIES WHOSE VALUE IS A PRIMITIVE, and therefore cannot be retained or mutated by whoever
 // receives it. Reading one yields a copy of a string, number, boolean or null, so the escape rules
@@ -155,6 +177,8 @@ export const PRIMITIVE_PROPS = new Set([
   'currentRid', 'draftRid', 'sourceUpdateTime', 'usesPlatformFactura', 'menuLoading',
   'selectedCat', 'drawerKey', 'uid', 'publishGen', 'reviewLock',
   'editToken', 'acknowledged', 'rid', 'length', 'id', 'name',
+  // STRUCTURE S2 (§3.4): the deletion baseline's two leaves — a version id (string) and a generation (integer) — copied into a save
+  'version', 'generation',
 ]);
 
 // Parent contexts in which a state reference is being READ and cannot escape: the value is consumed to
@@ -444,7 +468,9 @@ export function stateViolations(src, label = 'app.js') {
 // This computes the writer set instead. Seeds are the imported mutators and any function containing a
 // direct state write; the set then closes under "calls a writer", resolved through real scopes so a
 // local shadowing a module function does not count as calling it.
-const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo']);
+// S2 Codex r1 P2-10: applyExposureOps (editor.js — the Extras page's ONE structural mutator: x3Create, addCommit, x4Write, the X2 remove)
+export const MUTATING_IMPORTS = new Set(['setItemPrice', 'setExtraPrice', 'setExtraName', 'discard', 'commit', 'commitTo', 'applyExposureOps',
+  'removeProduct', 'undoRemoveProduct']);   // «Quitar del menú»: the dish removal and its undo
 
 export function writerFunctions(src) {
   const { ast, parents, scopeOf, fnOf, root, children } = analyse(src);

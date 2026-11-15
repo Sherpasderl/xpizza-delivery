@@ -32,6 +32,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
       order_access_tickets: { t1: { order_id: 'o_live', phone_hash: 'h1', exp: 9 } }, customer_cards: { u_cust000000000000000000: { cards: { c1: { last4: '1111' } } } },
       sdk_checkout_subject: { u_u_cust000000000000000000: { order_id: 'o_live', at: 1 } },
       recovery_verify_pad: 1,
+      sdk_fence: { k1: { order_id: 'o_live', owner: 'u_u_cust000000000000000000', at: 1 } },
     });
   });
   await seed();
@@ -50,7 +51,7 @@ const legacy = () => ({ order_id: 'x', restaurant_id: 'tb_norte', status: 'deliv
     await no(`SPRE-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
   }
   // D4 (advisor 11-12): the payment server's own nodes are server-only for EVERY client — the customer included on its own uid
-  for (const [r, db] of Object.entries(roles)) for (const node of ['sdk_recovery_queue', 'sdk_recovery_queue/q1', 'recovery_phone_budget/h1', 'order_recovery_otp/o_live', 'order_access_tickets/t1', 'customer_cards/u_cust000000000000000000', 'sdk_checkout_subject/u_u_cust000000000000000000', 'recovery_verify_pad']) {
+  for (const [r, db] of Object.entries(roles)) for (const node of ['sdk_recovery_queue', 'sdk_recovery_queue/q1', 'recovery_phone_budget/h1', 'order_recovery_otp/o_live', 'order_access_tickets/t1', 'customer_cards/u_cust000000000000000000', 'sdk_checkout_subject/u_u_cust000000000000000000', 'recovery_verify_pad', 'sdk_fence', 'sdk_fence/k1']) {
     await no(`SPRE-D4-SERVER-ONLY ${r} reads ${node}`, () => db.ref(node).once('value'));
     await no(`SPRE-D4-SERVER-ONLY ${r} writes ${node}`, () => db.ref(node).set({ x: 1 }));
   }

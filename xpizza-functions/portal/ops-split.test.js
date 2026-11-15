@@ -83,13 +83,15 @@ const EXPECTED = [
   'merchant/merchant-control.js', 'tools/order-control-core.js', 'order-control-state.js', 'scheduled-orders.js', 'avail-key.js', 'availability-reset.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-transform.js', 'catalog/catalog-integrity.js', 'catalog/content-hash.js', 'catalog/canonical-json.js',
   'catalog/form-menu-source.js', 'catalog/menu-structure-rows.js', 'tools/migrations/2026-10-26-menu-structure.json',   // plan 4 GATED (G1): the reviewed rows + their data file (pure / data)
-  'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
+  'catalog/redeem-source.js', 'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'catalog/extras-projection.js', 'catalog/exposure-transitions.js', 'catalog/extras-eligibility.js',   /* S2-core: the build's consumer projection + the writer's effectiveGroups / group order (pure) */ 'menu-pricing.js', 'price-valid.js', 'rewards-redeem-config.js',
   /* ORCHESTRATION O1b T8: E1+'s additive read model (readiness via the O1a writers' own facts + planner) */
   'portal/branch-read-model.js', 'branches/branch-ops.js', 'branches/branch-store.js', 'branches/drafts.js', 'branches/readiness-readers.js', 'branches/rid-alloc.js', 'sweep-pending.js',
   /* ORCHESTRATION O1b T7/T9: the lifecycle endpoints E6 / E7 / E8 / E10 (cores, Q10 phone, the fenced publish) */
   'portal/branch-lifecycle-core.js', 'portal/branch-phone.js', 'brands/brand-store.js', 'brands/brand-projection.js',
   /* S4 C′: branch-ops.js now requires the ONE hours grammar (hours7Errors MOVED there, re-exported); a pure leaf, no requires */
   'schedule/hours-grammar.js',
+  'catalog/extra-key-intake.js',   // S2b P2-5: the one resolved extra identity, loaded with extra-labels (pure)
+  'catalog/extra-labels.js',   // S2b §4 (B5): readVersionDocs writes the affected extras' labels + markers; a pure module (menu-pricing read lazily, already in the closure)
   'photos/branch-photos.js', 'photos/served-photos.js',   // DISH PHOTOS A2 step 12 (E-P4): the branch's published photo cards (pure + one Firestore read)
   'delivery/delivery-pricing.js', 'delivery/limits.js', 'delivery/zones.js',   // envío restaurant limit r5 §5: Sucursales' effective app limit (pure readers of the one policy read)
 ].sort();

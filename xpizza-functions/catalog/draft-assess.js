@@ -27,7 +27,7 @@ function assessDraft(rid, source, activeRes) {
   try {
     const draftBuilt = { items: built.items, extras: built.extras, structure: built.structure };
     const activeBuilt = { items: activeRes.built.items, extras: activeRes.extraRecords, structure: activeRes.built.structure };
-    const r = AP.compareToActive({
+    const r = require('./choice-compare').compareToActive(rid, {
       draftBuilt,
       activeBuilt,
       draftAuthored: Object.keys(source.structure || {}),
@@ -36,7 +36,7 @@ function assessDraft(rid, source, activeRes) {
       // 1D add-product B (PB-3): judged by the switch the save was judged by — without it a SAVED, unpublished group read as
       // choices_not_supported_yet once authoring is on, and the reloaded editor offered "Volver al menú publicado" instead
       authoring: groupCapabilities().authoring,
-      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled,   // per-product extras (the narrow deny_extras / extras_policy exception)
+      extrasAuthoring: extrasCapabilities().authoring, textEdit: textEditCapabilities().enabled, extrasCatalog: require('./platform-structure').structureCapabilities().extrasCatalog, productRemoval: require('./platform-removal').removalCapabilities().productRemoval,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
     // PLAN-public-menu-display T1 (portal r1 #3) — what the saved draft has PENDING against the published menu, from the SAME
     // comparison a save and a publish are judged by: the section names that differ (paired by index — compareToActive has
@@ -49,7 +49,7 @@ function assessDraft(rid, source, activeRes) {
     const other = !AP.changesNothingElse(draftBuilt, activeBuilt, r.additions, r.removals);
     return { publishable: true, additions: r.additions, removals: r.removals, renames, other };
   } catch (e) {
-    if (e instanceof AP.AddProductError) return { publishable: false, code: e.code, detail: e.detail, ...(e.key ? { key: e.key } : {}), ...(e.field ? { field: e.field } : {}) };
+    if (e instanceof AP.AddProductError) return { publishable: false, code: e.code, detail: e.detail, ...(e.key ? { key: e.key } : {}), ...(e.field ? { field: e.field } : {}), ...(e.group != null ? { group: e.group } : {}) };
     return { publishable: false, code: 'assessment_failed', detail: String((e && e.message) || e).slice(0, 300) };
   }
 }

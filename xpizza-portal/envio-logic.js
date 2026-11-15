@@ -129,11 +129,12 @@ export function acceptsBands(bands) {
   return v.valid && sameBands(v.bands, bands);
 }
 
-export function toBody(rows, expectedVersion) {
+// ENVÍO v3: `limits` ([{ rid, km }], limitsFor) rides ONLY when one is pending — no limit touched ⇒ today's bands-only body, byte for byte
+export function toBody(rows, expectedVersion, limits = []) {
   if (!okVersion(expectedVersion)) throw new Error('envio: bad version');
   const v = validate(rows);
   if (!v.valid) throw new Error('envio: invalid table');
-  return { expected_policy_version: expectedVersion, bands: v.bands };
+  return { expected_policy_version: expectedVersion, bands: v.bands, ...(Array.isArray(limits) && limits.length ? { limits: limits.map((e) => ({ rid: e.rid, km: e.km })) } : {}) };
 }
 
 // what the map draws: every valid band, plus a km over the cap as a refused ring (≤ 100 km, the protocol's bound)
@@ -162,12 +163,15 @@ export function confirmDiff(wasBands, nowBands) {
   const from = last(wasBands), to = last(nowBands);
   return { rows, limit: from === to ? null : { from, to } };
 }
-export function limitCallout(limit) {
+// ENVÍO v3 (copy table «Changed»): the table-top line, then one line per restaurant whose maximum stays ABOVE the new top (it delivers to
+// the top). `restaurants` (restaurantsOf) may be omitted. A first table (no previous top) keeps step 1's own line. → [lines] | null
+export function limitCallout(limit, restaurants = []) {
   if (!limit) return null;
   const { from: a, to: b } = limit;
-  if (a === null) return `El límite de entrega queda en ${b} km para todos los restaurantes.`;
-  if (b > a) return `El límite de entrega pasa de ${a} km a ${b} km para todos los restaurantes. Las direcciones entre ${a} y ${b} km ya se pueden pedir desde que guardés.`;
-  return `El límite de entrega pasa de ${a} km a ${b} km para todos los restaurantes. Las direcciones entre ${b} y ${a} km ya no se pueden pedir desde que guardés.`;
+  if (a === null) return [`El límite de entrega queda en ${b} km para todos los restaurantes.`];
+  const lines = [`La distancia máxima de la tabla pasa de ${a} km a ${b} km.`];
+  if (b < a) for (const r of restaurants) if (Number.isFinite(r.stored) && r.stored > b) lines.push(`${r.name} entrega hasta ${b} km (su distancia máxima, ${r.stored} km, queda por encima).`);
+  return lines;
 }
 
 // ── the picker ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -180,7 +184,9 @@ const okBranch = (b) => plain(b) && typeof b.rid === 'string' && b.rid !== '' &&
 const brandKey = (b) => (typeof b.brand_id === 'string' && b.brand_id ? `b:${b.brand_id}` : `r:${b.rid}`);
 
 // one line per BRANCH (rings are measured from a branch's pin): «Marca» alone, «Marca · Sucursal» when the brand has more
-export function pickerEntries(branches) {
+// ENVÍO v3 (A1): with the table's `top`, each line's sub reads «{n} sucursal(es) · hasta {km} km» — that BRANCH's own effective reach
+// (min(its max_km, top); none stored = the top; a flagged branch asserts no reach: the count alone)
+export function pickerEntries(branches, top = null) {
   const rows = (Array.isArray(branches) ? branches : []).filter(okBranch);
   const per = new Map();
   for (const b of rows) per.set(brandKey(b), (per.get(brandKey(b)) || 0) + 1);
@@ -188,7 +194,9 @@ export function pickerEntries(branches) {
     const n = per.get(brandKey(b));
     const name = typeof b.brand_name === 'string' && b.brand_name.trim() ? b.brand_name.trim() : COPY.unnamedRestaurant;
     const loc = typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch;
-    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, name, loc: n > 1 ? loc : null, sub: n === 1 ? '1 sucursal' : `${n} sucursales`,
+    const count = n === 1 ? '1 sucursal' : `${n} sucursales`;
+    const reach = b.limit_invalid === true ? null : effectiveKm(Number.isFinite(b.max_km) ? b.max_km : null, top);
+    return { rid: b.rid, label: n > 1 ? `${name} · ${loc}` : name, name, loc: n > 1 ? loc : null, sub: reach === null ? count : `${count} · hasta ${reach} km`,
       initial: name[0].toUpperCase(), hub: b.hub ? { lat: b.hub.lat, lng: b.hub.lng } : null };
   }).sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }) || a.rid.localeCompare(b.rid));
 }
@@ -223,9 +231,11 @@ export function loadedState(body) {
 
 const deepFreeze = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); };
 // the immutable save attempt: what was sent, under which version, by whom, in which session
-export function startAttempt({ uid, sessionGen, expectedVersion, bands }) {
+export function startAttempt({ uid, sessionGen, expectedVersion, bands, limits = [] }) {
   if (!okVersion(expectedVersion)) throw new Error('envio: bad version');
-  return deepFreeze({ uid, sessionGen, expectedVersion, sentBands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })) });
+  // ENVÍO v3 (§1b): the FULL reviewed request is frozen — the bands AND the requested limits
+  return deepFreeze({ uid, sessionGen, expectedVersion, sentBands: bands.map((b) => ({ max_km: b.max_km, cents: b.cents })),
+    sentLimits: (Array.isArray(limits) ? limits : []).map((e) => ({ rid: e.rid, km: e.km })) });
 }
 
 // a POST's response → saved | unknown. Codex r1 F2 (the locked ruling): ONLY the clean success contract is final; every other
@@ -240,6 +250,8 @@ export function postClaim(res) {
   if (!res || res.transport) return null;
   const b = res.body;
   if (res.status === 409 && plain(b) && (b.error === 'superseded' || b.error === 'current_malformed')) return b.error;
+  // ENVÍO v3 §1e (5f r4): a requested rid no longer registered / identity-less — the directory moved, not a client bug
+  if (res.status === 400 && plain(b) && b.field === 'limits' && b.reason === 'directory_changed') return 'directory_changed';
   return { 400: 'refused', 401: 'unauthenticated', 403: 'forbidden' }[res.status] || null;
 }
 
@@ -252,7 +264,95 @@ export function classifyRecovery(attempt, res, claim = null) {
   const b = res.body;
   if (b.current_malformed === true) return 'conflict';
   if (!okVersion(b.policy_version) || !Array.isArray(b.bands)) return 'unknown';
-  if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) ? 'saved' : 'conflict';
-  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : 'not_landed';
+  if (b.policy_version === attempt.expectedVersion + 1) return sameBands(b.bands, attempt.sentBands) && limitsLanded(attempt.sentLimits, b.branches) ? 'saved' : 'conflict';
+  if (b.policy_version === attempt.expectedVersion) return claim === 'refused' ? 'refused' : claim === 'directory_changed' ? 'conflict' : 'not_landed';
   return 'conflict';
+}
+
+// ── ENVÍO v3: each restaurant's maximum distance (PLAN-portal-envio-v3-ui r5 §1; 5f r2–r4 names verbatim) ─────────────────────────
+// A RESTAURANT = the rows sharing a brand_id (a row without one is its own). Only rows with limit_editable !== false are its branches
+// (an identity-less registered row is read-only and never sent, §1e). Its stored maximum = the SMALLEST of its branches' max_km (null =
+// no own limit: the table top) — never a wider reach than a branch has (Q2); ANY branch with limit_invalid (§1c) ⇒ the restaurant shows «—»
+// (stored null, invalid) and stays editable: a save from it fans out to ALL its branches (the repair).
+export const LIMIT_COPY = Object.freeze({
+  empty: 'Falta la distancia máxima.',
+  under: 'Mínimo 0.5 km.',
+  above: (top) => `Máximo ${top} km: hasta donde llega la tabla.`,
+});
+export function restaurantsOf(branches) {
+  const rows = (Array.isArray(branches) ? branches : []).filter(okBranch);
+  const by = new Map();
+  for (const b of rows) { const k = brandKey(b); if (!by.has(k)) by.set(k, []); by.get(k).push(b); }
+  return [...by.entries()].map(([key, bs]) => {
+    const edit = bs.filter((b) => b.limit_editable !== false);
+    const invalid = edit.some((b) => b.limit_invalid === true);
+    const nums = edit.filter((b) => b.limit_invalid !== true && Number.isFinite(b.max_km)).map((b) => b.max_km);
+    const name = typeof bs[0].brand_name === 'string' && bs[0].brand_name.trim() ? bs[0].brand_name.trim() : COPY.unnamedRestaurant;
+    return { key, name, rids: edit.map((b) => b.rid), n: bs.length, editable: edit.length > 0, invalid,
+      stored: invalid ? null : (nums.length ? Math.min(...nums) : null),
+      branches: edit.map((b) => ({ rid: b.rid, max_km: b.limit_invalid === true || !Number.isFinite(b.max_km) ? null : b.max_km, invalid: b.limit_invalid === true,
+        label: bs.length > 1 ? `${name} · ${typeof b.location_name === 'string' && b.location_name.trim() ? b.location_name.trim() : COPY.unnamedBranch}` : name })) };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }) || a.key.localeCompare(b.key));
+}
+// min(stored, the CURRENT table top as edited); no stored value → the top; no table → nothing asserted
+export function effectiveKm(stored, top) {
+  if (!Number.isFinite(top)) return null;
+  return Number.isFinite(stored) ? Math.min(stored, top) : top;
+}
+// the field's line (copy table), or null: empty · under 0.5 · above the table's top · off-step (step 1's own line)
+export function limitProblem(text, top) {
+  const p = parseKm(text);
+  if (p.empty) return LIMIT_COPY.empty;
+  if (p.format) return COPY.err.kmStep;
+  if (p.value < 0.5) return LIMIT_COPY.under;
+  if (Number.isFinite(top) && p.value > top) return LIMIT_COPY.above(top);
+  if (Math.round(p.value * 2) !== p.value * 2) return COPY.err.kmStep;
+  return null;
+}
+export function snapHalf(text) {
+  const p = parseKm(text);
+  return 'value' in p ? Math.round(p.value * 2) / 2 : null;
+}
+// the pending mutation set, PER BRANCH (Codex r2 P2-6): { rid → km } for every branch of an edited restaurant whose new value differs from
+// its loaded max_km (an invalid branch always — the repair). An edit with a line (limitProblem) is no request.
+export function pendingLimits(restaurants, edits, top) {
+  const out = {};
+  for (const r of Array.isArray(restaurants) ? restaurants : []) {
+    if (!edits || !Object.prototype.hasOwnProperty.call(edits, r.key) || !r.editable) continue;
+    const text = edits[r.key];
+    if (limitProblem(text, top)) continue;
+    const km = snapHalf(text);
+    for (const b of r.branches) if (b.invalid || b.max_km !== km) out[b.rid] = km;
+  }
+  return out;
+}
+// the request entries: one { rid, km } per pending branch (never km: null — no clear control)
+export function limitsFor(pending) {
+  return Object.keys(pending || {}).sort().map((rid) => ({ rid, km: pending[rid] }));
+}
+// recovery (§1b r4/r5): every REQUESTED { rid, km } landed (that row's stored max_km === km); a requested row MISSING from the re-read is
+// unresolved ⇒ not landed; rows the request did not name are not judged
+function limitsLanded(sent, branches) {
+  if (!Array.isArray(sent) || !sent.length) return true;
+  const rows = Array.isArray(branches) ? branches : [];
+  return sent.every((e) => { const r = rows.find((b) => plain(b) && b.rid === e.rid); return !!r && r.limit_invalid !== true && r.max_km === e.km; });
+}
+
+// the confirm sheet's «Distancia máxima por restaurante» (A3): one row per pending BRANCH — was (its stored value, or the loaded top when
+// none; a flagged branch: null, «—») → now — and, per row with a known was, the copy table's lowering / raising callout
+export function limitChanges(restaurants, pending, loadedTop) {
+  const rows = [], callouts = [];
+  for (const r of Array.isArray(restaurants) ? restaurants : []) for (const b of r.branches) {
+    if (!pending || !Object.prototype.hasOwnProperty.call(pending, b.rid)) continue;
+    const was = b.invalid ? null : (b.max_km === null ? (Number.isFinite(loadedTop) ? loadedTop : null) : b.max_km);
+    rows.push({ rid: b.rid, label: b.label, was, now: pending[b.rid] });
+  }
+  rows.sort((x, y) => x.label.localeCompare(y.label, 'es', { sensitivity: 'base' }) || x.rid.localeCompare(y.rid));
+  for (const r of rows) {
+    if (r.was === null || r.was === r.now) continue;
+    callouts.push(r.now < r.was
+      ? `${r.label}: distancia máxima ${r.was} km → ${r.now} km. Las direcciones entre ${r.now} y ${r.was} km ya no se pueden pedir desde que guardés.`
+      : `${r.label}: distancia máxima ${r.was} km → ${r.now} km. Las direcciones entre ${r.was} y ${r.now} km ya se pueden pedir desde que guardés.`);
+  }
+  return { rows, callouts };
 }

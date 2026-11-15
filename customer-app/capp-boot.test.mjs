@@ -155,3 +155,22 @@ test('C-2 (the Chrome batch found it): EVERY flag the boot reads is one the pack
   assert.ok(read.length >= 5, `premise: the boot's flags (${read.join(', ')})`);
   assert.deepEqual([...FLAGS].sort(), read, '🔴 FL-1: the packager ships exactly the flags the boot reads');
 });
+
+// owner 11-14 (PLAN-capp-web-signin r0): the WEBSITE runtime with `signup` hands the shell the SAME sign-in config as native — the
+// manifest's Firebase web config + CappSignupApi's endpoints on the functions base (same server, no new endpoint)
+test('web sign-in: a web-mode runtime with the signup flag carries the sign-in config exactly as native', () => {
+  const web = Boot.runtimeFor(RT({ mode: 'web', flags: { signup: true, guestCardOnly: true } }), CappSignupApi);
+  const nat = Boot.runtimeFor(RT({ flags: { signup: true, guestCardOnly: true } }), CappSignupApi);
+  assert.ok(web.signup, '🔴 WEB-SIGNIN: the web runtime offers member sign-in');
+  assert.deepEqual(web.signup, nat.signup, 'the same config on both targets (one flow)');
+  assert.ok(web.signup.firebase === RT0.firebase && Object.keys(web.signup.endpoints).length === CappSignupApi.ENDPOINTS.length, 'the manifest\'s Firebase config + every sign-in endpoint');
+  assert.equal('signup' in Boot.runtimeFor(RT({ mode: 'web', flags: { guestCardOnly: true } }), CappSignupApi), false, 'no flag ⇒ no sign-in (today\'s web build)');
+});
+
+// PLAN-capp-push r1 (owner 11-14): the `push` flag reaches the shell ONLY on the native build (web push: no — iOS web needs an installed PWA)
+test('push flag: native + flag ⇒ runtime.push; the web build NEVER (even flagged); no flag ⇒ absent (dark)', () => {
+  assert.equal(Boot.runtimeFor(RT({ flags: { push: true } }), CappSignupApi).push, true, '🔴 PUSH-FLAG: native + flag');
+  assert.equal('push' in Boot.runtimeFor(RT({ mode: 'web', flags: { push: true } }), CappSignupApi), false, '🔴 PUSH-FLAG: never on the web (owner Q5)');
+  assert.equal('push' in Boot.runtimeFor(RT(), CappSignupApi), false, 'no flag ⇒ dark');
+  assert.equal('push' in Boot.runtimeFor(RT({ flags: { push: 'true' } }), CappSignupApi), false, 'only a literal true');
+});

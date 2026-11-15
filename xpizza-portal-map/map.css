@@ -1,8 +1,8 @@
 /* «Envío» map site (PLAN-portal-envio-step1 r2 §1, §4) — the one page the portal frames. The overlay's declarations are the
    approved mockup's (MOCKUP-portal-envio-v2-APPROVED.html .map .ring / .outside / .rl / .opin / .pin / .pl), scaled with the
    box: --u = rendered width / 640 px per mockup unit (map.js sets it). */
-@font-face{font-family:'Archivo';font-style:normal;font-weight:600 800;font-stretch:100%;font-display:optional;src:url(fonts/archivo-latin.7150c0ec5a.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-:root{--body:'Söhne','Helvetica Neue',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:'Archivo','Söhne','Helvetica Neue',system-ui,sans-serif}
+@font-face{font-family:'Figtree';font-style:normal;font-weight:300 900;font-display:optional;src:url(fonts/figtree-latin.8330490a01.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}   /* = the portal's generated latin rule, verbatim (platform/fonts; envio-map-site.test pins it) */
+:root{--body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:var(--body)}
 html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
 #map{position:absolute;inset:0}
 .rings{pointer-events:none}
@@ -18,3 +18,19 @@ html,body{margin:0;padding:0;height:100%;background:#F1F2EC;overflow:hidden}
 .rings .pin{fill:#0A0A0B}
 .rings .pindot{fill:#FFFFFF}
 .rings .pl{font-family:var(--disp);font-size:calc(11.5px * var(--u));font-weight:800;fill:#0A0A0B;letter-spacing:-.02em}
+/* ENVÍO v3 A2 / A4 (MOCKUP-portal-envio-v3-limit .map .ring.rlim / .beyond / .rl.lim / .rl.beyond; PLAN-portal-envio-v3-ui r5 §2): the
+   restaurant's own limit (ink, SOLID) vs the shared fee rings (green, dashed); bands beyond it greyed. «Satélite» (hybrid; map.js sets
+   data-maptype on #map): the limit ring white, the fee rings luminous green, the outside mask darker, the labels haloed. */
+.rings .ring.rlim{fill:rgba(14,159,91,.05);stroke:#0A0A0B;stroke-width:calc(2.2px * var(--u));stroke-dasharray:none}
+.rings .ring.beyond{fill:none;stroke:#9A9A9E;stroke-width:calc(1.3px * var(--u));stroke-dasharray:calc(3px * var(--u)) calc(4px * var(--u))}
+.rings .rl.lim rect{stroke:#0A0A0B}
+.rings .rl.lim text{fill:#0A0A0B}
+.rings .rl.beyond rect{stroke:#D6D6D0}
+.rings .rl.beyond text{fill:#6E6E72}   /* Codex HIGH r1 P2: AA 5.08:1 on the label box (the mockup's #8A8A8E is 3.44:1) */
+#map[data-maptype="hybrid"] .rings .ring{stroke:#5BE3A0;fill:rgba(91,227,160,.10)}
+#map[data-maptype="hybrid"] .rings .ring.rlim{stroke:#FFFFFF;fill:rgba(255,255,255,.06)}
+#map[data-maptype="hybrid"] .rings .ring.beyond{stroke:#CFCFCF;fill:none}
+#map[data-maptype="hybrid"] .rings .outside{fill:rgba(0,0,0,.42)}
+#map[data-maptype="hybrid"] .rings .opin{fill:#FFFFFF;stroke:#333333}
+#map[data-maptype="hybrid"] .rings .pin{fill:#0A0A0B;stroke:#FFFFFF;stroke-width:1.5}
+#map[data-maptype="hybrid"] .rings .pl{fill:#FFFFFF;paint-order:stroke;stroke:rgba(0,0,0,.8);stroke-width:3px}

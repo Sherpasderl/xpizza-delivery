@@ -44,7 +44,8 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
   // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
-  assert.equal(digest, '6b253dc87a2e732772755db37a5e8da12d681321e8da4ff983f117eef81c08a1', '🔴 the fixture contents are the pinned generation');
+  // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
+  assert.equal(digest, 'a432b4a948ad18b04d7e6425e9b015d8051d21f69a4962eeb9e05aba048bffc9', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -276,7 +277,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -2339,9 +2340,11 @@ async function pedidosBoot(db, opts = {}) {
   const g = g7Server();
   const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
     if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
+    if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
+    if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
-  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}) });
+  const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
   if (!opts.noFlush) { await flush(); await flush(); }
   return { S, mo, fb, g };
 }
@@ -2923,6 +2926,41 @@ test('Volver a pedir — the pill REPLACES that store\'s cart with the order (sa
     assert.equal(S.q('#toast') && S.q('#toast').textContent, 'Pedido cargado en tu carrito', '🔴 VP-4: v6\'s «Pedido cargado en tu carrito»');
     assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => l.key), [String(marg.dish_id)], 'the stored cart is the reorder');
   } finally { S.w.close(); }
+});
+// S2b (PLAN-structure-S2b-r3 §5; Codex r1 P2-6) — with the served extra_keys map, a stored option is matched by its KEY, never by name: a RENAMED
+// extra (its key kept) is rebuilt under its new name; a RETIRED key is never rebound to a new extra that reuses its name (dropped, disclosed).
+// The recipe comes from the REAL writer (placeReal → attachCustomerAttribution → normalizeReorderItems: { name: 'Mozzarella', count: 1 }).
+async function againWithEnvelope(mutate) {
+  const saved = PROV.x_pizza.envelope; const env = JSON.parse(JSON.stringify(saved)); mutate(env.menu); PROV.x_pizza.envelope = env;
+  return { restore: () => { PROV.x_pizza.envelope = saved; } };
+}
+test('Volver a pedir — S2b: a RENAMED extra (its key kept, the served extra_keys map) is rebuilt by its key under its new name', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const { restore } = await againWithEnvelope((m) => { const moz = m.extras.find((e) => e.name === 'Mozzarella'); m.extra_keys = Object.fromEntries(m.extras.map((e) => [String(e.id), e === moz ? 'Mozzarella' : e.name])); moz.name = 'Mozzarella Fresca'; });
+  try {
+    const { S } = await againBoot();
+    try {
+      S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+      S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+      const ui = S.ui.store().ui;
+      const moz = ui.menu.extrasFor(String(marg.dish_id)).find((e) => e.extra_key === 'Mozzarella');
+      assert.ok(moz && moz.name === 'Mozzarella Fresca', 'premise: the renamed extra is offered under its new name with its kept key');
+      assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.lines().map((l) => [l.key, l.qty, l.ex]))), [[String(marg.dish_id), 2, [{ [moz.key]: 1 }, {}]]], '🔴 S2B-REORDER-RENAMED: rebuilt by its key');
+    } finally { S.w.close(); }
+  } finally { restore(); }
+});
+test('Volver a pedir — S2b: a RETIRED key is never rebound to a new extra that reuses its name — the line is dropped and disclosed', async () => {
+  const { restore } = await againWithEnvelope((m) => { const moz = m.extras.find((e) => e.name === 'Mozzarella'); m.extra_keys = Object.fromEntries(m.extras.map((e) => [String(e.id), e === moz ? 'i_aaaaaaaaaabt' : e.name])); });
+  try {
+    const { S } = await againBoot();
+    try {
+      S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+      S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush(); await flush(); await flush();
+      const ui = S.ui.store().ui;
+      assert.deepEqual(JSON.parse(JSON.stringify(ui.cart.lines())), [], '🔴 S2B-REORDER-NO-REBIND: the stored Mozzarella (a retired key) is not the new «Mozzarella»');
+      assert.equal(txt(S.q('.cartnote')), '2 platos ya no están disponibles', '🔴 S2B-REORDER-NO-REBIND: disclosed (the line was 2× Margherita)');
+    } finally { S.w.close(); }
+  } finally { restore(); }
 });
 test('Volver a pedir — MIXED nulls within one order: the resolvable line is rebuilt, the null one is dropped AND disclosed («1 plato ya no está disponible»)', async () => {
   const db = {}, orders = {};
@@ -4759,12 +4797,12 @@ test('C-1a T7 (owner 11-01 «heart shown to guests → sign-in»): a GUEST\'s he
     const ev0 = G.events.length; G.click(h); await flush();
     assert.deepEqual(G.events.slice(ev0).filter(([n]) => n === 'signin').map(([, d]) => d.ctx), ['favorites'], '🔴 C1-T7: the heart ⇒ the sign-in');
   } finally { G.w.close(); }
-  for (const auth of ['member', 'unresolved']) {
+  for (const auth of ['unresolved', 'member']) {   // the harness's 'member' here is not ADMITTED (no usable token) ⇒ unresolved too; an admitted member's live heart is C-1b F4
     const M = bootShell({ auth, dirScript: [c1Resp(RATED())] });
     try {
       await until(() => M.q('.rlist .rcard[data-rid="x_pizza"]')); M.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
       const h = M.q('.store-nav [data-act="fav"]');
-      assert.ok(h && /visibility:hidden/.test(h.getAttribute('style') || '') && h.getAttribute('aria-hidden') === 'true', `🔴 C1-T7: ${auth} ⇒ the slot reserved, hidden`);
+      assert.ok(h && /visibility:hidden/.test(h.getAttribute('style') || '') && h.getAttribute('aria-hidden') === 'true', `🔴 C1-T7: ${auth} (not admitted) ⇒ the slot reserved, hidden`);
     } finally { M.w.close(); }
   }
 });
@@ -5106,5 +5144,540 @@ test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y; X\'s receipt resolv
     assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE older: X (an older tap) never enters, though its receipt landed first');
     gate('XP-V1').resolve(); await flush(); await flush();
     assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-RACE older: Y (the latest tap) enters');
+  } finally { S.w.close(); }
+});
+
+// ── C-1b (PLAN-capp-c1-build r0 §5 option C; D-3 r3 9.4 «Para vos» + the store heart): the member's favorites through 3a's
+// getMyFavorites / setFavorite. The fake answers in the REAL handler's bodies (fixtures/c1b/favorites-contract.json, generated
+// from my-favorites.js @990cf8c4) and keeps the book's state so a toggle is read back like the server's ──
+const FAVC = JSON.parse(readFileSync(join(HERE, 'fixtures/c1b/favorites-contract.json'), 'utf8')).scenarios;
+// refuse: a scenario key for every write, or (body) ⇒ key | null; gate: (ep, body) ⇒ a promise the answer waits on (a late response)
+function favServer({ favs = [], recent = [], refuse = null, gate = null } = {}) {
+  const st = { favs: [...favs], recent: [...recent] }, calls = [];
+  const out = (status, json) => ({ status, json: async () => JSON.parse(JSON.stringify(json)) });
+  const handler = async (u, i = {}) => {
+    const url = new URL(u), body = i.body ? JSON.parse(i.body) : null, tok = (i.headers || {})['x-firebase-id-token'];
+    const ep = url.pathname.split('/').pop(); calls.push({ ep, url: url.toString(), body, tok });
+    if (!tok) return out(FAVC.unauth.status, FAVC.unauth.body);
+    const snap = ep === 'getMyFavorites' ? { ok: true, favorites: [...st.favs], more: false, recent: st.recent } : null;   // a read is the state AT the request
+    const g = gate && gate(ep, body); if (g) await g;
+    if (snap) return out(200, snap);
+    const rf = typeof refuse === 'function' ? refuse(body) : refuse;
+    if (rf) return out(FAVC[rf].status, FAVC[rf].body);
+    if (body.on) { if (!st.favs.includes(body.rid)) st.favs.unshift(body.rid); } else st.favs = st.favs.filter((x) => x !== body.rid);
+    return out(200, { ok: true, on: body.on });
+  };
+  return { handler, st, calls, reads: () => calls.filter((c) => c.ep === 'getMyFavorites').length };
+}
+const PV = (S) => S.q('.hsec[aria-label="Para vos"]');
+const pvCards = (S) => [...(PV(S) || { querySelectorAll: () => [] }).querySelectorAll('.rcard')].map((c) => [c.dataset.rid, !!c.querySelector('.heart.on'), c.querySelector('.again') ? txt(c.querySelector('.again')) : '']);
+const reEnterHome = async (S) => { S.click('.tabbar [data-tab="search"]'); await flush(); S.click('.tabbar [data-tab="home"]'); await flush(); };
+const DAY_MS = 86400e3;
+test('C-1b F1 (9.4, no pop-in): a member with NO cached book sees no «Para vos» in this visit (the read lands after paint); the next Inicio entry shows favorites first, then recent — the heart on a favorite, «Pediste el …» on a recent order', async () => {
+  const fav = favServer({ favs: ['la_musa'], recent: [{ rid: 'x_pizza', last_at: T0 - 3 * DAY_MS }] });
+  const { S } = await pedidosBoot({}, { fav });
+  try {
+    await flush(); await flush();
+    assert.equal(PV(S), null, '🔴 C1B-F1: nothing inserted into the visible Inicio');
+    assert.equal(fav.reads(), 1, 'premise: ONE member read, after paint');
+    await reEnterHome(S);
+    assert.deepEqual(pvCards(S), [['la_musa', true, ''], ['x_pizza', false, 'Pediste el 17 oct']], '🔴 C1B-F1: favorites first, then recent; the heart; «Pediste el 17 oct»');
+    assert.equal(txt(PV(S).querySelector('h2')), 'Para vos'); assert.equal(txt(PV(S).querySelector('.hd p')), 'Tus favoritos y los que ya pediste');
+    const order = [...S.qa('.home-body .hsec')].map((x) => x.getAttribute('aria-label'));
+    assert.ok(order.indexOf('Para vos') >= 0 && order.indexOf('Para vos') < order.indexOf('Destacados'), '🔴 C1B-F1: «Para vos» before «Destacados» (9.4)');
+  } finally { S.w.close(); }
+});
+test('C-1b F2 (cached-first): entering Inicio, an admitted member\'s persisted book paints «Para vos» AT ONCE — the network read still pending; a guest sees no row and makes no read', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const fav = favServer({ favs: ['x_pizza'], gate: (ep) => (ep === 'getMyFavorites' ? new Promise(() => {}) : null) });   // the read never answers
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try { await flush(); await reEnterHome(S); assert.deepEqual(pvCards(S).map((x) => x[0]), ['x_pizza'], '🔴 C1B-F2: the cached row at once (no network needed)'); } finally { S.w.close(); }
+  const gfav = favServer({ favs: ['x_pizza'] });
+  const { S: G } = await pedidosBoot({}, { fav: gfav, fbOpts: { persisted: null }, storage: memStorage({}) });
+  try { await flush(); await reEnterHome(G); assert.equal(PV(G), null, '🔴 C1B-F2: a guest has no «Para vos»'); assert.equal(gfav.reads(), 0, '🔴 C1B-F2: and no read'); } finally { G.w.close(); }
+});
+test('C-1b F3: a card\'s heart toggles IN PLACE (optimistic) through setFavorite; a refusal (the 50 cap, 409) reverts it with a calm toast', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S);   // the row is decided at a visit's first paint (rule 7)
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    assert.equal(pvCards(S)[0][1], true, '🔴 C1B-F3: the heart fills at once');
+    const w = fav.calls.filter((c) => c.ep === 'setFavorite');
+    assert.deepEqual(w.map((c) => c.body), [{ context: 'platform', rid: 'x_pizza', on: true }], '🔴 C1B-F3: ONE setFavorite');
+    assert.ok(w[0].tok && !/auth=/.test(w[0].url), 'the token in the header');
+    assert.ok(S.q('.app').textContent.length > 0 && JSON.parse(st.getItem('capp:fav:u_ana')).favorites.includes('x_pizza'), 'persisted');
+  } finally { S.w.close(); }
+  const st2 = g7Store(G7_PROFILE({ promos: true })); st2.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const R = await pedidosBoot({}, { fav: favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], refuse: 'set_too_many' }), storage: st2 });
+  try {
+    await flush(); await reEnterHome(R.S); R.S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
+    assert.equal(pvCards(R.S)[0][1], false, '🔴 C1B-F3: a refusal reverts the heart');
+    assert.equal(txt(R.S.q('#toast')), 'Llegaste a 50 favoritos. Quitá uno para guardar otro.', '🔴 C1B-F3: and says so — the owner-approved cap copy (11-14), exact');
+  } finally { R.S.w.close(); }
+});
+test('C-1b F4 (9.1): a MEMBER\'s store heart is shown, pressed for a favorite; a tap unsaves it through setFavorite', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const fav = favServer({ favs: ['x_pizza'] });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const h = S.q('.store-nav [data-act="fav"]');
+    assert.ok(h && !/visibility/.test(h.getAttribute('style') || ''), '🔴 C1B-F4: the member sees the heart');
+    assert.equal(h.getAttribute('aria-pressed'), 'true', '🔴 C1B-F4: pressed for a favorite'); assert.equal(h.getAttribute('aria-label'), 'Quitar de favoritos');
+    S.click(h); await flush();
+    assert.deepEqual(fav.calls.filter((c) => c.ep === 'setFavorite').map((c) => c.body), [{ context: 'platform', rid: 'x_pizza', on: false }], '🔴 C1B-F4: unsaved');
+    assert.equal(S.q('.store-nav [data-act="fav"]').getAttribute('aria-pressed'), 'false', '🔴 C1B-F4: the heart empties at once');
+  } finally { S.w.close(); }
+});
+test('C-1b F5 (rule 20 + privacy): signing out clears the member\'s cached book from the device; the next person sees no row of theirs', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const { S, fb } = await pedidosBoot({}, { fav: favServer({ favs: ['x_pizza'] }), storage: st });
+  try {
+    await flush(); await reEnterHome(S); assert.ok(PV(S), 'premise: Ana\'s row');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    assert.equal(st.getItem('capp:fav:u_ana'), null, '🔴 C1B-F5: the book removed from the device');
+    await reEnterHome(S); assert.equal(PV(S), null, '🔴 C1B-F5: no row after sign-out');
+  } finally { S.w.close(); }
+});
+
+// ── Codex HIGH r1 on asm9b (C-1b state handling) — each cell reproduces Codex's schedule ──
+const TOKB = (uid) => `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: uid, user_id: uid, customer: true, exp: Math.floor((T0 + 3600e3) / 1000) })}.sig`;
+async function switchTo(S, fb, st, uid) { const { authMod } = await fb.loadSdk(); st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid })); await authMod.signInWithCustomToken(null, 'ct:' + uid); await flush(); await flush(); }
+const bookOf = (st, uid = 'u_ana') => { try { return JSON.parse(st.getItem(`capp:fav:${uid}`)).favorites; } catch (_) { return null; } };
+test('Codex P1 (identity): a heart tapped as Ana whose TOKEN read is still pending when Bob signs in is DROPPED — never dispatched under Bob, never applied to Bob', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const hold = { on: false, q: [] }, fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] });
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st, fbOpts: { hold } });
+  try {
+    await flush(); await reEnterHome(S); assert.ok(PV(S), 'premise: Ana\'s row');
+    hold.on = true; S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    hold.on = false; await switchTo(S, fb, st, 'u_bob');
+    for (const r of hold.q.splice(0)) r(); await flush(); await flush();
+    assert.equal(fav.calls.filter((c) => c.ep === 'setFavorite').length, 0, '🔴 P1: nothing dispatched after the identity changed');
+    assert.ok(!(bookOf(st, 'u_bob') || []).includes('x_pizza'), '🔴 P1: nothing applied to Bob');
+  } finally { S.w.close(); }
+});
+test('Codex P1 (A→B→A): Ana\'s OLD refusal landing after Bob and Ana again never rolls back the NEW session\'s book', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const held = []; let first = true;
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }], refuse: (b) => (b.rid === 'x_pizza' ? 'set_too_many' : null),
+    gate: (ep, b) => (ep === 'setFavorite' && b.rid === 'x_pizza' && first ? (first = false, new Promise((r) => held.push(r))) : null) });
+  const { S, fb } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S); S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    assert.equal(held.length, 1, 'premise: Ana\'s x_pizza save is in flight');
+    await switchTo(S, fb, st, 'u_bob'); await switchTo(S, fb, st, 'u_ana'); await flush(); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+    assert.ok(bookOf(st).includes('la_musa'), 'premise: the NEW session saved la_musa');
+    const t0 = txt(S.q('#toast') || S.q('body'));
+    held[0](); await flush(); await flush();
+    assert.ok(bookOf(st).includes('la_musa'), '🔴 P1: the stale rollback never lands on the new session');
+    assert.ok(!/máximo/.test(txt(S.q('#toast'))) || /máximo/.test(t0), '🔴 P1: the stale refusal never speaks to the new session (no toast)');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (read × save): a getMyFavorites snapshot that started BEFORE a save and lands AFTER it never erases the save', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], gate: (ep) => (ep === 'getMyFavorites' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); assert.equal(held.length, 1, 'premise: the read is in flight (its snapshot: no favorites)'); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
+    assert.ok(fav.st.favs.includes('x_pizza'), 'premise: the save landed on the server');
+    held[0](); await flush(); await flush();
+    assert.ok(bookOf(st).includes('x_pizza'), '🔴 P2: the late snapshot did not erase the save (persisted)');
+    assert.equal(pvCards(S)[0][1], true, '🔴 P2: the heart stays filled');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (rollback per rid): a 409 on x_pizza landing AFTER la_musa was saved reverts ONLY x_pizza', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }], refuse: (b) => (b.rid === 'x_pizza' ? 'set_too_many' : null),
+    gate: (ep, b) => (ep === 'setFavorite' && b.rid === 'x_pizza' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S);
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush();
+    S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="la_musa"]'); await flush(); await flush();
+    held[0](); await flush(); await flush();
+    assert.deepEqual(bookOf(st), ['la_musa'], '🔴 P2: only x_pizza reverted; la_musa kept');
+  } finally { S.w.close(); }
+});
+test('Codex P2 (rule 7): a member admitted AFTER Inicio\'s first paint (a delayed token) gets NO «Para vos» inserted into the visible Inicio; the next entry shows it', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: ['x_pizza'], recent: [] }));
+  const hold = { on: true, q: [] };
+  const { S } = await pedidosBoot({}, { fav: favServer({ favs: ['x_pizza'] }), storage: st, fbOpts: { hold }, noFlush: true });
+  try {
+    await flush(); assert.ok(S.q('.rlist .rcard'), 'premise: Inicio painted while the session is unresolved');
+    const before = [...S.qa('.home-body .hsec')].map((x) => x.getAttribute('aria-label'));
+    hold.on = false; for (const r of hold.q.splice(0)) r(); await flush(); await flush(); await flush();
+    assert.ok(S.ui.state.member, 'premise: admitted now');
+    assert.deepEqual([...S.qa('.home-body .hsec')].map((x) => x.getAttribute('aria-label')), before, '🔴 P2 (rule 7): no section inserted into the visible Inicio');
+    await reEnterHome(S); assert.ok(PV(S), '🔴 P2: «Para vos» on the next Inicio entry');
+  } finally { S.w.close(); }
+});
+// ── Codex HIGH r2 on asm9b: the robust model (advisor 11-13) — CONFIRMED = the last server truth per rid; at most ONE write in
+// flight per rid plus a coalesced «desired»; the UI = confirmed overlaid with desired; a read updates CONFIRMED only for rids with
+// no write since it started; a failure clears that rid's pending (the UI falls back to confirmed) ──
+const heartOf = (S, rid) => { const c = S.q(`.hsec[aria-label="Para vos"] .rcard[data-rid="${rid}"]`); return c ? !!c.querySelector('.heart.on') : null; };
+const tapPv = (S, rid) => S.click(`.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="${rid}"]`);
+const writes = (fav) => fav.calls.filter((c) => c.ep === 'setFavorite').map((c) => `${c.body.rid}:${c.body.on}`);
+test('Codex r2 P2 schedule 1: toggle → read STARTS → save succeeds → read answers ⇒ the favorite is kept (UI and the persisted book)', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const held = [], hold = { on: true, q: [] };
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], gate: (ep) => (ep === 'getMyFavorites' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st, fbOpts: { hold }, noFlush: true });
+  try {
+    // admit Ana, but keep the book read's OWN token held: the read has not started
+    for (let i = 0; i < 12 && !(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0); i++) { await flush(); if (!S.ui.state.member) for (const r of hold.q.splice(0)) r(); }
+    assert.ok(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0, 'premise: admitted; the read waits on its token');
+    const readTok = hold.q.shift();
+    await reEnterHome(S); assert.equal(heartOf(S, 'x_pizza'), false, 'premise: the cached row, x_pizza not a favorite');
+    tapPv(S, 'x_pizza'); await flush();   // the save waits on ITS token
+    assert.equal(hold.q.length, 1, 'premise: the save\'s token queued after the read\'s');
+    const saveTok = hold.q.shift(); hold.on = false;
+    readTok(); await flush(); assert.equal(fav.reads(), 1, 'premise: the read STARTED (its snapshot: no favorites)');
+    saveTok(); await flush(); await flush();
+    assert.ok(fav.st.favs.includes('x_pizza'), 'premise: the save succeeded on the server');
+    held[0](); await flush(); await flush();
+    assert.equal(heartOf(S, 'x_pizza'), true, '🔴 r2 S1: the heart stays filled after the older snapshot lands');
+    assert.ok((bookOf(st) || []).includes('x_pizza'), '🔴 r2 S1: the persisted book keeps the saved favorite');
+  } finally { S.w.close(); }
+});
+test('Codex r2 P2 schedule 2: one restaurant tapped on, then off, while the first save is pending — every save fails ⇒ NOT a favorite (as confirmed)', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }], refuse: 'set_unknown', gate: (ep) => (ep === 'setFavorite' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S);
+    tapPv(S, 'x_pizza'); await flush(); tapPv(S, 'x_pizza'); await flush();
+    assert.equal(heartOf(S, 'x_pizza'), false, 'premise: the last tap shows off');
+    for (let i = 0; i < 4; i++) { for (const r of held.splice(0)) r(); await flush(); await flush(); }
+    assert.equal(heartOf(S, 'x_pizza'), false, '🔴 r2 S2: no save succeeded ⇒ the heart shows the confirmed state (off)');
+    assert.ok(!(bookOf(st) || []).includes('x_pizza'), '🔴 r2 S2: the persisted book is not favorited');
+  } finally { S.w.close(); }
+});
+test('Codex r2: rapid taps coalesce per restaurant — on/off/on while the first save is pending ⇒ ONE save; on/off ⇒ the second save carries the latest wish', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const held = [];
+  const fav = favServer({ recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }], gate: (ep) => (ep === 'setFavorite' ? new Promise((r) => held.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); await reEnterHome(S);
+    tapPv(S, 'x_pizza'); await flush(); tapPv(S, 'x_pizza'); await flush(); tapPv(S, 'x_pizza'); await flush();
+    assert.equal(heartOf(S, 'x_pizza'), true, 'premise: the last tap shows on');
+    for (let i = 0; i < 4; i++) { for (const r of held.splice(0)) r(); await flush(); await flush(); }
+    assert.deepEqual(writes(fav), ['x_pizza:true'], '🔴 r2 coalesce: on/off/on ⇒ one save (the wish equals what the first save confirmed)');
+    assert.equal(heartOf(S, 'x_pizza'), true, '🔴 r2 coalesce: on');
+    tapPv(S, 'la_musa'); await flush(); tapPv(S, 'la_musa'); await flush();
+    for (let i = 0; i < 4; i++) { for (const r of held.splice(0)) r(); await flush(); await flush(); }
+    assert.deepEqual(writes(fav).slice(1), ['la_musa:true', 'la_musa:false'], '🔴 r2 coalesce: on/off ⇒ the settled save is followed by the latest wish');
+    assert.ok(!fav.st.favs.includes('la_musa') && heartOf(S, 'la_musa') === false && !(bookOf(st) || []).includes('la_musa'), '🔴 r2 coalesce: the server, the heart and the book end off');
+  } finally { S.w.close(); }
+});
+test('Codex r2: a read racing a write — the read updates CONFIRMED for the untouched restaurant, never for the one with a write in flight', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: [], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }] }));
+  const heldR = [], heldW = [];
+  const fav = favServer({ favs: ['la_musa'], recent: [{ rid: 'x_pizza', last_at: T0 - DAY_MS }, { rid: 'la_musa', last_at: T0 - 2 * DAY_MS }],   // la_musa: saved on another device
+    gate: (ep) => (ep === 'getMyFavorites' ? new Promise((r) => heldR.push(r)) : ep === 'setFavorite' ? new Promise((r) => heldW.push(r)) : null) });
+  const { S } = await pedidosBoot({}, { fav, storage: st });
+  try {
+    await flush(); assert.equal(heldR.length, 1, 'premise: the read is in flight'); await reEnterHome(S);
+    tapPv(S, 'x_pizza'); await flush(); assert.equal(heldW.length, 1, 'premise: the x_pizza save is in flight');
+    heldR[0](); await flush(); await flush();
+    assert.equal(heartOf(S, 'la_musa'), true, '🔴 r2 race: the read lands la_musa (no write of it)');
+    assert.equal(heartOf(S, 'x_pizza'), true, '🔴 r2 race: x_pizza keeps the pending wish (its write is in flight)');
+    heldW[0](); await flush(); await flush();
+    assert.deepEqual([...(bookOf(st) || [])].sort(), ['la_musa', 'x_pizza'], '🔴 r2 race: both confirmed and persisted');
+  } finally { S.w.close(); }
+});
+
+// ── C1b-P2 / P3 (the functional SBS 11-14, CLASSIFICATION-fx.md; advisor: exact to D-3 r3 9.4): a «Para vos» card's meta is ONE line
+// «[★ rating ·] ● Abierto [· Pediste el …]» — no closing time, no fee (16b: it wrapped with a dangling «·» on both layouts); the phone
+// header carries the row's «›» like every other phone row. The other rows' cards are unchanged ──
+const pvVm = (desk) => { const rows = rowsOf(SC.complete.body), x = rows.find((r) => r.rid === 'x_pizza'), l = rows.find((r) => r.rid === 'la_musa');
+  return VM({ desk, auth: 'member', rows, paraVos: [{ r: CappHome.storeOf(x), fav: true, again: '11 nov' }, { r: CappHome.storeOf(l), fav: true, again: null }] }); };
+test('C1b-P2 (9.4, 16b): a «Para vos» card\'s meta = «● Abierto · Pediste el …» — no closing time, no fee — on the phone and the desk; the other rows keep theirs', () => {
+  for (const desk of [false, true]) {
+    const d = dom(CappHome.homeHtml(pvVm(desk))), pv = d.querySelector('.hsec[aria-label="Para vos"]');
+    assert.ok(pv, 'premise: the row');
+    const metas = [...pv.querySelectorAll('.rcard')].map((c) => [c.dataset.rid, txt(c.querySelector('.meta'))]);
+    assert.deepEqual(metas, [['x_pizza', 'Abierto · Pediste el 11 nov'], ['la_musa', 'Abierto']], `🔴 C1B-P2: 9.4's one line (${desk ? 'desk' : 'phone'})`);
+    const other = [...d.querySelectorAll('.hsec:not(.paravos) .rcard[data-rid="x_pizza"] .meta')].map(txt);
+    assert.ok(other.length && other.every((t) => /cierra/.test(t)), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
+  }
+});
+test('C1b-P3 (9.4): the PHONE «Para vos» header carries the row\'s «›» (rownext — the same control as every phone row)', () => {
+  const pv = dom(CappHome.homeHtml(pvVm(false))).querySelector('.hsec[aria-label="Para vos"]');
+  const b = pv && pv.querySelector('.hd > button.nxt[data-act="rownext"]');
+  assert.ok(b, '🔴 C1B-P3: the header «›»');
+  assert.equal(b.getAttribute('aria-label'), 'Ver más de Para vos', 'the row label, as the other rows');
+  assert.ok(pv.querySelector('.hrow'), 'premise: the row it scrolls');
+});
+
+// C1b-P3 (advisor 11-14): the DESK «Para vos» pages 4 at a time with ‹ ›, exactly like «Destacados» (shown only past 4 stores, reset per
+// Inicio visit); NO «Ver todo» (no destination is designed — a link to the wrong list would mislead). The phone row scrolls (its «›»).
+// The five stores: the directory writer's five_stores scenario (gen-directory.mjs: three DECLARED fake stores beside the two)
+test('C1b-P3 (9.4 desk): «Para vos» past 4 stores pages 4 at a time — ‹ › like «Destacados» (prev disabled on the first page, next on the last; clamped), no «Ver todo»; ≤ 4 ⇒ no arrows; the phone is never paged', () => {
+  const rows = rowsOf(SC.five_stores.body), pv = rows.map((r) => ({ r: CappHome.storeOf(r), fav: true, again: null })), ids = rows.map((r) => r.rid);
+  assert.equal(ids.length, 5, 'premise: the writer\'s five stores');
+  const at = (over) => dom(CappHome.homeHtml(VM({ desk: true, auth: 'member', rows, paraVos: pv, ...over }))).querySelector('.hsec[aria-label="Para vos"]');
+  const state = (sec) => ({ cards: [...sec.querySelectorAll('.rcard')].map((c) => c.dataset.rid), prev: sec.querySelector('.hd [data-act="pv-prev"]'), next: sec.querySelector('.hd [data-act="pv-next"]') });
+  const p0 = state(at({}));
+  assert.deepEqual(p0.cards, ids.slice(0, 4), '🔴 C1B-P3: the first page = 4 cards');
+  assert.ok(p0.prev && p0.prev.disabled && p0.next && !p0.next.disabled, '🔴 C1B-P3: ‹ disabled, › live on the first page');
+  assert.equal(p0.prev.getAttribute('aria-label'), 'Anterior · Para vos', 'the arrows\' labels, as «Destacados»');
+  const p1 = state(at({ pvPage: 1 }));
+  assert.deepEqual(p1.cards, ids.slice(4), '🔴 C1B-P3: the second page');
+  assert.ok(!p1.prev.disabled && p1.next.disabled, '🔴 C1B-P3: › disabled on the last page');
+  assert.deepEqual(state(at({ pvPage: 9 })).cards, ids.slice(4), 'clamped to the last page');
+  assert.equal(at({}).querySelector('.hd [data-act="seeall"]'), null, '🔴 C1B-P3: no «Ver todo» on «Para vos»');
+  const two = state(at({ paraVos: pv.slice(0, 2) }));
+  assert.ok(!two.prev && !two.next && two.cards.length === 2, '≤ 4 stores ⇒ no arrows');
+  const ph = dom(CappHome.homeHtml(VM({ desk: false, auth: 'member', rows, paraVos: pv, pvPage: 1 }))).querySelector('.hsec[aria-label="Para vos"]');
+  assert.deepEqual([...ph.querySelectorAll('.rcard')].map((c) => c.dataset.rid), ids, 'the phone: every card in its scrolling row (never paged)');
+});
+test('C1b-P3 (shell): a desk member taps › ⇒ the next «Para vos» page; the next Inicio entry starts again at the first page', async () => {
+  const rids = rowsOf(SC.five_stores.body).map((r) => r.rid);
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:fav:u_ana', JSON.stringify({ v: 1, favorites: rids, recent: [] }));
+  const { S } = await pedidosBoot({}, { fav: favServer({ favs: rids }), storage: st, dirScript: ['five_stores'], media: fakeMedia(true) });
+  try {
+    const cards = () => [...S.qa('.hsec[aria-label="Para vos"] .rcard')].map((c) => c.dataset.rid);
+    await flush(); await reEnterHome(S); await until(() => PV(S)); await flush();   // the row is decided at a visit's first paint (rule 7): the next entry
+    assert.deepEqual(cards(), rids.slice(0, 4), '🔴 C1B-P3: the desk\'s first page = 4 cards (the cached book)');
+    S.click('.hsec[aria-label="Para vos"] [data-act="pv-next"]'); await flush();
+    assert.deepEqual(cards(), rids.slice(4), '🔴 C1B-P3: › shows the next page');
+    await reEnterHome(S); await until(() => PV(S)); await flush();
+    assert.deepEqual(cards(), rids.slice(0, 4), '🔴 C1B-P3: a new Inicio visit starts at the first page');
+  } finally { S.w.close(); }
+});
+
+// rule 11 (owed SBS 11-14, advisor ruling): Inicio's cards read the ARRIVAL WINDOW — delivery and, under the «Pickup» filter, «Listo en
+// {a}–{b} min» — never a lone «≈ N min» / «N min» (the filter chip «Menos de 30 min» is a filter, not a time the order takes)
+test('rule 11 guard (Inicio): every store card\'s time is a window — delivery and the Pickup filter', async () => {
+  const S = bootShell(); await flush();
+  try {
+    const lone = (s) => (s.replace(/\s+/g, ' ').match(/(?:\d+\s*–\s*)?≈?\s*\d+\s*min\b/g) || []).filter((m) => !/\d+\s*–\s*\d+\s*min/.test(m));
+    const all = () => S.qa('.rcard, .scard').map((c) => txt(c)), cards = () => S.qa('.scard').map((c) => txt(c));   // every card is scanned; the pickup window is «Destacados»' (scard; the list cards keep the delivery window)
+    assert.ok(cards().length, 'premise: store cards');
+    assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: delivery');
+    const pk = S.q('.fchip[data-val="pickup"]'); assert.ok(pk, 'premise: the Pickup filter');
+    S.click(pk); await flush();
+    assert.equal(S.q('.fchip[data-val="pickup"]').getAttribute('aria-pressed'), 'true', 'premise: the Pickup filter is on');
+    assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: pickup');
+    assert.ok(cards().some((c) => /Listo en \d+–\d+ min/.test(c)), `the pickup window shows: ${cards().join(' | ')}`);
+  } finally { S.w.close(); }
+});
+
+// ── push stage 2 (MOCKUP-capp-push r1, owner-approved 11-14): the shell's wiring. The server is 3a's REAL customer-push.js at
+// 472177443 (APPROVED: install_id, the prefs rev CAS, a register never consents; refLoader: the module + its require closure from ONE sha) over 3a's strict RTDB double; the phone is the fake of
+// @capacitor/push-notifications 8.1.1 (capp-push.test PUSH-PIN) behind a Capacitor bridge present before the shell mounts ──
+const { refLoader: pushRef } = await import('./test/ref-require.mjs');
+const { createFakePushPlugin } = await import('./test/fake-push-plugin.mjs');
+const PUSH_3A = refLoader3a();
+function refLoader3a() { const R = pushRef(join(HERE, '..'), '4721774431f6c93dd51b7bf3d523e4ac791dc126'); return { CP: R.require('xpizza-functions/customer-push.js'), fakeRtdb: R.require('xpizza-functions/test/_fake-rtdb-sdk.js').fakeRtdb }; }
+function pushServer3a({ failSet = false, policy = null } = {}) {
+  const db = PUSH_3A.fakeRtdb({ ...(policy ? { platform_config: { push: policy } } : {}), user_profiles: { u_ana: { phone: '50496123344', phone_hash: 'ph_a', created_at: 1, last_login: 1 } } }, { strict: true });
+  const sub = (t) => { try { return JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')).sub; } catch (_) { return null; } };
+  const auth = { verifyIdToken: async (t) => { const u = sub(t); if (!u) throw new Error('bad token'); return { uid: u, customer: true }; } };
+  const h = PUSH_3A.CP.makeCustomerPush({ getDatabase: () => db, getAuth: () => auth, now: () => T0, checkRateLimit: async () => ({ allowed: true }) });
+  const calls = [];
+  const handler = async (url, init = {}) => {
+    const u = new URL(url), name = u.pathname.split('/').pop(), headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    const body = init.body ? JSON.parse(init.body) : undefined; calls.push({ name, url, headers, body });
+    if (failSet && name === 'setCustomerPushPrefs') return { status: 503, json: async () => ({ ok: false, reason: 'unavailable' }) };
+    const req = { method: init.method || 'GET', query: Object.fromEntries(u.searchParams), body, headers, get: (x) => headers[String(x).toLowerCase()] };
+    const res = { code: 200, body: null, set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
+    const e = console.error; console.error = () => {}; try { await h[name](req, res); } finally { console.error = e; }
+    return { status: res.code, json: async () => res.body };
+  };
+  // another of the person's devices, straight to 3a (same session identity)
+  const other = async (name, body) => { const r = await handler(`https://fn.test/${name}?context=platform`, { method: 'POST', headers: { 'x-firebase-id-token': TOK('u_ana') }, body: JSON.stringify(body) }); calls.pop(); return r.json(); };
+  return { db, calls, handler, other, prefs: () => { const p = db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}; return [p.pedidos, p.promociones, p.rev]; }, tokens: () => Object.keys(db.get(PUSH_3A.CP.TOKENS) || {}).length };
+}
+const PUSH_RT = { ...G7_RUNTIME, guestCardOnly: undefined, push: true, rtdbBase: 'https://rtdb.test' };
+async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false, fbOpts } = {}) {
+  const f = createFakePushPlugin(fake);
+  const { ES, made } = fakeES();
+  const pre = noBridge ? null : (w) => { w.Capacitor = { getPlatform: () => platform, Plugins: { PushNotifications: f.plugin } }; };
+  const r = await pedidosBoot({ u_ana: {} }, { storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
+    readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}), ...(fbOpts ? { fbOpts } : {}) });
+  return { ...r, f, srv, made };
+}
+const pushTxt = (S) => txt(S.q('.mk-num span'));
+const osAsks = (f) => f.of('checkPermissions').length + f.of('requestPermissions').length + f.of('register').length;   // the tap listener is not an ask
+test('PUSH-SHELL-1 (frames 1 → 1d): a member\'s «Pedido recibido» shows the soft card under the status line; «Activar avisos» ⇒ the system prompt, the token to 3a under the member\'s ID token, the toast only, the card gone, the order line', async () => {
+  const { S, f, srv } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', 'premise');
+    const card = S.q('.mk-sheet .px-ask'); assert.ok(card, '🔴 PUSH-SHELL-1: the soft card');
+    assert.ok(card.previousElementSibling && card.previousElementSibling.classList.contains('mk-status'), '🔴 PUSH-SHELL-1: right under the status line (frame 1)');
+    assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', 'before opt-in: v6\'s line');
+    assert.equal(osAsks(f), 0, '🔴 PUSH-SHELL-1: nothing asks the OS before the tap');
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask'));
+    assert.equal(f.of('requestPermissions').length, 1, 'the system prompt, once');
+    const reg = srv.calls.find((c) => c.name === 'registerCustomerPushToken');
+    assert.deepEqual(reg.body, { token: 'fcm_tok_test_0001', platform: 'android', app_build: reg.body.app_build, install_id: reg.body.install_id, pedidos: true, promociones: false }, '🔴 PUSH-SHELL-1: §6b — pedidos on, ofertas off');
+    assert.match(reg.body.install_id, /^[A-Za-z0-9_-]{16,64}$/, '🔴 PUSH-SHELL-1: this installation\'s id');
+    assert.equal(JSON.parse(Buffer.from(reg.headers['x-firebase-id-token'].split('.')[1], 'base64url').toString()).sub, 'u_ana', '🔴 PUSH-SHELL-1: under the member\'s ID token');
+    assert.equal(srv.tokens(), 1, '3a stored the token');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados', '🔴 PUSH-SHELL-1: the toast only (frame 1d)');
+    assert.equal(pushTxt(S), '· Te avisamos con una notificación', '🔴 PUSH-SHELL-1: the order line once push is on');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-2: «Ahora no» ⇒ the card goes, nothing asks the OS, the snooze is kept; an OS denial ⇒ the card goes and the line stays WhatsApp', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f } = await pushBoot({ storage: st });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-later"]'); await flush();
+    assert.equal(S.q('.px-ask'), null, '🔴 PUSH-SHELL-2: «Ahora no» ⇒ gone'); assert.equal(osAsks(f), 0, 'the OS never asked');
+    assert.equal(JSON.parse(st.getItem('capp:push:v1')).snoozes, 1, '🔴 PUSH-SHELL-2: the snooze is kept (30 days, owner Q2)');
+  } finally { S.w.close(); }
+  const D = await pushBoot({ fake: { onRequest: 'denied' } });
+  try {
+    await shellPlaceTolerant(D.S); await until(() => D.S.q('.px-ask') && D.S.q('.mk-num'));
+    D.S.click('.px-ask [data-act="push-on"]'); await until(() => !D.S.q('.px-ask'));
+    assert.equal(D.srv.calls.length, 0, 'denied ⇒ nothing sent'); assert.equal(pushTxt(D.S), '· Te avisamos por WhatsApp', '🔴 PUSH-SHELL-2: denied ⇒ the WhatsApp line stays');
+    assert.notEqual(txt(D.S.q('#toast')), 'Avisos activados');
+  } finally { D.S.w.close(); }
+});
+test('PUSH-SHELL-3 (frames 2 + 4): ONE «Notificaciones» row right after Direcciones (frame 4\'s subtitles); its screen — the switches are the consent (setPrefs under the member\'s token); a refused save reverts', async () => {
+  const { S, srv } = await pushBoot();
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush();
+    const rows = g7Rows(S); assert.equal(rows[rows.indexOf(rows.find((r) => r.startsWith('Direcciones'))) + 1], 'Notificaciones Estado del pedido por WhatsApp', '🔴 PUSH-SHELL-3: right after Direcciones, v6\'s subtitle before push');
+    assert.equal(rows.filter((r) => r.startsWith('Notificaciones')).length, 1, 'ONE row'); assert.ok(rows.some((r) => r.startsWith('Promociones')), 'G7\'s «Promociones» untouched');
+    S.click('[data-act="sub-notifs"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.topbar h1')), 'Notificaciones'); assert.equal(S.w.document.title, 'Notificaciones · Sherpa');
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`);
+    assert.deepEqual([sw('pedidos').getAttribute('aria-checked'), sw('promociones').getAttribute('aria-checked')], ['false', 'false'], 'not registered ⇒ both off');
+    S.click(sw('pedidos')); await until(() => srv.calls.some((c) => c.name === 'registerCustomerPushToken'));
+    await until(() => sw('pedidos') && sw('pedidos').getAttribute('aria-checked') === 'true');
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.pedidos, true, '🔴 PUSH-SHELL-3: «Mis pedidos» on = the opt-in');
+    S.click(sw('promociones')); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'setCustomerPushPrefs').body, { pedidos: true, promociones: true, expected_rev: 1 }, '🔴 PUSH-SHELL-3: «Ofertas de Sherpa» on = setPrefs (consent per channel), on the rev it was drawn from');
+    assert.deepEqual([(srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent].map((o) => o && [o.channel, o.value]), [['push', true]], '3a recorded the push-offers consent');
+    assert.equal(sw('promociones').getAttribute('aria-checked'), 'true');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Mis pedidos · Ofertas de Sherpa'), '🔴 PUSH-SHELL-3: F4b\'s subtitle');
+  } finally { S.w.close(); }
+  const F = await pushBoot({ srv: pushServer3a({ failSet: true }), fake: { permission: 'granted' } });
+  try {
+    F.S.click('.tabbar [data-tab="account"]'); await flush(); F.S.click('[data-act="sub-notifs"]'); await flush();
+    F.S.click('.switch[data-k="pedidos"]'); await until(() => F.S.q('.switch[data-k="pedidos"]').getAttribute('aria-checked') === 'true');
+    F.S.click('.switch[data-k="promociones"]'); await until(() => F.srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.equal(F.S.q('.switch[data-k="promociones"]').getAttribute('aria-checked'), 'false', '🔴 PUSH-SHELL-3: refused ⇒ back to its value');
+    assert.equal(txt(F.S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { F.S.w.close(); }
+});
+test('PUSH-SHELL-4 (frame 2 denied, owner Q5): the OS denied ⇒ the quiet card, both switches off + inert; «Abrir Ajustes» is the host event open-os-settings; the row reads «Apagadas en tu teléfono»', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'denied' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => S.q('.px-quiet'));
+    assert.equal(txt(S.q('.px-quiet .t b')), 'Avisos apagados');
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2); assert.equal(S.q('[data-act="push-pref"]'), null, '🔴 PUSH-SHELL-4: no live switch');
+    S.click('.px-quiet [data-act="push-settings"]'); await flush();
+    assert.deepEqual(S.events.filter((e) => e[0] === 'open-os-settings'), [['open-os-settings', {}]], '🔴 PUSH-SHELL-4: the host opens Ajustes');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Apagadas en tu teléfono'), '🔴 PUSH-SHELL-4: the denied subtitle');
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, 'nothing registered');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — flag off, the web, a guest or no bridge ⇒ no card, no row, no screen, no denied card, not one plugin call', async () => {
+  for (const [what, o] of [['flag off', { runtime: { ...PUSH_RT, push: undefined } }], ['web', { platform: 'web' }], ['no bridge', { noBridge: true }], ['denied, flag off', { runtime: { ...PUSH_RT, push: undefined }, fake: { permission: 'denied' } }]]) {
+    const { S, f, srv } = await pushBoot(o);
+    try {
+      await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+      assert.equal(S.q('.px-ask'), null, `🔴 PUSH-GATE ${what}: no card`); assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', `${what}: v6's line`);
+      S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="account"]'); await flush();
+      assert.ok(!g7Rows(S).some((r) => r.startsWith('Notificaciones')), `🔴 PUSH-GATE ${what}: no row`);
+      assert.equal(S.q('.px-quiet'), null, `🔴 PUSH-GATE ${what}: no denied card`);
+      assert.equal(f.calls.length + srv.calls.length, 0, `🔴 PUSH-GATE ${what}: no plugin / server call`);
+    } finally { S.w.close(); }
+  }
+  // a guest: the SAME native boot as a member's (flag on, the signup runtime, the bridge) signed out — only the member gate stands
+  // (the token is a member's); the slot-11-14 sweep showed the old guest boot (no signup runtime) could never draw the card at all
+  const { S: G, f } = await pushBoot({ fbOpts: { persisted: null }, storage: memStorage({}) });
+  try {
+    await shellPlaceTolerant(G); await until(() => G.q('.mk-num'));
+    assert.equal(G.q('.px-ask'), null, '🔴 PUSH-GATE: a guest ⇒ no card'); assert.equal(osAsks(f), 0, 'a guest ⇒ nothing asks the OS');
+  } finally { G.w.close(); }
+});
+test('PUSH-SHELL-5 (rule 20): «Cerrar sesión» ⇒ 3a forgets THIS token under the still-valid session, the phone deletes it, THEN the SDK signs out', async () => {
+  const { S, f, srv, fb } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1);
+    S.click('[data-act="notifs-back"]'); await flush();
+    const order = []; const un = f.plugin.unregister; f.plugin.unregister = async () => { order.push('plugin'); return un(); };
+    const outs = fb.calls.out;
+    S.click('[data-act="signout"]'); await until(() => fb.calls.out > outs);
+    assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-5: 3a forgot the token');
+    const unr = srv.calls.find((c) => c.name === 'unregisterCustomerPushToken'); assert.deepEqual(unr.body, { token: 'fcm_tok_test_0001' });
+    assert.deepEqual(order, ['plugin'], '🔴 PUSH-SHELL-5: the phone deleted it');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-6: a tapped order push opens THAT order — the device\'s live one ⇒ its screen', async () => {
+  const { S, f } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    S.click('[data-act="order-close"]'); await flush();
+    assert.equal(S.q('.mk-title'), null, 'premise: off the order');
+    const id = S.q('.ocard.active [data-act="go-order"]').dataset.oid;
+    f.tap({ order_id: id }); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', '🔴 PUSH-SHELL-6: the tap opens its live screen');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-7 (3a e73a605a2): a STALE save re-reads and re-applies the person\'s own switch on what another device set — never a blind overwrite', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 1], 'premise: rev 1');
+    assert.equal((await srv.other('setCustomerPushPrefs', { pedidos: false, promociones: false, expected_rev: 1 })).ok, true, 'premise: another device turned «Mis pedidos» off (rev 2)');
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.prefs()[2] === 3); await flush(); await flush();
+    assert.deepEqual(srv.prefs(), [false, true, 3], '🔴 PUSH-SHELL-7: the other device\'s «Mis pedidos» off is KEPT; the person\'s «Ofertas» on is applied');
+    assert.deepEqual(srv.calls.filter((c) => c.name === 'setCustomerPushPrefs').map((c) => c.body.expected_rev), [1, 2], '🔴 PUSH-SHELL-7: stale ⇒ re-applied once on the current rev');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true'], 'the switches show the server\'s truth');
+    assert.notEqual(txt(S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-8 (3a e73a605a2): GET prefs 503 (an unreadable policy) ⇒ the switches stay as last known and INERT, with no error copy', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' }, srv: pushServer3a({ policy: { v: 1, promo_daily_max: -5, promo_weekly_max: 1, quiet_from: 0, quiet_to: 0 } }) });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => srv.calls.some((c) => c.name === 'getCustomerPushPrefs')); await flush();
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2, '🔴 PUSH-SHELL-8: both inert');
+    S.click('.switch[data-k="pedidos"]'); await flush();
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, '🔴 PUSH-SHELL-8: an inert switch sends nothing');
+    assert.equal(S.q('.px-quiet'), null, 'no denied card'); assert.ok(!/No se guard|error/i.test(txt(S.q('.scroller'))), '🔴 PUSH-SHELL-8: no error copy');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-9 (3a e73a605a2): «Activar avisos» when the person\'s prefs already say «Mis pedidos» off (another device) ⇒ the register leaves them, the shell applies the person\'s choice — then the toast and the line', async () => {
+  const srv = pushServer3a();
+  await srv.other('registerCustomerPushToken', { token: 'fcm_other_device', platform: 'ios', app_build: '1', install_id: 'other-install-000001', pedidos: false, promociones: false });
+  const { S } = await pushBoot({ srv });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask')); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 2], '🔴 PUSH-SHELL-9: the person\'s «Activar avisos» is applied (rev CAS)');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados'); assert.equal(pushTxt(S), '· Te avisamos con una notificación');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-10 (3a 472177443: a register never consents): «Ofertas de Sherpa» turned on BEFORE push is on ⇒ the opt-in, then setPrefs applies the person\'s switch — the push-offers consent recorded, «Mis pedidos» as they chose (off)', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.promociones, true, 'the register carries the choice (the server ignores it)');
+    assert.deepEqual(srv.prefs(), [false, true, 2], '🔴 PUSH-SHELL-10: the person\'s «Ofertas» applied by setPrefs (rev 1 → 2)');
+    const oc = (srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent;
+    assert.deepEqual(oc && [oc.channel, oc.value], ['push', true], '🔴 PUSH-SHELL-10: the consent comes from the switch\'s setPrefs');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true']);
+    assert.equal(txt(S.q('#toast')), 'Avisos activados');
   } finally { S.w.close(); }
 });

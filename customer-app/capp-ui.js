@@ -302,7 +302,10 @@
     const closesText = () => { const o = range(clock().day); return o ? fmtMin(o[1]) : ''; };
     const opensText = () => { const c = clock(), o = range(c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = range((c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
     const firstSlot = () => { const c = clock(); for (let off = 0; off < 7; off++) { const o = range((c.day + off) % 7); if (!o) continue; let t = off === 0 ? Math.max(c.min + 60, o[0]) : o[0]; t = Math.ceil(t / 15) * 15; if (t + 30 <= o[1] + 15 && t < o[1]) return { off, t }; } return null; };
-    const etaTxt = (mode) => (mode === 'delivery' ? (cfg.etaDel ? `≈ ${cfg.etaDel[0]} min` : '') : (cfg.etaPick ? `Listo en ≈ ${cfg.etaPick[1]} min` : ''));
+    // rule 11 (owed SBS 11-14, advisor ruling — a RECORDED deviation from v6:1276-1277's «≈ 30 min» / «Listo en ≈ 20 min»): the customer
+    // reads an ARRIVAL WINDOW, never a lone figure — «30–45 min», pickup «Listo en 15–20 min»; no proper [a, b] (a < b) ⇒ no time at all
+    const winTxt = (e) => (Array.isArray(e) && Number.isFinite(e[0]) && Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]} min` : '');
+    const etaTxt = (mode) => { const w = winTxt(mode === 'delivery' ? cfg.etaDel : cfg.etaPick); return w && mode !== 'delivery' ? `Listo en ${w}` : w; };
 
     // ── cart reads (capp-cart) ──
     const qtyOf = (id) => { const l = cart.lines().find((x) => x.key === id); return l ? l.qty : 0; };
@@ -372,12 +375,19 @@
     const rateFact = () => (SOC && SOC.rating ? `${SOC.rating}<span>·</span>` : '');
     const navOf = () => (doc.defaultView && doc.defaultView.navigator) || null;
     const canShare = () => { const n = navOf(); return !!(SOC && SOC.shareUrl && n && (typeof n.share === 'function' || (n.clipboard && typeof n.clipboard.writeText === 'function'))); };
-    const heartOff = () => (authOf() === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true" tabindex="-1"');
-    const heartBtn = (cls) => (SOC ? `<button${cls ? ` class="${cls}"` : ''} data-act="fav" aria-label="Guardar en favoritos" aria-pressed="false"${heartOff()}>${HEART}</button>` : '');
+    // C-1b: a MEMBER's heart is live (filled = saved; the shell's book through opts.social.isFav); a guest's opens the sign-in;
+    // an unresolved session's slot stays reserved
+    const heartShown = () => { const a = authOf(); return a === 'guest' || (a === 'member' && !!SOC && typeof SOC.isFav === 'function'); };
+    const heartOn = () => authOf() === 'member' && !!SOC && typeof SOC.isFav === 'function' && SOC.isFav() === true;
+    const heartOff = () => (heartShown() ? '' : ' style="visibility:hidden" aria-hidden="true" tabindex="-1"');
+    const heartBtn = (cls) => (SOC ? `<button class="${[cls, heartOn() ? 'on' : ''].filter(Boolean).join(' ')}" data-act="fav" aria-label="${heartOn() ? 'Quitar de favoritos' : 'Guardar en favoritos'}" aria-pressed="${heartOn()}"${heartOff()}>${HEART}</button>` : '');
     const shareBtn = (cls) => (canShare() ? `<button${cls ? ` class="${cls}"` : ''} data-act="share" aria-label="Compartir">${SHARE}</button>` : '');
     function patchHeart() {
-      const g = authOf() === 'guest';
-      for (const h of app.querySelectorAll('[data-act="fav"]')) { if (g) { h.removeAttribute('style'); h.removeAttribute('aria-hidden'); h.removeAttribute('tabindex'); } else { h.setAttribute('style', 'visibility:hidden'); h.setAttribute('aria-hidden', 'true'); h.setAttribute('tabindex', '-1'); } }
+      const g = heartShown(), on = heartOn();
+      for (const h of app.querySelectorAll('[data-act="fav"]')) {
+        if (g) { h.removeAttribute('style'); h.removeAttribute('aria-hidden'); h.removeAttribute('tabindex'); } else { h.setAttribute('style', 'visibility:hidden'); h.setAttribute('aria-hidden', 'true'); h.setAttribute('tabindex', '-1'); }
+        h.classList.toggle('on', on); h.setAttribute('aria-pressed', String(on)); h.setAttribute('aria-label', on ? 'Quitar de favoritos' : 'Guardar en favoritos');
+      }
     }
     async function shareStore() {
       const n = navOf(); if (!n || !SOC || !SOC.shareUrl) return;
@@ -498,7 +508,7 @@
         + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
     }
     // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
-    const etaWindow = () => { const e = cfg.etaDel; return e && Number.isFinite(e[0]) ? `${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min` : ''; };
+    const etaWindow = () => winTxt(cfg.etaDel);   // rule 11: the window or nothing (no single-figure fallback)
     function deskCellsHtml() {
       if (!isOpen()) return '';
       const cells = [];
@@ -2329,7 +2339,7 @@
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
-      if (act === 'fav') { if (SOC && authOf() === 'guest') emit('signin', { ctx: 'favorites' }); return; }   // C-1a: a guest's heart ⇒ the sign-in
+      if (act === 'fav') { const a = authOf(); if (SOC && a === 'guest') emit('signin', { ctx: 'favorites' }); else if (SOC && a === 'member' && typeof SOC.isFav === 'function') emit('fav', { on: !SOC.isFav() }); return; }   // C-1a guest ⇒ sign-in; C-1b member ⇒ the shell's setFav
       if (act === 'share') { shareStore(); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
@@ -2454,6 +2464,7 @@
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
+      socialUpdated() { if (!dead && SOC) patchHeart(); },   // C-1b: the shell's book changed (the heart's pressed state, in place)
       // S7a-2: the verified menu arrived — the ordering controls turn live IN PLACE (no re-render: boxes, scroll and focus unchanged)
       setOrderable(on) {
         if (dead) return; orderable = on === true;

@@ -19,6 +19,7 @@ const { rendererContract } = req('./catalog/source-store');
 // the page's classic script: the PORTAL'S OWN copy (tools/sync-client.js), run as the browser runs it — it defines ExtrasEligibility
 import { runInThisContext } from 'node:vm';
 runInThisContext(readFileSync(join(DIR, 'extras-eligibility.js'), 'utf8'));   // once per process, as once per page load
+runInThisContext(readFileSync(join(DIR, 'exposure-transitions.js'), 'utf8'));   // STRUCTURE S2: the writer, the page's next classic script (index.html order)
 const EE = globalThis.ExtrasEligibility;
 const HTML = readFileSync(join(DIR, 'index.html'), 'utf8');
 const RID = 'la_musa';
@@ -112,7 +113,8 @@ test('A — the drawer, default: Nombre (counter, no maxlength) · Descripción 
   assert.equal(dr.getAttribute('aria-label'), 'Editar producto');
   assert.equal(dr.querySelector('.dwt').textContent, 'Sichuan Spicy Wonton');
   const labels = [...dr.querySelectorAll('.dwb > .fld')].map((f) => f.querySelector('label').firstChild.textContent.trim());
-  assert.deepEqual(labels.filter((l) => l !== 'Foto'), ['Nombre', 'Descripción', 'Categoría', 'Precio'], 'frame A\'s order (no Subcategoría: Dim Sum has none)');
+  // STRUCTURE S1 (MOCKUP-portal-structure-edit v2 frame A): the drawer now ends with «Opciones» (the dish's extras cards)
+  assert.deepEqual(labels.filter((l) => l !== 'Foto'), ['Nombre', 'Descripción', 'Categoría', 'Precio', 'Opciones'], 'frame A\'s order (no Subcategoría: Dim Sum has none)');
   const nm = p.fld('Nombre').querySelector('input');
   assert.equal(nm.value, 'Sichuan Spicy Wonton');
   assert.equal(nm.placeholder, 'Nombre del producto');
@@ -239,29 +241,41 @@ test('D2 — the move that would empty a section is refused in the field; «Guar
   assert.equal(p2.btn('Guardar').title, 'Elegí otra categoría para guardar');
 });
 
-test('F — a product with a required choice: «Se mueve con su producto», each derived name with its counter and — kept (Q1) — its price box', async () => {
+test('F — a product with a required choice: its «Opciones» card (v2 frame A), each derived name with its counter and — kept (Q1 / R1) — its price box', async () => {
   const p = await page();
   await p.signIn();
   const dr = await p.open('noodle_01');
   const f = p.fld('Opciones');
   assert.ok(f, 'the Opciones block');
-  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'precio por opción');
-  assert.equal(f.querySelector('.modh').firstChild.textContent, 'Proteína · elección requerida');
-  assert.equal(f.querySelector('.mk-modhr').textContent, 'Se mueve con su producto');
+  // STRUCTURE S1: the S4 block's «precio por opción» / «… · elección requerida» / «Se mueve con su producto» are v2's card header
+  // advisor Q8 correction (11-11): v3's line only when the server serves the Extras page (extrasCatalog); absent ⇒ S1's line
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente', 'extrasCatalog absent: the S1 line');
+  const card = f.querySelector('.mk-grp.mk-req');
+  assert.equal(card.querySelector('.mk-gtn').textContent, 'Proteína');
+  assert.equal(card.querySelector('.mk-gts').textContent, 'Elección requerida · el cliente elige 1');
   const rows = () => [...f.querySelectorAll('.mk-dopt')];
-  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Pad Thai - Sin Proteína', 'Pad Thai - Pollo', 'Pad Thai - Camarones']);
+  // advisor ruling 11-12 (S1 SBS): built EXACT to v3 — the row names the CHOICE; the full derived name's counter shows only when
+  // that name nears (≥ ITEM_NAME_MAX − 10) or passes the limit, as an inline warning; the length rule itself is unchanged
+  const shown = (r) => { const c = r.querySelector('.mk-cnt'); return c && !c.hidden ? c.textContent : null; };
+  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Sin Proteína', 'Pollo', 'Camarones'], 'the row shows the choice');
+  assert.deepEqual(rows().map(shown), [null, null, null], 'a short full name shows no counter');
   assert.ok(rows().every((r) => r.querySelector('.dp .mopr input')), 'advisor Q1: each option keeps its price box');
   assert.equal(p.fld('Precio'), undefined, 'a group\'s price lives on its options');
   const nm = p.fld('Nombre').querySelector('input');
+  p.type(nm, 'Pad Thai de la casa con salsa tamarindo y');
+  assert.deepEqual(rows().map(shown), ['56/60', null, '53/60'], 'a full name near the limit shows its counter (≥ 50 of 60)');
+  assert.ok(rows().every((r) => !r.classList.contains('over')), 'near is a warning, not an error');
   p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
   assert.equal(lineOf(f), 'El nombre completo de la opción supera 60 letras', 'F2: the line under the Opciones block');
   assert.equal(lineOf(p.fld('Nombre')), null, 'F2: Nombre itself is not marked');
-  assert.ok(f.querySelector('.modblock').classList.contains('mk-inv'));
-  assert.ok(f.querySelector('.mk-lrow .mk-cnt').classList.contains('mk-cnterr'), 'SBS F2: «precio por opción» turns red with the block');
+  assert.ok(card.classList.contains('mk-inv'), 'F2: the required-choice card is marked');
   assert.ok(rows().some((r) => r.classList.contains('over')));
+  assert.ok(rows().every((r) => shown(r) !== null), 'past the limit every option shows its counter');
+  assert.ok(rows().some((r) => r.querySelector('.mk-cnt').classList.contains('over')), 'past the limit the counter is red');
   assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar');
   p.type(nm, 'Pad Thai Especial');
-  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Pad Thai Especial - Sin Proteína', 'Pad Thai Especial - Pollo', 'Pad Thai Especial - Camarones']);
+  assert.deepEqual(rows().map((r) => r.querySelector('.mk-dn').textContent), ['Sin Proteína', 'Pollo', 'Camarones'], 'the row still names the choice');
+  assert.deepEqual(rows().map(shown), [null, null, null], 'back under the limit: no counter');
   p.type(rows()[1].querySelector('.dp input'), '350');
   p.btn('Guardar').click();
   await settle(10);
@@ -279,10 +293,9 @@ test('«Cancelar» / «Cerrar» drop the WHOLE copy — text, section, price and
   const before = JSON.stringify(p.src());
   p.type(p.fld('Nombre').querySelector('input'), 'Otro nombre');
   p.type(p.fld('Precio').querySelector('input'), '999');
-  const grp = p.drawer().querySelector('.modgrp .mgmain');
-  grp.click(); await settle(5);
-  const ex = p.drawer().querySelector('.modgrp.open .mopr input');
-  assert.ok(ex, 'premise: an extras group opened, its price editable');
+  // STRUCTURE S1: the dish's extras cards are open by default; their prices editable as today (R4)
+  const ex = p.drawer().querySelector('.mk-ext.mk-open .mopr input');
+  assert.ok(ex, 'premise: an extras card, its price editable');
   p.type(ex, '77');
   p.btn('Cancelar').click();
   await settle(5);
@@ -300,8 +313,7 @@ test('Q2 — an extras-group price edited in the drawer is committed by «Guarda
   const p = await page();
   await p.signIn();
   await p.open('dimsum_01');
-  p.drawer().querySelector('.modgrp .mgmain').click(); await settle(5);
-  const ex = p.drawer().querySelector('.modgrp.open .mopr input');
+  const ex = p.drawer().querySelector('.mk-ext.mk-open .mopr input');   // STRUCTURE S1: the card's price (R4)
   const label = ex.getAttribute('aria-label').replace(/^Precio de /, '');
   p.type(ex, '77');
   assert.equal(p.btn('Guardar').disabled, false, 'an extras price alone is a change');
@@ -813,4 +825,1467 @@ test('U-CONFIRM-AUTH-CLEANUP — an auth event while the confirm is open tears i
     assert.deepStrictEqual(inertNow(p), inert0, `U-CONFIRM-AUTH-CLEANUP (${uid}): nothing the confirm made inert stays inert`);
     assert.equal(tabTrapped(p), false, `U-CONFIRM-AUTH-CLEANUP (${uid}): Tab is no longer trapped`);
   }
+});
+
+// ── STRUCTURE S1 — the drawer's «Opciones» cards (MOCKUP-portal-structure-edit v2 frame A / A2 / A3; PLAN-portal-structure-S1-ui r3) ──
+const ON = () => editable({ extrasAuthoring: true });
+const cardOf = (p, cat) => [...p.drawer().querySelectorAll('.mk-grp.mk-ext')].find((c) => c.querySelector('.mk-gtn').textContent === cat);
+const rowsOfCard = (c) => [...c.querySelectorAll('.mk-xopt')];
+
+test('S1 A — «Opciones»: «Sin extras», one open card per extras group the dish offers (checklist + today\'s editable prices); no dead control', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');   // Dim Sum offers Acompañamientos + Salsas
+  const f = p.fld('Opciones');
+  // advisor Q8 correction (11-11): v3's line only when the server serves the Extras page (extrasCatalog); absent ⇒ S1's line
+  assert.equal(f.querySelector('.mk-lrow .mk-cnt').textContent, 'en el orden que las ve el cliente', 'extrasCatalog absent: the S1 line');
+  const sw = f.querySelector('.mk-opcsw');
+  assert.equal(sw.querySelector('.mk-opcb').textContent, 'Sin extras');
+  assert.equal(sw.querySelector('.mk-opcs').textContent, 'Apagalo si este producto no lleva extras');
+  const tog = sw.querySelector('button.tog');
+  assert.equal(tog.getAttribute('role'), 'switch'); assert.equal(tog.getAttribute('aria-checked'), 'false'); assert.equal(tog.disabled, false);
+  assert.deepEqual([...f.querySelectorAll('.mk-grp.mk-ext .mk-gtn')].map((b) => b.textContent), ['Acompañamientos', 'Salsas']);
+  const salsas = cardOf(p, 'Salsas');
+  assert.match(salsas.querySelector('.mk-gts').textContent, /^Extras · opcionales · en \d+ productos$/);
+  assert.equal(salsas.querySelector('.mk-gsumt').firstChild.textContent, 'Todos activos en este producto');
+  assert.equal(salsas.querySelector('.mk-apponly').hidden, true);
+  assert.equal(salsas.querySelector('.mk-lnk').textContent, 'Ninguno');
+  const rows = rowsOfCard(salsas);
+  assert.equal(rows.length, 8);
+  assert.ok(rows.every((r) => r.querySelector('input[type=checkbox]').checked));
+  assert.ok(rows.every((r) => r.querySelector('.mopr input').disabled === false), 'R4: the prices stay editable');
+  const txt = p.drawer().textContent;
+  for (const absent of ['Editar en Extras', 'Quitar de este producto', 'Agregar grupo de extras', 'Agregar elección requerida']) assert.ok(!txt.includes(absent), `no ${absent} before S2 / S3`);
+  assert.equal(p.drawer().querySelector('.mk-grip'), null, 'R2: no grip, ever');
+});
+
+test('S1 — uncheck → «N de M activos» + «Solo en la app Sherpa»; Guardar writes the exclusion; with the drawer CLOSED a reload / branch switch is still held; revert → clean', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const salsas = cardOf(p, 'Salsas');
+  const cb = rowsOfCard(salsas)[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  assert.equal(salsas.querySelector('.mk-gsumt').firstChild.textContent, '7 de 8 activos en este producto');
+  assert.equal(salsas.querySelector('.mk-apponly').hidden, false);
+  assert.equal(salsas.querySelector('.mk-apponly').textContent, 'Solo en la app Sherpa');
+  assert.equal(salsas.querySelector('.mk-lnk').textContent, 'Marcar todos');
+  assert.ok(rowsOfCard(salsas)[1].classList.contains('mk-xoff'));
+  assert.equal(p.drawer().querySelector('.mk-dirty').hidden, false, '«Cambios sin guardar»');
+  p.btn('Guardar').click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  const key = SRC.extras.filter((x) => x.display.cat === 'Salsas')[1].key;
+  assert.deepEqual(p.src().structure.exposure.item_overrides.dimsum_01.deny_extras, [key]);
+  p.d.body.focus();
+  assert.equal(p.mods.shell.canLeave(), false, 'Codex plan r1 #1: a saved checklist edit still holds the reload / branch-switch guard');
+  await p.open('dimsum_01');
+  const back = rowsOfCard(cardOf(p, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  assert.equal(back.checked, false, 'reopened: the same');
+  back.checked = true; back.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().structure.exposure.item_overrides.dimsum_01, undefined, '[] deletes the field and the emptied override');
+  assert.equal(p.mods.shell.canLeave(), true, 'reverted → clean');
+});
+
+test('S1 Q8 — «Opciones» says «El orden de los grupos se define en Extras» ONLY when the server serves the Extras page (extrasCatalog true)', async () => {
+  for (const [over, line] of [
+    [{ extrasAuthoring: true, extrasCatalog: true }, 'El orden de los grupos se define en Extras'],
+    [{ extrasCatalog: true }, 'El orden de los grupos se define en Extras'],
+    [{ extrasAuthoring: true, extrasCatalog: false }, 'en el orden que las ve el cliente'],
+    [{ extrasAuthoring: true, extrasCatalog: 'true' }, 'en el orden que las ve el cliente'],
+  ]) {
+    const p = await page({ read: () => editable(over) });
+    await p.signIn();
+    await p.open('noodle_01');   // a required choice: the «Opciones» block shows with the switch on or off
+    assert.equal(p.fld('Opciones').querySelector('.mk-lrow .mk-cnt').textContent, line, `Q8 line for ${JSON.stringify(over)}`);
+  }
+});
+
+test('S1 A2 — «Sin extras» on: the extras cards grey out and their checks lock; the required choice stays; Guardar stamps the whole group', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const f = p.fld('Opciones');
+  assert.ok(f.querySelector('.mk-opc').classList.contains('mk-off'));
+  assert.equal(f.querySelector('.mk-opcs').textContent, 'Este producto no ofrece ningún extra');
+  assert.equal(f.querySelector('.mk-opcsw button.tog').getAttribute('aria-checked'), 'true');
+  assert.ok([...f.querySelectorAll('.mk-ext input[type=checkbox]')].every((c) => c.disabled));
+  assert.ok(f.querySelector('.mk-grp.mk-req'), 'the required choice stays');
+  p.btn('Guardar').click(); await settle(10);
+  for (const k of ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron']) assert.equal(p.src().items.find((i) => i.key === k).display.extras_policy, 'none', k);
+});
+
+test('S1 A3 — a card folds on its own (one line: what it is and how many); folding is never a change', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  cardOf(p, 'Salsas').querySelector('.mk-gt').click(); await settle(5);
+  const c = cardOf(p, 'Salsas');
+  assert.ok(!c.classList.contains('mk-open'));
+  assert.equal(c.querySelector('.mk-gb'), null);
+  assert.match(c.querySelector('.mk-gts').textContent, /^Extras · opcionales · 8 opciones · en \d+ productos$/);
+  assert.equal(c.querySelector('.mk-gt').getAttribute('aria-expanded'), 'false');
+  assert.ok(cardOf(p, 'Acompañamientos').classList.contains('mk-open'), 'the other card keeps its own state');
+  assert.equal(p.btn('Guardar').disabled, true); assert.equal(p.drawer().querySelector('.mk-dirty').hidden, true);
+});
+
+test('S1 R5 — the server switch OFF (absent): the checklist and «Sin extras» are dark, the prices still save (no regression)', async () => {
+  const p = await page();   // editable() carries no extrasAuthoring
+  await p.signIn();
+  await p.open('dimsum_01');
+  const f = p.fld('Opciones');
+  assert.equal(f.querySelector('.mk-opcsw button.tog').disabled, true);
+  assert.ok([...f.querySelectorAll('.mk-ext input[type=checkbox]')].every((c) => c.disabled));
+  assert.ok([...f.querySelectorAll('.mk-ext .mk-lnk')].every((b) => b.disabled));
+  const pi = rowsOfCard(cardOf(p, 'Salsas'))[0].querySelector('.mopr input');
+  p.type(pi, '41');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().extras.find((x) => x.key === SRC.extras.filter((y) => y.display.cat === 'Salsas')[0].key).price, 41);
+});
+
+test('S1 — a checklist edit counts as unsaved: closing asks first, «Cancelar» drops it', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const before = JSON.stringify(p.src());
+  cardOf(p, 'Salsas').querySelector('.mk-lnk').click(); await settle(5);   // «Ninguno»
+  assert.ok(rowsOfCard(cardOf(p, 'Salsas')).every((r) => r.classList.contains('mk-xoff')));
+  p.drawer().querySelector('.dwh button').click(); await settle(5);
+  assert.ok(p.drawer().querySelector('.mk-cfscrim'), 'the unsaved-edits confirm');
+  [...p.drawer().querySelectorAll('.mk-cf button')].find((b) => b.textContent.trim() === 'Seguir editando').click(); await settle(5);
+  p.btn('Cancelar').click(); await settle(5);
+  assert.equal(JSON.stringify(p.src()), before, '«Cancelar»: nothing written');
+});
+
+// ── STRUCTURE S1 — Codex build r1 (advisor: fix all 9, RED-first) ───────────────────────────────────────────────────────
+// S1 follow-up (advisor 11-12): the review's checklist line is the SERVER's — so this save is 5f's REAL editCatalogCore (extras
+// authoring ON) on the posted source, against the seed the page loaded as the published menu (a canned diff would be laxer: it
+// carried no checklist line, and the portal used to invent one)
+process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+{ const pe = req.resolve('./catalog/platform-extras'); if (!req.cache[pe]) req.cache[pe] = { id: pe, filename: pe, loaded: true, exports: { extrasCapabilities: () => ({ authoring: true }) } }; }
+// the server's S2 switch (5f catalog/platform-structure), OFF unless a cell turns it on — the P-6 cells run 5f's REAL handler with it on
+const S2_SERVER = { on: false };
+{ const ps = req.resolve('./catalog/platform-structure'); const real = req('./catalog/platform-structure');
+  req.cache[ps] = { id: ps, filename: ps, loaded: true, exports: { structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: S2_SERVER.on }) } }; }
+// the published menu realSave saves against: the seed, unless a cell serves another one (built by the portal's own writer)
+const REAL_LIVE = { src: null, pointer: null };   // pointer: the live active_version {version, generation} (an activation moves it)
+// OWNER-ONLY (Codex S2 UI r2 P2-11): every page that uses it signs in as the owner (E1). A manager path uses realBackend (5f's real
+// authorizeCatalogEdit resolves the caller; the real requestPublishCore records the request).
+const realSave = (call) => (async () => {
+  const { editCatalogCore } = req('./catalog/edit-catalog-handler');
+  const { sourceToBuildInputs } = req('./catalog/source-store');
+  const { buildCatalogV2 } = req('./catalog/form-menu-source');
+  const live = JSON.parse(JSON.stringify(REAL_LIVE.src || SRC)), T0 = '1700000000.000000001', T1 = '1700000001.000000001';
+  const st = { data: JSON.parse(JSON.stringify(live)), updateTime: T0 };
+  const doc = (path) => ({
+    get: async () => (path.endsWith('/meta/source') ? { exists: true, data: () => JSON.parse(JSON.stringify(st.data)), updateTime: st.updateTime }
+      : path.endsWith('/meta/active_version') ? { exists: true, data: () => (REAL_LIVE.pointer ? { ...REAL_LIVE.pointer } : { version: 'v-live' }) } : { exists: false, data: () => ({}) }),
+    set: async (data) => { st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
+    update: async (data, pre) => { if (!pre || pre.lastUpdateTime !== st.updateTime) { const e = new Error('FAILED_PRECONDITION'); e.code = 9; throw e; } st.data = data; st.updateTime = T1; return { writeTime: T1 }; },
+  });
+  const db = { collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }) };
+  const i = sourceToBuildInputs(live);
+  const b = buildCatalogV2(RID, { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras });
+  const readActiveBuilt = async () => ({ built: { ...b, extras: i.extras }, versionId: 'v-live', extraRecords: b.extras });
+  const owner = async () => ({ ok: true, uid: 'u_owner', role: 'owner', actor: 'o@x.hn' });
+  // with the S2 switch on, the add-product I/O exactly as 5f's own S2-core flow suite wires it (catalog/s2core-flow.test.js addProductOf) —
+  // new extras need it to be allocated; the S1 cells (switch off) keep today's call
+  const addProduct = S2_SERVER.on ? { readKeyMode: async () => 'id', hwmRef: () => ({ path: null, get: async () => ({ exists: false, data: () => undefined }) }),
+    registryKeysTaken: async () => new Set(), syncKds: async () => ({ pending: false, written: false, reason: 'superseded' }), readReservedKeys: async () => req('./catalog/reserved-keys').reservedKeySet(undefined) } : undefined;
+  const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, ...(addProduct ? { addProduct } : {}) }, { restaurantId: RID, source: call.body.source, baseSourceUpdateTime: T0, ...(call.body.deleted_ids_loaded_base ? { deleted_ids_loaded_base: call.body.deleted_ids_loaded_base } : {}),
+    ...(call.body.deleted_ids_reviewed !== undefined ? { deleted_ids_reviewed: call.body.deleted_ids_reviewed } : {}) }, {});   // Codex S2 UI r1 P2-11: the WHOLE claim contract
+  realSave.statuses.push(r.status);
+  return r.status === 200 ? okJson(r.body) : errJson(r.status, r.body);
+})();
+realSave.statuses = [];
+// ── S2 Codex r2 P2-11 — ONE real backend over ONE store: 5f's REAL getEditableCatalogCore, editCatalogCore and requestPublishCore over
+// 5f's own Firestore double (catalog/firestore-fake: every write stamps a new updateTime; update() enforces its precondition) and the
+// membership double its publish-request suite uses (merchant/_fake-db). The caller is resolved by 5f's REAL authorizeCatalogEdit /
+// resolveAccess from the bearer, so a manager is a manager; the body travels VERBATIM (nothing in the harness forwards or drops a field);
+// the stored deletion claim persists across requests; an activation is a real pointer write.
+const UID = { owner: 'uOwner01', manager: 'uMgr01' };
+function realBackend({ rid, live, pointer }) {
+  const { makeDb } = req('./catalog/firestore-fake');
+  const { createFakeDb } = req('./merchant/_fake-db');
+  const { Timestamp } = req('firebase-admin/firestore');
+  const { buildSourceCandidate } = req('./catalog/candidate-validate');
+  const { sourceToBuildInputs } = req('./catalog/source-store');
+  const { buildCatalogV2 } = req('./catalog/form-menu-source');
+  const { getActiveVersionId } = req('./catalog/catalog-firestore');
+  const { authorizeCatalogEdit } = req('./catalog/catalog-edit-auth');
+  const { editCatalogCore } = req('./catalog/edit-catalog-handler');
+  const { getEditableCatalogCore } = req('./catalog/portal-reads');
+  const PR = req('./catalog/publish-request');
+  const fs = makeDb();
+  const rtdb = createFakeDb({
+    brands: { [rid]: { name: rid, active: true, locations: { [rid]: 'member' }, activation: { state: 'legacy', since: 1 } } },
+    restaurants: { [rid]: { identity: { name: rid } } },
+    brand_members: { [rid]: { owners: { [UID.owner]: { granted_at: 1 } }, managers: { [rid]: { [UID.manager]: { granted_at: 1 } } },
+      manager_perms: { [UID.manager]: { can_edit_menu: true } }, profiles: { [UID.manager]: { name: 'Dania Reyes', email: 'dania@m.hn' } } } },
+  });
+  const meta = (id) => fs.collection('restaurants').doc(rid).collection('meta').doc(id);
+  meta('source').set(JSON.parse(JSON.stringify(live)));
+  meta('active_version').set({ ...pointer });
+  // the production reader's shape (publish-request.js readActiveBuiltFrom / 5f's suite builtOf): the built catalog AND the live extra RECORDS
+  const li = sourceToBuildInputs(live);
+  const liveBuilt = { ...buildCatalogV2(rid, { formData: li.formData, priceTable: li.priceTable }), extras: li.extras };
+  const liveRecords = buildSourceCandidate(rid, live).built.extras;
+  const readActiveBuilt = async () => ({ built: liveBuilt, versionId: await getActiveVersionId(fs, rid), extraRecords: liveRecords });
+  // portal/functions.js decodeUpdateTimeForEdit (not exported): the inverse of encodeUpdateTime, nanoseconds kept
+  const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [a, b] = v.split('.'); return /^\d+$/.test(a || '') && /^\d+$/.test(b || '') ? new Timestamp(Number(a), Number(b)) : v; };
+  // 5f's REAL add-product I/O over the same store; the profile's pricing_key_mode is the seeded source's own key_mode (tools/seed-source-store:
+  // «the legacy code-seeded brands' mode is their default (= their seeded profile pricing_key_mode)») — data, never a rid literal
+  fs.collection('restaurants').doc(rid).set({ pricing_key_mode: live.key_mode });
+  const addProduct = req('./catalog/add-product-io').addProductIo({ fs, rtdb });
+  const B = { who: 'owner', statuses: [], fs, rid };
+  const rq = (call, method) => ({ method, query: { restaurantId: rid }, get: (h) => (String(h).toLowerCase() === 'authorization' ? call.auth : undefined) });
+  const authorize = (r, q) => authorizeCatalogEdit({ db: rtdb, verifyIdToken: async () => ({ uid: UID[B.who] }) }, q, r);
+  const out = (r) => (r.status === 200 ? okJson(r.body) : errJson(r.status, r.body));
+  B.on = {
+    getEditableCatalog: (call) => (async () => out(await getEditableCatalogCore({ db: rtdb, fsdb: fs, readActiveVersionId: getActiveVersionId, readActiveBuilt, authorize, now: () => 6000 }, rq(call, 'GET'))))(),
+    editCatalog: (call) => (async () => { const r = await editCatalogCore({ db: fs, authorize, readActiveBuilt, toPrecondition, addProduct }, call.body, rq(call, 'POST')); B.statuses.push(r.status); return out(r); })(),
+    catalogRequestPublish: (call) => (async () => { const r = await PR.requestPublishCore({ fs, db: rtdb, now: () => 5000, readActiveBuilt, readDraft: (x) => PR.readDraftFrom(fs, x), addProduct }, { uid: UID[B.who], token: {} }, call.body); B.statuses.push(`request ${r.status}`); return out(r); })(),
+    getMyBranches: () => okJson({ brands: [{ brand_id: rid, name: rid }], membership_writes_enabled: false,
+      branches: [{ ...E1().branches[0], rid, brand_id: rid, role: B.who, caps: [...req('./access/membership').capsFor(B.who === 'owner' ? { owner: true } : { manager: true, manager_menu: true }, 'member')] }] }),
+  };
+  B.activate = (p) => meta('active_version').set({ ...p });
+  B.claim = async () => { const d = (await meta('source').get()).data(); return d && d.deleted_ids ? JSON.parse(JSON.stringify(d.deleted_ids)) : null; };
+  B.request = async () => { const d = await PR.requestRefOf(fs, rid).get(); return d.exists ? d.data() : null; };
+  return B;
+}
+const salsaName = (i) => SRC.extras.filter((x) => x.display.cat === 'Salsas')[i].display.name;
+test('S1 r1 #1 — a checklist-only change reaches the REVIEW: its line is shown, it counts, «Publicar» is enabled', async () => {
+  const p = await page({ read: ON, on: { editCatalog: realSave } });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const cb = rowsOfCard(cardOf(p, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(80);
+  const body = p.d.getElementById('mbody').textContent;
+  assert.ok(body.includes(`Sin ${salsaName(1)} (solo en la app Sherpa)`), `the review says what changes (${body.slice(0, 160)})`);
+  assert.ok(!body.includes('No hay cambios sin publicar'));
+  assert.equal(p.d.getElementById('pubbtn').disabled, false, 'it counts: «Publicar» is enabled');
+  // Codex S1 follow-up r1 P2: the «Productos» badge counts the rendered sentences — an extras-only change is «1», never «0»
+  const prodGroup = [...p.d.querySelectorAll('#mbody .mgroup')].find((g) => g.querySelector('.mglabel span').textContent === 'Productos');
+  assert.equal(prodGroup.querySelector('.mgn').textContent, '1', 'the Productos badge counts the checklist sentence');
+});
+
+test('S1 r1 #2 — a FOLDED required-choice card: no error, Guardar off while clean, the name rule still holds, save and reopen work', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  p.drawer().querySelector('.mk-grp.mk-req .mk-gt').click(); await settle(5);
+  assert.ok(!p.drawer().querySelector('.mk-grp.mk-req').classList.contains('mk-open'), 'premise: folded');
+  assert.equal(p.btn('Guardar').disabled, true, 'a clean copy: Guardar off');
+  const nm = p.fld('Nombre').querySelector('input');
+  p.type(nm, 'Pad Thai de la casa con salsa de tamarindo y maní tostado');
+  assert.equal(p.btn('Guardar').title, 'Acortá el nombre para guardar', 'the derived-name rule still judges the folded options');
+  p.type(nm, 'Pad Thai Especial');
+  assert.equal(p.drawer().querySelector('.mk-dirty').hidden, false, 'the dirty mark follows');
+  assert.equal(p.btn('Guardar').disabled, false);
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().items.find((i) => i.key === 'noodle_01_pollo').display.name, 'Pad Thai Especial - Pollo');
+  await p.open('noodle_01');
+  assert.ok(p.drawer().querySelector('.mk-grp.mk-req'), 'reopened');
+});
+
+test('S1 r1 #3 — under «Sin extras» the prices and the fold stay usable (only the checklist is locked)', async () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  assert.ok(!/\.mk-[^{]*\{[^}]*pointer-events\s*:\s*none/.test(css), 'no S1 rule blocks the pointer');
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const pi = rowsOfCard(cardOf(p, 'Salsas'))[0].querySelector('.mopr input');
+  assert.equal(pi.disabled, false, 'the price stays editable (R4)');
+  p.type(pi, '43');
+  cardOf(p, 'Acompañamientos').querySelector('.mk-gt').click(); await settle(5);
+  assert.ok(!cardOf(p, 'Acompañamientos').classList.contains('mk-open'), 'the fold still works');
+  p.btn('Guardar').click(); await settle(10);
+  assert.equal(p.src().extras.find((x) => x.display.name === salsaName(0)).price, 43);
+});
+
+test('S1 r1 #8 — without the shared evaluator «Opciones» says «No pudimos cargar los extras.»; other fields still save', async () => {
+  const p = await page({ read: ON, evaluator: false });
+  await p.signIn();
+  await p.open('dimsum_01');
+  const f = p.fld('Opciones');
+  assert.ok(f, 'the block stays');
+  assert.equal(f.querySelector('.mk-opcgap').textContent, 'No pudimos cargar los extras.');
+  p.type(p.fld('Nombre').querySelector('input'), 'Wonton picante');
+  assert.equal(p.btn('Guardar').disabled, false, 'the hold is scoped to the extras fields');
+});
+
+test('S1 r1 #9 — the required choice\'s helper line is table H\'s, with the dish\'s real names, following the name as it is typed', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  await p.open('noodle_01');
+  const line = () => p.drawer().querySelector('.mk-grp.mk-req .mk-gsub').textContent;
+  assert.equal(line(), 'En el menú cada opción se llama «Pad Thai - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
+  p.type(p.fld('Nombre').querySelector('input'), 'Pad Thai Especial');
+  assert.equal(line(), 'En el menú cada opción se llama «Pad Thai Especial - Sin Proteína», «… - Pollo»: el nombre se arma solo.');
+});
+
+// ── STRUCTURE S2 — the «Extras» page (PLAN-portal-structure-S2-ui r3 §2 items 1–3; MOCKUP frame X; names TEXT in S2-core) ─────
+// the real getEditableCatalog serves the deletion baseline with the Extras page (P-1); null = unreadable (Codex S2 UI r1 P2-9)
+const XON = () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 } });
+const tabs = (p) => p.d.getElementById('prodtabs');
+const tabBtn = (p, label) => [...tabs(p).querySelectorAll('[role=tab]')].find((t) => t.textContent === label);
+const xpage = (p) => p.d.getElementById('xsplit');
+const railRows = (p) => [...xpage(p).querySelectorAll('.rail .railitem')];
+const xrows = (p) => [...xpage(p).querySelectorAll('.detail .irow.mk-xrow')];
+const extrasIn = (src, g) => src.extras.filter((e) => e.display.cat === g);
+// a row's name: a «Nuevo» row carries it in its field (advisor 11-12), a published row as text
+const rowName = (r) => { const i = r.querySelector('.nm input[aria-label="Nombre del extra"]'); return i ? i.value : r.querySelector('.nm').textContent; };
+
+test('S2 X — switch OFF (extrasCatalog absent): no «Menú / Extras» tabs, no Extras page; today\'s Productos', async () => {
+  const p = await page({ read: ON });
+  await p.signIn();
+  assert.ok(tabs(p).classList.contains('hidden'), 'no tab bar without the server’s extrasCatalog');
+  assert.ok(xpage(p).classList.contains('hidden'), 'no Extras page');
+});
+
+test('S2 X — switch ON: «Menú» selected; «Extras» shows the rail (the ONE order, «en N productos», the count) and the first group\'s detail', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  assert.ok(!tabs(p).classList.contains('hidden'), 'the tab bar shows');
+  assert.equal(tabs(p).querySelector('[role=tablist]').getAttribute('role'), 'tablist');
+  assert.equal(tabBtn(p, 'Menú').getAttribute('aria-selected'), 'true', '«Menú» is the default tab');
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(tabBtn(p, 'Extras').getAttribute('aria-selected'), 'true');
+  assert.ok(!xpage(p).classList.contains('hidden') && p.d.querySelector('#viewmenu > .split:not(#xsplit)').classList.contains('hidden'), 'the Extras page replaces the menu split');
+  const src = p.src(); const groups = src.structure.extra_categories;
+  assert.deepEqual(railRows(p).map((r) => r.querySelector('.rtext b').textContent), groups, 'the rail: every group in the ONE order');
+  const r0 = railRows(p)[0];
+  assert.match(r0.querySelector('.rtext span').textContent, /^en \d+ productos?$/, '«en N productos»');
+  assert.equal(r0.querySelector('.rcount').textContent, String(extrasIn(src, groups[0]).length), 'its extras');
+  assert.ok(r0.classList.contains('on'), 'the first group is selected');
+  const head = xpage(p).querySelector('.dhead');
+  assert.equal(head.querySelector('.dtitle').textContent, groups[0]);
+  assert.equal(head.querySelector('.dtitle').getAttribute('contenteditable'), null, 'S2-core: the group name is TEXT (no rename)');
+  assert.match(head.querySelector('.dcount').textContent, /^\d+ extras? · en \d+ productos?$/, '«{n} extras · en {N} productos»');
+  const warn = xpage(p).querySelector('.mk-xwarn');
+  assert.ok(warn && /^Este grupo se usa en \d+ productos — los cambios aplican a todos\.$/.test(warn.textContent.trim()), 'the shared warning (frame X)');
+  assert.equal(xrows(p).length, extrasIn(src, groups[0]).length, 'one row per extra');
+  const x0 = extrasIn(src, groups[0])[0];
+  const row = xrows(p)[0];
+  assert.equal(row.querySelector('.nm').textContent.trim(), x0.display.name);
+  assert.equal(row.querySelector('[contenteditable]'), null, 'S2-core: the extra’s name is TEXT');
+  assert.equal(row.querySelector('.price input').getAttribute('aria-label'), `Precio de ${x0.display.name}`);
+  assert.equal(row.querySelector('button.del').getAttribute('aria-label'), `Quitar ${x0.display.name}`);
+});
+
+test('S2 X — a price typed on the Extras page lands in the draft (the guarded setter); the row is marked «Cambios sin publicar»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  const x0 = extrasIn(p.src(), g)[0];
+  const inp = xrows(p)[0].querySelector('.price input');
+  p.type(inp, String(x0.price + 7)); await settle(10);
+  assert.equal(p.src().extras.find((e) => e.key === x0.key).price, x0.price + 7, 'the price is in the draft');
+  const row = xrows(p)[0];
+  assert.ok(row.querySelector('.price').classList.contains('chg'), 'the changed price is marked');
+  assert.equal(row.querySelector('.tag.mk-ftag').textContent, 'Cambios sin publicar');
+});
+
+test('S2 X — another group in the rail: its detail; back to «Menú» shows the menu again', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const groups = p.src().structure.extra_categories;
+  railRows(p)[1].click(); await settle(10);
+  assert.ok(railRows(p)[1].classList.contains('on'));
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1]);
+  tabBtn(p, 'Menú').click(); await settle(10);
+  assert.ok(xpage(p).classList.contains('hidden') && !p.d.querySelector('#viewmenu > .split:not(#xsplit)').classList.contains('hidden'), 'the menu is back');
+});
+
+// ── STRUCTURE S2 — X2 the remove confirm (MOCKUP frame X2; plan §2 item 4, §5.2) ──────────────────────────────────────────────
+const x2 = (p) => p.d.querySelector('#xscrim.show .modal');
+async function newExtraOnPage(p, name, price) {
+  // the page's own write path: a keyless extra added through the ONE mutator (the inline «Agregar extra» row lands in its own step)
+  const g = p.src().structure.extra_categories[0];
+  const E = await import('./editor.js');
+  assert.equal(E.applyExposureOps(p.mods.app.state.draft, [{ op: 'extra.add', group: g, ref: 'tmp:x2-new-0001', name, price }], { extrasCatalog: true }).ok, true);
+  tabBtn(p, 'Extras').click(); await settle(10);   // re-selecting the tab repaints from the live draft, as a user's click does
+  return g;
+}
+test('S2 X2 — the trash opens «¿Quitar {extra} de {grupo}?»: focus on «Cancelar», Tab stays inside, Escape cancels and focus returns to the trash', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  const x0 = extrasIn(p.src(), g)[0];
+  const trash = xrows(p)[0].querySelector('button.del');
+  trash.click(); await settle(5);
+  const m = x2(p);
+  assert.ok(m, 'the confirm is open');
+  assert.equal(m.querySelector('.mt').textContent, `¿Quitar ${x0.display.name} de ${g}?`);
+  assert.match(m.querySelector('.ms').textContent, /^Extras · en \d+ productos?$/);
+  assert.match(m.querySelector('.eqbody').textContent, /^Desaparece del menú en (los \d+ productos que usan|el producto que usa) este grupo\. Tus pedidos pasados no cambian\.$/);
+  const [cancel, quitar] = [...m.querySelectorAll('.mf button')];
+  assert.deepEqual([cancel.textContent, quitar.textContent, quitar.className], ['Cancelar', 'Quitar', 'btn ghost mk-quiet-danger']);
+  assert.equal(p.d.activeElement, cancel, 'focus on «Cancelar»');
+  quitar.focus();
+  quitar.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+  assert.equal(p.d.activeElement, cancel, 'Tab from the last button wraps to the first (focus stays inside)');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(x2(p), null, 'Escape closes it');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), `Quitar ${x0.display.name}`, 'focus returns to the trash');
+  assert.ok(p.src().extras.some((e) => e.key === x0.key), 'nothing written');
+});
+test('S2 X2 — «Quitar» on a NEW (unsaved) extra removes it through the one mutator; nothing is claimed; the row is gone', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await newExtraOnPage(p, 'Arroz frito', 40);
+  const row = xrows(p).find((r) => rowName(r).startsWith('Arroz frito'));
+  assert.ok(row.querySelector('.tag.new'), 'premise: «Nuevo»');
+  row.querySelector('button.del').click(); await settle(5);
+  [...x2(p).querySelectorAll('.mf button')][1].click(); await settle(10);
+  assert.equal(x2(p), null, 'the confirm closed');
+  assert.ok(!p.src().extras.some((e) => e.ref === 'tmp:x2-new-0001'), 'the new extra is gone from the draft');
+  assert.ok(!xrows(p).some((r) => rowName(r).startsWith('Arroz frito')), 'and from the page');
+  assert.equal(p.src().deleted_ids, undefined, 'a never-published extra claims nothing');
+});
+test('S2 X2 — the LAST extra of a group cannot be removed: its trash is disabled with «Un grupo necesita al menos un extra»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  // a group of one: created through the one mutator (the writer refuses removing a group's last extra: extras_group_empty)
+  const E = await import('./editor.js');
+  assert.equal(E.applyExposureOps(p.mods.app.state.draft, [{ op: 'group.create', group: 'Uno solo', extras: [{ ref: 'tmp:one-0001', name: 'Único', price: 10 }], attach: { mode: 'none' } }], { extrasCatalog: true }).ok, true);
+  tabBtn(p, 'Extras').click(); await settle(10);   // re-selecting the tab repaints from the live draft, as a user's click does
+  railRows(p).find((r) => r.querySelector('.rtext b').textContent === 'Uno solo').click(); await settle(10);
+  const del = xrows(p)[0].querySelector('button.del');
+  assert.equal(del.disabled, true, 'the last extra’s trash is disabled');
+  assert.equal(del.title, 'Un grupo necesita al menos un extra');
+});
+test('S2 §3.4 — a draft carrying a removal claim (stored by 5f’s REAL persistDeletionClaim) saves WITH the served baseline; without a claim, none', async () => {
+  const { persistDeletionClaim } = req('./catalog/identity-partition');
+  const base = { version: 'v-live', generation: 3 };
+  const { claim } = persistDeletionClaim({ ids: ['xid_rice_white'], live: base });
+  const withClaim = () => { const b = editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: base }); b.source.deleted_ids = claim; return b; };
+  for (const [read, want] of [[withClaim, base], [() => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: base }), undefined]]) {
+    const p = await page({ read, on: { editCatalog: () => okJson({ token: 'ET', updateTime: 'T2', baseActiveVersionId: 'v-live', sourceHash: 'h', diff: { added: [], removed: [], renamed: [], largeChangeSet: [], changed: [] } }) } });
+    await p.signIn();
+    const x = p.src().extras[0];
+    p.mods.app.state.draft.state.extras.find((e) => e.key === x.key).price += 1;   // any edit, so there is something to save
+    p.d.getElementById('review').click(); await settle(80);
+    const save = p.calls.filter((c) => c.fn === 'editCatalog').pop();
+    assert.ok(save, 'premise: the review saved');
+    assert.deepEqual(save.body.deleted_ids_loaded_base, want, want ? 'a claim ⇒ the served baseline rides the save' : 'no claim ⇒ no baseline field');
+  }
+});
+
+// ── STRUCTURE S2 — X3 «Crear grupo» on the page (MOCKUP x4b; plan §2 items 5 / 5b, §3.5) ──────────────────────────────────────
+const x3 = (p) => p.d.querySelector('#xcreate.show .modal');
+const openX3 = async (p) => { xpage(p).querySelector('.rail .railadd').click(); await settle(5); return x3(p); };
+test('S2 X3 — «Crear grupo» at the rail’s foot opens the sheet: focus in «Nombre del grupo»; «Crear grupo» off until a name + one complete extra', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const m = await openX3(p);
+  assert.ok(m, 'the sheet is open');
+  assert.equal(m.querySelector('.mt').textContent, 'Crear grupo');
+  assert.equal(p.d.activeElement && p.d.activeElement.id, 'xcg-name', 'focus in the name');
+  const go = () => [...x3(p).querySelectorAll('.mf button')].find((b) => b.textContent === 'Crear grupo');
+  assert.equal(go().disabled, true);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .moname'), 'Maní'); await settle(5);
+  const priceIn = x3(p).querySelector('.mopt .mopr input'); priceIn.focus();   // a user types into a focused field
+  p.type(priceIn, '15'); await settle(5);
+  assert.equal(go().disabled, false, 'a name and one complete extra');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Precio', 'focus stays in the field being typed (re-render keeps it)');
+});
+test('S2 X3 — «Crear grupo» creates the group through the ONE mutator: it is selected in the rail; its extra is «Nuevo»; the bar counts it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .moname'), 'Maní'); await settle(5);
+  p.type(x3(p).querySelector('.mopt .mopr input'), '15'); await settle(5);
+  [...x3(p).querySelectorAll('.mf button')].find((b) => b.textContent === 'Crear grupo').click(); await settle(10);
+  assert.equal(x3(p), null, 'the sheet closed');
+  assert.ok(p.src().structure.extra_categories.includes('Toppings'), 'the group is in the draft');
+  const on = railRows(p).find((r) => r.classList.contains('on'));
+  assert.equal(on && on.querySelector('.rtext b').textContent, 'Toppings', 'the new group is selected');
+  assert.ok(xrows(p)[0].querySelector('.tag.new'), 'its extra is «Nuevo»');
+});
+test('S2 X3 — dismissing a DIRTY sheet asks «¿Descartar los cambios?»: «Seguir editando» keeps every input; «Descartar» closes it; a clean sheet just closes', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  assert.equal(x3(p), null, 'a clean sheet closes at once');
+  assert.ok(p.d.activeElement && p.d.activeElement.classList.contains('railadd'), 'focus returns to «Crear grupo»');
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Toppings'); await settle(5);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  const cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm');
+  const [drop, keep] = [...cf.querySelectorAll('.mf button')];
+  assert.deepEqual([drop.textContent, keep.textContent], ['Descartar', 'Seguir editando'], 'the drawer confirm\u2019s order');
+  assert.equal(p.d.activeElement, keep, 'focus on «Seguir editando»');
+  keep.click(); await settle(5);
+  assert.equal(x3(p).querySelector('#xcg-name').value, 'Toppings', '«Seguir editando» keeps the input exactly');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+  [...p.d.querySelector('#xscrim.show .modal').querySelectorAll('.mf button')][0].click(); await settle(5);
+  assert.equal(x3(p), null, '«Descartar» closes the sheet');
+  assert.ok(!p.src().structure.extra_categories.includes('Toppings'), 'nothing was written');
+});
+
+// ── STRUCTURE S2 — «Agregar extra», the detail's inline new row (plan r3 §2 item 3, §3.5 row 2; MOCKUP frame X: the button in
+// .dhead .dright, the committed row .irow.mk-xrow.mk-added «Nuevo»; the input row reuses X3's row copy — no new strings) ─────────
+const addBtn = (p) => xpage(p).querySelector('.detail .dhead .dright button.btn');
+const newRow = (p) => xpage(p).querySelector('.detail .irow.mk-xnew');
+const key = (p, target, k) => target.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+async function openAdd(p) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(addBtn(p).textContent, 'Agregar extra');
+  addBtn(p).click(); await settle(5);
+  return newRow(p);
+}
+test('S2 X+ — «Agregar extra» appends ONE inline row at the list’s foot: focus in «Nombre del extra»; the draft untouched; a second press adds no second row', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  assert.ok(r, 'the inline row is drawn');
+  const rows = [...xpage(p).querySelectorAll('.detail .irow')];
+  assert.equal(rows[rows.length - 1], r, 'at the list’s foot');
+  const nm = r.querySelector('input[aria-label="Nombre del extra"]');
+  assert.equal(p.d.activeElement, nm, 'focus in the name');
+  assert.equal(nm.placeholder, 'Nombre del extra');
+  const pr = r.querySelector('.price input');
+  assert.deepEqual([pr.getAttribute('aria-label'), pr.placeholder], ['Precio', 'Sin precio']);
+  assert.equal(r.querySelector('button.del').getAttribute('aria-label'), 'Quitar extra');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'nothing is pending yet: the draft is untouched');
+  addBtn(p).click(); await settle(5);
+  assert.equal(xpage(p).querySelectorAll('.detail .irow.mk-xnew').length, 1, 'still ONE inline row');
+  assert.equal(p.d.activeElement, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'focus back in its name');
+});
+test('S2 X+ — Enter in a COMPLETE row commits ONE extra.add: the extra is «Nuevo» in the list and the draft; the bar counts it; focus on «Agregar extra»', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Arroz frito'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus();
+  p.type(pr, '40'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  assert.equal(newRow(p), null, 'the inline row is gone');
+  const added = extrasIn(p.src(), g);
+  assert.equal(added.length, n0 + 1, 'the extra is in the draft');
+  assert.deepEqual([added[added.length - 1].display.name, added[added.length - 1].price, typeof added[added.length - 1].key], ['Arroz frito', 40, 'undefined'], 'a keyless new extra');
+  const last = xrows(p)[xrows(p).length - 1];
+  assert.ok(last.querySelector('.tag.new') && rowName(last) === 'Arroz frito', 'the row is «Nuevo»');
+  assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar', 'the bar counts it');
+  assert.equal(p.d.activeElement, addBtn(p), 'focus on «Agregar extra», ready for the next one');
+});
+test('S2 X+ — a started row shows X3’s lines and Enter does not commit it; focus LEAVING a complete row commits it, an incomplete one stays', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus();
+  p.type(pr, '0'); await settle(5);
+  assert.ok(xpage(p).textContent.includes('El precio debe ser al menos L 1.'), 'X3’s price line');
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  assert.equal(extrasIn(p.src(), g).length, n0, 'an incomplete row is never committed');
+  railRows(p)[0].focus(); await settle(10);
+  assert.ok(newRow(p), 'focus leaving an INCOMPLETE row keeps it');
+  assert.equal(extrasIn(p.src(), g).length, n0);
+  const pr2 = newRow(p).querySelector('.price input'); pr2.focus();
+  p.type(pr2, '15'); await settle(5);
+  railRows(p)[0].focus(); await settle(10);
+  assert.equal(newRow(p), null, 'focus leaving a COMPLETE row commits it');
+  assert.equal(extrasIn(p.src(), g).length, n0 + 1, 'committed through the ONE mutator');
+});
+test('S2 X+ — Escape in the row, or its trash, drops it: nothing written, focus back on «Agregar extra»', async () => {
+  const p = await page({ read: XON });
+  let r = await openAdd(p);
+  const g = p.src().structure.extra_categories[0];
+  const n0 = extrasIn(p.src(), g).length;
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  key(p, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Escape'); await settle(5);
+  assert.equal(newRow(p), null, 'Escape drops it');
+  assert.equal(p.d.activeElement, addBtn(p), 'focus back on «Agregar extra»');
+  addBtn(p).click(); await settle(5);
+  r = newRow(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  newRow(p).querySelector('button.del').click(); await settle(5);
+  assert.equal(newRow(p), null, 'the trash drops it');
+  assert.equal(p.d.activeElement, addBtn(p));
+  assert.equal(extrasIn(p.src(), g).length, n0, 'nothing written');
+});
+test('S2 X+ — leaving with a DIRTY row (another group, «Menú») asks «¿Descartar los cambios?»: «Seguir editando» keeps it; «Descartar» drops it and leaves; a clean row just goes', async () => {
+  const p = await page({ read: XON });
+  let r = await openAdd(p);
+  const groups = p.src().structure.extra_categories;
+  railRows(p)[1].click(); await settle(10);
+  assert.equal(newRow(p), null, 'a clean row just goes');
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1]);
+  addBtn(p).click(); await settle(5);
+  r = newRow(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);
+  railRows(p)[0].click(); await settle(10);
+  let cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm');
+  const [, keep] = [...cf.querySelectorAll('.mf button')];
+  keep.click(); await settle(5);
+  assert.equal(newRow(p).querySelector('input[aria-label="Nombre del extra"]').value, 'Maní', '«Seguir editando» keeps the input');
+  assert.equal(p.d.activeElement, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'focus back on the last edited field');
+  assert.equal(xpage(p).querySelector('.dhead .dtitle').textContent, groups[1], 'still on the same group');
+  tabBtn(p, 'Menú').click(); await settle(10);
+  cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf, 'the «Menú» tab asks too');
+  cf.querySelectorAll('.mf button')[0].click(); await settle(10);
+  assert.ok(xpage(p).classList.contains('hidden'), '«Descartar» leaves');
+  tabBtn(p, 'Extras').click(); await settle(10);
+  assert.equal(newRow(p), null, 'the row is gone');
+  assert.ok(!extrasIn(p.src(), groups[1]).some((e) => e.display.name === 'Maní'), 'nothing written');
+});
+
+// ── STRUCTURE S2 — X4 / X4b, the ONE group order on the Extras rail (plan r3 §2 item 8; MOCKUP x4 / x4b) ─────────────────────
+const rrows = (p) => [...xpage(p).querySelectorAll('.rail .rrow')];
+const gripOf = (p, g) => rrows(p).find((r) => r.querySelector('.railitem').dataset.group === g).querySelector(':scope > button.rgrip');
+const pairOf = (p, g) => rrows(p).find((r) => r.querySelector('.railitem').dataset.group === g).querySelector('.mk-updown');
+const pairBtn = (p, g, label) => [...pairOf(p, g).querySelectorAll('button')].find((b) => b.textContent === label);
+async function onExtras(p) { await p.signIn(); tabBtn(p, 'Extras').click(); await settle(10); return p.src().structure.extra_categories.slice(); }
+test('S2 X4b — each rail row is a .rrow: the select button and the grip are SIBLINGS (no button inside a button); the grip «Mover {G}», collapsed, «Arrastrá para ordenar»', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  assert.equal(rrows(p).length, groups.length);
+  assert.equal(xpage(p).querySelectorAll('.rail button button').length, 0, 'no button inside a button');
+  for (const g of groups) {
+    const grip = gripOf(p, g);
+    assert.deepEqual([grip.getAttribute('aria-label'), grip.getAttribute('aria-expanded'), grip.title], [`Mover ${g}`, 'false', 'Arrastrá para ordenar']);
+  }
+  assert.equal(xpage(p).querySelector('.mk-updown'), null, 'the pair is hidden until a grip is activated');
+});
+test('S2 X4b — the grip reveals «Subir» / «Bajar» (aria-expanded): at the top «Subir» is disabled and a press there writes nothing; Escape or the grip again closes them, focus back on the grip', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  gripOf(p, groups[0]).click(); await settle(5);
+  assert.equal(gripOf(p, groups[0]).getAttribute('aria-expanded'), 'true');
+  assert.equal(pairOf(p, groups[0]).getAttribute('aria-label'), `Mover ${groups[0]}`);
+  assert.deepEqual([...pairOf(p, groups[0]).querySelectorAll('button')].map((b) => [b.textContent, b.getAttribute('aria-disabled'), b.disabled]), [['Subir', 'true', false], ['Bajar', null, false]], 'at the top «Subir» is disabled');
+  pairBtn(p, groups[0], 'Subir').focus();
+  pairBtn(p, groups[0], 'Subir').click(); await settle(5);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'a boundary press writes nothing');
+  assert.equal(p.d.activeElement, pairBtn(p, groups[0], 'Subir'), 'the end-state «Subir» keeps focus (aria-disabled, never a jump)');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'and dirties nothing');
+  key(p, pairBtn(p, groups[0], 'Bajar'), 'Escape'); await settle(5);
+  assert.equal(pairOf(p, groups[0]), null, 'Escape closes them');
+  assert.equal(p.d.activeElement, gripOf(p, groups[0]), 'focus back on the grip');
+  gripOf(p, groups[0]).click(); await settle(5);
+  gripOf(p, groups[0]).click(); await settle(5);
+  assert.equal(pairOf(p, groups[0]), null, 'the grip again closes them');
+  assert.equal(p.d.activeElement, gripOf(p, groups[0]));
+});
+test('S2 X4b — «Bajar» moves the group one place through ONE group.order: the pair stays on the moved row, focus stays on the moved group’s «Bajar»; announced; the bar «1 cambio sin publicar · 1 grupo»', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const g = groups[0];
+  gripOf(p, g).click(); await settle(5);
+  pairBtn(p, g, 'Bajar').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, [groups[1], g, ...groups.slice(2)], 'one place down');
+  assert.equal(rrows(p)[1].querySelector('.railitem').dataset.group, g, 'the rail follows');
+  assert.ok(pairOf(p, g), 'the pair stays open on the moved row');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Bajar'), 'focus stays on the moved group');
+  assert.equal(p.d.getElementById('xlive').textContent, `${g} · 2.º lugar`, 'announced politely');
+  assert.equal(p.d.getElementById('rbtxt').textContent, '1 cambio sin publicar · 1 grupo', 'the bar counts the group');
+  pairBtn(p, g, 'Subir').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'back up: the original order');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Subir'), 'at the top focus STAYS on the pressed «Subir» (now aria-disabled)');
+  assert.equal(pairBtn(p, g, 'Subir').getAttribute('aria-disabled'), 'true');
+  pairBtn(p, g, 'Subir').click(); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, groups, 'an aria-disabled press writes nothing');
+  assert.equal(p.d.getElementById('rbtxt').textContent, 'Revisá si hay algo sin publicar', 'and dirties nothing');
+  assert.equal(p.d.activeElement, pairBtn(p, g, 'Subir'), 'focus still on «Subir»');
+});
+test('S2 X4 — the keyboard on the grip: ArrowDown / ArrowUp move the group one place (the same op), focus stays on its grip', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const g = groups[1];
+  gripOf(p, g).focus();
+  key(p, gripOf(p, g), 'ArrowDown'); await settle(10);
+  assert.equal(p.src().structure.extra_categories.indexOf(g), 2, 'ArrowDown moves it one place');
+  assert.equal(p.d.activeElement, gripOf(p, g), 'focus stays on its grip');
+  key(p, gripOf(p, g), 'ArrowUp'); key(p, gripOf(p, g), 'ArrowUp'); await settle(10);
+  assert.equal(p.src().structure.extra_categories[0], g);
+  key(p, gripOf(p, g), 'ArrowUp'); await settle(10);
+  assert.equal(p.src().structure.extra_categories[0], g, 'at the top: nothing');
+});
+test('S2 X4 — the drag (rows laid out by a stubbed box — jsdom has no layout; the real drag is the SBS): the lift, ONE drop line, the drop → ONE group.order', async () => {
+  const p = await page({ read: XON });
+  const groups = await onExtras(p);
+  const lay = () => rrows(p).forEach((r, i) => { r.getBoundingClientRect = () => ({ top: i * 50, height: 50, bottom: i * 50 + 50, left: 0, right: 200, width: 200 }); });
+  lay();
+  const last = groups[groups.length - 1];
+  const grip = gripOf(p, last);
+  const ev = (type, y) => grip.dispatchEvent(new p.w.MouseEvent(type, { bubbles: true, clientY: y, clientX: 10, button: 0 }));
+  ev('pointerdown', (groups.length - 1) * 50 + 25);
+  ev('pointermove', 100); ev('pointermove', 130); await settle(2);   // two moves: the line MOVES, it is never a second one
+  assert.ok(rrows(p).find((r) => r.querySelector('.railitem').dataset.group === last).querySelector('.railitem').classList.contains('mk-drag'), 'the dragged group lifts');
+  assert.equal(xpage(p).querySelectorAll('.rail .mk-dropline').length, 1, 'ONE drop line');
+  ev('pointermove', 5); await settle(2);
+  ev('pointerup', 5); await settle(10);
+  assert.deepEqual(p.src().structure.extra_categories, [last, ...groups.slice(0, -1)], 'dropped at the first place');
+  assert.equal(xpage(p).querySelector('.mk-dropline'), null, 'the line goes with the drop');
+  assert.equal(xpage(p).querySelector('.mk-updown'), null, 'a drag is not a click: the pair stays closed');
+});
+
+// ── STRUCTURE S2 — B «Agregar grupo de extras» (plan r3 §2 item 6, §3.5; MOCKUP frame B: .mk-adds > .railadd; the sheet on the review
+// modal's .modal/.mh/.mb/.mf; rows .optrow; «Ya está en este producto»; «¿No está el grupo? Crealo en Extras») ─────────────────────
+const bAction = (p) => p.drawer().querySelector('.mk-adds .railadd');
+const bSheet = (p) => p.d.querySelector('#xattach.show .modal');
+const bRows = (p) => [...bSheet(p).querySelectorAll('.optrow')];
+const bRow = (p, g) => bRows(p).find((r) => r.querySelector('.ogname').firstChild.textContent === g);
+const bGo = (p) => [...bSheet(p).querySelectorAll('.mf button')].pop();
+async function openB(p, key = 'dimsum_01') {
+  await p.signIn(); await p.open(key);
+  bAction(p).click(); await settle(5);
+  return bSheet(p);
+}
+test('S2 B — the dish action «Agregar grupo de extras» sits under the cards, ONLY with the server’s extrasCatalog (no «Agregar elección requerida»: S3)', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  assert.equal(bAction(p) && bAction(p).textContent, 'Agregar grupo de extras');
+  assert.equal(p.drawer().querySelectorAll('.mk-adds .railadd').length, 1, 'no S3 action');
+  const q = await page({ read: ON });
+  await q.signIn(); await q.open('dimsum_01');
+  assert.equal(q.drawer().querySelector('.mk-adds'), null, 'no dish action without extrasCatalog');
+});
+test('S2 B — the sheet: «Agregar grupo de extras» · «Para {plato} · elegí los grupos que ya tenés»; EXISTING groups in the ONE order, extras joined «·», «en N productos»; the dish’s own checked + inert «Ya está en este producto»; «Agregar grupos» off at 0; «Agregar 1 grupo» / «Agregar N grupos»; « · {sección}» only for ONE section', async () => {
+  const p = await page({ read: XON });
+  const m = await openB(p);
+  assert.ok(m, 'the sheet is open');
+  assert.equal(m.querySelector('.mt').textContent, 'Agregar grupo de extras');
+  assert.equal(m.querySelector('.ms').textContent, `Para ${p.drawer().querySelector('.dwt').textContent} · elegí los grupos que ya tenés`);
+  assert.equal(m.querySelector('.attach-note').textContent, 'Grupos de extras existentes');
+  const src = p.src();
+  const names = bRows(p).map((r) => r.querySelector('.ogname').firstChild.textContent);
+  const haves = bRows(p).filter((r) => r.classList.contains('have')).map((r) => r.querySelector('.ogname').firstChild.textContent);
+  const ec = src.structure.extra_categories;
+  assert.deepEqual(names, [...ec.filter((g) => !haves.includes(g)), ...ec.filter((g) => haves.includes(g))], 'the groups to pick in the ONE order, the dish\u2019s own at the foot (frame B)');
+  for (const r of bRows(p)) {
+    const g = r.querySelector('.ogname').firstChild.textContent, cb = r.querySelector('input[type=checkbox]');
+    const have = r.classList.contains('have');
+    assert.deepEqual([cb.checked, cb.disabled], [have, have], `${g}: the dish’s own is checked and inert`);
+    assert.equal(r.querySelector('.ogsub').textContent, have ? 'Ya está en este producto' : src.extras.filter((e) => e.display.cat === g).map((e) => e.display.name).join(' · '), `${g}: its line`);
+    assert.match(r.querySelector('.mk-ogn').textContent, /^en \d+ productos?( \u00b7 .+)?$/, `${g}: «en N productos»`);
+  }
+  assert.ok(bRows(p).some((r) => r.classList.contains('have')) && bRows(p).some((r) => !r.classList.contains('have')), 'non-vacuity: both kinds');
+  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar grupos', true], 'off at 0, without a number');
+  const free = bRows(p).filter((r) => !r.classList.contains('have'));
+  for (const [i, want] of [[0, 'Agregar 1 grupo'], [1, 'Agregar 2 grupos']]) {
+    if (!free[i]) break;
+    const c = bRows(p).find((r) => r.querySelector('.ogname').firstChild.textContent === free[i].querySelector('.ogname').firstChild.textContent).querySelector('input');
+    c.checked = true; c.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+    assert.deepEqual([bGo(p).textContent, bGo(p).disabled], [want, false], `${want}`);
+  }
+  // «· {sección}» (advisor 11-12): Proteínas is used by ONE section (rice) ⇒ its name; Salsas spans many ⇒ none (the logic cell pins
+  // the rule against an independent oracle; this pins the DOM)
+  const rice = src.structure.categories.find((c) => String(c.id) === 'rice').name;
+  assert.equal(bRow(p, 'Proteínas').querySelector('.mk-ogn').textContent, `en 1 producto \u00b7 ${rice}`, 'one section ⇒ « · {sección}»');
+  assert.match(bRow(p, 'Salsas').querySelector('.mk-ogn').textContent, /^en \d+ productos$/, 'mixed sections ⇒ none');
+  assert.equal(p.d.activeElement, bRows(p).find((r) => !r.classList.contains('have')).querySelector('input'), 'focus on the first group to pick');
+  assert.equal(m.querySelector('.mk-nogroup .mk-lnk').textContent, 'Crealo en Extras');
+});
+test('S2 B — «Agregar 1 grupo» records the attach in the COPY (never the draft): the card appears in the drawer, focus back on the action; «Guardar» commits it', async () => {
+  const p = await page({ read: XON });
+  await openB(p);
+  const g = bRows(p).find((r) => !r.classList.contains('have')).querySelector('.ogname').firstChild.textContent;
+  const before = JSON.stringify(p.src());
+  const cb = bRow(p, g).querySelector('input'); cb.checked = true; cb.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+  assert.deepEqual([bGo(p).textContent, bGo(p).disabled], ['Agregar 1 grupo', false]);
+  bGo(p).click(); await settle(10);
+  assert.equal(bSheet(p), null, 'the sheet closed');
+  assert.ok(cardOf(p, g), 'the group’s card is in the drawer');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft is untouched until «Guardar»');
+  assert.equal(p.d.activeElement, bAction(p), 'focus back on «Agregar grupo de extras»');
+  p.btn('Guardar').click(); await settle(10);
+  const ov = p.src().structure.exposure.item_overrides.dimsum_01;
+  assert.ok(ov && JSON.stringify(ov).includes(g), '«Guardar» commits the attach');
+});
+test('S2 B — «Cancelar», Escape and the backdrop close the sheet: nothing recorded; focus back on the action; Tab stays inside', async () => {
+  const p = await page({ read: XON });
+  for (const how of ['cancel', 'escape', 'scrim']) {
+    if (!bSheet(p)) { if (!p.drawer().querySelector('.mk-adds')) { await p.signIn(); await p.open('dimsum_01'); } bAction(p).click(); await settle(5); }
+    const g = bRows(p).find((r) => !r.classList.contains('have')).querySelector('.ogname').firstChild.textContent;
+    const cb = bRow(p, g).querySelector('input'); cb.checked = true; cb.dispatchEvent(new p.w.Event('change', { bubbles: true })); await settle(5);
+    const live = [...bSheet(p).querySelectorAll('button, input')].filter((x) => !x.disabled);
+    const last = live[live.length - 1];
+    last.focus(); key(p, last, 'Tab'); await settle(2);
+    // a synthetic Tab never moves focus by itself: the TRAP must move it — from the last control it wraps to the first
+    assert.equal(p.d.activeElement, live[0], `${how}: Tab stays inside (the last wraps to the first)`);
+    if (how === 'cancel') [...bSheet(p).querySelectorAll('.mf button')][0].click();
+    else if (how === 'escape') key(p, p.d.activeElement, 'Escape');
+    else p.d.getElementById('xattach').dispatchEvent(new p.w.MouseEvent('click', { bubbles: true }));
+    await settle(5);
+    assert.equal(bSheet(p), null, `${how}: closed`);
+    assert.equal(cardOf(p, g), undefined, `${how}: nothing recorded`);
+    assert.equal(p.d.activeElement, bAction(p), `${how}: focus back on the action`);
+  }
+});
+test('S2 B — the action is off with the writer’s line when the COPY refuses it: «Sin extras» on → «Tiene «Sin extras»»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  p.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);
+  assert.equal(bAction(p).disabled, true, 'the refused action is off');
+  assert.equal(p.drawer().querySelector('.mk-adds .ferr').textContent, 'Tiene «Sin extras»');
+});
+test('S2 B — «Crealo en Extras»: a clean drawer → the sheet and the drawer close, the Extras tab opens with «Crear grupo»; a dirty copy asks the drawer’s confirm first', async () => {
+  const p = await page({ read: XON });
+  await openB(p);
+  bSheet(p).querySelector('.mk-nogroup .mk-lnk').click(); await settle(10);
+  assert.equal(bSheet(p), null, 'the sheet closed');
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  assert.ok(p.d.querySelector('#xcreate.show .modal'), '«Crear grupo» is open');
+  assert.equal(p.d.activeElement && p.d.activeElement.id, 'xcg-name');
+  const q = await page({ read: XON });
+  await q.signIn(); await q.open('dimsum_01');
+  q.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);   // a dirty copy
+  q.drawer().querySelector('button[aria-label="Sin extras"]').click(); await settle(10);
+  const cb0 = q.drawer().querySelector('.mk-xopt input[type=checkbox]'); cb0.checked = !cb0.checked; cb0.dispatchEvent(new q.w.Event('change', { bubbles: true })); await settle(10);
+  bAction(q).click(); await settle(5);
+  bSheet(q).querySelector('.mk-nogroup .mk-lnk').click(); await settle(10);
+  assert.equal(bSheet(q), null);
+  const cf = q.drawer().querySelector('.mk-cf');
+  assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
+  assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
+});
+
+// ── STRUCTURE S2 — the drawer's S2 parts (plan r3 §2 item 7; MOCKUP frame A): «Editar en Extras» in an extras card's header,
+// «Quitar de este producto» at its foot (detach.item into the COPY), the card's prices read-only text (.mk-mp) — ONLY with the
+// server's Extras page (without it the prices stay editable: no gap) ───────────────────────────────────────────────────────────
+const gol = (c) => c.querySelector('.mk-gh .mk-gact .mk-lnk.mk-gol');
+const quitar = (c) => c.querySelector('.mk-gfoot .mk-lnk.danger');
+test('S2 A — with extrasCatalog: «Editar en Extras» before the chevron, «Quitar de este producto» at the foot, the prices read-only «L {n}»; without it: today’s editable prices, no S2 control', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  const c = cardOf(p, 'Salsas');
+  assert.ok(gol(c), '«Editar en Extras»');
+  assert.deepEqual([gol(c).textContent, gol(c).getAttribute('aria-label'), gol(c).nextElementSibling.classList.contains('mk-chev')], ['Editar en Extras', 'Editar Salsas en Extras', true]);
+  assert.equal(quitar(c) && quitar(c).textContent, 'Quitar de este producto');
+  assert.equal(c.querySelectorAll('.mk-xopt input[type=text]').length, 0, 'no price input on an extras card');
+  const xs = extrasIn(p.src(), 'Salsas');
+  assert.deepEqual(rowsOfCard(c).map((r) => r.querySelector('.mk-mp').textContent), xs.map((x) => `L ${x.price}`), 'the prices, read-only');
+  const q = await page({ read: ON });
+  await q.signIn(); await q.open('dimsum_01');
+  const c2 = cardOf(q, 'Salsas');
+  assert.equal(gol(c2) || quitar(c2) || c2.querySelector('.mk-mp'), null, 'no S2 control without extrasCatalog');
+  assert.equal(c2.querySelectorAll('.mk-xopt input[type=text]').length, rowsOfCard(c2).length, 'today’s editable prices stay (no gap)');
+});
+test('S2 A — «Quitar de este producto» detaches the group in the COPY: the card goes, the draft is untouched, B lists it again; «Guardar» commits it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  const before = JSON.stringify(p.src());
+  quitar(cardOf(p, 'Salsas')).click(); await settle(10);
+  assert.equal(cardOf(p, 'Salsas'), undefined, 'the card is gone');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft is untouched until «Guardar»');
+  assert.equal(p.d.activeElement, bAction(p), 'focus on «Agregar grupo de extras»');
+  bAction(p).click(); await settle(5);
+  assert.ok(!bRow(p, 'Salsas').classList.contains('have'), 'B offers it again');
+  [...bSheet(p).querySelectorAll('.mf button')][0].click(); await settle(5);
+  p.btn('Guardar').click(); await settle(10);
+  const ov = p.src().structure.exposure.item_overrides.dimsum_01;
+  assert.ok(ov && JSON.stringify(ov).includes('Salsas'), '«Guardar» commits the detach');
+});
+test('S2 A — «Quitar de este producto» off with the writer’s line when an option has its own rule (5f XT-REFUSALS fixture)', async () => {
+  const src = JSON.parse(JSON.stringify(SRC)); src.structure.exposure.item_overrides.noodle_01_pollo = { deny: ['Salsas'] };
+  const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, source: src }) });
+  await p.signIn(); await p.open('noodle_01');
+  const c = cardOf(p, 'Acompañamientos') || [...p.drawer().querySelectorAll('.mk-grp.mk-ext')][0];
+  assert.ok(c, 'non-vacuity: a card');
+  assert.equal(quitar(c).disabled, true, 'the refused «Quitar» is off');
+  assert.equal(c.querySelector('.mk-gfoot .ferr').textContent, 'Sus opciones tienen reglas propias');
+});
+test('S2 A — «Editar en Extras»: a clean copy → the drawer closes, the Extras tab with THAT group selected and focused; a dirty copy asks the drawer’s confirm first', async () => {
+  const p = await page({ read: XON });
+  await p.signIn(); await p.open('dimsum_01');
+  gol(cardOf(p, 'Salsas')).click(); await settle(10);
+  assert.ok(!p.drawer().classList.contains('show'), 'the drawer closed');
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  const on = railRows(p).find((r) => r.classList.contains('on'));
+  assert.equal(on && on.dataset.group, 'Salsas', 'that group selected');
+  assert.equal(p.d.activeElement, on, 'and focused');
+  const q = await page({ read: XON });
+  await q.signIn(); await q.open('dimsum_01');
+  const cb0 = q.drawer().querySelector('.mk-xopt input[type=checkbox]'); cb0.checked = !cb0.checked; cb0.dispatchEvent(new q.w.Event('change', { bubbles: true })); await settle(10);
+  gol(cardOf(q, 'Salsas')).click(); await settle(10);
+  const cf = q.drawer().querySelector('.mk-cf');
+  assert.ok(cf && cf.querySelector('h3').textContent === '¿Descartar los cambios?', 'the drawer’s confirm first');
+  assert.ok(xpage(q).classList.contains('hidden'), 'still on the menu');
+});
+test('S2 X — a «Nuevo» row’s name is the inline row’s field (typing renames it in the draft); a published row’s name stays text', async () => {
+  const p = await page({ read: XON });
+  const r = await openAdd(p);
+  p.type(r.querySelector('input[aria-label="Nombre del extra"]'), 'Arroz frito'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '40'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const added = xrows(p)[xrows(p).length - 1];
+  const nm = added.querySelector('input[aria-label="Nombre del extra"]');
+  assert.ok(nm && nm.value === 'Arroz frito', 'the «Nuevo» row carries the name field');
+  nm.focus(); p.type(nm, 'Arroz con huevo'); await settle(10);
+  const g = p.src().structure.extra_categories[0];
+  assert.ok(extrasIn(p.src(), g).some((x) => typeof x.key !== 'string' && x.display.name === 'Arroz con huevo'), 'the rename is in the draft');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra', 'focus stays in the field while typing');
+  assert.equal(xrows(p)[0].querySelector('input[aria-label="Nombre del extra"]'), null, 'a published row’s name is text');
+});
+
+// ── STRUCTURE S2 §5.2 — FIX-EXTRA: an extra's refusal lands on the Extras tab, its group, its row, the server's line under it ─────
+test('S2 §5.2 — FIX-EXTRA «Corregir el nombre»: the Extras tab, the new extra’s group selected, focus in its NAME, the server’s line under it; the draft byte-identical', async () => {
+  let ref = null;
+  const p = await page({ read: XON, on: { editCatalog: (call) => { ref = (call.body.source.extras.find((e) => typeof e.key !== 'string') || {}).ref; return errJson(409, { error: 'name_taken', ref, field: 'name' }); } } });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  railRows(p)[1].click(); await settle(10);
+  const g = p.src().structure.extra_categories[1];
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Salsa nueva'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  railRows(p)[0].click(); await settle(10);   // another group selected: FIX-EXTRA must SWITCH to the extra's own group
+  tabBtn(p, 'Menú').click(); await settle(10);   // the merchant left the page; FIX-EXTRA must bring them back
+  const before = JSON.stringify(p.src());
+  p.d.getElementById('review').click(); await settle(60);
+  const pn = panel(p);
+  assert.ok(pn && pn.title === 'Ese nombre ya está en tu menú', `the extra's panel (${pn && pn.title})`);
+  assert.equal(pn.detail, 'Elegí otro nombre para el extra nuevo.');
+  pn.action.click(); await settle(30);
+  assert.ok(!xpage(p).classList.contains('hidden'), 'the Extras tab');
+  assert.equal(railRows(p).find((r) => r.classList.contains('on')).dataset.group, g, 'the new extra’s group');
+  const row = xrows(p).find((r) => rowName(r) === 'Salsa nueva');
+  const nm = row.querySelector('input[aria-label="Nombre del extra"]');
+  assert.equal(p.d.activeElement, nm, 'focus in its name');
+  assert.equal(row.nextElementSibling && row.nextElementSibling.textContent, 'Elegí otro nombre para el extra nuevo.', 'the server’s line under the row');
+  assert.equal(nm.getAttribute('aria-describedby'), row.nextElementSibling.id, 'Codex r1 P2-13: the name field names the server’s line');
+  assert.equal(JSON.stringify(p.src()), before, 'the draft byte-identical');
+  assert.ok(ref && ref.startsWith('tmp:'), 'premise: the refusal named the new extra by its ref');
+});
+test('S2 §5.2 — FIX-EXTRA «Agregar un extra» (extras_group_empty): with the server’s `group` → that group, its «Agregar extra» row open; without it → the Extras tab as it was', async () => {
+  const groupName = () => XON().source.structure.extra_categories[2];
+  const p = await page({ read: XON, on: { editCatalog: () => errJson(409, { error: 'extras_group_empty', field: 'extras', group: groupName() }) } });
+  await p.signIn(); await p.open('dimsum_01');
+  quitar(cardOf(p, 'Salsas')).click(); await settle(10);   // any change, so «Revisar y publicar» saves
+  p.btn('Guardar').click(); await settle(10);
+  p.d.getElementById('review').click(); await settle(60);
+  assert.equal(panel(p).action.textContent, 'Agregar un extra');
+  panel(p).action.click(); await settle(30);
+  assert.equal(railRows(p).find((r) => r.classList.contains('on')).dataset.group, groupName(), '(a) the group the server named');
+  assert.ok(newRow(p), '(a) its «Agregar extra» row open');
+  assert.equal(p.d.activeElement && p.d.activeElement.getAttribute('aria-label'), 'Nombre del extra');
+  const q = await page({ read: XON, on: { editCatalog: () => errJson(409, { error: 'extras_group_empty', field: 'extras' }) } });
+  await q.signIn(); await q.open('dimsum_01');
+  quitar(cardOf(q, 'Salsas')).click(); await settle(10);
+  q.btn('Guardar').click(); await settle(10);
+  q.d.getElementById('review').click(); await settle(60);
+  panel(q).action.click(); await settle(30);
+  assert.ok(!xpage(q).classList.contains('hidden'), '(b) the Extras tab');
+  assert.equal(newRow(q), null, '(b) no row opened (the server named no group)');
+});
+
+// ── STRUCTURE S2 §5.2 — REVIEW-DELETIONS (frame X2b): the recovery sheet when the published menu moved under a removal claim ─────────
+// The served draft carries a STORED claim in the server's stored shape ({ ids, base_version, base_generation }); the identity ids are
+// named from certified rows only on the emulator (s2-portal-claim) — here an id no row carries is «Un extra que ya no está en el menú».
+const CLAIMED = () => { const r = XON(); r.source.deleted_ids = { ids: ['xid_gone'], base_version: 'v-live', base_generation: 1 }; r.deletionBase = { version: 'v-live', generation: 1 }; return r; };
+const okSave = (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source });
+const x2b = (p) => p.d.querySelector('#xscrim.show .modal');
+test('S2 §5.2 — REVIEW-DELETIONS: a deletion refusal → the re-read (the FRESH base) → «El menú publicado cambió» with the FULL list → «Confirmar y seguir» resends ONCE acknowledged with the fresh base', async () => {
+  let edits = 0, reread = 0;
+  const p = await page({ read: CLAIMED, on: {
+    editCatalog: (call) => (++edits === 1 ? errJson(409, { error: 'deleted_ids_base_moved' }) : okSave(call)),
+    getEditableCatalog: () => (reread++ ? okJson({ ...CLAIMED(), deletionBase: { version: 'v-new', generation: 2 }, deletionClaim: { ids: ['xid_other'] } }) : null),   // the fresh claim WITHOUT the draft's own id: the list must merge both
+  } });
+  await p.signIn();
+  p.d.getElementById('review').click(); await settle(80);
+  const m = x2b(p);
+  assert.ok(m, 'the recovery sheet');
+  assert.deepEqual([m.querySelector('.mt').textContent, m.querySelector('.eqbody').textContent], ['El menú publicado cambió', 'Antes de seguir, confirmá lo que se quita:']);
+  const rows = [...m.querySelectorAll('.mk-dels .brow')];
+  assert.deepEqual(rows.map((r) => [r.querySelector('.bchip').textContent, r.querySelector('.bnm').textContent]),
+    [['Quitado', 'Un extra que ya no está en el menú'], ['Quitado', 'Un extra que ya no está en el menú']], 'the FULL list: the fresh claim ∪ the draft’s');
+  const [cancel, go] = [...m.querySelectorAll('.mf button')];
+  assert.deepEqual([cancel.textContent, go.textContent], ['Cancelar', 'Confirmar y seguir']);
+  assert.equal(p.d.activeElement, go, 'focus on «Confirmar y seguir»');
+  go.click(); await settle(80);
+  const sent = p.n('editCatalog');
+  assert.equal(sent.length, 2, 'ONE resend');
+  assert.equal(sent[1].body.deleted_ids_reviewed, true, 'acknowledged');
+  assert.deepEqual(sent[1].body.deleted_ids_loaded_base, { version: 'v-new', generation: 2 }, 'with the FRESH base');
+  assert.equal(sent[0].body.deleted_ids_reviewed, undefined, 'the first save carried no acknowledgement');
+  assert.ok(p.d.getElementById('scrim').classList.contains('show'), 'back to the review, from the server’s fresh diff');
+  p.d.getElementById('pubback').click(); await settle(20);
+  p.d.getElementById('review').click(); await settle(80);
+  assert.equal(p.n('editCatalog')[2].body.deleted_ids_reviewed, undefined, 'the acknowledgement was ONE resend, never sticky');
+});
+test('S2 §5.2 — REVIEW-DELETIONS: «Cancelar» keeps the draft and sends nothing; a SECOND refusal shows the sheet again (no silent resend); an unreadable re-read holds «Confirmar y seguir»', async () => {
+  const p = await page({ read: CLAIMED, on: { editCatalog: () => errJson(409, { error: 'deleted_ids_unbound' }) } });
+  await p.signIn();
+  const before = JSON.stringify(p.src && p.src());
+  p.d.getElementById('review').click(); await settle(80);
+  [...x2b(p).querySelectorAll('.mf button')][0].click(); await settle(20);
+  assert.equal(x2b(p), null, 'closed');
+  assert.equal(p.n('editCatalog').length, 1, 'nothing resent');
+  assert.equal(JSON.stringify(p.src && p.src()), before, 'the draft kept');
+  p.d.getElementById('review').click(); await settle(80);
+  [...x2b(p).querySelectorAll('.mf button')][1].click(); await settle(80);
+  assert.equal(p.n('editCatalog').length, 3, 'the confirmed resend went out once');
+  assert.ok(x2b(p), 'refused again → the SAME sheet again, never a loop');
+  const q = await page({ read: CLAIMED, on: { editCatalog: () => errJson(409, { error: 'deleted_ids_base_moved' }), getEditableCatalog: (() => { let n = 0; return () => (n++ ? errJson(503, { error: 'source_unavailable' }) : null); })() } });
+  await q.signIn();
+  q.d.getElementById('review').click(); await settle(80);
+  assert.ok(x2b(q).textContent.includes('No pudimos leer el menú publicado. Recargá la página.'), 'the re-read failed: said');
+  assert.equal([...x2b(q).querySelectorAll('.mf button')][1].disabled, true, '«Confirmar y seguir» held');
+});
+
+// ── STRUCTURE S2 P-6 — extraRefs: after a save, a NEW extra's view state follows it to its allocated key (5f's REAL handler) ──────────
+async function probeOnPage(p, price) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), '  Probe   extra  '); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, String(price)); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  return xrows(p).find((r) => r.querySelector('.tag.new') && rowName(r) === 'Probe extra');
+}
+test('S2 P-6 — the owner\u2019s save adopts the server\u2019s keys: the SAME row (same price), now keyed through extraRefs, still «Nuevo»', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await page({ read: XON, on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 33);
+    assert.ok(row, 'premise: the new row');
+    assert.match(row.querySelector('.price input').dataset.k, /"ref":"tmp:/, 'premise: keyed by its ref before the save');
+    p.d.getElementById('review').click(); await settle(80);
+    assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), `premise: the review, no refusal panel (${panel(p) && panel(p).title})`);
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '33' && r.querySelector('.tag.new'));
+    assert.ok(after, 'the same row, same price, still «Nuevo»');
+    const k = JSON.parse(after.querySelector('.price input').dataset.k);
+    const ext = p.src().extras.find((e) => e.key === k.key);
+    assert.ok(typeof k.key === 'string' && ext && ext.display.name === 'Probe extra', `adopted through extraRefs (Probe extra) — ${JSON.stringify(k)}`);
+  } finally { S2_SERVER.on = false; }
+});
+test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s price across the adoption (its restore key re-keyed by extraRefs); without the map the view state is dropped, nothing mis-keyed', async () => {
+  S2_SERVER.on = true;
+  try {
+    // Codex S2 UI r2 P2-11: a REAL manager on a platform-factura brand — 5f's real read, save and request handler (realBackend), no canned success
+    const B = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); B.who = 'manager';
+    const p = await page({ on: B.on });
+    const row = await probeOnPage(p, 34);
+    row.querySelector('.price input').focus();
+    p.d.getElementById('review').click(); await settle(80);
+    const ae = p.d.activeElement;
+    assert.ok(ae && ae.matches && ae.matches('#xdetail .price input'), 'focus kept in a price field');
+    const k = JSON.parse(ae.dataset.k);
+    assert.ok(typeof k.key === 'string' && p.src().extras.find((e) => e.key === k.key).display.name === 'Probe extra', 'the SAME row, now keyed');
+    assert.equal(ae.value, '34');
+    assert.equal(addBtn(p).disabled, false, 'the Extras page is editable again after the send (it kept its write-time disabled controls before)');
+    assert.deepEqual(B.statuses, [200, 'request 200'], 'the REAL save, then the REAL request handler recorded the manager’s request');
+    assert.ok((await B.request()).by === UID.manager, 'the request is the manager’s');
+    // a stubbed answer WITHOUT extraRefs: 5f's real handler with the map removed (never laxer) — nothing is re-keyed by a guess
+    const B2 = realBackend({ rid: 'x_pizza', live: buildSourceFromCode('x_pizza'), pointer: { version: 'v1', generation: 1 } }); B2.who = 'manager';
+    const noMap = (call) => B2.on.editCatalog(call).then(async (r) => { const b = await r.json(); if (!r.ok) return errJson(r.status, b); delete b.extraRefs; return okJson(b); });
+    const q = await page({ on: { ...B2.on, editCatalog: noMap } });
+    const row2 = await probeOnPage(q, 35);
+    row2.querySelector('.price input').focus();
+    q.d.getElementById('review').click(); await settle(80);
+    assert.equal(panel(q), null, 'premise: the save went through (no refusal panel)');
+    assert.ok(q.src().extras.some((e) => typeof e.key === 'string' && e.display.name === 'Probe extra'), 'premise: the adopted source keyed the new extra');
+    const ae2 = q.d.activeElement;
+    assert.ok(!(ae2 && ae2.matches && ae2.matches('#xdetail .price input')), 'an unmapped ref is dropped, nothing mis-keyed (no focus guessed onto a row)');
+  } finally { S2_SERVER.on = false; }
+});
+
+// ── STRUCTURE S2 §3.5 — the remaining leave paths consult localDirty() first: the review, the tenant switch, the reload ──────────────
+async function dirtyRow(p) {
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Maní'); await settle(5);   // started, not complete
+}
+test('S2 §3.5 — «Revisar y publicar» with a DIRTY inline row asks «¿Descartar los cambios?» first: «Seguir editando» sends nothing and keeps it; «Descartar» drops it, then reviews; a COMPLETE row commits first', async () => {
+  const p = await page({ read: XON, on: { editCatalog: (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source }) } });
+  await dirtyRow(p);
+  p.d.getElementById('review').click(); await settle(20);
+  let cf = p.d.querySelector('#xscrim.show .modal');
+  assert.ok(cf && cf.querySelector('.mt').textContent === '¿Descartar los cambios?', 'the portal’s discard confirm first');
+  [...cf.querySelectorAll('.mf button')][1].click(); await settle(10);
+  assert.equal(p.n('editCatalog').length, 0, '«Seguir editando»: nothing sent');
+  assert.equal(newRow(p).querySelector('input[aria-label="Nombre del extra"]').value, 'Maní', 'the row kept');
+  p.d.getElementById('review').click(); await settle(20);
+  [...p.d.querySelector('#xscrim.show .modal').querySelectorAll('.mf button')][0].click(); await settle(80);
+  assert.equal(p.n('editCatalog').length, 1, '«Descartar»: then the review');
+  assert.ok(!p.n('editCatalog')[0].body.source.extras.some((e) => e.display.name === 'Maní'), 'the dropped row is not in the save');
+  const q = await page({ read: XON, on: { editCatalog: (call) => okJson({ updateTime: '1700000001.000000001', diff: { changed: [], added: [], removed: [], renamed: [], largeChangeSet: [] }, token: 't', source: call.body.source }) } });
+  await dirtyRow(q);
+  const pr = newRow(q).querySelector('.price input'); pr.focus(); q.type(pr, '15'); await settle(5);
+  q.d.getElementById('review').click(); await settle(80);
+  assert.equal(q.d.querySelector('#xscrim.show .modal'), null, 'a COMPLETE row asks nothing');
+  assert.ok(q.n('editCatalog')[0].body.source.extras.some((e) => e.display.name === 'Maní'), 'it was committed first, then saved');
+});
+test('S2 §3.5 — the branch switch and the self-update (shell.js / SherpaClient: editorCanLeave) and the reload (beforeunload) hold while a local edit or a pending change exists, never when clean', async () => {
+  const p = await page({ read: XON });
+  await dirtyRow(p);
+  p.d.activeElement && p.d.activeElement.blur && p.d.activeElement.blur();   // focus alone also holds the self-update: take it away, so the DIRTY ROW is what holds
+  assert.equal(p.mods.app.editorCanLeave(), false, 'a dirty inline row holds the branch switch / the self-update (the shell\u2019s own gate)');
+  const unload = () => { const e = new p.w.Event('beforeunload', { cancelable: true }); p.w.dispatchEvent(e); return e.defaultPrevented; };
+  assert.equal(unload(), true, 'a dirty inline row holds the reload');
+  key(p, newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Escape'); await settle(10);
+  assert.equal(unload(), false, 'clean: the reload is free');
+  p.d.activeElement && p.d.activeElement.blur && p.d.activeElement.blur();
+  assert.equal(p.mods.app.editorCanLeave(), true, 'clean: the switch is free');
+  const x0 = xrows(p)[0].querySelector('.price input'); x0.focus(); p.type(x0, '99'); await settle(10);
+  assert.equal(unload(), true, 'a pending (unsaved) change holds the reload too');
+});
+test('S2 §5.2 Codex r1 P1-1 — «Cancelar» on the recovery sheet keeps the PREVIOUS baseline: the fresh one is the sheet’s own until «Confirmar y seguir»; an ordinary review after Cancel never sends it', async () => {
+  let edits = 0;
+  const p = await page({ read: CLAIMED, on: {
+    editCatalog: () => (++edits === 1 ? errJson(409, { error: 'deleted_ids_base_moved' }) : errJson(409, { error: 'deleted_ids_base_moved' })),
+    getEditableCatalog: (() => { let n = 0; return () => (n++ ? okJson({ ...CLAIMED(), deletionBase: { version: 'v-fresh', generation: 9 } }) : null); })(),
+  } });
+  await p.signIn();
+  p.d.getElementById('review').click(); await settle(80);
+  assert.ok(x2b(p), 'premise: the sheet (the fresh base was read)');
+  [...x2b(p).querySelectorAll('.mf button')][0].click(); await settle(10);   // «Cancelar»
+  p.d.getElementById('review').click(); await settle(80);
+  const second = p.n('editCatalog')[1];
+  assert.deepEqual(second.body.deleted_ids_loaded_base, { version: 'v-live', generation: 1 }, 'Cancel kept the previous baseline: the fresh one never rides an unreviewed save');
+  assert.equal(second.body.deleted_ids_reviewed, undefined);
+});
+test('S2 Codex r1 P1-2 — the auth / restaurant boundary: A\u2019s half-typed inline row, open X3 sheet and open discard confirm are GONE (state, DOM, listeners); nothing of A\u2019s can be committed after', async () => {
+  for (const edge of ['another person', 'a restaurant load']) {
+    const p = await page({ read: XON });
+    await p.signIn();
+    tabBtn(p, 'Extras').click(); await settle(10);
+    addBtn(p).click(); await settle(5);
+    p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'De A'); await settle(5);
+    await openX3(p);
+    p.type(x3(p).querySelector('#xcg-name'), 'Grupo de A'); await settle(5);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+    assert.ok(p.d.querySelector('#xscrim.show'), `premise (${edge}): A has the discard confirm open over X3`);
+    if (edge === 'another person') p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: 'uSomeoneElse' } }));
+    else p.d.dispatchEvent(new p.w.CustomEvent('portal:restaurant', { detail: { rid: RID } }));
+    await settle(80);
+    assert.equal(x3(p), null, `${edge}: A\u2019s «Crear grupo» sheet is closed`);
+    assert.equal(p.d.querySelector('#xscrim.show'), null, `${edge}: A\u2019s discard confirm is closed`);
+    assert.equal(p.d.querySelector('#xsplit .irow.mk-xnew'), null, `${edge}: A\u2019s inline row is gone from the page (not just hidden)`);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(5);
+    assert.equal(p.d.querySelector('#xscrim.show'), null, `${edge}: no stale listener reopens a confirm`);
+    if (edge === 'a restaurant load') {
+      tabBtn(p, 'Extras').click(); await settle(10);
+      assert.ok(xpage(p).querySelector('.rail .railitem'), 'premise: the reloaded Extras page is painted (the next check is not vacuous)');
+      assert.equal(newRow(p), null, 'a restaurant load: the reloaded page opens with no inline row');
+      assert.equal(p.d.querySelector('#xcreate.show'), null, 'a restaurant load: no sheet reopened');
+    }
+    const sent = p.n('editCatalog');
+    assert.ok(sent.every((c) => !JSON.stringify(c.body).includes('De A') && !JSON.stringify(c.body).includes('Grupo de A')), `${edge}: nothing of A\u2019s is ever sent`);
+  }
+});
+
+test('S2 Codex r1 P1-4 — the portal’s review: detaching a group whose extra the dish had unticked says ONLY «Quitado · grupo Salsas» — no «Vuelve a ofrecer», no raw key', async () => {
+  // the published menu: dimsum_01 with one Salsas extra unticked — written by the portal's own drawer, not by hand
+  const p1 = await page({ read: XON });
+  await p1.signIn();
+  await p1.open('dimsum_01');
+  const cb = rowsOfCard(cardOf(p1, 'Salsas'))[1].querySelector('input[type=checkbox]');
+  cb.checked = false; cb.dispatchEvent(new p1.w.Event('change', { bubbles: true }));
+  p1.btn('Guardar').click(); await settle(10);
+  const live = p1.src();
+  const xk = live.structure.exposure.item_overrides.dimsum_01.deny_extras[0];
+  assert.ok(xk, 'premise: the live menu carries the dish’s untick');
+  REAL_LIVE.src = live; S2_SERVER.on = true;
+  try {
+    const p = await page({ read: () => editable({ source: JSON.parse(JSON.stringify(live)), extrasAuthoring: true, extrasCatalog: true }), on: { editCatalog: realSave } });
+    await p.signIn();
+    await p.open('dimsum_01');
+    quitar(cardOf(p, 'Salsas')).click(); await settle(10);
+    p.btn('Guardar').click(); await settle(10);
+    p.d.getElementById('review').click(); await settle(80);
+    const body = p.d.getElementById('mbody').textContent;
+    assert.ok(body.includes('grupo Salsas'), `premise: the review shows the detach (${body.slice(0, 200)})`);
+    assert.ok(!body.includes('Vuelve a ofrecer'), `no «Vuelve a ofrecer» beside the detach (${body.slice(0, 300)})`);
+    assert.ok(!body.includes(xk), 'never the raw key');
+  } finally { S2_SERVER.on = false; REAL_LIVE.src = null; }
+});
+
+test('S2 Codex r1 P2-12 — X3 backdrop: a clean «Crear grupo» closes on a backdrop click; a dirty one asks «¿Descartar los cambios?» and stays', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  await openX3(p);
+  const scrim = () => p.d.getElementById('xcreate');
+  scrim().dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.equal(x3(p), null, 'clean: the backdrop closes the sheet');
+  await openX3(p);
+  p.type(x3(p).querySelector('#xcg-name'), 'Bordes'); await settle(5);
+  x3(p).dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.ok(x3(p) && !p.d.querySelector('#xscrim.show'), 'a click INSIDE the sheet is not the backdrop');
+  scrim().dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); await settle(5);
+  assert.ok(x3(p), 'dirty: the sheet stays');
+  assert.ok(p.d.querySelector('#xscrim.show'), 'dirty: the backdrop asks the discard confirm');
+  assert.equal(p.d.querySelector('#xscrim .mt').textContent, '¿Descartar los cambios?');
+});
+
+test('S2 Codex r1 P2-5 — a dish left with ZERO groups keeps «Agregar grupo de extras» (in the copy, after «Guardar», on reopen); off without the Extras page', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  await p.open('dimsum_01');
+  for (const g of ['Acompañamientos', 'Salsas']) { quitar(cardOf(p, g)).click(); await settle(10); }
+  assert.equal(p.drawer().querySelectorAll('.mk-grp.mk-ext').length, 0, 'premise: no extras card left');
+  assert.ok(bAction(p), 'in the copy: the action stays');
+  p.btn('Guardar').click(); await settle(10);
+  await p.open('dimsum_01');
+  assert.ok(bAction(p) && !bAction(p).disabled, 'reopened with zero groups: the action is there and live');
+  bAction(p).click(); await settle(5);
+  assert.ok(bSheet(p), 'it opens the sheet');
+  const q = await page({ read: ON });
+  await q.signIn();
+  await q.open('dimsum_01');
+  assert.equal(bAction(q), null, 'without the Extras page: no action (today)');
+});
+
+test('S2 Codex r1 P2-7 — a saved, unpublished extra (keyed by the save, still «Nuevo») shows its name as TEXT — no name field that cannot write; a keyless one keeps the field', async () => {
+  S2_SERVER.on = true;
+  try {
+    const p = await page({ read: XON, on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 35);
+    assert.ok(row.querySelector('input.mk-xname'), 'keyless («Nuevo», before the save): the name field');
+    p.d.getElementById('review').click(); await settle(80);
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '35');
+    assert.ok(after && after.querySelector('.tag.new'), 'premise: the same row, adopted, still «Nuevo»');
+    assert.match(after.querySelector('.price input').dataset.k, /"key":/, 'premise: keyed now');
+    assert.equal(after.querySelector('input.mk-xname'), null, 'keyed: no name field');
+    assert.equal(after.querySelector('.nm > span').textContent, 'Probe extra', 'keyed: the name as text, beside its «Nuevo» tag');
+  } finally { S2_SERVER.on = false; }
+});
+
+test('S2 Codex r1 P2-8 — an invalid price on the Extras page keeps what was typed and says «El precio debe ser al menos L 1.» under its row; a valid one clears it', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const priceOf = () => xrows(p)[0].querySelector('.price input');
+  const k = priceOf().dataset.k;
+  const lineOf = () => { const r = xrows(p)[0]; const n = r.nextElementSibling; return n && n.classList.contains('mk-xrowline') ? n.textContent : null; };
+  for (const bad of ['12.5', '0', '']) {
+    p.type(priceOf(), bad); await settle(5);
+    assert.equal(priceOf().dataset.k, k, 'premise: the same row');
+    assert.equal(priceOf().value, bad, `«${bad}»: the field keeps what was typed`);
+    assert.equal(lineOf(), 'El precio debe ser al menos L 1.', `«${bad}»: the row's line`);
+    assert.equal(p.d.activeElement, priceOf(), `«${bad}»: focus stays in the field`);
+  }
+  p.type(priceOf(), '15'); await settle(5);
+  assert.equal(priceOf().value, '15');
+  assert.equal(lineOf(), null, 'a valid price clears the line');
+  assert.equal(p.src().extras.find((e) => JSON.stringify({ key: e.key }) === k).price, 15, 'the draft holds the valid price');
+});
+
+test('S2 Codex r1 P2-13 — a row’s line is named by its field (aria-describedby): the held price’s line by the price, «Escribí el nombre.» by the name; kept through a repaint', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const priceOf = () => xrows(p)[0].querySelector('.price input');
+  const lineEl = (r) => (r.nextElementSibling && r.nextElementSibling.classList.contains('mk-xrowline') ? r.nextElementSibling : null);
+  p.type(priceOf(), '12.5'); await settle(5);
+  assert.ok(lineEl(xrows(p)[0]), 'premise: the line');
+  assert.equal(priceOf().getAttribute('aria-describedby'), lineEl(xrows(p)[0]).id, 'the price names its line');
+  p.type(priceOf(), '12.50'); await settle(5);   // a repaint
+  assert.equal(priceOf().getAttribute('aria-describedby'), lineEl(xrows(p)[0]).id, 'kept through the repaint');
+  assert.equal(p.d.getElementById(priceOf().getAttribute('aria-describedby')).textContent, 'El precio debe ser al menos L 1.');
+  p.type(priceOf(), '15'); await settle(5);
+  assert.equal(priceOf().getAttribute('aria-describedby'), null, 'no line, no reference');
+  // a «Nuevo» row's name emptied: its name field names «Escribí el nombre.»
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Tmp'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const nRow = () => xrows(p).find((r) => r.querySelector('input.mk-xname'));
+  p.type(nRow().querySelector('input.mk-xname'), ''); await settle(5);
+  const ln = lineEl(nRow());
+  assert.equal(ln && ln.textContent, 'Escribí el nombre.', 'premise: the name line');
+  assert.equal(nRow().querySelector('input.mk-xname').getAttribute('aria-describedby'), ln.id, 'the name field names its line');
+});
+
+test('S2 Codex r1 P2-9 — the published menu unreadable (deletionBase null): an EXISTING extra’s trash is off with «No pudimos leer el menú publicado. Recargá la página.»; a new row stays removable; a readable base: on', async () => {
+  const p = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: null }) });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const trash = (r) => r.querySelector('button.del');
+  const existing = xrows(p).filter((r) => !r.querySelector('.tag.new'));
+  assert.ok(existing.length > 1, 'premise: existing rows (not the last one)');
+  for (const r of existing) assert.equal(trash(r).disabled, true, 'an existing extra’s trash is off');
+  const line = [...xpage(p).querySelectorAll('.detail .ferr')].map((x) => x.textContent);
+  assert.deepEqual(line.filter((t) => t === 'No pudimos leer el menú publicado. Recargá la página.').length, 1, `the line, once (${JSON.stringify(line)})`);
+  assert.equal(trash(existing[0]).title, 'No pudimos leer el menú publicado. Recargá la página.', 'the trash says why');
+  addBtn(p).click(); await settle(5);
+  p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), 'Nueva'); await settle(5);
+  const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, '20'); await settle(5);
+  key(p, newRow(p).querySelector('.price input'), 'Enter'); await settle(10);
+  const added = xrows(p).find((r) => r.querySelector('.tag.new'));
+  assert.equal(trash(added).disabled, false, 'a new (keyless) row stays removable: its removal claims nothing');
+  const q = await page({ read: () => editable({ extrasAuthoring: true, extrasCatalog: true, deletionBase: { version: 'v-live', generation: 1 } }) });
+  await q.signIn();
+  tabBtn(q, 'Extras').click(); await settle(10);
+  assert.equal(trash(xrows(q)[0]).disabled, false, 'a readable base: the trash is on');
+  assert.ok(![...xpage(q).querySelectorAll('.detail .ferr')].some((x) => /No pudimos leer/.test(x.textContent)), 'and no line');
+});
+
+test('S2 Codex r1 P2-14 — NO AMBER on the Extras page (MOCKUP-pastel-chips): the shared note is sand, «Cambios sin publicar» sky, «Se quita al publicar» sand; «Nuevo» stays green', async () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const rule = (sel) => { const m = css.match(new RegExp(`(^|\\n)\\s*${sel.replace(/\./g, '\\.')}\\{([^}]*)\\}`)); return m ? m[2] : null; };
+  for (const [sel, fam] of [['.mgshared.mk-sand', 'sand'], ['.tag.mk-sand', 'sand'], ['.tag.mk-sky', 'sky']]) {
+    const r = rule(sel);
+    assert.ok(r, `${sel}: a rule`);
+    for (const p of ['color', 'background', 'border-color']) assert.match(r, new RegExp(`${p}:var\\(--${fam}-(text|soft|line)\\)`), `${sel}: ${p} from the ${fam} family`);
+    assert.ok(!/amber|gold/.test(r), `${sel}: nothing amber`);
+  }
+  for (const fam of ['sand', 'sky']) for (const t of ['text', 'soft', 'line']) assert.equal((css.match(new RegExp(`--${fam}-${t}:#`, 'g')) || []).length, 3, `--${fam}-${t}: light, the dark toggle and the system dark`);
+  const p = await page({ read: XON });
+  await p.signIn();
+  tabBtn(p, 'Extras').click(); await settle(10);
+  const shared = xpage(p).querySelector('.mgshared');
+  assert.ok(shared, 'premise: a shared group');
+  assert.ok(shared.classList.contains('mk-sand'), 'the shared note: sand');
+  p.type(xrows(p)[0].querySelector('.price input'), String(Number(xrows(p)[0].querySelector('.price input').value) + 1)); await settle(5);
+  const chg = [...xpage(p).querySelectorAll('.tag')].find((t) => t.textContent === 'Cambios sin publicar');
+  assert.ok(chg && chg.classList.contains('mk-sky'), '«Cambios sin publicar»: sky');
+  xrows(p)[1].querySelector('button.del').click(); await settle(5);
+  [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
+  const gone = [...xpage(p).querySelectorAll('.tag')].find((t) => t.textContent === 'Se quita al publicar');
+  assert.ok(gone && gone.classList.contains('mk-sand'), '«Se quita al publicar»: sand');
+  for (const t of xpage(p).querySelectorAll('.tag.new')) assert.ok(!t.classList.contains('mk-sky') && !t.classList.contains('mk-sand'), '«Nuevo» stays green');
+});
+
+// ── S2 Codex r2 P2-11 — a STORED stale claim, recovered against 5f's REAL read / save / request over ONE store (realBackend): the
+// merchant's first removal is SAVED (the claim is stored against v1@1); an activation moves live to v2@2; a second removal changes the
+// claim → the server refuses (its own code) → the sheet → «Confirmar y seguir» resends ACKNOWLEDGED with the fresh base → the server
+// REBINDS the stored claim to v2@2 (persistDeletionClaim: an existing claim on a moved base is rebound only with the acknowledgement).
+// The owner saves; the manager (x_pizza, a platform-factura brand) saves and the REAL requestPublishCore records the request.
+// «Cancelar» sends nothing: the stored claim stays as it was, and the next review is refused AGAIN by the server.
+const FISCAL_RID = 'x_pizza';
+for (const who of ['owner', 'manager']) {
+  for (const path of ['confirm', 'cancel']) {
+    test(`S2 Codex r2 P2-11 — ${who}: a STORED claim on a moved base → «${path === 'confirm' ? 'Confirmar y seguir' : 'Cancelar'}» (5f's real read, save and request decide)`, async () => {
+      // the CERTIFIED live menu, stamped as 5f's own S2-core suite certifies a seed (catalog/s2core-compare.test.js activeOf)
+      const live = buildSourceFromCode(FISCAL_RID); live.extras.forEach((e, i) => { e.display.identity_id = `xid_${i}`; });
+      S2_SERVER.on = true;
+      try {
+        const B = realBackend({ rid: FISCAL_RID, live, pointer: { version: 'v1', generation: 1 } }); B.who = who;
+        const p = await page({ on: B.on });
+        await p.signIn();
+        tabBtn(p, 'Extras').click(); await settle(10);
+        const removeOne = async () => {
+          const r = xrows(p).find((x) => { const b = x.querySelector('button.del'); return b && !b.disabled && !x.classList.contains('mk-xgone'); });
+          assert.ok(r, 'premise: a removable published extra');
+          r.querySelector('button.del').click(); await settle(5);
+          [...p.d.querySelectorAll('#xscrim .mf button')].find((b) => b.textContent === 'Quitar').click(); await settle(10);
+        };
+        const review = async () => { p.d.getElementById('review').click(); await settle(120); };
+        // 1) the first removal, saved: the server STORES the claim against the base the merchant loaded
+        await removeOne();
+        await review();
+        assert.deepEqual(B.statuses, who === 'manager' ? [200, 'request 200'] : [200], 'premise: the first removal saved for real');
+        const c1 = await B.claim();
+        assert.ok(c1 && c1.ids.length === 1 && c1.base_version === 'v1' && c1.base_generation === 1, `premise: the claim is STORED against v1@1 (${JSON.stringify(c1)})`);
+        if (who === 'owner') { p.d.getElementById('pubback').click(); await settle(20); }
+        // 2) an activation lands; 3) a second removal changes the claim
+        await B.activate({ version: 'v2', generation: 2 });
+        await removeOne();
+        const before = B.statuses.length;
+        await review();
+        assert.equal(B.statuses[before], 409, 'premise: the REAL server refuses the changed claim on the moved base');
+        assert.ok(x2b(p), 'the recovery sheet');
+        // SBS round 2 (the real browser): the refused save's catch re-showed the review UNDER the sheet — two dialogs at once
+        assert.equal(p.d.getElementById('scrim').classList.contains('show'), false, 'ONE dialog: the review is closed under the recovery sheet');
+        const [cancel, go] = [...x2b(p).querySelectorAll('.mf button')];
+        if (path === 'confirm') {
+          go.click(); await settle(150);
+          const last = p.n('editCatalog').at(-1);
+          assert.equal(last.body.deleted_ids_reviewed, true, 'acknowledged');
+          assert.deepEqual(last.body.deleted_ids_loaded_base, { version: 'v2', generation: 2 }, 'the fresh base');
+          assert.equal(B.statuses[before + 1], 200, 'the REAL server accepted the acknowledged resend');
+          const c2 = await B.claim();
+          assert.ok(c2 && c2.ids.length === 2 && c1.ids.every((x) => c2.ids.includes(x)), `the stored claim now holds BOTH removals (${JSON.stringify(c2)})`);
+          assert.deepEqual([c2.base_version, c2.base_generation], ['v2', 2], 'the acknowledgement REBOUND the stored claim to the live base');
+          if (who === 'manager') {
+            assert.equal(B.statuses[before + 2], 'request 200', 'the REAL request handler recorded the manager’s request');
+            const slot = await B.request();
+            assert.ok(slot && slot.by === UID.manager && slot.base_active_version === 'v2' && slot.base_generation === 2, `the request is bound to the rebound draft (${JSON.stringify(slot)})`);
+          } else assert.ok(p.d.getElementById('scrim').classList.contains('show') && !panel(p), 'the owner is back at the review, no refusal panel');
+        } else {
+          const sent = p.n('editCatalog').length, asked = p.n('catalogRequestPublish').length;
+          cancel.click(); await settle(30);
+          assert.equal(p.n('editCatalog').length, sent, '«Cancelar»: nothing resent');
+          assert.deepEqual(await B.claim(), c1, '«Cancelar»: the stored claim is untouched (still v1@1, one removal)');
+          await review();
+          assert.equal(B.statuses.at(-1), 409, 'the REAL server refuses it again');
+          assert.ok(x2b(p), 'the sheet again — never a silent resend');
+          assert.equal(p.d.getElementById('scrim').classList.contains('show'), false, 'ONE dialog again: the review is closed under the sheet');
+          assert.equal(p.n('catalogRequestPublish').length, asked, 'nothing more reached the owner');
+        }
+      } finally { S2_SERVER.on = false; }
+    });
+  }
+}
+
+test('S2 Codex r2 P2-6 — a NEW group\'s card follows the ONE group order, counts its real attachments, and stays (disabled) under «Sin extras»', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  const E = await import('./editor.js');
+  const d = p.mods.app.state.draft;
+  // Codex's repro, through the page's real writer: create Toppings / Miel on dimsum_01, then move Toppings FIRST
+  assert.equal(E.applyExposureOps(d, [{ op: 'group.create', group: 'Toppings', extras: [{ ref: 'tmp:p26-r2-00001', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['dimsum_01'] } }], { extrasCatalog: true }).ok, true, 'premise: group.create');
+  const order = ['Toppings', ...p.src().structure.extra_categories.map(String).filter((g) => g !== 'Toppings')];
+  assert.equal(E.applyExposureOps(d, [{ op: 'group.order', order }], { extrasCatalog: true }).ok, true, 'premise: group.order');
+  await p.open('dimsum_01');
+  const drawn = () => [...p.drawer().querySelectorAll('.mk-grp.mk-ext')].map((c) => c.querySelector('.mk-gtn').textContent);
+  const want = order.filter((g) => drawn().includes(g));
+  assert.deepEqual(drawn(), want, 'the cards follow the ONE group order (a new group is not appended after the published ones)');
+  assert.equal(drawn()[0], 'Toppings', 'the reordered new group is first');
+  assert.match(cardOf(p, 'Toppings').querySelector('.mk-gts').textContent, /· en 1 producto$/, 'a new group counts its real attachments (ref-aware reach)');
+  p.drawer().querySelector('.mk-opcsw button.tog').click(); await settle(5);
+  const t = cardOf(p, 'Toppings');
+  assert.ok(t, 'under «Sin extras» the new group\'s card stays');
+  assert.deepEqual(drawn(), want, 'under «Sin extras» the order holds');
+  assert.ok(p.fld('Opciones').querySelector('.mk-opc').classList.contains('mk-off'), 'premise: «Sin extras» on');
+  assert.ok([...t.querySelectorAll('input[type=checkbox]')].every((c) => c.disabled), 'under «Sin extras» the new group\'s card is disabled like the others');
+});
+
+test('S2 Codex r1 P2-6 — the drawer is ref-aware: a NEW extra in an offered group and a NEW group attached to the dish show CHECKED and inert with «Nuevo · se elige por producto al publicarlo», counted in their cards', async () => {
+  const p = await page({ read: XON });
+  await p.signIn();
+  const E = await import('./editor.js');
+  const d = p.mods.app.state.draft;
+  assert.equal(E.applyExposureOps(d, [{ op: 'extra.add', group: 'Salsas', ref: 'tmp:p26-new-0001', name: 'Salsa nueva', price: 12 },
+    { op: 'group.create', group: 'Toppings', extras: [{ ref: 'tmp:p26-new-0002', name: 'Miel', price: 17 }], attach: { mode: 'items', items: ['dimsum_01'] } }], { extrasCatalog: true }).ok, true, 'premise: the page’s writer');
+  await p.open('dimsum_01');
+  const rowOf = (card, name) => rowsOfCard(card).find((r) => r.querySelector('.mk-xnm').textContent === name);
+  const LINE = 'Nuevo · se elige por producto al publicarlo';
+  for (const [g, name] of [['Salsas', 'Salsa nueva'], ['Toppings', 'Miel']]) {
+    const card = cardOf(p, g);
+    assert.ok(card, `${g}: its card is drawn`);
+    const r = rowOf(card, name);
+    assert.ok(r, `${g}: the new extra «${name}» is in its card`);
+    const cb = r.querySelector('input[type=checkbox]');
+    assert.equal(cb.checked, true, `${name}: checked`);
+    assert.equal(cb.disabled, true, `${name}: inert (deny_extras is key-only)`);
+    assert.ok(r.textContent.includes(LINE), `${name}: the approved line`);
+  }
+  const salsas = cardOf(p, 'Salsas');
+  const n = rowsOfCard(salsas).length;
+  assert.ok(salsas.textContent.includes(`${n} opciones`) || salsas.textContent.includes(`de ${n} activos`) || salsas.textContent.includes('Todos activos'), 'the new extra counts in its card');
+  // the copy untouched by the inert rows: «Guardar» composes nothing for them
+  p.btn('Guardar').click(); await settle(10);
+  const io = (p.src().structure.exposure.item_overrides || {}).dimsum_01 || {};
+  assert.ok(!(io.deny_extras || []).some((k) => typeof k !== 'string'), 'nothing keyless is written into the checklist');
 });

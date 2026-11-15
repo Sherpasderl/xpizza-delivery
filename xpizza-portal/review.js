@@ -15,6 +15,7 @@
 // decided, because that is what the token is bound to and what publishEdited will re-check.
 
 import { isPhotoLine, lineKind, COPY as PHOTO } from './photo-logic.js';
+import { COPY as IE_COPY } from './item-edit-logic.js';   // «Quitar del menú» (Q-11): the approved «sección vacía» lines
 
 // The acknowledgement set: the server's OWN objects, untouched.
 //
@@ -48,12 +49,24 @@ const GATES = [['pickup_only', 'Queda solo para recoger', 'Vuelve a entregarse a
 const EXTRA_LOST = (x) => `Deja de aceptar el extra ${x}`;
 const EXTRA_GAINED = (x) => `Acepta el extra ${x}`;
 const isExtrasConsequence = (c) => !!c && c.kind === 'extras' && typeof c.key === 'string' && Array.isArray(c.gained) && Array.isArray(c.lost);
-const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field));
-function productsOf(lines, optionParent, optionIndex) {
+// STRUCTURE S1 (advisor 11-12; 5f 98ba304f): a dish's checklist and «Sin extras» are the SERVER's token-bound lines —
+// { field:'deny_extras', old:[keys], new:[keys] } and { field:'extras_policy', old, new } — read here as the product's sentences
+const DISH_EXTRAS = ['deny_extras', 'extras_policy'];
+const dishExtrasLines = (c, extraName) => {
+  // Codex S2 UI r1 P1-4: an extra is named, never shown by its raw key — an unnamed key is left out of the sentence
+  const nm = (k) => { const n = typeof extraName === 'function' ? extraName(k) : null; return typeof n === 'string' && n ? n : null; };
+  if (c.field === 'extras_policy') return c.new === 'none' ? ['Sin extras'] : (c.old === 'none' ? ['Vuelve a ofrecer extras'] : []);
+  const was = Array.isArray(c.old) ? c.old.map(String) : [], now = Array.isArray(c.new) ? c.new.map(String) : [];
+  const denied = now.filter((k) => !was.includes(k) && nm(k)), restored = was.filter((k) => !now.includes(k) && nm(k));
+  return [...(denied.length ? [`Sin ${denied.map(nm).join(', ')} (solo en la app Sherpa)`] : []), ...(restored.length ? [`Vuelve a ofrecer ${restored.map(nm).join(', ')}`] : [])];
+};
+const isProductLine = (c) => !!c && c.surface === 'item' && (TEXT_FIELDS.includes(c.field) || GATES.some(([f]) => f === c.field) || DISH_EXTRAS.includes(c.field));
+function productsOf(lines, optionParent, optionIndex, extraName) {
   const parentOf = typeof optionParent === 'function' ? optionParent : () => null;
   const byKey = new Map();
   const productOf = (key) => {
-    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [] });
+    // `count` = the change SENTENCES this product renders (Codex S1 follow-up r1 P2: every count is the rendered, folded list)
+    if (!byKey.has(key)) byKey.set(key, { key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 });
     return byKey.get(key);
   };
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -65,30 +78,120 @@ function productsOf(lines, optionParent, optionIndex) {
     if (parent) {
       let o = p.options.find((x) => x.key === c.key);
       if (!o) { o = { key: c.key, was: null, now: null, extra: [] }; p.options.push(o); }
-      if (c.field === 'name') { o.was = c.old; o.now = c.new; continue; }
-      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }
+      if (c.field === 'name') { o.was = c.old; o.now = c.new; p.count += 1; continue; }   // the option's derived name: one sentence
+      if (own.some((x) => x.key === parent && x.field === c.field && same(x.old, c.old) && same(x.new, c.new))) { p.absorbed.push(c); continue; }   // folded: no sentence
       o.extra.push(c.field === 'cat' || c.field === 'subcat' ? { kind: 'cat', field: c.field, was: c.old, now: c.new } : { kind: c.field, was: c.old, now: c.new });
+      p.count += 1;
       continue;
     }
-    if (c.field === 'name' || c.field === 'desc') p.lines.push({ kind: c.field, was: c.old, now: c.new });
+    if (c.field === 'name' || c.field === 'desc') { p.lines.push({ kind: c.field, was: c.old, now: c.new }); p.count += 1; }
     else if (c.field === 'cat' || c.field === 'subcat') {
       let l = p.lines.find((x) => x.kind === 'cat');
-      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); }
+      if (!l) { l = { kind: 'cat', cat: null, subcat: null }; p.lines.push(l); p.count += 1; }   // section + subsection: ONE sentence
       l[c.field] = { was: c.old, now: c.new };
-    } else {
+    } else if (DISH_EXTRAS.includes(c.field)) { const ss = dishExtrasLines(c, extraName); p.consequences.push(...ss); p.count += ss.length; }
+    else {
       const g = GATES.find(([f]) => f === c.field);
       p.consequences.push(c.new ? g[1] : g[2]);
+      p.gates = (p.gates || 0) + 1;   // counted below: a gate EXPLAINING the product's own section move is not a change of its own
     }
   }
   const order = ['name', 'desc', 'cat'];
   // the options in their product's own choice order (the caller's draft), never the diff's key order
   const idx = typeof optionIndex === 'function' ? optionIndex : () => 0;
   for (const p of byKey.values()) {
+    // approved frame E: «Productos 3» for name + description + section, its gate sentences under the section line uncounted
+    if (!p.lines.some((l) => l.kind === 'cat')) p.count += p.gates || 0;
+    delete p.gates;
     p.options.sort((a, b) => idx(a.key) - idx(b.key));
     p.lines.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-    p.consequences.sort((a, b) => GATES.findIndex((g) => g.includes(a)) - GATES.findIndex((g) => g.includes(b)));
+    // the gates in their order; the dish's extras sentences after them (their own order kept)
+    const rank = (x) => { const i = GATES.findIndex((g) => g.includes(x)); return i < 0 ? GATES.length : i; };
+    p.consequences.sort((a, b) => rank(a) - rank(b));
   }
   return [...byKey.values()];
+}
+
+// ── STRUCTURE S2 — the review's «Estructura» group (MOCKUP frame F; PLAN-portal-structure-S2-ui r3 §4) ─────────────────────────
+// ONLY the server's token-bound S2 fields: `attachments` (the authored attach / detach, P-2), `extras` (added / removed / repriced),
+// `structure.extra_categories` (the one group order) and `reach` («en N productos», P-3). Never a client operation log.
+const S2_CHIP = { Nuevo: 'add', Quitado: 'rem', Cambio: 'chg', Orden: 'chg' };
+const enN = (n) => (Number.isInteger(n) ? `Extras \u00b7 en ${n} ${n === 1 ? 'producto' : 'productos'}` : 'Extras');
+// the groups that MOVED: those outside the longest run kept in their old relative order (one move ⇒ one row, not every shifted group)
+export function movedGroups(was, now) {
+  const kept = now.filter((g) => was.includes(g));
+  const idx = kept.map((g) => was.indexOf(g));
+  const best = []; const prev = new Array(idx.length).fill(-1); const tails = [];
+  for (let i = 0; i < idx.length; i++) {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (idx[tails[mid]] < idx[i]) lo = mid + 1; else hi = mid; }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) best.push(kept[i]);
+  const stay = new Set(best);
+  return kept.filter((g) => !stay.has(g));
+}
+function structureRowsOf(d, names = {}) {
+  const nameOf = typeof names.nameOf === 'function' ? names.nameOf : (k) => String(k);
+  const catName = typeof names.categoryName === 'function' ? names.categoryName : (id) => String(id);
+  const sectionOf = typeof names.sectionOf === 'function' ? names.sectionOf : () => ({ cat: null, subcat: null });
+  const reach = d.reach && typeof d.reach === 'object' ? d.reach : {};
+  const rows = [];
+  const row = (name, sub, kind, parts, src) => rows.push({ name, sub, kind, chip: S2_CHIP[kind], parts, src });
+  for (const a of Array.isArray(d.attachments) ? d.attachments : []) {
+    if (!a || typeof a.group !== 'string') continue;
+    const kind = a.change === 'attached' ? 'Nuevo' : 'Quitado';
+    if (a.scope === 'category') row(catName(a.target), 'Categoría', kind, [`grupo ${a.group}`], a);
+    else { const sec = sectionOf(a.target) || {}; row(nameOf(a.target), [sec.cat == null ? null : catName(sec.cat), sec.subcat || null].filter(Boolean).join(' \u00b7 ') || '\u2014', kind, [`grupo ${a.group}`], a); }
+  }
+  const oldPrice = new Map((Array.isArray(d.changed) ? d.changed : []).filter((c) => c && c.surface === 'extra' && c.field === 'price').map((c) => [c.key, c.old]));
+  for (const x of Array.isArray(d.extras) ? d.extras : []) {
+    if (!x || typeof x.group !== 'string') continue;
+    if (x.change === 'added') row(x.group, enN(reach[x.group]), 'Nuevo', [`${x.name} \u00b7 L ${x.price}`], x);
+    else if (x.change === 'removed') row(x.group, enN(reach[x.group]), 'Quitado', [x.name], x);
+    else if (x.change === 'repriced') row(x.group, enN(reach[x.group]), 'Cambio', [x.name, '\u00b7', `L ${oldPrice.has(x.key) ? oldPrice.get(x.key) : '\u2014'}`, '\u2192', `L ${x.price}`], x);
+  }
+  const ec = d.structure && d.structure.extra_categories;
+  if (ec && Array.isArray(ec.old) && Array.isArray(ec.new)) {
+    for (const g of movedGroups(ec.old, ec.new)) row(g, 'Extras', 'Orden', [`pasa al ${ec.new.indexOf(g) + 1}.\u00ba lugar`], { group: g });
+  }
+  return rows;
+}
+
+// Codex S2 UI r1 P1-4 — a checklist key a dish stops denying BECAUSE of a structural change is that change's cleanup, already its
+// «Estructura» row: the extra is removed (diff.extras), or its group leaves the dish (an authored detach of the dish or its section, the
+// group gone from extra_categories, or the server's consequence: the dish no longer takes the group). It is never ALSO «Vuelve a ofrecer
+// {extra}» (it says the opposite) nor a product count; a line left with nothing to say is dropped. Any other restore is real and stays.
+function foldChecklistCleanup(lines, d, ctx) {
+  const xs = Array.isArray(d.extras) ? d.extras : [];
+  const removedKeys = new Set(xs.filter((x) => x && x.change === 'removed').map((x) => String(x.key)));
+  const groupOf = (k) => {
+    const g = ctx && typeof ctx.extraGroup === 'function' ? ctx.extraGroup(k) : null;
+    if (g != null) return String(g);
+    const x = xs.find((e) => e && String(e.key) === k); return x && x.group != null ? String(x.group) : null;
+  };
+  const parentOf = ctx && typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  const sectionOf = ctx && ctx.structure && typeof ctx.structure.sectionOf === 'function' ? ctx.structure.sectionOf : () => ({ cat: null });
+  const lost = new Map((Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence).map((c) => [c.key, new Set(c.lost.map(String))]));
+  const detached = (Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.change === 'detached');
+  const ec = d.structure && d.structure.extra_categories;
+  const gone = new Set(ec && Array.isArray(ec.old) && Array.isArray(ec.new) ? ec.old.map(String).filter((g) => !ec.new.map(String).includes(g)) : []);
+  const leaves = (dish, g) => {
+    if (g == null) return false;
+    const head = parentOf(dish) || dish; const cat = (sectionOf(head) || {}).cat;
+    return gone.has(g) || (lost.get(head) || new Set()).has(g)
+      || detached.some((a) => String(a.group) === g && ((a.scope === 'item' && (a.target === head || a.target === dish)) || (a.scope === 'category' && cat != null && String(a.target) === String(cat))));
+  };
+  const out = [];
+  for (const c of lines) {
+    if (!(c && c.field === 'deny_extras' && Array.isArray(c.old))) { out.push(c); continue; }
+    const now = Array.isArray(c.new) ? c.new.map(String) : [];
+    const old = c.old.map(String).filter((k) => now.includes(k) || !(removedKeys.has(k) || leaves(c.key, groupOf(k))));
+    if (old.length === now.length && old.every((k) => now.includes(k))) continue;   // only cleanup: the structural row says it
+    out.push(old.length === c.old.length ? c : { ...c, old });
+  }
+  return out;
 }
 
 export function reviewModel(diff, ctx = {}) {
@@ -96,17 +199,37 @@ export function reviewModel(diff, ctx = {}) {
   // DISH PHOTOS B (§2.1) — the server's photo lines ({field:'photo', old, new} three-state) are their own group, «Fotos»;
   // arranged, never derived: every line the server sent is shown exactly once.
   const all = Array.isArray(d.changed) ? d.changed : [];
-  const productLines = all.filter((c) => !isPhotoLine(c) && isProductLine(c));
-  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex);
-  for (const c of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+  const productLines = foldChecklistCleanup(all.filter((c) => !isPhotoLine(c) && isProductLine(c)), d, ctx);
+  const products = productsOf(productLines, ctx && ctx.optionParent, ctx && ctx.optionIndex, ctx && ctx.extraName);
+  // STRUCTURE S2: an authored attach / detach is its «Estructura» row — the same group's consequence on that dish is not shown twice
+  const authored = new Set((Array.isArray(d.attachments) ? d.attachments : []).filter((a) => a && a.scope === 'item').map((a) => `${a.target}\u0000${a.group}`));
+  for (const c0 of (Array.isArray(d.consequences) ? d.consequences : []).filter(isExtrasConsequence)) {
+    const c = { ...c0, gained: c0.gained.filter((g) => !authored.has(`${c0.key}\u0000${g}`)), lost: c0.lost.filter((g) => !authored.has(`${c0.key}\u0000${g}`)) };
+    if (!c.gained.length && !c.lost.length) continue;
     let p = products.find((x) => x.key === c.key);
-    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [] }; products.push(p); }
+    if (!p) { p = { key: c.key, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 0 }; products.push(p); }
     p.consequences = [...c.lost.map((x) => EXTRA_LOST(String(x))), ...c.gained.map((x) => EXTRA_GAINED(String(x))), ...p.consequences];
   }
-  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c));
+  const structure = structureRowsOf(d, ctx && ctx.structure);
+  // a repriced extra is its «Estructura» row; its price line is not ALSO a «Precios» row (every server fact shown once)
+  const repricedKeys = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && x.change === 'repriced').map((x) => x.key));
+  const changed = all.filter((c) => !isPhotoLine(c) && !isProductLine(c) && !(c.surface === 'extra' && c.field === 'price' && repricedKeys.has(c.key)));
   const photos = all.filter(isPhotoLine);
-  const added = Array.isArray(d.added) ? d.added : [];
-  const removed = Array.isArray(d.removed) ? d.removed : [];
+  // an extra added / removed on the Extras page is its «Estructura» row («Nuevo» / «Quitado»): not ALSO a «Se agregan» / «Se eliminan»
+  // line (SBS 11-12: the generic line showed the raw key, twice) — every server fact shown once
+  const s2Extras = new Set((Array.isArray(d.extras) ? d.extras : []).filter((x) => x && (x.change === 'added' || x.change === 'removed')).map((x) => `${x.change}\u0000${x.key}`));
+  const notS2 = (change) => (e) => !(e && e.surface === 'extra' && s2Extras.has(`${change}\u0000${e.key}`));
+  const added = (Array.isArray(d.added) ? d.added : []).filter(notS2('added'));
+  // «Quitar del menú» (MOCKUP-portal-remove-product frame R4): with the server's switch on (ctx.productRemoval, the caller's served fact)
+  // a DISH's removal is its «Productos» row («Quitado»), not ALSO a «Se eliminan» line — every server fact shown once (the notS2
+  // pattern). Switch off: today's «Se eliminan» exactly.
+  const removed0 = (Array.isArray(d.removed) ? d.removed : []).filter(notS2('removed'));
+  const dishOut = (x) => ctx && ctx.productRemoval === true && !!x && x.surface === 'item';
+  const removed = removed0.filter((x) => !dishOut(x));
+  for (const x of removed0.filter(dishOut)) {
+    const p = products.find((y) => y.key === x.key);
+    if (p) { p.removal = true; p.count += 1; } else products.push({ key: x.key, removal: true, lines: [], consequences: [], options: [], absorbed: [], sources: [], count: 1 });
+  }
   const renamed = Array.isArray(d.renamed) ? d.renamed : [];
   const flagged = new Set(ackSetFrom(d).map(idOf));
   // PLAN-public-menu-display T1 — a SECTION'S NAME is the server's `{surface:'category', field:'name'}` line. It is shown
@@ -142,8 +265,11 @@ export function reviewModel(diff, ctx = {}) {
     removed,
     renamed,
     photos,
+    structure,
     // everything that will publish, so the header cannot understate it
-    total: rows.length + sections.length + productLines.length + added.length + removed.length + renamed.length + photos.length,
+    // every product sentence once, as rendered (an option's identical line folded, a checklist swap = two sentences); a move's
+    // «Acepta / Deja de aceptar» explanations (diff.consequences) describe a counted change, they are not changes of their own
+    total: structure.length + rows.length + sections.length + products.reduce((n, p) => n + p.count, 0) + added.length + removed.length + renamed.length + photos.length,
   };
 }
 
@@ -181,6 +307,27 @@ export function renderReview(root, model, opts = {}) {
     return l;
   };
 
+  // STRUCTURE S2 (frame F): «Estructura» first — one .prow.mk-srow per server fact: the dish / group / section on the left, the kind
+  // chip (Nuevo · Cambio · Quitado · Orden) and the change in plain words; a long change wraps under the name, as the text rows do
+  const structure = Array.isArray(model.structure) ? model.structure : [];
+  if (structure.length) {
+    const g = el('div', 'mgroup');
+    g.append(groupHead('Estructura', structure.length));
+    for (const r of structure) {
+      const row = el('div', 'prow mk-srow');
+      const main = el('div', 'pmain');
+      main.append(el('div', 'pname', r.name), el('div', 'psub', r.sub));
+      const v = el('div', 'pval');
+      v.append(el('span', `bchip ${r.chip}`, r.kind));
+      // [what] or [what, '·', was, '→', now]: the was / arrow / now spans of the approved price rows
+      if (r.parts.length === 5) v.append(el('span', 'now plain', r.parts[0]), el('span', 'arr', r.parts[1]), el('span', 'was', r.parts[2]), el('span', 'arr', r.parts[3]), el('span', 'now', r.parts[4]));
+      else v.append(el('span', 'now plain', r.parts.join(' ')));
+      row.append(main, v);
+      g.append(row);
+    }
+    root.append(g);
+  }
+
   const sections = Array.isArray(model.sections) ? model.sections : [];
   if (sections.length) {
     const g = el('div', 'mgroup');
@@ -213,10 +360,21 @@ export function renderReview(root, model, opts = {}) {
     const textOrDash = (v) => (typeof v === 'string' && v.trim() ? v : '\u2014');
     const place = (cat, sub) => [cat == null ? null : catName(cat), typeof sub === 'string' && sub ? sub : null].filter(Boolean).join(' \u00b7 ') || '\u2014';
     const g = el('div', 'mgroup');
-    g.append(groupHead('Productos', products.reduce((n, p) => n + p.lines.length, 0)));
+    g.append(groupHead('Productos', products.reduce((n, p) => n + (p.count || 0), 0)));
     const LABEL = { name: 'Nombre', desc: 'Descripción', cat: 'Categoría' };
     for (const p of products) {
       const now = sectionOf(p.key) || {};
+      if (p.removal) {
+        // R4: the dish and its place, the approved «Quitado» chip and the plain-words line (frame F's idiom)
+        const row = el('div', 'prow mk-srow');
+        row.dataset.k = `item::${p.key}::removed`;
+        const main = el('div', 'pmain');
+        main.append(el('div', 'pname', nameOf(p.key)), el('div', 'psub', place(now.cat, now.subcat)));
+        const v = el('div', 'pval');
+        v.append(el('span', 'bchip rem', 'Quitado'), el('span', 'now plain', 'se quita del menú; tus pedidos pasados no cambian'));
+        row.append(main, v);
+        g.append(row);
+      }
       // frame E: the rows head with the PUBLISHED name — a renamed product's name line carries it (old); otherwise the lookup
       const nl = p.lines.find((l) => l.kind === 'name');
       const head = nl && typeof nl.was === 'string' && nl.was.trim() ? nl.was : nameOf(p.key);
@@ -452,9 +610,23 @@ export function fiscalPriceChanges(diff) {
 // `rid === 'x_pizza'` literal is accidentally correct for every restaurant that exists today, which is
 // exactly what makes it survive review — and wrong the day a third merchant joins the platform
 // factura. Strictly `=== true`, so an absent or non-boolean flag is not read as a capability.
+// Codex S2 UI r1 P1-3 — with an S2 op the server's token-bound diff carries the seal's list itself (`fiscal`: every new priced line and
+// every changed price, named, no duplicates — catalog/review-diff.js): consumed AS-IS, exactly once, an extra with its group (from the
+// same diff's `extras`). Without it (no S2 op) the seal is today's derivation, byte for byte.
+function serverFiscal(diff) {
+  const f = diff && diff.fiscal;
+  if (!f || !Array.isArray(f.added) || !Array.isArray(f.repriced)) return null;
+  const ex = Array.isArray(diff.extras) ? diff.extras : [];
+  const groupOf = (r) => { if (r.surface !== 'extra') return null; const e = ex.find((x) => x && x.key === r.key); return e && e.group != null ? String(e.group) : null; };
+  return {
+    repriced: f.repriced.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), was: r.old, now: r.new })),
+    added: f.added.filter(Boolean).map((r) => ({ surface: r.surface, key: r.key, name: r.name == null ? null : String(r.name), group: groupOf(r), now: r.price })),
+  };
+}
 export function attestationModel(diff, ctx = {}) {
   const isFiscal = ctx.usesPlatformFactura === true;
-  const sealRows = fiscalPriceChanges(diff);
+  const sf = serverFiscal(diff);
+  const sealRows = sf ? sf.repriced : fiscalPriceChanges(diff);
   const ackSet = ackSetFrom(diff);
   // 🔴 NOTHING TO PUBLISH IS ITS OWN ANSWER — and only since #7-B, which made the review reachable on a
   // draft that may turn out to equal live. It is NOT the same as "changed, but no price changed": that
@@ -464,17 +636,18 @@ export function attestationModel(diff, ctx = {}) {
   // merchant record a SAR attestation against zero changes. A signature for nothing makes the fiscal
   // record say something untrue, which is the same class as a signature for someone else's changes —
   // so no signature is collected and the gate refuses outright.
-  const hasNothing = reviewModel(diff).total === 0;
+  const hasNothing = reviewModel(diff, ctx).total === 0;
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
   // 1D add-product A — NEW products are priced lines too: they join the zero-price refusal and the attestation copy.
-  const addedRows = ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
+  // S2 (P1-3): the server's new priced lines — products AND extras — from diff.fiscal
+  const addedRows = sf ? sf.added : ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
     .map((a) => ({ key: a.key, now: a.price }));
   const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0)) || addedRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
   // DISH PHOTOS B (§2.4) — a publish whose EVERY diff line is a photo line gets the photos seal copy (client-side, like the
   // names-only seal); the server's gate is unchanged (usesPlatformFactura only). The kind of each line is fixed HERE, at mint,
   // from the legacy previews the caller had — the record is evidence and does not change afterwards.
-  const m = reviewModel(diff);
+  const m = reviewModel(diff, ctx);
   const photoRows = m.photos.map((c) => ({ key: c.key, kind: lineKind(c, ctx.legacy) }));
   // S4 (Codex S4P2 r1 P1-2): a product line (name / description / section — moved out of `rows` into `products`) is NOT a photo:
   // any of them ends «photos only», exactly as a description line did before S4; a rename then puts its name on the seal
@@ -486,6 +659,9 @@ export function attestationModel(diff, ctx = {}) {
   // S4 (frame E; OWNER-approved copy 11-10) — only display.name reaches a factura description (S2 §1.3): the products this publish
   // RENAMES, one row each; a group's options (derived names) fold under their product (ctx.optionParent, the caller's draft)
   const parentOf = typeof ctx.optionParent === 'function' ? ctx.optionParent : () => null;
+  // P-R8 (Q-12 RULED; 5f 34f38bb8): the SAVE's own word that this publish needs no fiscalAck — literally `false`; absent (or anything
+  // else) ⇒ today's seal and fiscalAck, byte-identical. Never re-derived here.
+  const sealWaived = ctx.fiscalAckRequired === false;
   const nameRows = ((diff && Array.isArray(diff.changed)) ? diff.changed : [])
     .filter((c) => c && c.surface === 'item' && c.field === 'name' && !parentOf(c.key)).map((c) => ({ key: c.key, was: c.old, now: c.new }));
   return {
@@ -493,9 +669,9 @@ export function attestationModel(diff, ctx = {}) {
     nameRows,
     hasNothing,
     sectionRows,
-    needsSeal: isFiscal && !hasNothing,
+    needsSeal: isFiscal && !hasNothing && !sealWaived,
     needsPlainAck: !isFiscal && ackSet.length > 0,
-    needsAck: !hasNothing && (isFiscal || ackSet.length > 0),
+    needsAck: !hasNothing && ((isFiscal && !sealWaived) || ackSet.length > 0),
     sealRows,
     addedRows,
     ackSet,
@@ -504,7 +680,8 @@ export function attestationModel(diff, ctx = {}) {
     photosOnly,
     // What the publish will send. Two separate fields for two separate facts: the attestation, and
     // the exact set of large changes the server flagged.
-    fiscalAck: isFiscal,
+    fiscalAck: isFiscal && !sealWaived,
+    sealWaived,
   };
 }
 
@@ -566,7 +743,9 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     // the seal says what is true — the publish needs the owner's authorization — and never that the name is on the factura.
     const namesOnly = (model.sectionRows || []).length > 0 && !model.sealRows.length && !(model.addedRows || []).length;
     const renames = Array.isArray(model.nameRows) ? model.nameRows : [];
-    ht.append(el('span', null, namesOnly || renames.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
+    // S2 (MOCKUP frame F's seal; Codex S2 UI r1 P1-3): the new priced EXTRAS from the server's diff.fiscal, «{extra} ({grupo})» · «L n · nuevo»
+    const extraAdds = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface === 'extra');
+    ht.append(el('span', null, namesOnly || renames.length || extraAdds.length ? 'Esta publicación requiere tu autorización como propietario' : 'Estos precios se imprimen en tu factura fiscal'));
     h.append(ht);
     seal.append(h);
 
@@ -594,7 +773,15 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       root.append(seal);
       return root;
     }
-    if (renames.length) {
+    if (extraAdds.length) {
+      // frame F's sentence, verbatim for new extras + one price; the other counts compose its parts with frame E's
+      const N = model.sealRows.length, M = renames.length;
+      const parts = ['Agrega opciones con precio'];
+      if (N) parts.push(N === 1 ? 'cambia un precio' : `cambia ${N} precios`);
+      if (M) parts.push(M === 1 ? 'cambia el nombre de un producto' : `cambia el nombre de ${M} productos`);
+      const said = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+      body.append(el('p', null, `Como propietario, autorizás esta publicación. ${said}: aparecen en la factura.`));
+    } else if (renames.length) {
       // the owner-approved sentences (11-10): 1 price + 1 name is frame E's, verbatim
       const N = model.sealRows.length, M = renames.length;
       const names = M === 1 ? 'el nombre de un producto' : `el nombre de ${M} productos`;
@@ -606,13 +793,31 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
     }
     // S4 (frame E): with the products lookup a price row reads the product's CURRENT name (as printed after this publish)
     const nowName = (k) => (opts.products && typeof opts.products.nameOf === 'function' ? opts.products.nameOf(k) : String(k));
+    // frame F: an extra's row is «{extra} ({grupo})»; the new ones first («L n · nuevo»), then the changed prices
+    const extraName = (r) => (r.group ? `${r.name || r.key} (${r.group})` : String(r.name || r.key));
+    for (const r of extraAdds) {
+      const c = el('div', 'seachg');
+      c.append(el('span', 'sn', extraName(r)));
+      const v = el('span', 'sv');
+      v.append(el('b', null, shown(r.now)), ' · nuevo');
+      c.append(v);
+      body.append(c);
+    }
     for (const r of model.sealRows) {
       const c = el('div', 'seachg');
+      if (r.surface === 'extra' && r.name != null) {
+        c.append(el('span', 'sn', extraName(r)));
+        const v = el('span', 'sv');
+        v.append(el('span', 'was', shown(r.was)), ' \u2192 ', el('b', null, shown(r.now)));
+        c.append(v);
+        body.append(c);
+        continue;
+      }
       c.append(el('span', 'sn', nowName(r.key)));          // textContent: a dish name is data
       const v = el('span', 'sv');
       v.append(el('span', 'was', shown(r.was)));
       v.append(el('span', 'arr', '→'));
-      v.append(el('span', 'now', shown(r.now)));
+      v.append(el('b', 'now', shown(r.now)));   // the mockups' «was → <b>now</b>» (SBS r2): the seal's own b rule colours it
       c.append(v);
       body.append(c);
     }
@@ -623,14 +828,14 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const v = el('span', 'sv');
       v.append(el('span', 'was', String(r.was)));
       v.append(el('span', 'arr', '→'));
-      v.append(el('span', 'now', String(r.now)));
+      v.append(el('b', 'now', String(r.now)));
       c.append(v);
       body.append(c);
     }
     // 1D add-product A — the NEW products, with the prices the factura will print for them.
     // 1D add-product B (§0d.5) — a product with a required choice is never a factura line itself: each OPTION is, under its
     // full name ("{product} - {choice}"), so the seal lists every option with its price, under its product.
-    const added = Array.isArray(model.addedRows) ? model.addedRows : [];
+    const added = (Array.isArray(model.addedRows) ? model.addedRows : []).filter((r) => r && r.surface !== 'extra');   // the new PRODUCTS
     const desc = (k) => (typeof opts.describe === 'function' ? opts.describe({ surface: 'item', key: k }) : null);
     const addedKeys = new Set(added.map((r) => r.key));
     const optionOf = (r) => { const d = desc(r.key); return d && d.option && addedKeys.has(d.parent) ? d : null; };
@@ -658,7 +863,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
         }
       }
     }
-    if (!model.sealRows.length && !added.length && !renames.length) {
+    if (!model.sealRows.length && !added.length && !renames.length && !extraAdds.length) {
       // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
       // though this particular edit moves no price.
       body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
@@ -675,7 +880,7 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const a = products.length;
       const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
       const adds = (a === 1 ? '1 producto nuevo' : `${a} productos nuevos`) + (optionCount ? ` y sus ${optionCount} opciones` : '');
-      t.append(renames.length ? ' esta edición en la factura fiscal.' : a === 0
+      t.append(renames.length || extraAdds.length ? ' esta edición en la factura fiscal.' : a === 0
         ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
         : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));
       return t;
@@ -723,7 +928,7 @@ export function publishPayload(review) {
     // true or it is not a signature. The publish button being enabled is a UI state, not a guarantee —
     // it can be cleared from devtools — so the payload states what was actually signed rather than
     // what the screen looked like.
-    fiscalAck: att.isFiscal === true && review.acknowledged === true,
+    fiscalAck: att.isFiscal === true && att.sealWaived !== true && review.acknowledged === true,
   };
 }
 
@@ -810,7 +1015,12 @@ export const PUBLISH_ACTIONS = {
   RETRY: 'retry',         // nothing about the edit was wrong — send the same payload again
   FIX: 'fix',             // 1D add-product A: a NEW product needs a correction — back to editing, its drawer open at the field
   RESET: 'reset',         // 1D add-product A: the saved draft cannot publish — "Volver al menú publicado"
+  FIX_EXTRA: 'fix_extra', // STRUCTURE S2 §5.2: an EXTRA needs a correction — the «Extras» tab, its group, its row (FIX keeps its product-only meaning)
+  REVIEW_DELETIONS: 'review_deletions',   // S2 §5.2: the published menu moved under a removal claim — re-read, re-show the list, resend acknowledged
 };
+// STRUCTURE S2 — the Extras page's caps, said in the panels (owner 2026-11-12: the numbers ARE the copy). ONE constant; review.test pins
+// it equal to the server's catalog/structure-budget.js LIMITS, so the copy can never promise a number the server does not enforce.
+export const STRUCTURE_CAPS = Object.freeze({ groups: 20, perGroup: 30, extras: 600 });
 
 // The six first-class states, each with its own explanation and its own way forward. The copy says
 // what happened, what it means for the merchant's data, and what to do — in that order, because the
@@ -907,6 +1117,16 @@ const PANELS = {
   rename_not_alone: { icon: 'warn', title: 'Un cambio de nombre se publica solo',
     detail: 'Tu borrador cambia el nombre de una sección y también otras cosas. Volvé al menú publicado, cambiá solo el nombre y publicalo; el resto hacelo después.',
     action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3 §7, Codex build r1 #7): a dish's extras while the platform switch is off, and a
+  // new product's options whose reference did not resolve
+  extras_not_supported_yet: { icon: 'info', title: 'Todavía no se pueden cambiar los extras de un producto',
+    detail: 'Tus otros cambios siguen acá.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  // deterministic for this draft (an unresolved new-product reference): a retry would be refused forever, so the way out is the
+  // published menu (the review guard's rule for deterministic refusals)
+  exposure_ref_mismatch: { icon: 'warn', title: 'No pudimos guardar las opciones de un producto nuevo',
+    detail: 'Volvé al menú publicado y aplicá tus cambios de nuevo; si sigue igual, escribinos.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
   structure_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
     detail: 'Tu borrador cambia la estructura del menú. Volvé al menú publicado y aplicá tus cambios de nuevo.',
     action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
@@ -932,6 +1152,35 @@ const PANELS = {
   flip_evidence_exists: { icon: 'info', title: 'No se publicó',
     detail: 'El menú en vivo no cambió. Revisá de nuevo los cambios y volvé a confirmar.',
     action: { id: PUBLISH_ACTIONS.REREVIEW, label: 'Revisar de nuevo' } },
+  // ── STRUCTURE S2 §5.2 — the Extras page (PLAN-portal-structure-S2-ui r3 §5.2; frame H) ──
+  extra_name_unsafe: { icon: 'warn', title: 'Ese nombre no se puede usar',
+    detail: 'El nombre no puede llevar , | + [ ]. Cambialo, por favor.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' } },
+  name_needs_new_id: { icon: 'warn', title: 'Ese nombre ya lo usó un extra que quitaste',
+    detail: 'Usá otro nombre.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' } },
+  extras_group_empty: { icon: 'warn', title: 'Un grupo necesita al menos un extra',
+    detail: 'Agregá un extra o no lo crees.',
+    action: { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Agregar un extra' } },
+  existing_extra_removed: { icon: 'warn', title: 'Volvé a quitar el extra desde la página de Extras',
+    detail: 'Tu borrador no coincide con el menú publicado.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  extras_catalog_not_supported_yet: { icon: 'info', title: 'Agregar extras todavía no está disponible',
+    detail: 'Tus otros cambios siguen acá.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  structure_caps: { icon: 'warn', title: 'Son demasiados cambios a la vez',
+    detail: 'Publicá parte de los cambios primero.',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Entendido' } },
+  structure_bytes: { icon: 'warn', title: 'El menú quedó demasiado grande',
+    detail: 'Quitá algunos extras o reglas.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  // the three deletion refusals are ONE recovery sheet (r2 #8), the owner's save and the manager's request alike
+  deleted_ids_base_moved: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
+  deleted_ids_unbound: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
+  deleted_ids_stale_baseline: { icon: 'warn', title: 'El menú publicado cambió', detail: 'Antes de seguir, confirmá lo que se quita:',
+    action: { id: PUBLISH_ACTIONS.REVIEW_DELETIONS, label: 'Confirmar y seguir' } },
   store_unavailable: {
     icon: 'warn',
     title: 'No se pudo publicar',
@@ -972,7 +1221,9 @@ const GENERIC = {
 // them to distrust the one panel that will someday be telling the truth.
 const serverAnswered = (err) => !!(err && typeof err.status === 'number' && err.status > 0);
 
-export function outcomeFor(err, op = 'publish') {
+// `ctx` (STRUCTURE S2 §5.2, optional; extras-logic extrasOutcomeCtx): { isExtra(target) → whether the named ref / key is an EXTRA row of the
+// draft } — the server names a product's and an extra's refusal alike, so only the draft can tell them apart
+export function outcomeFor(err, op = 'publish', ctx = {}) {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
   const base = { code, op, generic: !panel, ...(panel || GENERIC) };
@@ -980,9 +1231,25 @@ export function outcomeFor(err, op = 'publish') {
   const b = err && err.body && typeof err.body === 'object' ? err.body : null;
   if (b) {
     const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
-    if (target) base.target = target;
+    if (target) { base.target = target; base.targetIs = typeof b.ref === 'string' ? 'ref' : 'key'; }   // S2 §5.2: a new extra by its ref, a published one by its key
     if (typeof b.field === 'string') base.field = b.field;
     if (typeof b.option_key === 'string' && b.option_key) base.optionKey = b.option_key;   // S4: a derived option name's refusal
+  }
+  // ── STRUCTURE S2 §5.2 — an EXTRA's refusal (the draft says the target is an extra row): the extra's copy, FIX-EXTRA to its row ──
+  const isExtra = !!(base.target && ctx && typeof ctx.isExtra === 'function' && ctx.isExtra(base.target));
+  if (isExtra && code === 'name_taken') {
+    base.title = 'Ese nombre ya está en tu menú'; base.detail = 'Elegí otro nombre para el extra nuevo.';
+    base.action = { id: PUBLISH_ACTIONS.FIX_EXTRA, label: 'Corregir el nombre' };
+  }
+  if (code === 'extras_group_empty' && b && typeof b.group === 'string' && b.group) base.group = b.group;   // (a): the group, once the server names it
+  if (code === 'deleted_ids_stale_baseline' && b && Array.isArray(b.existing_ids)) base.existingIds = b.existing_ids.map(String);
+  if (code === 'structure_caps' && b && ['extra_categories', 'extras_in_group', 'extras'].includes(b.field)) {
+    // 5f 3290d9d0: a group's cap answers field 'extras_in_group' (+ group); 'extras' is the menu-wide cap only
+    if (b.field === 'extras_in_group' && typeof b.group === 'string' && b.group) base.group = b.group;
+    if (b.field === 'extra_categories') { base.title = 'Llegaste al máximo de grupos'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.groups} grupos de extras.`; }
+    else if (b.field === 'extras_in_group') { base.title = 'Llegaste al máximo de extras en un grupo'; base.detail = `Un grupo puede tener hasta ${STRUCTURE_CAPS.perGroup} extras.`; }
+    else { base.title = 'Llegaste al máximo de extras'; base.detail = `Podés tener hasta ${STRUCTURE_CAPS.extras} extras.`; }
+    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' };
   }
   // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
   if (code === 'text_unsafe' && base.field === 'desc') {
@@ -1026,10 +1293,17 @@ export function outcomeFor(err, op = 'publish') {
     if (code === 'rename_not_alone') return base;
     // F-2 (mockup N2) — likewise: «No se guardó ni se publicó nada» is the literal truth of a refused reset, in the approved words
     if (code === 'platform_changes_pending') return base;
+    // STRUCTURE S2 §5.2 — likewise: «El menú publicado cambió» / «… no coincide con el menú publicado» state a fact about the PUBLISHED menu,
+    // as true of the save that was refused as of a publish (the approved recovery sheet / RESET copy)
+    // (and «Publicá parte de los cambios primero.» is an instruction, as true of a refused save)
+    if (['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline', 'existing_extra_removed', 'structure_caps'].includes(code)) return base;
     if (base.generic || /public/i.test(base.title)) base.title = 'No se pudo guardar el borrador';
     if (base.generic || /verific|en vivo|public/i.test(base.detail)) {
       base.detail = 'No pudimos guardar tu borrador. Tus cambios siguen en pantalla — probá de nuevo; si sigue fallando, recargá la página.';
     }
+    // «Quitar del menú» (D-8 + Q-11 RULED): the last dish of a section / subsection — today's panel, titled with the approved line
+    if (code === 'section_emptied') base.title = IE_COPY.cat.section_empty;
+    if (code === 'subsection_emptied') base.title = IE_COPY.cat.subsection_empty;
     return base;
   }
   // a publish the server ANSWERED: pre-commit, so nothing went live and the panel says so

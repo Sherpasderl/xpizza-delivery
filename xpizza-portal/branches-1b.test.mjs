@@ -26,6 +26,7 @@ function row(rid, extra = {}) {
     identity_version: 7, editable: { prep_default_min: prof.prep_default_min }, readonly: { active: true, radius_km: 4, hours: prof.hours, phone: prof.phone },
     control: { state: 'open', paused_until: null, pause_reason: null, pause_since: null }, devices: 0, last_order_today: null,
     lifecycle: 'active', profile: prof, location: { address_line: 'Calle 1, local 2', address_reference: 'Frente al parque', hub: { lat: 1, lng: 2 }, zone_radius_km: 4 },
+    app_max_km: 4, limit_invalid: false,   // ENVÍO v3 §3b: getMyBranches serves the branch's effective app limit (top-level)
     version: 7, ...rest };
 }
 const E1 = (branches, { w = true, brands } = {}) => ({ brands: brands || [{ brand_id: 'marca_s', name: 'Marca S', caps: ['brand.locations'], activation: 'on', drafts: [] }], branches, membership_writes_enabled: w });

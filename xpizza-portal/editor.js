@@ -134,6 +134,9 @@ export function draftSource(draft) {
 
 // A row's identity on the screen: its key once the server allocated one, its temporary reference until then.
 export const rowId = (row) => (row && typeof row.key === 'string' ? row.key : (row && typeof row.ref === 'string' ? row.ref : undefined));
+const rowMatches = (r, id) => (id && typeof id === 'object'
+  ? (typeof id.key === 'string' ? r.key === id.key : (typeof id.ref === 'string' && typeof r.key !== 'string' && r.ref === id.ref))
+  : r.key === id);
 const isTmp = (row) => !!(row && typeof row.ref === 'string' && row.ref.startsWith('tmp:') && !('key' in row));
 
 const rowsOf = (src, surface) => (surface === 'item'
@@ -144,7 +147,7 @@ function setPrice(draft, surface, key, raw) {
   // THE BOUNDARY. A mutation arriving while the draft is not owned for editing — from a detached
   // listener, a retained reference, a stray dispatch — is refused here, whatever the DOM looks like.
   if (!canEditContent(draft)) return draft;
-  const row = rowsOf(draft.state, surface).find((r) => r && r.key === key);
+  const row = rowsOf(draft.state, surface).find((r) => r && rowMatches(r, key));
   // An unknown key is a NO-OP, never a new row. Creating one here would be an accidental back door to
   // "add item", which writes a pricing key and belongs to 2b-2c.
   if (!row) return draft;
@@ -162,7 +165,21 @@ function setPrice(draft, surface, key, raw) {
 }
 
 export const setItemPrice = (draft, key, raw) => setPrice(draft, 'item', key, raw);
-export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, raw);
+// STRUCTURE S2 (advisor 2026-11-12): a NEW extra's name — ONLY a keyless row, by its { ref } (it has no identity yet: renaming it is the
+// inline row's own field, not the S2b rename). A key, a string id or a ref that names a keyed row is a NO-OP. Runs of spaces collapse
+// (the caller trims on blur, so typing a space between words survives).
+export function setExtraName(draft, id, raw) {
+  if (!canEditContent(draft)) return draft;
+  if (!id || typeof id !== 'object' || typeof id.ref !== 'string' || typeof id.key === 'string') return draft;
+  const row = rowsOf(draft.state, 'extra').find((r) => r && typeof r.key !== 'string' && r.ref === id.ref);
+  if (!row || !row.display || typeof row.display !== 'object') return draft;
+  row.display.name = String(raw ?? '').replace(/\s+/g, ' ');
+  return draft;
+}
+// STRUCTURE S2 (PLAN-portal-structure-S2-ui r3 §3.3): an extra by its key (a string, S1's callers, or { key }) OR — a new one the
+// server has not allocated yet — by { ref }, which matches ONLY a keyless row (the writer's own predicate, exposure-transitions.js
+// extra.remove); a new row never gets a key, id or stamp here
+export const setExtraPrice = (draft, id, raw) => setPrice(draft, 'extra', id, raw);
 
 // ── 1D add-product A — ADDING A PLAIN PRODUCT ──────────────────────────────────────────────────────────────────
 // A new row: the temporary reference the caller minted, the section it goes in, and nothing the server owns (no
@@ -222,13 +239,172 @@ export function removeAddition(draft, id, savedAdditions = new Set()) {
   const g = groupOfRow(draft.state, items[i]);
   const row = items[i];
   if (g) dropGroup(draft.state, g);
+  dropDishUnit(draft.state, row);
+  return draft;
+}
+// ONE dish unit leaves the source: its row, its item_order entry and its photos entry — shared by removeAddition and removeProduct
+// («Quitar del menú») so the two cannot drift (PLAN-portal-remove-product r3 §4.1 step 3).
+function dropDishUnit(st, row) {
+  const id = rowId(row);
+  const items = rowsOf(st, 'item');
   items.splice(items.indexOf(row), 1);
-  dropFromOrder(draft.state, id);
+  dropFromOrder(st, id);
   // DISH PHOTOS B (codex r1 #1) — its photo goes with it: a `source.photos` key with no matching item fails editCatalog's
   // validation (the amended tmp-ref rule), so an orphan here would make the next save unsavable
-  const pm = draft.state.photos && typeof draft.state.photos === 'object' ? draft.state.photos : null;
-  if (pm && Object.prototype.hasOwnProperty.call(pm, id)) { delete pm[id]; if (!Object.keys(pm).length) delete draft.state.photos; }
-  return draft;
+  const pm = st.photos && typeof st.photos === 'object' ? st.photos : null;
+  if (pm && Object.prototype.hasOwnProperty.call(pm, id)) { delete pm[id]; if (!Object.keys(pm).length) delete st.photos; }
+}
+
+// ── «Quitar del menú» (PLAN-portal-remove-product r3, APPROVED 11-12; MOCKUP-portal-remove-product.html) ──────────────────────────
+// The served live order (P-R9, 5f `liveOrder: { items, rewards }`), well-formed — without it nothing is removed or restored (Q-13:
+// never a guessed order).
+const validLiveOrder = (lo) => !!(lo && Array.isArray(lo.items) && lo.items.every((k) => typeof k === 'string') && Array.isArray(lo.rewards)
+  && lo.rewards.every((k) => typeof k === 'string'));
+// §2 — the ONE predicate (the drawer's action and both writers ask it). ctx: { on (the server's productRemoval), baseReadable
+// (state.deletionBase), liveOrder (P-R9), savedAdditions (the server's unpublished additions) }. → { show, enabled, code }: rows 1–5
+// HIDE the action (U3); row 6 (no readable base / no live order) shows it disabled with the U2 line. app.js passes the two served
+// collections POSITIONALLY (`liveOrder`, `savedAdditions` — the portal-wiring rule: a state reference travels only as a ruled consumer's
+// argument, never inside a literal); they default to ctx's.
+export function canRemoveProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.liveOrder, savedAdditions = ctx && ctx.savedAdditions) {
+  const no = (code, show = false) => ({ show, enabled: false, code });
+  if (!ctx || ctx.on !== true) return no('off');
+  if (!draft || !canEditContent(draft)) return no('not_editable');
+  const row = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === key);
+  if (!row) return no('unknown_item');
+  const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
+  if (isTmp(row) || typeof row.key !== 'string' || saved.has(row.key)) return no('new_item');   // a «Nuevo» dish keeps «Descartar»
+  if (isOptionRow(row) || groupOfRow(draft.state, row)) return no('has_options');                // advisor ruling (b), until S3
+  const sid = row.display && row.display.identity_id;
+  if (typeof sid !== 'string' || !sid) return no('unstamped');                                   // the server would refuse a RESET
+  if (ctx.baseReadable !== true || !validLiveOrder(liveOrder)) return no('base_unreadable', true);
+  return { show: true, enabled: true, code: null };
+}
+// §4.2 / P-R9 — the ONE order rebuild: item_order = the live order filtered to what is present, THEN the draft's additions (keys the
+// live order does not hold) in their relative order — the server's rule (add-product.js: new products go at the end); rewards = the
+// live rewards filtered to what is present, then any other entry. Pure over the source; false (nothing written) without the live order.
+export function rebuildOrders(st, liveOrder) {
+  if (!st || typeof st !== 'object' || !validLiveOrder(liveOrder)) return false;
+  const present = new Set(rowsOf(st, 'item').map(rowId).filter((k) => typeof k === 'string'));
+  st.structure = st.structure || {};
+  const liveItems = new Set(liveOrder.items);
+  const cur = Array.isArray(st.structure.item_order) ? st.structure.item_order : (st.structure.item_order = []);
+  const nextItems = [...liveOrder.items.filter((k) => present.has(k)), ...cur.filter((k) => !liveItems.has(k))];
+  cur.splice(0, cur.length, ...nextItems);
+  const rei = st.structure.redeem_eligible_items;
+  if (Array.isArray(rei) || liveOrder.rewards.length) {
+    const liveRewards = new Set(liveOrder.rewards);
+    const next = [...liveOrder.rewards.filter((k) => present.has(k)), ...(Array.isArray(rei) ? rei : []).filter((k) => !liveRewards.has(k))];
+    if (Array.isArray(rei)) rei.splice(0, rei.length, ...next); else st.structure.redeem_eligible_items = next;
+  }
+  return true;
+}
+// §4.1 — remove a PUBLISHED plain dish as one unit, all or nothing: its row, order entry and photo (dropDishUnit), its OWN entries
+// (P-R4, 5f d1309843: item_overrides[key], extras_by_item[key] — the map itself stays, B-3 — and its rewards entry), and its identity
+// stamp claimed (Ruling A). → { ok:true, snap } (P-R1's shape; the caller's stash, for «Deshacer») | { ok:false, code }.
+export function removeProduct(draft, key, ctx = {}, liveOrder = ctx && ctx.liveOrder, savedAdditions = ctx && ctx.savedAdditions) {
+  const p = canRemoveProduct(draft, key, ctx, liveOrder, savedAdditions);
+  if (!p.enabled) return { ok: false, code: p.code };
+  const st = draft.state;
+  const row = rowsOf(st, 'item').find((r) => r && r.key === key);
+  const s = st.structure || {};
+  const ov = s.exposure && s.exposure.item_overrides && typeof s.exposure.item_overrides === 'object' ? s.exposure.item_overrides : null;
+  const ebi = s.extras_by_item && typeof s.extras_by_item === 'object' ? s.extras_by_item : null;
+  const rei = Array.isArray(s.redeem_eligible_items) ? s.redeem_eligible_items : null;
+  const order = Array.isArray(s.item_order) ? s.item_order : [];
+  const pm = st.photos && typeof st.photos === 'object' ? st.photos : null;
+  const j = order.indexOf(key), ri = rei ? rei.indexOf(key) : -1;
+  // `after` / `redeem_index` are kept in P-R1's shape but NEVER place anything: §4.2 rebuilds both orders from P-R9
+  const snap = clone({ key, identity_id: row.display.identity_id, row, after: j > 0 ? order[j - 1] : null, photo: pm && own(pm, key) ? pm[key] : null,
+    refs: { item_override: ov && own(ov, key) ? ov[key] : null, extras_by_item: ebi && own(ebi, key) ? ebi[key] : null, redeem_index: ri === -1 ? null : ri } });
+  dropDishUnit(st, row);
+  if (ov && own(ov, key)) delete ov[key];
+  if (ebi && own(ebi, key)) delete ebi[key];
+  if (ri !== -1) rei.splice(ri, 1);
+  mergeDeletionClaim(st, { add: [row.display.identity_id] });
+  rebuildOrders(st, liveOrder);
+  return { ok: true, snap };
+}
+// §4.2 — «Deshacer»: put the dish back from `snap` (the in-session stash: the row as it was just before the removal, D-2; or P-R1's
+// entry after a reload — row, photo, refs), withdraw its stamp, and rebuild both orders from the served live order (never from snap).
+// Codex HIGH r1 P2 — the snapshot's OWN refs must still resolve in the draft as it is NOW (an extra or a group deleted between the removal
+// and «Deshacer» would make the restored entry name what the source no longer has: the REAL save refuses the whole draft, invalid_source).
+// The server validator's rules for these fields (source-store.js): item_overrides add / deny name declared extra GROUPS, deny_extras
+// names existing extra KEYS; an extras_by_item value names either.
+function staleRefs(st, refs) {
+  const s = (st && st.structure) || {};
+  const extras = rowsOf(st || {}, 'extra');
+  const groups = new Set((Array.isArray(s.extra_categories) ? s.extra_categories : extras.map((e) => e && e.display && e.display.cat)).filter((g) => g != null).map(String));
+  const keys = new Set(extras.map((e) => e && e.key).filter((k) => typeof k === 'string'));
+  const ov = refs && refs.item_override;
+  if (ov && typeof ov === 'object') {
+    for (const g of [...(Array.isArray(ov.add) ? ov.add : []), ...(Array.isArray(ov.deny) ? ov.deny : [])]) if (!groups.has(String(g))) return true;
+    for (const k of (Array.isArray(ov.deny_extras) ? ov.deny_extras : [])) if (!keys.has(String(k))) return true;
+  }
+  const ebi = refs && refs.extras_by_item;
+  if (Array.isArray(ebi)) for (const v of ebi) if (!groups.has(String(v)) && !keys.has(String(v))) return true;
+  return false;
+}
+export function undoRemoveProduct(draft, key, snap, liveOrder) {
+  if (!draft || !canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!validLiveOrder(liveOrder)) return { ok: false, code: 'base_unreadable' };
+  if (!snap || !snap.row || snap.row.key !== key) return { ok: false, code: 'unknown_item' };
+  if (staleRefs(draft.state, snap.refs)) return { ok: false, code: 'refs_stale' };   // nothing written
+  const st = draft.state;
+  if (!Array.isArray(st.items)) st.items = [];
+  if (st.items.some((r) => r && r.key === key)) return { ok: false, code: 'present' };
+  // the row goes where the live order puts it among the rows (canonical items follow item_order); additions stay after it
+  const rank = (k) => { const i = liveOrder.items.indexOf(k); return i === -1 ? Infinity : i; };
+  const at = rank(key);
+  const pos = st.items.findIndex((r) => rank(rowId(r)) > at);
+  st.items.splice(pos === -1 ? st.items.length : pos, 0, clone(snap.row));
+  if (snap.photo) { if (!st.photos || typeof st.photos !== 'object') st.photos = {}; st.photos[key] = clone(snap.photo); }
+  const refs = snap.refs || {};
+  st.structure = st.structure || {};
+  if (refs.item_override != null) {
+    st.structure.exposure = st.structure.exposure || {};
+    st.structure.exposure.item_overrides = st.structure.exposure.item_overrides || {};
+    st.structure.exposure.item_overrides[key] = clone(refs.item_override);
+  }
+  if (refs.extras_by_item != null) { st.structure.extras_by_item = st.structure.extras_by_item || {}; st.structure.extras_by_item[key] = clone(refs.extras_by_item); }
+  const sid = snap.row.display && snap.row.display.identity_id;
+  if (typeof sid === 'string' && sid) mergeDeletionClaim(st, { withdraw: [sid] });
+  rebuildOrders(st, liveOrder);
+  return { ok: true };
+}
+// ── the READ side app.js paints from (§3.3 / §9) — pure readers; every row they hand back is a COPY, so nothing the caller keeps
+// reaches the session's stash or the served list
+// The dishes pending removal, key → the snapshot «Deshacer» restores: the session's stash first (the row as it was just before the
+// removal, D-2), else the SAVED draft's P-R1 entry (`served`: the live row, its photo and refs). A key the draft holds again is not pending.
+export function pendingRemovalsOf(draft, stash, served) {
+  const out = new Map();
+  if (!draft) return out;
+  const present = new Set(rowsOf(draft.state, 'item').map(rowId).filter((k) => typeof k === 'string'));
+  if (stash instanceof Map) for (const [k, snap] of stash) if (typeof k === 'string' && snap && snap.row && !present.has(k)) out.set(k, clone(snap));
+  for (const r of (Array.isArray(served) ? served : [])) if (r && typeof r.key === 'string' && r.row && !present.has(r.key) && !out.has(r.key)) out.set(r.key, clone(r));
+  return out;
+}
+// The list's DISPLAY projection, never sent: the source with each pending row back at its live place — the SAME rebuildOrders a restore
+// runs over P-R9's live order, so the list and «Deshacer» agree. The draft is not touched (its arrays are copied before the rebuild).
+export function removalListSource(draft, pending, liveOrder) {
+  const src = draftSource(draft);
+  if (!(pending instanceof Map) || !pending.size || !validLiveOrder(liveOrder)) return src;
+  const st = src.structure || {};
+  const out = { ...src, items: [...(src.items || []), ...[...pending.values()].map((p) => clone(p.row))],
+    structure: { ...st, item_order: Array.isArray(st.item_order) ? [...st.item_order] : [], ...(Array.isArray(st.redeem_eligible_items) ? { redeem_eligible_items: [...st.redeem_eligible_items] } : {}) } };
+  rebuildOrders(out, liveOrder);
+  return out;
+}
+// A removed dish's row for the review's names and places: the pending snapshot's, else the LOADED draft's (orig) — a copy, or null
+export function removedRowOf(draft, pending, key) {
+  const p = pending instanceof Map ? pending.get(key) : null;
+  if (p && p.row) return clone(p.row);
+  const r = rowsOf((draft && draft.orig) || {}, 'item').find((x) => x && x.key === key);
+  return r ? clone(r) : null;
+}
+// Every dish row a deletion list can name (U1 / U5): the loaded draft, the draft now and the pending snapshots — copies
+export function removalDishRows(draft, pending) {
+  const rows = [...rowsOf((draft && draft.orig) || {}, 'item'), ...rowsOf((draft && draft.state) || {}, 'item'), ...(pending instanceof Map ? [...pending.values()].map((p) => p.row) : [])];
+  return rows.filter((r) => r && r.display).map(clone);
 }
 
 // ADOPT the server's canonical source after a save: allocated keys and ids replace the temporary references, in the
@@ -323,8 +499,11 @@ function foldNewGroups(draft, entries, saved) {
 // nowhere in pendingChanges, whose entries light PRICE cells by key.
 // S4 (item edit) — and so is an existing product's text or section: one per changed field (Nombre, Descripción, Categoría),
 // MOCKUP-portal-item-edit B («4 cambios sin publicar · 1 producto»).
+// STRUCTURE S1 — and so is a dish's extras checklist or «Sin extras» (Codex S1 plan r1 #1): a SAVED one is pending work after the
+// drawer closed, so the reload / branch-switch / self-update guard (portalReloadFacts) still holds it.
 export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length + pendingPhotos(draft).length
-  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0);
+  + pendingTexts(draft).reduce((n, t) => n + t.fields.length, 0) + pendingDishExtras(draft).reduce((n, t) => n + t.sentences, 0)
+  + pendingStructure(draft).length;
 
 // ── DISH PHOTOS B (PLAN-dish-photos §2.1 / §2.2) — THE DRAFT PHOTO MAP ────────────────────────────────────────────────
 // `source.photos` = {[itemKey]: {state:'pid', pid} | {state:'removed'}}; an absent key is LEGACY. It is part of the document
@@ -353,7 +532,11 @@ export function setPhoto(draft, id, entry) {
 export function pendingPhotos(draft) {
   const a = draftPhotos(draft); const b = origPhotos(draft);
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  return [...keys].filter((k) => JSON.stringify(a[k] || null) !== JSON.stringify(b[k] || null)).sort();
+  // «Quitar del menú» (Codex HIGH r1 P3, MOCKUP R3 «1 cambio»): a PUBLISHED dish no longer in the draft took its photo entry with it —
+  // that cleanup is the removal (pendingChanges counts it once), never also a photo change
+  const present = new Set(rowsOf((draft && draft.state) || {}, 'item').map((r) => r && r.key));
+  const gone = (k) => !present.has(k) && rowsOf((draft && draft.orig) || {}, 'item').some((r) => r && r.key === k);
+  return [...keys].filter((k) => !gone(k) && JSON.stringify(a[k] || null) !== JSON.stringify(b[k] || null)).sort();
 }
 
 // Rows whose current value is not a price. The value is HELD rather than discarded — a field that
@@ -782,7 +965,18 @@ export function itemCategoryProblem(draft, key, { cat, subcat = null } = {}) {
 // The whole drawer, once. `edit`: any of { name, desc, cat, subcat, price, optionPrices: {[optionKey]: raw}, photo,
 // extraPrices: {[extraKey]: raw} }; an absent field is unchanged. `reserved`: the served reservedNames (itemNameProblem).
 // Returns true when written, false when refused (and then NOTHING was written).
-export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
+// The section an edit moves a product to (a section change without a subsection clears it), and the move itself: the product
+// and every option move together. One rule for editItem and the drawer's composition (S2 §3.2).
+function resolveMove(d, e) {
+  const moving = own(e, 'cat') || own(e, 'subcat');
+  const cat = own(e, 'cat') ? e.cat : d.cat;
+  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));
+  return { moving, cat, subcat };
+}
+function writeMove(members, cat, subcat) {
+  for (const r of members) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }
+}
+export function editItem(draft, key, edit = {}, { reserved = null, extrasAuthoring = false } = {}) {
   if (!canEditContent(draft)) return false;
   const row = existingRow(draft.state, key);
   if (!row || !row.display) return false;
@@ -793,9 +987,7 @@ export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
   if (own(e, 'name') && itemNameProblem(draft, key, e.name, reserved) !== null) return false;
   const desc = own(e, 'desc') ? (typeof e.desc === 'string' ? e.desc : '') : undefined;
   if (desc !== undefined && itemDescProblem(draft, key, desc) !== null) return false;
-  const moving = own(e, 'cat') || own(e, 'subcat');
-  const cat = own(e, 'cat') ? e.cat : d.cat;
-  const subcat = own(e, 'subcat') ? (e.subcat == null || e.subcat === '' ? null : String(e.subcat)) : (own(e, 'cat') && String(e.cat) !== String(d.cat) ? null : (d.subcat == null ? null : d.subcat));
+  const { moving, cat, subcat } = resolveMove(d, e);
   if (moving && itemCategoryProblem(draft, key, { cat, subcat }) !== null) return false;
   const price = own(e, 'price') ? parsePrice(e.price) : undefined;
   if (price === null || (price !== undefined && opts.length)) return false;   // a group's price lives on its options
@@ -815,20 +1007,101 @@ export function editItem(draft, key, edit = {}, { reserved = null } = {}) {
     if (!x || p === null) return false;
     exPrices.push([k, raw]);
   }
+  // STRUCTURE S1 (PLAN-per-product-extras §2 / §3 / §8): the dish's typed, key-only exclusions and «Sin extras». Only with the
+  // server's authoring switch ON; never on an option (existingRow refuses one: the launcher's list governs the group); every
+  // key an existing extra; a key the merchant ADDS must be in the dish's baseline AFTER this edit's move (a kept key outside
+  // it is preserved untouched — it excludes nothing there).
+  const denyEdit = own(e, 'denyExtras'), policyEdit = own(e, 'extrasPolicy');
+  if ((denyEdit || policyEdit) && extrasAuthoring !== true) return false;
+  if (policyEdit && !(e.extrasPolicy === 'none' || e.extrasPolicy === null)) return false;
+  let denyList = null;
+  if (denyEdit) {
+    const list = e.denyExtras;
+    if (!Array.isArray(list) || list.some((k) => typeof k !== 'string') || new Set(list).size !== list.length) return false;
+    const order = rowsOf(draft.state, 'extra').map((x) => x && x.key);
+    if (list.some((k) => !order.includes(k))) return false;
+    const expo = draft.state.structure && draft.state.structure.exposure;
+    if (!expo || typeof expo !== 'object') return false;
+    const kept = new Set(denyExtrasOf(draft.state, key));
+    const base = extrasBaseline(draft.state, key, moving ? { cat, subcat } : null);
+    if (!base) return false;
+    const inBase = new Set(base.groups.flatMap((g) => g.keys));
+    if (list.some((k) => !kept.has(k) && !inBase.has(k))) return false;
+    denyList = list.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  }
   const photo = own(e, 'photo') ? e.photo : undefined;
   if (photo !== undefined && !(photo === null || (photo && photo.state === 'removed' && Object.keys(photo).length === 1)
       || (photo && photo.state === 'pid' && typeof photo.pid === 'string' && photo.pid && Object.keys(photo).length === 2))) return false;
   // every field judged: write
   if (own(e, 'name')) { d.name = name; for (const o of opts) o.display.name = derivedName(name, o); }
   if (desc !== undefined) { if (desc.trim()) d.desc = desc; else delete d.desc; }
-  if (moving) {
-    for (const r of [row, ...opts]) { r.display.cat = cat; if (subcat == null) delete r.display.subcat; else r.display.subcat = subcat; }
-  }
+  if (moving) writeMove([row, ...opts], cat, subcat);
   if (price !== undefined) setRowPrice(row, price);
   for (const [o, p] of optPrices) setRowPrice(o, p);
   if (photo !== undefined) setPhoto(draft, key, photo);
   for (const [k, raw] of exPrices) setPrice(draft, 'extra', k, raw);
+  if (denyList) {
+    const expo = draft.state.structure.exposure;
+    if (!expo.item_overrides || typeof expo.item_overrides !== 'object') expo.item_overrides = {};
+    const io = expo.item_overrides;
+    // the validator refuses an empty list and an empty override (source-store.js:462-463, :473): [] DELETES them
+    if (denyList.length) io[key] = { ...(io[key] || {}), deny_extras: denyList };
+    else if (io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }
+  }
+  // one extras_policy per group: the launcher AND every option (source-store.js:596-598)
+  if (policyEdit) for (const r of [row, ...opts]) { if (e.extrasPolicy === 'none') r.display.extras_policy = 'none'; else delete r.display.extras_policy; }
   return true;
+}
+
+// ── STRUCTURE S1 — A DISH'S EXTRAS (PLAN-portal-structure-S1-ui r3; PLAN-per-product-extras rev 2.2 §2 / §3 / §12.3) ─────────
+// The dish's typed exclusions: item_overrides[key].deny_extras (keys only), [] when absent.
+function denyExtrasOf(src, key) {
+  const io = src && src.structure && src.structure.exposure && src.structure.exposure.item_overrides;
+  const o = io && typeof io === 'object' ? io[key] : null;
+  return o && Array.isArray(o.deny_extras) ? o.deny_extras.slice() : [];
+}
+export const dishDenyExtras = (draft, key) => denyExtrasOf(draft && draft.state, key);
+// The checklist's universe (§12.3): what the dish would offer WITHOUT its own exclusions and «Sin extras» — its section's
+// extras ∪ its `add`, legacy rules still applied — grouped by extra-category in THE ONE rule's order (the page's
+// ExtrasEligibility, the server's byte copy). `move` = the section this edit moves it to (the prospective dish). null when the
+// evaluator is absent (nothing about extras is ever guessed).
+export function extrasBaseline(src, key, move = null) {
+  const E = globalThis.ExtrasEligibility;
+  if (!E || typeof E.projectEligibility !== 'function' || typeof E.eligibleExtras !== 'function') return null;
+  const s = clone(src);
+  const r = rowsOf(s, 'item').find((x) => x && x.key === key);
+  if (!r || !r.display || isOptionRow(r)) return { groups: [] };
+  const g = groupOfRow(s, r);
+  const members = [r, ...(g ? g.options : [])];
+  for (const m of members) {
+    if (move) { m.display.cat = move.cat; if (move.subcat == null) delete m.display.subcat; else m.display.subcat = move.subcat; }
+    delete m.display.extras_policy;
+  }
+  const io = s.structure && s.structure.exposure && s.structure.exposure.item_overrides;
+  if (io && io[key]) { delete io[key].deny_extras; if (!Object.keys(io[key]).length) delete io[key]; }
+  let keys;
+  try { const proj = E.projectEligibility(s); keys = E.eligibleExtras(proj, key).map((k) => [k, proj.extraCat[k]]); } catch (_) { return null; }
+  const groups = [];
+  for (const [k, c] of keys) { const last = groups[groups.length - 1]; if (last && last.cat === c) last.keys.push(k); else groups.push({ cat: c, keys: [k] }); }
+  return { groups };
+}
+// Existing products whose checklist or «Sin extras» differs from what was loaded — [{ key, fields: ['denyExtras' | 'extrasPolicy'] }],
+// in document order; the list compares as a SET (order-free, absent ≡ empty), the policy as 'none' vs absent.
+export function pendingDishExtras(draft) {
+  const out = [];
+  for (const row of rowsOf(draft.state, 'item')) {
+    if (!row || isTmp(row) || isOptionRow(row) || typeof row.key !== 'string') continue;
+    const was = existingRow(draft.orig, row.key);
+    if (!was || !was.display || !row.display) continue;
+    const a = new Set(denyExtrasOf(draft.orig, row.key)), b = new Set(denyExtrasOf(draft.state, row.key));
+    const fields = [];
+    if (a.size !== b.size || [...a].some((k) => !b.has(k))) fields.push('denyExtras');
+    if ((was.display.extras_policy === 'none') !== (row.display.extras_policy === 'none')) fields.push('extrasPolicy');
+    // the bar counts what the review will SAY (Codex S1 follow-up r1 P2): an untick and a re-tick in one list are two sentences
+    const sentences = (b.size > 0 && [...b].some((k) => !a.has(k)) ? 1 : 0) + (a.size > 0 && [...a].some((k) => !b.has(k)) ? 1 : 0) + (fields.includes('extrasPolicy') ? 1 : 0);
+    if (fields.length) out.push({ key: row.key, fields, sentences });
+  }
+  return out;
 }
 
 // The name an EXISTING product had when the draft was loaded (the one the merchant recognises), or null. Pure.
@@ -853,4 +1126,136 @@ export function pendingTexts(draft) {
     if (fields.length) out.push({ key: row.key, fields });
   }
   return out;
+}
+
+// ── STRUCTURE S2 — THE EXTRAS PAGE'S WRITES (PLAN-portal-structure-S2-ui r3, APPROVED 2026-11-11) ───────────────────────────
+// ONE writer: 5f's catalog/exposure-transitions.js, byte-copied to xpizza-portal/exposure-transitions.js (tools/sync-client.js) and
+// loaded as a classic script after extras-eligibility.js (the ExposureTransitions global). Nothing below edits exposure, the group
+// order or the extras rows by hand.
+const writer = () => globalThis.ExposureTransitions;
+const refusedBy = (err) => ({ ok: false, code: (err && err.code) || 'unknown_op', ...((err && err.detail) || {}) });
+// §3.1 — the one mutator: an ORDERED op list folded through the writer on ONE copy; any refusal leaves the draft untouched (no
+// half-applied list); success replaces the draft's document. Only with the server's switch (getEditableCatalog extrasCatalog).
+// The removal claim (§3.4, bound to the served baseline) lands with that step, after the advisor's ruling on portal-wiring
+// RULING A; until then nothing here reads the writer's removal output.
+export function applyExposureOps(draft, ops, { extrasCatalog = false } = {}) {
+  if (extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
+  if (!canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!writer() || typeof writer().apply !== 'function') return { ok: false, code: 'writer_unavailable' };
+  if (!Array.isArray(ops) || !ops.length) return { ok: false, code: 'unknown_op' };
+  let cur = draft.state; const results = [];
+  try { for (const op of ops) { const r = writer().apply(cur, op); results.push(r); cur = r.source; } }
+  catch (err) { return refusedBy(err); }
+  draft.state = mergeDeletionClaim(cur, results);
+  return { ok: true };
+}
+// §3.2 — the drawer's ONE composition, for the preview (strict: false — what the copy WOULD save, a move not yet valid included)
+// and the commit (strict: true — every field judged by the editor's rules). Never writes `draft`:
+//   1. «Sin extras» OFF first (an attach needs a dish that offers extras);
+//   2. the prospective MOVE (section / subsection) — before any exposure op (Codex S2 plan r2 #4);
+//   3. the copy's attach / detach ops, in order, through the writer, on the moved copy;
+//   4. the rest (text, price, photo, the checklist, «Sin extras» ON) through editItem, the checklist judged against THAT prospect.
+// → { ok: true, source } | { ok: false, code, … }. (attach / detach never remove an extra.)
+export function composeDish(draft, key, edit = {}, ops = [], { reserved = null, extrasAuthoring = false, extrasCatalog = false, strict = true } = {}) {
+  if (strict && !canEditContent(draft)) return { ok: false, code: 'not_editable' };
+  if (!Array.isArray(ops) || ops.some((o) => !o || (o.op !== 'attach.item' && o.op !== 'detach.item'))) return { ok: false, code: 'unknown_op' };
+  if (ops.length && extrasCatalog !== true) return { ok: false, code: 'extras_catalog_off' };
+  if (ops.length && (!writer() || typeof writer().apply !== 'function')) return { ok: false, code: 'writer_unavailable' };
+  const row = existingRow(draft.state, key);
+  if (!row || !row.display) return { ok: false, code: 'unknown_item' };
+  const e = { ...(edit && typeof edit === 'object' ? edit : {}) };
+  // a scratch draft: the commit judges names against what was loaded; the preview has no rename to hold
+  const scratch = createDraft(clone(draft.state));
+  scratch.orig = clone(strict ? draft.orig : draft.state);
+  if (own(e, 'extrasPolicy') && e.extrasPolicy === null) {
+    if (!editItem(scratch, key, { extrasPolicy: null }, { extrasAuthoring })) return { ok: false, code: 'invalid', field: 'extrasPolicy' };
+    delete e.extrasPolicy;
+  }
+  const mv = resolveMove(row.display, e);
+  if (mv.moving) {
+    if (strict && itemCategoryProblem(draft, key, { cat: mv.cat, subcat: mv.subcat }) !== null) return { ok: false, code: 'invalid', field: 'cat' };
+    const sr = existingRow(scratch.state, key);
+    writeMove([sr, ...membersOf(scratch.state, sr)], mv.cat, mv.subcat);
+    delete e.cat; delete e.subcat;
+  }
+  if (ops.length) {
+    let cur = scratch.state;
+    try { for (const op of ops) cur = writer().apply(cur, { op: op.op, item: key, group: op.group }).source; }
+    catch (err) { return refusedBy(err); }
+    scratch.state = cur;
+  }
+  if (Object.keys(e).length && !editItem(scratch, key, e, { reserved, extrasAuthoring })) return { ok: false, code: 'invalid' };
+  return { ok: true, source: scratch.state };
+}
+// RULING A, narrowed at S2 (LEDGER R-A): the ONE portal function that names the removal claim. It reads the writer's removal output
+// from the op results and writes `deleted_ids` as ONE sorted array — the claim already carried by the source (either stored shape)
+// ∪ the newly removed identities (5f contract §4b). A never-published extra claims nothing.
+// `results === null` asks only whether `src` carries a claim (no write) — the one place that reads it, so the save can send the baseline.
+export function mergeDeletionClaim(src, results) {
+  // 'ids' (S2 §5.2 REVIEW-DELETIONS): the claim's ids, both stored shapes, sorted — the ONE place the claim is read (Ruling A)
+  if (results === 'ids') { const c = src && src.deleted_ids; return [...new Set((Array.isArray(c) ? c : (c && typeof c === 'object' && Array.isArray(c.ids) ? c.ids : [])).map(String))].sort(); }
+  if (results === null) { const c = src && src.deleted_ids; return Array.isArray(c) ? c.length > 0 : !!(c && typeof c === 'object' && Array.isArray(c.ids) && c.ids.length); }
+  // { add: [ids] } («Quitar del menú»: a dish's identity stamp — the dish writer has no op results) is the same union as the op results;
+  // { withdraw: [ids] } («Deshacer»): drop exactly those ids, ONE sorted array; no claim ⇒ nothing written; [] stays []
+  if (results && typeof results === 'object' && !Array.isArray(results) && Array.isArray(results.add)) return mergeDeletionClaim(src, [{ deletedIds: results.add }]);
+  if (results && typeof results === 'object' && !Array.isArray(results)) {
+    const cur = src && src.deleted_ids;
+    if (cur === undefined || !Array.isArray(results.withdraw)) return src;
+    const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);
+    const drop = new Set(results.withdraw.map(String));
+    src.deleted_ids = [...new Set(have.map(String))].filter((x) => !drop.has(x)).sort();
+    return src;
+  }
+  const add = [];
+  for (const r of results) for (const id of (r && Array.isArray(r.deletedIds) ? r.deletedIds : [])) add.push(String(id));
+  if (!add.length) return src;
+  const cur = src.deleted_ids;
+  const have = Array.isArray(cur) ? cur : (cur && typeof cur === 'object' && Array.isArray(cur.ids) ? cur.ids : []);
+  src.deleted_ids = [...new Set([...have.map(String), ...add])].sort();
+  return src;
+}
+// «Guardar» on the drawer: the strict composition, swapped in ONCE (all or nothing).
+export function commitDish(draft, key, edit, ops, opts = {}) {
+  const r = composeDish(draft, key, edit, ops, { ...opts, strict: true });
+  if (!r.ok) return r;
+  draft.state = r.source;
+  return { ok: true };
+}
+// §3.6 — the exposure and order work this draft holds against what it loaded: the group ORDER (the same groups, another order;
+// a new or removed group is its extras rows' pending work), each section's offered groups, each dish's own add / deny (its
+// checklist and «Sin extras» are S1's lines, never counted twice). → [{ kind: 'order' } | { kind: 'category', cat } |
+// { kind: 'dish', key }].
+export function pendingStructure(draft) {
+  const out = [];
+  const st = (src) => (src && src.structure) || {};
+  const a = st(draft.orig), b = st(draft.state);
+  const ga = Array.isArray(a.extra_categories) ? a.extra_categories : [], gb = Array.isArray(b.extra_categories) ? b.extra_categories : [];
+  if (ga.length === gb.length && ga.every((g) => gb.includes(g)) && ga.some((g, i) => g !== gb[i])) out.push({ kind: 'order' });
+  const xa = a.exposure || {}, xb = b.exposure || {};
+  const ca = xa.category_allow || {}, cb = xb.category_allow || {};
+  for (const c of [...new Set([...Object.keys(ca), ...Object.keys(cb)])].sort()) if (JSON.stringify(ca[c] || []) !== JSON.stringify(cb[c] || [])) out.push({ kind: 'category', cat: c });
+  const oa = xa.item_overrides || {}, ob = xb.item_overrides || {};
+  const own2 = (ov) => { if (!ov || typeof ov !== 'object') return '{}'; const r = {}; for (const k of Object.keys(ov).sort()) if (k !== 'deny_extras') r[k] = ov[k]; return JSON.stringify(r); };
+  const keys = new Set([...Object.keys(oa), ...Object.keys(ob)]);
+  const docOrder = rowsOf(draft.state, 'item').map((r) => r && r.key);
+  // «Quitar del menú» (SBS 11-13, MOCKUP R3 «1 cambio»): a PUBLISHED dish no longer in the draft took its own entry with it — that is the
+  // removal (pendingChanges counts it once), never also a «dish» structure change
+  const gone = (k) => !docOrder.includes(k) && rowsOf(draft.orig || {}, 'item').some((r) => r && r.key === k);
+  for (const k of [...keys].sort((x, y) => docOrder.indexOf(x) - docOrder.indexOf(y))) if (!gone(k) && own2(oa[k]) !== own2(ob[k])) out.push({ kind: 'dish', key: k });
+  return out;
+}
+// §2 item 5b — may a NEW group be offered there? Decided by the WRITER itself: a dry run of group.create with that destination on
+// a copy (attach.cat runs the option-override check on every launcher of the section; attach.item the «Sin extras» / deny-all
+// check). → null (allowed) | { code } | { code, reason: 'none' | 'deny_all' | 'option_override' | 'unsaved' } for the row's line.
+const PROBE_GROUP = '\u0000probe';
+export function attachRefusal(src, attach) {
+  if (!writer() || typeof writer().apply !== 'function') return { code: 'writer_unavailable' };
+  try { writer().apply(src, { op: 'group.create', group: PROBE_GROUP, extras: [{ ref: 'tmp:probe', name: 'probe', price: 1 }], attach }); return null; }
+  catch (err) {
+    const code = (err && err.code) || 'unknown_op', d = (err && err.detail) || {};
+    if (code === 'exposure_dish_no_extras') { const r = existingRow(src, d.item); return { code, reason: r && r.display && r.display.extras_policy === 'none' ? 'none' : 'deny_all' }; }
+    if (code === 'exposure_option_override') return { code, reason: 'option_override' };
+    if (code === 'unknown_item' && rowsOf(src, 'item').some((r) => r && isTmp(r) && r.ref === d.item)) return { code, reason: 'unsaved' };
+    return { code };
+  }
 }

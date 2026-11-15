@@ -26,6 +26,10 @@ const LIGHT = [
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#F1F2EC' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#DCE8EE' }] },
 ];
+// ENVÍO v3 A2 (map-look delta r1): «Simple» = today's LIGHT styles on roadmap; «Mapa» = Google's roadmap; «Satélite» = hybrid. A v1
+// render (an older portal) is drawn «Simple», as step 1 drew it.
+const typeOf = (m) => (m && m.v === 2 ? m.mapType : 'simple');
+const styleFor = (t) => (t === 'hybrid' ? { styles: null, mapTypeId: 'hybrid' } : { styles: t === 'simple' ? LIGHT : null, mapTypeId: 'roadmap' });
 const NS = 'http://www.w3.org/2000/svg';
 const PIN_D = (x, y, u) => `M${x} ${y - 24 * u}c${-7 * u} 0 ${-12 * u} ${5 * u} ${-12 * u} ${12 * u} 0 ${9 * u} ${12 * u} ${24 * u} ${12 * u} ${24 * u}s${12 * u} ${-15 * u} ${12 * u} ${-24 * u}c0 ${-7 * u} ${-5 * u} ${-12 * u} ${-12 * u} ${-12 * u}z`;
 
@@ -38,17 +42,27 @@ export function overlayModel(msg, project, u) {
   const hub = msg.hub, c = project(hub);
   const pathOf = (km) => { const pts = G.ringPath(hub, km).map(project); return `M${pts.map((p) => `${r2(p.x)} ${r2(p.y)}`).join('L')}Z`; };
   const valid = msg.bands.filter((b) => b.ok), bad = msg.bands.filter((b) => !b.ok);
+  // ENVÍO v3 A2 / A4 (protocol v2): the restaurant's own limit — the SOLID ink ring at limit.km, the shade starting there; the fee
+  // rings stay dashed and a band beyond it (the portal's `out`) is greyed. No limit (v1, or none sent): step 1's drawing, unchanged.
+  const lim = msg.v === 2 && msg.limit ? msg.limit : null;
+  const beyondOf = (b) => !!(lim && b.out === true);
   if (valid.length) {
-    const outer = valid[valid.length - 1];
-    out.outside = `M${r2(c.x - SPAN)} ${r2(c.y - SPAN)}H${r2(c.x + SPAN)}V${r2(c.y + SPAN)}H${r2(c.x - SPAN)}Z${pathOf(outer.km)}`;
-    for (let i = valid.length - 1; i >= 0; i--) out.rings.push({ d: pathOf(valid[i].km), cls: i === valid.length - 1 ? 'ring outer' : 'ring' });
+    const last = valid.length - 1;
+    out.outside = `M${r2(c.x - SPAN)} ${r2(c.y - SPAN)}H${r2(c.x + SPAN)}V${r2(c.y + SPAN)}H${r2(c.x - SPAN)}Z${pathOf(lim ? lim.km : valid[last].km)}`;
+    for (let i = last; i >= 0; i--) out.rings.push({ d: pathOf(valid[i].km), cls: `ring${!lim && i === last ? ' outer' : ''}${beyondOf(valid[i]) ? ' beyond' : ''}` });
+    if (lim) out.rings.push({ d: pathOf(lim.km), cls: 'ring rlim' });
   }
   for (const b of bad) out.rings.push({ d: pathOf(b.km), cls: 'ring bad' });
   valid.forEach((b, i) => {
-    const outer = i === valid.length - 1, p = project(G.labelAnchor(hub, b.km, false));
-    out.labels.push({ x: p.x, y: p.y, w: (outer ? 150 : 90) * u, cls: outer ? 'rl outer' : 'rl', text: `${b.km} km · L ${b.fee / 100}${outer ? ' · límite' : ''}` });
+    const outer = !lim && i === valid.length - 1, beyond = beyondOf(b), p = project(G.labelAnchor(hub, b.km, false));
+    out.labels.push({ x: p.x, y: p.y, w: (outer ? 150 : beyond ? 190 : 90) * u, cls: `rl${outer ? ' outer' : ''}${beyond ? ' beyond' : ''}`,
+      text: `${b.km} km · L ${b.fee / 100}${outer ? ' · límite' : beyond ? ' · fuera de su alcance' : ''}` });
   });
   for (const b of bad) { const p = project(G.labelAnchor(hub, b.km, true)); out.labels.push({ x: p.x, y: p.y, w: 160 * u, cls: 'rl bad', text: `${b.km} km · fuera del límite` }); }
+  if (lim && valid.length) {   // on the limit ring, due east: clear of the NE band labels and the SW refused ones
+    const p = project(G.destination(hub, 90, lim.km * 1000));
+    out.labels.push({ x: p.x, y: p.y, w: (lim.capped ? 250 : 170) * u, cls: 'rl lim', text: `Límite de ${lim.name} · ${lim.km} km${lim.capped ? ' · tope de la tabla' : ''}` });
+  }
   for (const o of msg.others) { const p = project(o); out.pins.push({ x: p.x, y: p.y, cls: 'opin' }); }
   out.name = msg.name ? { x: c.x + 14 * u, y: c.y - 26 * u, text: msg.name } : null;
   out.hubPx = c;
@@ -80,7 +94,7 @@ function paint(svg, model, u) {
 // ── Maps JS: Google's bootstrap loader, as dispatch loads it (same key) ────────────────────────────────────────────────────
 function defaultLoad(win, doc) {
   /* eslint-disable */
-  (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = doc, b = win; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: MAPS_KEY, v: "weekly" });
+  (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = doc, b = win; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: MAPS_KEY, v: "weekly", language: "es" });
   /* eslint-enable */
   return win.google.maps.importLibrary('maps').then(() => win.google.maps);
 }
@@ -92,7 +106,7 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   const parent = win.parent;
   const box = doc.getElementById('map');
   const send = (kind, cause) => { try { parent.postMessage(MP.childMessage(kind, mount, cause), MP.PORTAL_ORIGIN); } catch (_) { /* the portal is gone */ } };
-  const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0 };
+  const st = { latest: null, maps: null, map: null, layer: null, failed: false, ready: false, userMoved: false, programmatic: false, width: 0, type: null };
   const fail = (cause) => { if (st.failed || st.ready) return; st.failed = true; send('failed', cause); };
 
   win.addEventListener('message', (ev) => {
@@ -120,15 +134,25 @@ export function boot({ win = window, doc = document, loadMaps = defaultLoad } = 
   function apply() {
     if (st.failed || !st.maps || !st.latest || !st.latest.hub) { if (st.layer) st.layer.setModel(null); return; }
     if (!st.map) { build(); return; }
+    const t = typeOf(st.latest);
+    if (t !== st.type) {   // a style switch: the SAME map re-styled — no new Map, no reload, the camera kept
+      const o = styleFor(t);
+      st.map.setOptions({ styles: o.styles }); st.map.setMapTypeId(o.mapTypeId);
+      st.type = t; box.setAttribute('data-maptype', o.mapTypeId);
+    }
     if (st.latest.view === 'reset') resetView();
     st.layer.setModel(st.latest);
   }
   function build() {
     const maps = st.maps, hub = st.latest.hub;
+    st.type = typeOf(st.latest);
+    const look = styleFor(st.type);
     st.map = new maps.Map(box, {
       center: G.cameraCenter(hub), zoom: G.zoomFor(W(), hub.lat), isFractionalZoomEnabled: true,
-      disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false, styles: LIGHT,
+      disableDefaultUI: true, zoomControl: true, gestureHandling: 'cooperative', clickableIcons: false, keyboardShortcuts: false,
+      styles: look.styles, mapTypeId: look.mapTypeId,
     });
+    box.setAttribute('data-maptype', look.mapTypeId);
     st.width = W();
     st.map.addListener('dragstart', () => { st.userMoved = true; });
     st.map.addListener('zoom_changed', () => { if (!st.programmatic) st.userMoved = true; });

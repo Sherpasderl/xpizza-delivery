@@ -89,7 +89,7 @@ def overrides(face, fb):
 def hosted_latin(man, surface, family):
     s = man['surfaces'][surface]
     slug = s['families'][family]['slug']
-    d = os.path.join(ROOT, s['sites'][0], 'fonts')
+    d = os.path.join(ROOT, s['sites'][0], s.get('fontsDir', 'fonts'))   # a surface's own folder (build-fonts.mjs dirOf)
     hits = sorted(n for n in os.listdir(d) if n.startswith(f'{slug}-latin.') and n.endswith('.woff2'))
     if len(hits) != 1:
         die(f'{surface}: expected one {slug}-latin.*.woff2 in {d}, found {hits}')

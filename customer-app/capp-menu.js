@@ -34,7 +34,8 @@
   function adaptMenu(envelope) {
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-menu: no menu in the envelope');
     const m = envelope.menu;
-    const extras = list(m.extras).map((e) => Object.freeze({ key: extraKeyOf(e), id: e.id, name: String(e.name || ''), extra_id: e.extra_id, price: Number(e.price),
+    const extraKeys = obj(m.extra_keys);   // S2b §5: served only while an affected extra exists
+    const extras = list(m.extras).map((e) => Object.freeze({ key: extraKeyOf(e), id: e.id, name: String(e.name || ''), extra_id: e.extra_id, extra_key: typeof extraKeys[String(e.id)] === 'string' && extraKeys[String(e.id)] ? extraKeys[String(e.id)] : null, price: Number(e.price),
       cat: e.cat, supported: extraSupported(e) && !LABEL_UNSAFE.test(String(e.name || '')) }));
     const extraByKey = new Map(extras.map((e) => [e.key, e]));
     const variants = obj(m.variant_items);
@@ -68,7 +69,7 @@
       const fromCat = list(byCat[String(d.cat)]); const seen = new Set(fromCat);
       const cats = [...fromCat, ...list(byItem[String(d.id)]).filter((c) => !seen.has(c))];
       const denied = new Set([...list(deny[String(d.id)]), ...list(deny[d.name]), ...(d.item_key ? list(deny[d.item_key]) : [])].map(String));
-      return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name));
+      return extras.filter((e) => cats.includes(e.cat) && !denied.has(String(e.id)) && !denied.has(e.name) && !(e.extra_key && denied.has(e.extra_key)));   // S2b §5: the deny list names keys
     }
     const groups = {};
     for (const [launcherId, g] of Object.entries(variants)) {

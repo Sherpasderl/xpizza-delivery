@@ -24,8 +24,8 @@ const FN = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const T0 = Date.UTC(2026, 9, 22, 0, 0, 0);          // Wed 2026-10-21 18:00 America/Tegucigalpa
 export const PLAN_ETAG = {                                // PLAN-shared-order-form.FINAL §10.3
-  x_pizza: '"802843005b92de448979d84202e4b03d0dec2224cbae0b35bc3e39226e012db2"',   // S1d (Q5-a): the endpoint body gains item_keys — the etag moves once; was "f5d28c63…d960"
-  la_musa: '"cea5849b27d538e5d73b3f00fab424dee8d021e68fbc6a86761f7836362f5b1e"',   // S1d (Q5-a): the endpoint body gains item_keys — the etag moves once; was "e8d62d92…09bc0"
+  x_pizza: '"ce08dc10eb5ac354087f42e3b849999ffd3b912ba6ea2f4256b083dec7916098"',   // S2-core (§1.6 / R3): the served body carries extras_by_item {} when empty — was "80284300…12db2" (S1d)
+  la_musa: '"27fae80408b4f08da43b0fdaf4837c31904abd8bd65c866c1c3406ad9693961a"',   // S2-core (R3): the public deny lists only extras inside each dish's offered groups — was "cea5849b…5b1e" (S1d)
 };
 
 export const PREAMBLE = `(function(){

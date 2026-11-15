@@ -8,6 +8,7 @@
 // A version published before this feature has NO such document. That absence is never "unrestricted": under a
 // shadow/enforce mode it is `unavailable` (§4); the public body simply carries no `extras_eligibility` field for it.
 const { projectEligibility, publicDeny } = require('./extras-eligibility');
+const { projectExtrasMaps } = require('./extras-projection');
 
 const DOC_VERSION = 1;
 const eligibilityRefOf = (db, rid, versionId) => db.collection('restaurants').doc(rid).collection('versions').doc(versionId).collection('meta').doc('extras_eligibility');
@@ -16,7 +17,24 @@ const eligibilityRefOf = (db, rid, versionId) => db.collection('restaurants').do
 // translated by the evaluator). Throws on a structurally impossible source (a dangling variantOf): never a guess.
 function buildEligibilityDoc({ items, extras, structure }) {
   const projection = projectEligibility({ items, extras, structure });
-  return { version: DOC_VERSION, projection, public_deny: publicDeny(projection) };
+  return { version: DOC_VERSION, projection, public_deny: narrowedDeny(items, structure, projection) };
+}
+
+// S2-core (PLAN-structure-S2core-r3 §4, ruling R3): the PUBLIC deny lists, per dish, only the ineligible extras inside the groups the
+// SERVED maps offer that dish (the consumer projection: its category's list + its item list). The capp filters to those groups first, so
+// it renders exactly what the dense complement rendered; enforcement reads the projection, never this field.
+function narrowedDeny(items, structure, projection) {
+  const dense = publicDeny(projection);
+  const maps = projectExtrasMaps({ items, extras: [], structure });
+  const out = {};
+  for (const it of items) {
+    if (!Object.prototype.hasOwnProperty.call(dense, it.key)) continue;
+    const d = it.display || {};
+    const offered = new Set([...(maps.byCategory[d.cat] || []), ...(maps.byItem[String(d.id)] || [])]);
+    out[it.key] = dense[it.key].filter((k) => offered.has(projection.extraCat[k]));
+  }
+  for (const k of Object.keys(dense)) if (!Object.prototype.hasOwnProperty.call(out, k)) out[k] = dense[k];
+  return out;
 }
 
 // one read per (rid, versionId) per instance — the document is immutable for the life of the version (a read error or a

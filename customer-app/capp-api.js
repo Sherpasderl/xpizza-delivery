@@ -1155,20 +1155,20 @@
       return { kind: 'offline' };
     }
 
-    // PLAN-capp-tip-step r6: the member's LAST TIP — ONE authenticated read of their OWN leaf user_private/{uid}/last_tip (owner-read
-    // rules; the server writes it after an accepted order). A UX hint: any failure / other identity ⇒ cents null (the step's L 20).
-    // Answers { uid, cents } so the caller binds it to the identity it was read for; nothing is stored on the device.
+    // PLAN-capp-tip-step r6 → RULE 20 (advisor 11-13; 3a's getMyLastTip, PLAN-3a-capp-member-reads r4): the member's LAST TIP — ONE
+    // GET of the endpoint with the ID token in the x-firebase-id-token HEADER (never a URL or a body: the old RTDB REST read put it in
+    // the URL's auth query parameter). A UX hint: any failure / another identity ⇒ cents null (the step's L 20). Answers { uid, cents } so the caller binds it
+    // to the identity it was read for; nothing is stored on the device.
     async function lastTip() {
       const m = memberOf();
-      const base = typeof cfg.rtdbBase === 'string' && /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test(cfg.rtdbBase) ? cfg.rtdbBase.replace(/\/+$/, '') : null;
-      if (!m || typeof m.uid !== 'string' || !m.uid || !base) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
+      if (!m || typeof m.uid !== 'string' || !m.uid || typeof E.getMyLastTip !== 'string' || !E.getMyLastTip) return { uid: m && m.uid != null ? String(m.uid) : null, cents: null };
       const tok = await memberToken(m);
       if (!tok || memberOf() !== m) return { uid: m.uid, cents: null };
       try {
-        const r = await sfetch(`${base}/user_private/${encodeURIComponent(m.uid)}/last_tip.json?auth=${encodeURIComponent(tok)}`, { method: 'GET' });
+        const r = await sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } });
         if (!r || r.status !== 200 || memberOf() !== m) return { uid: m.uid, cents: null };
         let j = null; try { j = await r.json(); } catch (_) { j = null; }
-        const c = j && typeof j === 'object' ? j.cents : undefined;
+        const c = j && typeof j === 'object' && j.ok === true ? j.cents : undefined;
         return { uid: m.uid, cents: Number.isSafeInteger(c) && c >= 0 && c <= 200000 ? c : null };
       } catch (_) { return { uid: m.uid, cents: null }; }
     }

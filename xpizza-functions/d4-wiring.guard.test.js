@@ -13,7 +13,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, 'fda8f0ed', 'D4-WIRING: the base is the train commit D4 merged onto');   // train asm7 (2e): the inverse was REGENERATED against the post-Envío train tip (was 53edc481, D4's branch point)
 assert.deepStrictEqual([...FILES].sort(), ['catalog/charge-inputs.js', 'index.js', 'pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const disk = fs.readFileSync(path.join(__dirname, f), 'utf8');
+  const src = require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, disk));   // train/portal-structure (5f): S2b's s2bext (merge 4) then S1-server's s1srv (disjoint index.js hunks), merged beside this lane, are peeled innermost
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `D4-WIRING: non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyD4Module(f, src), b, `D4-WIRING: 🔴 ${f} minus the D4 hunks is not ${BASE}:${f}`);

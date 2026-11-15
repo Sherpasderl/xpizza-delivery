@@ -40,7 +40,10 @@
     const logoOff = CappHome.logoFallback(doc);   // SBS asm9 D6: a failed logo ⇒ the initials plate (home cards + the store avatar); removed on destroy (Codex P3)
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
-    const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');   // S2: the total changes after the card hold (presenter)
+    const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');
+    // MOCKUP-capp-push r1 (owner-approved 11-14): the push UI — the NATIVE package only (runtime.push, set by the boot for native);
+    // absent ⇒ nothing below is loaded or drawn, every screen byte-identical (loaded at its first use: pushCore)
+    let CappPush = null;   // S2: the total changes after the card hold (presenter)
     // the native store-update: an INSTALLED app with a store to update from never reloads its bundled assets (that cannot update it)
     // and the store sheet replaces the shared «Actualización pendiente» notice — a no-reload adapter for the shared coordinator
     if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
@@ -210,13 +213,13 @@
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
       // C-1a: the store's social row, FROZEN per mount — the rating (CappHome's one source), the share target (the store's own URL)
-      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid) };
+      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid), isFav: () => isFav(entry.rid) };   // C-1b: the member's heart reads the book live
       // ONE clock (PLAN-capp-virtual-clock P1): the store UI runs on the shell's timers unless the host gave it its own
       const ui = CappUI.mount(doc, { ...uo, ...(uo.timers ? {} : { timers: T }), ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'fav') { setFav(entry.rid, !!(detail && detail.on)); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const carry = !carried && S.carry && S.carry.rid === entry.rid ? S.carry.snap : null; S.carry = null;   // «+» from Pedidos whose persist failed
@@ -327,6 +330,7 @@
       identityChanged();
       schedule();
       if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);
+      if (S.pushTap) pushTapRun();
     }
     // Codex promo r3: the member's identity-guarded token notifier — fired ONLY by CappApi.acceptToken (the transport's fresh token, the
     // retry's, admission's): the claim follows in place on Inicio (a repaint) and a mounted store (patchAuth), and the expiry re-arms
@@ -407,8 +411,111 @@
       if (!fbAuth) return;
       if (forget) CappDeviceAccount.forget(storage);
       signingOut = true; dropMember(); renderNow();
+      await pushForget();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
       try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
       signingOut = false; renderNow();
+    }
+    // ── push (MOCKUP-capp-push r1): a MEMBER's, on a native phone (the token is registered under the member's ID token) ──
+    let push = null;
+    function pushCore() {
+      if (push || runtime.push !== true || !SU) return push;
+      CappPush = pick(o, 'CappPush', './capp-push.js');
+      const cap = win && win.Capacitor, plugin = cap && cap.Plugins ? cap.Plugins.PushNotifications || null : null;
+      const platform = cap && typeof cap.getPlatform === 'function' ? cap.getPlatform() : null;
+      const withTok = (fn) => async (b) => { const tok = fbAuth ? await fbAuth.idToken() : null; return tok && suApi ? suApi[fn]({ idToken: tok, ...b }) : { ok: false, reason: 'unauthenticated' }; };
+      push = CappPush.createPush({ enabled: true, plugin, platform, storage, now: () => Number(nowMs()), appBuild: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || ''),
+        api: { register: withTok('pushRegister'), unregister: withTok('pushUnregister') } });
+      push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });
+      return push;
+    }
+    const pushUi = () => !!(S.member && pushCore() && push.available());
+    // the member's prefs as the server last answered (null until read) — per uid; a device that is not registered shows both off
+    function pushVm() {
+      const st = push.state(), pr = S.pushPrefs && S.member && S.pushPrefs.uid === S.member.uid ? S.pushPrefs : null, on = st.state === 'granted' && st.registered;
+      return { granted: on, denied: st.state === 'denied', pedidos: on && (pr ? pr.pedidos : true), promociones: on && (pr ? pr.promociones : false), busy: !!(S.pushBusy || S.pushDown) };
+    }
+    const keepPrefs = (r) => { if (S.member && r && r.ok === true && r.prefs) S.pushPrefs = { uid: S.member.uid, pedidos: r.prefs.pedidos === true, promociones: r.prefs.promociones === true, rev: r.prefs.rev }; };
+    // «Pedido recibido»: the soft card once per order (decided at its first paint), the order line once push is on
+    function pushOrder(od) {
+      if (!pushUi()) return {};
+      const v = pushVm();
+      if (od.pushAsk === undefined) od.pushAsk = push.shouldOffer({ ordersPlaced: 1 });
+      if (od.pushAsk) push.markOffered();
+      return { pushLine: v.granted && v.pedidos ? CappPush.COPY.orderLinePush : '', pushAsk: od.pushAsk && !v.granted && !v.denied ? CappPush.askHtml() : '' };
+    }
+    // the screen's visit: the OS permission now (changed in Ajustes?) + the member's prefs from the server
+    async function pushRefresh() {
+      const uid = S.member && S.member.uid; if (!uid) return;
+      await push.permission();
+      let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushGetPrefs({ idToken: tok }) : null; } catch (_) { r = null; }
+      if (dead || !S.member || S.member.uid !== uid) return;
+      // 3a e73a605a2: an unreadable policy (503) ⇒ the switches stay as last known, inert, with no error copy; a good read frees them
+      if (r && r.ok === true) { S.pushDown = false; if (r.prefs) keepPrefs(r); else S.pushPrefs = { uid, pedidos: true, promociones: false, rev: 0 }; } else if (r && r.reason === 'unavailable') S.pushDown = true;
+      if (S.tab === 'notifs') renderNow();
+    }
+    // the person's ONE change (k → val) on the server's prefs, a rev CAS (3a e73a605a2): a stale rev ⇒ the 409's CURRENT prefs are kept
+    // and the change is re-applied on them once — never a blind overwrite of what another device set. true | false | null (gone)
+    async function pushApply(k, val, base) {
+      const uid = S.member.uid; let cur = base;
+      for (let i = 0; i < 2; i++) {
+        let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushSetPrefs({ idToken: tok, pedidos: cur.pedidos, promociones: cur.promociones, [k]: val, expected_rev: cur.rev }) : null; } catch (_) { r = null; }
+        if (dead || !S.member || S.member.uid !== uid) return null;
+        if (r && r.ok === true) { keepPrefs(r); return true; }
+        if (!(r && r.reason === 'stale_prefs' && r.prefs)) return false;
+        keepPrefs({ ok: true, prefs: r.prefs }); cur = r.prefs;
+        if (cur[k] === val) return true;   // another device already set what the person asked for
+      }
+      return false;
+    }
+    // opt-in (the card's «Activar avisos», or a switch turned on before push is on): enable, then make sure the person's own choice
+    // stands — a register never rewrites existing prefs (3a e73a605a2), so a choice it did not carry is applied by setPrefs
+    async function pushEnable(prefs, k) {
+      const uid = S.member && S.member.uid; S.pushBusy = true; renderNow();
+      const r = await push.enable(prefs);
+      if (dead || !S.member || S.member.uid !== uid) { S.pushBusy = false; return r; }
+      let ok = r.ok;
+      if (ok) { keepPrefs(r.server); const sp = r.server.prefs; if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true; }
+      S.pushBusy = false;
+      if (dead || !S.member || S.member.uid !== uid) return r;
+      if (ok) toast(CappPush.COPY.toastOn);   // after opt-in: the toast only (MOCKUP frame 1d)
+      else if (r.ok) toast('No se guardó el cambio. Intentá de nuevo.');
+      return { ...r, ok };
+    }
+    async function pushPref(k) {
+      if (S.pushBusy || S.pushDown) return;
+      const v = pushVm(); if (v.denied) return;
+      const val = !v[k];
+      if (!v.granted) { if (val) await pushEnable({ pedidos: v.pedidos, promociones: v.promociones, [k]: true }, k); renderNow(); return; }   // the switch IS the consent (owner Q4)
+      const uid = S.member.uid, pr = S.pushPrefs && S.pushPrefs.uid === uid && Number.isSafeInteger(S.pushPrefs.rev) ? S.pushPrefs : null;
+      const base = { pedidos: v.pedidos, promociones: v.promociones, rev: pr ? pr.rev : 0 };
+      S.pushBusy = true; S.pushPrefs = { uid, ...base, [k]: val }; renderNow();   // optimistic
+      const ok = await pushApply(k, val, base);
+      S.pushBusy = false;
+      if (ok === null) return;
+      if (!ok && S.pushPrefs && S.pushPrefs.rev === base.rev) S.pushPrefs = { uid, ...base };   // never saved ⇒ back to its value
+      renderNow(); if (ok !== true) toast('No se guardó el cambio. Intentá de nuevo.');   // G7 frame 1b's words
+    }
+    function pushAct(a, t) {
+      if (a === 'sub-notifs') { if (pushUi()) nav.go({ name: 'notifs' }); return; }
+      if (a === 'notifs-back') { nav.back(); return; }
+      if (!pushUi()) return;
+      if (a === 'push-later') { push.snooze(); if (S.order) S.order.pushAsk = false; renderNow(); return; }
+      if (a === 'push-on') { if (S.pushBusy) return; const od = S.order; pushEnable({ pedidos: true, promociones: false }, 'pedidos').then((r) => { if (od && (r.ok || r.reason === 'denied')) od.pushAsk = false; if (!dead) renderNow(); }); return; }
+      if (a === 'push-pref') { if (t.getAttribute('aria-disabled') !== 'true') pushPref(t.dataset.k === 'promociones' ? 'promociones' : 'pedidos'); return; }
+      if (a === 'push-settings') { emit('open-os-settings', {}); return; }   // the host opens the phone's Ajustes (owner Q5)
+    }
+    // a tapped order push: the device's live order ⇒ its screen; else the member's receipt — held until the member is admitted
+    function pushTapRun() {
+      const id = S.pushTap; if (!id || !S.member) return;
+      S.pushTap = null;
+      const od = activeOrder();
+      if (od && od.order_id === id) nav.go({ name: 'order' }); else nav.go({ name: 'receipt', oid: id });
+    }
+    // sign-out / a uid switch: bounded (3 s) — a hung network never holds the sign-out
+    async function pushForget() {
+      if (!push || !push.available()) return;
+      S.pushPrefs = null;
+      await Promise.race([push.forget().catch(() => {}), new Promise((r) => T.setTimeout(r, 3000))]);
     }
     function startAuth() {
       if (!SU || fbAuth || dead) return;
@@ -431,7 +538,7 @@
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
         // issued or shown for them is void before the new identity is admitted
-        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
+        if (u && u.uid && S.member && S.member.uid !== u.uid) { dropMember(); pushForget(); }
         if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
         schedule();
       });
@@ -468,6 +575,7 @@
         // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
         if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
+        if (S.tab === 'notifs') return CappRoutes.format({ name: 'account' });   // «Notificaciones» is a step of Cuenta (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
@@ -484,6 +592,7 @@
       if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
       if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
       if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
+      if (S.tab === 'notifs') return CappHome.titleOf({ screen: 'notifs' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
     // C-6b: a dish row's ‹ › follow its scroll — ‹ off at the start, › off at the end (or with nothing to scroll): never a dead arrow
@@ -562,6 +671,7 @@
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
+        if (entry.name === 'notifs') { if (!pushUi()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
@@ -681,14 +791,14 @@
     }
     function vm() {
       const v = dir.view();
-      if (S.tab !== 'home') homeSeen = null; else if (!homeSeen) homeSeen = new Map();
+      if (S.tab !== 'home') { homeSeen = null; pvVisit = null; S.pvPage = 0; } else if (!homeSeen) homeSeen = new Map();   // C1b-P3: the «Para vos» page is per visit too
       const rows = S.heldErr ? [] : v.rows.map((r) => {
         const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid, ...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {}) };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
+      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), ...(pushUi() ? { pushRow: { title: CappPush.COPY.screenTitle, sub: CappPush.rowSub(pushVm()) } } : {}) } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -714,7 +824,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && pushUi() ? CappHome.shellWrap(v, CappPush.screenHtml(pushVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -939,7 +1049,103 @@
       if (!ok) { try { if (storage && r) storage.removeItem(ACTIVE_KEY); } catch (_) {} return; }
       S.order = { ...o2, grant: null, offerDone: true, payAdj: null };   // shown only to its owner (activeOrder)
     }
+    // ── C-1b (PLAN-capp-c1-build r0 §5 option C; 3a's getMyFavorites / setFavorite): the MEMBER's book — favorites (newest first)
+    // + recently ordered restaurants. Cached-first per member (capp:fav:<uid>: rids and dates only, rule 20 minimal), ONE read after
+    // paint; a sign-out or a member switch REMOVES the previous member's book from the device. Hearts reflect it live; the «Para
+    // vos» row is frozen per Inicio visit (no row inserted into a visible Inicio) ──
+    const FAV_KEY = (uid) => `capp:fav:${uid}`;
+    // Codex HIGH r1 (asm9b): favGen = the identity GENERATION (bumped on every identity change), captured at a tap / a read and
+    // re-validated after EVERY await — a mismatch drops silently (no dispatch, no apply, no toast).
+    // Codex HIGH r2 (advisor 11-13) — the model: favConf = CONFIRMED, the last server truth (the cached book, then reads and
+    // successful writes); favPend: rid → { want } = at most ONE write in flight per rid, later taps only move «want» (coalesced) and
+    // the settled write is followed by «want» only when it differs from confirmed; S.fav (what every reader shows) = confirmed
+    // overlaid with the wishes of the rids with pending work. A read updates CONFIRMED only for the rids with no write pending or
+    // settled since it started (favEnd: rid → the clock its last write settled at). A failure clears the rid's pending ⇒ the UI falls
+    // back to confirmed. The device keeps CONFIRMED only (never an unconfirmed wish)
+    let favGen = 0, pvVisit = null, favClock = 0, favConf = null;
+    const favPend = new Map(), favEnd = new Map();
+    S.fav = null;
+    const RIDRE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+    function favParse(v) {
+      if (!v || typeof v !== 'object' || v.v !== 1 || !Array.isArray(v.favorites) || !Array.isArray(v.recent)) return null;
+      return { favorites: v.favorites.filter((x) => typeof x === 'string' && RIDRE.test(x)), recent: v.recent.filter((x) => x && RIDRE.test(String(x.rid)) && Number.isSafeInteger(x.last_at)).map((x) => ({ rid: x.rid, last_at: x.last_at })) };
+    }
+    const withFav = (list, rid, on) => { const rest = list.filter((x) => x !== rid); return on ? [rid, ...rest] : rest; };
+    // the view + the device copy + the surfaces, after every change of confirmed or pending
+    function favShow() {
+      if (!favConf) { S.fav = null; return; }
+      let favorites = favConf.favorites;
+      for (const [rid, p] of favPend) favorites = withFav(favorites, rid, p.want);
+      S.fav = { who: favConf.who, favorites, recent: favConf.recent };
+      writeJ(FAV_KEY(favConf.who), { v: 1, favorites: favConf.favorites, recent: favConf.recent });
+      storeHeart(); schedule();
+    }
+    function favIdentity() {
+      const uid = S.member && S.member.uid ? S.member.uid : null;
+      if (favConf && favConf.who === uid) return;
+      if (favConf && favConf.who) { try { storage && storage.removeItem(FAV_KEY(favConf.who)); } catch (_) {} }   // the previous member's book leaves the device
+      favGen++; favConf = null; S.fav = null; favPend.clear(); favEnd.clear();
+      if (pvVisit !== null) pvVisit = [];   // mid-visit: the row is frozen EMPTY (no insertion; a signed-out member's row leaves at once)
+      if (!uid || !suApi || !fbAuth) return;
+      const c = favParse(readJ(FAV_KEY(uid)));
+      favConf = { who: uid, favorites: c ? c.favorites : [], recent: c ? c.recent : [] };
+      S.fav = { who: uid, favorites: favConf.favorites, recent: favConf.recent };
+      const gen = favGen;
+      T.setTimeout(async () => {   // after paint: never awaited by a render
+        if (dead || gen !== favGen) return;
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        if (!tok || dead || gen !== favGen) return;
+        const start = favClock;   // a write pending now, or settled after this point, may postdate the snapshot
+        const r = await suApi.getMyFavorites({ idToken: tok });
+        if (dead || gen !== favGen || !r || r.ok !== true || !favConf) return;
+        const keep = (rid) => favPend.has(rid) || (favEnd.get(rid) || 0) > start;
+        let favorites = r.favorites.filter((x) => !keep(x));
+        for (const rid of [...favConf.favorites].reverse()) if (keep(rid)) favorites = [rid, ...favorites];   // those rids stay as confirmed
+        favConf = { who: uid, favorites, recent: r.recent }; favShow();
+      }, 0);
+    }
+    const isFav = (rid) => !!(S.fav && S.fav.favorites.includes(rid));
+    function storeHeart() { try { if (S.store && S.store.ui && typeof S.store.ui.socialUpdated === 'function') S.store.ui.socialUpdated(); } catch (_) {} }
+    function setFav(rid, on) {
+      if (!favConf || !S.member || !suApi || !fbAuth || !RIDRE.test(String(rid))) return;
+      const p = favPend.get(rid);
+      if (p) { p.want = on; favShow(); return; }   // a write is in flight: the wish is coalesced, sent when it settles (if still needed)
+      if (favConf.favorites.includes(rid) === on) { favShow(); return; }   // already confirmed so
+      favPend.set(rid, { want: on }); favShow();
+      favPump(rid, favGen);
+    }
+    async function favPump(rid, gen) {
+      for (;;) {
+        const p = favPend.get(rid); if (!p) return;
+        const on = p.want;
+        if (favConf.favorites.includes(rid) === on) { favPend.delete(rid); favShow(); return; }   // nothing left to send
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it
+        const r = tok ? await suApi.setFavorite({ idToken: tok, rid, on }) : { ok: false, reason: 'unauthenticated' };
+        if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)
+        favEnd.set(rid, ++favClock);
+        if (!r || r.ok !== true) {
+          favPend.delete(rid); favShow();   // the UI falls back to confirmed
+          // the 50 cap: OWNER-APPROVED copy 11-14 (was the 11-13 placeholder); the other failure is the app's calm retry line
+          toast(r && r.reason === 'too_many' ? 'Llegaste a 50 favoritos. Quitá uno para guardar otro.' : 'No pudimos guardar tu favorito. Intentá de nuevo.');
+          return;
+        }
+        favConf = { ...favConf, favorites: withFav(favConf.favorites, rid, typeof r.on === 'boolean' ? r.on : on) };   // the server's read-back
+      }
+    }
+    // the per-visit «Para vos» list: favorites first (newest first), then the recent restaurants not among them; only listed stores
+    function paraVosOf(rows) {
+      if (!pvVisit && !S.fav) { pvVisit = []; return []; }   // rule 7: decided at the visit's FIRST paint — not admitted yet ⇒ none this visit
+      if (!S.fav) return [];
+      if (!pvVisit) {
+        const listed = new Set(rows.filter((r) => !r.gone).map((r) => r.rid)), rec = new Map(S.fav.recent.map((x) => [x.rid, x.last_at]));
+        const ids = [...S.fav.favorites, ...S.fav.recent.map((x) => x.rid).filter((x) => !S.fav.favorites.includes(x))].filter((x, i, a) => listed.has(x) && a.indexOf(x) === i);
+        pvVisit = ids.map((rid) => { const p = rec.has(rid) ? hnParts(rec.get(rid)) : null; return { rid, again: p ? `${p.d} ${MON3[p.mo - 1]}` : null }; });
+      }
+      return pvVisit.map((x) => { const row = rows.find((r) => r.rid === x.rid); return row ? { r: CappHome.storeOf(row), fav: isFav(x.rid), again: x.again } : null; }).filter(Boolean);
+    }
     function identityChanged() {
+      favIdentity();
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
       rateGen++; rateCache.clear(); if (S.layer === 'rate') { S.rate = null; closeLayer(); }   // C-2: nothing of the previous identity's ratings
       S.held = null; S.reorder = null; S.carry = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
@@ -990,7 +1196,7 @@
     function orderScreenHtml(v) {
       const od = S.order;
       return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(), desk: !!v.desk,
-        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od), pay: payPieces(od) }));
+        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od), pay: payPieces(od), ...pushOrder(od) }));
     }
     // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the
     // phone already verified — no second code), under the shell's own sign-in (runtime.signup); «Ahora no» hides it for this order
@@ -1355,7 +1561,7 @@
         if (l.dish_id) {
           const offered = menu.extrasFor(l.dish_id);
           for (const op of l.options) {
-            const e = offered.find((x) => (op.by === 'name' ? x.name === op.v : String(x.id) === op.v));   // strictly by the recorded kind
+            const e = offered.find((x) => (x.extra_key ? x.extra_key === op.v : (op.by === 'name' ? x.name === op.v : String(x.id) === op.v)));   // strictly by the recorded kind · S2b §5: by the KEY when the menu serves extra_keys (never rebound by name)
             if (!e || op.n < 1 || op.n > l.qty) { key = UNKNOWN; break; }   // an option the menu no longer offers / cannot carry ⇒ unavailable
             optOf[e.key] = op.v;   // the menu extra → its recipe option key (the v2 snapshot's k)
             for (let k = 0; k < op.n; k++) ex[k][e.key] = 1;
@@ -1523,10 +1729,12 @@
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
       if (a === 'site-help') { const n = supportWa(); if (n) openExternal(`https://wa.me/${n}`); return; }   // C-6a: the footer's Ayuda — the platform's support chat (Codex C-6a r1 #1)
+      if (a === 'sub-notifs' || a === 'notifs-back' || a.startsWith('push-')) return void pushAct(a, t);
       if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
       if (a === 'signout') return void signOutNow();
       if (a === 'forget') return openLayer('forget');   // G7 frame 2
       if (a === 'forget-confirm') { closeLayer(); return void signOutNow({ forget: true }); }
+      if (a === 'fav-card') { const rid = t.dataset.rid; setFav(rid, !isFav(rid)); return; }   // C-1b: the «Para vos» card's heart, in place
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
       if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; S.featPage = 0; return renderNow(); }
@@ -1534,6 +1742,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); S.featPage = 0; return renderNow(); }
       // C-6b: the desktop Inicio rows — «Destacados» paged by 4, «Ver todo» → «Todos los restaurantes», ‹ on the dish rows
       if (a === 'feat-prev' || a === 'feat-next') { S.featPage = Math.max(0, (S.featPage || 0) + (a === 'feat-next' ? 1 : -1)); return renderNow(); }
+      if (a === 'pv-prev' || a === 'pv-next') { S.pvPage = Math.max(0, (S.pvPage || 0) + (a === 'pv-next' ? 1 : -1)); return renderNow(); }   // C1b-P3 (the home clamps)
       if (a === 'seeall') { const el = app.querySelector('section[aria-label="Todos los restaurantes"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
       if (a === 'rowprev') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: -Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }

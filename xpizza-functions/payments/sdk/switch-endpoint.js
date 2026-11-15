@@ -5,19 +5,39 @@
 // owned SDK order — with or without a record — goes through the pending-only cancelSdkOrder, whose create-once cancelled record is
 // the fence against a delayed placement; safe_to_switch is read from durable state AFTER it (stable once true). A safe switch
 // releases the C6 subject.
+// THE FENCE (PLAN-sdk-fence-r1): the caller's order ABSENT (≡ foreign) ⇒ sdk_fence for (id, the caller) is stored FIRST, THEN the order is
+// re-read — a late create that landed meanwhile goes through the owned path below; otherwise the byte-identical NO_SDK_ORDER. A guest's
+// absent order is fenced only with a checkout ticket bound to THIS id (every other guest case keeps its 401). A failed fence write ⇒ 503
+// (never safe_to_switch:true unfenced).
 const C = require('./coordinator');
 const F = require('./flow');
-const { authorizeExistingOrder } = require('./order-auth');
+const { authorizeExistingOrder, authorizeExistingOrderAs } = require('./order-auth');
 const { releaseSubject, subjectKey } = require('./subject');
+const FN = require('./fence');
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const NO_SDK_ORDER = Object.freeze({ cancelled: false, safe_to_switch: true, reason: 'no_sdk_order' });
+const FENCE_UNAVAILABLE = Object.freeze({ status: 503, body: Object.freeze({ error: 'unavailable', retryable: true }) });
 
 async function cancelSdkPendingCore(deps, { headers = {}, body = {} } = {}) {
   const orderId = body && body.order_id;
   if (typeof orderId !== 'string' || !ORDER_ID_RE.test(orderId)) return { status: 400, body: { error: 'bad_request' } };
-  const auth = await authorizeExistingOrder(deps, { authorization: headers.authorization, ticket: headers['x-sherpa-order-ticket'] }, orderId);
-  if (!auth.ok && auth.status === 404) return { status: 200, body: { ...NO_SDK_ORDER } };   // absent ≡ foreign
-  if (!auth.ok) return { status: auth.status, body: { error: auth.error } };
+  const creds = { authorization: headers.authorization, ticket: headers['x-sherpa-order-ticket'] };
+  const first = await authorizeExistingOrderAs(deps, creds, orderId);
+  let auth = first.auth;
+  if (!auth.ok) {
+    // the fence's owner: a verified member whose order is absent ≡ foreign (404), or a guest whose order is ABSENT and whose ticket is bound to it
+    const owner = auth.status === 404 ? FN.ownerOf({ uid: first.uid })
+      : auth.error === 'guest_auth_required' && (await C.readOrder(deps.db, orderId)) == null ? await FN.guestOwnerForAbsent(deps, creds.ticket, orderId) : null;
+    if (!owner) return auth.status === 404 ? { status: 200, body: { ...NO_SDK_ORDER } } : { status: auth.status, body: { error: auth.error } };
+    try { await FN.writeFence(deps, orderId, owner); } catch (e) { console.error('cancelSdkPending: fence write failed', e && e.name); return { status: FENCE_UNAVAILABLE.status, body: { ...FENCE_UNAVAILABLE.body } }; }
+    // THEN the re-read, by the identity VERIFIED above (the fenced owner key) — never a re-authorization (Codex fence-build r1 P1: a token /
+    // ticket expiring between the two reads must not turn a late create into a safe answer). Owned by that key ⇒ the owned path below;
+    // anything else ⇒ absent ≡ foreign (fenced for this caller); a failed read ⇒ 503, never safe
+    let again;
+    try { again = await C.readOrder(deps.db, orderId); } catch (e) { console.error('cancelSdkPending: re-read failed', e && e.name); return { status: FENCE_UNAVAILABLE.status, body: { ...FENCE_UNAVAILABLE.body } }; }
+    if (!FN.ownedByKey(again, owner)) return { status: 200, body: { ...NO_SDK_ORDER } };
+    auth = { ok: true };
+  }
   let order = await C.readOrder(deps.db, orderId);
   if (!F.isSdkOrder(order)) return { status: 200, body: { ...NO_SDK_ORDER } };            // ≡ a non-SDK order
   if (order.payment_placed && !order.payment_cancel) return { status: 409, body: { error: 'already_placed' } };

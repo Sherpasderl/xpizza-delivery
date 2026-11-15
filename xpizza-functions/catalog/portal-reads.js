@@ -172,8 +172,26 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
      false ⇒ today's drawer; while it is on, THIS restaurant's reserved names, normalized exactly as the server judges them
      (the reserved-key doc ∪ the draft's frozen values), for the drawer's live «Ese nombre no está disponible». Advisory: the
      save and the publish re-judge. Unreadable ⇒ absent (declared degraded mode: C5 on «Guardar»), never a failed read. */
+  /* S1 (per-dish extras): the platform EXTRAS-AUTHORING switch, ALWAYS stated and fail-closed like groupAuthoring — the SAME constant
+     editCatalog and publishEdited enforce, so the portal keeps the per-dish checklist and «Sin extras» dark while it is off. */
+  let extrasAuthoring = false;
+  try { extrasAuthoring = require('./platform-extras').extrasCapabilities().authoring === true; } catch (_) { extrasAuthoring = false; }
   let textEditEnabled = false;
   try { textEditEnabled = require('./item-text-edit').textEditCapabilities().enabled === true; } catch (_) { textEditEnabled = false; }
+  /* S2-core (the Extras page): the platform extrasCatalog switch, ALWAYS stated and fail-closed — the SAME constant the save's allocator,
+     compareToActive (save / draft check / publish) and the structure gate enforce, so the portal keeps the Extras page dark while it is off. */
+  let extrasCatalog = false;
+  try { extrasCatalog = require('./platform-structure').structureCapabilities().extrasCatalog === true; } catch (_) { extrasCatalog = false; }
+  /* S3 B1 (advisor 2026-11-13, for the portal's choice editor): the platform choiceEdit switch, ALWAYS stated and fail-closed exactly like
+     extrasCatalog — the SAME constant editCatalog's choiceOn enforces, so the portal keeps S3 choice editing dark while it is off. */
+  let choiceEdit = false;
+  try { choiceEdit = require('./platform-structure').structureCapabilities().choiceEdit === true; } catch (_) { choiceEdit = false; }
+  /* S2-core (S2 UI plan review #1): what the save requires to remove an existing extra — the deletion baseline the save checks
+     deleted_ids_loaded_base against (the SAME pointer read: catalog-firestore getActivePointer; null when unreadable, and the save then
+     refuses deleted_ids_unbound) and the adopted claim's ids, normalized (the store keeps an object { ids, base_version, … }; a client may
+     have sent an array). */
+  let deletionBase = null;
+  try { const p = await require('./catalog-firestore').getActivePointer(fsdb, rid); if (p && typeof p.version === 'string' && p.version && Number.isInteger(p.generation)) deletionBase = { version: p.version, generation: p.generation }; } catch (_) { deletionBase = null; }
   let reservedNames = null;
   if (textEditEnabled) {
     try {
@@ -186,6 +204,10 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
       reservedNames = null;
     }
   }
+  // «Quitar del menú» (PLAN-portal-remove-product-r1 P-R5): the platform switch, stated ONLY while on (off ⇒ today's response bytes)
+  let productRemoval = false;
+  try { productRemoval = require('./platform-removal').removalCapabilities().productRemoval === true; } catch (_) { productRemoval = false; }
+  let pendingRemovals = null; let rewardKeys = null;
   let pendingTexts = null;
   let draftUnpublishable = null;
   let pendingAdditions = null;
@@ -196,6 +218,8 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     try {
       liveRead = await readActiveBuilt(rid); const activeRes = liveRead;   // asm5: F-1's liveRead and S1c's activeRes name the SAME one read
       const a = assessDraft(rid, source, liveRead);
+      // P-R2: the live reward dishes from the ONE derivation (gateFlagsOf: redeem_eligible by category or by item) — never re-derived in the portal
+      if (productRemoval) rewardKeys = [...require('./catalog-edit').gateFlagsOf(activeRes.built)].filter(([, f]) => f.redeem_eligible).map(([k]) => k).sort();
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
       // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
       // and lets the owner remove them ("Quitar") — present only when there are some
@@ -206,6 +230,9 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
         // anything else does. Present only when there is something, exactly like pendingAdditions.
         if (Array.isArray(a.renames) && a.renames.length) pendingRenames = a.renames;
         if (a.other === true) pendingOther = true;
+        /* P-R1: the live dishes the SAVED draft removes (a declared, honoured claim) — so a reloaded editor still lists them as pending
+           («Deshacer» restores the live row at its live place) and the review names them. Sorted by key; present only when there are some. */
+        if (productRemoval && Array.isArray(a.removals) && a.removals.length) pendingRemovals = require('./catalog-edit').pendingRemovalRows(activeRes.built, a.removals, photoReads && typeof photoReads.readActive === 'function' ? require('../photos/photo-state').resetMapFromActive(await photoReads.readActive(rid, activeVersionId)) : null);   // A-1: the ACTIVE photo entries
         // S2-4 (§1.1, G5): the saved-but-unpublished TEXT edits per product against live — a launcher or plain product, never an
         // option row; served only for a publishable draft and only while the switch is on (pendingOther keeps its meaning)
         if (textEditEnabled) {
@@ -308,7 +335,16 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     ...(pendingOther ? { pendingOther: true } : {}),
     ...(pendingTexts ? { pendingTexts } : {}),
     textEditEnabled,
+    extrasAuthoring,
+    ...(productRemoval ? { productRemoval: true } : {}),   // P-R5
+    ...(pendingRemovals ? { pendingRemovals } : {}),   // P-R1
+    ...(productRemoval && liveRead && liveRead.built ? { liveOrder: { items: [...((liveRead.built.structure && liveRead.built.structure.item_order) || [])], rewards: [...((liveRead.built.structure && liveRead.built.structure.redeem_eligible_items) || [])] } } : {}),   // B-4/B-6 + Q-13 (RULED): the ORIGINAL live orders, once per read whenever the switch is ON — the client restores relative to them
+    ...(rewardKeys ? { rewardKeys } : {}),   // P-R2
     ...(reservedNames ? { reservedNames } : {}),
+    extrasCatalog,
+    choiceEdit,
+    deletionBase,
+    deletionClaim: { ids: (Array.isArray(source && source.deleted_ids) ? source.deleted_ids : (source && source.deleted_ids && Array.isArray(source.deleted_ids.ids) ? source.deleted_ids.ids : [])).map(String).sort() },
     ...photoOut,   // DISH PHOTOS A2 step 9 (E-P3)
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.

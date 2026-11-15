@@ -779,6 +779,10 @@
       ".read": false,
       ".write": false
     },
+    "sdk_fence": {
+      ".read": false,
+      ".write": false
+    },
     "outbox": {
       ".read": false,
       ".write": false

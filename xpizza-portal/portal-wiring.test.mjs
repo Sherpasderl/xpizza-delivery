@@ -11,7 +11,7 @@ import assert from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stateViolations, writerFunctions } from './wiring-ast.mjs';
+import { stateViolations, writerFunctions, MUTATING_IMPORTS } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js']);   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
@@ -401,19 +401,45 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // whole-drawer mutator (editItem: all or nothing; never a key, display.id or identity stamp), the read-only judges
   // itemNameProblem / itemDescProblem / itemCategoryProblem / pendingTexts / tidyItemName / loadedName (Phase 2: the panel's
   // «Es en «{producto}»»), and the two caps.
+  // STRUCTURE S1 (PLAN-portal-structure-S1-ui r3) — a dish's extras checklist + «Sin extras» ride editItem (denyExtras /
+  // extrasPolicy, only with the server's extras switch); the read-only extrasBaseline (the checklist's universe, THE ONE rule),
+  // dishDenyExtras and pendingDishExtras (in pendingCount). No new mutator.
+  // STRUCTURE S2 (PLAN-portal-structure-S2-ui r3, APPROVED 11-11) — the Extras page writes ONLY through 5f's writer (the byte copy
+  // exposure-transitions.js): applyExposureOps (an ordered op list, all or nothing, with the server's extrasCatalog switch) and the
+  // drawer's ONE composition, composeDish (pure; the preview) / commitDish (strict; «Guardar»); the read-only pendingStructure (in
+  // pendingCount) and attachRefusal (the writer's own dry run for X3b / category mode). No key, id or identity stamp is written.
+  // «Quitar del menú» (PLAN-portal-remove-product r3, APPROVED 11-12) — a PUBLISHED plain dish leaves as ONE unit through removeProduct
+  // (its row, order entry, photo and its OWN refs; its identity stamp claimed through mergeDeletionClaim) and comes back through
+  // undoRemoveProduct («Deshacer»); both ask the ONE predicate canRemoveProduct / canEditContent first; rebuildOrders is the ONE order
+  // rebuild over the served live order. No key, id or identity stamp is written; nothing is renamed. The read side app.js paints from
+  // (pendingRemovalsOf, removalListSource, removedRowOf, removalDishRows) is pure and hands back copies.
   assert.deepStrictEqual(exported, [
-    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
-    'commit', 'commitTo', 'createDraft', 'discard', 'draftPhotos', 'draftSource', 'editItem', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
-    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'optionGroups', 'optionParentId',
-    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingPhotos', 'pendingRenames', 'pendingTexts',
-    'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
-    'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
-    'tidyItemName',
+    'ITEM_DESC_MAX', 'ITEM_NAME_MAX', 'addChoice', 'addProduct', 'adopt', 'applyExposureOps', 'attachRefusal', 'canEditDraft', 'canRemoveProduct', 'categoriesUnnamed', 'categoryNameProblem', 'choiceGroup',
+    'commit', 'commitDish', 'commitTo', 'composeDish', 'createDraft', 'discard', 'dishDenyExtras', 'draftPhotos', 'draftSource', 'editItem', 'extrasBaseline', 'groupUsage', 'incompleteAdditions', 'invalidKeys',
+    'isNewGroupOption', 'isPublishable', 'itemCategoryProblem', 'itemDescProblem', 'itemNameProblem', 'loadedName', 'mergeDeletionClaim', 'optionGroups', 'optionParentId',
+    'optionPricesEqual', 'origPhotos', 'parsePrice', 'pendingChanges', 'pendingCount', 'pendingDishExtras', 'pendingPhotos', 'pendingRemovalsOf', 'pendingRenames', 'pendingStructure', 'pendingTexts',
+    'productsUsingGroup', 'rebuildOrders', 'removalDishRows', 'removalListSource', 'removeAddition', 'removeChoice', 'removeProduct', 'removedRowOf', 'rowId', 'setAddition', 'setCategoryNames', 'setChoiceName', 'setChoicePrice',
+    'setChoiceRecommended', 'setExtraName', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setPhoto', 'setRequiredChoice',
+    'tidyItemName', 'undoRemoveProduct',
   ], 'the edit state exports exactly these');
+  // «Quitar del menú»: both writers ask the boundary first — removeProduct through the ONE predicate (which asks canEditContent),
+  // undoRemoveProduct directly
+  const rpBody = editor.slice(editor.indexOf('export function removeProduct('), editor.indexOf('export function removeProduct(') + 400);
+  assert.ok(/\) \{\n  const p = canRemoveProduct\(draft, key, ctx, liveOrder, savedAdditions\);\n  if \(!p\.enabled\) return \{ ok: false, code: p\.code \};/.test(rpBody), 'removeProduct asks the ONE predicate first');
+  const crBody = editor.slice(editor.indexOf('export function canRemoveProduct('), editor.indexOf('export function canRemoveProduct(') + 500);
+  assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return no\('not_editable'\);/.test(crBody), 'the predicate refuses when the draft is not owned for editing, or a name waits');
+  const urBody = editor.slice(editor.indexOf('export function undoRemoveProduct('), editor.indexOf('export function undoRemoveProduct(') + 200);
+  assert.ok(/if \(!draft \|\| !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(urBody), 'undoRemoveProduct refuses when the draft is not owned for editing');
   const setPhotoBody = editor.slice(editor.indexOf('export function setPhoto('), editor.indexOf('export function setPhoto(') + 300);
   // ruling A: setPhoto asks canEditContent — owned-for-editing (canEditDraft) AND no section name waiting (local or saved)
   assert.ok(/if \(!canEditContent\(draft\)\) return draft;/.test(setPhotoBody), 'setPhoto refuses when the draft is not owned for editing, or a name waits');
   assert.ok(/const canEditContent = \(draft\) => canEditDraft\(draft\) && pendingRenames\(draft\)\.length === 0 && draft\.held\(\) !== 'names';/.test(editor), 'canEditContent still includes canEditDraft');
+  // STRUCTURE S2: both S2 writers ask the same boundary first (the composition's strict mode is the one «Guardar» uses)
+  const aeoBody = editor.slice(editor.indexOf('export function applyExposureOps('), editor.indexOf('export function applyExposureOps(') + 400);
+  assert.ok(/if \(!canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(aeoBody), 'applyExposureOps refuses when the draft is not owned for editing');
+  const cdBody = editor.slice(editor.indexOf('export function composeDish('), editor.indexOf('export function composeDish(') + 400);
+  assert.ok(/if \(strict && !canEditContent\(draft\)\) return \{ ok: false, code: 'not_editable' \};/.test(cdBody), 'the strict composition refuses when the draft is not owned for editing');
+  assert.ok(/export function commitDish\([^)]*\) \{\n  const r = composeDish\(draft, key, edit, ops, \{ \.\.\.opts, strict: true \}\);/.test(editor), 'commitDish is the STRICT composition');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
   assert.ok(/export function commit\(/.test(editor) && /export function discard\(/.test(editor), 'both baseline operations exist');
@@ -507,7 +533,9 @@ test('every clickable element actually gets a pointer cursor', () => {
     const i = line.indexOf('{');
     if (i === -1 || !line.includes('}')) continue;
     const decls = line.slice(i + 1, line.lastIndexOf('}'));
-    if (!/(^|;)\s*cursor\s*:\s*pointer/.test(decls)) continue;
+    // `grab` counts: it is the approved affordance of a DRAG HANDLE (MOCKUP x4b `.rgrip{cursor:grab}` — the Extras rail's grip is
+    // clicked to reveal «Subir / Bajar» and dragged to reorder); `default`, `auto` or no cursor still fail
+    if (!/(^|;)\s*cursor\s*:\s*(pointer|grab)\b/.test(decls)) continue;
     for (const part of line.slice(0, i).split(',')) {
       const bits = part.trim().split(/\s+/);
       // SINGLE COMPOUND ONLY. Reducing a descendant selector to its last part drops the ancestor it
@@ -740,8 +768,8 @@ test('#pubbtn actually publishes, through a real in-flight lock', () => {
 
 test('every publish state is wired — and edit_superseded re-reviews rather than retrying', () => {
   const app = codeOf('app.js');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
-  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'publish'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), 'a thrown publish error is routed to a designed panel, marked as a publish');
+  assert.ok(/showOutcome\(outcomeFor\(e, 'edit'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(app), '...and an editCatalog failure is marked as an edit');
   // 🔴 RETRY must redo the operation that FAILED, not always the publish
   const soIdx2 = app.indexOf('function showOutcome');
   const retryBranch = app.slice(app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2), app.indexOf('PUBLISH_ACTIONS.RETRY', soIdx2) + 420);
@@ -846,7 +874,7 @@ test('no server error on the write path escapes the designed panels', () => {
   // which is the 2b-2a surface for "your menu could not be loaded".
   const writeCatches = catches.filter((c) => /outcomeFor|showEmpty/.test(c));
   assert.ok(writeCatches.length >= 3, 'every catch resolves to a designed surface');
-  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'\)\)/.test(c));
+  const routed = catches.filter((c) => /showOutcome\(outcomeFor\(e, '(edit|publish)'(?:, extrasOutcomeCtx\(state\.draft\))?\)\)/.test(c));
   // T-d (3a): the THIRD is sendToOwnerFlow (editCatalog + catalogRequestPublish), routed to the SAME panels as the review's save
   assert.strictEqual(routed.length, 3, 'ALL write calls — editCatalog, publishEdited and the manager\'s send — route to the panels');
 
@@ -969,8 +997,12 @@ test('the drawer cannot overlay the fiscal attestation', () => {
   assert.ok(z('.drawer') > z('.scrim'), `premise: the drawer (${z('.drawer')}) really does stack above the review scrim (${z('.scrim')})`);
   const app = codeOf('app.js');
   assert.ok(/function closeDrawer\(\)/.test(app), 'closing the drawer is its own operation');
-  const open = app.slice(app.indexOf('async function openReviewFlow'), app.indexOf('async function openReviewFlow') + 2600);
+  // the WHOLE openReviewFlow (to its closing brace), not a 2600-char window — S2's ack + extraRefs lines pushed the call past a size
+  // heuristic; the function's own boundary is the honest scope (non-vacuity: removed from the function, the rule turns red)
+  const fnOf = (src) => { const i = src.indexOf('async function openReviewFlow'); return src.slice(i, src.indexOf('\n}\n', i)); };
+  const open = fnOf(app);
   assert.ok(/closeDrawer\(\)/.test(open), 'and the review closes it before opening');
+  assert.equal(/closeDrawer\(\)/.test(fnOf(app.replace(/(async function openReviewFlow[\s\S]*?)closeDrawer\(\)/, '$1noop()'))), false, 'non-vacuity: without it in openReviewFlow the rule is red');
 });
 
 // ── THE SHARED-STATE WRITER CENSUS ───────────────────────────────────────────────────────────────
@@ -997,7 +1029,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.draft':               [4, 'canEdit', '[1D add-product A: + the post-publish RELOAD, behind the generation + tenant guard, with the lock still held] created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
     'state.review':              [2, 'guarded', '🔴 DOWN FROM 9, THEN FROM 5. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains is ONE mint and ONE clear: every path that drops a review goes through clearReview(), which also retires it as the live one — so a retained record cannot be reinstalled and replayed. 🔴 RESIDUAL #4 IS CLOSED: whole-record replacement — including restoring a genuine prior minted record — is refused at publish admission, so no fiscal path leans on the analyzer.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
-    'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
+    'state.reviewLock':          [9, 'guarded', 'the 9th is reviewDeletions releasing a settled refusal’s ticket exactly as showOutcome does (S2 §5.2); ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [4, 'ender',   '[PORTAL-UI 1a: + openEditor — the ONE selection of a page load (shell.js), made once at boot before any request; a different selection is a full page reload] the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
     'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
@@ -1030,13 +1062,23 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     // ── 1D add-product B ──
     // ── S4 «Editar producto» (S2-DESIGN §1.1) — per-load server facts: reset by resetEditFacts inside invalidateReview (the world ends),
     //    set ONLY in applyAddProductFacts on the generation-checked settle paths; the server re-judges every save and publish
+    'state.extrasAuthoring':     [2, 'guarded', 'STRUCTURE S1 (R5) — the server\u2019s per-product extras switch (getEditableCatalog extrasAuthoring); fail closed (the checklist and «Sin extras» dark, prices as today) until a load sets it'],
+    'state.extrasCatalog':       [2, 'guarded', 'advisor Q8 (11-11) — whether the server serves the Extras page (getEditableCatalog extrasCatalog); fail closed (S1\u2019s «Opciones» line) until a load sets it; presentational'],
+    'state.deletionBase':        [3, 'guarded', 'STRUCTURE S2 (§3.4, P-1) — the deletion baseline getEditableCatalog serves (version, generation), set on the load settle path and reset with the edit facts; the 3rd is REVIEW-DELETIONS adopting the FRESH base from its generation- and rid-checked re-read (§5.2); it only RIDES a save whose draft carries a removal claim (LEDGER R-A clause 3)'],
+    // «Quitar del menú» (PLAN-portal-remove-product r3 §9) — per-load server facts, set ONLY in applyAddProductFacts on the generation-checked
+    // settle paths and reset with the edit facts (resetEditFacts); the server re-judges every save (the claim, the orders, the refs)
+    'state.productRemoval':      [2, 'guarded', 'P-R5 — the server\u2019s «Quitar del menú» switch (getEditableCatalog productRemoval); fail closed (no action) until a load sets it'],
+    'state.liveOrder':           [2, 'guarded', 'P-R9 — the ORIGINAL live item / reward orders the server serves while the switch is on; null ⇒ the action disabled (never a guessed order)'],
+    'state.pendingRemovals':     [2, 'guarded', 'P-R1 — the SAVED draft\u2019s removals (the live row, photo and refs) for the pending rows and «Deshacer» after a reload; presentational + the undo snapshot'],
+    'state.rewardKeys':          [2, 'guarded', 'P-R2 — the reward dishes (the server\u2019s gateFlagsOf), for R5\u2019s line only; presentational'],
+    'state.removalStash':        [5, 'guarded', 'D-2 — this session\u2019s «Deshacer» snapshots: replaced with every new draft (applyAddProductFacts) and with the edit facts, set by a confirmed removal, deleted by its undo, cleared by «Descartar»'],
     'state.textEditEnabled':     [2, 'guarded', 'S4 — whether an existing product\u2019s drawer is the text-edit working copy (getEditableCatalog textEditEnabled); fail closed (today\u2019s drawer) until a load sets it'],
     'state.reservedNames':       [2, 'guarded', 'S4 — the names a rename may not take (server-normalized), for the live C5 line only; advisory — the save and the publish re-judge'],
     'state.savedTexts':          [2, 'guarded', 'S4 — the SAVED draft\u2019s unpublished text edits (pendingTexts), for the row tags and the bar count after a reload; presentational'],
     'state.groupAuthoring':      [2, 'guarded', 'whether the drawer OFFERS a required choice (the platform authoring switch, from getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check; the server enforces the same switch on every save'],
     'state.choiceBadges':        [2, 'guarded', 'the option badges this brand\u2019s picker draws (renderer contract via getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check'],
     'state.samePrice':           [7, 'view',    '"Mismo precio para todas" per product — reset on load (DERIVED again from the prices), set/cleared by the drawer\u2019s controls (the new-product block and, portal A, the published-group block); it only chooses WHICH canEdit-guarded mutator a price field calls (setGroupPrice vs setChoicePrice, or onPrice per choice for a published group), it never writes the draft itself'],
-    'state.rawPrice':            [3, 'view',    'typed price text that is not (yet) a price, per field (codex PB-3 P2-2) — reset on load, set/cleared by the price fields\u2019 own input handlers; read only to REFILL a rebuilt field and only while that field\u2019s draft price is still not a price; it never writes the draft (the field\u2019s canEdit-guarded mutator does)'],
+    'state.rawPrice':            [7, 'view',    'typed price text that is not (yet) a price, per field (codex PB-3 P2-2) — reset on load, set/cleared by the price fields\u2019 own input handlers; read only to REFILL a rebuilt field and only while that field\u2019s draft price is still not a price; it never writes the draft (the field\u2019s canEdit-guarded mutator does). S2 Codex r1 P2-8: +2 the Extras page\u2019s price handler (bound, the same hold for an extra row, key extra::{id}) and +2 adoptExtraRefs (moves a held text from a ref to its adopted key, generation-checked by the save continuation that calls it)'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
 
@@ -1142,7 +1184,7 @@ const spanFrom = (masked, open) => {
 // Named entry points that write. Matched as BARE REFERENCES, not just calls: a callback handed over as
 // `onPrice` writes exactly as much as one that calls it, and passing the identifier is precisely how
 // the inline price cells stayed unbound while every call-shaped check looked clean.
-const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo', 'onPrice',
+const WRITERS = ['setItemPrice', 'setExtraPrice', 'setExtraName', 'reviewDeletions', 'discard', 'commit', 'commitTo', 'onPrice',
                  'loadMenu', 'loadRestaurants', 'openEditor', 'openReviewFlow', 'runPublish', 'closeReview',
                  'invalidateReview', 'switchTo', 'bumpGeneration', 'takeEditLock', 'releaseEditLock',
                  'openDrawer', 'closeDrawer', 'toggle',
@@ -1164,6 +1206,8 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // renderers the tree found writing view state (state.drawerKey redirect, state.openGroups)
                  'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
                  'renderDrawer', 'renderAddDrawer', 'choiceBlock',
+                 // «Quitar del menú» — the confirmed removal and its undo (each through editor.js removeProduct / undoRemoveProduct, canEdit-guarded)
+                 'confirmRemoveProduct', 'undoRemoval',
                  // portal A — a PUBLISHED group's price-only block: its handlers are bound() (generation-checked) and write
                  // the draft only through onPrice → setItemPrice (canEdit-guarded), the list price boxes' own write
                  'publishedChoiceBlock',
@@ -1173,6 +1217,11 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // PLAN-public-menu-display T1 — a section's name: the canEdit-guarded setter and the three handlers that call it or
                  // move the view state (state.renameEdit); every one is reached only through bound()
                  'setCategoryNames', 'renameStart', 'renameSave', 'renameCancel',
+                 // STRUCTURE S2 (Codex S2 UI r1 P2-10) — applyExposureOps (canEditContent-guarded, editor.js) is a mutator; the tree found its
+                 // callers: x3Create (X3 «Crear grupo»), addCommit / addLeave (the inline row commits — addLeave on focus-out), x4Write /
+                 // x4Move / x4Drop (the ONE group.order), and the leave paths that commit a complete inline row first (leaveExtras,
+                 // setProdTab). Each is reached only through bound() or a listener ruled below
+                 'x3Create', 'addCommit', 'addLeave', 'x4Write', 'x4Move', 'x4Drop', 'leaveExtras', 'setProdTab',
                  // DISH PHOTOS B — the photo surfaces' repaint (photoChanged: the open drawer / rows / bar, from the draft) and the
                  // preview renewal (refreshPreviews, onPhotoImgError: merge PREVIEWS only behind the tenant-world check, then
                  // repaint; the draft itself is written only through setPhoto, canEdit-guarded)
@@ -1239,7 +1288,7 @@ const LISTENERS = {
   "document::portal:restaurant":  ['singleton', ['loadMenu'], 'the tenant switch, dispatched by switchTo which has already revalidated'],
   "document::portal:abandon":     ['ender', [], 'PLAN-portal-shell-no-shift (Codex r2 + r3): before its recovery box shell.js cancels the editor\u2019s abandoned catalog READ (readGeneration) — writes always settle'],
   "$('discard')::click":          ['singleton', ['discard', 'closeDrawer', 'repaintFromDraft'], 'throws away local edits — a DRAFT write, refused by the canEdit boundary whenever an operation owns the draft'],
-  "$('review')::click":           ['singleton', ['openReviewFlow'], 'admission-controlled: it acquires the edit lock or returns'],
+  "$('review')::click":           ['singleton', ['openReviewFlow', 'leaveExtras'], 'admission-controlled: it acquires the edit lock or returns. S2 §3.5 (ruled again, Codex S2 UI r1 P2-10): leaveExtras first — a COMPLETE inline row commits through applyExposureOps (canEditContent-guarded) before the review is admitted; a dirty one asks the discard confirm and nothing is written'],
   "$('pubback')::click":          ['singleton', ['closeReview'], 'closing is refused while this world has a publish in flight'],
   "PUBBTN::click":                ['singleton', ['runPublish'], 'admission-controlled, and validates a current review before acquiring'],
   "document::portal:auth":        ['ender', ['invalidateReview', 'repaintFromDraft', 'state.draft', 'state.groups', 'state.currentRid', 'state.uid'], 'the identity change that ENDS a world; it clears, then repaints what follows'],
@@ -1285,6 +1334,25 @@ const LISTENERS = {
   "iePrice::input":               ['bound', [], 'S4 — the product\u2019s price, into the working copy'],
   "ieCancel::click":              ['bound', ['closeDrawer'], 'S4 — «Cancelar»: the working copy is dropped (endEditSession); the draft keeps what it had'],
   "ieSave::click":                ['bound', ['saveEdit'], 'S4 — «Guardar»: IE.save commits the whole edit ONCE through editItem (canEdit); then the drawer closes and the list repaints'],
+  // STRUCTURE S1 — the drawer's «Opciones» cards: every handler writes only the WORKING COPY (or view-only fold state); the draft is
+  // written ONLY by «Guardar» (IE.save → editItem, canEdit + the server's extras switch)
+  "ieFoldName::click":            ['bound', [], 'S1 — folds / unfolds one «Opciones» card: view state (opcFolded, per drawer session) and a drawer re-render'],
+  "ieFoldChev::click":            ['bound', [], 'S1 — the card\u2019s chevron: the same fold'],
+  "$('tabmenu')::click":          ['view', ['setProdTab'], 'S2 — «Menú»: which page shows (view state), never a write'],
+  "$('xcreate')::click":         ['view', ['x3Dismiss'], 'S2 X3 — the backdrop is Escape\u2019s dismissal (Codex S2 UI r1 P2-12): clean closes, dirty asks the discard confirm; nothing is written'],
+  "$('xattach')::click":         ['view', ['bClose'], 'S2 B — the backdrop cancels the «Agregar grupo de extras» sheet (an explicit picker cancel): it closes, nothing is recorded'],
+  "window::beforeunload":         ['singleton', [], 'S2 §3.5 — the reload / close: reads the reload facts (portalReloadFacts) and asks the browser for its own prompt while unsaved work or a write exists; writes nothing'],
+  "$('tabextras')::click":        ['view', ['setProdTab'], 'S2 — «Extras»: which page shows (view state), never a write'],
+  "$('tabmenu')::keydown":        ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
+  "$('tabextras')::keydown":      ['view', ['setProdTab'], 'S2 — ← / → between the two tabs (the tablist pattern); view state only'],
+  "ieNoExtras::click":            ['bound', [], 'S1 — «Sin extras», into the working copy (IE.set extrasNone; inert while the server switch is off); the drawer re-lays out'],
+  "ieAllExtras::click":           ['bound', [], 'S1 — «Marcar todos» / «Ninguno» for one group, into the working copy (IE.set extraGroupOn: that group\u2019s current keys)'],
+  "ieExtraOn::change":            ['bound', [], 'S1 — one extra\u2019s check, into the working copy (IE.set extraOn)'],
+  "ieAddGroup::click":            ['bound', [], 'S2 B — opens the «Agregar grupo de extras» sheet over the drawer copy; its «Agregar N grupos» records attaches in the COPY (IE.setGroupAttached), never the draft'],
+  "ieEditInExtras::click":        ['bound', [], 'S2 A — «Editar en Extras»: the drawer\u2019s unsaved-copy confirm first (requestClose), then the Extras tab with that group selected — view state only, the draft untouched'],
+  "ieDetach::click":              ['bound', [], 'S2 A — «Quitar de este producto»: detach.item into the drawer COPY (IE.setGroupAttached false), never the draft'],
+  "ieExtraPrice::input":          ['bound', [], 'S1 / R4 — an extra\u2019s price, into the working copy (IE.set extraPrice), as today until S2'],
+  "ieRemove::click":              ['bound', [], '«Quitar del menú» R1 — opens the R2 confirm; the press writes nothing (the confirm\u2019s «Quitar» is confirmRemoveProduct, built with bound())'],
   // UNSAVED EDITS (MOCKUP-portal-item-edit-unsaved.html) — the in-page confirm before an exit would drop a dirty working copy
   "cfKeep::click":                ['bound', [], 'unsaved edits — «Seguir editando»: dismisses the confirm; the working copy stays exactly as it was'],
   "cfDrop::click":                ['bound', [], 'unsaved edits — «Descartar»: drops the working copy (endEditSession), then the exit it held (close / open the other product); the draft is untouched'],
@@ -1510,6 +1578,8 @@ function blockAround(m, i) {
 // editor's guarded setters, which enforce the canEdit boundary themselves.
 const ALLOWED_CONSUMERS = new Set([
   'setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo',      // guarded setters (canEdit)
+  'setExtraName',   // S2 (advisor 11-12): a NEW (keyless) extra's name — guarded (canEditContent), keyless-only
+
   'draftSource', 'pendingChanges', 'pendingCount', 'isPublishable',      // pure readers of the draft
   'optionGroups', 'groupUsage', 'canEditDraft', 'createDraft',
   'reviewModel', 'attestationModel', 'publisher.run', 'pickRid', 'canPublish',   // pure readers of the review
@@ -1527,6 +1597,22 @@ const ALLOWED_CONSUMERS = new Set([
   'IE.open', 'IE.view', 'IE.save',
   // and editor.js pendingTexts: a pure reader (the draft's text edits against what was loaded — the row tags and the bar)
   'pendingTexts', 'loadedName',
+  // (STRUCTURE S1's draftExtrasChanges / extrasOfReview are gone — advisor 11-12: the checklist review lines are the SERVER's)
+  // STRUCTURE S2 — the Extras page's model is a pure READER of the draft; applyExposureOps is the ONE Extras writer (canEditContent-
+  // guarded, all or nothing, the server switch) — the draft is passed in, never kept
+  'extrasPageModel', 'applyExposureOps',
+  // X3: the «Crear grupo» form's view and its ONE op are pure READERS of the draft (the op is applied by applyExposureOps)
+  'createGroupView', 'createGroupOp',
+  // X4: the published and the draft group orders for the bar's «· N grupos» — a pure reader (cell «groupOrders is a PURE reader»)
+  'groupOrders',
+  // B: the «Agregar grupo de extras» sheet's model over the drawer copy's prospect — a pure reader (cell «attachSheet is a PURE reader»)
+  'IE.attachSheet',
+  // A: «Quitar de este producto»'s writer dry run over the copy's prospect — a pure reader (cell «detachRefusal is a PURE reader»)
+  'IE.detachRefusal',
+  // §5.2: the outcome context (which refusal target is an extra, its group) — a pure reader (cell «extrasOutcomeCtx … PURE»)
+  'extrasOutcomeCtx',
+  // §5.2 REVIEW-DELETIONS: the full deletion list by name — a pure reader (cell «deletionRows … PURE»)
+  'deletionRows',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
@@ -1620,6 +1706,16 @@ function grammarViolations(src) {
 test('🔴 every reference to `state` in app.js reduces to a proven-safe shape', () => {
   const bad = stateViolations(readFileSync(join(DIR, 'app.js'), 'utf8'));
   assert.deepStrictEqual(bad, [], `🔴 app.js reaches state in ways the analysis cannot prove safe:\n  ${bad.join('\n  ')}`);
+});
+
+test('🔴 S2 (advisor 11-12): «version» / «generation» are PRIMITIVE leaves only — an object reached through them is still flagged', () => {
+  const mod = (body) => `export const state = { deletionBase: null };\nfunction f() {\n  ${body}\n}\n`;
+  const flagged = (body) => stateViolations(mod(body), 'probe.js');
+  assert.deepStrictEqual(flagged('return { version: state.deletionBase.version, generation: state.deletionBase.generation };'), [], 'the two primitive leaves may be copied');
+  assert.ok(flagged('return { base: state.deletionBase };').some((v) => /escapes/.test(v)), 'the baseline OBJECT placed into a literal is flagged');
+  assert.ok(flagged('return { v: state.deletionBase.version.inner };').some((v) => /escapes/.test(v)), 'a member BENEATH «version» (an object there) is flagged');
+  assert.ok(flagged('return { g: state.deletionBase.generation.parts };').some((v) => /escapes/.test(v)), 'a member beneath «generation» is flagged');
+  assert.ok(flagged('const b = state.deletionBase; return b;').length > 0, 'handing the baseline object out is flagged');
 });
 
 test('🔴 the AST guard rejects constructs nobody told it about', () => {
@@ -1818,9 +1914,107 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
 });
 
 
-test('🔴 RULING A: no portal module names deleted_ids — removal claims are server-owned; the portal adds only', () => {
-  const hits = JS.filter((f) => /deleted_?ids/i.test(codeOf(f)));
-  assert.deepStrictEqual(hits, [], 'a portal module that names the claim could author one');
-  assert.ok(/deleted_?ids/i.test("x.deleted_ids = []") && /deleted_?ids/i.test('deletedIds'), 'non-vacuity: the detector fires on planted code');
+// 🔴 RULING A — narrowed at STRUCTURE S2 (advisor ruling 2026-11-11; D4c-grill/review-portal/structure-s2/LEDGER.md R-A). Its intent
+// stands: the portal never INVENTS a removal claim. Before S2 no portal module could name the claim at all; S2's Extras page removes
+// published extras, so (1) the server writer's byte copy (exposure-transitions.js — the sync guard owns its bytes) is exempt; (2) the
+// ONLY portal code that may name the claim is ONE editor function, mergeDeletionClaim (the §3.4 merge of the writer's removal
+// output, bound to the served baseline); (3) once it exists, every save carries the baseline: api.js editCatalog sends
+// deleted_ids_loaded_base and every app.js editCatalog( call passes loadedBase. The request fields the server defines
+// (deleted_ids_loaded_base / deleted_ids_reviewed) are not the claim.
+// the server's deletion REFUSAL CODES (review.js panels key on them, S2 §5.2) name a refusal, not the claim field
+const CLAIM = /deleted_ids(?!_loaded_base|_reviewed|_base_moved|_unbound|_stale_baseline|_malformed|_no_baseline)|deletedIds/i;
+const CLAIM_FN = 'export function mergeDeletionClaim(';
+const WRITER_COPY = 'exposure-transitions.js';
+const outsideClaimFn = (f, code) => {
+  if (f !== 'editor.js' || !code.includes(CLAIM_FN)) return code;
+  const i = code.indexOf(CLAIM_FN), j = code.indexOf('\n}\n', i);
+  return code.slice(0, i) + code.slice(j < 0 ? code.length : j + 3);
+};
+const claimHits = (read) => JS.filter((f) => f !== WRITER_COPY && CLAIM.test(outsideClaimFn(f, read(f))));
+const saveCarriesBase = (read) => {
+  if (!read('editor.js').includes(CLAIM_FN)) return true;
+  const api = read('api.js'); const i = api.indexOf('export async function editCatalog(');
+  if (i < 0 || !api.slice(i, api.indexOf('\n}\n', i)).includes('deleted_ids_loaded_base')) return false;
+  const app = read('app.js'); const sites = [...app.matchAll(/editCatalog\(\{/g)].map((m) => app.slice(m.index, m.index + 400));
+  return sites.length > 0 && sites.every((w) => /\bloadedBase\b/.test(w));
+};
+test('🔴 RULING A (narrowed at S2): only mergeDeletionClaim may name the removal claim; every save then carries its baseline', () => {
+  assert.deepStrictEqual(claimHits(codeOf), [], 'a portal module outside mergeDeletionClaim names the claim');
+  assert.ok(codeOf('editor.js').split(CLAIM_FN).length <= 2, 'mergeDeletionClaim is defined at most once');
+  assert.ok(saveCarriesBase(codeOf), 'a claim is merged, so every save carries deleted_ids_loaded_base');
+  // the exemption is for a VERIFIED copy: byte-identical to the server's writer (the sync guard's rule, restated here)
+  assert.equal(readFileSync(join(DIR, WRITER_COPY), 'utf8'), readFileSync(join(DIR, '..', 'xpizza-functions', 'catalog', WRITER_COPY), 'utf8'), 'the exempt copy is the server writer, byte for byte');
+  // non-vacuity — each planted defect turns the rule red
+  const planted = (f, extra) => (g) => (g === f ? codeOf(g) + extra : codeOf(g));
+  assert.deepStrictEqual(claimHits(planted('app.js', '\nfunction sneaky(s) { s.deleted_ids = []; }\n')), ['app.js'], 'non-vacuity: a claim named in app.js');
+  assert.deepStrictEqual(claimHits(planted('editor.js', '\nexport function other(r) { return r.deletedIds; }\n')), ['editor.js'], 'non-vacuity: a SECOND editor function naming the claim');
+  // the REAL mergeDeletionClaim (S2 §3.4) is the one that may; dropping the baseline from the save turns clause 3 red
+  assert.ok(codeOf('editor.js').includes(CLAIM_FN) && !claimHits(codeOf).includes('editor.js'), 'the one named function may');
+  assert.equal(saveCarriesBase((g) => (g === 'api.js' ? codeOf(g).replace(/deleted_ids_loaded_base/g, 'nothing') : codeOf(g))), false, 'non-vacuity: a merged claim without the baseline on the save');
+  assert.equal(saveCarriesBase((g) => (g === 'app.js' ? codeOf(g).replace(/\bloadedBase\b/g, 'x') : codeOf(g))), false, 'non-vacuity: a save call site without the baseline');
+  assert.equal(CLAIM.test('body.deleted_ids_loaded_base'), false, 'the baseline field is not the claim');
+  for (const c of ['deleted_ids_base_moved', 'deleted_ids_unbound', 'deleted_ids_stale_baseline']) assert.equal(CLAIM.test(c), false, `${c} is a refusal code, not the claim`);
+  for (const c of ['s.deleted_ids = []', 'src.deleted_ids', 'r.deletedIds', "x['deleted_ids']"]) assert.equal(CLAIM.test(c), true, `non-vacuity: ${c} is still the claim`);
   assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
+});
+
+// 🔴 S2 Codex r1 P2-10 — a writer handed out as a CALLBACK: the render functions take their handlers as an object ({ create, add, move,
+// … }) and call them later, so the listener census never sees them. Every such handler that writes (the tree's writer set) must be
+// bound() — generation-checked like a listener — or a stale page's control writes into the next world. A mutant unbinding
+// `create: bound(x3Create)` survived all 37 wiring tests before this.
+// ruled exceptions, by handler key + writer (never by line): NOT a merchant's control on a page that can go stale
+const CALLBACK_ALLOW = {
+  'changed:photoChanged': 'DISH PHOTOS B — the uploader\u2019s own progress / landing callback (not a control): repaints from the draft; an ended world aborts its uploads (endPhotoWorld)',
+  'onImgError:onPhotoImgError': 'DISH PHOTOS B — an <img> error repaint; previews merge only behind the tenant-world check (refreshPreviews)',
+  'onOpen:openDrawer': 'opening a product\u2019s drawer is view state (state.drawerKey); openDrawer asks before leaving unsaved edits and writes no draft',
+};
+// Every object-literal handler whose value is a writer (or a function that calls one) must be ITS OWN bound(…) — Codex S2 UI r2 P2-10:
+// an enclosing bound() exempts nothing. `remove: bound(() => openRemoveConfirm({ onConfirm: … }))` binds OPENING the confirm; the
+// confirm calls onConfirm later, on its own, so onConfirm needs its own wrapper. A writer call inside a NESTED bound() is that
+// wrapper's, not the enclosing function's.
+async function unboundHandouts(src) {
+  const acorn = await import('acorn');
+  // the tree's writers AND the imported mutators themselves (a handler may call applyExposureOps directly)
+  const writers = new Set([...writerFunctions(src).names, ...MUTATING_IMPORTS]);
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
+  const isBound = (x) => x && x.type === 'CallExpression' && x.callee.type === 'Identifier' && x.callee.name === 'bound';
+  const callsWriter = (n) => { let hit = null; const go = (x) => { if (!x || typeof x.type !== 'string' || hit || isBound(x)) return;
+    if (x.type === 'CallExpression' && x.callee.type === 'Identifier' && writers.has(x.callee.name)) { hit = x.callee.name; return; }
+    for (const k of Object.keys(x)) { const v = x[k]; if (Array.isArray(v)) v.forEach(go); else if (v && typeof v.type === 'string' && k !== 'loc') go(v); } }; go(n); return hit; };
+  const bad = []; let seen = 0; const used = new Set();
+  const walk = (n) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (n.type === 'Property' && !n.computed) {
+      const v = n.value, key = n.key.name || n.key.value;
+      const w = isBound(v) ? null : v.type === 'Identifier' && writers.has(v.name) ? v.name
+        : (v.type === 'ArrowFunctionExpression' || v.type === 'FunctionExpression') ? callsWriter(v.body) : null;
+      if (w && Object.prototype.hasOwnProperty.call(CALLBACK_ALLOW, `${key}:${w}`)) { seen++; used.add(`${key}:${w}`); }
+      else if (w) { seen++; bad.push(`app.js:${n.loc.start.line} — \`${key}\` hands out ${w} unbound`); }
+      else if (isBound(v) || v.type === 'Identifier' || v.type === 'ArrowFunctionExpression') seen++;
+    }
+    for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === 'string') walk(v); }
+  };
+  walk(ast);
+  return { bad, seen, used };
+}
+test('🔴 a writer passed as a handler-object callback (a render call’s `on`) is bound()', async () => {
+  const { bad, seen, used } = await unboundHandouts(readFileSync(join(DIR, 'app.js'), 'utf8'));
+  assert.ok(seen > 20, `non-vacuity: the scan must see the handler objects (${seen})`);
+  assert.deepStrictEqual(bad, [], `writers handed out as callbacks without bound():\n  ${bad.join('\n  ')}`);
+  assert.deepStrictEqual([...used].sort(), Object.keys(CALLBACK_ALLOW).sort(), 'every ruled exception is still in use (no stale ruling)');
+});
+test('🔴 Codex S2 UI r2 P2-10 — an enclosing bound() exempts nothing: a NESTED handed-out callback needs its own wrapper', async () => {
+  const src = readFileSync(join(DIR, 'app.js'), 'utf8');
+  // Codex's mutant: only the inner bound() of the X2 confirm removed (the outer `remove: bound(…)` stays)
+  const INNER = '        onConfirm: bound(() => {\n          const r = applyExposureOps(';
+  assert.equal(src.split(INNER).length, 2, 'premise: the X2 confirm hands out onConfirm through its own bound()');
+  const m = src.replace(INNER, '        onConfirm: (() => {\n          const r = applyExposureOps(');
+  const { bad } = await unboundHandouts(m);
+  assert.ok(bad.some((b) => b.includes('`onConfirm` hands out applyExposureOps unbound')), `the nested onConfirm, unbound inside a bound() handler, is named:\n  ${bad.join('\n  ')}`);
+  // the converse: only the OUTER wrapper removed — the write sits inside onConfirm's own bound(), so `remove` (which only opens the
+  // confirm) is not blamed for it; each callback answers for its own wrapper
+  const OUTER = '    remove: bound((row, trash) => {';
+  assert.equal(src.split(OUTER).length, 2, 'premise: the X2 trash handler');
+  const { bad: outer } = await unboundHandouts(src.replace(OUTER, '    remove: ((row, trash) => {'));
+  assert.ok(!outer.some((b) => b.includes('`remove` hands out applyExposureOps')), `a writer inside a NESTED bound() belongs to that wrapper:\n  ${outer.join('\n  ')}`);
 });

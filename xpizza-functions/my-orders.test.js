@@ -103,14 +103,14 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     }
     assert.strictEqual((await call({})).code, 401, 'no token ⇒ 401');
     assert.strictEqual((await call({ token: 'tok-staff' })).code, 401, '🔴 a non-customer token ⇒ 401');
-    for (const tomb of [`deleted_uids/${A}`, `user_private/${A}/deleted_at`]) {
+    for (const tomb of [`deleted_uids/${A}`, `user_private/${A}/deleted_at`, `user_profiles/${A}/deleting_at`]) {
       const d2 = fakeDb(); await intake(d2, A, 'XPZ-1', { now: 1000 }); d2.set(tomb, 5);
       const r = await harness(d2).call({ token: `tok-${A}` });
       assert.strictEqual(r.code, 403, `🔴 ${tomb} ⇒ 403`); assert.deepStrictEqual(r.body, { ok: false, reason: 'deleted' });
     }
     const r = await call({ token: `tok-${A}` }); assert.strictEqual(r.code, 200); assert.strictEqual(r.h['Cache-Control'], 'no-store');
   }
-  ok('member-only: the ID token is read from the x-firebase-id-token header; missing / bad / non-customer ⇒ 401; either tombstone ⇒ 403 deleted; no-store');
+  ok('member-only: the ID token is read from the x-firebase-id-token header; missing / bad / non-customer ⇒ 401; any of the three tombstones ⇒ 403 deleted; no-store');
 
   // ── 2. strict request: exactly ?context=platform[&limit][&cursor], GET, no body ──
   {
@@ -209,9 +209,9 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     assert.deepStrictEqual({ path: qs[0].path, child: qs[0].child, last: qs[0].last }, { path: `user_orders/${A}`, child: 'ts', last: 11 }, '🔴 orderByChild(ts).limitToLast(limit + 1)');
     const gets = db.reads.filter((x) => x.kind === 'get').map((x) => x.path).sort();
     const rows = Array.from({ length: 10 }, (_, i) => `orders/XPZ-q${29 - i}/display_number`);
-    assert.deepStrictEqual(gets, [`deleted_uids/${A}`, `user_private/${A}/deleted_at`, ...rows].sort(), '🔴 no other read: the tombstone checks + ONE display_number point read per RETURNED row (never the probe row, never a whole order)');
+    assert.deepStrictEqual(gets, [`deleted_uids/${A}`, `user_private/${A}/deleted_at`, `user_profiles/${A}/deleting_at`, ...rows].sort(), '🔴 no other read: the tombstone checks + ONE display_number point read per RETURNED row (never the probe row, never a whole order)');
   }
-  ok('bounded reads: ONE orderByChild(ts).limitToLast(limit + 1) query on the caller\'s node; then only the two tombstone checks and one display_number point read per returned row (≤ limit)');
+  ok('bounded reads: ONE orderByChild(ts).limitToLast(limit + 1) query on the caller\'s node; then only the three tombstone checks (R2.1) and one display_number point read per returned row (≤ limit)');
 
   // ── 7. the projection is a WHITELIST (an internal field never leaves); S-D forward-compat: additive recipe fields pass through ──
   {
@@ -383,7 +383,7 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
     const db = fakeDb(); const { call } = harness(db); await place(db, A, 'XPZ-c'); db.reads.length = 0;
     await rcpt(call, `tok-${A}`, 'XPZ-c');
     assert.strictEqual(db.reads.filter((x) => x.kind === 'query').length, 0, 'no query');
-    assert.deepStrictEqual(db.reads.filter((x) => x.kind === 'get').map((x) => x.path).sort(), [`deleted_uids/${A}`, `orders/XPZ-c`, `user_orders/${A}/XPZ-c`, `user_private/${A}/deleted_at`].sort(), '🔴 exactly the entry + the order');
+    assert.deepStrictEqual(db.reads.filter((x) => x.kind === 'get').map((x) => x.path).sort(), [`deleted_uids/${A}`, `orders/XPZ-c`, `user_orders/${A}/XPZ-c`, `user_private/${A}/deleted_at`, `user_profiles/${A}/deleting_at`].sort(), '🔴 exactly the entry + the order (+ the three tombstone checks, R2.1)');
   }
   ok('receipt R6: exactly two point reads (user_orders/{uid}/{id} + orders/{id}) beyond the tombstone checks — no query, no fan-out');
 
@@ -401,6 +401,31 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
   }
   ok('receipt R7: a whitelist — no phone, name, tracking token, payment reference, card digits, coordinates, notes, factura or hub field; malformed lines ⇒ null');
 
+  // ── M1. PLAN-3a-capp-member-reads R2.1 (security, Codex r1 #2): the ONE member predicate (member-auth.memberUidOf) gates BOTH modes —
+  //        a customer token that is ALSO a handheld token ⇒ 401 (the rules' handheld !== true); user_profiles/{uid}/deleting_at (the
+  //        inactivity sweep's claim) ⇒ 403 deleted, like the two existing tombstones. Neither reads any history.
+  {
+    const db = fakeDb(); const { call } = harness(db); await place(db, A, 'XPZ-m1');
+    TOK['tok-hh'] = { uid: A, customer: true, handheld: true };
+    for (const [mode, run] of [['list', () => call({ token: 'tok-hh' })], ['receipt', () => rcpt(call, 'tok-hh', 'XPZ-m1')]]) {
+      db.reads.length = 0;
+      const r = await run();
+      assert.strictEqual(r.code, 401, `🔴 ${mode}: a customer+handheld token ⇒ 401`);
+      assert.deepStrictEqual(r.body, { ok: false, reason: 'unauthenticated' });
+      assert.ok(!db.reads.some((x) => String(x.path).startsWith('user_orders/') || String(x.path).startsWith('orders/')), `🔴 ${mode}: no history read for a handheld token`);
+    }
+    delete TOK['tok-hh'];
+    db.set(`user_profiles/${A}/deleting_at`, 1700000000000);
+    for (const [mode, run] of [['list', () => call({ token: `tok-${A}` })], ['receipt', () => rcpt(call, `tok-${A}`, 'XPZ-m1')]]) {
+      db.reads.length = 0;
+      const r = await run();
+      assert.strictEqual(r.code, 403, `🔴 ${mode}: user_profiles/{uid}/deleting_at ⇒ 403`);
+      assert.deepStrictEqual(r.body, { ok: false, reason: 'deleted' });
+      assert.ok(!db.reads.some((x) => String(x.path).startsWith('user_orders/') || String(x.path).startsWith('orders/')), `🔴 ${mode}: no history read while deleting`);
+    }
+  }
+  ok('M1 (R2.1): both modes — a customer+handheld token ⇒ 401, user_profiles/{uid}/deleting_at ⇒ 403 deleted; neither reads any history');
+
   FINISHED = true;
   console.log(`\nmy-orders: OK (${n})`);
-})().catch((e) => { process.stderr.write(`my-orders: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\nmy-orders: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

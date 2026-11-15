@@ -13,7 +13,8 @@ const H = require('./capp-pay-checkout.js');
 const P = require('./capp-pay-card.js');
 
 const flat = (s) => String(s == null ? '' : s).replace(/>\s+</g, '><').trim();
-const VISA = '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><text x="20" y="17.6" text-anchor="middle" font-family="Red Hat Display, Arial, sans-serif" font-weight="800" font-style="italic" font-size="11.5" letter-spacing=".2" fill="#1A1F71">VISA</text></svg>';
+// the wordmark's font is Figtree (owner 11-13: ONE typeface — v7 drew Red Hat Display, superseded by the Figtree swap 11-14)
+const VISA = '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><text x="20" y="17.6" text-anchor="middle" font-family="Figtree, Arial, sans-serif" font-weight="800" font-style="italic" font-size="11.5" letter-spacing=".2" fill="#1A1F71">VISA</text></svg>';
 const MC = '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><circle cx="16" cy="13" r="7" fill="#EB001B"></circle><circle cx="24" cy="13" r="7" fill="#F79E1B" fill-opacity=".92"></circle></svg>';
 const CARDS = P.cardsVm(listCards([{ card_id: 'CV4242000000000000AB', brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2028, expired: false }, { card_id: 'c_m', brand: 'mastercard', last4: '8810', exp_month: 3, exp_year: 2027, expired: false }]));
 

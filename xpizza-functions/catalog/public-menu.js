@@ -225,7 +225,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
   let body;
   try {
     body = composeServedMenu(restaurantId, menu, generate);
-    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId, menu.keyMode) };   // the NORMALIZED rid (codex P1)
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility; body.avail_identity = { field: availIdentityField(restaurantId, menu.keyMode) }; if (menu.structure && menu.structure.exposure) { for (const f of ['extras_by_category', 'extras_by_item']) if (!(f in body)) body[f] = {}; }   // the NORMALIZED rid (codex P1)
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }
@@ -252,7 +252,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
      exactly the menu served today, because in D1 nothing reads them. */
   // PLAN 4 r3 §4: the reconciler compares the DEPLOYED bundle (baked, overlay-free) with the published menu read with
   // `overlayIdentity: false` — the same body minus the overlay. Every other caller (the endpoint) gets the overlay, unchanged.
-  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only
+  const enriched = deps.overlayIdentity === false ? { body, applied: true } : await applyIdentityToServedBody(db, restaurantId, require('./extra-key-overlay').withServedExtraKeys(require('./identity-overlay').withServedItemKeys(restaurantId, body, require('./identity-overlay').servedKeyMap(menu)), require('./extra-key-overlay').servedExtraKeyMap(menu)), { keyById: require('./identity-overlay').servedKeyMap(menu), extraKeyById: require('./extra-key-overlay').servedExtraKeyMap(menu) });   // S1d: keyed by display.id; item_key on the endpoint body only
   body = enriched.body;
   if (!enriched.applied) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.

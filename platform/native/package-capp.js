@@ -37,7 +37,7 @@ const Stamp = require('../stamp-version');
 
 const ROOT = path.join(__dirname, '..', '..');
 const APP = 'customer-app';
-const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay'];   // = the boot's flags (capp-boot.test FL-1)
+const FLAGS = ['signup', 'intlPhone', 'guestCardOnly', 'schedulingLive', 'ratings', 'sdkPay', 'push'];   // = the boot's flags (capp-boot.test FL-1)
 const GUEST_SERVER = 'xpizza-functions/checkout-guest-gate.js';   // 3a's capp-guest gate (PLAN-guest-checkout-server)
 const BOOT = ['capp-runtime.js', 'capp-boot.js'];
 const TARGETS = ['web', 'native'];
@@ -100,7 +100,7 @@ function shellFiles(shellHtml, readText) {
     if (/^(data:|https?:)/.test(u)) throw new Error(`${css} references a non-local asset: ${u}`);
     assets.add(u);
   }
-  if ([...assets].some((a) => a.startsWith('fonts/'))) assets.add('fonts/OFL.txt');   // the fonts' licence travels with them
+  for (const dir of new Set([...assets].filter((a) => /^fonts[\w-]*\//.test(a)).map((a) => a.split('/')[0]))) assets.add(`${dir}/OFL.txt`);   // each font folder's licence travels with it (fonts-figtree/, 11-14)
   return { scripts, sheets, assets: [...assets].sort() };
 }
 

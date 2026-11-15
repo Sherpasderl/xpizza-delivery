@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 const crypto = require('node:crypto');
 /* The brand's authoritative pricing key — imported, never reimplemented. See normalizeCartForFingerprint. */
-const { itemPricingKey } = require('./menu-pricing');
+const { itemPricingKey, extraPricingKey } = require('./menu-pricing');
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
 
@@ -101,7 +101,7 @@ function normalizeCartForFingerprint(items, rid, keyMode) {
       const rawExtras = (it && Array.isArray(it.extras)) ? it.extras : [];
       const extras = [];
       for (const e of rawExtras) {
-        const ek = key(e);
+        const ek = (() => { try { const r = extraPricingKey(e, rid, keyMode); return r === undefined || r === null || String(r) === '' ? null : String(r); } catch (_) { return null; } })();   // S2b §2.4: an extra binds by the key it is priced by
         // An option with no explicit qty means one of it — x_pizza's options are a 0/1 toggle and carry
         // no qty at all, so defaulting HERE (where the shape is known) is right, while defaulting inside
         // cartFingerprint (where it is not) was the collision T2 removed.

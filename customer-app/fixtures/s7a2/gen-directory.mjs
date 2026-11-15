@@ -31,6 +31,11 @@ const idents = {
   la_musa: { ...IDENTITIES.la_musa, active: true },
 };
 for (const [rid, id] of Object.entries(idents)) assertIdentityShape(rid, id);
+// DECLARED FAKE stores for the five_stores scenario only (C1b-P3, advisor 11-14: the desk «Para vos» paging past 4 needs a 5-store
+// directory): La Musa's identity shape under neutral ids/names, asserted by the same shape check; written ONLY into that scenario's world
+const EXTRA = ['tienda_c', 'tienda_d', 'tienda_e'];
+const extraIdents = Object.fromEntries(EXTRA.map((rid, i) => [rid, { ...IDENTITIES.la_musa, name: `Tienda ${'CDE'[i]}`, active: true }]));
+for (const [rid, id] of Object.entries(extraIdents)) assertIdentityShape(rid, id);
 // x_pizza's «La casa recomienda»: CANONICAL dish ids of its published catalog (the S0 rig's real publish; see the test)
 const { provisionBrand } = await import(new URL('../../../xpizza-functions/contract/capp/capture.mjs', import.meta.url));
 const XP_MENU = (await provisionBrand('x_pizza')).envelope.menu;
@@ -45,6 +50,8 @@ const PRESENTATION = {
     hero_url: `${ASSET}/img/lm-hero.jpg`, eta_delivery_min: [35, 50], eta_pickup_min: [20, 30], payments: ['online', 'cash'], pickup: true,
     order_id_prefix: 'LMS', meals: { dim_sum: 'compartir', starters: 'compartir' } },
 };
+const EXTRA_PRESENTATION = Object.fromEntries(EXTRA.map((rid, i) => [rid, { kicker: 'Restaurante', unit: ['plato', 'platos'], cuisines: ['cafe'], logo_url: `${ASSET}/img/lm-logo.png`, logo_wide: true,
+  hero_url: `${ASSET}/img/lm-hero.jpg`, eta_delivery_min: [25, 40], eta_pickup_min: [15, 25], payments: ['online', 'cash'], pickup: true, order_id_prefix: `T${'CDE'[i]}X` }]));
 const PLATFORM = { city_label: 'San Pedro Sula',
   cuisines: [['pizza', 'Pizza'], ['italiana', 'Italiana'], ['asiatica', 'Asiática'], ['mariscos', 'Mariscos'], ['cafe', 'Café'], ['desayuno', 'Desayuno']].map(([id, label]) => ({ id, label })),
   meals: { desayuno: 'Para el desayuno', compartir: 'Para compartir' }, social: { min_reorders: 50, min_ratings: 20 }, value: { median_up_to_cents: 20000 } };
@@ -53,19 +60,20 @@ const PRICING = {
   x_pizza: { fee: { state: 'priced', from_cents: 4500 }, promo: { free_delivery: true, label: 'promoción de lanzamiento' }, coverage_km: 7 },
   la_musa: { fee: { state: 'priced', from_cents: 4500 }, promo: null, coverage_km: 9.66 },
 };
+const EXTRA_PRICING = Object.fromEntries(EXTRA.map((rid) => [rid, { fee: { state: 'priced', from_cents: 4500 }, promo: null, coverage_km: 9.66 }]));
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 const drop = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) { const a = v.map(drop).filter((x) => x !== null); return a.length ? a : null; }
   const o = {}; for (const [k, x] of Object.entries(v)) { const d = drop(x); if (d !== null && d !== undefined) o[k] = d; } return Object.keys(o).length ? o : null; };
-async function world({ ids = ['x_pizza', 'la_musa'], inactive = [], presThrows = [], actThrows = [], registryFails = false, pricing = PRICING } = {}) {
+async function world({ ids = ['x_pizza', 'la_musa'], inactive = [], presThrows = [], actThrows = [], registryFails = false, pricing = PRICING, extra = false } = {}) {
   RC._cache.clear();
   const data = { platform_config: { customer_app: clone(PLATFORM) } };
   const db = { ref: (p) => ({
     once: async () => { const v = p.split('/').reduce((o, k) => (o == null ? undefined : o[k]), data); const c = v === undefined ? null : clone(v); return { val: () => c, exists: () => c !== null }; },
     set: async (v) => { const ks = p.split('/'); let o = data; for (const k of ks.slice(0, -1)) o = o[k] = o[k] || {}; const c = drop(clone(v)); if (c === null) delete o[ks.at(-1)]; else o[ks.at(-1)] = c; },
     update: async (w) => { for (const [k, v] of Object.entries(w)) await db.ref(`${p}/${k}`).set(v); } }) };
-  for (const [rid, id] of Object.entries(idents)) await db.ref(`restaurants/${rid}/identity`).set({ ...id, active: inactive.includes(rid) ? false : id.active });
-  await SEED.run(db, PRESENTATION, { apply: true, force: false }, () => {});
+  for (const [rid, id] of Object.entries(extra ? { ...idents, ...extraIdents } : idents)) await db.ref(`restaurants/${rid}/identity`).set({ ...id, active: inactive.includes(rid) ? false : id.active });
+  await SEED.run(db, extra ? { ...PRESENTATION, ...EXTRA_PRESENTATION } : PRESENTATION, { apply: true, force: false }, () => {});
   const registry = createRestaurantRegistry({ listIds: async () => { if (registryFails) throw new Error('registry down'); return ids; } });
   const deps = makeDirectoryDeps({ rtdb: db, registry, pricingView: async (rid) => pricing[rid] || { fee: { state: 'none' }, promo: null, coverage_km: null } });
   const wrap = (k) => async (rid) => { if ((k === 'p' ? presThrows : actThrows).includes(rid)) throw new Error('read failed'); return deps[k === 'p' ? 'readPresentation' : 'activity'](rid); };
@@ -80,7 +88,7 @@ async function call(deps, inm) {
 }
 
 const out = { source: { commit: SHA, blobs: Object.fromEntries(['directory/directory.js', 'directory/directory-deps.js', 'directory/presentation-shape.js', 'directory/platform-config.js', 'schedule/schedule-only.js', 'schedule/load-schedule.js', 'tools/seed-presentation.js', 'seed_identity.js'].map((f) => [f, blob(f)])) },
-  fake_pricing: PRICING, scenarios: {} };
+  fake_pricing: PRICING, fake_extra_stores: { identities: extraIdents, presentation: EXTRA_PRESENTATION, pricing: EXTRA_PRICING }, scenarios: {} };
 const S = out.scenarios;
 S.complete = await call(await world());
 S.not_modified = await call(await world(), S.complete.headers.ETag);
@@ -89,6 +97,7 @@ S.partial_unavailable = await call(await world({ actThrows: ['la_musa'] }));
 S.zero = await call(await world({ inactive: ['x_pizza', 'la_musa'] }));   // the registry keeps its floor on an empty read (plan r3 §3): zero = none active
 S.unavailable_503 = await call(await world({ registryFails: true }));
 S.tombstone = await call(await world({ inactive: ['la_musa'] }));
+S.five_stores = await call(await world({ ids: ['x_pizza', 'la_musa', ...EXTRA], extra: true, pricing: { ...PRICING, ...EXTRA_PRICING } }));   // C1b-P3: the desk «Para vos» past 4
 S.fee_none = await call(await world({ pricing: { ...PRICING, la_musa: { fee: { state: 'none' }, promo: null, coverage_km: 9.66 } } }));
 // RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — 5f's directory will derive promo from the SAME
 // pricing read and mark it `basis: 'pricing'`; this pinned writer's promoOf keeps only {free_delivery, label}. «5f MARKER OVERLAY —
