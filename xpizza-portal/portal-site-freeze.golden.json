@@ -31,6 +31,7 @@
   "branches-view.js",
   "calificaciones-harness.mjs",
   "calificaciones-logic.js",
+  "calificaciones-view.js",
   "calificaciones-view.test.mjs",
   "calificaciones.js",
   "calificaciones.test.mjs",
@@ -90,8 +91,6 @@
   "portal-look.test.mjs",
   "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
-  "portal-site-freeze.golden.json",
-  "portal-site-freeze.golden.json",
   "portal-site-freeze.golden.json",
   "portal-time.js",
   "portal-wiring.test.mjs",
@@ -171,8 +170,8 @@
    "bytes": 13216
   },
   "index.html": {
-   "sha256": "a4770d5d1a7b8b95d857aaa3650b021ccbd47b48e53a84b60551431eead54b2f",
-   "bytes": 14941
+   "sha256": "c2dd71a7e05e918627024052569ae91fc2cdb603cbda658e69d0ce5db32e7eac",
+   "bytes": 14931
   },
   "netlify.toml": {
    "sha256": "19d652c8a70380312a0de8a1bc681a5b3cf6401c4b1d7141e8ab57d2be4eb9da",
@@ -199,8 +198,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "a53d67a558c2e744c05a35aaefbac4e9ed96f4c8eaad07fa42997a3f5e1381b8",
-   "bytes": 166310
+   "sha256": "3353baa35b921028a9bf678e100eb3486e02437e0e058fc8d63acbd373351314",
+   "bytes": 165313
   }
  },
  "diff_aid": {
@@ -5308,30 +5307,6 @@
     ".tslot:hover",
     "background",
     "var(--board-2)"
-   ],
-   [
-    "",
-    ".ttab",
-    "background",
-    "none"
-   ],
-   [
-    "",
-    ".ttab",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".ttab.on::after",
-    "background",
-    "var(--ink)"
-   ],
-   [
-    "",
-    ".ttab:hover,.ttab.on",
-    "color",
-    "var(--ink)"
    ],
    [
     "",

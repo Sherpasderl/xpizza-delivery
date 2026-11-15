@@ -1,4 +1,4 @@
-// P-1 «Calificaciones» — the «Rendimiento» tab's view, EXACT to MOCKUP-portal-calificaciones.html (advisor 11-13). One branch (the
+// P-1 «Calificaciones» — the page body (its own nav entry since Nav B, calificaciones-view.js), EXACT to MOCKUP-portal-calificaciones.html (advisor 11-13). One branch (the
 // portal's restaurant), anonymous comments through getMerchantRatingComments only, paging by «more», never automatic. The figures follow
 // the approved contract on the FIRST page: `stats` {rating_avg, rating_count} ⇒ two figures; null ⇒ the under-10 sentence; absent ⇒ no
 // box. First paint = the final layout as quiet bars (the scope, the title and the anonymity line are real text), so nothing moves.

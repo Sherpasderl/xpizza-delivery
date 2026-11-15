@@ -36,8 +36,8 @@ const BASE = '613f7e08';
 // UNSAVED and every older pin judge exactly what they judged before; the S2 test pins the layer itself on disk.
 // «Quitar del menú» (PLAN-portal-remove-product r3) is the NEWEST layer of all, above S2: folded out at the very lowest read, so S2
 // and every older pin judge exactly what they judged before; the RP test pins the layer itself on disk.
-// «Rendimiento» (P-1 nav, owner 11-13 map Q4) is the NEWEST layer of all, above RP: folded out at the very lowest read, so RP and
-// every older pin judge exactly what they judged before; the REND test pins the layer itself on disk.
+// «Rendimiento» (P-1 nav, owner 11-13 map Q4) was the NEWEST layer, above RP — RETIRED 11-14 (Nav B): its fold is empty, the
+// REND test pins ventas.js back at REND_BASE.
 const diskFile = (f) => readFileSync(join(DIR, f), 'utf8');
 function withoutREND(f, src) {
   let out = src;
@@ -434,16 +434,12 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
 });
 
-test('«Rendimiento»: ventas.js gains exactly the named hunks — folding them out gives REND_BASE byte-for-byte', () => {
-  for (const f of Object.keys(REND_FOLD)) {
-    const was = execFileSync('git', ['show', `${REND_BASE}:xpizza-portal/${f}`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-    assert.notEqual(withoutREND(f, diskFile(f)), diskFile(f), `non-vacuity: the ${f} fold changes something`);
-    assert.equal(withoutREND(f, diskFile(f)), was, `${f} minus the REND hunks ≠ ${REND_BASE}`);
-    assert.notEqual(withoutREND(f, diskFile(f) + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold');
-  }
-  const inside = REND_FOLD['ventas.js'].map(([now]) => now).find((t) => t.includes('export function registerRendTab('));
-  assert.ok(inside, 'premise: the tab registry is one of the hunks');
-  assert.throws(() => withoutREND('ventas.js', diskFile('ventas.js').replace(inside, inside.replace('at most three tabs', 'at most three tabsX'))), 'an edit inside a hunk breaks it');
+test('«Rendimiento» RETIRED (Nav B, owner 11-14): ventas.js is REND_BASE byte-for-byte — no tab registry left; app.js keeps ONE hunk (the name)', () => {
+  assert.deepEqual(Object.keys(REND_FOLD), ['app.js'], 'the layer holds app.js\'s name hunk only');
+  assert.notEqual(withoutREND('app.js', diskFile('app.js')), diskFile('app.js'), 'non-vacuity: the app.js fold changes something (older layers on app.js judge the rest)');
+  const was = execFileSync('git', ['show', `${REND_BASE}:xpizza-portal/ventas.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.equal(diskFile('ventas.js'), was, `ventas.js ≠ ${REND_BASE}`);
+  assert.ok(!/registerRendTab|portal:rend-tab|Rendimiento/.test(diskFile('ventas.js')), 'no Rendimiento registry, event or label in ventas.js');
 });
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {

@@ -483,13 +483,10 @@ export function goto(view, opts = {}) {
   // «Pausar pedidos» lives on each branch's page (owner 11-13, map Q4): an old «pausas» entry lands on the branch (one branch in scope, or
   // opts.rid) or on the list («Todas») — PLAN-portal-pausar-in-sucursales §2.4
   if (view === 'pausas') { const t = pauseLanding(S.sel, opts); goto('suc', t.rid ? { rid: t.rid } : { list: true }); return; }
-  // «Rendimiento» (owner 11-13, map Q4): today's 'ventas' entry point and the aliases land on its page, the tab named first
-  // (ventas.js; an unregistered tab is Ventas)
-  if (view === 'ventas' || view === 'rendimiento' || view === 'calificaciones') {
-    document.dispatchEvent(new CustomEvent('portal:rend-tab', { detail: { tab: view === 'calificaciones' ? 'calificaciones' : 'ventas' } }));
-    $('navventas').click(); return;
-  }
-  if (view === 'menu') { $('navprod').click(); return; }   // ventas.js owns menu + Rendimiento
+  // Nav B (owner 11-14): «Ventas», «Calificaciones» and «Tu nivel» are three entries; an old «rendimiento» link lands on Ventas, and
+  // 'calificaciones' is its own registered view (calificaciones-view.js)
+  if (view === 'rendimiento') view = 'ventas';
+  if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
   if (view === 'inicio' && !(HOME && S.views.inicio)) { $('navprod').click(); return; }   // no home on this page → today's landing
   const reg = REG.find((r) => r.id === view);
   if (reg && !canOffer(reg)) { $('navprod').click(); return; }   // not offered on this page → the default view

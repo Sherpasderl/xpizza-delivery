@@ -382,12 +382,10 @@ const LIGHT_TOKENS = new Set([...lightBlock.matchAll(/--([a-z0-9-]+)\s*:/g)].map
 //   (e) ONE declaration normaliser (parseDecls: lowercased property names) feeds BOTH the grammar and the sweep; a CSS
 //       escape in a property name is refused.
 const A1_INHERIT_PINS = ['.railitem', '.mgmain', '.mtop .mswitch', '.switchmenu-item'];   // color:inherit, ruling a1
-// 8 pseudo-element rules (7 selectors; ::selection appears twice) + 4 attribute/child sites — exact color/background
+// 7 pseudo-element rules (6 selectors; ::selection appears twice) + 4 attribute/child sites — exact color/background
 const PINNED_COMPLEX = {
   '::selection': ['background:var(--tint2)', 'background:var(--tint2);color:var(--ink)'],   // two rules (:58, :396)
   '.tab.on::after': ['background:var(--green)'],
-  // «Rendimiento» (owner 11-13, map Q4): the text tabs' underline, exactly as MOCKUP-portal-map.html draws it (ink, 2 px)
-  '.ttab.on::after': ['background:var(--ink)'],
   '.search input::placeholder': ['color:var(--mute2)'],
   // ENVÍO: the restaurant picker's «Buscar restaurante o sucursal» — the same placeholder ink as the menu search above
   '.envio .psearch input::placeholder': ['color:var(--mute2)'],
@@ -407,8 +405,8 @@ const PINNED_CROSSINGS = {
   '.railitem.on .rcount': { tg: 'color:var(--accent);background:var(--tint2)', partners: ['.rcount'] },
   '.fiscal .ack': { tg: 'background:transparent', partners: ['.ack'] },
   '.fiscal .ackt': { tg: 'color:var(--on-dark)', partners: ['.ackt'] },
-  '.gtype button.on': { tg: 'background:var(--accent);color:var(--accent-ink)', partners: ['.daychip.on', '.mnav .mn.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on', '.ttab.on', '.ttab.on::after'] },
-  '.mnav .mn.on': { tg: 'background:var(--tint2);color:var(--accent)', partners: ['.daychip.on', '.gtype button.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on', '.ttab.on', '.ttab.on::after'] },
+  '.gtype button.on': { tg: 'background:var(--accent);color:var(--accent-ink)', partners: ['.daychip.on', '.mnav .mn.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on'] },
+  '.mnav .mn.on': { tg: 'background:var(--tint2);color:var(--accent)', partners: ['.daychip.on', '.gtype button.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on'] },
   '.modgrp.open .mgchev': { tg: 'color:var(--ink)', partners: ['.mgchev', '.mgchev:hover'] },
   '.prow .was': { tg: 'color:var(--mute)', partners: ['.sealbody .seachg .sv .was'] },
   '.sealbody .seachg .sv .was': { tg: 'color:var(--mute)', partners: ['.prow .was'] },
