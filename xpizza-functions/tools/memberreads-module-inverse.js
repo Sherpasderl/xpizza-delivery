@@ -5,6 +5,9 @@
 // index.js to 604e96ab5 byte-for-byte (memberreads-wiring.guard). Composed into the index.js fold chains of the wiring guards that pin
 // index.js to a fixed train revision (the s2bext / s1srv pattern; advisor ruling 2026-11-13, option 2): inside each s1srv call (as the s1srv layer's
 // argument), or at the raw read where no inverse was composed. Any other file passes through untouched.
+// (3) dish_stats (5014e1295): catalog/public-menu.js's edits (the 1d.4 marker, the BODY_CONTRACT entry, the decoration call) as exact-text
+// hunks generated from `git diff -U1 5014e1295^ 5014e1295 -- catalog/public-menu.js` (each occurs exactly once); unapplying them returns
+// public-menu.js to 604e96ab5 byte-for-byte (unchanged between 604e96ab5 and 07a26c194). Composed into the 9 guards that fold it.
 const BASE = '604e96ab5';
 const HUNKS = Object.freeze([
  {
@@ -33,6 +36,41 @@ const HUNKS = Object.freeze([
   "label": "marketing step 3: the three Anuncio exports",
   "file": "index.js",
   "now": "exports.getAnuncioWeeks = require('./marketing/functions').getAnuncioWeeks; exports.anuncioBook = require('./marketing/functions').anuncioBook; exports.anuncioCancel = require('./marketing/functions').anuncioCancel;   // PLAN-3a-marketing-server step 3: the «Anuncio» (dark until anuncio_enabled)\n",
+  "was": ""
+ },
+ {
+  "commit": "5014e1295",
+  "label": "(3) dish_stats: catalog/public-menu.js hunk 1/3",
+  "file": "catalog/public-menu.js",
+  "now": "   dish's `reward_icon`. 7f72757f's photo field and its category-rename validation are kept as they were. */\n/* PLAN-3a-capp-member-reads (3) §3.2: advanced 1d.3 → 1d.4 because the body can now carry `dish_stats` (the C-4 dish badges). The forms\n   keep their own marker and only console.warn menu_representation_changed. */\nconst REPRESENTATION_VERSION = '1d.4';\n\n",
+  "was": "   dish's `reward_icon`. 7f72757f's photo field and its category-rename validation are kept as they were. */\nconst REPRESENTATION_VERSION = '1d.3';\n\n"
+ },
+ {
+  "commit": "5014e1295",
+  "label": "(3) dish_stats: catalog/public-menu.js hunk 2/3",
+  "file": "catalog/public-menu.js",
+  "now": "  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.\n  dish_stats: { type: 'object' },   /* (3): a decoration (catalog/dish-stats-serve.js), omitted on any trouble — never required */\n  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' }, item_keys: { type: 'object' },   /* S1d: { [String(dish.id)]: item_key }, endpoint-only (never the bake's body) */   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule\n",
+  "was": "  // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.\n  photos: { type: 'object' }, avail_identity: { required: true, type: 'object' }, item_keys: { type: 'object' },   /* S1d: { [String(dish.id)]: item_key }, endpoint-only (never the bake's body) */   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule\n"
+ },
+ {
+  "commit": "5014e1295",
+  "label": "(3) dish_stats: catalog/public-menu.js hunk 3/3",
+  "file": "catalog/public-menu.js",
+  "now": "\n  /* PLAN-3a-capp-member-reads (3) — DISH_STATS, last, and only where it can be joined: on the endpoint's overlay branch AFTER the\n     overlay applied (the served dishes carry dish_id). Never on the overlayIdentity:false bake / reconciler path (stats move daily: a\n     baked copy would freeze them). withDishStats never throws and never blocks past its own 1.5 s deadline. */\n  if (deps.overlayIdentity !== false && enriched.applied) body = await require('./dish-stats-serve').withDishStats(restaurantId, body, deps.dishStats || {});\n\n  // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's\n",
+  "was": "\n  // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's\n"
+ },
+ {
+  "commit": "d688d8378",
+  "label": "capp offers Q1: catalog/public-menu.js hunk 1/2",
+  "file": "catalog/public-menu.js",
+  "now": "  offers: { type: 'array' },        /* PLAN-3a-capp-offers-read Q1: a decoration (catalog/offers-serve.js), ABSENT when offers are off — never required */\n",
+  "was": ""
+ },
+ {
+  "commit": "d688d8378",
+  "label": "capp offers Q1: catalog/public-menu.js hunk 2/2",
+  "file": "catalog/public-menu.js",
+  "now": "  /* PLAN-3a-capp-offers-read Q1 — OFFERS, on the same branch and for the same reason (they move by the minute: a baked copy would freeze\n     them). No representation bump (advisor Q-A): absent when off, so the body and the ETag are unchanged; on, the body moves the ETag. */\n  if (deps.overlayIdentity !== false) body = await require('./offers-serve').withOffers(restaurantId, body, deps.offers || {});\n",
   "was": ""
  }
 ]);

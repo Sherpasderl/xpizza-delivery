@@ -14,10 +14,12 @@
 // nothing written, and the read states the switches with empty lists (one config read after auth).
 // STORAGE (server-only, rules closed):
 //   marketing_offers/{brandId}/{offerId} — the authored record; every write is ONE transaction with a rev CAS (Q3)
-//   marketing_live/{rid}/{offerId}       — the price path's compact record (offer-model liveProjection), present only while the
-//                                           offer is active. The overlap rule and MAX_LIVE are judged INSIDE a per-branch transaction on
-//                                           this node (mirrorActive) — the authority; a refused activation puts the record back. A crash
-//                                           between the record and its mirror leaves it un-applied (live_drift in the read; healed on the next write)
+//   marketing_live_b/{brandId}/{rid}/{offerId} — the price path's compact record (offer-model liveProjection) while the offer is
+//                                           active, else a tombstone { removed, rev }. EVERY mirror mutation of an offer is ONE transaction
+//                                           on marketing_live_b/{brandId} (applyMirror: the overlap rule + MAX_LIVE judged inside — the
+//                                           authority; all branches or nothing; rev-guarded). A refused activation puts the record back. A
+//                                           record ahead of its mirror (an outage after the retries) is reported as live_drift and healed
+//                                           by the next write.
 // Owner-only data is never logged; no PII is read or returned.
 const crypto = require('crypto');
 const { can } = require('../access/membership');
@@ -35,7 +37,10 @@ const opts = { isRid: isBrandId };
 const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
 const newOfferId = () => `o_${Array.from(crypto.randomBytes(12), (b) => B32[b & 31]).join('')}`;
 const offersPath = (brandId) => `marketing_offers/${brandId}`;
-const livePath = (rid) => `marketing_live/${rid}`;
+// THE live mirror (PLAN-3a-live-mirror-rekey r2): marketing_live_b/{brandId}/{rid}/{offerId} — ONE parent per restaurant, so every mirror
+// mutation of an offer is ONE transaction across all its branches (a NEW root: a legacy brand id can equal a rid)
+const liveBrandPath = (brandId) => `marketing_live_b/${brandId}`;
+const livePath = (brandId, rid) => `${liveBrandPath(brandId)}/${rid}`;
 
 // token + the anchor rid + one capability → { ctx, access } | { fail }
 async function admit(deps, req, rid, cap) {
@@ -88,10 +93,11 @@ async function resolveDishes(deps, value) {
   return { value };
 }
 
-// THE live judgement — ONE rule, used by the cheap pre-check AND inside the per-branch transaction: this offer against one branch's
-// CURRENT live set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids)
+// THE live judgement — ONE rule, used by the cheap pre-check AND inside the brand transaction: this offer against one branch's CURRENT live
+// set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids). A tombstone is
+// never live; this offer's OWN entry is never judged (an edit may overlap itself).
 function liveJudgement(offerId, value, live) {
-  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r));
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r) && r.removed !== true);
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesOf(value));
   if (!mine.size) return null;
@@ -102,12 +108,12 @@ function liveJudgement(offerId, value, live) {
 const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}) });
 
 // the PRE-check (no write): refuse early, before the record moves, when a branch's live set already says no. Not the authority —
-// mirrorActive re-judges inside each branch's transaction.
-async function liveProblem(deps, offerId, value) {
+// applyMirror re-judges inside the brand transaction.
+async function liveProblem(deps, brandId, offerId, value) {
+  let all;
+  try { all = await val(deps.db, liveBrandPath(brandId)); } catch (_) { return UNAVAILABLE(); }
   for (const rid of value.branches) {
-    let live;
-    try { live = await val(deps.db, livePath(rid)); } catch (_) { return UNAVAILABLE(); }
-    const v = liveJudgement(offerId, value, live);
+    const v = liveJudgement(offerId, value, isObj(all) ? all[rid] : null);
     if (v) return judgementReply(v, rid);
   }
   return null;
@@ -143,58 +149,62 @@ async function casWrite(db, path, expectedRev, decide) {
   return { rec: s };
 }
 
-// An ACTIVE record's mirrors — THE AUTHORITY on MAX_LIVE and the overlap rule (advisor 11-14, rule 5): per branch, ONE transaction on
-// marketing_live/{rid} judges the CURRENT live set and adds this offer only when it passes, so two simultaneous publishes on a branch
-// serialize on that node and cannot both pass. A refusal (or an outage) removes what this call already added (only entries still at
-// this rev). Branches the offer no longer names lose their entry. → null | the 409 judgement | 503
-async function mirrorActive(db, brandId, offerId, rec, prevBranches = []) {
-  const value = OM.authoredOf(rec, opts);
-  const proj = OM.liveProjection(rec, brandId);
-  if (!(await unmirror(db, offerId, prevBranches.filter((rid) => !rec.branches.includes(rid))))) return UNAVAILABLE();
-  const done = [];
-  for (const rid of rec.branches) {
-    let last = null;
-    let tx;
-    try {
-      tx = await db.ref(livePath(rid)).transaction((cur) => {
-        const d = { verdict: null };
-        last = d;
-        const v = liveJudgement(offerId, value, cur);
-        if (v) { d.verdict = v; return undefined; }
-        return { ...(isObj(cur) ? cur : {}), [offerId]: proj };
-      });
-    } catch (_) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
-    if (last && last.verdict) { await unmirror(db, offerId, done, rec.rev); return judgementReply(last.verdict, rid); }
-    if (!tx || !tx.committed) { await unmirror(db, offerId, done, rec.rev); return UNAVAILABLE(); }
-    done.push(rid);
-  }
-  return null;
+// THE mirror writer (PLAN-3a-live-mirror-rekey r2; Codex 2-phase r2 → advisor ruling): EVERY mirror mutation of an offer — publish, edit,
+// pause / end, undo, every tombstone — is ONE transaction on marketing_live_b/{brandId}: it judges every branch (MAX_LIVE + the overlap
+// rule — THE AUTHORITY) and writes ALL of the offer's branch entries or NOTHING. For the record `rec` at its rev: active ⇒ the projection on
+// its branches and a TOMBSTONE { removed: true, rev } on every other branch the offer holds an entry on (or `alsoRids`); not active ⇒ a
+// tombstone on every such branch. With `tombRev` (a pause / end's PRE-CAS fence) every branch is tombstoned at that rev. REV-GUARDED: an
+// entry of this offer at a HIGHER rev on any branch means a newer write owns it ⇒ a no-op (strict `>`: the same rev re-applies).
+// → { ok } | { stale } | { verdict, rid } ; throws on an outage
+async function applyMirror(db, brandId, offerId, rec, { alsoRids = [], tombRev = null } = {}) {
+  const active = tombRev === null && rec.state === 'active';
+  const rev = tombRev === null ? rec.rev : tombRev;
+  const value = active ? OM.authoredOf(rec, opts) : null;
+  const proj = active ? OM.liveProjection(rec, brandId) : null;
+  let last = null;
+  const tx = await db.ref(liveBrandPath(brandId)).transaction((cur) => {
+    const d = { verdict: null, rid: null, stale: false };
+    last = d;
+    const all = isObj(cur) ? cur : {};
+    const held = Object.keys(all).filter((rid) => isObj(all[rid]) && all[rid][offerId] != null);
+    const rids = [...new Set([...(Array.isArray(rec.branches) ? rec.branches : []), ...alsoRids, ...held])];
+    const higher = rids.some((rid) => { const e = isObj(all[rid]) ? all[rid][offerId] : null; return isObj(e) && Number.isSafeInteger(e.rev) && e.rev > rev; });
+    if (higher) { d.stale = true; return undefined; }
+    if (active) for (const rid of rec.branches) { const v = liveJudgement(offerId, value, all[rid]); if (v) { d.verdict = v; d.rid = rid; return undefined; } }
+    const next = { ...all };
+    for (const rid of rids) next[rid] = { ...(isObj(all[rid]) ? all[rid] : {}), [offerId]: active && rec.branches.includes(rid) ? proj : { removed: true, rev } };
+    return next;
+  });
+  if (last && last.stale) return { stale: true };
+  if (last && last.verdict) return { verdict: last.verdict, rid: last.rid };
+  if (!(tx && tx.committed)) throw new Error('mirror_not_committed');
+  return { ok: true };
 }
-// remove this offer's entry on each branch (when `rev` is given: only an entry still at that rev — never a newer write's) → ok
-async function unmirror(db, offerId, rids, rev = null) {
-  try {
-    for (const rid of rids) {
-      await db.ref(`${livePath(rid)}/${offerId}`).transaction((cur) => {
-        if (cur === null) return null;   // the null-first pass: commits only if the server is null too, else re-runs on the entry
-        return rev === null || (isObj(cur) && cur.rev === rev) ? null : undefined;
-      });
+// applyMirror for the record as it is NOW: an outage RETRIES from the current record (never a half state — each attempt is one atomic
+// txn); the last failure ⇒ { fail } (the record ahead of the mirror: never mispriced, reported as live_drift, healed by the next write)
+const MIRROR_TRIES = 3;
+async function applyFromRecord(db, brandId, path, offerId, rec, opts2 = {}) {
+  let current = rec;
+  for (let i = 0; i < MIRROR_TRIES; i++) {
+    try { return await applyMirror(db, brandId, offerId, current, opts2); } catch (_) {
+      try { const fresh = await val(db, path); if (isObj(fresh) && OM.recordOk(fresh, opts)) current = fresh; } catch (__) { /* retry with what we have */ }
     }
-    return true;
-  } catch (_) { return false; }
+  }
+  return { fail: true };
 }
-// after the record CAS: active ⇒ the judged mirrors, else every branch's entry removed. A refused activation puts the record BACK to
-// what it was (a second CAS on the new rev) and answers the judgement with the record's current rev; a failed undo is a 503 (the
-// record is active with no mirror — never applied by the price path; the read reports live_drift).
+// after the record CAS: ONE brand txn applies THIS record's rev. A refused activation / edit wrote NOTHING; the record is put BACK (a second
+// CAS on the new rev) and that undo's KNOWN rev is applied in ONE more brand txn (an active «before» re-stamps its untouched projection,
+// an inactive one tombstones every branch). → null | the 409 judgement (with current_rev) | 503
 async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
   const prevBranches = isObj(before) && Array.isArray(before.branches) ? before.branches : [];
-  if (rec.state !== 'active') return (await unmirror(db, offerId, [...new Set([...prevBranches, ...rec.branches])])) ? null : UNAVAILABLE();
-  const refused = await mirrorActive(db, brandId, offerId, rec, prevBranches);
-  if (!refused) return null;
-  if (refused.status !== 409) return refused;
+  const r = await applyFromRecord(db, brandId, path, offerId, rec, { alsoRids: prevBranches });
+  if (r.fail) return UNAVAILABLE();
+  if (!r.verdict) return null;
   const undo = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...before, rev: cur.rev + 1, updated_at: t }; });
   if (undo.fail) return UNAVAILABLE();
-  if (undo.rec.state === 'active' && (await mirrorActive(db, brandId, offerId, undo.rec, rec.branches))) return UNAVAILABLE();   // a live edit undone: its old mirrors back
-  return reply(409, { ...refused.body, current_rev: undo.rec.rev });
+  const u = await applyFromRecord(db, brandId, path, offerId, undo.rec, { alsoRids: rec.branches });
+  if (u.fail || u.verdict) return UNAVAILABLE();
+  return reply(409, { ...judgementReply(r.verdict, r.rid).body, current_rev: undo.rec.rev });
 }
 
 // Q4: the brand's ended offers older than 180 days (by their last write) — removed by the next create, in ONE update of the brand node
@@ -206,11 +216,45 @@ async function pruneEnded(db, brandId, ids) {
 }
 
 const bodyOf = (req) => (isObj(req && req.body) ? req.body : {});
+
+// IDEMPOTENT create / repeat per (restaurant, client op_id) (advisor 11-14; portal-ui retries a lost reply): ONE create-only transaction
+// claims marketing_offer_ops/{brandId}/{op_id} = { offer_id, kind, at } BEFORE the record is created under that id (the record create is
+// create-only too). A repeat call finds the claim and answers THAT offer (its current rev and state); while the first call is still in
+// flight (claimed, record not yet written) the repeat creates under the SAME claimed id — create-only, so exactly one record ever exists
+// and the loser answers the winner's. An op_id older than OP_TTL_MS no longer matches (the claim is replaced; expired claims are pruned).
+const OP_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const OP_TTL_MS = 7 * 86400000;
+const opsPath = (brandId) => `marketing_offer_ops/${brandId}`;
+// → { offerId, fresh } (fresh = this call made the claim)
+async function claimOp(db, brandId, opId, kind, t) {
+  const proposed = newOfferId();
+  let out = null;
+  const tx = await db.ref(`${opsPath(brandId)}/${opId}`).transaction((cur) => {
+    if (isObj(cur) && OM.OFFER_ID_RE.test(String(cur.offer_id)) && cur.kind === kind && Number.isSafeInteger(cur.at) && t - cur.at < OP_TTL_MS) { out = { offerId: cur.offer_id, fresh: false }; return undefined; }
+    out = { offerId: proposed, fresh: true };
+    return { offer_id: proposed, kind, at: t };
+  });
+  if (out && out.fresh && !(tx && tx.committed)) return null;
+  if (out && out.fresh) {   // the brand's EXPIRED claims leave with a fresh one (bounded by the create rate)
+    try {
+      const all = (await val(db, opsPath(brandId))) || {};
+      const old = Object.entries(isObj(all) ? all : {}).filter(([, c]) => !(isObj(c) && Number.isSafeInteger(c.at) && t - c.at < OP_TTL_MS)).map(([k]) => k);
+      if (old.length) await db.ref(opsPath(brandId)).update(Object.fromEntries(old.map((k) => [k, null])));
+    } catch (_) { /* retried by the next fresh claim */ }
+  }
+  return out;
+}
+// an op_id retry that lost the create-only race (or found the claim): the claimed offer as it is now → the 200 reply | null
+async function replayOf(db, brandId, offerId, t) {
+  const rec = await val(db, `${offersPath(brandId)}/${offerId}`);
+  return isObj(rec) && OM.recordOk(rec, opts) ? reply(200, { ok: true, offer: offerView(offerId, rec, t) }) : null;
+}
 const offerView = (id, rec, nowMs) => ({
   id, rev: rec.rev, state: rec.state, status: OM.statusOf(rec, nowMs),
   ...OM.authoredOf(rec, opts),
   created_at: rec.created_at, updated_at: rec.updated_at,
   ...(rec.ended_reason ? { ended_reason: rec.ended_reason } : {}), ...(rec.repeated_from ? { repeated_from: rec.repeated_from } : {}),
+  ...(rec.state === 'paused_owner' && Number.isSafeInteger(rec.paused_at) ? { paused_at: rec.paused_at } : {}),
 });
 
 // ── getMarketing ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -227,20 +271,20 @@ async function getMarketingCore(deps, req) {
   let all, live, booked;
   try {
     [all, live, booked] = await Promise.all([
-      switches.offers_enabled ? val(db, offersPath(a.access.brandId)) : null, switches.offers_enabled ? val(db, livePath(rid)) : null,
+      switches.offers_enabled ? val(db, offersPath(a.access.brandId)) : null, switches.offers_enabled ? val(db, livePath(a.access.brandId, rid)) : null,
       switches.anuncio_enabled ? val(db, `anuncio_bookings/${rid}`) : null]);
   } catch (_) { return UNAVAILABLE(); }
   const t = now();
   // this branch's Anuncio bookings (≤ 12): the derived status, the price agreed, the deadline, the days not shown — no charge field exists
   const bookings = Object.entries(isObj(booked) ? booked : {})
-    .filter(([id, b]) => AM.BOOKING_ID_RE.test(id) && isObj(b) && AM.WEEK_RE.test(String(b.week)))
+    .filter(([id, b]) => AM.BOOKING_ID_RE.test(id) && isObj(b) && b.void !== true && AM.WEEK_RE.test(String(b.week)))   // a void (a released orphan's marker) is never listed
     .map(([id, b]) => ({ id, week: b.week, status: AM.bookingStatus(b, t), price_cents: b.price_cents, cancel_deadline: b.cancel_deadline, hidden_days: AM.hiddenDays(b) }))
     .sort((x, y) => (x.week < y.week ? 1 : x.week > y.week ? -1 : 0));
   const offers = Object.entries(isObj(all) ? all : {})
     .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.branches.includes(rid))
     .map(([id, rec]) => {
       const m = isObj(live) ? live[id] : undefined;
-      const drift = rec.state === 'active' ? !(isObj(m) && m.rev === rec.rev) : m !== undefined && m !== null;
+      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;   // a tombstone is «not live»
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
     .sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
@@ -270,6 +314,7 @@ async function marketingOfferSaveCore(deps, req) {
   const creating = body.offer_id === undefined;
   if (!creating && !OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0 || (creating !== (body.expected_rev === 0))) return reply(400, { error: 'bad_request', field: 'expected_rev' });
+  if (body.op_id !== undefined && (!creating || !OP_RE.test(String(body.op_id)))) return reply(400, { error: 'bad_request', field: 'op_id' });
   const v = OM.validateAuthored(body.offer, opts);
   if (!v.ok) return reply(400, { error: 'bad_request', field: v.field, reason: v.reason });
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
@@ -278,7 +323,14 @@ async function marketingOfferSaveCore(deps, req) {
   if (dish.fail) return dish.fail;
   const value = dish.value;
   const t = now();
-  const offerId = creating ? newOfferId() : body.offer_id;
+  let offerId = creating ? newOfferId() : body.offer_id;
+  if (creating && body.op_id !== undefined) {   // idempotent create: the claimed id; a repeat answers the offer it already made
+    let c;
+    try { c = await claimOp(db, brandId, body.op_id, 'create', t); } catch (_) { return UNAVAILABLE(); }
+    if (!c) return UNAVAILABLE();
+    offerId = c.offerId;
+    if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
+  }
   let prune = [];
   if (creating) {   // the brand's bound (every state counts) + Q4: ended offers older than 180 days leave with this write
     let all;
@@ -290,7 +342,7 @@ async function marketingOfferSaveCore(deps, req) {
   if (!creating) {   // an active / paused offer: the live-edit allowlist is checked against the record the CAS will see
     try { prevRec = await val(db, `${offersPath(brandId)}/${offerId}`); } catch (_) { return UNAVAILABLE(); }
     if (isObj(prevRec) && (prevRec.state === 'active' || prevRec.state === 'paused_owner')) {
-      const live = await liveProblem(deps, offerId, value);   // a later end CAN create an overlap: the same judgement as a publish
+      const live = await liveProblem(deps, brandId, offerId, value);   // a later end CAN create an overlap: the same judgement as a publish
       if (live) return live;
     }
   }
@@ -308,7 +360,10 @@ async function marketingOfferSaveCore(deps, req) {
     d.why = 'write';
     return OM.stripNulls({ ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t });
   });
-  if (w.fail) return w.fail;
+  if (w.fail) {
+    if (creating && body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }   // the concurrent twin won the create-only write
+    return w.fail;
+  }
   if (w.rec.state === 'active') { const m = await settleMirrors(db, brandId, `${offersPath(brandId)}/${offerId}`, offerId, w.rec, prevRec, t); if (m) return m; }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
@@ -341,13 +396,16 @@ async function marketingOfferSetStateCore(deps, req) {
     const dish = await resolveDishes(deps, value);   // a category offer is RE-RESOLVED at publish / resume (frozen from here)
     if (dish.fail) return dish.fail;
     value = dish.value;
-    const live = await liveProblem(deps, body.offer_id, value);
+    const live = await liveProblem(deps, brandId, body.offer_id, value);
     if (live) return live;
   }
   // PAUSE / END (advisor 11-14, 5f's price-plan review): the price path loses the offer BEFORE its record says so. A failed removal is
   // a 503 with the record unchanged (still active, still applied — consistent); never a paused / ended record whose mirror still prices.
   // A lost CAS after the removal leaves an active record with no mirror: never applied, reported as live_drift, healed by the next write.
-  if (body.to !== 'active' && MOVES[pre.state].includes(body.to) && !(await unmirror(db, body.offer_id, value.branches))) return UNAVAILABLE();
+  if (body.to !== 'active' && MOVES[pre.state].includes(body.to)) {   // the PRE-CAS fence: ONE brand txn tombstones every branch at the rev this CAS will write
+    const f = await applyFromRecord(db, brandId, path, body.offer_id, pre, { tombRev: pre.rev + 1, alsoRids: value.branches });
+    if (f.fail) return UNAVAILABLE();
+  }
   const w = await casWrite(db, path, body.expected_rev, (cur, d) => {
     if (cur === null) { d.why = 'not_found'; return undefined; }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
@@ -355,6 +413,7 @@ async function marketingOfferSetStateCore(deps, req) {
     d.why = 'write';
     const next = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') next.ended_reason = 'owner'; else delete next.ended_reason;
+    if (body.to === 'paused_owner') next.paused_at = t; else delete next.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
     return next;
   });
   if (w.fail) return w.fail;
@@ -372,6 +431,7 @@ async function marketingOfferRepeatCore(deps, req) {
   const { body, ctx } = h;
   const brandId = h.access.brandId;
   if (!OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
+  if (body.op_id !== undefined && !OP_RE.test(String(body.op_id))) return reply(400, { error: 'bad_request', field: 'op_id' });
   let all;
   try { all = (await val(db, offersPath(brandId))) || {}; } catch (_) { return UNAVAILABLE(); }
   const src = isObj(all) ? all[body.offer_id] : null;
@@ -384,13 +444,23 @@ async function marketingOfferRepeatCore(deps, req) {
   if (denied) return denied;
   const prune = endedToPrune(all, t).filter((id) => id !== body.offer_id);   // never the offer being repeated
   if (Object.keys(all).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
-  const offerId = newOfferId();
+  let offerId = newOfferId();
+  if (body.op_id !== undefined) {   // idempotent repeat (see claimOp)
+    let c;
+    try { c = await claimOp(db, brandId, body.op_id, 'repeat', t); } catch (_) { return UNAVAILABLE(); }
+    if (!c) return UNAVAILABLE();
+    offerId = c.offerId;
+    if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
+  }
   const draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, 0, (cur, d) => {
     d.why = 'write';
     return OM.stripNulls({ v: 1, rev: 1, ...draft, state: 'draft', repeated_from: body.offer_id, created_by: ctx.uid, created_at: t, updated_at: t });
   });
-  if (w.fail) return w.fail;
+  if (w.fail) {
+    if (body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }
+    return w.fail;
+  }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }

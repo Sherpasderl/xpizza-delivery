@@ -4,20 +4,14 @@
 //   ratings pipeline — intake (buildCreateOrderUpdates + attachCustomerAttribution), the fulfilment stamp (rating_index),
 //   rateOrderCore, and the REAL producer (aggregateRestaurant), which also runs the hidden-day recorder; slots and bookings by the cores
 //   under test. The RTDB double is the producer's own (ratings/_rtdb-fake: ordered queries, a read log, production transactions).
+//   The world (roster, config, the ratings pipeline + producer, the RTDB double) is test/_anuncio-world.js, shared with the sponsored read.
 // Run: node marketing/anuncio-core.test.js
-process.env.OTP_SALT = process.env.OTP_SALT || 'anuncio-core-test-salt-'.padEnd(40, 'x');
 const assert = require('assert');
 const path = require('path');
 const FN = path.join(__dirname, '..');
-const { fakeDb } = require('../ratings/_rtdb-fake');
-const R = require('../access/roster');
-const CFG = require('./config');
 const AM = require('./anuncio-model');
 const A = require('./anuncio-core');
 const P = require('../ratings/aggregate-producer');
-const { rateOrderCore } = require('../ratings/rate-order');
-const { stampRatingFulfilment } = require('../ratings/rating-fulfilment');
-const { buildCreateOrderUpdates, attachCustomerAttribution } = require(path.join(FN, 'create-order-build'));
 const { hnDateISO } = require(path.join(FN, 'lib', 'hn-date'));
 
 let n = 0; let FINISHED = false;
@@ -25,55 +19,14 @@ const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  ✗ anuncio-core: exited without completing (a hang)\n'); process.exitCode = 1; } });
 const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
 
-const HOUR = 3600e3;
-const at = (day, h) => P.dayRange(day)[0] + h * HOUR;          // HN wall clock
+const { HOUR, at, OWNER, MGR, OTHER, verifyIdToken, world, rated, produce, req, depsAt, eligible } = require('../test/_anuncio-world');
 const BOOK_AT = at('2027-03-03', 12);                           // Wed 3 Mar, noon HN — week W2027-03-08 is next
 const RUN_AT = at('2027-03-10', 4.5);                           // a 04:30 run: the watermark is 1 Mar, so it closes 2–8 Mar (the 7-day catch-up cap)
 const W = 'W2027-03-08';
-const OWNER = 'ownerAn01', MGR = 'mgrAn0001', OTHER = 'ownerOt01';
-const TOK = { [`t-${OWNER}`]: { uid: OWNER }, [`t-${MGR}`]: { uid: MGR }, [`t-${OTHER}`]: { uid: OTHER } };
-const verifyIdToken = async (t) => { if (TOK[t]) return TOK[t]; if (String(t).startsWith('tok-')) return { uid: t.slice(4), customer: true }; throw new Error('bad token'); };
 
-async function world({ on = true } = {}) {
-  const db = fakeDb();
-  db.set('brands', {
-    tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } },
-    zt: { name: 'ZT', active: true, locations: { zt_uno: 'member' }, activation: { state: 'on', since: 1 } } });
-  for (const rid of ['tb_centro', 'tb_sur', 'zt_uno']) db.set(`restaurants/${rid}/identity`, { brand_id: rid.split('_')[0], name: rid, active: true, version: 1 });
-  const roster = async (b, actor, op) => assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, b, actor, op)).ok, true, `premise: roster ${op.type}`);
-  await roster('tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@tb.hn' } });
-  await roster('tb', { kind: 'owner', uid: OWNER }, { type: 'grant_manager', uid: MGR, rids: ['tb_centro'] });
-  await roster('zt', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OTHER, profile: { name: 'O', email: 'o@zt.hn' } });
-  const w = await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: false, anuncio_enabled: on, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 });
-  assert.strictEqual(w.ok, true, 'premise: the config writer');
-  return db;
-}
-// the REAL ratings pipeline: n orders served on `day`, each rated `store` stars by its own member, then the REAL producer at `runAt`
-let seq = 0;
-async function rated(db, rid, day, stars) {
-  for (const store of stars) {
-    const id = `XPZ-${String(++seq).padStart(5, '0')}`; const uid = `u_${String(seq).padStart(24, 'a')}`;
-    const t = at(day, 13);
-    const u = buildCreateOrderUpdates({ orderId: id, orderType: 'pickup', now: t - HOUR, trackingToken: 'tk' + id.slice(-4), total: 300, lat: null, lng: null,
-      fields: { customer_name: 'Ana', customer_phone: `5049${String(1000000 + seq).slice(-7)}`, items_text: '1x', notes: '', payment_method: 'cash' },
-      hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid,
-      priceBreakdown: { total_cents: 30000, subtotal_cents: 26087, tax_cents: 3913 }, facturaPriced: { items: null }, cashTenderedCents: 30000 });
-    attachCustomerAttribution(u, id, uid, { now: t, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: [{ name: 'x', qty: 1 }] });
-    await db.ref().update(u);
-    db.set(`orders/${id}/status`, 'delivered');
-    await stampRatingFulfilment(db, { orderId: id, status: 'delivered', now: t });
-    const r = await rateOrderCore(db, { body: { order_id: id, store }, idToken: `tok-${uid}`, now: t + 2 * HOUR, verifyIdToken });
-    assert.ok(r && r.ok !== false, `premise: rateOrderCore accepted (${JSON.stringify(r)})`);
-  }
-}
-const produce = (db, rid, nowMs) => P.aggregateRestaurant({ db, nowMs, keyOf: P.repeatKeyer(process.env.OTP_SALT), priceOf: () => null, runId: `run-${nowMs}` }, rid);
-const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
-const depsAt = (db, t) => ({ db, verifyIdToken, now: () => t });
 const weeks = (db, tok, rid, t = BOOK_AT) => A.getAnuncioWeeksCore(depsAt(db, t), req(tok, undefined, 'GET', { rid }));
 const book = (db, tok, body, t = BOOK_AT) => A.anuncioBookCore(depsAt(db, t), req(tok, body));
 const cancel = (db, tok, body, t = BOOK_AT) => A.anuncioCancelCore(depsAt(db, t), req(tok, body));
-// an eligible branch: 11 five-star ratings on 1 Mar, published by the REAL producer on 2 Mar's run
-async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).fill(5)); await produce(db, rid, at('2027-03-02', 4.5)); }
 
 (async () => {
   try {
@@ -149,6 +102,95 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       ok('weeks show taken / mine (never another\'s id); a re-book ⇒ already_booked; a slot without its record is repaired idempotently');
     }
 
+    // ── 3b. the booking cap (owner 11-14, PLAN-3a-anuncio-cap r0): ≤ 2 booked weeks in any rolling 4-week window per branch; cancelled
+    //        bookings never count; decided inside ONE transaction on the branch's bookings (a race can't exceed it) ──
+    {
+      // the slot is ONE per week platform-wide, so each scenario runs on its own database
+      const WK = AM.bookableWeeks(BOOK_AT);                     // W0 = W2027-03-08 … W7
+      const okBook = async (db, tok, rid, week) => { const r = await book(db, tok, { rid, week }); assert.strictEqual(r.status, 200, `premise: ${rid} books ${week} (${JSON.stringify(r.body)})`); return r.body.booking; };
+      const sur = await world(); await eligible(sur, 'tb_sur');
+      await okBook(sur, `t-${OWNER}`, 'tb_sur', WK[0]); await okBook(sur, `t-${OWNER}`, 'tb_sur', WK[2]);
+      assert.strictEqual((await book(sur, `t-${OWNER}`, { rid: 'tb_sur', week: WK[3] })).body.error, 'cap_reached', 'W, W+2 booked ⇒ W+3 refused');
+      const db = await world(); await eligible(db, 'tb_centro');
+      await okBook(db, `t-${OWNER}`, 'tb_centro', WK[0]);
+      const b1 = await okBook(db, `t-${OWNER}`, 'tb_centro', WK[1]);   // consecutive weeks are allowed
+      assert.strictEqual((await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[4] })).status, 200, 'W, W+1 booked ⇒ W+4 OK');
+      ok('the window is exactly 4 weeks: W, W+2 ⇒ W+3 refused; W, W+1 (consecutive OK) ⇒ W+4 allowed');
+      const r2 = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[2] });
+      assert.deepStrictEqual([r2.status, r2.body], [409, { error: 'cap_reached', next_week: WK[5] }], 'a 3rd week inside the window ⇒ cap_reached + the next week within the cap');
+      assert.strictEqual(db.get(`anuncio_slots/${WK[2]}`) ?? null, null, 'a refusal leaves no slot');
+      assert.deepStrictEqual(Object.values(db.get('anuncio_bookings/tb_centro')).map((b) => b.week).sort(), [WK[0], WK[1], WK[4]], 'a refusal leaves no record');
+      ok('a 3rd week inside the window ⇒ 409 cap_reached with next_week; nothing written');
+      const wk = await weeks(db, `t-${OWNER}`, 'tb_centro');
+      assert.deepStrictEqual(wk.body.weeks.map((x) => x.state), ['mine', 'mine', 'capped', 'capped', 'mine', 'free', 'free', 'free'], 'getAnuncioWeeks marks the weeks the cap refuses «capped»');
+      ok('weeks: a free week the cap would refuse reads «capped»');
+      assert.strictEqual((await cancel(db, `t-${OWNER}`, { rid: 'tb_centro', booking_id: b1.id })).status, 200, 'premise: W+1 cancelled by the REAL cancel');
+      assert.strictEqual((await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: WK[2] })).status, 200, 'a cancelled booking frees its count: W+2 now books');
+      ok('a cancelled booking never counts');
+      const zt = await world(); await eligible(zt, 'zt_uno');
+      await okBook(zt, `t-${OTHER}`, 'zt_uno', WK[0]);
+      const [ra, rb] = await Promise.all([book(zt, `t-${OTHER}`, { rid: 'zt_uno', week: WK[1] }), book(zt, `t-${OTHER}`, { rid: 'zt_uno', week: WK[2] })]);
+      assert.deepStrictEqual([ra.status, rb.status].sort(), [200, 409], `the race: two books at once can't exceed the cap (${JSON.stringify([ra.body, rb.body])})`);
+      const lost = ra.status === 409 ? [ra, WK[1]] : [rb, WK[2]];
+      assert.strictEqual(lost[0].body.error, 'cap_reached');
+      assert.strictEqual(Object.values(zt.get('anuncio_bookings/zt_uno')).filter((b) => b.state !== 'cancelled').length, 2, 'the node holds 2 live bookings');
+      assert.strictEqual(zt.get(`anuncio_slots/${lost[1]}`) ?? null, null, 'the refused book released the slot it wrote');
+      ok('the race: two simultaneous books ⇒ exactly one wins; the loser\'s slot is released');
+    }
+
+    // ── 3c. Codex capp-offers r1 P1-1: a cleanup never deletes a slot whose booking a CONCURRENT request repaired ──
+    {
+      const db = await world();
+      await eligible(db, 'tb_centro'); await eligible(db, 'zt_uno');
+      let calls = 0; let bRes = null;
+      const orig = db.ref;
+      db.ref = (p) => { const r = orig(p);
+        if (p === 'anuncio_bookings/tb_centro') { const tx = r.transaction; r.transaction = async (fn) => {
+          if (++calls === 1) { bRes = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: W }); throw new Error('A: the record write failed'); }   // B repairs A's slot first
+          return tx(fn); }; }
+        return r; };
+      const aRes = await book(db, `t-${OWNER}`, { rid: 'tb_centro', week: W });
+      db.ref = orig;
+      assert.strictEqual(bRes.status, 200, `premise: the concurrent request B repaired A's slot and booked (${JSON.stringify(bRes.body)})`);
+      assert.deepStrictEqual([aRes.status, aRes.body.error], [503, 'unavailable'], 'A: its record write failed ⇒ 503 retryable');
+      assert.deepStrictEqual(db.get(`anuncio_slots/${W}`), { rid: 'tb_centro', booking_id: bRes.body.booking.id }, 'A\'s cleanup kept the slot B\'s booking holds');
+      assert.strictEqual((await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: W })).body.error, 'week_taken', 'another restaurant can NOT take the booked week');
+      ok('a cleanup never deletes a slot whose booking a concurrent request repaired (the week stays held)');
+    }
+
+    // ── 3d. Codex capp-offers r1 P1-2: a FAILED cap-refusal cleanup is never swallowed, and the orphan slot is reconciled by a retry
+    //        AND by the weeks read ──
+    for (const via of ['a retry', 'the weeks read']) {
+      const db = await world();
+      await eligible(db, 'zt_uno');
+      const WK = AM.bookableWeeks(BOOK_AT);
+      assert.strictEqual((await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[0] })).status, 200, 'premise: W0 held');
+      let failed = false;
+      const orig = db.ref;
+      db.ref = (p) => { const r = orig(p);
+        if (/^anuncio_slots\//.test(p)) { const tx = r.transaction; r.transaction = async (fn) => {
+          const cur = db.get(p);   // ONE release fails BEFORE it applies (an outage): a transaction that would clear an existing slot
+          if (!failed && cur != null && fn(JSON.parse(JSON.stringify(cur))) === null) { failed = true; throw new Error('the slot release failed'); }
+          return tx(fn); }; }
+        return r; };
+      const [ra, rb] = await Promise.all([book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[1] }), book(db, `t-${OTHER}`, { rid: 'zt_uno', week: WK[2] })]);
+      db.ref = orig;
+      assert.ok(failed, 'premise: one release failed');
+      const [won, lost, lostWeek] = ra.status === 200 ? [ra, rb, WK[2]] : [rb, ra, WK[1]];
+      assert.strictEqual(won.status, 200, 'premise: one of the race wins');
+      assert.deepStrictEqual([lost.status, lost.body.error, lost.body.retryable], [503, 'unavailable', true], 'a refusal whose cleanup FAILED ⇒ 503 retryable — never a swallowed 409 promising a repair');
+      ok(`(${via}) a failed cap-refusal cleanup ⇒ 503 retryable, not a swallowed cap_reached`);
+      if (via === 'a retry') {
+        const again = await book(db, `t-${OTHER}`, { rid: 'zt_uno', week: lostWeek });
+        assert.strictEqual(again.body.error, 'cap_reached', 'the healthy retry is refused by the cap…');
+      } else {
+        const wk = await weeks(db, `t-${OTHER}`, 'zt_uno');
+        assert.notStrictEqual(wk.body.weeks.find((x) => x.week === lostWeek).state, 'mine', 'the weeks read never shows the orphan as «mine»');
+      }
+      assert.strictEqual(db.get(`anuncio_slots/${lostWeek}`) ?? null, null, `…and ${via} reconciled the orphan slot (no record ⇒ released)`);
+      ok(`(${via}) the orphan slot of a failed cleanup is reconciled — the week is free for others`);
+    }
+
     // ── 4. cancel: before / at / after the deadline; frees only its own slot ──
     {
       const db = await world();
@@ -210,16 +252,24 @@ async function eligible(db, rid) { await rated(db, rid, '2027-03-01', Array(11).
       ok('a restaurant without the week\'s slot records nothing, for anyone');
     }
 
-    // ── 6. the visibility rule (the capp read + the recorder share it) ──
+    // ── 6. the visibility rule (the capp's sponsored read): eligible by rating AND the ONE operational reading open NOW
+    //       (portal/ops-core controlOf: inactive > paused > closed by hours > open; unknown on a malformed identity / control) ──
     {
       const th = { rating_min: 4.5, min_ratings: 10 };
       const good = { rating_avg: 4.7, rating_count: 20 };
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: null, thresholds: th, nowMs: 5 }), { visible: true });
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'paused' }, 'paused now ⇒ not visible');
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: true, until: 4 }, thresholds: th, nowMs: 5 }), { visible: true }, 'a timed pause past its until is OPEN (order-control-state)');
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: good, control: { paused: 'yes' }, thresholds: th, nowMs: 5 }), { visible: false, reason: 'control_unknown' });
-      assert.deepStrictEqual(AM.anuncioVisible({ stats: { rating_avg: 4.4, rating_count: 20 }, control: null, thresholds: th, nowMs: 5 }), { visible: false, reason: 'rating' });
-      ok('visibility: eligible by rating AND open now (order-control-state\'s one reading; unknown control hides)');
+      const DAYH = { open: true, start: '11:00', end: '22:00' };
+      const identity = { brand_id: 'tb', name: 'Centro', phone: '+50431234567', hours: { sun: DAYH, mon: DAYH, tue: DAYH, wed: DAYH, thu: DAYH, fri: DAYH, sat: DAYH }, hub_lat: 15.5, hub_lng: -88, delivery_radius_km: 5, active: true, version: 1 };
+      const noon = at('2027-03-08', 12), night = at('2027-03-08', 23);
+      const vis = (o) => AM.anuncioVisible({ stats: good, identity, control: null, thresholds: th, nowMs: noon, ...o });
+      assert.deepStrictEqual(vis({}), { visible: true }, 'rated, open by its hours, not paused ⇒ visible');
+      assert.deepStrictEqual(vis({ nowMs: night }), { visible: false, reason: 'closed' }, 'outside its hours ⇒ closed ⇒ not visible');
+      assert.deepStrictEqual(vis({ identity: { ...identity, active: false } }), { visible: false, reason: 'inactive' }, 'an inactive branch ⇒ not visible');
+      assert.deepStrictEqual(vis({ control: { paused: true } }), { visible: false, reason: 'paused' }, 'paused now ⇒ not visible');
+      assert.deepStrictEqual(vis({ control: { paused: true, until: noon - 1 } }), { visible: true }, 'a timed pause past its until is OPEN (order-control-state)');
+      assert.deepStrictEqual(vis({ control: { paused: 'yes' } }), { visible: false, reason: 'unknown' }, 'a malformed control ⇒ unknown ⇒ not visible');
+      assert.deepStrictEqual(vis({ identity: null }), { visible: false, reason: 'unknown' }, 'no identity ⇒ unknown ⇒ not visible');
+      assert.deepStrictEqual(vis({ stats: { rating_avg: 4.4, rating_count: 20 } }), { visible: false, reason: 'rating' });
+      ok('visibility: eligible by rating AND open now by the ONE operational reading (hours, inactive, pause; unknown hides)');
     }
 
     FINISHED = true;

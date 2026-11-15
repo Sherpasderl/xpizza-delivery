@@ -691,5 +691,16 @@
     "line": 107,
     "text": "const nm = (await db.ref(`restaurants/${rid}/identity/name`).once('value')).val();",
     "reason": "R4 false positive: identity/name leaf read (add-time existence), no hours (advisor 2026-11-13)"
+  },
+  {
+    "file": "catalog/offers-serve.js",
+    "line_sha256": "b3dd97f8fc4eef5152e06822f85641f0a2044ae7fae1977b5b79932ad56d4bdc",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 44,
+    "text": "const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();",
+    "reason": "R4 false positive: identity/brand_id leaf read (the branch's brand for marketing_live_b, brandIdOf — PLAN-3a-live-mirror-rekey r2), no hours (advisor 2026-11-14)"
   }
 ]

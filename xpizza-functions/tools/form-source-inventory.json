@@ -160,11 +160,13 @@
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/offers-serve.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-menu-dish-stats.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
     "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
@@ -217,6 +219,8 @@
     "xpizza-functions/confirmretire-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
+    "xpizza-functions/contract/capp/provision-brand-transform.test.mjs",
+    "xpizza-functions/contract/capp/provision-context.test.mjs",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -280,6 +284,7 @@
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
+    "xpizza-functions/marketing/sponsored-serve.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
@@ -593,10 +598,12 @@
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/offers-serve.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-menu-dish-stats.test.js",
     "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
     "xpizza-functions/catalog/publish-parity.test.js",
@@ -641,6 +648,8 @@
     "xpizza-functions/catalog/verify-vs-active.test.js",
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
+    "xpizza-functions/contract/capp/provision-brand-transform.test.mjs",
+    "xpizza-functions/contract/capp/provision-context.test.mjs",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -694,6 +703,7 @@
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
+    "xpizza-functions/marketing/sponsored-serve.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-warm-wiring.guard.test.js",
@@ -1043,11 +1053,13 @@
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/offers-serve.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/plan4-display-fields.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-menu-dish-stats.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
     "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
@@ -1100,6 +1112,8 @@
     "xpizza-functions/confirmretire-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
+    "xpizza-functions/contract/capp/provision-brand-transform.test.mjs",
+    "xpizza-functions/contract/capp/provision-context.test.mjs",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -1164,6 +1178,7 @@
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
+    "xpizza-functions/marketing/sponsored-serve.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-parity.test.js",
@@ -1473,10 +1488,12 @@
     "xpizza-functions/catalog/mirror-key-encoding.test.js",
     "xpizza-functions/catalog/move-rules-parity.test.js",
     "xpizza-functions/catalog/no-code-authority.guard.test.js",
+    "xpizza-functions/catalog/offers-serve.test.js",
     "xpizza-functions/catalog/pickup-backstop.test.js",
     "xpizza-functions/catalog/platform-pending.test.js",
     "xpizza-functions/catalog/policy-primitive.test.js",
     "xpizza-functions/catalog/portal-reads.test.js",
+    "xpizza-functions/catalog/public-menu-dish-stats.test.js",
     "xpizza-functions/catalog/public-menu.test.js",
     "xpizza-functions/catalog/public-photos.test.js",
     "xpizza-functions/catalog/publish-edited.test.js",
@@ -1523,6 +1540,8 @@
     "xpizza-functions/checkout-wiring.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
+    "xpizza-functions/contract/capp/provision-brand-transform.test.mjs",
+    "xpizza-functions/contract/capp/provision-context.test.mjs",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -1579,6 +1598,7 @@
     "xpizza-functions/marketing/offer-usage.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
     "xpizza-functions/marketing/offers-core.test.js",
+    "xpizza-functions/marketing/sponsored-serve.test.js",
     "xpizza-functions/membership-wiring.guard.test.js",
     "xpizza-functions/memory-floor.guard.test.js",
     "xpizza-functions/menu-warm-wiring.guard.test.js",
@@ -2266,6 +2286,7 @@
   "xpizza-functions/catalog/structure-budget.js",
   "xpizza-functions/catalog/structure-gate.js",
   "xpizza-functions/contract/applicability.js",
+  "xpizza-functions/contract/capp/capture.mjs",
   "xpizza-functions/contract/census-build.js",
   "xpizza-functions/contract/census.js",
   "xpizza-functions/contract/gate-a-run.js",
@@ -2283,7 +2304,9 @@
   "xpizza-functions/directory/directory-deps.js",
   "xpizza-functions/index.js",
   "xpizza-functions/marketing/anuncio-core.js",
+  "xpizza-functions/marketing/anuncio-model.js",
   "xpizza-functions/marketing/offers-core.js",
+  "xpizza-functions/marketing/sponsored-serve.js",
   "xpizza-functions/menu-extract.mjs",
   "xpizza-functions/portal/branch-lifecycle-core.js",
   "xpizza-functions/portal/functions.js",
@@ -2291,6 +2314,7 @@
   "xpizza-functions/portal/ops-functions.js",
   "xpizza-functions/ratings/aggregate-producer.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
+  "xpizza-functions/test/_anuncio-world.js",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
   "xpizza-functions/test/_marketing-price-seed.js",
@@ -2762,6 +2786,7 @@
   "catalog/choice-transitions.js",
   "catalog/client-retired.js",
   "catalog/deletion-claim.js",
+  "catalog/dish-stats-serve.js",
   "catalog/draft-assess.js",
   "catalog/edit-catalog-handler.js",
   "catalog/edit-preflight.js",
@@ -2798,6 +2823,7 @@
   "catalog/mirror-keys.js",
   "catalog/mirror-rtdb.js",
   "catalog/move-rules.js",
+  "catalog/offers-serve.js",
   "catalog/paid-text.js",
   "catalog/pickup-backstop.js",
   "catalog/platform-pending.js",
@@ -2817,6 +2843,7 @@
   "catalog/review-diff.js",
   "catalog/reward-icons.js",
   "catalog/reward-removed.js",
+  "catalog/serve-memo.js",
   "catalog/snapshot-fallback.js",
   "catalog/source-accounting.js",
   "catalog/source-store.js",
@@ -2872,6 +2899,8 @@
   "marketing/offer-usage.js",
   "marketing/offer-wire.js",
   "marketing/offers-core.js",
+  "marketing/sponsored-serve.js",
+  "marketing/switch-memo.js",
   "materialize.js",
   "member-auth.js",
   "menu-pricing.js",
@@ -3429,6 +3458,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/dish-stats-serve.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/draft-assess.js": {
    "pins": [],
    "lifts": []
@@ -3620,6 +3653,10 @@
    "pins": [],
    "lifts": []
   },
+  "catalog/offers-serve.js": {
+   "pins": [],
+   "lifts": []
+  },
   "catalog/paid-text.js": {
    "pins": [],
    "lifts": []
@@ -3675,6 +3712,7 @@
      "inverses": [
       "tools/avail-identity-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -3682,9 +3720,16 @@
      ]
     },
     {
+     "file": "xpizza-functions/memberreads-wiring.guard.test.js",
+     "inverses": [
+      "tools/memberreads-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/photos-module-wiring.guard.test.js",
      "inverses": [
       "tools/keymode-module-inverse.js",
+      "tools/memberreads-module-inverse.js",
       "tools/photos-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -3694,6 +3739,7 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/memberreads-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/s2core-module-inverse.js"
@@ -3800,6 +3846,10 @@
    "lifts": []
   },
   "catalog/reward-removed.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "catalog/serve-memo.js": {
    "pins": [],
    "lifts": []
   },
@@ -7047,6 +7097,14 @@
    "lifts": []
   },
   "marketing/offers-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/sponsored-serve.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/switch-memo.js": {
    "pins": [],
    "lifts": []
   },
