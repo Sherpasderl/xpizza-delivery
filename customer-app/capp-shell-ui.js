@@ -39,7 +39,10 @@
     const CappShellNav = pick(o, 'CappShellNav', './capp-shell-nav.js'), CappHome = pick(o, 'CappHome', './capp-home.js');
     const CappOrder = pick(o, 'CappOrder', './capp-order.js');   // «Pedido recibido» (the host's order screen)
     const CappRate = pick(o, 'CappRate', './capp-rate.js');   // C-2: the post-delivery rating sheet (presenter)
-    const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');   // S2: the total changes after the card hold (presenter)
+    const CappPayAdjust = pick(o, 'CappPayAdjust', './capp-pay-adjust.js');
+    // MOCKUP-capp-push r1 (owner-approved 11-14): the push UI — the NATIVE package only (runtime.push, set by the boot for native);
+    // absent ⇒ nothing below is loaded or drawn, every screen byte-identical (loaded at its first use: pushCore)
+    let CappPush = null;   // S2: the total changes after the card hold (presenter)
     // the native store-update: an INSTALLED app with a store to update from never reloads its bundled assets (that cannot update it)
     // and the store sheet replaces the shared «Actualización pendiente» notice — a no-reload adapter for the shared coordinator
     if (o.runtime && o.runtime.store) { try { const SC = o.SherpaClient || g.SherpaClient; if (SC && !SC.inert && typeof SC.registerAdapter === 'function') SC.registerAdapter({ canReload: () => false, notice: () => {} }); } catch (_) {} }
@@ -325,6 +328,7 @@
       identityChanged();
       schedule();
       if (usable(S.member)) armExpiry(); else retryToken(gen, uid, 0);
+      if (S.pushTap) pushTapRun();
     }
     // Codex promo r3: the member's identity-guarded token notifier — fired ONLY by CappApi.acceptToken (the transport's fresh token, the
     // retry's, admission's): the claim follows in place on Inicio (a repaint) and a mounted store (patchAuth), and the expiry re-arms
@@ -405,8 +409,111 @@
       if (!fbAuth) return;
       if (forget) CappDeviceAccount.forget(storage);
       signingOut = true; dropMember(); renderNow();
+      await pushForget();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
       try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
       signingOut = false; renderNow();
+    }
+    // ── push (MOCKUP-capp-push r1): a MEMBER's, on a native phone (the token is registered under the member's ID token) ──
+    let push = null;
+    function pushCore() {
+      if (push || runtime.push !== true || !SU) return push;
+      CappPush = pick(o, 'CappPush', './capp-push.js');
+      const cap = win && win.Capacitor, plugin = cap && cap.Plugins ? cap.Plugins.PushNotifications || null : null;
+      const platform = cap && typeof cap.getPlatform === 'function' ? cap.getPlatform() : null;
+      const withTok = (fn) => async (b) => { const tok = fbAuth ? await fbAuth.idToken() : null; return tok && suApi ? suApi[fn]({ idToken: tok, ...b }) : { ok: false, reason: 'unauthenticated' }; };
+      push = CappPush.createPush({ enabled: true, plugin, platform, storage, now: () => Number(nowMs()), appBuild: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || ''),
+        api: { register: withTok('pushRegister'), unregister: withTok('pushUnregister') } });
+      push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });
+      return push;
+    }
+    const pushUi = () => !!(S.member && pushCore() && push.available());
+    // the member's prefs as the server last answered (null until read) — per uid; a device that is not registered shows both off
+    function pushVm() {
+      const st = push.state(), pr = S.pushPrefs && S.member && S.pushPrefs.uid === S.member.uid ? S.pushPrefs : null, on = st.state === 'granted' && st.registered;
+      return { granted: on, denied: st.state === 'denied', pedidos: on && (pr ? pr.pedidos : true), promociones: on && (pr ? pr.promociones : false), busy: !!(S.pushBusy || S.pushDown) };
+    }
+    const keepPrefs = (r) => { if (S.member && r && r.ok === true && r.prefs) S.pushPrefs = { uid: S.member.uid, pedidos: r.prefs.pedidos === true, promociones: r.prefs.promociones === true, rev: r.prefs.rev }; };
+    // «Pedido recibido»: the soft card once per order (decided at its first paint), the order line once push is on
+    function pushOrder(od) {
+      if (!pushUi()) return {};
+      const v = pushVm();
+      if (od.pushAsk === undefined) od.pushAsk = push.shouldOffer({ ordersPlaced: 1 });
+      if (od.pushAsk) push.markOffered();
+      return { pushLine: v.granted && v.pedidos ? CappPush.COPY.orderLinePush : '', pushAsk: od.pushAsk && !v.granted && !v.denied ? CappPush.askHtml() : '' };
+    }
+    // the screen's visit: the OS permission now (changed in Ajustes?) + the member's prefs from the server
+    async function pushRefresh() {
+      const uid = S.member && S.member.uid; if (!uid) return;
+      await push.permission();
+      let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushGetPrefs({ idToken: tok }) : null; } catch (_) { r = null; }
+      if (dead || !S.member || S.member.uid !== uid) return;
+      // 3a e73a605a2: an unreadable policy (503) ⇒ the switches stay as last known, inert, with no error copy; a good read frees them
+      if (r && r.ok === true) { S.pushDown = false; if (r.prefs) keepPrefs(r); else S.pushPrefs = { uid, pedidos: true, promociones: false, rev: 0 }; } else if (r && r.reason === 'unavailable') S.pushDown = true;
+      if (S.tab === 'notifs') renderNow();
+    }
+    // the person's ONE change (k → val) on the server's prefs, a rev CAS (3a e73a605a2): a stale rev ⇒ the 409's CURRENT prefs are kept
+    // and the change is re-applied on them once — never a blind overwrite of what another device set. true | false | null (gone)
+    async function pushApply(k, val, base) {
+      const uid = S.member.uid; let cur = base;
+      for (let i = 0; i < 2; i++) {
+        let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushSetPrefs({ idToken: tok, pedidos: cur.pedidos, promociones: cur.promociones, [k]: val, expected_rev: cur.rev }) : null; } catch (_) { r = null; }
+        if (dead || !S.member || S.member.uid !== uid) return null;
+        if (r && r.ok === true) { keepPrefs(r); return true; }
+        if (!(r && r.reason === 'stale_prefs' && r.prefs)) return false;
+        keepPrefs({ ok: true, prefs: r.prefs }); cur = r.prefs;
+        if (cur[k] === val) return true;   // another device already set what the person asked for
+      }
+      return false;
+    }
+    // opt-in (the card's «Activar avisos», or a switch turned on before push is on): enable, then make sure the person's own choice
+    // stands — a register never rewrites existing prefs (3a e73a605a2), so a choice it did not carry is applied by setPrefs
+    async function pushEnable(prefs, k) {
+      const uid = S.member && S.member.uid; S.pushBusy = true; renderNow();
+      const r = await push.enable(prefs);
+      if (dead || !S.member || S.member.uid !== uid) { S.pushBusy = false; return r; }
+      let ok = r.ok;
+      if (ok) { keepPrefs(r.server); const sp = r.server.prefs; if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true; }
+      S.pushBusy = false;
+      if (dead || !S.member || S.member.uid !== uid) return r;
+      if (ok) toast(CappPush.COPY.toastOn);   // after opt-in: the toast only (MOCKUP frame 1d)
+      else if (r.ok) toast('No se guardó el cambio. Intentá de nuevo.');
+      return { ...r, ok };
+    }
+    async function pushPref(k) {
+      if (S.pushBusy || S.pushDown) return;
+      const v = pushVm(); if (v.denied) return;
+      const val = !v[k];
+      if (!v.granted) { if (val) await pushEnable({ pedidos: v.pedidos, promociones: v.promociones, [k]: true }, k); renderNow(); return; }   // the switch IS the consent (owner Q4)
+      const uid = S.member.uid, pr = S.pushPrefs && S.pushPrefs.uid === uid && Number.isSafeInteger(S.pushPrefs.rev) ? S.pushPrefs : null;
+      const base = { pedidos: v.pedidos, promociones: v.promociones, rev: pr ? pr.rev : 0 };
+      S.pushBusy = true; S.pushPrefs = { uid, ...base, [k]: val }; renderNow();   // optimistic
+      const ok = await pushApply(k, val, base);
+      S.pushBusy = false;
+      if (ok === null) return;
+      if (!ok && S.pushPrefs && S.pushPrefs.rev === base.rev) S.pushPrefs = { uid, ...base };   // never saved ⇒ back to its value
+      renderNow(); if (ok !== true) toast('No se guardó el cambio. Intentá de nuevo.');   // G7 frame 1b's words
+    }
+    function pushAct(a, t) {
+      if (a === 'sub-notifs') { if (pushUi()) nav.go({ name: 'notifs' }); return; }
+      if (a === 'notifs-back') { nav.back(); return; }
+      if (!pushUi()) return;
+      if (a === 'push-later') { push.snooze(); if (S.order) S.order.pushAsk = false; renderNow(); return; }
+      if (a === 'push-on') { if (S.pushBusy) return; const od = S.order; pushEnable({ pedidos: true, promociones: false }, 'pedidos').then((r) => { if (od && (r.ok || r.reason === 'denied')) od.pushAsk = false; if (!dead) renderNow(); }); return; }
+      if (a === 'push-pref') { if (t.getAttribute('aria-disabled') !== 'true') pushPref(t.dataset.k === 'promociones' ? 'promociones' : 'pedidos'); return; }
+      if (a === 'push-settings') { emit('open-os-settings', {}); return; }   // the host opens the phone's Ajustes (owner Q5)
+    }
+    // a tapped order push: the device's live order ⇒ its screen; else the member's receipt — held until the member is admitted
+    function pushTapRun() {
+      const id = S.pushTap; if (!id || !S.member) return;
+      S.pushTap = null;
+      const od = activeOrder();
+      if (od && od.order_id === id) nav.go({ name: 'order' }); else nav.go({ name: 'receipt', oid: id });
+    }
+    // sign-out / a uid switch: bounded (3 s) — a hung network never holds the sign-out
+    async function pushForget() {
+      if (!push || !push.available()) return;
+      S.pushPrefs = null;
+      await Promise.race([push.forget().catch(() => {}), new Promise((r) => T.setTimeout(r, 3000))]);
     }
     function startAuth() {
       if (!SU || fbAuth || dead) return;
@@ -428,7 +535,7 @@
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
         // issued or shown for them is void before the new identity is admitted
-        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
+        if (u && u.uid && S.member && S.member.uid !== u.uid) { dropMember(); pushForget(); }
         if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
         schedule();
       });
@@ -465,6 +572,7 @@
         // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
         if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
+        if (S.tab === 'notifs') return CappRoutes.format({ name: 'account' });   // «Notificaciones» is a step of Cuenta (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
     }
@@ -481,6 +589,7 @@
       if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
       if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
       if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
+      if (S.tab === 'notifs') return CappHome.titleOf({ screen: 'notifs' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
     // C-6b: a dish row's ‹ › follow its scroll — ‹ off at the start, › off at the end (or with nothing to scroll): never a dead arrow
@@ -559,6 +668,7 @@
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
+        if (entry.name === 'notifs') { if (!pushUi()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
@@ -685,7 +795,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), ...(pushUi() ? { pushRow: { title: CappPush.COPY.screenTitle, sub: CappPush.rowSub(pushVm()) } } : {}) } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -711,7 +821,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && pushUi() ? CappHome.shellWrap(v, CappPush.screenHtml(pushVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -1083,7 +1193,7 @@
     function orderScreenHtml(v) {
       const od = S.order;
       return CappHome.shellWrap(v, CappOrder.orderHtml(od, { entry: 'app', now: Number(nowMs()), dark: app.classList.contains('dark'), helpOk: !!supportWa(), desk: !!v.desk,
-        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od), pay: payPieces(od) }));
+        shareOk: !!(od.token && trackBaseOf(od.rid)), receiptOpen: !!S.orderReceipt, offerHtml: offerHtml(od), rateHtml: orderRateHtml(od), pay: payPieces(od), ...pushOrder(od) }));
     }
     // MOCKUP-capp-guest-checkout frame 7 (owner 10-27) in v6's .rw slot: a GUEST whose card order returned a live signup grant (the
     // phone already verified — no second code), under the shell's own sign-in (runtime.signup); «Ahora no» hides it for this order
@@ -1589,6 +1699,7 @@
       if (a === 'signin') { openSignin({ ctx: t.dataset.ctx || 'account' }); return; }
       if (a === 'help') { emit('help', {}); return; }
       if (a === 'site-help') { const n = supportWa(); if (n) openExternal(`https://wa.me/${n}`); return; }   // C-6a: the footer's Ayuda — the platform's support chat (Codex C-6a r1 #1)
+      if (a === 'sub-notifs' || a === 'notifs-back' || a.startsWith('push-')) return void pushAct(a, t);
       if (a === 'promos') { if (t.getAttribute('aria-disabled') !== 'true') togglePromos(); return; }   // G7 frame 1 / 1b
       if (a === 'signout') return void signOutNow();
       if (a === 'forget') return openLayer('forget');   // G7 frame 2

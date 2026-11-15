@@ -256,7 +256,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -2326,6 +2326,7 @@ async function pedidosBoot(db, opts = {}) {
   const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
     if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
     if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
+    if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
   const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
@@ -5106,5 +5107,199 @@ test('rule 11 guard (Inicio): every store card\'s time is a window — delivery 
     assert.equal(S.q('.fchip[data-val="pickup"]').getAttribute('aria-pressed'), 'true', 'premise: the Pickup filter is on');
     assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: pickup');
     assert.ok(cards().some((c) => /Listo en \d+–\d+ min/.test(c)), `the pickup window shows: ${cards().join(' | ')}`);
+  } finally { S.w.close(); }
+});
+
+// ── push stage 2 (MOCKUP-capp-push r1, owner-approved 11-14): the shell's wiring. The server is 3a's REAL customer-push.js at
+// e73a605a2 (install_id + the prefs rev CAS; refLoader: the module + its require closure from ONE sha) over 3a's strict RTDB double; the phone is the fake of
+// @capacitor/push-notifications 8.1.1 (capp-push.test PUSH-PIN) behind a Capacitor bridge present before the shell mounts ──
+const { refLoader: pushRef } = await import('./test/ref-require.mjs');
+const { createFakePushPlugin } = await import('./test/fake-push-plugin.mjs');
+const PUSH_3A = refLoader3a();
+function refLoader3a() { const R = pushRef(join(HERE, '..'), 'e73a605a2e2a2bbd70c748bcfeee9f74ba9509b4'); return { CP: R.require('xpizza-functions/customer-push.js'), fakeRtdb: R.require('xpizza-functions/test/_fake-rtdb-sdk.js').fakeRtdb }; }
+function pushServer3a({ failSet = false, policy = null } = {}) {
+  const db = PUSH_3A.fakeRtdb({ ...(policy ? { platform_config: { push: policy } } : {}), user_profiles: { u_ana: { phone: '50496123344', phone_hash: 'ph_a', created_at: 1, last_login: 1 } } }, { strict: true });
+  const sub = (t) => { try { return JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')).sub; } catch (_) { return null; } };
+  const auth = { verifyIdToken: async (t) => { const u = sub(t); if (!u) throw new Error('bad token'); return { uid: u, customer: true }; } };
+  const h = PUSH_3A.CP.makeCustomerPush({ getDatabase: () => db, getAuth: () => auth, now: () => T0, checkRateLimit: async () => ({ allowed: true }) });
+  const calls = [];
+  const handler = async (url, init = {}) => {
+    const u = new URL(url), name = u.pathname.split('/').pop(), headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    const body = init.body ? JSON.parse(init.body) : undefined; calls.push({ name, url, headers, body });
+    if (failSet && name === 'setCustomerPushPrefs') return { status: 503, json: async () => ({ ok: false, reason: 'unavailable' }) };
+    const req = { method: init.method || 'GET', query: Object.fromEntries(u.searchParams), body, headers, get: (x) => headers[String(x).toLowerCase()] };
+    const res = { code: 200, body: null, set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
+    const e = console.error; console.error = () => {}; try { await h[name](req, res); } finally { console.error = e; }
+    return { status: res.code, json: async () => res.body };
+  };
+  // another of the person's devices, straight to 3a (same session identity)
+  const other = async (name, body) => { const r = await handler(`https://fn.test/${name}?context=platform`, { method: 'POST', headers: { 'x-firebase-id-token': TOK('u_ana') }, body: JSON.stringify(body) }); calls.pop(); return r.json(); };
+  return { db, calls, handler, other, prefs: () => { const p = db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}; return [p.pedidos, p.promociones, p.rev]; }, tokens: () => Object.keys(db.get(PUSH_3A.CP.TOKENS) || {}).length };
+}
+const PUSH_RT = { ...G7_RUNTIME, guestCardOnly: undefined, push: true, rtdbBase: 'https://rtdb.test' };
+async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false } = {}) {
+  const f = createFakePushPlugin(fake);
+  const { ES, made } = fakeES();
+  const pre = noBridge ? null : (w) => { w.Capacitor = { getPlatform: () => platform, Plugins: { PushNotifications: f.plugin } }; };
+  const r = await pedidosBoot({ u_ana: {} }, { storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
+    readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}) });
+  return { ...r, f, srv, made };
+}
+const pushTxt = (S) => txt(S.q('.mk-num span'));
+const osAsks = (f) => f.of('checkPermissions').length + f.of('requestPermissions').length + f.of('register').length;   // the tap listener is not an ask
+test('PUSH-SHELL-1 (frames 1 → 1d): a member\'s «Pedido recibido» shows the soft card under the status line; «Activar avisos» ⇒ the system prompt, the token to 3a under the member\'s ID token, the toast only, the card gone, the order line', async () => {
+  const { S, f, srv } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', 'premise');
+    const card = S.q('.mk-sheet .px-ask'); assert.ok(card, '🔴 PUSH-SHELL-1: the soft card');
+    assert.ok(card.previousElementSibling && card.previousElementSibling.classList.contains('mk-status'), '🔴 PUSH-SHELL-1: right under the status line (frame 1)');
+    assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', 'before opt-in: v6\'s line');
+    assert.equal(osAsks(f), 0, '🔴 PUSH-SHELL-1: nothing asks the OS before the tap');
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask'));
+    assert.equal(f.of('requestPermissions').length, 1, 'the system prompt, once');
+    const reg = srv.calls.find((c) => c.name === 'registerCustomerPushToken');
+    assert.deepEqual(reg.body, { token: 'fcm_tok_test_0001', platform: 'android', app_build: reg.body.app_build, install_id: reg.body.install_id, pedidos: true, promociones: false }, '🔴 PUSH-SHELL-1: §6b — pedidos on, ofertas off');
+    assert.match(reg.body.install_id, /^[A-Za-z0-9_-]{16,64}$/, '🔴 PUSH-SHELL-1: this installation\'s id');
+    assert.equal(JSON.parse(Buffer.from(reg.headers['x-firebase-id-token'].split('.')[1], 'base64url').toString()).sub, 'u_ana', '🔴 PUSH-SHELL-1: under the member\'s ID token');
+    assert.equal(srv.tokens(), 1, '3a stored the token');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados', '🔴 PUSH-SHELL-1: the toast only (frame 1d)');
+    assert.equal(pushTxt(S), '· Te avisamos con una notificación', '🔴 PUSH-SHELL-1: the order line once push is on');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-2: «Ahora no» ⇒ the card goes, nothing asks the OS, the snooze is kept; an OS denial ⇒ the card goes and the line stays WhatsApp', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f } = await pushBoot({ storage: st });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-later"]'); await flush();
+    assert.equal(S.q('.px-ask'), null, '🔴 PUSH-SHELL-2: «Ahora no» ⇒ gone'); assert.equal(osAsks(f), 0, 'the OS never asked');
+    assert.equal(JSON.parse(st.getItem('capp:push:v1')).snoozes, 1, '🔴 PUSH-SHELL-2: the snooze is kept (30 days, owner Q2)');
+  } finally { S.w.close(); }
+  const D = await pushBoot({ fake: { onRequest: 'denied' } });
+  try {
+    await shellPlaceTolerant(D.S); await until(() => D.S.q('.px-ask') && D.S.q('.mk-num'));
+    D.S.click('.px-ask [data-act="push-on"]'); await until(() => !D.S.q('.px-ask'));
+    assert.equal(D.srv.calls.length, 0, 'denied ⇒ nothing sent'); assert.equal(pushTxt(D.S), '· Te avisamos por WhatsApp', '🔴 PUSH-SHELL-2: denied ⇒ the WhatsApp line stays');
+    assert.notEqual(txt(D.S.q('#toast')), 'Avisos activados');
+  } finally { D.S.w.close(); }
+});
+test('PUSH-SHELL-3 (frames 2 + 4): ONE «Notificaciones» row right after Direcciones (frame 4\'s subtitles); its screen — the switches are the consent (setPrefs under the member\'s token); a refused save reverts', async () => {
+  const { S, srv } = await pushBoot();
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush();
+    const rows = g7Rows(S); assert.equal(rows[rows.indexOf(rows.find((r) => r.startsWith('Direcciones'))) + 1], 'Notificaciones Estado del pedido por WhatsApp', '🔴 PUSH-SHELL-3: right after Direcciones, v6\'s subtitle before push');
+    assert.equal(rows.filter((r) => r.startsWith('Notificaciones')).length, 1, 'ONE row'); assert.ok(rows.some((r) => r.startsWith('Promociones')), 'G7\'s «Promociones» untouched');
+    S.click('[data-act="sub-notifs"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.topbar h1')), 'Notificaciones'); assert.equal(S.w.document.title, 'Notificaciones · Sherpa');
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`);
+    assert.deepEqual([sw('pedidos').getAttribute('aria-checked'), sw('promociones').getAttribute('aria-checked')], ['false', 'false'], 'not registered ⇒ both off');
+    S.click(sw('pedidos')); await until(() => srv.calls.some((c) => c.name === 'registerCustomerPushToken'));
+    await until(() => sw('pedidos') && sw('pedidos').getAttribute('aria-checked') === 'true');
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.pedidos, true, '🔴 PUSH-SHELL-3: «Mis pedidos» on = the opt-in');
+    S.click(sw('promociones')); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'setCustomerPushPrefs').body, { pedidos: true, promociones: true, expected_rev: 1 }, '🔴 PUSH-SHELL-3: «Ofertas de Sherpa» on = setPrefs (consent per channel), on the rev it was drawn from');
+    assert.deepEqual([(srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent].map((o) => o && [o.channel, o.value]), [['push', true]], '3a recorded the push-offers consent');
+    assert.equal(sw('promociones').getAttribute('aria-checked'), 'true');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Mis pedidos · Ofertas de Sherpa'), '🔴 PUSH-SHELL-3: F4b\'s subtitle');
+  } finally { S.w.close(); }
+  const F = await pushBoot({ srv: pushServer3a({ failSet: true }), fake: { permission: 'granted' } });
+  try {
+    F.S.click('.tabbar [data-tab="account"]'); await flush(); F.S.click('[data-act="sub-notifs"]'); await flush();
+    F.S.click('.switch[data-k="pedidos"]'); await until(() => F.S.q('.switch[data-k="pedidos"]').getAttribute('aria-checked') === 'true');
+    F.S.click('.switch[data-k="promociones"]'); await until(() => F.srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.equal(F.S.q('.switch[data-k="promociones"]').getAttribute('aria-checked'), 'false', '🔴 PUSH-SHELL-3: refused ⇒ back to its value');
+    assert.equal(txt(F.S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { F.S.w.close(); }
+});
+test('PUSH-SHELL-4 (frame 2 denied, owner Q5): the OS denied ⇒ the quiet card, both switches off + inert; «Abrir Ajustes» is the host event open-os-settings; the row reads «Apagadas en tu teléfono»', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'denied' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => S.q('.px-quiet'));
+    assert.equal(txt(S.q('.px-quiet .t b')), 'Avisos apagados');
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2); assert.equal(S.q('[data-act="push-pref"]'), null, '🔴 PUSH-SHELL-4: no live switch');
+    S.click('.px-quiet [data-act="push-settings"]'); await flush();
+    assert.deepEqual(S.events.filter((e) => e[0] === 'open-os-settings'), [['open-os-settings', {}]], '🔴 PUSH-SHELL-4: the host opens Ajustes');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Apagadas en tu teléfono'), '🔴 PUSH-SHELL-4: the denied subtitle');
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, 'nothing registered');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — flag off, the web, a guest or no bridge ⇒ no card, no row, no screen, no denied card, not one plugin call', async () => {
+  for (const [what, o] of [['flag off', { runtime: { ...PUSH_RT, push: undefined } }], ['web', { platform: 'web' }], ['no bridge', { noBridge: true }], ['denied, flag off', { runtime: { ...PUSH_RT, push: undefined }, fake: { permission: 'denied' } }]]) {
+    const { S, f, srv } = await pushBoot(o);
+    try {
+      await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+      assert.equal(S.q('.px-ask'), null, `🔴 PUSH-GATE ${what}: no card`); assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', `${what}: v6's line`);
+      S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="account"]'); await flush();
+      assert.ok(!g7Rows(S).some((r) => r.startsWith('Notificaciones')), `🔴 PUSH-GATE ${what}: no row`);
+      assert.equal(S.q('.px-quiet'), null, `🔴 PUSH-GATE ${what}: no denied card`);
+      assert.equal(f.calls.length + srv.calls.length, 0, `🔴 PUSH-GATE ${what}: no plugin / server call`);
+    } finally { S.w.close(); }
+  }
+  // a guest (the native flag on): the token is a member's — no card on a guest's order
+  const f = createFakePushPlugin(), { ES } = fakeES();
+  const G = bootShell({ runtime: { ...RUNTIME, push: true, rtdbBase: 'https://rtdb.test' }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2, mountExtra: { EventSource: ES }, preMount: (w) => { w.Capacitor = { getPlatform: () => 'android', Plugins: { PushNotifications: f.plugin } }; } });
+  try { await flush(); await placeShellCash(G); assert.equal(G.q('.px-ask'), null, '🔴 PUSH-GATE: a guest ⇒ no card'); assert.equal(f.calls.length, 0); } finally { G.w.close(); }
+});
+test('PUSH-SHELL-5 (rule 20): «Cerrar sesión» ⇒ 3a forgets THIS token under the still-valid session, the phone deletes it, THEN the SDK signs out', async () => {
+  const { S, f, srv, fb } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1);
+    S.click('[data-act="notifs-back"]'); await flush();
+    const order = []; const un = f.plugin.unregister; f.plugin.unregister = async () => { order.push('plugin'); return un(); };
+    const outs = fb.calls.out;
+    S.click('[data-act="signout"]'); await until(() => fb.calls.out > outs);
+    assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-5: 3a forgot the token');
+    const unr = srv.calls.find((c) => c.name === 'unregisterCustomerPushToken'); assert.deepEqual(unr.body, { token: 'fcm_tok_test_0001' });
+    assert.deepEqual(order, ['plugin'], '🔴 PUSH-SHELL-5: the phone deleted it');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-6: a tapped order push opens THAT order — the device\'s live one ⇒ its screen', async () => {
+  const { S, f } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    S.click('[data-act="order-close"]'); await flush();
+    assert.equal(S.q('.mk-title'), null, 'premise: off the order');
+    const id = S.q('.ocard.active [data-act="go-order"]').dataset.oid;
+    f.tap({ order_id: id }); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', '🔴 PUSH-SHELL-6: the tap opens its live screen');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-7 (3a e73a605a2): a STALE save re-reads and re-applies the person\'s own switch on what another device set — never a blind overwrite', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 1], 'premise: rev 1');
+    assert.equal((await srv.other('setCustomerPushPrefs', { pedidos: false, promociones: false, expected_rev: 1 })).ok, true, 'premise: another device turned «Mis pedidos» off (rev 2)');
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.prefs()[2] === 3); await flush(); await flush();
+    assert.deepEqual(srv.prefs(), [false, true, 3], '🔴 PUSH-SHELL-7: the other device\'s «Mis pedidos» off is KEPT; the person\'s «Ofertas» on is applied');
+    assert.deepEqual(srv.calls.filter((c) => c.name === 'setCustomerPushPrefs').map((c) => c.body.expected_rev), [1, 2], '🔴 PUSH-SHELL-7: stale ⇒ re-applied once on the current rev');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true'], 'the switches show the server\'s truth');
+    assert.notEqual(txt(S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-8 (3a e73a605a2): GET prefs 503 (an unreadable policy) ⇒ the switches stay as last known and INERT, with no error copy', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' }, srv: pushServer3a({ policy: { v: 1, promo_daily_max: -5, promo_weekly_max: 1, quiet_from: 0, quiet_to: 0 } }) });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => srv.calls.some((c) => c.name === 'getCustomerPushPrefs')); await flush();
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2, '🔴 PUSH-SHELL-8: both inert');
+    S.click('.switch[data-k="pedidos"]'); await flush();
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, '🔴 PUSH-SHELL-8: an inert switch sends nothing');
+    assert.equal(S.q('.px-quiet'), null, 'no denied card'); assert.ok(!/No se guard|error/i.test(txt(S.q('.scroller'))), '🔴 PUSH-SHELL-8: no error copy');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-9 (3a e73a605a2): «Activar avisos» when the person\'s prefs already say «Mis pedidos» off (another device) ⇒ the register leaves them, the shell applies the person\'s choice — then the toast and the line', async () => {
+  const srv = pushServer3a();
+  await srv.other('registerCustomerPushToken', { token: 'fcm_other_device', platform: 'ios', app_build: '1', install_id: 'other-install-000001', pedidos: false, promociones: false });
+  const { S } = await pushBoot({ srv });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask')); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 2], '🔴 PUSH-SHELL-9: the person\'s «Activar avisos» is applied (rev CAS)');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados'); assert.equal(pushTxt(S), '· Te avisamos con una notificación');
   } finally { S.w.close(); }
 });

@@ -37,8 +37,9 @@
       return new Promise((res) => { const t = T.setTimeout(() => res({ status: 0, json: null }), timeoutMs); req.then((v) => { T.clearTimeout(t); res(v); }); });
     }
     const off = { ok: false, reason: 'offline' };
-    const prefsOf = (p) => (p && typeof p === 'object' && typeof p.pedidos === 'boolean' && typeof p.promociones === 'boolean' ? { pedidos: p.pedidos, promociones: p.promociones } : null);
-    // register / setPrefs → { ok, prefs } | a reason (3a 4ab62975c: the «Ofertas de Sherpa» switch IS the push-offers consent, server-recorded)
+    // 3a e73a605a2: prefs carry their rev (setPrefs is a rev CAS — expected_rev; stale ⇒ 409 stale_prefs with the current prefs)
+    const prefsOf = (p) => (p && typeof p === 'object' && typeof p.pedidos === 'boolean' && typeof p.promociones === 'boolean' && Number.isSafeInteger(p.rev) && p.rev >= 0 ? { pedidos: p.pedidos, promociones: p.promociones, rev: p.rev } : null);
+    // register / setPrefs → { ok, prefs } | a reason (3a: the «Ofertas de Sherpa» switch IS the push-offers consent, server-recorded)
     const pushPrefsOut = (r) => { const j = r.json; if (r.status === 200 && j && j.ok === true && prefsOf(j.prefs)) return { ok: true, prefs: prefsOf(j.prefs) };
       return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) }; };
     const reasonOf = (r) => (r.json && typeof r.json.reason === 'string' ? r.json.reason : r.status === 429 ? 'rate_limited' : r.status === 401 ? 'unauthenticated' : r.status === 0 || !r.json ? 'offline' : 'failed');
@@ -151,10 +152,12 @@
       // ── PLAN-capp-push r1 §6b (3a's customer-push.js @615bda7c4): the member's push token + prefs. Every route ?context=platform, the
       // ID token in its HEADER (rule 20 — the FCM token only in a POST body, never a URL). prefs { pedidos, promociones } once per
       // person; limits are the server's ONE policy (HN minutes) — the client shows them, never enforces them ──
-      async pushRegister({ idToken, token, platform, app_build, pedidos, promociones } = {}) {
+      // install_id (3a e73a605a2): this installation's stable id — a token held by another uid moves only for the SAME installation;
+      // another installation's replay ⇒ 409 token_in_use. A register never rewrites prefs / consent (it only initializes them, rev 1)
+      async pushRegister({ idToken, token, platform, app_build, install_id, pedidos, promociones } = {}) {
         if (!idToken) return { ok: false, reason: 'unauthenticated' };
-        if (!(typeof token === 'string' && token && token.length <= 4096 && !/\s/.test(token)) || !['ios', 'android'].includes(platform) || !(typeof app_build === 'string' && /^[A-Za-z0-9._+-]{1,32}$/.test(app_build)) || typeof pedidos !== 'boolean' || typeof promociones !== 'boolean') return { ok: false, reason: 'bad_request' };   // = 3a's vToken / vBuild: never a request the server must refuse
-        const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken, query: 'context=platform' });
+        if (!(typeof token === 'string' && token && token.length <= 4096 && !/\s/.test(token)) || !['ios', 'android'].includes(platform) || !(typeof app_build === 'string' && /^[A-Za-z0-9._+-]{1,32}$/.test(app_build)) || !(typeof install_id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(install_id)) || typeof pedidos !== 'boolean' || typeof promociones !== 'boolean') return { ok: false, reason: 'bad_request' };   // = 3a's vToken / vBuild / vInstall: never a request the server must refuse
+        const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken, query: 'context=platform' });
         return pushPrefsOut(r);
       },
       async pushUnregister({ idToken, token } = {}) {
@@ -163,10 +166,13 @@
         const r = await call(E.unregisterCustomerPushToken, { body: { token }, idToken, query: 'context=platform' });
         return r.status === 200 && r.json && r.json.ok === true ? { ok: true } : { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
       },
-      async pushSetPrefs({ idToken, pedidos, promociones } = {}) {
+      // expected_rev: the rev the switches were drawn from (0 = no prefs yet). 409 stale_prefs ⇒ the server's CURRENT prefs come back
+      // (or null) — the caller re-applies the person's own change on them, never overwrites blindly
+      async pushSetPrefs({ idToken, pedidos, promociones, expected_rev } = {}) {
         if (!idToken) return { ok: false, reason: 'unauthenticated' };
-        if (typeof pedidos !== 'boolean' || typeof promociones !== 'boolean') return { ok: false, reason: 'bad_request' };
-        const r = await call(E.setCustomerPushPrefs, { body: { pedidos, promociones }, idToken, query: 'context=platform' });
+        if (typeof pedidos !== 'boolean' || typeof promociones !== 'boolean' || !Number.isSafeInteger(expected_rev) || expected_rev < 0) return { ok: false, reason: 'bad_request' };
+        const r = await call(E.setCustomerPushPrefs, { body: { pedidos, promociones, expected_rev }, idToken, query: 'context=platform' });
+        if (r.status === 409 && r.json && r.json.reason === 'stale_prefs') return { ok: false, reason: 'stale_prefs', prefs: prefsOf(r.json.prefs) };
         return pushPrefsOut(r);
       },
       async pushGetPrefs({ idToken } = {}) {

@@ -1425,3 +1425,20 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .hbtns button.on svg.i,.store-nav .iconbtn.on svg.i{fill:currentColor}
 .again{color:var(--acc);font-weight:600}
 .pvrow .rcard{flex:0 0 300px;width:300px}
+/* ═══ push UI (MOCKUP-capp-push r1, owner-approved 11-14): the soft card on «Pedido recibido» + the OS-denied card on «Notificaciones» ═══ */
+.px-ask{border:1px solid var(--line);background:var(--surf);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.px-ask .hd{display:flex;gap:12px;align-items:center}
+.px-ask .ic,.px-quiet .ic{width:40px;height:40px;border-radius:50%;background:var(--surf2);box-shadow:0 0 0 1px var(--line);display:flex;align-items:center;justify-content:center;color:var(--acc);flex:none}
+.px-ask .t{min-width:0}
+.px-ask .t b{display:block;font:600 16px/1.3 var(--sans);text-wrap:balance}
+.px-ask .t span{display:block;font-size:13.5px;line-height:1.4;color:var(--mute);margin-top:3px;text-wrap:pretty}
+.px-ask .acts{display:flex;gap:8px}
+.px-ask .acts .primary{flex:1.35;min-height:46px;font-size:15px}
+.px-ask .acts .btn2{flex:1;min-height:46px;font-size:15px}
+.px-quiet{margin:8px 16px 4px;border:1px solid var(--line);background:var(--surf);border-radius:14px;padding:14px;display:flex;gap:12px;align-items:flex-start}
+.px-quiet .ic{color:var(--mute)}
+.px-quiet .t{min-width:0}
+.px-quiet .t b{display:block;font:600 15px/1.3 var(--sans)}
+.px-quiet .t span{display:block;font-size:13.5px;line-height:1.4;color:var(--mute);margin-top:3px;text-wrap:pretty}
+.px-quiet .lnk{border:0;background:transparent;padding:0;margin-top:8px;color:var(--acc);font:600 14px var(--sans);min-height:28px}
+.px-quiet+.rows .rowbtn[aria-disabled="true"]{opacity:.5}

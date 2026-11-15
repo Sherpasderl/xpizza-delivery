@@ -466,6 +466,7 @@
     if (t.screen === 'orders') return S_('Pedidos');
     if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
     if (t.screen === 'account') return S_('Cuenta');
+    if (t.screen === 'notifs') return S_('Notificaciones');
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
   function accountMemberHtml(vm) {
@@ -477,6 +478,7 @@
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
+      ${vm.pushRow && vm.pushRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>

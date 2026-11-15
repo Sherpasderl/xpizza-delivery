@@ -36340,7 +36340,7 @@
   "slice": "capp-push",
   "label": "a token kept on the device after sign-out",
   "file": "../customer-app/capp-push.js",
-  "from": "      write({ token: null });\n",
+  "from": "      write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });\n",
   "to": "",
   "command": [
    "node",
@@ -36420,8 +36420,8 @@
   "slice": "capp-push",
   "label": "the register call drops ?context=platform",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken, query: 'context=platform' });",
-  "to": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, pedidos, promociones }, idToken });",
+  "from": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken, query: 'context=platform' });",
+  "to": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken });",
   "command": [
    "node",
    "--test",
@@ -36429,6 +36429,198 @@
   ],
   "kills_with": [
    "PUSH-API: registered"
+  ]
+ },
+ {
+  "id": "push-09",
+  "slice": "capp-push",
+  "label": "a token the server refused still counts as registered",
+  "file": "../customer-app/capp-push.js",
+  "from": "      write({ server: ok });   // a token",
+  "to": "      void ok;   // a token",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ACK: refused"
+  ]
+ },
+ {
+  "id": "push-10",
+  "slice": "capp-push",
+  "label": "sign-out leaves the token alive on the phone",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (on) { try { await plugin.unregister(); } catch (_) {} }",
+  "to": "      if (on) { void 0; }",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the server forgets it, then the phone deletes it"
+  ]
+ },
+ {
+  "id": "push-11",
+  "slice": "capp-push",
+  "label": "sign-out keeps the previous person's opt-in",
+  "file": "../customer-app/capp-push.js",
+  "from": "write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });",
+  "to": "write({ token: null, server: null });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the next member opts in for themselves"
+  ]
+ },
+ {
+  "id": "push-12",
+  "slice": "capp-push",
+  "label": "an Ajustes denial is not remembered",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });",
+  "to": "if (st === 'denied' && s.state !== 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: turned off in Ajustes"
+  ]
+ },
+ {
+  "id": "push-13",
+  "slice": "capp-push",
+  "label": "allowing again in Ajustes leaves the switches dead",
+  "file": "../customer-app/capp-push.js",
+  "from": "else if (st !== 'denied' && s.state === 'denied') write({ state: null });",
+  "to": "else if (st !== 'denied' && s.state === 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: allowed again"
+  ]
+ },
+ {
+  "id": "push-14",
+  "slice": "capp-push",
+  "label": "a new install_id at every register",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (typeof cur === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(cur)) return cur;",
+  "to": "void cur;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-INSTALL: stable across a sign-out"
+  ]
+ },
+ {
+  "id": "push-15",
+  "slice": "capp-push",
+  "label": "register without install_id",
+  "file": "../customer-app/capp-push.js",
+  "from": "app_build: appBuild, install_id: installId(), pedidos",
+  "to": "app_build: appBuild, pedidos",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE: the 6b contract body"
+  ]
+ },
+ {
+  "id": "push-16",
+  "slice": "capp-push",
+  "label": "stale_prefs loses the server's current prefs",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        if (r.status === 409 && r.json && r.json.reason === 'stale_prefs') return { ok: false, reason: 'stale_prefs', prefs: prefsOf(r.json.prefs) };\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API-REV: stale ⇒ the current prefs back"
+  ]
+ },
+ {
+  "id": "push-17",
+  "slice": "capp-push",
+  "label": "a malformed install_id is sent",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": " || !(typeof install_id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(install_id))",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "a malformed install_id is never sent"
+  ]
+ },
+ {
+  "id": "push-18",
+  "slice": "capp-push",
+  "label": "prefs without their rev",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "? { pedidos: p.pedidos, promociones: p.promociones, rev: p.rev } : null);",
+  "to": "? { pedidos: p.pedidos, promociones: p.promociones } : null);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered (prefs initialized, rev 1)"
+  ]
+ },
+ {
+  "id": "push-19",
+  "slice": "capp-push",
+  "label": "the denied rows are not inert",
+  "file": "../customer-app/capp-push.js",
+  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ic}",
+  "to": "      ? `<div class=\"rowbtn\">${ic}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-UI: F2c"
+  ]
+ },
+ {
+  "id": "push-20",
+  "slice": "capp-push",
+  "label": "the denied subtitle loses to the opt-in one",
+  "file": "../customer-app/capp-push.js",
+  "from": "    if (x.denied) return COPY.rowDenied;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ROW: denied wins"
   ]
  }
 ]
