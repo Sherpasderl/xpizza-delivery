@@ -107,6 +107,8 @@ async function publish(rid, o) {
   assert.strictEqual(m.status, 200, `premise: published (${JSON.stringify(m.body)})`);
   return s.body.offer.id;
 }
+// the ACTIVE ids in 3a's brand mirror: a paused / ended offer leaves a tombstone { removed: true, rev } there (offers-core, c4538460a), never priced
+const liveIds = async (brand, rid) => Object.entries((await rtdb.ref(`marketing_brand/${brand}/live/${rid}`).get()).val() || {}).filter(([, e]) => e && e.removed !== true).map(([id]) => id);
 async function pauseOffer(rid, brand, id) {
   const rev = (await rtdb.ref(`marketing_brand/${brand}/offers/${id}`).get()).val().rev;
   const m = await C.marketingOfferSetStateCore(offerDeps(), oreq(rid, { offer_id: id, to: 'paused_owner', expected_rev: rev }));
@@ -220,7 +222,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
 
   // ── E4. envío offer ──
   {
-    const pauseAll = async () => { for (const [id, e] of Object.entries((await rtdb.ref(`marketing_brand/${BRAND[THIRD]}/live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id); };
+    const pauseAll = async () => { for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id); };
     await pauseAll();
     const envioId = await publish(THIRD, { type: 'envio', params: {} });   // no minimum = absent (3a b62765981)
     assert.strictEqual((await rtdb.ref(`marketing_brand/${BRAND[THIRD]}/live/${THIRD}/${envioId}/params`).get()).exists(), false, 'premise: REAL RTDB stores the «sin mínimo» envío WITHOUT a params node (entryOf must price it)');
@@ -237,8 +239,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
 
   // ── E5. paused between quote and order ──
   {
-    const live = (await rtdb.ref(`marketing_brand/${BRAND.x_pizza}/live/x_pizza`).get()).val() || {};
-    const id = Object.keys(live)[0];
+    const id = (await liveIds(BRAND.x_pizza, 'x_pizza'))[0];
     const { s } = cartOf('x_pizza');
     await clean(); offerCaches();
     const q = await quote('x_pizza', s.items);
@@ -254,8 +255,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   // ── E7 / E8. the payment fingerprints with an offer (advisor 11-14: a cell for EACH) ──
   {
     const { orderFingerprint } = require('../pixelpay-charge');
-    const live = (await rtdb.ref(`marketing_brand/${BRAND.x_pizza}/live/x_pizza`).get()).val() || {};
-    if (!Object.keys(live).length) await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    if (!(await liveIds(BRAND.x_pizza, 'x_pizza')).length) await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
     const { cart, s } = cartOf('x_pizza');
     const gross = cart.subtotalCents(); const d = Math.floor((gross * 20) / 10000) * 100;
     // E7 cash: the fingerprint stays on the GROSS food (computed before the offer, stable across retries) — a retry of the SAME order
@@ -284,7 +284,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   // ── E9–E11. step 2: usage held at placement, a cap skips the offer, a cancel gives it back, a card counts once ──
   {
     const usageOf = async (id) => (await rtdb.ref(`marketing_usage/${id}`).get()).val();
-    for (const [id, e] of Object.entries((await rtdb.ref(`marketing_brand/${BRAND[THIRD]}/live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id);
+    for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id);
     const capId = await publish(THIRD, { type: 'pct', params: { pct: 10, max_cents: 100000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
     const { cart, s } = cartOf(THIRD);
     const d = Math.floor((cart.subtotalCents() * 10) / 10000) * 100;
@@ -315,7 +315,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     assert.ok((await quote(THIRD, s.items)).json.offer, 'E10: offered again after the release');
     // E11: a card order holds at the gate, counted once across a retried request
     await pauseOffer(THIRD, BRAND[THIRD], capId);
-    const xId = Object.keys((await rtdb.ref(`marketing_brand/${BRAND.x_pizza}/live/x_pizza`).get()).val() || {})[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    const xId = (await liveIds(BRAND.x_pizza, 'x_pizza'))[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
     const before = ((await usageOf(xId)) || {}).redemptions || 0;
     const k = cartOf('x_pizza', 4);
     await clean(); offerCaches(); CHARGED.length = 0;
@@ -347,7 +347,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
 
   // ── E13. the SDK placement (placeSdkOrder = the same card handler in SDK mode) refuses a changed offer with the SAME body ──
   {
-    const xid = Object.keys((await rtdb.ref(`marketing_brand/${BRAND.x_pizza}/live/x_pizza`).get()).val() || {})[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    const xid = (await liveIds(BRAND.x_pizza, 'x_pizza'))[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
     const k = cartOf('x_pizza', 2);
     await clean(); offerCaches();
     const qk = await quote('x_pizza', k.s.items);
@@ -366,7 +366,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
 
   // ── E14. offer_next (capp Slice A): a quote under an offer's minimum names it and what is missing; at the minimum it applies ──
   {
-    for (const [id, e] of Object.entries((await rtdb.ref(`marketing_brand/${BRAND[THIRD]}/live/${THIRD}`).get()).val() || {})) if (e) await pauseOffer(THIRD, BRAND[THIRD], id);
+    for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id);
     const one = cartOf(THIRD, 1); const unit = one.cart.subtotalCents();
     await publish(THIRD, { type: 'lps', params: { off_cents: 5000, min_cents: 2 * unit } });
     await clean(); offerCaches();

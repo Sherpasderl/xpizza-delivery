@@ -206,8 +206,9 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const items = [line('Pepperoni', 2)];   // L 440
     const { dqo } = await quote(w, items);
     assert.deepStrictEqual([OW.offerOf(dqo), dqo.offer_next], [null, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }], `${L}: under the minimum`);
-    const p = await place(w, items, null);
-    assert.ok(!p.dq || !('offer_next' in p.dq), `${L}: a placement never carries offer_next`);
+    const p = await place(w, items, null, { ctx: envio() });   // a dq OBJECT: with dq null the «no dq» exit would hide a placement that names a next offer
+    assert.ok(p.dq && typeof p.dq === 'object' && !OW.offerOf(p.dq), `${L}: premise — a placement dq object, no offer applied`);
+    assert.ok(!('offer_next' in p.dq), `${L}: a placement never carries offer_next`);
     const applied = await quote(w, [line('Pepperoni', 3)]);   // L 660 ≥ L 500
     assert.ok(OW.offerOf(applied.dqo) && !('offer_next' in applied.dqo), `${L}: an applied offer ⇒ no offer_next`);
     const capped = await xworld();
