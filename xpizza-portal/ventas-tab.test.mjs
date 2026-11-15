@@ -18,7 +18,8 @@ async function tab({ rids = ['r_a', 'r_b'], keyerFails = false, hold = null, bad
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? win : win[k], configurable: true, writable: true });
   }
-  const calls = route({ serve: await world({ keyerFails }) }, (fn, q) => {
+  const serve = await world({ keyerFails });
+  const calls = route({ serve }, (fn, q) => {
     if (fn === 'getMyBranches') return okJson(E1(owned || rids));
     if (badCsv && q.format === 'csv') return { ok: true, status: 200, text: async () => 'fecha,otra_cosa\r\n2026-11-01,1\r\n', headers: { get: () => null } };   // a header off the allowlist
     return null;
@@ -31,13 +32,15 @@ async function tab({ rids = ['r_a', 'r_b'], keyerFails = false, hold = null, bad
   const host = win.document.getElementById('host');
   const T = { hold, onToken: null };
   const token = async () => { if (T.hold) await T.hold; const f = T.onToken; if (f) { T.onToken = null; queueMicrotask(f); } return 'TK-test'; };
-  V.mountVentasTab(host, { uid: 'uA', rid: rids[0], name: 'Pizzería Del Valle', token, now: () => NOW });
+  const errors = []; win.addEventListener('error', (e) => errors.push(e.error || e.message));   // a throw inside a click handler
+  const ctx = { uid: 'uA', rid: rids[0], name: 'Pizzería Del Valle', token, now: () => NOW };
+  V.mountVentasTab(host, ctx);
   await settle(hold ? 10 : 80);
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const text = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : null);
   // the saved BYTES (Blob.text() would strip a leading BOM — decode with ignoreBOM to see exactly what the browser writes)
   const saved = async () => Promise.all(saves.filter((x) => x.name).map(async (x) => ({ name: x.name, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(await x.blob.arrayBuffer()) })));
-  return { win, V, host, calls, q, qa, text, T, saved, stats: () => calls.filter((c) => /^getSalesStats/.test(c.fn)) };
+  return { win, V, host, calls, q, qa, text, T, saved, serve, ctx, errors, stats: () => calls.filter((c) => /^getSalesStats/.test(c.fn)) };
 }
 const figs = (t) => t.qa('.vd-fig').map((f) => [t.text(f.querySelector('.vd-kl')), t.text(f.querySelector('.vd-kn'))]);
 
@@ -332,4 +335,79 @@ test('V3b a 403 (a branch the account does not own): the shipped owner-only mess
   assert.match(t.text(t.q('.vd-err b')), /^(Solo el dueño ve las ventas|No tenés acceso a este local)$/, 'the shipped NotAuthorized copy');
   assert.equal(t.qa('.vd-err button').length, 0, 'nothing to retry: the server is the authority');
   assert.equal(t.q('.vd-more'), null, 'no «Más detalle», so no export is offered');
+});
+
+// ═══ Codex r1 (dfa77abd7..c27397ed6): one cell per finding ═════════════════════════════════════════════════════════════════════════
+const rendKeys = (t) => Object.keys(t.win.sessionStorage).filter((k) => k.startsWith('sherpa.portal.rend.'));
+test('R1 P1 🔴 a 401/403 while a CACHED body is showing: the sales leave the screen, the cache is cleared, exports refused — never the cached figures under a refusal', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);   // the detail body (14 d, with the comparison) is now cached
+  await choose(t, 'Últimos 7 días');
+  assert.ok(rendKeys(t).length >= 2, 'precondition: bodies cached');
+  t.serve.revoke('r_a');   // the REAL authorizer now refuses this owner
+  await choose(t, 'Últimos 14 días'); await settle(100);   // the cache paints the 14-day body first, then the server says 403
+  assert.deepEqual(figs(t).map(([, v]) => v), ['—', '—', '—'], 'no cached figure stays under a refusal');
+  assert.match(t.text(t.q('.vd-err b')), /^(Solo el dueño ve las ventas|No tenés acceso a este local)$/, 'the shipped owner-only copy');
+  assert.equal(t.q('.vd-heat'), null, 'no cached section stays');
+  assert.ok(t.qa('.vd-file .vd-lnk').every((b) => b.disabled), 'no export is offered enabled');
+  assert.equal(t.V._ventasTabState.csvRefused, true, 'the export handler refuses too');
+  assert.deepEqual(rendKeys(t), [], 'the protected bodies leave the session cache');
+});
+test('R2 P2 a cancelled export (the period changed mid-export) releases «Preparando…»: the exports work again for the new period', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  let release; t.T.hold = new Promise((r) => { release = r; });
+  dl(t, 'Resumen diario (CSV)').click(); await settle(10);
+  assert.equal(t.text(dl(t, 'Resumen diario (CSV)')), 'Preparando…', 'precondition: the export is running');
+  t.q('.vd-pill').click(); await settle(); t.qa('.vd-menu.vd-show .vd-opt')[1].click(); await settle(10);   // «Últimos 7 días»: the export is cancelled
+  assert.deepEqual(t.qa('.vd-file .vd-lnk').map((b) => [t.text(b), b.disabled]), [['Descargar', false], ['Descargar', false]], 'a cancelled export holds nothing');
+  t.T.hold = null; release(); await settle(150);
+  assert.equal((await t.saved()).length, 0, 'the cancelled export saved nothing');
+  dl(t, 'Resumen diario (CSV)').click(); await settle(150);
+  assert.deepEqual((await t.saved()).map((f) => f.name), ['ventas_r_a_2026-11-06_2026-11-12.csv'], 'a new export, of the new period');
+});
+test('R3 P2 a zero-sales period keeps its CSV exports (independent of totals, as on the shipped page): the tab offers «Ver más detalle», «Descargar» saves', async () => {
+  const t = await tab({ rids: ['r_b'] });
+  await choose(t, 'Hoy'); await settle(60);   // r_b sold nothing today
+  assert.equal(t.text(t.q('.vd-ok b')), 'Sin ventas en este período', 'precondition: the honest empty');
+  assert.ok(t.q('.vd-more'), 'the way to «Más detalle» stays');
+  await toDetail(t);
+  assert.deepEqual(t.qa('.vd-file .vd-lnk').map((b) => b.disabled), [false, false], 'both exports offered');
+  dl(t, 'Resumen diario (CSV)').click(); await settle(150);
+  assert.deepEqual((await t.saved()).map((f) => f.name), ['ventas_r_b_2026-11-12_2026-11-12.csv']);
+});
+test('R4 P2 a period the roll-up never computed (every day in missing_days) is UNAVAILABLE, not zero: no «L 0», no «Sin ventas», the missing-data disclosure', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await choose(t, 'Personalizado');
+  let pop = await openCal(t, 'from'); pop.querySelectorAll('.cal-nav')[0].click(); await settle(); dayBtn(t.q('.cal-pop'), 30).click(); await settle();
+  pop = await openCal(t, 'to'); dayBtn(pop, 31).click(); await settle(150);   // 30 – 31 oct: before the roll-up's first day
+  assert.deepEqual([t.stats().at(-1).query.from, t.stats().at(-1).query.to], ['2026-10-30', '2026-10-31']);
+  assert.deepEqual(figs(t).map(([, v]) => v), ['—', '—', '—'], 'unavailable ≠ zero');
+  assert.ok(!/Sin ventas/.test(t.text(t.q('.vd-body'))), 'never «Sin ventas» for days nobody computed');
+  assert.match(t.text(t.q('.vd-body')), /Aún sin calcular: 30 oct, 31 oct/, 'the missing-data disclosure');
+});
+test('R5 P2 branch discovery is bound to its mount: a period change before it lands loads ONCE; an unmount before it sends sends nothing', async () => {
+  let release; const hold = new Promise((r) => { release = r; });
+  const t = await tab({ rids: ['r_a'], hold });
+  t.q('.vd-pill').click(); await settle(); t.qa('.vd-menu.vd-show .vd-opt')[1].click(); await settle(10);   // «Últimos 7 días» while discovery waits
+  t.T.hold = null; release(); await settle(150);
+  assert.deepEqual(t.stats().map((c) => c.query.from), ['2026-11-06'], 'ONE load: the period the owner chose — never a second one from the late discovery');
+  let r2; t.T.hold = new Promise((r) => { r2 = r; });
+  const n = t.calls.filter((c) => c.fn === 'getMyBranches').length;
+  t.V.mountVentasTab(t.host, t.ctx); await settle(10);
+  t.V.unmountVentasTab();
+  t.T.hold = null; r2(); await settle(100);
+  assert.equal(t.calls.filter((c) => c.fn === 'getMyBranches').length, n, 'an unmounted page discovers nothing');
+});
+test('R6 P2 «Personalizado» chosen BEFORE the first answer: no crash — the pill, Desde / Hasta and the reserved frame paint; the answer still lands', async () => {
+  let release; const hold = new Promise((r) => { release = r; });
+  const t = await tab({ rids: ['r_a'], hold });
+  t.q('.vd-pill').click(); await settle();
+  t.qa('.vd-menu.vd-show .vd-opt').find((o) => t.text(o) === 'Personalizado').click(); await settle(10);
+  assert.deepEqual(t.errors.map(String), [], 'no throw');
+  assert.equal(t.text(t.q('.vd-pill')), 'Personalizado');
+  assert.equal(t.qa('.vd-dpbtn').length, 2, 'Desde / Hasta');
+  assert.equal(t.qa('.vd-fig .vd-skn').length, 3, 'the reserved frame');
+  t.T.hold = null; release(); await settle(150);
+  assert.deepEqual(t.errors.map(String), [], 'no throw when the answer lands');
 });

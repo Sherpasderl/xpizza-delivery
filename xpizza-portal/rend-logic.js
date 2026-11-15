@@ -140,6 +140,14 @@ export function pillWords(preset, r, today) {
   const w = rangeWords(r);
   return r.from !== r.to && yr(r.from) === yr(today) && yr(r.to) === yr(today) ? w.replace(/ \d{4}$/, '') : w;
 }
+// every day of the range is one the roll-up never computed (missing_days): the period is UNAVAILABLE, never «L 0 · Sin ventas» (codex r1)
+export function allMissing(body, range) {
+  if (!body || !range || !isDate(range.from) || !isDate(range.to)) return false;
+  const miss = new Set(Array.isArray(body.missing_days) ? body.missing_days.filter(isDate) : []);
+  const day = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  for (let t = day(range.from); t <= day(range.to); t += 86400000) if (!miss.has(new Date(t).toISOString().slice(0, 10))) return false;
+  return true;
+}
 export const missingNote = (missing) => (Array.isArray(missing) && missing.length ? `Aún sin calcular: ${missing.map(dm).join(', ')} · los totales de arriba no los incluyen.` : '');
 // the three figures on one surface (no deltas on the tab — «Más detalle» carries them); never a number without its answer
 export function figures(body, state) {

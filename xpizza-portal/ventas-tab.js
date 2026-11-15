@@ -25,7 +25,7 @@ const BAD_LINE = `${BAD[0]} · ${String(BAD[1]).replace(/\.$/, '')}`;
 const PRESETS = RL.REND_PRESETS;   // Hoy · 7 · 14 · 30 · Personalizado (Q2)
 const API = { getSalesStats, getSalesStatsMulti };
 const S = { host: null, ctx: null, gen: 0, preset: RL.REND_DEFAULT_PRESET, branch: 'all', branches: [], menu: null,
-  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, failErr: null, cache: null, csvBusy: null, csvNote: '', csvRefused: false, custom: { from: null, to: null }, cal: null, cerr: '' };
+  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, failErr: null, cache: null, csvBusy: null, csvOp: null, csvSeq: 0, csvNote: '', csvRefused: false, mount: 0, custom: { from: null, to: null }, cal: null, cerr: '' };
 const now = () => (S.ctx && S.ctx.now ? S.ctx.now() : Date.now());
 const today = () => todayHN(now());
 // the requested range: a preset's, or a VALID custom pair (else null — nothing is requested)
@@ -42,23 +42,34 @@ export function mountVentasTab(host, ctx) {
   if (!S.cache) { try { S.cache = RD.makeCache(sessionStorage); } catch (_) { S.cache = null; } }
   if (!S.branches.length || S.branches[0].rid !== ctx.rid && !S.branches.some((b) => b.rid === ctx.rid)) { S.branches = [{ rid: ctx.rid, name: ctx.name || '' }]; S.branch = 'all'; }
   render();
-  branchesOf(S.gen).then(() => load());
+  // discovery is bound to THIS mount (codex r1): an unmount / auth change withholds it; a period change before it lands already loaded —
+  // it reloads only if it changed the scope
+  const m = ++S.mount, g = S.gen;
+  branchesOf(m).then((changed) => { if (m !== S.mount) return; if (g === S.gen) load(); else if (changed) { S.gen += 1; load(); } });
 }
-export function unmountVentasTab() { S.gen += 1; S.host = null; S.menu = null; }
-document.addEventListener('portal:auth', () => { S.gen += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; S.csvBusy = null; S.csvNote = ''; S.csvRefused = false; });
+export function unmountVentasTab() { S.gen += 1; S.mount += 1; S.host = null; S.menu = null; }
+document.addEventListener('portal:auth', () => { S.gen += 1; S.mount += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; S.csvBusy = null; S.csvOp = null; S.csvNote = ''; S.csvRefused = false; });
 // THE liveness of a request: its generation — moved by every auth event, branch / period change, mount — checked synchronously right
 // before fetch (api.js assertLive): a context change inside the token await sends nothing (the shipped page's rule, codex S2 r2)
 const assertWhile = (g) => () => { if (g !== S.gen) throw Object.assign(new Error(ABORT), { kind: ABORT }); };
 
 // the restaurant's branches the owner reads sales for (getMyBranches), the page's own first; one only ⇒ no branch pill
-async function branchesOf(g) {
+// → true when it changed the list
+async function branchesOf(m) {
   let e1 = null;
-  try { e1 = await getMyBranches({ token: S.ctx.token }); } catch (_) { /* the page's own restaurant only */ }
-  if (g !== S.gen || !e1 || !Array.isArray(e1.branches)) return;
+  const live = () => { if (m !== S.mount) throw Object.assign(new Error(ABORT), { kind: ABORT }); };
+  try { e1 = await getMyBranches({ token: S.ctx.token, assertLive: live }); } catch (_) { /* the page's own restaurant only */ }
+  if (m !== S.mount || !e1 || !Array.isArray(e1.branches)) return false;
   const me = e1.branches.find((b) => b && b.rid === S.ctx.rid);
-  if (!me) return;
+  if (!me) return false;
   const list = e1.branches.filter((b) => b && b.brand_id === me.brand_id && b.state === 'member' && b.role === 'owner' && Array.isArray(b.caps) && b.caps.includes('stats.read'));
-  if (list.length) S.branches = list.map((b) => ({ rid: b.rid, name: b.name || b.rid }));
+  if (!list.length) return false;
+  const next = list.map((b) => ({ rid: b.rid, name: b.name || b.rid }));
+  const ids = (l) => l.map((b) => b.rid).join(',');
+  const changed = ids(next) !== ids(S.branches);   // the SCOPE (a renamed branch only repaints)
+  S.branches = next;
+  if (!changed) render();
+  return changed;
 }
 
 async function load() {
@@ -73,9 +84,23 @@ async function load() {
     token: S.ctx.token, api: API, cache: S.cache, now, ui: {
     paint: ({ body, freshAt }) => { if (g !== S.gen) return; S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
     stamp: ({ freshAt }) => { if (g !== S.gen) return; S.freshAt = freshAt; S.dim = false; S.range = r; render(); },
-    fail: ({ error, hasBody }) => { if (g !== S.gen || (error && error.kind === ABORT)) return; S.dim = false; if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; S.failErr = error; } render(); },
+    fail: ({ error, hasBody }) => {
+      if (g !== S.gen || (error && error.kind === ABORT)) return;
+      S.dim = false;
+      if (RL.statsState({ error }).state === 'denied') deny(error);   // a 401 / 403 ALWAYS takes the protected data down, cached or not (codex r1 P1)
+      else if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; S.failErr = error; }
+      render();
+    },
   } }).catch(() => { if (g === S.gen) { S.status = 'error'; S.body = null; S.dim = false; render(); } });
 }
+// the server refused this owner: the sales, their cache and the exports leave together
+function deny(error) {
+  S.body = null; S.freshAt = null; S.range = null; S.status = 'denied'; S.failed = S.branch; S.failErr = error;
+  S.csvRefused = true; S.csvBusy = null; S.csvOp = null;
+  if (S.cache) S.cache.clear(S.ctx && S.ctx.uid);
+}
+// the screen's state: an empty answer for days the roll-up never computed is UNAVAILABLE, not zero (codex r1)
+const shown = () => (S.status === 'empty' && RL.allMissing(S.body, S.range) ? 'uncomputed' : S.status);
 function pick(kind, v) {
   S.menu = null;
   if (kind === 'preset' && v === 'custom' && S.preset !== 'custom') { S.preset = 'custom'; S.custom = { from: null, to: null }; S.cerr = ''; S.cal = null; render(); return; }
@@ -148,11 +173,11 @@ function render() {
   const out = [top, filters()];
   if (S.preset === 'custom') out.push(dateRange());
   const body = el('div', `vd-body${S.dim ? ' vd-dim' : ''}`);
-  const st = S.status;
+  const st = shown();
   body.append(figures(st));
   if (st === 'loading') body.append(chartCard(null, true), products(null));
   else if (st === 'ok') body.append(chartCard(S.body, false), products(S.body), moreRow());
-  else if (st === 'empty') body.append(emptyCard());
+  else if (st === 'empty' || st === 'uncomputed') body.append(emptyCard(st), moreRow());   // the exports stay reachable, independent of totals (codex r1)
   else body.append(errCard());
   out.push(body);
   S.host.replaceChildren(...out);
@@ -200,13 +225,16 @@ function chartCard(body, loading) {
   const m = loading ? null : RL.chartModel(body, { range: S.range || range(), nowMs: now() });
   const c = el('div', 'vd-card');
   const hd = el('div', 'vd-cardhead'); const d = el('div');
-  d.append(el('h2', 'vd-h2', loading ? RL.chartModel({}, { range: range() || S.range, nowMs: now() }).title : m.title));
+  const rr = range() || S.range;   // «Personalizado» before the first answer: no range yet — the title waits as a skeleton (codex r1)
+  const h2 = el('h2', 'vd-h2', loading ? (rr ? RL.chartModel({}, { range: rr, nowMs: now() }).title : '') : m.title);
+  if (loading && !rr) h2.append(el('span', 'vd-sk vd-skfresh'));
+  d.append(h2);
   const fr = el('div', 'vd-fresh');
   if (loading) fr.append(el('span', 'vd-sk vd-skfresh')); else fr.textContent = RL.freshWords(body, { fetchedAt: S.freshAt || now(), nowMs: now() }) || '';
   d.append(fr); hd.append(d); c.append(hd);
   const wrap = el('div', 'vd-chartwrap');
   const s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 'vd-chart'); s.setAttribute('role', 'img');
-  s.setAttribute('aria-label', `${m ? m.title : 'Ventas'}, ${RL.rangeWords(S.range || range())}`);
+  s.setAttribute('aria-label', rr ? `${m ? m.title : 'Ventas'}, ${RL.rangeWords(rr)}` : 'Ventas');
   wrap.append(s, el('div', 'vd-tip'));
   c.append(wrap, el('div', 'vd-xl'));
   const note = !loading && body ? RL.missingNote(body.missing_days) : '';
@@ -241,9 +269,12 @@ function moreRow() {   // one quiet row after the products (frame 0 note 5)
   b.addEventListener('click', () => go('detail'));
   return b;
 }
-function emptyCard() {
+function emptyCard(st) {
   const c = el('div', 'vd-ok'); const i = el('span', 'vd-rico'); i.append(svg(CHART));
-  const t = el('div'); t.append(el('b', null, 'Sin ventas en este período'), el('span', null, 'Probá con otro período.'));   // the shipped copy
+  const t = el('div');
+  const note = RL.missingNote(S.body && S.body.missing_days);
+  if (st === 'uncomputed') t.append(el('span', null, note));   // unavailable ≠ zero: only the missing-data disclosure (codex r1)
+  else { t.append(el('b', null, 'Sin ventas en este período'), el('span', null, 'Probá con otro período.')); if (note) t.append(el('span', null, note)); }   // the shipped copy
   c.append(i, t); return c;
 }
 function errCard() {
@@ -350,7 +381,7 @@ function renderDetail() {
   const out = [back, top, filters()];
   if (S.preset === 'custom') out.push(dateRange());
   const body = el('div', `vd-body${S.dim ? ' vd-dim' : ''}`);
-  const st = S.status;
+  const st = shown();
   const figs = el('div', 'vd-figs');
   const rows = st === 'loading' ? [{ label: 'Ventas', value: null }, { label: 'Pedidos', value: null }, { label: 'Ticket promedio', value: null }] : RL.detailFigures(S.body, st);
   for (const f of rows) {
@@ -361,7 +392,7 @@ function renderDetail() {
     figs.append(fig);
   }
   body.append(figs);
-  if (st === 'empty') body.append(emptyCard());
+  if (st === 'empty' || st === 'uncomputed') body.append(emptyCard(st), downloads());   // the exports, independent of totals (codex r1)
   else if (st !== 'ok' && st !== 'loading') body.append(errCard());
   else if (st === 'ok') {
     const m = RL.detailModel(S.body, now());
@@ -417,24 +448,28 @@ function downloads() {
   for (const [kind, title, desc] of [['daily', 'Resumen diario \u0028CSV)', 'Totales por día del período elegido.'], ['orders', 'Pedidos \u0028CSV)', `Detalle por pedido · hasta ${ORDERS_CSV_MAX_DAYS} días por descarga.`]]) {
     const row = el('div', 'vd-file'); const i = el('span', 'vd-fico'); i.append(svg(FILE));
     const tx = el('div', 'vd-filet'); tx.append(el('b', 'vd-fileb', title), el('span', 'vd-filed', desc));
-    const b = el('button', 'vd-lnk'); b.type = 'button'; b.append(svg(DL), el('span', null, S.csvBusy === kind ? 'Preparando…' : 'Descargar'));
-    b.disabled = !!S.csvBusy || S.csvRefused;
+    const b = el('button', 'vd-lnk'); b.type = 'button'; b.append(svg(DL), el('span', null, busy() === kind ? 'Preparando…' : 'Descargar'));
+    b.disabled = !!busy() || S.csvRefused;
     b.addEventListener('click', () => exportCsv(kind));
     row.append(i, tx, b); box.append(row);
   }
   if (S.csvNote) { const n = el('p', 'vd-csvnote', S.csvNote); n.setAttribute('role', 'status'); box.append(n); }
   return box;
 }
+// an export is its OWN operation: busy only while its context lives (a period / branch / auth change cancels it), and only that
+// operation clears its flag (codex r1)
+const busy = () => (S.csvBusy && S.csvOp && S.csvOp.g === S.gen ? S.csvBusy : null);
 async function exportCsv(kind) {
   const r = range(), rid = csvRid();
-  if (!rid || !r || S.csvBusy || S.csvRefused) return;   // the handler itself refuses, not only the button
+  if (!rid || !r || busy() || S.csvRefused) return;   // the handler itself refuses, not only the button
   if (kind === 'orders' && daysBetween(r.from, r.to) + 1 > ORDERS_CSV_MAX_DAYS) {
     S.csvNote = `El detalle de pedidos se descarga de hasta ${ORDERS_CSV_MAX_DAYS} días por vez. Elegí un período más corto.`;
     render(); return;
   }
   const g = S.gen;
   const alive = () => g === S.gen;
-  S.csvBusy = kind; S.csvNote = ''; render();
+  const op = { g, id: ++S.csvSeq };
+  S.csvBusy = kind; S.csvOp = op; S.csvNote = ''; render();
   let note = '';
   try {
     const pages = [];
@@ -455,7 +490,7 @@ async function exportCsv(kind) {
     if (e && e.kind === 'NotAuthorized') S.csvRefused = true;   // a CSV 403 refuses BOTH exports
     note = e && e.kind === 'CsvHeader' ? 'No pudimos preparar el archivo. Avisanos y lo revisamos.' : ventasMessage(e && e.kind, e && e.body && e.body.error).join('. ');
   } finally {
-    if (alive()) { S.csvBusy = null; S.csvNote = note; render(); }
+    if (S.csvOp === op) { S.csvBusy = null; S.csvOp = null; if (alive()) S.csvNote = note; render(); }
   }
 }
 // a UTF-8 BOM leads the file so Excel reads it as UTF-8 (owner decision 2026-10-06); the server's bytes follow unchanged

@@ -40,11 +40,14 @@ export async function world({ extra = [], keyerFails = false } = {}) {
   const MEMBERS = new Map([['brands/r_a', legacy('r_a')], ['brands/r_b', legacy('r_b')], ['brand_members/r_a/owners/uA', { granted_at: 1, granted_by: 'x' }], ['brand_members/r_b/owners/uA', { granted_at: 1, granted_by: 'x' }]]);
   const memberDb = { ref: (p) => ({ once: async () => { const v = MEMBERS.has(p) ? MEMBERS.get(p) : null; return { exists: () => v !== null, val: () => v }; } }) };
   const liveCache = A.makeLiveCache();
-  return async (query, authz) => {
+  const serve = async (query, authz) => {
     const req = { method: 'GET', query, get: (h) => (h.toLowerCase() === 'authorization' ? authz : undefined) };
     return A.getSalesStatsCore({ authorize: (rid) => authorizeCatalogEdit({ db: memberDb, verifyIdToken: async (t) => { if (t !== 'TK-test') throw new Error('bad'); return { uid: 'uA' }; } }, req, rid),
       fsdb, rtdb, getKeyer: () => { if (keyerFails) throw new Error('no secret'); return keyer; }, nowMs: NOW, liveCache }, req);
   };
+  // the owner loses a branch (the membership row removed): the REAL authorizer answers its next read with a 403
+  serve.revoke = (rid) => { MEMBERS.delete(`brand_members/${rid}/owners/uA`); };
+  return serve;
 }
 // the portal's api.js → the real core (the functions.js handler: status + json)
 // `extra(fn, query)` answers the page's other calls (getMyBranches …); the stats calls reach the real core
