@@ -121,13 +121,16 @@ export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('s
 // fresh getMarketing settles an unknown. The read takes the rid as `?rid=` (offers-core.js:220); every write carries it in the BODY.
 export const getMarketingRaw = ({ rid, token, assertLive }) => rawCall('getMarketing', { params: { rid }, token, assertLive });
 // opId: a create's client operation id (Codex r2: the server is idempotent per (restaurant, op_id) once 3a lands; ignored before)
-export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, opId, token, assertLive }) =>
-  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
+// program: save AND program in ONE call (3a e3c5f7366: all or nothing; another identical programmed offer ⇒ 409 duplicate { offer_id })
+export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, opId, program, token, assertLive }) =>
+  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer, ...(opId ? { op_id: opId } : {}), ...(program ? { program: true } : {}) }, token, assertLive });
 export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, token, assertLive }) =>
   rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev }, token, assertLive });
 // the 2×1 product picker's menu (Ofertas O2b): the editable catalog of one branch, as a RAW outcome (a failed read ⇒ the picker says so)
 export const getEditableCatalogRaw = ({ rid, token, assertLive }) => rawCall('getEditableCatalog', { rid, token, assertLive });
-export const offerRepeatRaw = ({ rid, offerId, opId, token, assertLive }) => rawCall('marketingOfferRepeat', { body: { rid, offer_id: offerId, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
+// «Repetir» in ONE call (3a e3c5f7366): copy + the new dates + program, under the op_id
+export const offerRepeatRaw = ({ rid, sourceId, opId, schedule, token, assertLive }) =>
+  rawCall('marketingOfferRepeat', { body: { rid, source_id: sourceId, ...(opId ? { op_id: opId } : {}), ...(schedule ? { program: true, schedule } : {}) }, token, assertLive });
 // the «Anuncio» (anuncio-core.js:5-7), DARK: anuncio-logic.js decides every outcome; nothing imports these until its screens are drawn.
 // The book body is rid + week ONLY — the server refuses anything else (a price never comes from the client); there is no charge call.
 export const getAnuncioWeeksRaw = ({ rid, token, assertLive }) => rawCall('getAnuncioWeeks', { params: { rid }, token, assertLive });

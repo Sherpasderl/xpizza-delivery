@@ -56,13 +56,16 @@ async function loadAll() {
 }
 
 // the page over a REAL backend; `cache` seeds the session's last-known switch ('1' | '0' | null = none)
-async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1' } = {}) {
+// local: the previous page's localStorage entries (a reload keeps them); noStorage: localStorage throws (blocked / private mode)
+async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1', local = null, noStorage = false } = {}) {
   const dom = new JSDOM(HTML, { url: 'https://portal.test/', pretendToBeVisual: true });
   const w = dom.window;
   w.scrollTo = () => {};
   for (const k of ['window', 'document', 'CustomEvent', 'Event', 'HTMLElement', 'Node', 'MutationObserver', 'sessionStorage', 'localStorage']) {
     Object.defineProperty(globalThis, k, { value: k === 'window' ? w : w[k], configurable: true, writable: true });
   }
+  if (local) for (const [k, v] of Object.entries(local)) w.localStorage.setItem(k, v);
+  if (noStorage) Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('SecurityError: storage blocked'); }, configurable: true });
   globalThis.__branchesDirect = true;
   globalThis.__tok = `t-${uid}`;
   if (cache !== null) w.sessionStorage.setItem(`sherpa.portal.mkt.${uid}|tb`, cache);
@@ -601,73 +604,113 @@ const LPS = 'L 50 en pedidos desde L 300';
 async function toReview(p) { dlg(p).querySelector('.mk5b-go').click(); await settle(); return p.host().querySelector('.mk5r-modal'); }
 
 const OPS_KEY = `sherpa.portal.mkt.ops.${OWNER}`;   // one envelope per user (Codex r3 P1-4)
-const opsStored = (p) => { try { return JSON.parse(p.w.sessionStorage.getItem(OPS_KEY) || 'null'); } catch (_) { return null; } };
+const opsStored = (p) => { try { return JSON.parse(p.w.localStorage.getItem(OPS_KEY) || 'null'); } catch (_) { return null; } };
+const localOf = (p) => Object.fromEntries(Object.keys(p.w.localStorage).map((k) => [k, p.w.localStorage.getItem(k)]));
 
-test('R1 a create whose reply is LOST: UNKNOWN, and the retry REUSES its op_id — 3a\'s idempotent create answers the SAME offer (one, published)', async () => {
+const saves = (b) => b.calls.filter((c) => c.fn === 'marketingOfferSave');
+test('R1 «Programar oferta» is ONE call (save + program); a LOST reply ⇒ UNKNOWN; the retry reuses the op_id minted at the review ⇒ the SAME offer, programmed, once', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
   const sh = await toReview(p);
-  b.net.lose = ['marketingOfferSave', 'getMarketing'];   // the reply and its re-read: nothing proves it
+  const minted = (opsStored(p) || { ops: [] }).ops.map(([, op]) => op.op_id);
+  assert.equal(minted.length, 1, 'the op_id is minted as the review opens (and stored)');
+  b.net.lose = ['marketingOfferSave', 'getMarketing'];
   p.btn('Programar oferta', sh).click(); await settle(200);
   const s2 = p.host().querySelector('.mk5r-modal');
   assert.equal(s2.querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.', 'UNKNOWN, never a guess');
-  assert.ok((opsStored(p) || { ops: [] }).ops.some(([, op]) => op.unknown), 'the pending op survives a reload (sessionStorage)');
-  assert.equal(p.btn('Programar oferta', s2).disabled, false, 'idempotent server: the retry is safe by construction');
+  assert.equal(p.btn('Programar oferta', s2).disabled, false, 'the retry is safe by construction');
   p.btn('Programar oferta', s2).click(); await settle(220);
-  const ids = b.calls.filter((c) => c.fn === 'marketingOfferSave' && c.body.expected_rev === 0).map((c) => c.body.op_id);
-  assert.equal(ids.length, 2, 'two create attempts');
-  assert.match(String(ids[0]), /^op_/, 'the create carries its op_id');
-  assert.equal(ids[1], ids[0], 'the retry REUSES the op_id');
+  const sv = saves(b);
+  assert.equal(sv.length, 2, 'ONE call per attempt');
+  assert.ok(sv.every((c) => c.body.program === true && c.body.op_id === minted[0]), 'each attempt: program:true with THE minted op_id');
+  assert.equal(b.calls.filter((c) => c.fn === 'marketingOfferSetState').length, 0, 'no separate publish call');
   assert.equal(offersNamed(b, LPS).length, 1, 'ONE offer');
-  assert.equal(offersNamed(b, LPS)[0].state, 'active', 'and it is the one published');
+  assert.equal(offersNamed(b, LPS)[0].state, 'active', 'programmed');
   assert.equal(dlg(p), null);
+  assert.equal(toastText(p), 'Oferta programada. Empieza hoy.');
+  assert.equal((opsStored(p) || { ops: [] }).ops.length, 0, 'the proven op is dropped');
 });
 
-test('R1 a lost create retried from a REOPENED dialog with a changed form: the same op_id, the same record — saved with the new form, then published', async () => {
+test('R1 after a lost reply, a RELOAD (localStorage) and a changed form: the kept op_id proves the earlier offer; the changed form goes as a NEW operation (the duplicate backstop decides)', async () => {
   const b = await world();
-  const p = await page({ b });
+  let p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
   b.net.lose = ['marketingOfferSave', 'getMarketing'];
   p.btn('Programar oferta', await toReview(p)).click(); await settle(200);
-  const esc = () => p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  esc(); await settle(); esc(); await settle();
-  assert.equal(dlg(p), null, 'premise: closed');
+  const first = saves(b)[0].body.op_id;
+  p = await page({ b, local: localOf(p) });   // a reload keeps localStorage
+  await p.signIn(); await p.open();
   await openCard(p, 'lps');
   rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
-  [...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].find((x) => x.textContent === 'Clientes nuevos').closest('label, button, .mk5b-opt').click(); await settle();
-  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
-  const ids = b.calls.filter((c) => c.fn === 'marketingOfferSave' && c.body.expected_rev === 0).map((c) => c.body.op_id);
-  assert.equal(ids[1], ids[0], 'the reopened dialog retries the SAME operation');
-  const all = offersNamed(b, LPS);
-  assert.equal(all.length, 1, 'ONE offer');
-  assert.equal(all[0].audience, 'new', 'the merchant\'s changed form was saved onto it');
-  assert.equal(all[0].state, 'active');
+  [...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].find((x) => x.textContent === 'Clientes nuevos').closest('label').click(); await settle();
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.equal(ops[1], first, 'the reloaded page reused the stored op_id');
+  assert.notEqual(ops[2], first, 'the proof closed it: the changed form went as a new operation');
+  assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'never two identical live offers (the 409 duplicate)');
+  assert.ok(p.host().querySelector('.mk5d-head'), 'the duplicate shows the EXISTING offer, never an error');
 });
 
-test('R2 a repeat whose reply is LOST: UNKNOWN; the retry reuses the op_id and 3a answers the SAME copy — one copy, programmed', async () => {
+test('R2 «Repetir» is ONE call (source_id + dates + program); a LOST reply ⇒ UNKNOWN; the retry reuses the op_id ⇒ one copy, programmed', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
   const p = await page({ b });
   await p.signIn(); await p.open();
+  const from = b.calls.length;   // the setup's own publish / end are not the sheet's
   await openDetail(p, 'Almuerzo');
   (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
   b.net.lose = ['marketingOfferRepeat', 'getMarketing'];
   p.btn('Programar', sheet(p)).click(); await settle(220);
   assert.equal(sheet(p).querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
-  assert.equal(p.btn('Programar', sheet(p)).disabled, false, 'the retry is safe');
   p.btn('Volver', sheet(p)).click(); await settle();
   (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
   p.btn('Programar', sheet(p)).click(); await settle(250);
-  const ids = b.calls.filter((c) => c.fn === 'marketingOfferRepeat').map((c) => c.body.op_id);
-  assert.equal(ids.length, 2);
-  assert.equal(ids[1], ids[0], 'the reopened sheet retries the SAME operation');
+  const reps = b.calls.filter((c) => c.fn === 'marketingOfferRepeat');
+  assert.equal(reps.length, 2);
+  assert.ok(reps.every((c) => c.body.program === true && c.body.source_id === o.id && Number.isSafeInteger(c.body.schedule.start)), 'ONE call: source_id + the dates + program');
+  assert.equal(reps[1].body.op_id, reps[0].body.op_id, 'the reopened sheet retries the SAME operation');
+  assert.equal(b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSave' || c.fn === 'marketingOfferSetState').length, 0, 'no follow-up save / publish');
   assert.equal(stored(b, 'Almuerzo').length, 2, 'the original + ONE copy');
   assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'active').length, 1, 'the copy is programmed');
-  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov');
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov', 'the retry answered THIS operation: its toast');
+});
+
+test('R13 programming an offer IDENTICAL to one already live: 409 duplicate ⇒ the existing offer opens — never an error, never a second offer', async () => {
+  const b = await world();
+  const p0 = await page({ b });
+  await p0.signIn(); await p0.open();
+  await openCard(p0, 'lps');
+  p0.btn('Programar oferta', await toReview(p0)).click(); await settle(220);
+  assert.equal(offersNamed(b, LPS).length, 1, 'premise: one live');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  assert.equal(offersNamed(b, LPS).length, 1, 'still ONE');
+  assert.equal(dlg(p), null, 'the builder closed');
+  assert.equal(p.host().querySelector('.mk5d-head h1').textContent, LPS, 'the EXISTING offer\'s detail');
+  assert.equal(p.host().querySelector('.mk5b-err'), null, 'no error');
+});
+
+test('R14 storage blocked: still ONE call; a lost reply + a reload mints another op_id — the server\'s 409 duplicate keeps it to ONE live offer', async () => {
+  const b = await world();
+  let p = await page({ b, noStorage: true });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = ['marketingOfferSave', 'getMarketing'];
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(200);
+  p = await page({ b, noStorage: true });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.notEqual(ops[1], ops[0], 'no storage: the reload could not keep the op_id');
+  assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer (the backstop)');
+  assert.ok(p.host().querySelector('.mk5d-head'), 'the existing offer is shown');
 });
 
 test('R3 an edit whose reply is LOST: recovery has what it needs (sent / prev) — «Cambios guardados», never a stuck «busy»', async () => {
@@ -702,8 +745,8 @@ test('R4 a write still in flight when its dialog closes never touches the NEXT d
   assert.ok(d, 'B is still open');
   assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Envío gratis', 'B keeps its own offer');
   assert.equal(p.mods['marketing-builder']._builderState.offer, null, 'A\'s reply did not become B\'s offer');
-  assert.equal(offersNamed(b, LPS)[0].state, 'draft', 'A stopped at its save: not published behind the merchant\'s back');
-  assert.notEqual(toastText(p), 'Oferta programada. Empieza hoy.');
+  assert.equal(offersNamed(b, LPS).length, 1, 'A\'s ONE call landed whole (programmed in the same call — 3a e3c5f7366), once');
+  assert.notEqual(toastText(p), 'Oferta programada. Empieza hoy.', 'no toast for a closed dialog');
 });
 
 test('R6 the end calendar compares DAYS: a draft starting today 12:01 HN may end today', async () => {
@@ -865,7 +908,7 @@ test('R11 a proven reconcile unblocks the OPEN builder — with the fresh record
   assert.equal(dlg(p).querySelector('.mk5b-go').disabled, false, 'the open builder is unblocked');
   assert.equal(p.mods['marketing-builder']._builderState.offer.rev, 3, 'it now edits the reconciled record');
 });
-test('R12 an account switch isolates the ledger: A\'s late completion never touches B\'s pending operation; A\'s cached repeat copy is gone', async () => {
+test('R12 an account switch isolates the ledger: A\'s late completion never touches B\'s pending operation', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
@@ -875,9 +918,7 @@ test('R12 an account switch isolates the ledger: A\'s late completion never touc
   p.btn('Programar oferta', sh).click(); await settle(40);
   p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle();
   const OPS = p.mods['marketing-ops'];
-  const kB = OPS.opKey(RID, 'create');
-  const mine = OPS.beginOp(kB);   // B's own pending create on the same branch
+  const mine = OPS.opFor(OPS.opKey('tb', 'create'));   // B's own pending create in the same restaurant
   release(); await settle(250);
-  assert.equal(OPS.pendingOpId(kB), mine, 'A\'s completion did not settle B\'s operation');
-  assert.equal(p.mods['marketing-builder']._repeatState.drafts.size, 0, 'no repeat copy carried across accounts');
+  assert.equal(OPS.pendingOpId(OPS.opKey('tb', 'create')), mine, 'A\'s completion did not settle B\'s operation');
 });

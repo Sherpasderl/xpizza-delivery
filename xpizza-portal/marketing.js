@@ -305,7 +305,7 @@ function emptyState() {
 // ── the builder (marketing-builder.js, O2) ───────────────────────────────────────────────────────────────────────────────────
 function builderCtx() {
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onChangeType: () => { S.tab = 'create'; render(); } };
+    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onChangeType: () => { S.tab = 'create'; render(); } };
 }
 function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) openBuilder(S.host, builderCtx(), opts); }
 function onRowAction(a, id) {
@@ -324,6 +324,12 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 function detailCtx(o) {
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
     toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+}
+// 409 duplicate (3a e3c5f7366): an identical offer is already programmed — never an error: the list re-reads and THAT offer opens
+async function showExisting(id) {
+  S.tab = 'home';
+  await load();
+  if (S.offers.some((o) => o.id === id)) openDetail(id);
 }
 function openDetail(id) {
   const o = S.offers.find((x) => x.id === id);

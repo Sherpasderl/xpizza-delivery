@@ -11,10 +11,10 @@ import { getMarketingRaw, offerSaveRaw, offerSetStateRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
 // ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export const REF = 'c5bbce7400b01f2fe10eeb23b9f716f7718e89dc';   // 3a feat/capp-offers-3a: + the live-edit widening (4245a74bf, Codex-fixed d6997aff2) + idempotent op_id (advisor 11-14)
+export const REF = 'e3c5f7366b02b1248f70b00793b91cab6245673f';   // 3a feat/capp-offers-3a: the live-edit widening + idempotent op_id + program:true in ONE call + the 409 duplicate (advisor 11-14)
 export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
   'offer-model.js': '1caffd20c193daa0dfdc34de15eaebd886e9abcb',
-  'offers-core.js': '2a924ee23b0145630cf198af8bc8b048b0e2b1e9',
+  'offers-core.js': '2de480021d432df9b8f89a791151e405177940b0',
   'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
   'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
 };

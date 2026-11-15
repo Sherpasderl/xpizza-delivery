@@ -202,11 +202,12 @@ export function classifyWrite(attempt, res) {
     const o = b.offer;
     if (b.ok !== true || !isObj(o) || !isInt(o.rev, 1, 1e15)) return { outcome: 'unknown' };
     if (attempt.op === 'create' || attempt.op === 'repeat') {
-      if (attempt.opId) return { outcome: 'saved', offer: o };   // an op_id reply IS our operation's record — a replay answers it as it is NOW (any rev / state)
+      if (attempt.opId) return { outcome: 'saved', offer: o };   // an op_id reply IS our operation's record — a replay answers it as it is NOW (any rev / state); the caller checks it is THIS form
       return o.rev === 1 && o.state === 'draft' ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
     }
     if (o.id !== attempt.offerId || o.rev !== attempt.expectedRev + 1) return { outcome: 'unknown' };
     if (attempt.op === 'state' && o.state !== attempt.to) return { outcome: 'unknown' };
+    if (attempt.program && o.state !== 'active') return { outcome: 'unknown' };   // save + program in ONE call: a 200 that isn't active isn't it
     return { outcome: 'saved', offer: o };
   }
   if (res.status >= 400 && res.status < 500 && typeof b.error === 'string') return { outcome: 'refused', ...refusalOf(res.status, b) };
@@ -218,10 +219,11 @@ const CODES = Object.freeze({
   overlap: 'overlap', too_many_live: 'too_many_live', too_many_offers: 'too_many_offers', live_edit_not_allowed: 'live_edit',
   ended: 'ended', bad_transition: 'stale', not_ended: 'not_ended', branch_not_live: 'branch_not_live', menu_unavailable: 'menu_unavailable',
   category_too_large: 'category_too_large', not_authorized: 'denied', missing_bearer_token: 'signed_out', invalid_credentials: 'signed_out',
+  duplicate: 'duplicate', op_id_conflict: 'op_conflict',   // 3a e3c5f7366: an identical programmed offer exists { offer_id } · the op_id belongs to another operation
 });
 export function refusalOf(status, b) {
   const out = { code: CODES[b.error] || 'other', server: b.error, status };
-  for (const k of ['field', 'reason', 'rid', 'current_rev']) if (b[k] !== undefined) out[k] = b[k];
+  for (const k of ['field', 'reason', 'rid', 'current_rev', 'offer_id']) if (b[k] !== undefined) out[k] = b[k];
   if (Array.isArray(b.with)) out.with = b.with.filter((n) => typeof n === 'string');
   return out;
 }

@@ -170,8 +170,8 @@ test('states: publish / pause / resume / end / repeat through the real core; the
   const pau = await move(pub.offer, 'paused_owner');
   assert.deepEqual([pau.outcome, pau.offer.status], ['saved', 'paused_owner']);
   assert.deepEqual(ML.actionsOf(pau.offer), ['resume', 'end']);
-  const lv = b.fake.get(`marketing_live/${RID}/${d.id}`);   // 3a's fence (d6997aff2 / 18d47c6fe): removal leaves a TOMBSTONE { removed, rev }
-  assert.ok(lv === null || (lv && lv.removed === true), 'paused: out of the price path (absent or a tombstone)');
+  const lv = b.fake.get(`marketing_live_b/tb/${RID}/${d.id}`);   // 3a's re-keyed mirror (marketing_live_b/{brand}/{rid}/{offer}): removal leaves a TOMBSTONE { removed, rev }
+  assert.ok(lv && lv.removed === true, 'paused: out of the price path (a tombstone at the mirror\'s real path)');
   const res = await move(pau.offer, 'active');
   assert.equal(res.outcome, 'saved', 'resumed');
   const end = await move(res.offer, 'ended');
@@ -179,7 +179,7 @@ test('states: publish / pause / resume / end / repeat through the real core; the
   assert.deepEqual(ML.actionsOf(end.offer), ['repeat']);
   const again = await move(end.offer, 'active');
   assert.deepEqual([again.outcome, again.code], ['refused', 'stale'], 'an ended offer cannot move (bad_transition)');
-  const rep = ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid: RID, offerId: d.id, token: b.token }));
+  const rep = ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid: RID, sourceId: d.id, token: b.token }));
   assert.deepEqual([rep.outcome, rep.offer.state, rep.offer.schedule.start ?? null], ['saved', 'draft', null], '«Repetir»: a new draft, dates cleared');
   assert.deepEqual(ML.actionsOf({ state: 'active', status: 'ended' }), ['end', 'repeat'], 'ended by schedule: end it or repeat it');
 });
@@ -209,12 +209,13 @@ test('refusals map to honest keys: overlap (with the clashing names), stale + cu
 test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN, and the fresh read proves it did not land (still active, still applied)', async () => {
   const b = await backend();
   const live = await publish(b, form({ name: 'Firme' }));
-  b.fake.failReads.add(`marketing_live/${RID}/${live.id}`);   // the price-path removal fails (an outage) — offers-core.js:350
+  b.fake.failReads.add('marketing_live_b/tb');   // the price-path mirror transaction fails (an outage) — 3a's ONE brand-node txn (applyMirror)
   const attempt = { op: 'state', offerId: live.id, expectedRev: live.rev, to: 'paused_owner', from: 'active' };
   const raw = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token });
   assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
   assert.deepEqual(ML.classifyWrite(attempt, raw), { outcome: 'unknown' }, 'the 503 is unknown — never saved');
-  const s = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
+  // the outage ends before the fresh read (3a's read and its mirror txn share the brand node: a read during the outage fails too)
+  const s = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => { b.fake.failReads.clear(); return read(b); });
   assert.equal(s.outcome, 'not_landed', 'the fresh read decides: the pause did NOT land');
   assert.deepEqual([s.offer.state, s.offer.rev, s.offer.drift], ['active', live.rev, null], 'still active, still applied, no drift');
   b.fake.failReads.clear();
@@ -253,7 +254,7 @@ test('live_drift: an active offer whose pause half-ran is NOT applied; a non-act
   assert.deepEqual([o.state, o.live_drift, o.drift], ['active', true, 'not_applied'], 'active, out of the price path: NOT applied');
   const p = await create(b, form({ name: 'Quieta' }));
   const rec = b.fake.get(`marketing_offers/tb/${p.id}`);
-  b.fake.put(`marketing_live/${RID}/${p.id}`, OM.liveProjection(rec, 'tb'));   // the real projection, stranded under a draft
+  b.fake.put(`marketing_live_b/tb/${RID}/${p.id}`, OM.liveProjection(rec, 'tb'));   // the real projection, stranded under a draft (the re-keyed mirror)
   const q = await one(b, p.id);
   assert.deepEqual([q.state, q.drift], ['draft', 'still_applied'], 'a draft still in the price path: STILL applied');
   assert.equal(ML.driftOf({ state: 'active' }), null, 'no flag, no drift');
@@ -297,7 +298,7 @@ test('O1 list: one row per offer — the dot status, «Horario» in plain words,
 test('O1 list: the Acciones menu is the DRAWN menu intersected with what the server allows — never a move it refuses, never «Eliminar» (no delete)', async () => {
   const b = await backend();
   const live = await publish(b, form({ name: 'A', start: NOW }));
-  const sched = await publish(b, form({ name: 'B' }));
+  const sched = await publish(b, form({ name: 'B', pct: 25 }));   // a different discount: an identical one is a 409 duplicate (3a e3c5f7366)
   const draft = await create(b, form({ name: 'C' }));
   const paused = ML.classifyWrite({ op: 'state', offerId: live.id, expectedRev: live.rev, to: 'paused_owner' },
     await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token })).offer;
@@ -398,33 +399,36 @@ test('recovery of a create / repeat: no record carrying OUR op_id ⇒ UNKNOWN (n
   assert.equal(ML.classifyRecovery({ op: 'repeat', opId: 'op_mine', sourceId: 'o_x' }, body).outcome, 'unknown', 'the same for a repeat');
   assert.equal(typeof ML.findCreated, 'undefined', 'content matching is retired');
 });
-test('the ops ledger (marketing-ops.js): a retry REUSES its op_id; a settled op starts a new one; a read carrying our op_id releases the block; idempotency waits for 3a', async () => {
+test('the ops ledger (marketing-ops.js): one op_id per (user, restaurant, kind, source) — reused until PROVEN, dropped at 6 days; another user\'s ticket writes nothing; known-id writes settle on rev proof only', async () => {
   const OPS = await import('./marketing-ops.js');
+  const t0 = Date.UTC(2026, 10, 16, 18);
+  OPS._opsState.now = () => t0;
   OPS.forUser('u_ledger');
-  const k = OPS.opKey('tb_centro', 'create');
-  const a = OPS.beginOp(k);
-  assert.equal(OPS.beginOp(k), a, 'a retry of the same operation reuses its op_id');
-  assert.equal(OPS.opBlocked(k), false, 'pending is not blocked');
-  OPS.markUnknown(k);
-  assert.equal(OPS.opBlocked(k), !OPS.IDEMPOTENT_OPS, 'an UNKNOWN blocks the key only while the server is not idempotent');
-  assert.equal(OPS.pendingOpId(k), a, 'the UNKNOWN keeps its op_id for the retry');
-  assert.equal(OPS.reconcile([{ id: 'o1', op_id: 'op_someone_else' }]), false, 'another operation proves nothing');
-  assert.equal(OPS.reconcile([{ id: 'o2', op_id: a }]), true, 'a record carrying OUR op_id proves it');
-  assert.equal(OPS.pendingOpId(k), null, 'released');
-  assert.notEqual(OPS.beginOp(k), a, 'a settled operation is over: the next one is new');
+  const k = OPS.opKey('tb', 'create');
+  const a = OPS.opFor(k);
+  assert.match(a, /^[A-Za-z0-9_-]{16,64}$/, 'an op_id 3a\'s OP_RE accepts');
+  assert.equal(OPS.opFor(k), a, 'a retry of the same operation reuses its op_id');
+  assert.notEqual(OPS.opFor(OPS.opKey('tb', 'repeat', 'o_src')), a, 'another kind / source is another operation');
+  OPS.dropOp(k, 'op_not_this_one');
+  assert.equal(OPS.pendingOpId(k), a, 'dropping another op_id proves nothing');
+  OPS.dropOp(k, a);
+  assert.equal(OPS.pendingOpId(k), null, 'a proven outcome drops it');
+  const b = OPS.opFor(k);
+  assert.notEqual(b, a, 'the next operation is new');
+  OPS._opsState.now = () => t0 + OPS.OP_TTL_MS;   // 6 days later (< the server's 7-day claim)
+  assert.equal(OPS.pendingOpId(k), null, 'an op older than 6 days is dropped (never retried past the server\'s claim)');
+  OPS._opsState.now = () => t0;
+  OPS.dropOp(k, 'x', 'u_someone_else');
+  OPS.markUnsettled('o7', 2, 'u_someone_else');
+  assert.equal(OPS.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
   OPS.markUnsettled('o9', 3);
-  assert.equal(OPS.unsettled('o9'), true);
-  OPS.reconcile([{ id: 'o8' }]);
-  assert.equal(OPS.unsettled('o9'), true, 'a read without the offer settles nothing');
   OPS.reconcile([{ id: 'o9', rev: 2 }]);
   assert.equal(OPS.unsettled('o9'), true, 'a read below the sent rev proves nothing (Codex r3 P2-8)');
   OPS.reconcile([{ id: 'o9', rev: 3 }]);
   assert.equal(OPS.unsettled('o9'), false, 'rev ≥ the sent rev settles it');
-  OPS.markUnsettled('o7', 2, 'u_someone_else');
-  assert.equal(OPS.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
   OPS.forUser('u_other');
   assert.equal(OPS.pendingOpId(k), null, 'another user never inherits the ledger');
-  assert.equal(OPS.IDEMPOTENT_OPS, true, 'retry-by-op_id is ON with 3a\'s idempotent create / repeat (REF c5bbce740; the cell below proves it on the real core)');
+  OPS._opsState.now = () => Date.now();
 });
 test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME offer, one record; a malformed op_id ⇒ 400', async () => {
   const b = await backend();
@@ -441,8 +445,8 @@ test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME 
   const src = await publish(b, form({ name: 'Origen', start: NOW }));
   await offerSetStateRaw({ rid: RID, offerId: src.id, to: 'ended', expectedRev: src.rev, token: b.token });
   const rop = 'op_fedcba9876543210';
-  const r1 = await offerRepeatRaw({ rid: RID, offerId: src.id, opId: rop, token: b.token });
-  const r2 = await offerRepeatRaw({ rid: RID, offerId: src.id, opId: rop, token: b.token });
+  const r1 = await offerRepeatRaw({ rid: RID, sourceId: src.id, opId: rop, token: b.token });
+  const r2 = await offerRepeatRaw({ rid: RID, sourceId: src.id, opId: rop, token: b.token });
   assert.equal(r2.body.offer.id, r1.body.offer.id, 'a repeat retry answers the SAME copy');
   assert.equal(Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.repeated_from === src.id).length, 1, 'ONE copy');
 });
