@@ -1,7 +1,8 @@
 'use strict';
 // S-A (d) customer read (PLAN §S-A(d) «Customer read») — getMyRating: the C-2 rating sheet's ONE read of the caller's OWN rating.
 //   GET ?order_id=<id>   header x-firebase-id-token (the capp transport, as rateOrder / getMyOrders)
-//   → 200 { ok, rating: null | { store, dishes, delivery, comment, legacy_thumb, rated_at, edited_at }, can_rate, editable_until }
+//   → 200 { ok, rating: null | { store, dishes, delivery, comment, legacy_thumb, rated_at, edited_at, disclosure }, can_rate, editable_until }
+//   disclosure (Calificaciones v2, r1 §0 B1): the STORED stamp, 0 | 1 — the sheet shows the line that matches it. post_cutover never leaves.
 //   | 400 bad_request | 403 { ok:false, error:'not_allowed' } (ONE generic refusal) | 405 | 429
 // PREDICATE — the SAME as the writer (rate-order.js): a verified customer token, the uid NOT tombstoned (customerUidOf), and the order's
 // customer_uid === that uid. Any failure is the one generic 403: it never reveals whether the order or a rating exists.
@@ -35,7 +36,7 @@ async function myRatingCore({ db, verifyIdToken, checkRateLimit, now }, req) {
   return reply(200, {
     ok: true,
     rating: mine ? { store: mine.store ?? null, dishes: mine.dishes || {}, delivery: mine.delivery ?? null, comment: mine.comment ?? null,
-      legacy_thumb: mine.legacy_thumb ?? null, rated_at: mine.rated_at ?? null, edited_at: mine.edited_at ?? null } : null,
+      legacy_thumb: mine.legacy_thumb ?? null, rated_at: mine.rated_at ?? null, edited_at: mine.edited_at ?? null, disclosure: mine.disclosure === 1 ? 1 : 0 } : null,
     can_rate: until != null && now() <= until,
     editable_until: until,
   });

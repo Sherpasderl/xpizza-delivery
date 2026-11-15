@@ -2943,6 +2943,7 @@
   "ratings/rating-core.js",
   "ratings/rating-fulfilment.js",
   "ratings/rating-v2.js",
+  "ratings/ratings-config.js",
   "reorder-normalize.js",
   "resolve-manual.js",
   "retention-sweep.js",
@@ -7575,6 +7576,10 @@
    "lifts": [
     "customer-app/capp-s7a2.test.mjs"
    ]
+  },
+  "ratings/ratings-config.js": {
+   "pins": [],
+   "lifts": []
   },
   "reorder-normalize.js": {
    "pins": [

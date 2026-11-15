@@ -88,6 +88,8 @@ const D = {
     'identity-factura-flag', 'driver-return-backfill',
     // PAY RATE — the owner's append-only driver pay-rate CLI: parseArgs, then requireProject({ requireFlag: true }) before any client
     'set-driver-rate',
+    // Calificaciones v2 r6.1 §1 — the owner's ratings-disclosure CLI (dry run unless --apply): requireProject({ requireFlag: true }) before any client
+    'ratings-config',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run

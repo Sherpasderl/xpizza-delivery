@@ -122,7 +122,7 @@ const W = V2.WINDOW_MS;
     // rated (v2: store, dish, delivery, comment) ⇒ the caller's OWN payload, editable
     { const rr = await rate(db, A, { order_id: 'XPZ-u', store: 4, dishes: { [DISH]: 1 }, delivery: -1, comment: 'Rica' }, 2000); assert.strictEqual(rr.httpStatus, 200, JSON.stringify(rr.body)); }
     const r = await call(h(db), { token: `tok-${A}`, query: { order_id: 'XPZ-u' } });
-    assert.deepStrictEqual(r.body, { ok: true, rating: { store: 4, dishes: { [DISH]: 1 }, delivery: -1, comment: 'Rica', legacy_thumb: null, rated_at: 2000, edited_at: null }, can_rate: true, editable_until: 1000 + W });
+    assert.deepStrictEqual(r.body, { ok: true, rating: { store: 4, dishes: { [DISH]: 1 }, delivery: -1, comment: 'Rica', legacy_thumb: null, rated_at: 2000, edited_at: null, disclosure: 0 }, can_rate: true, editable_until: 1000 + W });
     assert.strictEqual(r.h['Cache-Control'], 'no-store');
     assert.ok(!/owner_uid|token_hash|revoked|restaurant_id|"state"|"rev"|fulfilled_at/.test(JSON.stringify(r.body)), '🔴 no authority / identity field leaves the server');
     // edited ⇒ the new text + edited_at
@@ -144,7 +144,7 @@ const W = V2.WINDOW_MS;
     await place(db, A, 'XPZ-v1'); db.set('orders/XPZ-v1/status', 'delivered');
     assert.strictEqual((await rate(db, A, { order_id: 'XPZ-v1', thumb: 'up' }, 2000)).httpStatus, 200);
     const v1 = (await call(h(db), { token: `tok-${A}`, query: { order_id: 'XPZ-v1' } })).body;
-    assert.deepStrictEqual(v1.rating, { store: null, dishes: {}, delivery: null, comment: null, legacy_thumb: 1, rated_at: 2000, edited_at: null }); assert.strictEqual(v1.can_rate, false, 'no fulfilment stamp ⇒ v2 closed');
+    assert.deepStrictEqual(v1.rating, { store: null, dishes: {}, delivery: null, comment: null, legacy_thumb: 1, rated_at: 2000, edited_at: null, disclosure: 0 }); assert.strictEqual(v1.can_rate, false, 'no fulfilment stamp ⇒ v2 closed');
   }
   ok('states: not fulfilled ⇒ nothing; fulfilled + unrated ⇒ can_rate until fulfilled_at + 7 d; rated ⇒ the caller\'s own payload (store / dishes / delivery / comment / legacy_thumb / rated_at / edited_at) and nothing of the authority; edited ⇒ the new text; past the window ⇒ shown, not editable; withdrawn ⇒ no payload, re-ratable; deleted ⇒ closed; a v1 thumb ⇒ legacy_thumb only');
 
@@ -161,6 +161,23 @@ const W = V2.WINDOW_MS;
     assert.ok(db.reads.includes(`deleted_uids/${A}`), 'the tombstone is checked');
   }
   ok('the payload leaves ONLY through readCountable (live, owner not tombstoned) AND only when the node\'s owner_uid is the caller');
+
+  // ── 5. Calificaciones v2 S1 (r1 §0 B1): the own-rating read returns the STORED disclosure (0/1), so the sheet shows the matching line;
+  //       post_cutover is never returned ──
+  {
+    const RC = require('./ratings-config');
+    const db = fakeDb(); await place(db, A, 'XPZ-d0'); await place(db, A, 'XPZ-d1'); await fulfil(db, 'XPZ-d0', 1000); await fulfil(db, 'XPZ-d1', 1000);
+    await rate(db, A, { order_id: 'XPZ-d0', store: 4, disclosure: 1 }, 2000);   // dark ⇒ 0
+    const e = await RC.writeRatingsConfig(db, { payload: { disclosure_v: 1, policy_ack: { at: 1_700_000_000_000, by: 'owner', policy_url: 'https://sherpa.example/privacidad' } }, stamp: 2500 });
+    assert.strictEqual(e.ok, true, 'premise: enabled by the real writer');
+    await rate(db, A, { order_id: 'XPZ-d1', store: 5, disclosure: 1 }, 3000);
+    const r0 = (await call(h(db), { token: `tok-${A}`, query: { order_id: 'XPZ-d0' } })).body.rating;
+    const r1 = (await call(h(db), { token: `tok-${A}`, query: { order_id: 'XPZ-d1' } })).body.rating;
+    assert.deepStrictEqual([r0.disclosure, r1.disclosure], [0, 1], 'own-rating read returns the stored disclosure');
+    assert.strictEqual(db.get('ratings_v2/XPZ-d1/post_cutover'), true, 'premise: the node is stamped');
+    assert.ok(!('post_cutover' in r1), 'post_cutover is never returned to the customer');
+  }
+  ok('own-rating read: the stored disclosure (0 / 1) is returned; post_cutover never is');
 
   FINISHED = true;
   console.log(`my-rating: OK (${n})`);
