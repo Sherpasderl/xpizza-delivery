@@ -37640,6 +37640,40 @@
   ]
  },
  {
+  "id": "of-off-eta",
+  "slice": "capp-offers-sliceA",
+  "label": "rule 11 reverted on the tip (a lone «≈ 30 min» again) — the golden mapping must not absorb it",
+  "file": "../customer-app/capp-ui.js",
+  "from": "e[1] > e[0] ? `${e[0]}–${e[1]} min` : ''",
+  "to": "e[1] > e[0] ? `≈ ${e[0]} min` : ''",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^offers OFF golden",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OF-OFF-ETA"
+  ]
+ },
+ {
+  "id": "of-off-cart",
+  "slice": "capp-offers-sliceA",
+  "label": "a tip-side change in the delivery cart sheet (Envío before Subtotal) with no offer",
+  "file": "../customer-app/capp-ui.js",
+  "from": "`<div class=\"ctot\">${sub}${fee}${discRowHtml(T)}",
+  "to": "`<div class=\"ctot\">${fee}${sub}${discRowHtml(T)}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^offers OFF golden",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OF-OFF-GOLDEN: the cart sheet"
+  ]
+ },
+ {
   "id": "r20-01",
   "slice": "r20",
   "label": "the member last-tip read puts the ID token back in the URL (rule 20)",

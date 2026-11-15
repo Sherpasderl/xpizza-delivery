@@ -4040,8 +4040,14 @@ test('offers OFF golden: no offer ⇒ the checkout and the cart sheet are byte-i
     return { store0, store1, pq, pick, co, cart: b.q('#layer').innerHTML };
   };
   for (const k of ['OFF_DEL', 'UNDER_DEL']) assert.ok(!('offer' in OQ.scenarios[k]), `premise: ${k} carries no offer`);
-  const tip = await run({}), was = await run({ src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') });
-  assert.ok(was.co.includes('Total') && was.cart.includes('Total'), 'premise: both surfaces drawn');
+  const tip = await run({}), raw = await run({ src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') });
+  assert.ok(raw.co.includes('Total') && raw.cart.includes('Total'), 'premise: both surfaces drawn');
+  // rule 11 (aeb489237, merged in at 8839193d9) is the ONE proven difference from the base (advisor 11-15, the full-output diff): the
+  // base's lone «≈ 30 min» is mapped to the tip's window, and the per-surface counts pin that nothing else can hide behind the mapping
+  const ETA_WAS = '<span>≈ 30 min', ETA_NOW = '<span>30–45 min', SURF = ['store0', 'store1', 'pick', 'co', 'cart'];
+  const cnt = (s, x) => s.split(x).length - 1;
+  assert.deepEqual([SURF.map((k) => cnt(raw[k], ETA_WAS)), SURF.map((k) => cnt(tip[k], ETA_NOW))], [[1, 1, 0, 1, 0], [1, 1, 0, 1, 0]], '🔴 OF-OFF-ETA: the rule-11 window is the only mapped span, once per surface that draws it');
+  const was = { ...raw, ...Object.fromEntries(SURF.map((k) => [k, raw[k].replace(ETA_WAS, ETA_NOW)])) };
   assert.equal(tip.store0, was.store0, '🔴 OF-OFF-GOLDEN: the store page');
   assert.equal(tip.store1, was.store1, '🔴 OF-OFF-GOLDEN: the store page after an add');
   assert.deepEqual([tip.pq, was.pq], [0, 0], '🔴 OF-OFF-NOQUOTE: a store without offers asks nothing on the store page');
