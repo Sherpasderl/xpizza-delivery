@@ -71,7 +71,7 @@ async function world({ offers_enabled = true } = {}) {
   };
   const cfg = async () => CFG.readMarketingConfig(db);
   const live = () => fake.get('marketing_brand/tb/live/tb_centro');   // 3a's ONE brand root (c4538460a)
-  // An envío entry PLANTED in the mirror: 3a's v1 core refuses the type (owner 11-16), so no writer can mirror one — this is a REAL
+  // An envío entry PLANTED in the mirror: 3a's v1 core refuses the type (owner 11-15), so no writer can mirror one — this is a REAL
   // projection (a pct offer through the cores) with its type turned into envío; params absent = how RTDB stores «sin mínimo»
   const plantEnvio = async (params) => {
     const id = await publish({ type: 'pct', params: { pct: 5 } });
@@ -152,7 +152,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.ok(await pick(w, items), `${L}: premise — applies at the true base`);
     assert.strictEqual(await pick(w, items, { baseTotalL: food(items) + 1 }), null, L);
   });
-  await cell('OP-ENVIO: v1 (owner 11-16: «envío gratis» held until the payout ledger) — an envío entry that reaches the mirror is NEVER priced: no waiver on a delivery, a pickup, under or over its minimum', async (L) => {
+  await cell('OP-ENVIO: v1 (owner 11-15: «envío gratis» held until the payout ledger) — an envío entry that reaches the mirror is NEVER priced: no waiver on a delivery, a pickup, under or over its minimum', async (L) => {
     const w = await world(); await w.plantEnvio({ min_cents: 30000 });
     for (const [k, items, ctx] of [['delivery ≥ min', [line(K2, 2)], envio()], ['pickup', [line(K2, 2)], envio({ mode: 'pickup' })], ['under min', [line(K2)], envio()]]) {
       assert.strictEqual(await pick(w, items, { deliveryContext: ctx }), null, `🔴 ${L}: ${k}`);
@@ -218,7 +218,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.strictEqual(o.min_cents, 20000, L);
     assert.deepStrictEqual([o.offer_id, o.rev, o.name], [id, w.live()[id].rev, 'Oferta'], L);
   });
-  await cell('OP-CAPS-ABSENT: offers v1 (owner 11-16) — 3a\'s REAL v1 core mirrors NO caps and the entry is priced; a legacy entry still carrying caps (any shape, even malformed) prices the same: caps are ignored', async (L) => {
+  await cell('OP-CAPS-ABSENT: offers v1 (owner 11-15) — 3a\'s REAL v1 core mirrors NO caps and the entry is priced; a legacy entry still carrying caps (any shape, even malformed) prices the same: caps are ignored', async (L) => {
     const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     assert.ok(!('caps' in w.live()[id]), `${L}: premise — 3a's v1 projection has no caps`);
     const want = { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 };

@@ -8,7 +8,7 @@
 //   · marketing_brand/{brandId}/live/{rid} (3a's ONE brand root, c4538460a): ONE read; quotes cached per instance ≤ 60 s, placement reads
 //     FRESH (Q6: a pause is honoured at once). The brand by marketing/brand-of (brand-model brandIdOf — the writer's own rule; cached
 //     60 s, quotes and placements alike: a branch's brand does not move); no brand ⇒ no mirror read, no offer (fail closed).
-//   · no usage / cap read (offers v1, owner 11-16: no caps; marketing/offer-usage.js is kept for v2, unreferenced).
+//   · no usage / cap read (offers v1, owner 11-15: no caps; marketing/offer-usage.js is kept for v2, unreferenced).
 //   · a card retry of an EXISTING order reuses the offer frozen on it (orders/{id}/offer, one point read, only when offers are on):
 //     the order's economics are fixed at its first placement, never re-priced by a later mirror (promo §10 «frozen economics»).
 // Scope (5f ruling, reported): offers apply to SHERPA APP orders only — the legacy order forms are frozen (rule 40) and show no offer.
@@ -62,7 +62,7 @@ function waivedCtx(ctx, offer) {
 async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null, app = false, orderId = null, nowMs = Date.now(), placement = false, log = console }) {
   if (reward || !app) return dq;
   if (dq && dq.refusal) return dq;                       // a refused envío answers first, untouched
-  // v1 (owner 11-16; Codex REVISE #1 P1): a restaurant envío waiver is never honoured — a live card checkout grandfathered at a STORED one
+  // v1 (owner 11-15; Codex REVISE #1 P1): a restaurant envío waiver is never honoured — a live card checkout grandfathered at a STORED one
   // is not resumed at its old total: refused offer_changed before any acquire (no reuse, nothing charged or refunded; the client re-quotes)
   if (dq && dq.grandfathered && dq.ctx && dq.ctx.delivery_discount_funder === 'restaurant') return { refusal: 'offer_changed', httpStatus: 409 };
   try {

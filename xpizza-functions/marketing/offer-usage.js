@@ -1,5 +1,5 @@
 'use strict';
-// RETIRED for offers v1 (owner 11-16, limits = A: no caps). NOTHING requires this file; it is kept as the v2 starting point (an optional
+// RETIRED for offers v1 (owner 11-15, limits = A: no caps). NOTHING requires this file; it is kept as the v2 starting point (an optional
 // weekly cap on the payout ledger — PLAN-5f-marketing-usage-r5/r6, after PLAN-sherpa-ledger). Its tests were removed with the wiring.
 // PLAN-5f-marketing-price r0 step 2 (Q5 ruled: count at placement, release on cancel) — the offer USAGE the caps are enforced on.
 //   marketing_usage/{offerId} = { redemptions, spend_cents, week: { key, redemptions, spend_cents }, orders, sales_cents, new_customers }

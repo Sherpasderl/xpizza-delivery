@@ -220,7 +220,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E3 card: the PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer; E3b the paid poll shows the offer summary, never its id');
 
-  // ── E4. envío offer: 3a's v1 core REFUSES the type (owner 11-16: «envío gratis» held until the payout ledger) ──
+  // ── E4. envío offer: 3a's v1 core REFUSES the type (owner 11-15: «envío gratis» held until the payout ledger) ──
   {
     const r = await C.marketingOfferSaveCore(offerDeps(), oreq(THIRD, { expected_rev: 0, offer: { name: 'Envío', audience: 'all', branches: [THIRD], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, type: 'envio', params: {} } }));
     assert.deepStrictEqual([r.status, r.body && r.body.reason], [400, 'type_not_supported'], `E4: 3a's REAL v1 core refuses an envío offer (${JSON.stringify(r.body)})`);
@@ -286,7 +286,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E7 cash retry with an offer = the same order (gross fingerprint); E8 the card fingerprint binds the discounted net');
 
-  // ── E9–E12. offers v1 (owner 11-16, limits = A): NO usage anywhere — cash, a second order, the cancel trigger, a card + its retry, the
+  // ── E9–E12. offers v1 (owner 11-15, limits = A): NO usage anywhere — cash, a second order, the cancel trigger, a card + its retry, the
   //    sweep → manual_reconciliation → abandon: marketing_usage is never written and the frozen offer carries no usage field ──
   {
     const usageOf = async (id) => (await rtdb.ref(`marketing_usage/${id}`).get()).val();

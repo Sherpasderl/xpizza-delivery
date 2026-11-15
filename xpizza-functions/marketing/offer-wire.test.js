@@ -109,7 +109,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60001 }); await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60002 });
     assert.strictEqual(cdb.reads.filter((p) => isMirror(p)).length, before + 2, `${L}: placement fresh`);
   });
-  await cell('MW-ENVIO-FUNDER: v1 (owner 11-16: «envío gratis» held until the payout ledger) — an envío entry in the mirror is NEVER priced: the quote and the placement charge the full fee, no restaurant funder; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
+  await cell('MW-ENVIO-FUNDER: v1 (owner 11-15: «envío gratis» held until the payout ledger) — an envío entry in the mirror is NEVER priced: the quote and the placement charge the full fee, no restaurant funder; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
     const w = await xworld(); await w.plantEnvio({ min_cents: 20000 });
     const items = [line('Pepperoni', 2)];
     const { q, dqo } = await quote(w, items, { ctx: envio() });
@@ -191,7 +191,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.notDeepStrictEqual(computeEarn({ items, subtotalCents: 42000, restaurantId: LM }), computeEarn({ items, subtotalCents: 52000, restaurantId: LM }), `${L}: non-vacuity — the gross would earn differently`);
   });
 
-  await cell('MW-NO-CAPS: offers v1 (owner 11-16, limits = A) — no cap is read or enforced: 3a\'s v1 core publishes caps-less entries and both apply; a usage node «over any cap» and a legacy entry still carrying caps change nothing; no marketing_usage path is ever read', async (L) => {
+  await cell('MW-NO-CAPS: offers v1 (owner 11-15, limits = A) — no cap is read or enforced: 3a\'s v1 core publishes caps-less entries and both apply; a usage node «over any cap» and a legacy entry still carrying caps change nothing; no marketing_usage path is ever read', async (L) => {
     const w = await xworld();
     const best = await w.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 } });
     const other = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
