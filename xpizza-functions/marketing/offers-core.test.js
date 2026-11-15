@@ -492,6 +492,54 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('repeat idempotent per op_id');
     }
 
+    // ── 5k. Codex op_id r2 (P2 1–5) ──
+    {
+      const { fake, db, deps } = await setup();
+      const OPX = 'op_' + 'x'.repeat(20), OPY = 'op_' + 'y'.repeat(20);
+      // (1) the expired-claim cleanup never deletes a claim RENEWED meanwhile
+      const x1 = await save({ ...deps, now: () => NOW - 8 * DAY }, `t-${OWNER}`, { offer: offer({ name: 'Viejo' }), op_id: OPX });   // X claimed 8 days ago (expired now)
+      assert.strictEqual(x1.status, 200, 'premise: X claimed long ago');
+      let renewed = null; let armed = true;
+      const racing = { ref: (p) => { const r = db.ref(p);
+        const renew = async () => { if (!armed) return; armed = false; renewed = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Renovado' }), op_id: OPX }); };   // X renewed right before the cleanup acts on it
+        if (p === 'marketing_offer_ops/tb') return { ...r, update: async (m) => { await renew(); return r.update(m); } };
+        if (p === `marketing_offer_ops/tb/${OPX}`) return { ...r, transaction: async (fn) => { if (!armed) return r.transaction(fn); await renew(); return r.transaction(fn); } };
+        return r; } };
+      assert.strictEqual((await save({ ...deps, db: racing }, `t-${OWNER}`, { offer: offer({ name: 'Y' }), op_id: OPY })).status, 200, 'premise: a fresh claim Y triggers the expired-claim cleanup');
+      assert.ok(renewed && renewed.status === 200 && renewed.body.offer.id !== x1.body.offer.id, 'premise: X was renewed (a new offer) during the cleanup');
+      const again = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Renovado' }), op_id: OPX });
+      assert.strictEqual(again.body.offer && again.body.offer.id, renewed.body.offer.id, 'the cleanup never deleted the RENEWED claim: a retry of X answers the renewed offer (never a 3rd)');
+      ok('op_id (1): the expired-claim cleanup rechecks inside a txn — a claim renewed meanwhile is never deleted');
+      // (2) one op_id is never reused across kinds (create ↔ repeat)
+      const ended = await published(deps, { name: 'Terminar' });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: ended.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const cross = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: OPY }));
+      assert.deepStrictEqual([cross.status, cross.body.error], [409, 'op_id_conflict'], 'an unexpired CREATE claim reused for a REPEAT ⇒ 409 op_id_conflict (never overwritten)');
+      // (3) a repeat claim is bound to its SOURCE offer
+      const ended2 = await published(deps, { name: 'Terminar 2', params: { items: [K2], free_per_order: 1 } });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: ended2.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended 2');
+      const OPR = 'op_' + 's'.repeat(20);
+      assert.strictEqual((await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: OPR }))).status, 200, 'premise: repeated');
+      const other = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended2.id, op_id: OPR }));
+      assert.deepStrictEqual([other.status, other.body.error], [409, 'op_id_conflict'], 'the same op_id for ANOTHER source ⇒ 409 op_id_conflict (the claim binds its source)');
+      // (5) a non-string op_id ⇒ 400, before any claim
+      for (const bad of [12345678901234567, ['op_' + 'q'.repeat(20)], { a: 1 }]) {
+        assert.deepStrictEqual([(await save(deps, `t-${OWNER}`, { offer: offer(), op_id: bad })).body.field, (await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: bad }))).body.field], ['op_id', 'op_id'], `a non-string op_id (${JSON.stringify(bad)}) ⇒ 400`);
+      }
+      const back = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Otro' }), op_id: OPR });
+      assert.deepStrictEqual([back.status, back.body.error], [409, 'op_id_conflict'], 'an unexpired REPEAT claim reused for a CREATE ⇒ 409 op_id_conflict (never a replay of the repeat\'s draft)');
+      ok('op_id (2)(3)(5): never reused across kinds; a repeat claim binds its source; a non-string op_id ⇒ 400');
+      // (4) a successful repeat AT CAPACITY is replayed (the replay comes before the capacity check)
+      const left = OM.LIMITS.offers_max - Object.keys(fake.get('marketing_offers/tb') || {}).length;
+      const capRep = 'op_' + 'c'.repeat(20);
+      for (let i = 0; i < left - 1; i++) assert.strictEqual((await save(deps, `t-${OWNER}`, { offer: offer({ name: `Relleno ${i}` }) })).status, 200, 'premise: filling up');
+      const lastOne = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: capRep }));
+      assert.strictEqual(lastOne.status, 200, 'premise: the repeat took the LAST slot');
+      const replay = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: capRep }));
+      assert.deepStrictEqual([replay.status, replay.body.offer && replay.body.offer.id], [200, lastOne.body.offer.id], 'its retry at capacity REPLAYS the same draft (never 409 too_many_offers)');
+      ok('op_id (4): a successful repeat at capacity replays (the replay precedes the capacity check)');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();
