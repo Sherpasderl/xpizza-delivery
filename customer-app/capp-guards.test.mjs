@@ -37,7 +37,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
 // merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
 const BASE = '827373d6';
-const CAPP_TIP = '1adc6541';
+const CAPP_TIP = 'c7319202';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
