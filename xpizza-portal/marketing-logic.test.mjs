@@ -417,7 +417,11 @@ test('the ops ledger (marketing-ops.js): a retry REUSES its op_id; a settled op 
   OPS.reconcile([{ id: 'o8' }]);
   assert.equal(OPS.unsettled('o9'), true, 'a read without the offer settles nothing');
   OPS.reconcile([{ id: 'o9', rev: 2 }]);
-  assert.equal(OPS.unsettled('o9'), false, 'a read holding the offer settles it (the next write starts from that rev)');
+  assert.equal(OPS.unsettled('o9'), true, 'a read below the sent rev proves nothing (Codex r3 P2-8)');
+  OPS.reconcile([{ id: 'o9', rev: 3 }]);
+  assert.equal(OPS.unsettled('o9'), false, 'rev ≥ the sent rev settles it');
+  OPS.markUnsettled('o7', 2, 'u_someone_else');
+  assert.equal(OPS.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
   OPS.forUser('u_other');
   assert.equal(OPS.pendingOpId(k), null, 'another user never inherits the ledger');
   assert.equal(OPS.IDEMPOTENT_OPS, true, 'retry-by-op_id is ON with 3a\'s idempotent create / repeat (REF c5bbce740; the cell below proves it on the real core)');

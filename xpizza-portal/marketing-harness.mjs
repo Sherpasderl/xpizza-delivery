@@ -82,7 +82,8 @@ export async function backend({ offers = true, extra = null, ref = REF } = {}) {
   // net.down: nothing reaches the server · net.lose = ['fn', …]: the listed calls RUN in the real core, then their replies are lost —
   // strictly in order (only the head is armed; each one shot) ·
   // net.hold = { fn, until: Promise }: that call's reply waits for `until` (one shot) — a write still in flight while the page moves on
-  const net = { down: false, lose: [], hold: null };
+  // net.drop = ['fn', …]: the next such call NEVER reaches the server (in order) — an outcome the client can't tell from a lost reply
+  const net = { down: false, lose: [], hold: null, drop: [] };
   globalThis.fetch = async (url, opts) => {   // the portal's request, unchanged, into the real core (functions.js handler: status + json)
     if (net.down) throw new TypeError('Failed to fetch');
     const u = new URL(String(url));
@@ -90,6 +91,7 @@ export async function backend({ offers = true, extra = null, ref = REF } = {}) {
     const body = opts && typeof opts.body === 'string' ? JSON.parse(opts.body) : undefined;
     const auth = opts && opts.headers && opts.headers.Authorization;
     calls.push({ fn, query: Object.fromEntries(u.searchParams), body, method: opts.method });
+    if (net.drop[0] === fn) { net.drop.shift(); throw new TypeError('Failed to fetch'); }
     if (!CORES[fn]) { const x = extra ? await extra(fn, body) : null; if (x) return x; }
     let out;
     try { out = await CORES[fn](deps, { method: opts.method, query: Object.fromEntries(u.searchParams), body, get: (h) => (h === 'authorization' ? auth : undefined) }); }

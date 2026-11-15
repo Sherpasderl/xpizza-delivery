@@ -8,19 +8,20 @@
 //   known-id writes (save / state move) — an UNKNOWN outcome blocks further writes to THAT offer until a successful read reconciles it:
 //     rev ≥ the rev the write would have made ⇒ it landed; anything else ⇒ a conflict, and the next write starts from that read.
 export const IDEMPOTENT_OPS = true;   // 3a c5bbce740: create / repeat idempotent per (restaurant, op_id), 7-day claim — a retry reusing the op_id is safe (pinned-ref cells)
-const KEY = 'sherpa.portal.mkt.ops';
+const KEY = (uid) => `sherpa.portal.mkt.ops.${uid}`;   // one envelope PER USER: a switch never overwrites another user's (Codex r3 P1-4)
 const S = { uid: null, ops: new Map(), unsettled: new Map() };
 
 const store = () => { try { return typeof sessionStorage !== 'undefined' ? sessionStorage : null; } catch (_) { return null; } };
 function save() {
   const st = store(); if (!st) return;
-  try { st.setItem(KEY, JSON.stringify({ uid: S.uid, ops: [...S.ops], unsettled: [...S.unsettled] })); } catch (_) { /* full / blocked: module state still holds */ }
+  if (!S.uid) return;
+  try { st.setItem(KEY(S.uid), JSON.stringify({ uid: S.uid, ops: [...S.ops], unsettled: [...S.unsettled] })); } catch (_) { /* full / blocked: module state still holds */ }
 }
 function loadFor(uid) {
   S.uid = uid; S.ops = new Map(); S.unsettled = new Map();
   const st = store(); if (!st) return;
   try {
-    const v = JSON.parse(st.getItem(KEY) || 'null');
+    const v = uid ? JSON.parse(st.getItem(KEY(uid)) || 'null') : null;
     if (v && v.uid === uid && Array.isArray(v.ops) && Array.isArray(v.unsettled)) { S.ops = new Map(v.ops); S.unsettled = new Map(v.unsettled); }
   } catch (_) { /* unreadable: start clean */ }
 }
@@ -28,6 +29,10 @@ function loadFor(uid) {
 export function forUser(uid) { if (uid !== S.uid) loadFor(uid); }
 
 export const opKey = (rid, kind, sourceId = '') => `${rid}|${kind}|${sourceId}`;
+// every completion is bound to the user it started for (Codex r3 P1-4): ticket() at the start; a mutation carrying another user's
+// ticket is a no-op (a late reply after an account switch never touches the new user's ledger)
+export const ticket = () => S.uid;
+const mine = (who) => who === undefined || who === S.uid;
 const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
 // the op_id of THIS key's operation: the pending one if a retry, else a new one (recorded before the request leaves)
 export function beginOp(k) {
@@ -37,12 +42,12 @@ export function beginOp(k) {
   S.ops.set(k, op); save();
   return op.op_id;
 }
-export function markUnknown(k) { const cur = S.ops.get(k); if (cur) { cur.unknown = true; save(); } }
-export function settleOp(k) { if (S.ops.delete(k)) save(); }   // saved, or refused (nothing landed): the next operation is a new one
+export function markUnknown(k, who) { if (!mine(who)) return; const cur = S.ops.get(k); if (cur) { cur.unknown = true; save(); } }
+export function settleOp(k, who) { if (mine(who) && S.ops.delete(k)) save(); }   // saved, or refused (nothing landed): the next operation is a new one
 export const opBlocked = (k) => { const cur = S.ops.get(k); return !!(cur && cur.unknown && !IDEMPOTENT_OPS); };
 export const pendingOpId = (k) => { const cur = S.ops.get(k); return cur ? cur.op_id : null; };
 
-export function markUnsettled(offerId, sentRev) { S.unsettled.set(offerId, { sentRev }); save(); }
+export function markUnsettled(offerId, sentRev, who) { if (!mine(who)) return; S.unsettled.set(offerId, { sentRev }); save(); }
 export const unsettled = (offerId) => S.unsettled.has(offerId);
 
 // every successful read of offers (marketing.js load, the builder's own reads) reconciles: a record carrying a pending op_id proves
@@ -51,9 +56,10 @@ export function reconcile(offers) {
   let changed = false;
   for (const [k, op] of S.ops) if (offers.some((o) => o && o.op_id === op.op_id)) { S.ops.delete(k); changed = true; }
   for (const id of [...S.unsettled.keys()]) {
-    // a read that holds the offer settles it: rev ≥ the sent rev ⇒ it landed; below ⇒ a conflict. Either way the next write starts
-    // from THIS read's rev (the server's expected_rev refuses anything staler); not in this read (another branch) ⇒ it stays
-    if (offers.some((x) => x && x.id === id)) { S.unsettled.delete(id); changed = true; }
+    // only REV PROOF settles it (Codex r3 P2-8): a read holding the offer at rev ≥ the rev the write would make. A lower rev proves
+    // nothing (the write may still be running); not in this read (another branch) ⇒ it stays
+    const o = offers.find((x) => x && x.id === id);
+    if (o && Number.isSafeInteger(o.rev) && o.rev >= S.unsettled.get(id).sentRev) { S.unsettled.delete(id); changed = true; }
   }
   if (changed) save();
   return changed;

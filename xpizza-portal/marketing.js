@@ -139,7 +139,7 @@ async function load() {
     S.reads = reads;
     S.offers = S.off ? [] : ML.unionOffers(reads.map((r) => r.offers));
     S.status = 'ready';
-    if (!S.off && OPS.reconcile(S.offers)) refreshBuilder();   // a successful read settles the pending writes it can prove (Codex r2)
+    if (!S.off && OPS.reconcile(S.offers)) refreshBuilder(S.offers);   // a successful read settles the pending writes it can prove (Codex r2)
     if (S.detail) { const o = S.offers.find((x) => x.id === S.detail); if (o) refreshDetail(o); else closeDetail(); }   // the page follows the fresh read
   } catch (err) {
     if (!g.alive() || (err && err.kind === 'obsolete')) return;

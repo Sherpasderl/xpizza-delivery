@@ -66,7 +66,7 @@ function blockedNow() {
   return !!(B.offer && OPS.unsettled(B.offer.id));
 }
 // an UNKNOWN known-id write (a save / a state move): blocked here, and in the ledger until a successful read reconciles the offer
-function unknownOn(o, ctx) { B.blocked = true; OPS.markUnsettled(o.id, o.rev + 1); stale(ctx); }
+function unknownOn(o, ctx, who) { OPS.markUnsettled(o.id, o.rev + 1, who); stale(ctx); }   // the ledger blocks it (no sticky flag: a proven reconcile unblocks — Codex r3 P2-9)
 function opened(host, ctx) {   // the shared part of every opening
   B.gen += 1; B.blocked = false; B.fx = { levels: [], stack: [] };
   B.opener = typeof document !== 'undefined' ? document.activeElement : null;
@@ -98,7 +98,22 @@ export function closeBuilder() {
   if (o && o.isConnected && typeof o.focus === 'function') o.focus();   // focus goes back to what opened the dialog
 }
 export const builderOpen = () => B.open;
-export function refreshBuilder() { if (B.open && !B.busy) render(); }   // a read reconciled the ledger: the controls follow it
+// a read reconciled the ledger: the open builder adopts the fresh record of ITS offer (a landed edit / save) and its controls follow
+export function refreshBuilder(offers = []) {
+  if (!B.open || B.busy) return;
+  const fresh = B.offer ? offers.find((o) => o && o.id === B.offer.id) : null;
+  if (fresh && fresh.rev > B.offer.rev) { B.offer = fresh; if (B.mode === 'edit') E.prev = ML.formFromOffer(fresh); B.err = null; }
+  render();
+}
+// an account switch closes every dialog and drops every cached copy (Codex r3 P1-4)
+let authUid;
+document.addEventListener('portal:auth', (e) => {
+  const uid = e && e.detail ? e.detail.uid : null;
+  if (uid === authUid) return;
+  authUid = uid;
+  if (B.open) closeBuilder();
+  R.drafts.clear();
+});
 document.addEventListener('keydown', (e) => {
   if (B.open && e.key === 'Tab') { if (B.layer && B.layer.isConnected) trapTab(e, topDialog()); return; }
   if (!B.open || e.key !== 'Escape') return;
@@ -537,7 +552,7 @@ function wordOf(c) {
   return f ? f(c) : 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.';
 }
 // create (or save the draft being continued) → the saved offer | a refusal / unknown worded on the sheet
-async function saveForm(g) {
+async function saveForm(g, who) {
   // «start today» means NOW: a start earlier than a minute from now (today's 00:00, or a dialog left open) is sent as now + 1 min —
   // the server refuses a past start (start_past)
   const soon = Math.ceil((now() + 60000) / 60000) * 60000;
@@ -552,8 +567,8 @@ async function saveForm(g) {
   // a create carries its op_id (the ledger's: a retry of the same operation reuses it — Codex r2); only a record carrying it proves it
   const k = OPS.opKey(rid, 'create'), opId = OPS.beginOp(k);
   const c = await safe(ML.settleWrite({ op: 'create', opId, sent: r.offer }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, token }), rr));
-  if (c.outcome === 'unknown') { OPS.markUnknown(k); return c; }
-  OPS.settleOp(k);   // saved or refused: that operation is over
+  if (c.outcome === 'unknown') { OPS.markUnknown(k, who); return c; }
+  OPS.settleOp(k, who);   // saved or refused: that operation is over
   // a retry answers the FIRST attempt's record (the server's replay): if the merchant changed the form since, save it onto that record
   if (c.outcome === 'saved' && !ML.authoredEqual(c.offer, r.offer)) {
     if (B.gen !== g) return { outcome: 'stale' };
@@ -563,36 +578,36 @@ async function saveForm(g) {
   return c;
 }
 // an UNKNOWN keeps every write of this opening off (a create: the ledger also keeps it off across reopen); a draft save: unsettled
-function failed(s, ctx) {
+function failed(s, ctx, who) {
   B.busy = false; B.err = wordOf(s);
   if (s.outcome !== 'unknown') return;
-  if (B.offer) unknownOn(B.offer, ctx); else { B.blocked = !OPS.IDEMPOTENT_OPS; stale(ctx); }   // idempotent server: the retry reuses the op_id
+  if (B.offer) unknownOn(B.offer, ctx, who); else { B.blocked = !OPS.IDEMPOTENT_OPS; stale(ctx); }   // idempotent server: the retry reuses the op_id
 }
 async function program() {
   if (B.busy || blockedNow()) return;
-  const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token;
+  const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token, who = OPS.ticket();
   B.busy = true; B.err = null; render();
-  const s = await saveForm(g);
+  const s = await saveForm(g, who);
   if (B.gen !== g) { stale(ctx); return; }
-  if (s.outcome !== 'saved') { failed(s, ctx); render(); return; }
+  if (s.outcome !== 'saved') { failed(s, ctx, who); render(); return; }
   B.offer = s.offer; B.mode = 'draft';
   if (s.offer.state === 'active') { closeBuilder(); ctx.toast(programmedToast(s.offer)); if (ctx.onDone) ctx.onDone(); return; }   // a replay of an operation already programmed
   const a = { op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' };
   const p = await safe(ML.settleWrite(a, () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), () => getMarketingRaw({ rid, token })));
   if (B.gen !== g) { stale(ctx); return; }
   B.busy = false;
-  if (p.outcome !== 'saved') { B.err = wordOf(p); if (p.outcome === 'unknown') unknownOn(s.offer, ctx); render(); return; }   // the draft stays saved; the sheet says why it isn't live
+  if (p.outcome !== 'saved') { B.err = wordOf(p); if (p.outcome === 'unknown') unknownOn(s.offer, ctx, who); render(); return; }   // the draft stays saved; the sheet says why it isn't live
   closeBuilder();
   ctx.toast(programmedToast(p.offer));
   ctx.onDone && ctx.onDone();
 }
 async function saveDraft() {
   if (B.busy || blockedNow()) return;
-  const g = B.gen, ctx = B.ctx;
+  const g = B.gen, ctx = B.ctx, who = OPS.ticket();
   B.busy = true; render();
-  const s = await saveForm(g);
+  const s = await saveForm(g, who);
   if (B.gen !== g) { stale(ctx); return; }
-  if (s.outcome !== 'saved') { failed(s, ctx); B.review = true; render(); return; }
+  if (s.outcome !== 'saved') { failed(s, ctx, who); B.review = true; render(); return; }
   B.busy = false;
   closeBuilder();
   ctx.toast('Borrador guardado');
@@ -711,13 +726,13 @@ async function saveEdit() {
   if (B.busy || editProblem() || blockedNow()) return;
   const r = ML.offerFromForm(B.form);
   if (!r.ok) return;
-  const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token;
+  const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token, who = OPS.ticket();
   B.busy = true; B.err = null; render();
   const a = { op: 'save', offerId: o.id, expectedRev: o.rev, sent: r.offer, prev: o };   // Codex r1 P1-3: recovery's context
   const s = await safe(ML.settleWrite(a, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }), () => getMarketingRaw({ rid, token })));
   if (B.gen !== g) { stale(ctx); return; }
   B.busy = false;
-  if (s.outcome !== 'saved') { B.err = wordOf(s); if (s.outcome === 'unknown') unknownOn(o, ctx); render(); return; }
+  if (s.outcome !== 'saved') { B.err = wordOf(s); if (s.outcome === 'unknown') unknownOn(o, ctx, who); render(); return; }
   closeBuilder();
   ctx.toast('Cambios guardados');
   ctx.onDone && ctx.onDone();
@@ -727,6 +742,7 @@ async function saveEdit() {
 // (a NEW draft, rev 1, dates cleared — offers-core marketingOfferRepeat, ENDED offers only) → save the chosen dates → publish. A copy
 // that saved but did not publish stays in «Borradores» (the sheet says why); a retry continues THAT draft, never a second repeat.
 const R = { drafts: new Map() };   // the copy a repeat made, per ledger key: a retry after close / reopen continues THAT draft
+export const _repeatState = R;    // test-only
 export function openRepeater(host, ctx, offer) {
   opened(host, ctx);
   B.mode = 'repeat'; B.offer = offer; B.nameAuto = false; B.menu = null;
@@ -768,7 +784,7 @@ function repeatSheet(w) {
 async function repeatGo() {
   if (B.busy || blockedNow()) return;
   B.busy = true; B.err = null; render();
-  const g = B.gen, src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token;
+  const g = B.gen, src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token, who = OPS.ticket();
   const live = () => B.gen === g;   // still THIS opening (not closed / reopened mid-write)
   const rr = () => getMarketingRaw({ rid, token });
   const k = OPS.opKey(rid, 'repeat', src.id);
@@ -776,7 +792,7 @@ async function repeatGo() {
     // the repeat carries its op_id (the ledger's, reused by a retry of the same operation — Codex r2); only a record carrying it proves it
     const opId = OPS.beginOp(k);
     const r1 = await safe(ML.settleWrite({ op: 'repeat', opId, sourceId: src.id }, () => offerRepeatRaw({ rid, offerId: src.id, opId, token }), rr));
-    if (r1.outcome === 'unknown') OPS.markUnknown(k); else OPS.settleOp(k);
+    if (r1.outcome === 'unknown') OPS.markUnknown(k, who); else OPS.settleOp(k, who);
     if (!live()) { stale(ctx); return; }
     if (r1.outcome !== 'saved') { B.busy = false; if (r1.outcome === 'unknown') B.blocked = !OPS.IDEMPOTENT_OPS; B.err = wordOf(r1); render(); stale(ctx); return; }
     if (r1.offer.state === 'active') { B.busy = false; closeBuilder(); ctx.toast(`Campaña programada para el ${longDate(B.form.start).replace(/ \d{4}$/, '')}`); if (ctx.onDone) ctx.onDone(); return; }   // a replay: already programmed
@@ -789,13 +805,13 @@ async function repeatGo() {
   const s = await safe(ML.settleWrite({ op: 'save', offerId: d.id, expectedRev: d.rev, sent: a.offer, prev: d },
     () => offerSaveRaw({ rid, offerId: d.id, expectedRev: d.rev, offer: a.offer, token }), rr));
   if (!live()) { stale(ctx); return; }
-  if (s.outcome !== 'saved') { B.busy = false; B.err = wordOf(s); if (s.outcome === 'unknown') unknownOn(d, ctx); else stale(ctx); render(); return; }   // the copy stays a draft
+  if (s.outcome !== 'saved') { B.busy = false; B.err = wordOf(s); if (s.outcome === 'unknown') unknownOn(d, ctx, who); else stale(ctx); render(); return; }   // the copy stays a draft
   R.drafts.set(k, s.offer);
   const p = await safe(ML.settleWrite({ op: 'state', offerId: s.offer.id, expectedRev: s.offer.rev, to: 'active', from: 'draft' },
     () => offerSetStateRaw({ rid, offerId: s.offer.id, to: 'active', expectedRev: s.offer.rev, token }), rr));
   if (!live()) { stale(ctx); return; }
   B.busy = false;
-  if (p.outcome !== 'saved') { B.err = wordOf(p); if (p.outcome === 'unknown') unknownOn(s.offer, ctx); else stale(ctx); render(); return; }
+  if (p.outcome !== 'saved') { B.err = wordOf(p); if (p.outcome === 'unknown') unknownOn(s.offer, ctx, who); else stale(ctx); render(); return; }
   R.drafts.delete(k);
   closeBuilder();
   ctx.toast(`Campaña programada para el ${longDate(B.form.start).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov»

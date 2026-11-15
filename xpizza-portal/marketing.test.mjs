@@ -600,7 +600,7 @@ const offersNamed = (b, name) => Object.values(b.fake.get('marketing_offers/tb')
 const LPS = 'L 50 en pedidos desde L 300';
 async function toReview(p) { dlg(p).querySelector('.mk5b-go').click(); await settle(); return p.host().querySelector('.mk5r-modal'); }
 
-const OPS_KEY = 'sherpa.portal.mkt.ops';
+const OPS_KEY = `sherpa.portal.mkt.ops.${OWNER}`;   // one envelope per user (Codex r3 P1-4)
 const opsStored = (p) => { try { return JSON.parse(p.w.sessionStorage.getItem(OPS_KEY) || 'null'); } catch (_) { return null; } };
 
 test('R1 a create whose reply is LOST: UNKNOWN, and the retry REUSES its op_id — 3a\'s idempotent create answers the SAME offer (one, published)', async () => {
@@ -830,4 +830,54 @@ test('O3 «Pausada por vos el …»: the date is 3a\'s paused_at — an earlier 
   assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').title, 'Pausada por vos el 9 nov', 'the row tooltip');
   await openDetail(p, 'Almuerzo');
   assert.equal(p.host().querySelector('.mk5d-strip .mk5d-stxt').textContent, 'Pausada por vos el 9 nov', 'v5 5c, exact');
+});
+
+// ═══ Codex r3 item 4 (advisor 11-14): rev-proven reconcile, the open builder follows it, an account switch isolates everything ════
+async function editCap(p, v) {
+  const capIn = rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
+  capIn.value = v; capIn.dispatchEvent(new p.w.Event('change')); await settle();
+}
+test('R10 a known-id write that NEVER landed: a read at the old rev does not clear it — «Guardar cambios» stays off until rev ≥ the sent rev', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await editCap(p, '150');
+  b.net.drop = ['marketingOfferSave']; b.net.lose = ['getMarketing'];   // never reached the server; its re-read lost ⇒ UNKNOWN
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
+  const id = Object.keys(b.fake.get('marketing_offers/tb'))[0];
+  assert.equal(stored(b, 'Almuerzo')[0].rev, 2, 'premise: nothing landed (rev 2)');
+  assert.ok(p.mods['marketing-ops']._opsState.unsettled.has(id), 'a read at rev 2 (< the sent 3) proves nothing: still unsettled');
+  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, 'no resubmit without rev proof');
+});
+test('R11 a proven reconcile unblocks the OPEN builder — with the fresh record (the edit had landed)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await editCap(p, '150');
+  b.net.lose = ['marketingOfferSave', 'getMarketing', 'getMarketing', 'getMarketing'];   // landed; its re-read and the list's two reads lost
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
+  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, 'premise: blocked');
+  p.mods['marketing-builder']._builderState.ctx.onChanged(); await settle(200);   // a successful read (rev 3 ≥ 3)
+  assert.equal(dlg(p).querySelector('.mk5b-go').disabled, false, 'the open builder is unblocked');
+  assert.equal(p.mods['marketing-builder']._builderState.offer.rev, 3, 'it now edits the reconciled record');
+});
+test('R12 an account switch isolates the ledger: A\'s late completion never touches B\'s pending operation; A\'s cached repeat copy is gone', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) };
+  p.btn('Programar oferta', sh).click(); await settle(40);
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle();
+  const OPS = p.mods['marketing-ops'];
+  const kB = OPS.opKey(RID, 'create');
+  const mine = OPS.beginOp(kB);   // B's own pending create on the same branch
+  release(); await settle(250);
+  assert.equal(OPS.pendingOpId(kB), mine, 'A\'s completion did not settle B\'s operation');
+  assert.equal(p.mods['marketing-builder']._repeatState.drafts.size, 0, 'no repeat copy carried across accounts');
 });

@@ -175,7 +175,7 @@ function errWord(c) {
 // pause / resume / end: ONE state move through settleWrite
 export async function move(kind) {
   if (D.busy || OPS.unsettled(D.offer.id)) return;
-  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token;
+  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, who = OPS.ticket();
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
   const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to, from: o.state };
@@ -183,7 +183,7 @@ export async function move(kind) {
     .catch(() => ({ outcome: 'unknown' }));
   if (!D.host || D.gen !== g) { if (ctx.onChanged) ctx.onChanged(); return; }   // bound to the view it started in
   D.busy = false;
-  if (r.outcome !== 'saved') { D.err = errWord(r); if (r.outcome === 'unknown') { OPS.markUnsettled(o.id, o.rev + 1); if (ctx.onChanged) ctx.onChanged(); } render(); return; }   // unsettled until a read reconciles it (Codex r2)
+  if (r.outcome !== 'saved') { D.err = errWord(r); if (r.outcome === 'unknown') { OPS.markUnsettled(o.id, o.rev + 1, who); if (ctx.onChanged) ctx.onChanged(); } render(); return; }   // unsettled until a read reconciles it (Codex r2)
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
