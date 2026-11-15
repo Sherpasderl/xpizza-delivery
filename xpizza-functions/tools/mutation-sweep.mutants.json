@@ -36340,7 +36340,7 @@
   "slice": "capp-push",
   "label": "a token kept on the device after sign-out",
   "file": "../customer-app/capp-push.js",
-  "from": "      write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });\n",
+  "from": "      write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });\n",
   "to": "",
   "command": [
    "node",
@@ -36436,7 +36436,7 @@
   "slice": "capp-push",
   "label": "a token the server refused still counts as registered",
   "file": "../customer-app/capp-push.js",
-  "from": "      write({ server: ok });   // a token",
+  "from": "      if (read().token === token) write({ server: ok });   // a token",
   "to": "      void ok;   // a token",
   "command": [
    "node",
@@ -36444,7 +36444,7 @@
    "../customer-app/capp-push.test.mjs"
   ],
   "kills_with": [
-   "PUSH-ACK: refused"
+   "PUSH-ACK: taken"
   ]
  },
  {
@@ -36452,15 +36452,15 @@
   "slice": "capp-push",
   "label": "sign-out leaves the token alive on the phone",
   "file": "../customer-app/capp-push.js",
-  "from": "      if (on) { try { await plugin.unregister(); } catch (_) {} }",
-  "to": "      if (on) { void 0; }",
+  "from": "        : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);",
+  "to": "        : Promise.resolve(true);",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-push.test.mjs"
   ],
   "kills_with": [
-   "PUSH-FORGET-2: the server forgets it, then the phone deletes it"
+   "PUSH-FORGET-2: the server forgets it AND the phone deletes it"
   ]
  },
  {
@@ -36468,8 +36468,8 @@
   "slice": "capp-push",
   "label": "sign-out keeps the previous person's opt-in",
   "file": "../customer-app/capp-push.js",
-  "from": "write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });",
-  "to": "write({ token: null, server: null });",
+  "from": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });",
+  "to": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX) });",
   "command": [
    "node",
    "--test",
@@ -36484,7 +36484,7 @@
   "slice": "capp-push",
   "label": "an Ajustes denial is not remembered",
   "file": "../customer-app/capp-push.js",
-  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied' });",
   "to": "if (st === 'denied' && s.state !== 'denied') void 0;",
   "command": [
    "node",
@@ -36500,7 +36500,7 @@
   "slice": "capp-push",
   "label": "allowing again in Ajustes leaves the switches dead",
   "file": "../customer-app/capp-push.js",
-  "from": "else if (st !== 'denied' && s.state === 'denied') write({ state: null });",
+  "from": "else if (st !== 'denied' && s.state === 'denied') write({ state: s.token && s.server === true ? 'granted' : null });",
   "to": "else if (st !== 'denied' && s.state === 'denied') void 0;",
   "command": [
    "node",
@@ -36621,6 +36621,70 @@
   ],
   "kills_with": [
    "PUSH-ROW: denied wins"
+  ]
+ },
+ {
+  "id": "push-21",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-2: a sign-out drops the token instead of holding it in a durable pending record",
+  "file": "../customer-app/capp-push.js",
+  "from": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX),",
+  "to": "write({ token: null, owner: null, server: null, pending: [],",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-FORGET-3: the token + its owner wait in a durable record"
+  ]
+ },
+ {
+  "id": "push-22",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-2: a refused / failed invalidation reports success",
+  "file": "../customer-app/capp-push.js",
+  "from": "return { ok: nativeOk && done.size === owed.length,",
+  "to": "return { ok: true,",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-FORGET-3: a server refusal never reports success"
+  ]
+ },
+ {
+  "id": "push-23",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-3: an OS denial drops the token (the sign-out loses its handle)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied' });",
+  "to": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-DENIAL-KEEPS: a sign-out after a denial still invalidates the token (server)"
+  ]
+ },
+ {
+  "id": "push-24",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-5: an unacknowledged register counts as registered",
+  "file": "../customer-app/capp-push.js",
+  "from": "registered: !!s.token && s.server === true",
+  "to": "registered: !!s.token && s.server !== false",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-ACK-PENDING: in flight ⇒ not registered"
   ]
  },
  {
