@@ -105,19 +105,14 @@ function scheduleOf(s) {
   return { start, end, days: [...s.days].sort((a, b) => a - b), window: win };
 }
 
-function capsOf(c) {
-  if (!exactKeys(c, ['weekly'], ['redemptions', 'spend_cents']) || typeof c.weekly !== 'boolean') return null;
-  const r = nul(c.redemptions), s = nul(c.spend_cents);
-  if (r !== null && !isInt(r, 1, 1e6)) return null;
-  if (s !== null && !(isInt(s, 100, LIMITS.cents_max) && s % 100 === 0)) return null;   // the spend cap: whole lempiras too
-  return { redemptions: r, spend_cents: s, weekly: c.weekly };
-}
-
 // The AUTHORED fields of an offer (what the builder sends) → { ok, value } | { ok:false, field, reason }. `isRid` is the location-id
 // rule (brands/brand-model isBrandId), injected so this module stays pure.
-const AUTHORED = Object.freeze(['name', 'type', 'params', 'audience', 'branches', 'schedule', 'caps']);
+// v1 has NO caps (owner 11-15: spend caps come in v2, on the payout ledger): an authored `caps` other than absent / null is REFUSED
+// (never stored, never half-enforced); a STORED record from before carries it harmlessly — ignored on read, dropped on the next save.
+const AUTHORED = Object.freeze(['name', 'type', 'params', 'audience', 'branches', 'schedule']);
 function validateAuthored(input, { isRid, stored = false }) {
-  if (!exactKeys(input, AUTHORED)) return fail('offer', 'bad_shape');
+  if (!exactKeys(input, AUTHORED, ['caps'])) return fail('offer', 'bad_shape');
+  if (!stored && input.caps !== undefined && input.caps !== null) return fail('caps', 'caps_not_supported');
   const name = nameOf(input.name);
   if (name === null) return fail('name', 'bad_name');
   if (!TYPES.includes(input.type)) return fail('type', 'bad_type');
@@ -129,9 +124,7 @@ function validateAuthored(input, { isRid, stored = false }) {
   if (!Array.isArray(b) || b.length < 1 || b.length > LIMITS.branches_max || !b.every((r) => isRid(r)) || !uniq(b)) return fail('branches', 'bad_branches');
   const schedule = scheduleOf(input.schedule);
   if (schedule === null) return fail('schedule', 'bad_schedule');
-  const caps = capsOf(input.caps);
-  if (caps === null) return fail('caps', 'bad_caps');
-  return { ok: true, value: { name, type: input.type, params, audience: input.audience, branches: [...b].sort(), schedule, caps } };
+  return { ok: true, value: { name, type: input.type, params, audience: input.audience, branches: [...b].sort(), schedule } };
 }
 
 // publish-time rules on top of the shape: a start, not in the past (one minute of clock skew)
@@ -148,7 +141,6 @@ function authoredOf(rec, { isRid }) {
   const pick = {};
   for (const k of AUTHORED) pick[k] = rec[k];
   if (isObj(pick.schedule)) pick.schedule = { days: pick.schedule.days, start: nul(pick.schedule.start), end: nul(pick.schedule.end), window: nul(pick.schedule.window) };
-  if (isObj(pick.caps)) pick.caps = { weekly: pick.caps.weekly, redemptions: nul(pick.caps.redemptions), spend_cents: nul(pick.caps.spend_cents) };
   const v = validateAuthored(pick, { isRid, stored: true });
   return v.ok ? v.value : null;
 }
@@ -163,8 +155,8 @@ function stripNulls(v) {
   return o;
 }
 
-// The LIVE-EDIT allowlist (mockup 3c «caps up only»): on an active / paused offer, only a cap RAISED (a number → a larger number or
-// none) and the end moved LATER (or removed). Anything else → the field that changed.
+// The LIVE-EDIT allowlist: on an active / paused offer, the end moved LATER (or removed), plus v5's days / window. Anything else →
+// the field that changed. (v1 has no caps — the «caps up only» rule returns with v2's caps.)
 function liveEditProblem(prev, next) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   for (const k of ['name', 'type', 'audience', 'branches']) if (!same(prev[k], next[k])) return k;
@@ -174,8 +166,6 @@ function liveEditProblem(prev, next) {
   // pre-check + mirrorActive inside each branch's transaction, tombstone-aware) and the mirror re-projects; the START stays locked
   if (ps.start !== ns.start) return 'schedule';
   if (!(ns.end === null || (ps.end !== null && ns.end >= ps.end))) return 'schedule';
-  const up = (a, b) => b === null || (a !== null && b >= a);
-  if (prev.caps.weekly !== next.caps.weekly || !up(prev.caps.redemptions, next.caps.redemptions) || !up(prev.caps.spend_cents, next.caps.spend_cents)) return 'caps';
   return null;
 }
 
@@ -197,7 +187,7 @@ function resolveCats(menu, cats) {
 }
 
 // The compact record the PRICE PATH reads — present only while state === 'active'. `name` rides for the overlap refusal's wording.
-const liveProjection = (rec, brandId) => stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule, caps: rec.caps });
+const liveProjection = (rec, brandId) => stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule });
 
 // ── the weekly overlap rule (mockup 3 «1 con cruce») ────────────────────────────────────────────────────────────────────────────
 // An offer's weekly minutes: for each day d, [d·1440 + from, d·1440 + to) where a window ending at or before its start runs past

@@ -98,7 +98,7 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
 const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
 const get = (deps, tok, rid) => C.getMarketingCore(deps, req(tok, undefined, 'GET', { rid }));
 const offer = (o = {}) => ({ name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, spend_cents: null, weekly: false }, ...o });
+  schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, ...o });   // v1: no caps (owner 11-15: offers launch without spend caps)
 const save = (deps, tok, body) => C.marketingOfferSaveCore(deps, req(tok, { rid: 'tb_centro', expected_rev: 0, ...body }));
 const move = (deps, tok, body) => C.marketingOfferSetStateCore(deps, req(tok, { rid: 'tb_centro', ...body }));
 const created = async (deps, o) => { const r = await save(deps, `t-${OWNER}`, { offer: offer(o) }); assert.strictEqual(r.status, 200, `premise: created (${JSON.stringify(r.body)})`); return r.body.offer; };
@@ -154,7 +154,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.ok(OM.OFFER_ID_RE.test(d.id), 'an opaque offer id');
       const rec = fake.get(`marketing_brand/tb/offers/${d.id}`);
       assert.deepStrictEqual(rec, { v: 1, rev: 1, name: '2 por 1 en clásicas', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } }, caps: { redemptions: 50, weekly: false },
+        schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } },
         state: 'draft', created_by: OWNER, created_at: NOW, updated_at: NOW }, 'the stored draft: exact keys, nulls absent, no price copy');
       assert.deepStrictEqual(mirrored(fake), [], 'a draft has no live mirror');
       assert.deepStrictEqual([d.status, d.state, d.rev], ['draft', 'draft', 1]);
@@ -168,27 +168,32 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ name: '   ' }, 'bad_name'],
         [{ schedule: { start: NOW + DAY, end: NOW, days: [1] } }, 'bad_schedule'],
         [{ schedule: { start: NOW + DAY, days: [1], window: { from: 600, to: 600 } } }, 'bad_schedule'],
-        [{ caps: { redemptions: 0, weekly: false } }, 'bad_caps'],
         // money (advisor 11-14): whole lempiras, positive; absent = none — never a 0 sentinel
         [{ type: 'pct', params: { pct: 10, max_cents: 0 } }, 'bad_params'],
         [{ type: 'pct', params: { pct: 10, max_cents: 5050 } }, 'bad_params'],
         [{ type: 'lps', params: { off_cents: 5050, min_cents: 30000 } }, 'bad_params'],
         [{ type: 'envio', params: { min_cents: 0 } }, 'bad_params'],
         [{ type: 'nuevos', params: { off_cents: 99 }, audience: 'new' }, 'bad_params'],
-        [{ caps: { redemptions: 5, spend_cents: 75050, weekly: false } }, 'bad_caps'],
+        // v1 caps (owner 11-15): ANY caps value but absent / null is refused — never stored, never half-enforced
+        [{ caps: { weekly: false } }, 'caps_not_supported'],
+        [{ caps: { redemptions: 50, spend_cents: null, weekly: false } }, 'caps_not_supported'],
+        [{ caps: {} }, 'caps_not_supported'],
+        [{ caps: 0 }, 'caps_not_supported'],
         [{ extra: 1 }, 'bad_shape'],
       ];
       for (const [o, reason] of bad) {
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.reason], [400, reason], `validation: ${reason} (${JSON.stringify(o)})`);
       }
+      { const z = await save(deps, `t-${OWNER}`, { offer: offer({ caps: null }) });
+        assert.deepStrictEqual([z.status, z.body.offer && 'caps' in z.body.offer, 'caps' in (fake.get(`marketing_brand/tb/offers/${z.body.offer && z.body.offer.id}`) || {})], [200, false, false], `caps: null ⇒ accepted, nothing stored (${JSON.stringify(z.body)})`); }
       const both = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], items: [K1], free_per_order: 1 } }) });
       assert.deepStrictEqual([both.status, both.body.reason], [400, 'bad_params'], 'the builder sends items OR cats, never both (items are the server\'s)');
       for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }], [{ type: 'envio', params: {} }, {}]]) {
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.offer && r.body.offer.params], [200, want], `money: ${JSON.stringify(o.params)} ⇒ stored ${JSON.stringify(want)} (absent = none)`);
       }
-      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps, exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
+      ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps absent / null only (else caps_not_supported), exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
     }
 
     // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
@@ -212,7 +217,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_sur/${r.body.offer.id}/params/items`), want, 'publish RE-RESOLVES: the new dish is in the mirror');
       CATALOG.tb_centro.push(['i_eeeeeeeeeeee', 200, 'pizzas']);   // a dish added AFTER publishing
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), want, 'frozen: a dish added after publish is NOT covered');
-      const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], caps: { redemptions: 60, spend_cents: null, weekly: false } }) });
+      const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
       assert.strictEqual(re.status, 200, `a re-save of the live category offer is allowed (${JSON.stringify(re.body)})`);
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), [...want, 'i_eeeeeeeeeeee'].sort(), '…and covers the dish added since');
       ok('publish re-resolves; frozen between; a re-save of the live offer picks up a dish added since');
@@ -230,7 +235,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([p.status, p.body.offer.state, p.body.offer.status, p.body.offer.rev], [200, 'active', 'scheduled', 2], 'publish ⇒ active, shown «scheduled» before its start');
       const rec = fake.get(`marketing_brand/tb/offers/${d.id}`);
       for (const rid of ['tb_centro', 'tb_sur']) assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/${rid}/${d.id}`), OM.liveProjection(rec, 'tb'), `the mirror of ${rid} is the record's projection`);
-      assert.deepStrictEqual(Object.keys(fake.get(`marketing_brand/tb/live/tb_centro/${d.id}`)).sort(), ['audience', 'brand_id', 'caps', 'name', 'params', 'rev', 'schedule', 'type'], 'the mirror carries no state, author or timestamps');
+      assert.deepStrictEqual(Object.keys(fake.get(`marketing_brand/tb/live/tb_centro/${d.id}`)).sort(), ['audience', 'brand_id', 'name', 'params', 'rev', 'schedule', 'type'], 'the mirror carries no state, author, timestamps or caps');
       ok('publish: active, every branch mirrored with the exact projection');
       const stale = await move(deps, `t-${OWNER}`, { offer_id: d.id, to: 'paused_owner', expected_rev: 1 });
       assert.deepStrictEqual([stale.status, stale.body], [409, { error: 'superseded', current_rev: 2 }], 'a stale rev ⇒ superseded');
@@ -272,20 +277,32 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('pause / end: the mirror goes first — a failed removal is a 503 with the record still active, never a paused offer still priced');
     }
 
-    // ── 5. the live-edit allowlist (caps up, end later) ──
+    // ── 5. the live-edit allowlist (end later; v1 has no caps) ──
     {
       const { fake, deps } = await setup();
       const a = await published(deps);
       const edit = (o, rev) => save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: rev, offer: offer(o) });
-      for (const [o, field] of [[{ name: 'Otro nombre' }, 'name'], [{ caps: { redemptions: 40, spend_cents: null, weekly: false } }, 'caps'], [{ caps: { redemptions: 50, spend_cents: 1000, weekly: false } }, 'caps'],
+      for (const [o, field] of [[{ name: 'Otro nombre' }, 'name'],
         [{ schedule: { start: NOW + DAY, end: NOW + 20 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }, 'schedule'], [{ params: { items: [K2], free_per_order: 1 } }, 'params']]) {
         const r = await edit(o, 2);
         assert.deepStrictEqual([r.status, r.body.error, r.body.field], [409, 'live_edit_not_allowed', field], `live edit of ${field} refused`);
       }
-      const up = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false }, schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } }, 2);
-      assert.deepStrictEqual([up.status, up.body.offer.rev, up.body.offer.caps.redemptions, up.body.offer.schedule.end], [200, 3, 80, null], 'caps up + no end ⇒ allowed');
+      const capped = await edit({ caps: { redemptions: 80, spend_cents: null, weekly: false } }, 2);
+      assert.deepStrictEqual([capped.status, capped.body.reason], [400, 'caps_not_supported'], 'a live edit carrying caps ⇒ 400 caps_not_supported');
+      const up = await edit({ schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } }, 2);
+      assert.deepStrictEqual([up.status, up.body.offer.rev, 'caps' in up.body.offer, up.body.offer.schedule.end], [200, 3, false, null], 'a caps-less live edit (no end) ⇒ allowed');
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`), OM.liveProjection(fake.get(`marketing_brand/tb/offers/${a.id}`), 'tb'), 'the mirror follows the edit');
-      ok('live edit: only a raised cap and a later end; the mirror follows');
+      ok('live edit: only a later end (caps refused); the mirror follows');
+      // an OLD record that still HAS caps (stored before v1 dropped them): read, projected and edited caps-less — never refused, never carried
+      const recPath = `marketing_brand/tb/offers/${a.id}`;
+      await fake.ref(`${recPath}/caps`).set({ redemptions: 50, weekly: false });
+      const pz = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 3 });
+      const rs = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 4 });
+      assert.deepStrictEqual([pz.status, rs.status, 'caps' in rs.body.offer], [200, 200, false], `an old capped record pauses / resumes; the view has no caps (${JSON.stringify([pz.body, rs.body])})`);
+      assert.ok(!('caps' in (fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`) || {})), 'the re-projected live node of an old capped record carries no caps');
+      const old = await edit({ schedule: { start: NOW + DAY, end: null, days: [5, 6], window: { from: 1200, to: 0 } } }, 5);
+      assert.deepStrictEqual([old.status, 'caps' in (fake.get(recPath) || {}), 'caps' in (fake.get(`marketing_brand/tb/live/tb_centro/${a.id}`) || {})], [200, false, false], `an old capped record edited caps-less ⇒ 200, caps dropped from the record and the mirror (${JSON.stringify(old.body)})`);
+      ok('an old record with caps: pause / resume / caps-less live edit all work; caps leave the record and never reach the mirror');
     }
 
     // ── 5b. owner-approved v5 «Editar oferta activa»: days + window MAY change on a live offer (start stays locked, end later-only);
@@ -338,7 +355,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       let edited = null; let armed = true;
       const recPath = `marketing_brand/tb/offers/${a.id}`;
       const lateDb = { ref: (p) => { const r = db.ref(p);
-        if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false; edited = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 90, spend_cents: null, weekly: false } }) }); return r.transaction(fn); } };
+        if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false; edited = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) }); return r.transaction(fn); } };
         return r; } };
       // the pause tombstones at rev 3 (pre.rev + 1), then — before its CAS — a live edit takes rev 3 and mirrors its rev-3 projection
       const p = await move({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 });
@@ -446,13 +463,13 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const entryPath = `marketing_brand/tb/live/tb_centro/${a.id}`;
       const lateDb = { ref: (p) => { const r = db.ref(p);
         if (armed && p === 'marketing_brand/tb') return { ...r, transaction: async (fn) => { armed = false;   // the OLDER edit's brand txn is about to run
-          newer = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 99, spend_cents: null, weekly: false } }) });
+          newer = await save(deps, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
           return r.transaction(fn); } };
         return r; } };
-      const older = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ caps: { redemptions: 70, spend_cents: null, weekly: false } }) });
+      const older = await save({ ...deps, db: lateDb }, `t-${OWNER}`, { offer_id: a.id, expected_rev: 2, offer: offer({ schedule: { start: NOW + DAY, end: NOW + 35 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
       assert.deepStrictEqual([older.status, older.body.error, newer && newer.status], [409, 'superseded', 200], `the newer edit wins; the older one's ONE txn sees rev 3 ⇒ superseded (${JSON.stringify([older.body, newer && newer.body])})`);
       const e = fake.get(entryPath); const rec = fake.get(`marketing_brand/tb/offers/${a.id}`);
-      assert.deepStrictEqual([rec.rev, e.rev, e.caps.redemptions], [3, 3, 99], `the older txn never overwrites the newer projection (live = the record's rev 3) (${JSON.stringify(e)})`);
+      assert.deepStrictEqual([rec.rev, e.rev, e.schedule.end], [3, 3, NOW + 40 * DAY], `the older txn never overwrites the newer projection (live = the record's rev 3) (${JSON.stringify(e)})`);
       ok('the brand txn is rev-guarded: an older edit never overwrites a newer one\'s projection');
     }
 
@@ -649,11 +666,11 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([f2.status, f2.body.error, f2.body.offer_id], [409, 'duplicate', id1], 'the same-op retry re-judges and answers the refusal (never a 200 active with no mirror)');
       assert.strictEqual(fake.get(`marketing_brand/tb/ops/${OP3}/refused/error`), 'duplicate', '…and records it on the claim');
       ok('a failed refusal write ⇒ 503; the same-op retry re-judges and records the refusal');
-      // P2-3: the replay runs BEFORE the publish validation; the start-in-future rule never applies to a LIVE edit (caps / end)
+      // P2-3: the replay runs BEFORE the publish validation; the start-in-future rule never applies to a LIVE edit (end later)
       const late = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer: pct(), op_id: OP1, program: true });
       assert.strictEqual(late.status, 200, 'a same-op retry after the start passed REPLAYS (never 400 start_past)');
-      const liveEdit = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer_id: id1, expected_rev: again.body.offer.rev, offer: pct({ caps: { redemptions: 90, spend_cents: null, weekly: false } }), program: true });
-      assert.strictEqual(liveEdit.status, 200, `program on an ALREADY LIVE offer (a caps edit after its start) is never refused start_past (${JSON.stringify(liveEdit.body)})`);
+      const liveEdit = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer_id: id1, expected_rev: again.body.offer.rev, offer: pct({ schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }), program: true });
+      assert.strictEqual(liveEdit.status, 200, `program on an ALREADY LIVE offer (an end-later edit after its start) is never refused start_past (${JSON.stringify(liveEdit.body)})`);
       ok('P2-3: replay precedes the publish validation; a live edit with program is never refused start_past');
       // P2-4: set-valued params are normalised (item order) and the DUPLICATE is judged first on every path — draft programming included
       const bogo = (items, o = {}) => offer({ name: 'Dos por uno', params: { items, free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: { from: 600, to: 720 } }, ...o });

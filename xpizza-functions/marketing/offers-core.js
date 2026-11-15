@@ -325,7 +325,8 @@ async function marketingOfferSaveCore(deps, req) {
       if (cur.rev !== body.expected_rev) return { abort: reply(409, { error: 'superseded', current_rev: cur.rev }) };
       if (cur.state === 'ended') return { abort: reply(409, { error: 'ended' }) };
       if (cur.state !== 'draft') { const p = OM.liveEditProblem(OM.authoredOf(cur, opts), value); if (p) return { abort: reply(409, { error: 'live_edit_not_allowed', field: p }) }; }
-      rec = { ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t };
+      rec = { ...cur, ...value, schedule: value.schedule, rev: cur.rev + 1, updated_at: t };
+      delete rec.caps;   // v1: an old record's caps leave on its next save
       if (program && cur.state !== 'active') { rec.state = 'active'; delete rec.paused_at; }   // update AND program in ONE write
     }
     // program: the publish validation applies to a record being PROGRAMMED (a create, a draft, a paused one) — never to a live edit

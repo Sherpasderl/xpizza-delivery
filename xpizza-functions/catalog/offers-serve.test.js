@@ -52,7 +52,7 @@ async function world({ on = true, legacy = false } = {}) {
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: (rid) => getRestaurantMenu(fs, rid) };
   return { fs, db, deps, menu };
 }
-const offer = (o = {}) => ({ name: 'Oferta', type: 'pct', params: { pct: 10 }, audience: 'all', branches: [RID], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, ...o });
+const offer = (o = {}) => ({ name: 'Oferta', type: 'pct', params: { pct: 10 }, audience: 'all', branches: [RID], schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o });
 async function live(deps, o) {
   const s = await C.marketingOfferSaveCore(deps, req({ rid: RID, expected_rev: 0, offer: offer(o) }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
