@@ -105,7 +105,27 @@ function liveJudgement(offerId, value, live) {
     && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
   return clash.length ? { error: 'overlap', with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() } : null;
 }
-const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}) });
+const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}), ...(v.offer_id ? { offer_id: v.offer_id } : {}) });
+// THE duplicate backstop (advisor 11-14, the portal's single-call Ofertas): another offer of the restaurant already programmed or active with
+// the SAME kind, params and branch set and an OVERLAPPING schedule ⇒ { error: 'duplicate', offer_id }. Judged on the WHOLE brand node (the
+// branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
+const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+function duplicateOf(all, offerId, proj, branches, schedule) {
+  const held = {};
+  for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
+    for (const [id, e] of Object.entries(isObj(m) ? m : {})) {
+      if (id === offerId || !isObj(e) || e.removed === true) continue;
+      (held[id] = held[id] || { rids: new Set(), e }).rids.add(rid);
+    }
+  }
+  const mine = new Set(branches);
+  for (const [id, h] of Object.entries(held)) {
+    const e = h.e;
+    if (e.type !== proj.type || canon(e.params) !== canon(proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
+    if (OM.schedulesOverlap(schedule, { start: e.schedule.start ?? null, end: e.schedule.end ?? null, days: e.schedule.days || [], window: e.schedule.window ?? null })) return id;
+  }
+  return null;
+}
 
 // the PRE-check (no write): refuse early, before the record moves, when a branch's live set already says no. Not the authority —
 // applyMirror re-judges inside the brand transaction.
@@ -170,7 +190,11 @@ async function applyMirror(db, brandId, offerId, rec, { alsoRids = [], tombRev =
     const rids = [...new Set([...(Array.isArray(rec.branches) ? rec.branches : []), ...alsoRids, ...held])];
     const higher = rids.some((rid) => { const e = isObj(all[rid]) ? all[rid][offerId] : null; return isObj(e) && Number.isSafeInteger(e.rev) && e.rev > rev; });
     if (higher) { d.stale = true; return undefined; }
-    if (active) for (const rid of rec.branches) { const v = liveJudgement(offerId, value, all[rid]); if (v) { d.verdict = v; d.rid = rid; return undefined; } }
+    if (active) {
+      const dup = duplicateOf(all, offerId, proj, rec.branches, value.schedule);
+      if (dup) { d.verdict = { error: 'duplicate', offer_id: dup }; d.rid = rec.branches[0]; return undefined; }
+      for (const rid of rec.branches) { const v = liveJudgement(offerId, value, all[rid]); if (v) { d.verdict = v; d.rid = rid; return undefined; } }
+    }
     const next = { ...all };
     for (const rid of rids) next[rid] = { ...(isObj(all[rid]) ? all[rid] : {}), [offerId]: active && rec.branches.includes(rid) ? proj : { removed: true, rev } };
     return next;
@@ -200,6 +224,14 @@ async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
   const r = await applyFromRecord(db, brandId, path, offerId, rec, { alsoRids: prevBranches });
   if (r.fail) return UNAVAILABLE();
   if (!r.verdict) return null;
+  if (!isObj(before)) {   // a CREATE that programmed in the same call (program: true): all or nothing — the record it made is removed (a refused txn wrote no mirror)
+    let gone = false;
+    try {
+      const tx = await db.ref(path).transaction((cur) => { gone = false; if (cur === null) return null; if (isObj(cur) && cur.rev === rec.rev) { gone = true; return null; } return undefined; });
+      gone = gone && tx && tx.committed;
+    } catch (_) { gone = false; }
+    return gone ? judgementReply(r.verdict, r.rid) : UNAVAILABLE();
+  }
   const undo = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...before, rev: cur.rev + 1, updated_at: t }; });
   if (undo.fail) return UNAVAILABLE();
   const u = await applyFromRecord(db, brandId, path, offerId, undo.rec, { alsoRids: rec.branches });
@@ -324,9 +356,11 @@ async function marketingOfferSaveCore(deps, req) {
   const { body, ctx } = h;
   const brandId = h.access.brandId;
   const creating = body.offer_id === undefined;
-  if (!creating && !OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
+  if (!creating && !(typeof body.offer_id === 'string' && OM.OFFER_ID_RE.test(body.offer_id))) return reply(400, { error: 'bad_request', field: 'offer_id' });   // a STRING first (Codex op_id r3)
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0 || (creating !== (body.expected_rev === 0))) return reply(400, { error: 'bad_request', field: 'expected_rev' });
   if (body.op_id !== undefined && (!creating || !isOpId(body.op_id))) return reply(400, { error: 'bad_request', field: 'op_id' });
+  if (body.program !== undefined && body.program !== true) return reply(400, { error: 'bad_request', field: 'program' });
+  const program = body.program === true;   // the portal's single-call Ofertas: save AND program in ONE operation (all or nothing)
   const v = OM.validateAuthored(body.offer, opts);
   if (!v.ok) return reply(400, { error: 'bad_request', field: v.field, reason: v.reason });
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
@@ -335,6 +369,7 @@ async function marketingOfferSaveCore(deps, req) {
   if (dish.fail) return dish.fail;
   const value = dish.value;
   const t = now();
+  if (program) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }); }
   let offerId = creating ? newOfferId() : body.offer_id;
   if (creating && body.op_id !== undefined) {   // idempotent create: the claimed id; a repeat answers the offer it already made
     let c;
@@ -354,7 +389,7 @@ async function marketingOfferSaveCore(deps, req) {
   let prevRec = null;
   if (!creating) {   // an active / paused offer: the live-edit allowlist is checked against the record the CAS will see
     try { prevRec = await val(db, `${offersPath(brandId)}/${offerId}`); } catch (_) { return UNAVAILABLE(); }
-    if (isObj(prevRec) && (prevRec.state === 'active' || prevRec.state === 'paused_owner')) {
+    if (isObj(prevRec) && (program || prevRec.state === 'active' || prevRec.state === 'paused_owner')) {
       const live = await liveProblem(deps, brandId, offerId, value);   // a later end CAN create an overlap: the same judgement as a publish
       if (live) return live;
     }
@@ -362,7 +397,7 @@ async function marketingOfferSaveCore(deps, req) {
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, body.expected_rev, (cur, d) => {
     if (cur === null) {
       d.why = 'write';
-      return OM.stripNulls({ v: 1, rev: 1, ...value, state: 'draft', created_by: ctx.uid, created_at: t, updated_at: t });
+      return OM.stripNulls({ v: 1, rev: 1, ...value, state: program ? 'active' : 'draft', created_by: ctx.uid, created_at: t, updated_at: t });
     }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
     if (cur.state === 'ended') { d.why = 'ended'; return undefined; }
@@ -371,7 +406,9 @@ async function marketingOfferSaveCore(deps, req) {
       if (p) { d.why = 'live_edit_not_allowed'; d.field = p; return undefined; }
     }
     d.why = 'write';
-    return OM.stripNulls({ ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t });
+    const next = { ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t };
+    if (program && cur.state !== 'active') { next.state = 'active'; delete next.paused_at; }   // update AND program in ONE CAS
+    return OM.stripNulls(next);
   });
   if (w.fail) {
     if (creating && body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }   // the concurrent twin won the create-only write
@@ -391,7 +428,7 @@ async function marketingOfferSetStateCore(deps, req) {
   if (h.fail) return h.fail;
   const { body, ctx } = h;
   const brandId = h.access.brandId;
-  if (!OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
+  if (!(typeof body.offer_id === 'string' && OM.OFFER_ID_RE.test(body.offer_id))) return reply(400, { error: 'bad_request', field: 'offer_id' });
   if (!['active', 'paused_owner', 'ended'].includes(body.to)) return reply(400, { error: 'bad_request', field: 'to' });
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 1) return reply(400, { error: 'bad_request', field: 'expected_rev' });
   const path = `${offersPath(brandId)}/${body.offer_id}`;
@@ -443,11 +480,17 @@ async function marketingOfferRepeatCore(deps, req) {
   if (h.fail) return h.fail;
   const { body, ctx } = h;
   const brandId = h.access.brandId;
-  if (!OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
+  // the source: `source_id` (the single-call contract) or `offer_id` (today's) — exactly one
+  if ((body.source_id === undefined) === (body.offer_id === undefined)) return reply(400, { error: 'bad_request', field: 'source_id' });
+  const sourceId = body.source_id !== undefined ? body.source_id : body.offer_id;
+  if (!(typeof sourceId === 'string' && OM.OFFER_ID_RE.test(sourceId))) return reply(400, { error: 'bad_request', field: 'source_id' });   // a STRING first: never an array persisted as source_id (Codex op_id r3)
   if (body.op_id !== undefined && !isOpId(body.op_id)) return reply(400, { error: 'bad_request', field: 'op_id' });
+  if (body.program !== undefined && body.program !== true) return reply(400, { error: 'bad_request', field: 'program' });
+  const program = body.program === true;   // copy + dates + program in ONE operation (all or nothing)
+  if (program !== (body.schedule !== undefined)) return reply(400, { error: 'bad_request', field: 'schedule' });
   let all;
   try { all = (await val(db, offersPath(brandId))) || {}; } catch (_) { return UNAVAILABLE(); }
-  const src = isObj(all) ? all[body.offer_id] : null;
+  const src = isObj(all) ? all[sourceId] : null;
   if (src == null) return reply(404, { error: 'not_found' });
   if (!OM.recordOk(src, opts)) return reply(409, { error: 'current_malformed' });
   const t = now();
@@ -458,23 +501,34 @@ async function marketingOfferRepeatCore(deps, req) {
   let offerId = newOfferId();
   if (body.op_id !== undefined) {   // idempotent repeat (see claimOp), bound to its SOURCE — a replay comes BEFORE the capacity check (P2-4)
     let c;
-    try { c = await claimOp(db, brandId, body.op_id, 'repeat', t, body.offer_id); } catch (_) { return UNAVAILABLE(); }
+    try { c = await claimOp(db, brandId, body.op_id, 'repeat', t, sourceId); } catch (_) { return UNAVAILABLE(); }
     if (!c) return UNAVAILABLE();
     if (c.conflict) return OP_CONFLICT();
     offerId = c.offerId;
     if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
   }
-  const prune = endedToPrune(all, t).filter((id) => id !== body.offer_id);   // never the offer being repeated
+  const prune = endedToPrune(all, t).filter((id) => id !== sourceId);   // never the offer being repeated
   if (Object.keys(all).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
-  const draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
+  let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
+  if (program) {   // the new dates, validated as a publish; a category offer is re-resolved (frozen from here)
+    const sc = isObj(body.schedule) ? body.schedule : {};
+    if (Object.keys(sc).some((k) => k !== 'start' && k !== 'end') || !Number.isSafeInteger(sc.start) || !(sc.end === undefined || sc.end === null || (Number.isSafeInteger(sc.end) && sc.end > sc.start))) return reply(400, { error: 'bad_request', field: 'schedule' });
+    draft = { ...value, schedule: { ...value.schedule, start: sc.start, end: sc.end === undefined ? null : sc.end } };
+    const pub = OM.validatePublishable(draft, t);
+    if (!pub.ok) return reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason });
+    const dish = await resolveDishes(deps, draft);
+    if (dish.fail) return dish.fail;
+    draft = dish.value;
+  }
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, 0, (cur, d) => {
     d.why = 'write';
-    return OM.stripNulls({ v: 1, rev: 1, ...draft, state: 'draft', repeated_from: body.offer_id, created_by: ctx.uid, created_at: t, updated_at: t });
+    return OM.stripNulls({ v: 1, rev: 1, ...draft, state: program ? 'active' : 'draft', repeated_from: sourceId, created_by: ctx.uid, created_at: t, updated_at: t });
   });
   if (w.fail) {
     if (body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }
     return w.fail;
   }
+  if (program) { const m = await settleMirrors(db, brandId, `${offersPath(brandId)}/${offerId}`, offerId, w.rec, null, t); if (m) return m; }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
