@@ -85,6 +85,7 @@
   "photo.js",
   "photos-b-fold.mjs",
   "platform-notice.test.mjs",
+  "portal-calendar.js",
   "portal-fonts.css",
   "portal-fonts.test.mjs",
   "portal-logic.js",
@@ -201,8 +202,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "d9e5548af139a47daab44ac039e1f5c868051b5bc0097de5f002ecf9458f62d4",
-   "bytes": 173101
+   "sha256": "f0fbd07934bd5a91fea5915e537a85957858bc34b92894f532769b0da8859436",
+   "bytes": 177560
   }
  },
  "diff_aid": {
@@ -833,6 +834,96 @@
     "",
     ".btn:hover",
     "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".cal-band",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".cal-d",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-d",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-d:disabled",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".cal-d:hover .cal-ring",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".cal-nav",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-nav",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-nav:hover",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".cal-on .cal-ring",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-pop",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".cal-pop",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-select",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".cal-select",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".cal-tdot",
+    "background",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".cal-wk span",
+    "color",
     "var(--mute2)"
    ],
    [
@@ -5409,6 +5500,36 @@
    ],
    [
     "",
+    ".vd-cerr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".vd-dpbtn",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-dpbtn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-dpbtn:focus-visible,.vd-dpbtn[aria-expanded=\"true\"]",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".vd-dpbtn:hover",
+    "border-color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".vd-figs",
     "background",
     "var(--board-2)"
@@ -5418,6 +5539,12 @@
     ".vd-fill",
     "background",
     "var(--green)"
+   ],
+   [
+    "",
+    ".vd-flab",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -5502,6 +5629,12 @@
     ".vd-opt:hover",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-ph",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",

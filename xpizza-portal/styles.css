@@ -1927,3 +1927,45 @@
   }
   @media(prefers-reduced-motion:reduce){.vd-sk{animation:none}.vd-body{transition:none}}
   .vd-pill,.vd-opt,.vd-lnk{cursor:pointer}   /* V1's clicked controls — single-compound rules */
+  /* ── «Ventas» V2 · «Personalizado»: the Desde / Hasta fields (vd-*) + THE portal calendar (portal-calendar.js, cal-*: one picker for
+     the portal — the Ofertas builder adopts it when the branches meet). The delta's final cascade; the range band, the ring and the
+     today dot are real elements (no colour on a pseudo-element). ── */
+  .vd-prange{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+  .vd-fld{display:flex;flex-direction:column;gap:7px;min-width:150px;flex:0 1 220px}
+  .vd-flab{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+  .vd-dp{position:relative;min-width:0}
+  .vd-dpbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;padding:11px 13px;background:var(--board-2);border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:500;color:var(--ink);text-align:left;cursor:pointer;font-family:inherit;line-height:1.3;transition:border-color .15s}
+  .vd-dpbtn:hover{border-color:var(--mute2)}
+  .vd-dpbtn:focus-visible,.vd-dpbtn[aria-expanded="true"]{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--tint2)}
+  .vd-dpv{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  .vd-ph{color:var(--mute2)}
+  .vd-dpbtn svg{width:16px;height:16px;stroke:var(--mute);fill:none;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .vd-cerr{flex-basis:100%;font-size:13px;color:var(--red-text);line-height:1.45}
+  .cal-pop{position:absolute;z-index:45;top:calc(100% + 6px);left:0;width:min(336px,calc(100vw - 32px));padding:14px 14px 12px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:6px;color:var(--ink)}
+  .cal-hd{display:flex;align-items:center;gap:4px}
+  .cal-nav{width:36px;height:36px;border:none;background:none;border-radius:50%;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex:none;font-family:inherit}
+  .cal-nav svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .cal-nav:hover{background:var(--line2)}
+  .cal-nav:disabled{opacity:.35;cursor:default}
+  .cal-sels{flex:1;display:flex;justify-content:center;gap:2px;min-width:0}
+  .cal-selw{position:relative;display:inline-flex;align-items:center;min-width:0}
+  .cal-select{appearance:none;-webkit-appearance:none;border:none;background:none;font-family:inherit;font-size:14px;font-weight:700;color:var(--ink);padding:7px 26px 7px 10px;border-radius:9px;cursor:pointer;min-height:36px;letter-spacing:-.01em;max-width:100%;line-height:1.3}
+  .cal-selw svg{position:absolute;right:8px;top:50%;width:14px;height:14px;margin-top:-7px;stroke:var(--mute);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .cal-wk,.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+  .cal-grid{row-gap:2px}
+  .cal-wk span{height:28px;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:650;color:var(--mute2);letter-spacing:.02em}
+  .cal-d{position:relative;height:44px;min-width:40px;border:none;background:none;padding:0;font-family:inherit;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+  .cal-band{position:absolute;left:0;right:0;top:6px;height:32px;background:var(--card-2)}
+  .cal-rs .cal-band{left:50%}
+  .cal-re .cal-band{right:50%}
+  .cal-ring{position:absolute;top:2px;left:50%;width:40px;height:40px;margin-left:-20px;border-radius:50%;border:1.5px solid transparent}
+  .cal-num{position:relative;line-height:1}
+  .cal-d:hover .cal-ring{background:var(--line2)}
+  .cal-hov{position:relative}   /* the hovered end of a range: the band shows it (a second ring colour would cross the hover rule) */
+  .cal-on{font-weight:700}
+  .cal-on .cal-ring{border-color:var(--ink)}
+  .cal-tdot{position:absolute;left:50%;bottom:6px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--mute)}
+  .cal-d:disabled{color:var(--mute2);opacity:.5;cursor:default}
+  .cal-inr,.cal-lead{position:relative}
+  @media(max-width:920px){.vd-fld{flex:1 1 140px}}
+  .vd-dpbtn,.cal-nav,.cal-select,.cal-d{cursor:pointer}   /* V2's clicked controls — single-compound rules */

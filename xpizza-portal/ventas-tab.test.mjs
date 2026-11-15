@@ -51,12 +51,12 @@ test('V1 frame 0 · «Todas», 14 days: «Ventas» + the shipped lede; the pills
   assert.equal(t.q('.vd-more'), null, '🔴 «Ver más detalle» ABSENT until V3');
 });
 
-test('V1 frame 3 · the period menu: the four presets (no «Personalizado» until V2), the chosen one marked; «Hoy» ⇒ hour buckets and the day in words', async () => {
+test('V1 frame 3 · the period menu: the five presets, the chosen one marked; «Hoy» ⇒ hour buckets and the day in words', async () => {
   const t = await tab();
   t.q('.vd-pill').click(); await settle();
   const opts = t.qa('.vd-menu.vd-show .vd-opt');
-  assert.deepEqual(opts.map((o) => t.text(o)), ['Hoy', 'Últimos 7 días', 'Últimos 14 días', 'Últimos 30 días'], '🔴 «Personalizado» ABSENT until V2');
-  assert.deepEqual(opts.map((o) => o.getAttribute('aria-selected')), ['false', 'false', 'true', 'false']);
+  assert.deepEqual(opts.map((o) => t.text(o)), ['Hoy', 'Últimos 7 días', 'Últimos 14 días', 'Últimos 30 días', 'Personalizado'], 'exactly the map\'s presets (Q2), «Personalizado» last (V2)');
+  assert.deepEqual(opts.map((o) => o.getAttribute('aria-selected')), ['false', 'false', 'true', 'false', 'false']);
   assert.ok(opts[2].querySelector('.vd-seldot'), 'the chosen mark is a real element');
   opts[0].click(); await settle(100);
   assert.equal(t.text(t.q('.vd-pill')), 'Hoy');
@@ -125,4 +125,78 @@ test('V1 frame 7b · a period change keeps the current body, DIMMED, until the a
   await settle(100);
   assert.ok(!t.q('.vd-body').classList.contains('vd-dim'));
   assert.equal(t.qa('.vd-xl span').length, 7, 'swapped in place');
+});
+
+// ═══ V2 · «Personalizado» (frame 4): Desde / Hasta on the portal calendar; the body untouched until a valid pair ═══════════════════
+const choose = async (t, label) => { t.q('.vd-pill').click(); await settle(); t.qa('.vd-menu.vd-show .vd-opt').find((o) => t.text(o) === label).click(); await settle(60); };
+const openCal = async (t, which) => { t.qa('.vd-dpbtn')[which === 'from' ? 0 : 1].click(); await settle(); return t.q('.cal-pop'); };
+const dayBtn = (pop, n) => [...pop.querySelectorAll('.cal-d')].find((b) => b.querySelector('.cal-num').textContent === String(n));
+test('V2 frame 4 · «Personalizado»: the pill says so, the label states the bounds, Desde / Hasta appear empty — the body below is UNTOUCHED (no request, no dimming)', async () => {
+  const t = await tab();
+  const before = t.stats().length;
+  const figsBefore = figs(t);
+  await choose(t, 'Personalizado');
+  assert.equal(t.text(t.q('.vd-pill')), 'Personalizado');
+  assert.equal(t.text(t.q('.vd-rl')), 'Elegí las fechas · hasta dos años, hasta hoy');
+  assert.deepEqual(t.qa('.vd-fld > .vd-flab').map((x) => t.text(x)), ['Desde', 'Hasta']);
+  assert.deepEqual(t.qa('.vd-dpv').map((x) => [t.text(x), x.classList.contains('vd-ph')]), [['Elegí una fecha', true], ['Elegí una fecha', true]]);
+  assert.equal(t.stats().length, before, 'no request');
+  assert.ok(!t.q('.vd-body').classList.contains('vd-dim'), 'no dimming');
+  assert.deepEqual(figs(t), figsBefore, 'the body below is untouched');
+});
+test('V2 the portal calendar: Sunday-first, Spanish, ‹ month ▾ year ▾ ›, today dotted, days after today inert; Hasta: days before Desde inert, the range painted while hovering', async () => {
+  const t = await tab();
+  await choose(t, 'Personalizado');
+  let pop = await openCal(t, 'from');
+  assert.equal(pop.getAttribute('role'), 'dialog');
+  assert.deepEqual([...pop.querySelectorAll('.cal-wk span')].map((x) => x.textContent), ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá']);
+  assert.deepEqual([...pop.querySelectorAll('.cal-select')].map((x) => x.selectedOptions[0].textContent), ['Noviembre', '2026'], 'opens on today\'s month');
+  assert.ok(dayBtn(pop, 12).querySelector('.cal-tdot'), 'today is dotted');
+  assert.equal(dayBtn(pop, 13).disabled, true, 'max = today');
+  assert.equal(dayBtn(pop, 12).disabled, false);
+  assert.equal(pop.querySelectorAll('.cal-grid > .cal-lead').length, 0, '1 nov 2026 is a Sunday: no lead cells');
+  pop.querySelectorAll('.cal-nav')[0].click(); await settle();
+  pop = t.q('.cal-pop');
+  assert.deepEqual([...pop.querySelectorAll('.cal-select')].map((x) => x.selectedOptions[0].textContent), ['Octubre', '2026']);
+  assert.equal(pop.querySelectorAll('.cal-grid > .cal-lead').length, 4, '1 oct 2026 is a Thursday');
+  dayBtn(pop, 1).click(); await settle();
+  assert.equal(t.q('.cal-pop'), null, 'a pick closes it');
+  assert.equal(t.text(t.qa('.vd-dpv')[0]), 'jue 1 oct 2026');
+  pop = await openCal(t, 'to');
+  assert.deepEqual([...pop.querySelectorAll('.cal-select')].map((x) => x.selectedOptions[0].textContent), ['Octubre', '2026'], 'Hasta opens on Desde\'s month');
+  dayBtn(pop, 31).dispatchEvent(new t.win.MouseEvent('mouseover', { bubbles: true })); await settle();
+  pop = t.q('.cal-pop');
+  assert.ok(dayBtn(pop, 1).classList.contains('cal-rs') && dayBtn(pop, 31).classList.contains('cal-re') && dayBtn(pop, 15).classList.contains('cal-inr'), 'the range painted while hovering');
+});
+test('V2 a valid pair: ONE request for it, the pill reads the range («1 – 11 nov»), the label adds the year; the body swaps', async () => {
+  const t = await tab();
+  await choose(t, 'Personalizado');
+  const before = t.stats().length;
+  let pop = await openCal(t, 'from');
+  dayBtn(pop, 1).click(); await settle();
+  assert.equal(t.stats().length, before, 'one date is no request');
+  pop = await openCal(t, 'to');
+  dayBtn(pop, 11).click(); await settle(120);
+  assert.equal(t.stats().length, before + 1, 'ONE request, only once both dates are valid');
+  const q = t.stats().at(-1).query;
+  assert.deepEqual([q.from, q.to], ['2026-11-01', '2026-11-11']);
+  assert.equal(t.text(t.q('.vd-pill')), '1 – 11 nov', 'this year: no year on the pill');
+  assert.equal(t.text(t.q('.vd-rl')), '1 – 11 nov 2026');
+  assert.equal(t.text(t.q('.vd-h2')), 'Ventas por día');
+});
+test('V2 a pair longer than two years: the shipped line under the fields, NO request, the body untouched', async () => {
+  const t = await tab();
+  await choose(t, 'Personalizado');
+  const before = t.stats().length;
+  const V = t.V;
+  V._ventasTabState.custom = { from: '2024-01-01', to: null };   // the calendar's year select reaches back past two years
+  V._render();
+  let pop = await openCal(t, 'to');   // opens on Desde's month (ene 2024): walk the selects to nov 2026
+  const [ms, ys] = pop.querySelectorAll('.cal-select');
+  ys.value = '2026'; ys.dispatchEvent(new t.win.Event('change')); await settle();
+  t.q('.cal-pop').querySelectorAll('.cal-select')[0].value = '10'; t.q('.cal-pop').querySelectorAll('.cal-select')[0].dispatchEvent(new t.win.Event('change')); await settle();
+  void ms;
+  dayBtn(t.q('.cal-pop'), 12).click(); await settle(80);   // 12 nov 2026
+  assert.equal(t.text(t.q('.vd-cerr')), 'Ese período no es válido · Elegí otras fechas', 'the shipped copy (ventasMessage BadRequest)');
+  assert.equal(t.stats().length, before, 'no request');
 });

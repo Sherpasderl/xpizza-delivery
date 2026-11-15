@@ -2,22 +2,34 @@
 // owner-APPROVED 11-14; Nav B: the page IS «Ventas», the shipped lede kept — advisor Q-V1). DOM over rend-logic.js (the model) and
 // rend-data.js (ONE call per load — «Todas» = the server-merged multi read; the session cache paints first with its OWN freshness,
 // then a silent revalidate). ventas.js keeps its nav / auth / restaurant handling and hands the page here (its fold layer).
-// ABSENT until their slices: «Personalizado» (V2 — the period menu offers the four presets) and «Ver más detalle» (V3).
+// V2 «Personalizado» (frame 4): Desde / Hasta on THE portal calendar (portal-calendar.js); the body untouched until a valid pair.
+// ABSENT until its slice: «Ver más detalle» (V3).
 import { el, svg } from './ops-dom.js';
 import { getSalesStats, getSalesStatsMulti, getMyBranches } from './api.js';
-import { todayHN } from './ventas-logic.js';
+import { todayHN, validateCustom, ventasMessage } from './ventas-logic.js';
+import { calendarPopover } from './portal-calendar.js';
 import * as RL from './rend-logic.js';
 import * as RD from './rend-data.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const DOWN = 'M6 9l6 6 6-6', CHART = 'M4 19V5M4 19h16M8 15l4-5 3 3 5-6';
-const PRESETS = RL.REND_PRESETS.filter(([id]) => id !== 'custom');   // V2 adds «Personalizado»
+const DOWN = 'M6 9l6 6 6-6', CHART = 'M4 19V5M4 19h16M8 15l4-5 3 3 5-6', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
+const WD3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const longDay = (d) => `${WD3[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()]} ${+d.slice(8, 10)} ${MON3[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
+const BOUNDS = 'Elegí las fechas · hasta dos años, hasta hoy';
+const BAD = ventasMessage('BadRequest');   // the shipped line: [«Ese período no es válido», «Elegí otras fechas.»]
+const BAD_LINE = `${BAD[0]} · ${String(BAD[1]).replace(/\.$/, '')}`;
+const PRESETS = RL.REND_PRESETS;   // Hoy · 7 · 14 · 30 · Personalizado (Q2)
 const API = { getSalesStats, getSalesStatsMulti };
 const S = { host: null, ctx: null, gen: 0, preset: RL.REND_DEFAULT_PRESET, branch: 'all', branches: [], menu: null,
-  status: 'loading', body: null, freshAt: null, dim: false, failed: null, cache: null };
+  status: 'loading', body: null, freshAt: null, dim: false, failed: null, cache: null, custom: { from: null, to: null }, cal: null, cerr: '' };
 const now = () => (S.ctx && S.ctx.now ? S.ctx.now() : Date.now());
 const today = () => todayHN(now());
-const range = () => RL.rendRangeFor(S.preset, today());
+// the requested range: a preset's, or a VALID custom pair (else null — nothing is requested)
+function range() {
+  if (S.preset !== 'custom') return RL.rendRangeFor(S.preset, today());
+  const v = S.custom.from && S.custom.to ? validateCustom(S.custom.from, S.custom.to, today()) : null;
+  return v && v.ok ? v.range : null;
+}
 const rids = () => (S.branch === 'all' ? S.branches.map((b) => b.rid) : [S.branch]);
 
 // ctx: { uid, rid, name, token, now? } — the page's restaurant (the owner proof ventas.js holds)
@@ -46,6 +58,7 @@ async function load() {
   if (!S.host) return;
   const g = S.gen;
   const r = range();
+  if (!r) { render(); return; }   // «Personalizado» without a valid pair: nothing is requested, the body untouched
   if (S.body) S.dim = true; else S.status = 'loading';
   render();
   await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, compare: 'none', token: S.ctx.token, api: API, cache: S.cache, now, ui: {
@@ -56,16 +69,62 @@ async function load() {
 }
 function pick(kind, v) {
   S.menu = null;
-  if (kind === 'preset' && v !== S.preset) { S.preset = v; S.gen += 1; load(); return; }
+  if (kind === 'preset' && v === 'custom' && S.preset !== 'custom') { S.preset = 'custom'; S.custom = { from: null, to: null }; S.cerr = ''; S.cal = null; render(); return; }
+  if (kind === 'preset' && v !== S.preset) { S.preset = v; S.cerr = ''; S.cal = null; S.gen += 1; load(); return; }
   if (kind === 'branch' && v !== S.branch) { S.branch = v; S.gen += 1; load(); return; }
   render();
 }
 document.addEventListener('click', (e) => {
-  if (!S.host || !S.menu) return;
-  if (e.target && e.target.closest && e.target.closest('.vd-kebab')) return;
-  S.menu = null; render();
+  if (!S.host || (!S.menu && !S.cal)) return;
+  if (e.target && e.target.closest && (e.target.closest('.vd-kebab') || e.target.closest('.vd-dp'))) return;
+  S.menu = null; S.cal = null; render();
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.host && S.menu) { S.menu = null; render(); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.host && (S.menu || S.cal)) { S.menu = null; S.cal = null; render(); } });
+// a day picked on the calendar: a valid pair loads; a pair past two years says the shipped line (no request)
+function pickDate(which, d) {
+  S.cal = null;
+  if (which === 'from') { S.custom.from = d; if (S.custom.to && S.custom.to < d) S.custom.to = null; }
+  else S.custom.to = d;
+  S.cerr = '';
+  if (S.custom.from && S.custom.to) {
+    const v = validateCustom(S.custom.from, S.custom.to, today());
+    if (!v.ok) { S.cerr = BAD_LINE; render(); return; }
+    S.gen += 1; load(); return;
+  }
+  render();
+}
+function openCal(which) {
+  if (S.cal && S.cal.which === which) { S.cal = null; render(); return; }
+  const base = (which === 'to' && S.custom.from) || S.custom[which] || today();
+  S.cal = { which, y: +base.slice(0, 4), m: +base.slice(5, 7) - 1, hover: null };
+  S.menu = null; render();
+}
+function dateRange() {
+  const t = today(), y = +t.slice(0, 4);
+  const box = el('div', 'vd-prange');
+  for (const [which, label] of [['from', 'Desde'], ['to', 'Hasta']]) {
+    const fld = el('div', 'vd-fld'); fld.append(el('span', 'vd-flab', label));
+    const dp = el('div', 'vd-dp');
+    const v = S.custom[which];
+    const b = el('button', 'vd-dpbtn'); b.type = 'button'; b.setAttribute('aria-haspopup', 'dialog'); b.setAttribute('aria-expanded', S.cal && S.cal.which === which ? 'true' : 'false');
+    b.append(el('span', v ? 'vd-dpv' : 'vd-dpv vd-ph', v ? longDay(v) : 'Elegí una fecha'), svg(CAL));
+    b.addEventListener('click', () => openCal(which));
+    dp.append(b);
+    if (S.cal && S.cal.which === which) {
+      const c = S.cal;
+      const min = which === 'to' && S.custom.from ? S.custom.from : `${y - 2}-01-01`;
+      const st = { y: c.y, m: c.m, min, max: t, today: t, sel: v, from: S.custom.from, to: which === 'to' ? null : S.custom.to, hover: which === 'to' ? c.hover : null, years: [y - 2, y - 1, y] };
+      dp.append(calendarPopover(st, {
+        nav: (dir) => { c.m += dir; if (c.m < 0) { c.m = 11; c.y -= 1; } if (c.m > 11) { c.m = 0; c.y += 1; } render(); },
+        month: (m) => { c.m = m; render(); }, year: (yy) => { c.y = yy; render(); },
+        pick: (d) => pickDate(which, d), hover: which === 'to' ? (d) => { if (c.hover !== d) { c.hover = d; render(); } } : null,
+      }, which === 'from' ? 'Elegir la fecha de inicio' : 'Elegir la fecha de fin'));
+    }
+    fld.append(dp); box.append(fld);
+  }
+  if (S.cerr) { const e = el('p', 'vd-cerr', S.cerr); e.setAttribute('role', 'alert'); box.append(e); }
+  return box;
+}
 
 // ── render ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 function render() {
@@ -76,6 +135,7 @@ function render() {
   t.append(h1, el('p', 'lede', `Cómo se está vendiendo ${name && name !== '—' ? name : 'tu local'} en el período que elijas.`));   // the shipped lede (Q-V1)
   top.append(t);
   const out = [top, filters()];
+  if (S.preset === 'custom') out.push(dateRange());
   const body = el('div', `vd-body${S.dim ? ' vd-dim' : ''}`);
   const st = S.status;
   body.append(figures(st));
@@ -112,7 +172,7 @@ function filters() {
     const cur = opts.find(([v]) => v === S.branch) || opts[0];
     f.append(pill('br', cur[1], S.branch !== 'all', opts, S.branch, (v) => pick('branch', v)));
   }
-  f.append(el('span', 'vd-rl', RL.rangeWords(range())));
+  f.append(el('span', 'vd-rl', range() ? RL.rangeWords(range()) : BOUNDS));
   return f;
 }
 function figures(st) {
@@ -129,13 +189,13 @@ function chartCard(body, loading) {
   const m = loading ? null : RL.chartModel(body, { range: S.range || range(), nowMs: now() });
   const c = el('div', 'vd-card');
   const hd = el('div', 'vd-cardhead'); const d = el('div');
-  d.append(el('h2', 'vd-h2', loading ? RL.chartModel({}, { range: range(), nowMs: now() }).title : m.title));
+  d.append(el('h2', 'vd-h2', loading ? RL.chartModel({}, { range: range() || S.range, nowMs: now() }).title : m.title));
   const fr = el('div', 'vd-fresh');
   if (loading) fr.append(el('span', 'vd-sk vd-skfresh')); else fr.textContent = RL.freshWords(body, { fetchedAt: S.freshAt || now(), nowMs: now() }) || '';
   d.append(fr); hd.append(d); c.append(hd);
   const wrap = el('div', 'vd-chartwrap');
   const s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 'vd-chart'); s.setAttribute('role', 'img');
-  s.setAttribute('aria-label', `${m ? m.title : 'Ventas'}, ${RL.rangeWords(range())}`);
+  s.setAttribute('aria-label', `${m ? m.title : 'Ventas'}, ${RL.rangeWords(S.range || range())}`);
   wrap.append(s, el('div', 'vd-tip'));
   c.append(wrap, el('div', 'vd-xl'));
   const note = !loading && body ? RL.missingNote(body.missing_days) : '';
@@ -250,3 +310,4 @@ function drawChart(s, m) {
   s.onmouseleave = () => { if (tip) tip.classList.remove('vd-tipshow'); cross.classList.remove('vd-crosson'); };
 }
 export const _ventasTabState = S;   // test-only
+export const _render = () => render();   // test-only
