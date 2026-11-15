@@ -202,8 +202,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "f0fbd07934bd5a91fea5915e537a85957858bc34b92894f532769b0da8859436",
-   "bytes": 177560
+   "sha256": "54571541999d45758d935e11cc8aba3bc344d720fba126dfe58d7ddc141ef0d3",
+   "bytes": 181684
   }
  },
  "diff_aid": {
@@ -5494,6 +5494,30 @@
    ],
    [
     "",
+    ".vd-back",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-back",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-back:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-back:hover",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".vd-card",
     "background",
     "var(--card)"
@@ -5503,6 +5527,12 @@
     ".vd-cerr",
     "color",
     "var(--red-text)"
+   ],
+   [
+    "",
+    ".vd-cov",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -5548,7 +5578,43 @@
    ],
    [
     "",
+    ".vd-foot",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".vd-fresh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-hc i",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vd-hc",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-hcap",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-hd",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-hh",
     "color",
     "var(--mute2)"
    ],
@@ -5557,6 +5623,36 @@
     ".vd-kl",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ks",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-ks.vd-down",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ks.vd-up",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".vd-kvl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-kvv small",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -5575,6 +5671,24 @@
     ".vd-menu",
     "background",
     "var(--card)"
+   ],
+   [
+    "",
+    ".vd-more",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-more",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-more:hover",
+    "color",
+    "var(--accent)"
    ],
    [
     "",
@@ -5629,6 +5743,18 @@
     ".vd-opt:hover",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-payl span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-peak",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -5698,6 +5824,24 @@
    ],
    [
     "",
+    ".vd-seg1",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vd-seg2",
+    "background",
+    "var(--mint-line)"
+   ],
+   [
+    "",
+    ".vd-seg3",
+    "background",
+    "var(--line)"
+   ],
+   [
+    "",
     ".vd-seldot",
     "background",
     "var(--ink)"
@@ -5707,6 +5851,18 @@
     ".vd-sk",
     "background",
     "var(--line2)"
+   ],
+   [
+    "",
+    ".vd-softp",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-split",
+    "background",
+    "var(--board-2)"
    ],
    [
     "",

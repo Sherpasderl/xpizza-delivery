@@ -48,7 +48,7 @@ test('V1 frame 0 · «Todas», 14 days: «Ventas» + the shipped lede; the pills
   assert.ok(t.qa('.vd-row:not(.vd-rowh)').length >= 1);
   assert.equal(t.stats().length, 1, 'ONE stats call');
   assert.deepEqual([t.stats()[0].query.restaurantIds, t.stats()[0].query.restaurantId], ['r_a,r_b', undefined], '«Todas» = the server-merged multi read (ONE `restaurantIds` param)');
-  assert.equal(t.q('.vd-more'), null, '🔴 «Ver más detalle» ABSENT until V3');
+  assert.equal(t.text(t.q('.vd-more')), 'Ver más detalle', 'one quiet row after the products (V3)');
 });
 
 test('V1 frame 3 · the period menu: the five presets, the chosen one marked; «Hoy» ⇒ hour buckets and the day in words', async () => {
@@ -199,4 +199,55 @@ test('V2 a pair longer than two years: the shipped line under the fields, NO req
   dayBtn(t.q('.cal-pop'), 12).click(); await settle(80);   // 12 nov 2026
   assert.equal(t.text(t.q('.vd-cerr')), 'Ese período no es válido · Elegí otras fechas', 'the shipped copy (ventasMessage BadRequest)');
   assert.equal(t.stats().length, before, 'no request');
+});
+
+// ═══ V3a · «Más detalle» (frames 11 / 11b): its own page; the figures WITH the comparison; every shipped section ════════════════
+const toDetail = async (t) => { t.q('.vd-more').click(); await settle(120); };
+const kv = (t, sel) => [...t.host.querySelectorAll(`${sel} .vd-kvr`)].map((r) => [t.text(r.querySelector('.vd-kvl')), t.text(r.querySelector('.vd-kvv'))]);
+test('V3a «Ver más detalle» opens a page of its own: «Ventas» back, «Más detalle» + its lede, the SAME pills and range; ONE request with the comparison', async () => {
+  const t = await tab();
+  const n = t.stats().length;
+  await toDetail(t);
+  assert.equal(t.text(t.q('.vd-back')), 'Ventas');
+  assert.equal(t.text(t.q('h1')), 'Más detalle');
+  assert.equal(t.text(t.q('.lede')), 'Lo mismo que ves en Ventas, con más contexto: comparación, canales, pagos, horas, clientes, cancelaciones y tiempos.');
+  assert.deepEqual(t.qa('.vd-pill').map((p) => t.text(p)), ['Últimos 14 días', 'Todas las sucursales'], 'the scope travels');
+  assert.equal(t.text(t.q('.vd-rl')), '30 oct – 12 nov 2026');
+  assert.equal(t.stats().length, n + 1, 'ONE request');
+  assert.equal(t.stats().at(-1).query.compare, 'previous', 'with the comparison the tab does not show');
+  t.q('.vd-back').click(); await settle(80);
+  assert.equal(t.text(t.q('h1')), 'Ventas', 'back to the tab');
+  assert.ok(t.q('.vd-card'), 'the tab as it was');
+});
+test('V3a the figures carry the comparison line (the Inicio idiom): «+35.5 % · L 310 del 30 oct al 5 nov», up in mint, down muted — from the REAL deltas', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  t.q('.vd-pill').click(); await settle(); t.qa('.vd-menu.vd-show .vd-opt')[1].click(); await settle(100);   // «Últimos 7 días»
+  await toDetail(t);
+  const ks = t.qa('.vd-fig').map((f) => [t.text(f.querySelector('.vd-kl')), t.text(f.querySelector('.vd-ks')), f.querySelector('.vd-ks').classList.contains('vd-up')]);
+  assert.deepEqual(ks[0], ['Ventas', '+35.5 % · L 310 del 30 oct al 5 nov', true]);
+  assert.deepEqual(ks[1], ['Pedidos', '+100.0 % · 1 del 30 oct al 5 nov', true]);
+  assert.equal(ks[2][2], false, 'a ticket that fell reads muted');
+  assert.match(ks[2][1], /^−\d+\.\d % · L \d+ del 30 oct al 5 nov$/, 'a true minus sign');
+});
+test('V3a every shipped section, one job each, from the REAL answer (one branch): Entrega y recogida · Forma de pago · Horas de más pedidos · Clientes · Cancelaciones · Tiempos · the footnote', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  assert.deepEqual(t.qa('.vd-dsect h2').map((h) => t.text(h)), ['Entrega y recogida', 'Forma de pago', 'Horas de más pedidos', 'Clientes', 'Cancelaciones', 'Tiempos'], 'Descargar comes in V3b');
+  assert.ok(t.q('.vd-split'), 'one segmented bar');
+  assert.ok(kv(t, '.vd-type').every(([l]) => /^(A domicilio|Para recoger) · \d+ %$/.test(l)), 'the share of ALL sales, «78 %»');
+  assert.deepEqual(t.qa('.vd-pay .vd-payl span:first-child').map((x) => t.text(x).split(' · ')[0]), ['Efectivo', 'Tarjeta al entregar', 'En línea']);
+  assert.equal(t.qa('.vd-heat .vd-hd').length, 7, 'Lun–Dom');
+  assert.match(t.text(t.q('.vd-peak')), /^pico: (lunes|martes|miércoles|jueves|viernes|sábado|domingo) \d{1,2}:00 · \d+ pedidos?$/);
+  assert.equal(t.text(t.q('.vd-hcap')), 'Pedidos por día y hora · hora de Honduras · el período sumado.', 'Q-V3b');
+  assert.deepEqual(kv(t, '.vd-cust').map(([l]) => l), ['Nuevos', 'Recurrentes']);
+  assert.deepEqual(kv(t, '.vd-canc').map(([l]) => l), ['Tasa de cancelación', 'Canceladas', 'Reembolsadas', 'Reembolso pendiente']);
+  assert.deepEqual(kv(t, '.vd-times').map(([l]) => l), ['Preparación', 'Entrega']);
+  assert.match(t.text(t.q('.vd-foot')), /^Una venta se cuenta cuando el pedido se registra \(efectivo o tarjeta al entregar\) o cuando el pago en línea se confirma, en el día en que se sirve\. Los últimos 7 días se recalculan cada noche\. Actualizado: (en vivo|hoy, \d{1,2}:\d{2} [ap]\. m\.)\.?/, 'the shipped footnote + its stamp (Q-V3c)');
+});
+test('V3a «Todas»: Clientes says «Por sucursal» (the multi read omits customers) and offers to pick one — the branch menu opens', async () => {
+  const t = await tab();
+  await toDetail(t);
+  assert.equal(t.text(t.q('.vd-cust .vd-softp span')), 'Por sucursal. Elegí una sucursal arriba para ver clientes nuevos y recurrentes.');
+  [...t.host.querySelectorAll('.vd-cust .vd-lnk')].find((b) => t.text(b) === 'Elegir sucursal').click(); await settle();
+  assert.ok(t.q('.vd-menu.vd-show'), 'the branch menu opens');
 });

@@ -3,7 +3,8 @@
 // rend-data.js (ONE call per load — «Todas» = the server-merged multi read; the session cache paints first with its OWN freshness,
 // then a silent revalidate). ventas.js keeps its nav / auth / restaurant handling and hands the page here (its fold layer).
 // V2 «Personalizado» (frame 4): Desde / Hasta on THE portal calendar (portal-calendar.js); the body untouched until a valid pair.
-// ABSENT until its slice: «Ver más detalle» (V3).
+// V3a «Más detalle» (frames 11 / 11b): its own page — «Ventas» back, the same pills, the figures WITH the comparison, every shipped
+// section. ABSENT until V3b: «Descargar».
 import { el, svg } from './ops-dom.js';
 import { getSalesStats, getSalesStatsMulti, getMyBranches } from './api.js';
 import { todayHN, validateCustom, ventasMessage } from './ventas-logic.js';
@@ -12,7 +13,7 @@ import * as RL from './rend-logic.js';
 import * as RD from './rend-data.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const DOWN = 'M6 9l6 6 6-6', CHART = 'M4 19V5M4 19h16M8 15l4-5 3 3 5-6', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
+const BACK = 'M15 18l-6-6 6-6', CHEV = 'M9 6l6 6-6 6', DOWN = 'M6 9l6 6 6-6', CHART = 'M4 19V5M4 19h16M8 15l4-5 3 3 5-6', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
 const WD3 = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'], MON3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const longDay = (d) => `${WD3[new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).getUTCDay()]} ${+d.slice(8, 10)} ${MON3[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`;
 const BOUNDS = 'Elegí las fechas · hasta dos años, hasta hoy';
@@ -21,7 +22,7 @@ const BAD_LINE = `${BAD[0]} · ${String(BAD[1]).replace(/\.$/, '')}`;
 const PRESETS = RL.REND_PRESETS;   // Hoy · 7 · 14 · 30 · Personalizado (Q2)
 const API = { getSalesStats, getSalesStatsMulti };
 const S = { host: null, ctx: null, gen: 0, preset: RL.REND_DEFAULT_PRESET, branch: 'all', branches: [], menu: null,
-  status: 'loading', body: null, freshAt: null, dim: false, failed: null, cache: null, custom: { from: null, to: null }, cal: null, cerr: '' };
+  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, cache: null, custom: { from: null, to: null }, cal: null, cerr: '' };
 const now = () => (S.ctx && S.ctx.now ? S.ctx.now() : Date.now());
 const today = () => todayHN(now());
 // the requested range: a preset's, or a VALID custom pair (else null — nothing is requested)
@@ -61,7 +62,8 @@ async function load() {
   if (!r) { render(); return; }   // «Personalizado» without a valid pair: nothing is requested, the body untouched
   if (S.body) S.dim = true; else S.status = 'loading';
   render();
-  await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, compare: 'none', token: S.ctx.token, api: API, cache: S.cache, now, ui: {
+  await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
+    token: S.ctx.token, api: API, cache: S.cache, now, ui: {
     paint: ({ body, freshAt }) => { if (g !== S.gen) return; S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
     stamp: ({ freshAt }) => { if (g !== S.gen) return; S.freshAt = freshAt; S.dim = false; S.range = r; render(); },
     fail: ({ error, hasBody }) => { if (g !== S.gen) return; S.dim = false; if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; } render(); },
@@ -127,8 +129,10 @@ function dateRange() {
 }
 
 // ── render ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+function go(view) { S.view = view; S.menu = null; S.cal = null; S.gen += 1; render(); load(); if (typeof window.scrollTo === 'function') try { window.scrollTo(0, 0); } catch (_) { /* jsdom */ } }
 function render() {
   if (!S.host) return;
+  if (S.view === 'detail') { renderDetail(); return; }
   const name = (S.ctx && S.ctx.name) || (document.getElementById('shopname') && document.getElementById('shopname').textContent) || '';
   const top = el('div', 'top');
   const t = el('div'); const h1 = el('h1', null, 'Ventas'); h1.id = 'vtitle';
@@ -140,7 +144,7 @@ function render() {
   const st = S.status;
   body.append(figures(st));
   if (st === 'loading') body.append(chartCard(null, true), products(null));
-  else if (st === 'ok') body.append(chartCard(S.body, false), products(S.body));
+  else if (st === 'ok') body.append(chartCard(S.body, false), products(S.body), moreRow());
   else if (st === 'empty') body.append(emptyCard());
   else body.append(errCard());
   out.push(body);
@@ -225,6 +229,11 @@ function products(body) {
   }
   return out;
 }
+function moreRow() {   // one quiet row after the products (frame 0 note 5)
+  const b = el('button', 'vd-more'); b.type = 'button'; b.append(el('span', null, 'Ver más detalle'), svg(CHEV));
+  b.addEventListener('click', () => go('detail'));
+  return b;
+}
 function emptyCard() {
   const c = el('div', 'vd-ok'); const i = el('span', 'vd-rico'); i.append(svg(CHART));
   const t = el('div'); t.append(el('b', null, 'Sin ventas en este período'), el('span', null, 'Probá con otro período.'));   // the shipped copy
@@ -308,6 +317,80 @@ function drawChart(s, m) {
     cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.classList.add('vd-crosson');
   };
   s.onmouseleave = () => { if (tip) tip.classList.remove('vd-tipshow'); cross.classList.remove('vd-crosson'); };
+}
+// ── V3a · «Más detalle» ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+function kvRows(cls, rows) {
+  const box = el('div', `vd-kv ${cls}`);
+  for (const r of rows) {
+    const row = el('div', 'vd-kvr'); const l = el('span', 'vd-kvl'); if (r.dot) l.append(el('i', `vd-kdot vd-seg${r.dot}`)); l.append(document.createTextNode(r.label)); const v = el('b', 'vd-kvv', r.value);
+    if (r.small) v.append(el('small', null, r.small));
+    row.append(l, v); box.append(row);
+  }
+  return box;
+}
+function dsect(title, extra) { const s = el('div', 'vd-dsect'); s.append(el('h2', null, title)); if (extra) s.append(extra); return s; }
+function renderDetail() {
+  const back = el('button', 'vd-back'); back.type = 'button'; back.append(svg(BACK), el('span', null, 'Ventas'));
+  back.addEventListener('click', () => go('tab'));
+  const top = el('div', 'top'); const t = el('div');
+  t.append(el('h1', null, 'Más detalle'), el('p', 'lede', 'Lo mismo que ves en Ventas, con más contexto: comparación, canales, pagos, horas, clientes, cancelaciones y tiempos.'));
+  top.append(t);
+  const out = [back, top, filters()];
+  if (S.preset === 'custom') out.push(dateRange());
+  const body = el('div', `vd-body${S.dim ? ' vd-dim' : ''}`);
+  const st = S.status;
+  const figs = el('div', 'vd-figs');
+  const rows = st === 'loading' ? [{ label: 'Ventas', value: null }, { label: 'Pedidos', value: null }, { label: 'Ticket promedio', value: null }] : RL.detailFigures(S.body, st);
+  for (const f of rows) {
+    const fig = el('div', 'vd-fig'); const n = el('div', 'vd-kn');
+    if (f.value === null) n.append(el('span', 'vd-sk vd-skn')); else n.textContent = f.value;
+    fig.append(el('div', 'vd-kl', f.label), n);
+    if (f.cmp) fig.append(el('div', `vd-ks ${f.cmp.up ? 'vd-up' : 'vd-down'}`, f.cmp.text));
+    figs.append(fig);
+  }
+  body.append(figs);
+  if (st === 'empty') body.append(emptyCard());
+  else if (st !== 'ok' && st !== 'loading') body.append(errCard());
+  else if (st === 'ok') {
+    const m = RL.detailModel(S.body, now());
+    const two = el('div', 'vd-det2');
+    const a = el('div'); a.append(dsect('Entrega y recogida'));
+    const split = el('div', 'vd-split'); split.setAttribute('aria-hidden', 'true');
+    m.type.forEach((x, i) => { const seg = el('i', `vd-seg vd-seg${i + 1}`); seg.style.width = `${x.width}%`; split.append(seg); });
+    a.append(split, kvRows('vd-type', m.type.map((x, i) => ({ ...x, dot: i + 1 }))));
+    const p = el('div'); p.append(dsect('Forma de pago'));
+    const pays = el('div', 'vd-pays');
+    for (const x of m.pay) {
+      const r = el('div', 'vd-pay'); const l = el('div', 'vd-payl'); l.append(el('span', null, x.label), el('b', null, x.value));
+      const tr = el('div', 'vd-track'); const fl = el('div', 'vd-fill'); fl.style.width = `${x.width}%`; tr.append(fl);
+      r.append(l, tr); pays.append(r);
+    }
+    p.append(pays); two.append(a, p); body.append(two);
+    body.append(dsect('Horas de más pedidos', el('span', 'vd-peak', m.peak)));
+    const heat = el('div', 'vd-heat'); heat.setAttribute('role', 'img'); heat.setAttribute('aria-label', 'Pedidos por día y hora');
+    heat.style.gridTemplateColumns = `34px repeat(${m.hours.length}, minmax(0, 1fr))`;
+    heat.append(el('span'));
+    for (const h of m.hours) heat.append(el('span', 'vd-hh', String(h)));
+    for (const row of m.heat) {
+      heat.append(el('span', 'vd-hd', row.day));
+      for (const c of row.cells) { const cell = el('span', 'vd-hc'); cell.title = c.label; const i = el('i'); i.style.opacity = String(c.alpha.toFixed(2)); cell.append(i); heat.append(cell); }
+    }
+    body.append(heat, el('p', 'vd-hcap', m.heatCaption));
+    const three = el('div', 'vd-det3');
+    const cu = el('div', 'vd-cust'); cu.append(dsect('Clientes'));
+    if (m.customers) { cu.append(kvRows('vd-custkv', m.customers.rows)); if (m.customers.note) cu.append(el('p', 'vd-cov', m.customers.note)); }
+    else {
+      const sp = el('p', 'vd-softp'); sp.append(el('span', null, 'Por sucursal. Elegí una sucursal arriba para ver clientes nuevos y recurrentes.'));   // owner Q-A
+      const l = el('button', 'vd-lnk', 'Elegir sucursal'); l.type = 'button'; l.addEventListener('click', (e) => { e.stopPropagation(); S.menu = 'br'; render(); });
+      sp.append(l); cu.append(sp);
+    }
+    const ca = el('div', 'vd-canc'); ca.append(dsect('Cancelaciones'), kvRows('vd-canckv', m.cancellations));
+    const ti = el('div', 'vd-times'); ti.append(dsect('Tiempos'), kvRows('vd-timeskv', m.times.rows)); if (m.times.coverage) ti.append(el('p', 'vd-cov', m.times.coverage));
+    three.append(cu, ca, ti); body.append(three);
+    body.append(el('p', 'vd-foot', m.foot));
+  }
+  out.push(body);
+  S.host.replaceChildren(...out);
 }
 export const _ventasTabState = S;   // test-only
 export const _render = () => render();   // test-only

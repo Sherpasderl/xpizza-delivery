@@ -1,7 +1,7 @@
 // «Rendimiento» · Ventas — the tab's own DECISIONS (PLAN-portal-rendimiento-r0, advisor ACCEPTED 11-14), DOM-free. Its own module:
 // ventas-logic.js is byte-frozen (portalui-guards «the editor, review, render, auth and logic modules are byte-identical to the
 // base»), so the shipped page's PRESETS / rangeFor / viewModel are read from there and never edited.
-import { rangeFor, addDays, isDate, daysBetween, todayHN, isSingleDay, granularityFor, lempiras, count } from './ventas-logic.js';
+import { rangeFor, addDays, isDate, daysBetween, todayHN, isSingleDay, granularityFor, lempiras, count, heatHours } from './ventas-logic.js';
 import { clock12 } from './portal-time.js';
 
 // Q2: exactly the mockup's set (MOCKUP-portal-map s-rend :866-867), «Últimos 14 días» by default; «Ayer» / «Este mes» stay reachable
@@ -153,4 +153,67 @@ export function topProducts(body) {
   const items = ((body && body.items) || []).filter((it) => it && !it.reward && it.cents > 0).slice(0, 5);
   const top = items.length ? items[0].cents : 0;
   return items.map((it) => ({ name: it.name, qty: count(it.qty || 0), sales: lempiras(it.cents), width: top ? Math.round((it.cents / top) * 100) : 0 }));
+}
+
+// ═══ V3a · «Más detalle» (frames 11 / 11b): the comparison line + every shipped section, from the server's answer ═════════════════
+const DAYS_L_MON = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];   // the heatmap rows: Lun … Dom
+const pctSp = (p) => `${(Math.round(Math.abs(p) * 10) / 10).toFixed(1)} %`;
+const pct0Sp = (p) => `${Math.round(p)} %`;
+const spanDel = (r) => (mix(r.from) === mix(r.to) && yr(r.from) === yr(r.to) ? `del ${dnum(r.from)} al ${dm(r.to)}` : `del ${dm(r.from)} al ${dm(r.to)}`);
+// the three figures WITH the comparison (the Inicio idiom): «+8.2 % · L 91,010 del 16 al 29 oct»; up ⇒ `up` (mint), else muted
+export function detailFigures(body, state) {
+  const base = figures(body, state);
+  const c = body && body.comparison, d = (body && body.deltas) || {};
+  if (!c || !c.range || !['ok', 'empty'].includes(state)) return base.map(([label, value]) => ({ label, value, cmp: null }));
+  const ck = c.kpis || {};
+  const prev = [lempiras(ck.sales_cents || 0), count(ck.orders || 0), ck.orders > 0 ? lempiras(ck.average_paid_ticket_cents) : '—'];
+  const ps = [d.sales_pct, d.orders_pct, d.average_paid_ticket_pct];
+  return base.map(([label, value], i) => ({ label, value,
+    cmp: Number.isFinite(ps[i]) ? { text: `${ps[i] < 0 ? '−' : '+'}${pctSp(ps[i])} · ${prev[i]} ${spanDel(c.range)}`, up: ps[i] > 0 } : null }));
+}
+// the stamp the footnote ends with (Q-V3c): the shipped updatedLabel's rule on THE portal clock — «en vivo» · «hoy, 1:40 p. m.»
+export function updatedWords(body, nowMs) {
+  const days = body && Array.isArray(body.days) ? body.days : [];
+  if (days.some((x) => x && x.computed_at === 'live')) return 'en vivo';
+  const stamps = days.map((x) => x && Date.parse(x.computed_at)).filter(Number.isFinite);
+  if (!stamps.length) return null;
+  const t = Math.max(...stamps), day = todayHN(t), today = todayHN(nowMs);
+  return `${day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : dm(day)}, ${clock12(t)}`;
+}
+const FOOT = 'Una venta se cuenta cuando el pedido se registra \u0028efectivo o tarjeta al entregar) o cuando el pago en línea se confirma, en el día en que se sirve. Los últimos 7 días se recalculan cada noche.';   // the shipped footnote
+// every shipped section, worded; every share is of the SERVER's total sales (kpis.sales_cents), never of a subset
+export function detailModel(body, nowMs) {
+  const b = body || {}, k = b.kpis || {}, total = Number.isFinite(k.sales_cents) ? k.sales_cents : 0;
+  const share = (c) => (total > 0 ? Math.round((c / total) * 100) : 0);
+  const bt = b.by_type || {}, bp = b.by_payment || {};
+  const type = [['delivery', 'A domicilio'], ['pickup', 'Para recoger'], ['other', 'Otro']]
+    .filter(([t]) => t !== 'other' || ((bt.other && (bt.other.orders || bt.other.cents)) || 0) > 0)
+    .map(([t, label]) => { const x = bt[t] || {}; return { label: `${label} · ${pct0Sp(share(x.cents || 0))}`, value: lempiras(x.cents || 0), small: pedidos(x.orders || 0), width: share(x.cents || 0) }; });
+  const pay = [['cash', 'Efectivo'], ['card_delivery', 'Tarjeta al entregar'], ['online', 'En línea'], ['other', 'Otro']]
+    .filter(([m]) => m !== 'other' || ((bp.other && (bp.other.orders || bp.other.cents)) || 0) > 0)
+    .map(([m, label]) => { const c = (bp[m] && bp[m].cents) || 0; return { label: `${label} · ${pct0Sp(share(c))}`, value: lempiras(c), width: share(c) }; });
+  const hours = heatHours(b.heatmap);
+  let peak = null, pk = 0;
+  for (let w = 0; w < 7; w++) for (const h of hours) { const o = (((b.heatmap || [])[w] || [])[h] || {}).orders || 0; if (o > pk) { pk = o; peak = { w, h }; } }
+  const heat = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day, w) => ({ day,
+    cells: hours.map((h) => { const o = (((b.heatmap || [])[w] || [])[h] || {}).orders || 0; return { orders: o, alpha: o === 0 ? 0.05 : Math.min(1, 0.12 + (o / Math.max(1, pk)) * 0.88), label: `${DAYS_L_MON[w]} ${h}:00, ${pedidos(o)}` }; }) }));
+  let customers = null;
+  if (b.customers) {
+    const nw = b.customers.new || {}, rt = b.customers.returning || {};
+    const rest = Math.max(0, total - (nw.cents || 0) - (rt.cents || 0)), anon = b.customers.anonymous_orders || 0;
+    customers = { rows: [{ label: 'Nuevos', value: count(nw.customers || 0), small: `${pct0Sp(share(nw.cents || 0))} de las ventas` }, { label: 'Recurrentes', value: count(rt.customers || 0), small: `${pct0Sp(share(rt.cents || 0))} de las ventas` }],
+      note: rest > 0 ? `Sin clasificar: ${pct0Sp(share(rest))} de las ventas${anon > 0 ? ` · ${count(anon)} ${anon === 1 ? 'pedido' : 'pedidos'} sin teléfono` : ''}.` : '' };
+  }
+  const ca = b.cancellations || {};
+  const cell = (x) => `${count((x && x.orders) || 0)} · ${lempiras((x && x.cents) || 0)}`;
+  const cancellations = [{ label: 'Tasa de cancelación', value: Number.isFinite(ca.rate_pct) ? pctSp(ca.rate_pct) : '—' }, { label: 'Canceladas', value: cell(ca.cancelled) }, { label: 'Reembolsadas', value: cell(ca.refunded) }, { label: 'Reembolso pendiente', value: cell(ca.refund_pending) }];
+  const tm = b.times || {};
+  const minutes = (ms) => (Number.isFinite(ms) ? Math.round(ms / 60000) : null);
+  const trow = (label, t) => ({ label, value: t && minutes(t.avg_ms) !== null ? `${minutes(t.avg_ms)} min` : '—', small: t && t.median ? `típico ${minutes(t.median.approx_ms)}` : '' });
+  const covs = [['preparación', tm.prep], ['entrega', tm.delivery]].filter(([, t]) => t && Number.isFinite(t.coverage)).map(([l, t]) => `${l} ${pct0Sp(t.coverage)}`);
+  const stamp = updatedWords(b, nowMs);
+  const miss = missingNote(b.missing_days);
+  return { type, pay, hours, heat, peak: peak ? `pico: ${DAYS_L_MON[peak.w]} ${peak.h}:00 · ${pedidos(pk)}` : '', heatCaption: 'Pedidos por día y hora · hora de Honduras · el período sumado.',   // Q-V3b
+    customers, cancellations, times: { rows: [trow('Preparación', tm.prep), trow('Entrega', tm.delivery)], coverage: covs.length ? `Pedidos a domicilio con tiempos completos: ${covs.join(' · ')}` : '' },
+    foot: `${FOOT}${stamp ? ` Actualizado: ${stamp}.` : ''}${miss ? ` ${miss}` : ''}` };
 }
