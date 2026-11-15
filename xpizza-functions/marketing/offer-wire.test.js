@@ -211,8 +211,8 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.ok(OW.offerOf(applied.dqo) && !('offer_next' in applied.dqo), `${L}: an applied offer ⇒ no offer_next`);
     const cdb = counting(w.db); OW._resetCaches();
     w.fake.put(`marketing_usage/${Object.keys(w.live())[0]}`, { redemptions: 999, spend_cents: 99999900, orders: 999, sales_cents: 1, new_customers: 0, week: { key: '2026-W47', redemptions: 999, spend_cents: 99999900 } });
-    assert.deepStrictEqual((await quote(w, items, { db: cdb })).dqo.offer_next, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }, `${L}: a usage node never hides the next offer (v1: no caps)`);
-    assert.deepStrictEqual(cdb.reads.filter((r) => r.startsWith('marketing_usage')), [], `${L}: no usage read for offer_next`);
+    assert.deepStrictEqual((await quote(w, items, { db: cdb })).dqo.offer_next, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }, `🔴 ${L}: a usage node never hides the next offer (v1: no caps)`);
+    assert.deepStrictEqual(cdb.reads.filter((r) => r.startsWith('marketing_usage')), [], `🔴 ${L}: no usage read for offer_next`);
     const off = await xworld({ offers_enabled: false }); OW._resetCaches();   // the per-instance config cache held «on»
     assert.ok(!('offer_next' in (await quote(off, items)).dqo), `${L}: offers off ⇒ absent`);
   });
