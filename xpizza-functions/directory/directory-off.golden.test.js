@@ -47,7 +47,8 @@ async function world() {
   const s = await C.marketingOfferSaveCore(odeps, req({ rid: RIDS[0], expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: [RIDS[0]], schedule: { start: NOW - DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, type: 'pct', params: { pct: 20, max_cents: 10000 } } }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
   assert.strictEqual((await C.marketingOfferSetStateCore(odeps, req({ rid: RIDS[0], offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }))).status, 200, 'premise: published');
-  assert.ok(db.get(`marketing_live/${RIDS[0]}/${s.body.offer.id}`), 'premise: the offer sits in the mirror');
+  const id = s.body.offer.id;   // the mirror root differs by tree (base: marketing_live/{rid}; candidate: 3a's marketing_brand/{brand}/live/{rid})
+  assert.ok(db.get(`marketing_brand/xb/live/${RIDS[0]}/${id}`) || db.get(`marketing_live/${RIDS[0]}/${id}`), 'premise: the offer sits in the mirror');
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 1, config: config(false), actor: 'cli:op', now: 2 })).ok, true, 'premise: everything OFF');
   return db;
 }

@@ -3,7 +3,7 @@
 // offer flag (offerFlagOf → { offers: [{ type, pct?, off_cents?, min_cents? }] }, wired by the directory's owner). Only when platform_config/marketing.offers_enabled is on (its ONE reader);
 // off, or on any trouble, the key is ABSENT — the body, and so the ETag (public-menu.js: sha256 over rid + representation + the
 // canonical body), are byte-identical to before.
-//   SOURCE: marketing_live/{rid} — the price path's own mirror (present only while an offer is active, ≤ LIMITS.live_max). The PRICE
+//   SOURCE: marketing_brand/{identity.brand_id}/live/{rid} — the price path's own mirror (PLAN-3a-marketing-brand-root r3) (present only while an offer is active, ≤ LIMITS.live_max). The PRICE
 //   PATH stays the authority: a served offer is a hint; a paused / ended one is refused at the quote (offer_changed).
 //   SERVED: [{ type, params, schedule }] for audience 'all' offers whose schedule has not ended — public params only (pct { pct,
 //   max_cents? } · lps { off_cents, min_cents } · envio { min_cents? } · bogo { items | cats, free_per_order }; a category offer
@@ -39,10 +39,18 @@ async function readOffers(rid, deps) {
   const cfg = await CFG.readMarketingConfig(db);
   if (cfg.unavailable) throw new Error('offers_config_unavailable');
   if (cfg.offers_enabled !== true) return { on: false, live: null };
-  const live = (await db.ref(`marketing_live/${rid}`).once('value')).val();
+  // the restaurant (brand) of this branch, by THE writer's rule (brand-model brandIdOf, as access/membership resolves it): identity.brand_id
+  // wins; an UNENRICHED legacy singleton (no identity.brand_id) is its own brand when brands/{rid} says 'legacy'; else UNKNOWN ⇒ nothing
+  // served. Never derived from the rid string alone. Two leaf reads at most (brands/{rid} only when the identity leaf is absent).
+  const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();
+  const own = leaf === null ? (await db.ref(`brands/${rid}`).once('value')).val() : null;
+  const brandId = brandIdOf(rid, leaf === null ? {} : { brand_id: leaf }, own === null ? {} : { [rid]: own });
+  if (brandId === UNKNOWN) return { on: true, live: null };
+  const live = (await db.ref(`marketing_brand/${brandId}/live/${rid}`).once('value')).val();
   return { on: true, live };
 }
 const SW = require('../marketing/switch-memo');
+const { brandIdOf, UNKNOWN } = require('../brands/brand-model');
 const SM = require('./serve-memo').createServeMemo({ okTtlMs: OK_TTL_MS, failTtlMs: FAIL_TTL_MS, staleMaxMs: STALE_MAX_MS, timeoutMs: OFFERS_TIMEOUT_MS,
   timeoutError: 'offers_timeout', absentLog: 'public_menu_offers_absent', defaultRead: readOffers });
 

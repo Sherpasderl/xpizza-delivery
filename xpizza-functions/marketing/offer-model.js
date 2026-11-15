@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-marketing-server r0 §2.1 / §3.3 (advisor APPROVED 2026-11-14) — the restaurant OFFER, pure: its one shape rule, the
-// live-edit allowlist, the weekly overlap rule and the compact record the price path reads (marketing_live/{rid}/{offerId}).
+// live-edit allowlist, the weekly overlap rule and the compact record the price path reads (marketing_brand/{brandId}/live/{rid}/{offerId}).
 // Restaurant-funded (owner 11-12): no field here can express a Sherpa subsidy. Dish identity is by KEY only; never a price copy.
 // Brand-agnostic: no rid / brand literal. No PII.
 //
@@ -10,7 +10,7 @@
 
 const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);
 const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
-const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);
+const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);   // (r3: a refused program is never a record — its claim carries the refusal)
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
   cat_items_max: 100,                                // a category offer's RESOLVED dish keys (frozen at save / publish)
@@ -73,6 +73,7 @@ function paramsOf(type, p, stored = false) {
     return { items: [...p.items], free_per_order: p.free_per_order };
   }
   if (type === 'envio') {
+    if (stored && (p === undefined || p === null)) p = {};   // RTDB never stores an empty object: a STORED «sin mínimo» envío reads back params-less
     if (!exactKeys(p, [], ['min_cents'])) return null;
     const min = nul(p.min_cents);   // absent / null = no minimum order
     if (min !== null && !c(min)) return null;
@@ -168,7 +169,9 @@ function liveEditProblem(prev, next) {
   for (const k of ['name', 'type', 'audience', 'branches']) if (!same(prev[k], next[k])) return k;
   if (!same(paramsKey(prev), paramsKey(next))) return 'params';   // a category offer's resolved dishes may move (a re-save / publish re-resolves)
   const ps = prev.schedule, ns = next.schedule;
-  if (ps.start !== ns.start || !same(ps.days, ns.days) || !same(ps.window, ns.window)) return 'schedule';
+  // owner-approved v5 «Editar oferta activa»: the days and the window MAY change on a live offer — the save re-judges the overlap (the
+  // pre-check + mirrorActive inside each branch's transaction, tombstone-aware) and the mirror re-projects; the START stays locked
+  if (ps.start !== ns.start) return 'schedule';
   if (!(ns.end === null || (ps.end !== null && ns.end >= ps.end))) return 'schedule';
   const up = (a, b) => b === null || (a !== null && b >= a);
   if (prev.caps.weekly !== next.caps.weekly || !up(prev.caps.redemptions, next.caps.redemptions) || !up(prev.caps.spend_cents, next.caps.spend_cents)) return 'caps';
