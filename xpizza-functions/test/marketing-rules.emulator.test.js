@@ -1,7 +1,7 @@
 /**
  * PLAN-3a-marketing-server r0 §7 (steps 1–2) — the marketing nodes are SERVER-ONLY under the REAL database rules.
  * Run: npm run test:marketing-rules
- *   marketing_offers / marketing_live / marketing_usage / platform_config/marketing: seeded by the REAL writers on the Admin
+ *   marketing_offers / marketing_live_b / marketing_usage / platform_config/marketing: seeded by the REAL writers on the Admin
  *   (rules-off) database — the offer by the REAL offers-core, the config by the REAL config writer — then no client token of any
  *   kind (the restaurant's owner, a customer, a handheld, unauthenticated) can read or write any of them.
  * Synthetic tb_ ids only.
@@ -46,7 +46,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       offerId = s.body.offer.id;
       const p = await C.marketingOfferSetStateCore(deps, rq({ rid: 'tb_centro', offer_id: offerId, to: 'active', expected_rev: 1 }));
       assert.strictEqual(p.status, 200, 'premise: published (the live mirror exists)');
-      assert.ok((await db.ref(`marketing_live/tb_centro/${offerId}`).get()).exists(), 'premise: the mirror landed');
+      assert.ok((await db.ref(`marketing_live_b/tb/tb_centro/${offerId}`).get()).exists(), 'premise: the mirror landed');
     });
     const ctxs = [
       ['the brand OWNER', env.authenticatedContext(OWNER).database()],
@@ -54,7 +54,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       ['a HANDHELD', env.authenticatedContext(OWNER, { handheld: true }).database()],
       ['unauthenticated', env.unauthenticatedContext().database()],
     ];
-    const paths = ['marketing_offers/tb', `marketing_offers/tb/${offerId}`, 'marketing_live/tb_centro', `marketing_live/tb_centro/${offerId}`, `marketing_usage/${offerId}`, 'platform_config/marketing',
+    const paths = ['marketing_offers/tb', `marketing_offers/tb/${offerId}`, 'marketing_live_b', 'marketing_live_b/tb', 'marketing_live_b/tb/tb_centro', `marketing_live_b/tb/tb_centro/${offerId}`, `marketing_usage/${offerId}`, 'platform_config/marketing',
       'anuncio_slots/W2027-03-08', 'anuncio_bookings/tb_centro', 'anuncio_bookings/tb_centro/b_aaaaaaaaaaaa',   // step 3: the Anuncio's two nodes
       'marketing_offer_ops/tb', 'marketing_offer_ops/tb/op_kkkkkkkkkkkkkkkkkkkk'];   // the create / repeat op_id claims (idempotency)
     for (const [who, db] of ctxs) {

@@ -34,16 +34,18 @@ const OWNER = 'ownerOs01';
 const verifyIdToken = async () => ({ uid: OWNER });
 const req = (body) => ({ method: 'POST', body, get: (h) => (h === 'authorization' ? 'Bearer t' : undefined) });
 
-async function world({ on = true } = {}) {
+async function world({ on = true, legacy = false } = {}) {
   const fs = makeDb();
   await sourceRefOf(fs, RID).set(canonicalize(buildSourceFromCode(RID)));
   const { input, expected } = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'offers-serve' });
   await publishVersion(fs, RID, input, { expected });
   const menu = await getRestaurantMenu(fs, RID);
   const db = fakeDb();
-  db.set('brands/xb', { name: 'XB', active: true, locations: { [RID]: 'member' }, activation: { state: 'on', since: 1 } });
-  db.set(`restaurants/${RID}/identity`, { brand_id: 'xb', name: 'X', active: true, version: 1 });
-  assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, 'xb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@x.hn' } })).ok, true, 'premise: roster');
+  // legacy: an UNENRICHED legacy singleton (as production's two restaurants are): brands/{rid} 'legacy', NO identity.brand_id
+  const B = legacy ? RID : 'xb';
+  db.set(`brands/${B}`, { name: 'XB', active: true, locations: { [RID]: 'member' }, activation: { state: legacy ? 'legacy' : 'on', since: 1 } });
+  db.set(`restaurants/${RID}/identity`, legacy ? { name: 'X', active: true, version: 1 } : { brand_id: 'xb', name: 'X', active: true, version: 1 });
+  assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, B, { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@x.hn' } })).ok, true, 'premise: roster');
   await makeRtdbMirror(db)(RID, { version: 'v1', seq: 1, rid: RID, menu: Object.fromEntries(menu.items.map((it) => [it.key, it.price])), extras: {} });
   await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // 5f's go-live gate (32a95e405): offers ON needs the owner's marker
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
@@ -85,6 +87,28 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.strictEqual(off.etag, etagOf(RID, off.body), 'premise: the ETag is over rid + representation + the canonical body (public-menu.js)');
       assert.strictEqual(REPRESENTATION_VERSION, '1d.4', 'offers add NO representation bump (Q-A): the base→head ETag move is dish-stats\' approved 1d.3 → 1d.4 (s2b-off-golden peels it)');
       ok('OFF: the key is absent and the body + ETag are byte-identical to the undecorated menu');
+    }
+
+    // ── 1a. the branch's brand, by THE writer's rule (brand-model brandIdOf — advisor 11-14: production's restaurants are unenriched legacy
+    //        singletons): a legacy singleton with NO identity.brand_id publishes AND serves; the identity wins over a rid named like a brand ──
+    {
+      const { fs, db, deps } = await world({ legacy: true });
+      await live(deps, { name: 'Legado' });
+      assert.ok(db.get(`marketing_live_b/${RID}/${RID}`), 'premise: the REAL writer mirrored under the legacy brand (= the rid)');
+      const r = await served(fs, db);
+      assert.strictEqual(r.body.offers && r.body.offers.length, 1, 'an unenriched legacy singleton (no identity.brand_id) SERVES its live offer');
+      ok('a legacy singleton without identity.brand_id publishes AND serves (the reader resolves as the writer does)');
+    }
+    {
+      const { fs, db, deps } = await world();
+      await live(deps, { name: 'Diez' });
+      db.set(`brands/${RID}`, { name: 'Señuelo', active: true, locations: { [RID]: 'member' }, activation: { state: 'legacy', since: 1 } });
+      db.set(`marketing_live_b/${RID}/${RID}/o_${'z'.repeat(12)}`, db.get(`marketing_live_b/xb/${RID}/${Object.keys(db.get(`marketing_live_b/xb/${RID}`))[0]}`));   // a decoy under a brand named like the rid
+      db.set(`marketing_live_b/xb/${RID}`, null);
+      assert.ok(!('offers' in (await served(fs, db)).body), 'identity.brand_id WINS: the rid-named brand\'s decoy is never read');
+      db.set(`restaurants/${RID}/identity/brand_id`, 'NOT A BRAND');
+      assert.ok(!('offers' in (await served(fs, db)).body), 'a malformed identity.brand_id ⇒ nothing served (never a guess)');
+      ok('identity.brand_id wins over a rid named like a brand; a malformed one ⇒ nothing served');
     }
 
     // ── 1b. the switch turned OFF (the REAL config writer) WHILE offers are live: the mirror is never served ──
@@ -170,7 +194,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       ok('ON: exactly the all-audience live offers (not nuevos / returning / paused), public shape, no name / caps / ids; the ETag follows the body');
       // the directory flag (shape set by capp, advisor 11-14): the public AMOUNTS of the offers inside their window NOW
       const flagAt = async (t) => {   // the memo as a settled read at t; the switch by its REAL read at t
-        const d = { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live/${RID}`) }, at: t }]]), inflight: new Map(), switchState: {}, now: () => t };
+        const d = { rtdb: db, memo: new Map([[RID, { ok: true, raw: { on: true, live: db.get(`marketing_live_b/xb/${RID}`) }, at: t }]]), inflight: new Map(), switchState: {}, now: () => t };
         OS.offerFlagOf(RID, d); await Promise.all([...d.inflight.values()]);
         return OS.offerFlagOf(RID, d);
       };
@@ -209,7 +233,7 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       const first = await served(fs, db, { memo, sw });
       assert.strictEqual(first.body.offers.length, 1, 'premise: served');
       assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: id, to: 'paused_owner', expected_rev: 2 }))).status, 200);
-      { const e = db.get(`marketing_live/${RID}/${id}`) ?? null; assert.ok(e === null || e.removed === true, `paused ⇒ the PRICE PATH's mirror holds no priceable entry (absent or the pause's TOMBSTONE): never priced (${JSON.stringify(e)})`); }
+      { const e = db.get(`marketing_live_b/xb/${RID}/${id}`) ?? null; assert.ok(e === null || e.removed === true, `paused ⇒ the PRICE PATH's mirror holds no priceable entry (absent or the pause's TOMBSTONE): never priced (${JSON.stringify(e)})`); }
       const within = await quiet(() => buildPublicMenu(fs, RID, { ...base, offers: { rtdb: db, memo, inflight: new Map(), switchState: sw, now: () => NOW + 5 * 1000 } }));   // inside the switch TTL (this cell is the DATA memo's staleness)
       assert.strictEqual(within.body.offers.length, 1, 'within the 60 s memo the menu may still show it — the accepted staleness (the quote refuses)');
       const after = await served(fs, db, { memo, sw, at: NOW + 61 * 1000 });
