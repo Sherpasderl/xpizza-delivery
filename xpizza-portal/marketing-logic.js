@@ -3,7 +3,7 @@
 // params, whole-lempira money, the read model, every write's outcome, and the live_drift state. No DOM, no copy: every state is a
 // KEY the screens will word behind the SHIP GATE.
 //
-// THE SERVER (3a feat/offers-v1-no-caps-3a @ 94e6b7ae9 — marketing-logic.test.mjs runs these against the REAL cores at that ref):
+// THE SERVER (3a the asm10 offers pin 20000624d — marketing-logic.test.mjs runs these against the REAL cores at that ref):
 //   offer-model.js:10-21   TYPES pct | lps | bogo | envio | nuevos · AUDIENCES · STATES draft | active | paused_owner | ended · LIMITS
 //   offer-model.js:39-90   paramsOf — every money field is whole lempiras (a positive multiple of 100 centavos); ABSENT = none,
 //                          never a 0 sentinel. bogo: AUTHORED items XOR cats; a STORED category offer also carries its resolved items

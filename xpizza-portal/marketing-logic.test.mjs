@@ -1,5 +1,5 @@
 // Portal «Marketing» «Ofertas», the non-drawing half — marketing-logic.js + the api.js raw calls, run against 3a's REAL offer cores at
-// the PINNED ref (feat/offers-v1-no-caps-3a @ 94e6b7ae9 — the Ofertas lane's ONE pin, advisor 11-15; git-archived by ref-tree.mjs): every server reply below is the real core's,
+// the PINNED ref (the asm10 offers pin 20000624d — the Ofertas lane's ONE pin, advisor 11-15; git-archived by ref-tree.mjs): every server reply below is the real core's,
 // over production's transaction semantics, with membership by the REAL roster writer, menus by the REAL catalog mirror writer, the
 // switches by the REAL config writer. No hand-built server reply.
 // Run: node --test marketing-logic.test.mjs
