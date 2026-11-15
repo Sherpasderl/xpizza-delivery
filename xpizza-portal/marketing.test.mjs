@@ -1123,3 +1123,51 @@ test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner
   release(); await settle(200);
   assert.equal(notice(p), null, 'no banner under another account');
 });
+
+// ═══ slot 11-15 defects (advisor rulings): build EXACT to the mockup; text never crammed at 390 (16b) ═══════════════════════════
+// the mockup's own symbols (MOCKUP-portal-marketing v5 #i-tag / #i-users / #i-box), as the builder + editor rows draw them
+const I_TAG = 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z', I_USERS = 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', I_BOX = 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8';
+const rowIconPaths = (p, id) => [...rowEl(p, id).querySelectorAll('.mk5b-ico path')].map((x) => x.getAttribute('d'));
+test('D1 the row icons are the mockup\'s: Descuento = tag, Clientes = group, Productos = box — in the builder AND the editor', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'bogo');
+  assert.ok(rowIconPaths(p, 'typ').includes(I_TAG), 'builder: Descuento row = #i-tag');
+  assert.ok(rowIconPaths(p, 'aud').includes(I_USERS), 'builder: Clientes row = #i-users');
+  assert.ok(rowIconPaths(p, 'prod').includes(I_BOX), 'builder: Productos row = #i-box');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  p.btn('Campañas').click(); await settle();
+  await openEdit(p, 'Almuerzo');
+  assert.ok(rowIconPaths(p, 'typ').includes(I_TAG), 'editor: the locked Descuento row = #i-tag');
+  assert.ok(rowIconPaths(p, 'aud').includes(I_USERS), 'editor: the locked Clientes row = #i-users');
+});
+test('D2 a date never breaks across lines: each «27 nov» in the Horario summary is ONE unbreakable token; the help line wraps balanced (16b)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  const val = rowEl(p, 'sch').querySelector('.mk5b-val');
+  const toks = [...val.querySelectorAll('.mk5b-nw')].map((x) => x.textContent);
+  assert.ok(toks.length >= 2 && toks.every((t) => /^\d{1,2} [a-z]{3}( \d{4})?$/.test(t)), `every date is its own no-wrap token (${JSON.stringify(toks)})`);
+  assert.match(val.textContent, /del \d+ [a-z]{3} al \d+ [a-z]{3}/, 'the text itself is unchanged');
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  assert.match(css, /\.mk5b-nw\{white-space:nowrap\}/, 'the token rule');
+  assert.match(css, /\.mk5b-albl span\{[^}]*text-wrap:pretty/, '«Queda activa hasta que la pausés o la termines» wraps balanced (no orphan «termines»)');
+});
+// (iii) A — advisor 11-15 (derived from owner rule 16c: one line per list item): at phone width the NAME gets the row's full width
+// (line 1) and the status joins the horario on line 2; the desktop row is untouched. jsdom has no layout: this pins the RULES; the
+// 390 «a 40-character name stays on one line» is proven by the SBS fit probe (a 40-character draft in the Ofertas backend) at the slot.
+test('D3 phone list row: the name spans the full width (line 1), status + horario share line 2; the desktop row rules are byte-identical', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const before = execFileSync('git', ['show', 'HEAD:xpizza-portal/styles.css'], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const desk = (t) => t.split('\n').filter((l) => /^  \.mk5-(row|lh|c1|c2|c3)\{/.test(l));
+  assert.deepEqual(desk(css), desk(before), 'the desktop rules (2-space indent) are unchanged');
+  const phone = css.split('\n').filter((l) => /^    \.mk5-(row|c1|c2|c3)(::before)?\{/.test(l)).map((l) => l.trim());
+  assert.ok(phone.includes('.mk5-row{grid-template-columns:30px auto minmax(0,1fr);gap:4px 8px;padding:14px 0;min-height:0}'), 'phone grid: icon | status | horario');
+  assert.ok(phone.some((l) => /^\.mk5-c1\{grid-column:2\/-1;/.test(l)), 'the name spans the full width');
+  assert.ok(phone.some((l) => /^\.mk5-c2\{grid-column:2;grid-row:2;/.test(l)), 'the status on line 2');
+  assert.ok(phone.some((l) => /^\.mk5-c3\{grid-column:3;grid-row:2;/.test(l)), 'the horario beside it on line 2');
+});

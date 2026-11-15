@@ -14,8 +14,11 @@ import { focusKey, layered, trapTab, focusFirst } from './marketing-focus.js';
 
 const X = 'M6 6l12 12M18 6L6 18', DOWN = 'M6 9l6 6 6-6', CHECK = 'M5 12l5 5L20 7', CAL = 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z';
 const PREV = 'M15 18l-6-6 6-6', NEXT = 'M9 6l6 6-6 6', SPARK = 'M12 3v4M12 17v4M3 12h4M17 12h4', PLUS = 'M12 5v14M5 12h14', ARR = 'M5 12h14M13 6l6 6-6 6';
-const ROW_ICON = Object.freeze({   // v5's 1.85-stroke line icons per row (monochrome on the card circle)
-  br: ['M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6'], typ: null, prod: ['M4 7h16M4 12h16M4 17h10'], aud: ['M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0'],
+const ROW_ICON = Object.freeze({   // v5's 1.85-stroke line icons per row (monochrome on the card circle) — the mockup's own symbols: #i-building,
+  // #i-tag (Descuento), #i-box (Productos), #i-users (Clientes), #i-clock (slot 11-15: build exact, advisor)
+  br: ['M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6'], typ: ['M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z', 'M7.5 7.5h.01'],
+  prod: ['M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8'],
+  aud: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', { tag: 'circle', cx: 9, cy: 7, r: 4 }, 'M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
   sch: [{ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 7v5l3 2'], name: ['M4 20h4L19 9l-4-4L4 16z'],
 });
 const SLOTS = Object.freeze([['Almuerzo', 660, 840], ['Tarde', 840, 1080], ['Cena', 1080, 1260], ['Noche', 1260, 0], ['Todo el día', null, null], ['Personalizado', 'custom', 'custom']]);
@@ -176,7 +179,7 @@ function formCol(w) {
   if (B.mode === 'new') { const chg = el('button', 'mk5b-chg', 'Cambiar tipo'); chg.type = 'button'; chg.addEventListener('click', () => { closeBuilder(); B.ctx.onChangeType && B.ctx.onChangeType(); }); typ.append(chg); }
   const rows = el('div', 'mk5b-rows');
   rows.append(row('br', 'Sucursales', w.branchText, branchesBody()));
-  rows.append(row('typ', w.rowLabel, w.sumType, typeBody(), ICONS_OF(w.icon)));
+  rows.append(row('typ', w.rowLabel, w.sumType, typeBody()));
   if (B.form.type === 'bogo') rows.append(row('prod', 'Productos', w.prodSummary, productsBody(w)));
   if (B.form.type !== 'nuevos') rows.append(row('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''), audienceBody()));
   rows.append(row('sch', 'Horario', w.sumSched, scheduleBody(w)));
@@ -190,12 +193,16 @@ const ICONS_OF = (k) => ({ 'i-percent': ['M19 5 5 19', { tag: 'circle', cx: 6.5,
   'i-truck': ['M1 4h14v12H1zM15 9h5l3 3v4h-8z', { tag: 'circle', cx: 5.5, cy: 18.5, r: 1.8 }, { tag: 'circle', cx: 18.5, cy: 18.5, r: 1.8 }],
   'i-userplus': ['M15 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', { tag: 'circle', cx: 8, cy: 7, r: 4 }, 'M20 8v6M23 11h-6'] }[k] || [SPARK]);
 
+// a date («27 nov», «2 nov 2026») never breaks across lines: each is its own no-wrap token, the rest of the text unchanged (16b, slot 11-15)
+const DATE_TOKEN = /(\d{1,2} (?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)(?: \d{4})?)/;
+function dateSafe(text) { return String(text).split(DATE_TOKEN).filter((x) => x !== '').map((x, i, a) => (DATE_TOKEN.test(x) ? el('span', 'mk5b-nw', x) : document.createTextNode(x))); }
 function row(id, label, value, bodyNode, icon = null) {
   const open = B.row === id;
   const r = el('div', `mk5b-row${open ? ' mk5b-open' : ''}`); r.dataset.row = id;
   const h = el('button', 'mk5b-rowh'); h.type = 'button'; h.setAttribute('aria-expanded', open ? 'true' : 'false');
   const ic = el('span', 'mk5b-ico'); ic.append(svg(...(icon || ROW_ICON[id] || [SPARK])));
-  const tx = el('span', 'mk5b-txt'); tx.append(el('span', 'mk5b-rlbl', label), el('span', 'mk5b-val', value));
+  const val = el('span', 'mk5b-val'); val.append(...dateSafe(value));
+  const tx = el('span', 'mk5b-txt'); tx.append(el('span', 'mk5b-rlbl', label), val);
   const ch = el('span', 'mk5b-chev'); ch.append(svg(DOWN));
   h.append(ic, tx, ch);
   h.addEventListener('click', () => { B.row = open ? null : id; B.dp = null; render(); });
@@ -644,7 +651,7 @@ export function editFormCol(w) {
   const tt = el('span', 'mk5b-txt'); tt.append(el('span', 'mk5b-lbl', B.offer.name), el('span', 'mk5b-val', `Oferta ${st ? st.word.toLowerCase() : ''}${since ? ` · ${since}` : ''}`));
   typ.append(ti, tt);
   const rows = el('div', 'mk5b-rows');
-  rows.append(lockedRow('br', 'Sucursales', w.branchText), lockedRow('typ', w.rowLabel, w.sumType, ICONS_OF(w.icon)));
+  rows.append(lockedRow('br', 'Sucursales', w.branchText), lockedRow('typ', w.rowLabel, w.sumType));
   if (B.form.type === 'bogo') rows.append(lockedRow('prod', 'Productos', w.prodSummary));
   if (B.form.type !== 'nuevos') rows.append(lockedRow('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', '')));
   rows.append(row('sch', 'Horario', w.sumSched, editScheduleBody(w)));
