@@ -241,3 +241,53 @@ test('K-stale: a REPLACED request\'s real answer — a 503 or a 200 — calls ne
     assert.equal(cache.get(RD.cacheKey('uA', RD.scopeOf(['r_a']), OLD, 'none')), null, `K-stale (${label}): nothing cached`);
   }
 });
+
+// ═══ advisor 11-15: every «Más detalle» share group (Entrega y recogida · Forma de pago · Nuevos + Recurrentes + Sin clasificar)
+// sums to EXACTLY 100 % of the server's sales — largest remainder, never a per-row Math.round (33 + 33 + 33 = 99, 88 + 13 = 101).
+// The world: the REAL writer (stats-fixtures cashOrder) → the REAL nightly roll-up → the REAL getSalesStats core → detailModel.
+const pctOf = (s) => { const m = String(s).match(/(\d+) %/); assert.ok(m, `a «N %» in ${JSON.stringify(s)}`); return Number(m[1]); };
+const groupsOf = (m) => ({
+  type: m.type.map((t) => pctOf(t.label)),
+  pay: m.pay.map((p) => pctOf(p.label)),
+  customers: m.customers ? [...m.customers.rows.map((r) => pctOf(r.small)), m.customers.note ? pctOf(m.customers.note) : 0] : null,
+});
+const sum = (xs) => xs.reduce((a, b) => a + b, 0);
+test('SH shares: each group sums to exactly 100 % (largest remainder) — the 99 / 101 cases, ties, an even split, a single row, a 0 row, an empty day', async () => {
+  const o = (day, h, phone, cents, extra = {}) => F.cashOrder({ rid: 'r_a', pm: 'cash', now: at(day, h), phone, totalCents: cents, items: [{ name: 'Margherita 12″', qty: 1, unit: cents / 100 }], ...extra });
+  route({ serve: await world({ extra: [
+    o('2026-11-09', 12, '88880001', 10000), o('2026-11-09', 13, '88880077', 10000), o('2026-11-09', 14, '', 10000),   // thirds: returning · new · anonymous
+    o('2026-11-10', 12, '88880088', 87500), o('2026-11-10', 13, '88880099', 12500, { orderType: 'pickup' }),           // 87.5 / 12.5
+    o('2026-11-11', 12, '88880066', 20000), o('2026-11-11', 13, '88880055', 20000, { orderType: 'pickup', pm: 'card_delivery' }),   // 50 / 50
+  ] }) });
+  const day = async (d) => { const b = await getSalesStats({ rid: 'r_a', from: d, to: d, granularity: 'day', compare: 'none', token }); return { b, g: groupsOf(RL.detailModel(b, NOW)) }; };
+  // the sum FIRST in every case (the remainder hand-out's own assertion)
+  const off = [];
+  for (const d of ['2026-11-09', '2026-11-10', '2026-11-11']) {
+    const { b, g } = await day(d);
+    assert.ok(b.kpis.sales_cents > 0, `non-vacuity: ${d} has sales`);
+    for (const [k, xs] of Object.entries(g)) if (xs && sum(xs) !== 100) off.push(`${d} ${k} ${JSON.stringify(xs)} = ${sum(xs)} %`);
+  }
+  assert.deepEqual(off, [], 'SUM: every share group totals exactly 100 %');
+  {   // 11-09 — the 99 case and a three-way TIE (each 33.33…): the one leftover point goes to the first row in display order
+    const { b, g } = await day('2026-11-09');
+    assert.deepEqual([b.customers.new.cents, b.customers.returning.cents, b.customers.anonymous_orders], [10000, 10000, 1], 'premise: one new, one returning, one anonymous Sale');
+    assert.deepEqual(g.customers, [34, 33, 33], 'thirds: Nuevos 34 · Recurrentes 33 · Sin clasificar 33 (not 33 · 33 · 33 = 99)');
+    assert.deepEqual(g.type, [100, 0], 'a single non-zero row is 100 %, the empty one stays 0 %');
+  }
+  {   // 11-10 — the 101 case (87.5 / 12.5, a tie of .5 remainders): 88 · 12, not 88 · 13; a 0-cents row stays 0
+    const { b, g } = await day('2026-11-10');
+    assert.deepEqual([b.by_type.delivery.cents, b.by_type.pickup.cents], [87500, 12500], 'premise: the real by_type split');
+    assert.deepEqual(g.type, [88, 12], '87.5 / 12.5 → 88 · 12 (not 88 · 13 = 101)');
+    assert.deepEqual(g.customers, [100, 0, 0], 'all new: Nuevos 100 %, Recurrentes stays 0 %, no remainder');
+  }
+  {   // 11-11 — an even split stays exact
+    const { g } = await day('2026-11-11');
+    assert.deepEqual(g.type, [50, 50], 'an even split stays exact');
+    assert.deepEqual(g.pay.slice(0, 2), [50, 50], 'Efectivo 50 · Tarjeta al entregar 50');
+  }
+  {   // 11-07 — an empty day: every share 0 %, no NaN, no division by zero
+    const { b, g } = await day('2026-11-07');
+    assert.equal(b.kpis.sales_cents, 0, 'premise: no sales on 11-07');
+    for (const [k, xs] of Object.entries(g)) if (xs) assert.ok(xs.every((x) => x === 0), `empty day ${k}: all 0 % (${JSON.stringify(xs)})`);
+  }
+});

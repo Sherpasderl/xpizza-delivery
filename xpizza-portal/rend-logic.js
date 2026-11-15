@@ -189,17 +189,30 @@ export function updatedWords(body, nowMs) {
   return `${day === today ? 'hoy' : day === addDays(today, -1) ? 'ayer' : dm(day)}, ${clock12(t)}`;
 }
 const FOOT = 'Una venta se cuenta cuando el pedido se registra \u0028efectivo o tarjeta al entregar) o cuando el pago en línea se confirma, en el día en que se sirve. Los últimos 7 días se recalculan cada noche.';   // the shipped footnote
+// ONE group's shares of the server's total, in whole percent, that add up EXACTLY (advisor 11-15): largest remainder — floor every
+// share, then the leftover points go to the largest remainders (a tie: the row shown first). The target is the rounded share of
+// what the rows cover (100 when they cover the total). A 0-cents row stays 0; total 0 ⇒ every share 0 (no division).
+export function sharesOf(cents, total) {
+  if (!(total > 0)) return cents.map(() => 0);
+  const raw = cents.map((c) => (Math.max(0, c || 0) / total) * 100);
+  const out = raw.map((r) => Math.floor(r));
+  let left = Math.round(raw.reduce((a, r) => a + r, 0)) - out.reduce((a, x) => a + x, 0);
+  const order = raw.map((r, i) => [r - out[i], i]).filter(([f]) => f > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) { if (left <= 0) break; out[i] += 1; left -= 1; }
+  return out;
+}
 // every shipped section, worded; every share is of the SERVER's total sales (kpis.sales_cents), never of a subset
 export function detailModel(body, nowMs) {
   const b = body || {}, k = b.kpis || {}, total = Number.isFinite(k.sales_cents) ? k.sales_cents : 0;
-  const share = (c) => (total > 0 ? Math.round((c / total) * 100) : 0);
   const bt = b.by_type || {}, bp = b.by_payment || {};
-  const type = [['delivery', 'A domicilio'], ['pickup', 'Para recoger'], ['other', 'Otro']]
-    .filter(([t]) => t !== 'other' || ((bt.other && (bt.other.orders || bt.other.cents)) || 0) > 0)
-    .map(([t, label]) => { const x = bt[t] || {}; return { label: `${label} · ${pct0Sp(share(x.cents || 0))}`, value: lempiras(x.cents || 0), small: pedidos(x.orders || 0), width: share(x.cents || 0) }; });
-  const pay = [['cash', 'Efectivo'], ['card_delivery', 'Tarjeta al entregar'], ['online', 'En línea'], ['other', 'Otro']]
-    .filter(([m]) => m !== 'other' || ((bp.other && (bp.other.orders || bp.other.cents)) || 0) > 0)
-    .map(([m, label]) => { const c = (bp[m] && bp[m].cents) || 0; return { label: `${label} · ${pct0Sp(share(c))}`, value: lempiras(c), width: share(c) }; });
+  const typeRows = [['delivery', 'A domicilio'], ['pickup', 'Para recoger'], ['other', 'Otro']]
+    .filter(([t]) => t !== 'other' || ((bt.other && (bt.other.orders || bt.other.cents)) || 0) > 0);
+  const typeShares = sharesOf(typeRows.map(([t]) => (bt[t] && bt[t].cents) || 0), total);
+  const type = typeRows.map(([t, label], i) => { const x = bt[t] || {}; return { label: `${label} · ${pct0Sp(typeShares[i])}`, value: lempiras(x.cents || 0), small: pedidos(x.orders || 0), width: typeShares[i] }; });
+  const payRows = [['cash', 'Efectivo'], ['card_delivery', 'Tarjeta al entregar'], ['online', 'En línea'], ['other', 'Otro']]
+    .filter(([m]) => m !== 'other' || ((bp.other && (bp.other.orders || bp.other.cents)) || 0) > 0);
+  const payShares = sharesOf(payRows.map(([m]) => (bp[m] && bp[m].cents) || 0), total);
+  const pay = payRows.map(([m, label], i) => { const c = (bp[m] && bp[m].cents) || 0; return { label: `${label} · ${pct0Sp(payShares[i])}`, value: lempiras(c), width: payShares[i] }; });
   const hours = heatHours(b.heatmap);
   let peak = null, pk = 0;
   for (let w = 0; w < 7; w++) for (const h of hours) { const o = (((b.heatmap || [])[w] || [])[h] || {}).orders || 0; if (o > pk) { pk = o; peak = { w, h }; } }
@@ -209,8 +222,9 @@ export function detailModel(body, nowMs) {
   if (b.customers) {
     const nw = b.customers.new || {}, rt = b.customers.returning || {};
     const rest = Math.max(0, total - (nw.cents || 0) - (rt.cents || 0)), anon = b.customers.anonymous_orders || 0;
-    customers = { rows: [{ label: 'Nuevos', value: count(nw.customers || 0), small: `${pct0Sp(share(nw.cents || 0))} de las ventas` }, { label: 'Recurrentes', value: count(rt.customers || 0), small: `${pct0Sp(share(rt.cents || 0))} de las ventas` }],
-      note: rest > 0 ? `Sin clasificar: ${pct0Sp(share(rest))} de las ventas${anon > 0 ? ` · ${count(anon)} ${anon === 1 ? 'pedido' : 'pedidos'} sin teléfono` : ''}.` : '' };
+    const [sNew, sRet, sRest] = sharesOf([nw.cents || 0, rt.cents || 0, rest], total);   // ONE group: the three add up
+    customers = { rows: [{ label: 'Nuevos', value: count(nw.customers || 0), small: `${pct0Sp(sNew)} de las ventas` }, { label: 'Recurrentes', value: count(rt.customers || 0), small: `${pct0Sp(sRet)} de las ventas` }],
+      note: rest > 0 ? `Sin clasificar: ${pct0Sp(sRest)} de las ventas${anon > 0 ? ` · ${count(anon)} ${anon === 1 ? 'pedido' : 'pedidos'} sin teléfono` : ''}.` : '' };
   }
   const ca = b.cancellations || {};
   const cell = (x) => `${count((x && x.orders) || 0)} · ${lempiras((x && x.cents) || 0)}`;
