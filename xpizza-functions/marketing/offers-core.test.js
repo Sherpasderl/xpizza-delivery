@@ -675,6 +675,73 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('P2-5: the repeat\'s schedule is validated by the shared model before any claim or write');
     }
 
+    // ── 5n. Codex brand-root r1 (3 × P2) ──
+    {
+      // P2-1: a «sin mínimo» envío is stored params-less (RTDB drops {}); an identical second one is STILL a duplicate
+      const { deps } = await setup();
+      const env = () => offer({ name: 'Envío gratis', type: 'envio', params: {} });
+      const e1 = await save(deps, `t-${OWNER}`, { offer: env(), op_id: 'op_' + 'e'.repeat(20), program: true });
+      assert.strictEqual(e1.status, 200, `premise: the first no-minimum envío is programmed (${JSON.stringify(e1.body)})`);
+      const e2 = await save(deps, `t-${OWNER}`, { offer: env(), op_id: 'op_' + 'f'.repeat(20), program: true });
+      assert.deepStrictEqual([e2.status, e2.body.error, e2.body.offer_id], [409, 'duplicate', e1.body.offer.id], `a second identical no-minimum envío ⇒ 409 duplicate (stored params-less ≡ {}) (${JSON.stringify(e2.body)})`);
+      ok('Codex P2-1: two identical «sin mínimo» envíos are duplicates (params normalised through the stored rule on both sides)');
+    }
+    {
+      // P2-2a: 120 refusals over 120 days — expired claims are pruned on EVERY committing txn, refusal-only ones included
+      const { fake, deps } = await setup();
+      const pctNoEnd = (t) => offer({ name: 'Diez siempre', type: 'pct', params: { pct: 10 }, schedule: { start: t + DAY, end: null, days: [5, 6], window: { from: 1260, to: 0 } } });
+      assert.strictEqual((await save(deps, `t-${OWNER}`, { offer: pctNoEnd(NOW), program: true })).status, 200, 'premise: the live offer');
+      for (let i = 1; i <= 120; i++) {
+        const t = NOW + i * DAY;
+        const r = await save({ ...deps, now: () => t }, `t-${OWNER}`, { offer: pctNoEnd(t), op_id: `op_day${String(i).padStart(3, '0')}_${'d'.repeat(12)}`, program: true });
+        assert.deepStrictEqual([r.status, r.body.error], [409, 'duplicate'], `premise: day ${i} refused as a duplicate`);
+      }
+      const ops = Object.keys(fake.get('marketing_brand/tb/ops') || {});
+      assert.ok(ops.length <= 8, `refusal claims older than 7 days are pruned by the refusal txns themselves: ${ops.length} left (never 120)`);
+      ok('Codex P2-2a: 120 refusals over 120 days leave only the last 7 days of claims');
+      // P2-2b: a burst (day 200: every earlier claim expired) — live claims per brand are capped; past the cap ⇒ 429 too_many_pending, NOTHING written
+      const TB = NOW + 200 * DAY; const bdeps = { ...deps, now: () => TB };
+      for (let i = 0; i < C.OPS_MAX; i++) {
+        const r = await save(bdeps, `t-${OWNER}`, { offer: pctNoEnd(TB), op_id: `op_burst${String(i).padStart(4, '0')}_${'b'.repeat(10)}`, program: true });
+        if (r.status !== 409) assert.fail(`premise: burst ${i} refused as a duplicate (${JSON.stringify(r.body)})`);
+      }
+      assert.strictEqual(Object.keys(fake.get('marketing_brand/tb/ops')).length, C.OPS_MAX, 'premise: the cap is reached');
+      const before = clone(fake.get('marketing_brand/tb'));
+      const over = await save(bdeps, `t-${OWNER}`, { offer: pctNoEnd(TB), op_id: 'op_burstover_' + 'z'.repeat(10), program: true });
+      assert.deepStrictEqual([over.status, over.body.error], [429, 'too_many_pending'], `past the cap ⇒ 429 too_many_pending (${JSON.stringify(over.body)})`);
+      assert.deepStrictEqual(fake.get('marketing_brand/tb'), before, 'and nothing written');
+      const fresh = await save(bdeps, `t-${OWNER}`, { offer: offer({ name: 'Otra', type: 'pct', params: { pct: 25 }, schedule: { start: TB + DAY, end: TB + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }), op_id: 'op_burstnew_' + 'y'.repeat(10) });
+      assert.deepStrictEqual([fresh.status, fresh.body.error], [429, 'too_many_pending'], 'a NEW claimed create is refused too while the cap holds');
+      ok('Codex P2-2b: a burst is capped at OPS_MAX live claims ⇒ 429 too_many_pending, nothing written');
+    }
+    {
+      // P2-3: a lost reply, then the dish leaves the menu: the same-op retry REPLAYS (never 400 unknown_dish) — repeat AND create
+      const { fake, db, deps } = await setup();
+      const src = await published(deps, { name: 'Fuente K2', params: { items: [K2], free_per_order: 1 } });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: src.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const ROP = 'op_' + 'q'.repeat(20), COP = 'op_' + 'w'.repeat(20);
+      const rep = () => C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', source_id: src.id, op_id: ROP, program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 9 * DAY } }));
+      const r1 = await rep();
+      assert.strictEqual(r1.status, 200, `premise: repeat + program succeeded (${JSON.stringify(r1.body)})`);
+      const c1 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Crear K2', params: { items: [K2], free_per_order: 2 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: null } }), op_id: COP });
+      assert.strictEqual(c1.status, 200, 'premise: a claimed create succeeded');
+      await makeRtdbMirror(db)('tb_centro', { version: 'v2', seq: 2, rid: 'tb_centro', menu: { [K1]: 150, [K3]: 90 }, extras: {} });   // K2 leaves the menu
+      const gone = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Nuevo K2', params: { items: [K2], free_per_order: 3 } }) });
+      assert.deepStrictEqual([gone.status, gone.body.reason], [400, 'unknown_dish'], 'premise: K2 is no longer on the menu');
+      const r2 = await rep();
+      assert.deepStrictEqual([r2.status, r2.body.offer && r2.body.offer.id], [200, r1.body.offer.id], `the repeat retry REPLAYS its committed offer (never 400 unknown_dish) (${JSON.stringify(r2.body)})`);
+      const c2 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Crear K2', params: { items: [K2], free_per_order: 2 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: null } }), op_id: COP });
+      assert.deepStrictEqual([c2.status, c2.body.offer && c2.body.offer.id], [200, c1.body.offer.id], `the create retry REPLAYS too (${JSON.stringify(c2.body)})`);
+      // a NEW op_id has no claim to replay: the deferred failure answers (400 unknown_dish) and NOTHING is written (no claim, no record)
+      const pre = clone(fake.get('marketing_brand/tb'));
+      const nr = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', source_id: src.id, op_id: 'op_' + 'v'.repeat(20), program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 9 * DAY } }));
+      assert.deepStrictEqual([nr.status, nr.body.reason], [400, 'unknown_dish'], `a NEW-op repeat on a dish off the menu ⇒ the deferred 400 (${JSON.stringify(nr.body)})`);
+      const nc = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Nuevo K2', params: { items: [K2], free_per_order: 3 } }), op_id: 'op_' + 'u'.repeat(20) });
+      assert.deepStrictEqual([nc.status, nc.body.reason], [400, 'unknown_dish'], `a NEW-op create on a dish off the menu ⇒ the deferred 400 (${JSON.stringify(nc.body)})`);
+      assert.deepStrictEqual(fake.get('marketing_brand/tb'), pre, 'the deferred failures wrote nothing');
+      ok('Codex P2-3: a same-op retry replays before the dish preparation can fail (repeat and create)');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();

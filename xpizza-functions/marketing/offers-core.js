@@ -109,6 +109,8 @@ const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with 
 // branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
 const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array.isArray(x)) ? [...v].sort() : v).map(canon).join(',')}]` :   // set-valued params (items, cats) normalised: order never matters
    isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+// both sides through the STORED params rule (a «sin mínimo» envío is stored params-less: RTDB drops {}) — Codex brand-root r1 P2-1
+const paramsKey = (type, p) => canon(OM.paramsOf(type, p, true));
 function duplicateOf(all, offerId, proj, branches, schedule) {
   const held = {};
   for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
@@ -120,7 +122,7 @@ function duplicateOf(all, offerId, proj, branches, schedule) {
   const mine = new Set(branches);
   for (const [id, h] of Object.entries(held)) {
     const e = h.e;
-    if (e.type !== proj.type || canon(e.params) !== canon(proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
+    if (e.type !== proj.type || paramsKey(e.type, e.params) !== paramsKey(proj.type, proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
     if (OM.schedulesOverlap(schedule, { start: e.schedule.start ?? null, end: e.schedule.end ?? null, days: e.schedule.days || [], window: e.schedule.window ?? null })) return id;
   }
   return null;
@@ -134,6 +136,16 @@ const OP_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const OP_TTL_MS = 7 * 86400000;
 const isOpId = (v) => typeof v === 'string' && OP_RE.test(v);   // a STRING first
 const OP_CONFLICT = () => reply(409, { error: 'op_id_conflict' });
+const OPS_MAX = 200;   // live claims per brand — the brand txn stays bounded under a burst (Codex brand-root r1 P2-2)
+const TOO_MANY_PENDING = () => reply(429, { error: 'too_many_pending' });
+// THE one way a claim is written: expired claims leave first (on EVERY claiming txn, a refusal-only one included); past OPS_MAX live
+// claims ⇒ the 429 to abort with (nothing written) | null
+function putClaim(next, opId, claim, t) {
+  for (const [k, c] of Object.entries(next.ops)) if (!liveClaim(c, t)) delete next.ops[k];
+  if (!Object.prototype.hasOwnProperty.call(next.ops, opId) && Object.keys(next.ops).length >= OPS_MAX) return TOO_MANY_PENDING();
+  next.ops[opId] = claim;
+  return null;
+}
 async function brandTxn(db, brandId, step) {
   let out = null;
   let tx;
@@ -204,7 +216,8 @@ function refuse(node, opId, kind, sourceId, offerId, verdict, rid, t) {
   const why = { error: verdict.error, rid, ...(verdict.with ? { with: verdict.with } : {}), ...(verdict.offer_id ? { offer_id: verdict.offer_id } : {}) };
   if (opId === undefined) return { abort: refusedReply(why) };
   const next = draftNode(node);
-  next.ops[opId] = { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why };
+  const full = putClaim(next, opId, { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why }, t);
+  if (full) return { abort: full };
   return { next, result: refusedReply(why) };
 }
 
@@ -276,12 +289,15 @@ async function marketingOfferSaveCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
   if (denied) return denied;
   const dish = await resolveDishes(deps, v.value);
-  if (dish.fail) return dish.fail;
+  // a CLAIMED create answers its replay first: a preparation failure (a dish left the menu after a lost reply) waits for the claim
+  // check inside the txn (Codex brand-root r1 P2-3)
+  if (dish.fail && !(creating && body.op_id !== undefined)) return dish.fail;
   const value = dish.value;
   const t = now();
   const proposed = creating ? newOfferId() : body.offer_id;
   return brandTxn(db, brandId, (node) => {
     if (creating) { const c = claimCheck(node, body.op_id, 'create', null, t); if (c) return c; }   // the replay FIRST (before any validation)
+    if (dish.fail) return { abort: dish.fail };   // no replay: the deferred preparation failure
     const cur = isObj(node.offers) ? node.offers[proposed] : null;
     let rec;
     if (creating) {
@@ -307,7 +323,7 @@ async function marketingOfferSaveCore(deps, req) {
     }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t);
-    if (creating && body.op_id !== undefined) next.ops[body.op_id] = { offer_id: proposed, kind: 'create', at: t };
+    if (creating && body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'create', at: t }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
   });
 }
@@ -384,19 +400,21 @@ async function marketingOfferRepeatCore(deps, req) {
   if (denied) return denied;
   // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, the max timestamp) — before anything is written
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
+  let prepFail = null;
   if (program) {
     const sc = isObj(body.schedule) ? body.schedule : {};
     if (Object.keys(sc).some((k) => k !== 'start' && k !== 'end') || sc.start === undefined || sc.start === null) return reply(400, { error: 'bad_request', field: 'schedule' });
     const programSchedule = OM.scheduleOf({ days: value.schedule.days, start: sc.start, end: sc.end === undefined ? null : sc.end, window: value.schedule.window });
     if (!programSchedule) return reply(400, { error: 'bad_request', field: 'schedule' });
     const dish = await resolveDishes(deps, { ...value, schedule: programSchedule });   // a category offer is re-resolved (frozen from here)
-    if (dish.fail) return dish.fail;
-    draft = dish.value;
+    if (dish.fail && body.op_id === undefined) return dish.fail;
+    if (dish.fail) prepFail = dish.fail; else draft = dish.value;   // a CLAIMED repeat: the failure waits for the claim check (P2-3)
   }
   const proposed = newOfferId();
   return brandTxn(db, brandId, (node) => {
     const c = claimCheck(node, body.op_id, 'repeat', sourceId, t);   // the replay FIRST (before any validation or capacity)
     if (c) return c;
+    if (prepFail) return { abort: prepFail };   // no replay: the deferred preparation failure
     const s = isObj(node.offers) ? node.offers[sourceId] : null;
     if (!(isObj(s) && OM.recordOk(s, opts))) return { abort: reply(404, { error: 'not_found' }) };
     if (s.rev !== src.rev) return { abort: reply(409, { error: 'superseded', current_rev: s.rev }) };
@@ -408,9 +426,9 @@ async function marketingOfferRepeatCore(deps, req) {
     if (program) { const j = judgeActive(node, brandId, proposed, rec); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t, [sourceId]);
-    if (body.op_id !== undefined) next.ops[body.op_id] = { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId };
+    if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
   });
 }
 
-module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)
+module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)
