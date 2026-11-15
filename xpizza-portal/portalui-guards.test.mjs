@@ -434,13 +434,17 @@ test('STRUCTURE S1: app.js / editor.js / item-edit-logic.js gain exactly the nam
   assert.throws(() => withoutS1('editor.js', fileRead('editor.js').replace(inside, inside.replace('legacy rules still applied', 'legacy rules still appliedX'))), 'an edit inside a hunk breaks it');
 });
 
-test('«Rendimiento» RETIRED (Nav B, owner 11-14): ventas.js is REND_BASE byte-for-byte — no tab registry left; app.js keeps ONE hunk (the name)', () => {
-  assert.deepEqual(Object.keys(REND_FOLD), ['app.js'], 'the layer holds app.js\'s name hunk only');
+test('the «Ventas» layer (Nav B 11-14 + the V3b handover): app.js keeps ONE hunk (the name); ventas.js is the gate that mounts the tab — both fold back to REND_BASE byte-for-byte', () => {
+  assert.deepEqual(Object.keys(REND_FOLD).sort(), ['app.js', 'ventas.js'], 'the layer holds app.js\'s name hunk and ventas.js\'s handover');
   assert.notEqual(withoutREND('app.js', diskFile('app.js')), diskFile('app.js'), 'non-vacuity: the app.js fold changes something (older layers on app.js judge the rest)');
   const was = execFileSync('git', ['show', `${REND_BASE}:xpizza-portal/ventas.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
-  assert.equal(diskFile('ventas.js'), was, `ventas.js ≠ ${REND_BASE}`);
-  assert.ok(!/registerRendTab|portal:rend-tab|Rendimiento/.test(diskFile('ventas.js')), 'no Rendimiento registry, event or label in ventas.js');
+  assert.equal(withoutREND('ventas.js', diskFile('ventas.js')), was, `ventas.js minus the layer ≠ ${REND_BASE}`);
+  assert.ok(/mountVentasTab\(\$\('viewventas'\)/.test(diskFile('ventas.js')), 'the gate hands #viewventas to the tab');
+  assert.ok(!/registerRendTab|portal:rend-tab|Rendimiento|getSalesStats\(|fetchSalesCsv\(/.test(diskFile('ventas.js')), 'no Rendimiento registry, and no request left in the gate (the tab carries them)');
+  assert.notEqual(withoutREND('ventas.js', diskFile('ventas.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit to the gate survives the fold (and fails the pin)');
+  assert.throws(() => withoutREND('ventas.js', diskFile('ventas.js').replace('mountVentasTab($', 'mountVentasTabX($')), 'an edit INSIDE the gate breaks the fold');
 });
+
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
   for (const f of Object.keys(RP_FOLD)) {

@@ -54,12 +54,12 @@ test('the nav carries NO «Rendimiento» label; «Calificaciones» is its own en
   assert.ok(!/Rendimiento/.test(labels), '🔴 no «Rendimiento» label in the nav');
 });
 
-test('the Ventas page is the shipped one: «Ventas», no text tabs, its body and CSV actions; goto(\'rendimiento\') lands on it', async () => {
+test('the Ventas page: «Ventas», no text tabs, the tab\'s figures; goto(\'rendimiento\') lands on it', async () => {
   const { byId, calls, view, mods } = await boot();
   byId.get('navventas').click(); await settle();
   assert.equal(findAll(view, (n) => n.tag === 'h1')[0].textContent, 'Ventas', '🔴 the page title');
   assert.equal(findAll(view, (n) => hasClass(n, 'ttabs')).length, 0, '🔴 no tab strip');
-  for (const want of ['L 38,146', '158', 'Resumen diario (CSV)', 'Pedidos (CSV)']) assert.ok(textOf(view).includes(want), `the Ventas body: ${want}`);
+  for (const want of ['L 38,146', '158']) assert.ok(textOf(view).includes(want), `the Ventas tab (ventas-tab.js since V3b): ${want}`);   // the CSV exports live in «Más detalle» now
   byId.get('navprod').click(); await settle();
   mods.shell.goto('rendimiento'); await settle();
   assert.ok(!hasClass(view, 'hidden'), 'an old «rendimiento» link lands on Ventas');

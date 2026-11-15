@@ -246,7 +246,6 @@ const ALLOW = Object.freeze([
   Object.freeze({ file: 'branches-view.js', at: "setAttribute('stroke', stroke)", why: 'the 1a static map path helper g(); its only two callers, in the same file, pass the literal #CFD6CC and #B9C3B5, which the hex sweep measures' }),
   Object.freeze({ file: 'photo.js', at: 'setAttribute(k, v)', why: 'icon(): writes the ICONS table, a literal object of geometry only (d / cx / cy / r / x / y / width / height / rx) — a colour key in it would be judged by the key context' }),
   Object.freeze({ file: 'ops-dom.js', at: 'setAttribute(k, String(v))', why: 'the stroke-icon helper: its specs are literal {rect}/{circle} geometry objects — a colour key in one would be judged by the key context' }),
-  Object.freeze({ file: 'ventas.js', at: 'setAttribute(k, v)', why: 'the el() attribute helper: every attrs object is a literal at its call site — a colour key in one would be judged by the key context' }),
 ]);
 export function amberInSource(text, { html = /<(?:!doctype|html|svg|div|span)\b/i.test(text) && !/\b(?:const|let|function|import)\b/.test(text), file = null } = {}) {
   const code = withoutComments(text, html);
@@ -434,7 +433,7 @@ for (const [name, js] of SOURCE_RED) {
 }
 
 test('ALLOW: each entry is pinned — its file carries the exact call exactly once (a stale entry is red), and nothing else is allowed', () => {
-  assert.equal(ALLOW.length, 4, 'four call sites, exactly');
+  assert.equal(ALLOW.length, 3, 'three call sites, exactly (ventas.js\'s el() helper left with the old page — «Ventas» V3b)');
   for (const a of ALLOW) {
     const code = readFileSync(join(DIR, a.file), 'utf8');
     assert.equal(code.split(a.at).length - 1, 1, `${a.file}: «${a.at}» occurs exactly once`);
