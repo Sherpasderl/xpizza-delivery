@@ -183,12 +183,12 @@ export async function move(kind) {
   const send = () => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
   let r = await send();
   if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(); }
-  D.confirming = false;
-  if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1)
+  if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
+    // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
     if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
     return;
   }
-  D.busy = false;
+  D.busy = false; D.confirming = false;
   if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown(); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;

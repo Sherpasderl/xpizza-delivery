@@ -1384,6 +1384,103 @@ test('E7 op_id_conflict on a MOVE ⇒ the fallback at once (a client bug, never 
   } finally { delete globalThis.crypto.randomUUID; }
 });
 
+// ═══ Codex narrow HIGH on ae0e65663..ef174ebb7 (REVISE, 3 P2s — advisor 11-15) ═══════════════════════════════════════════════════
+// before the confirmation goes out, ANOTHER session's move lands on the offer we just wrote (the real writers): the replay answers it as NOW
+function beforeConfirm(fn, act) {
+  const f0 = globalThis.fetch; let n = 0;
+  globalThis.fetch = async (url, opts) => { if (String(url).endsWith(`/${fn}`) && ++n === 2) { globalThis.fetch = f0; await act(); } return f0(url, opts); };
+  return () => { globalThis.fetch = f0; };
+}
+const moveRaw = async (b, rec, to) => assert.equal((await offerSetStateRaw({ rid: RID, offerId: rec.id, to, expectedRev: rec.rev, token: b.token })).status, 200, `premise: another session moved it to ${to}`);
+const recOf = (b, pred) => { const [id, r] = Object.entries(b.fake.get('marketing_brand/tb/offers')).find(([, x]) => pred(x)); return { ...r, id }; };
+test('F1a «Programar oferta»: our create LANDED (reply lost), another session PAUSED it before the confirmation ⇒ the replay is CONFIRMED: the success toast, never «Quedó como borrador», never the fallback', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = ['marketingOfferSave'];
+  const undo = beforeConfirm('marketingOfferSave', () => moveRaw(b, recOf(b, (x) => x.name === LPS), 'paused_owner'));
+  try { p.btn('Programar oferta', await toReview(p)).click(); await settle(300); } finally { undo(); }
+  assert.equal(offersNamed(b, LPS)[0].state, 'paused_owner', 'premise: paused by the other session');
+  assert.ok(!p.text().includes('Quedó como borrador'), 'F1a: never the invented «Quedó como borrador»');
+  assert.equal(notice(p), null, 'no fallback');
+  assert.equal(dlg(p), null, 'F1a: the dialog closed');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'the success toast');
+});
+test('F1b «Programar oferta» on a continued DRAFT: our edit LANDED (reply lost), another session ENDED it before the confirmation ⇒ CONFIRMED (never the fallback)', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Borrador uno', max: '100' }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  p.mods.marketing.clock.now = () => NOW;
+  p.btn('Acciones', rowNamed(p, 'Borrador uno')).click(); await settle();
+  rowNamed(p, 'Borrador uno').querySelector('[data-act="continue"]').click(); await settle(80);
+  b.net.lose = ['marketingOfferSave'];
+  const rv = await toReview(p);
+  const undo = beforeConfirm('marketingOfferSave', () => moveRaw(b, recOf(b, (x) => x.name === 'Borrador uno'), 'ended'));
+  try { p.btn('Programar oferta', rv).click(); await settle(300); } finally { undo(); }
+  assert.equal(stored(b, 'Borrador uno')[0].state, 'ended', 'premise: ended by the other session');
+  assert.equal(notice(p), null, 'F1b: confirmed ⇒ no fallback');
+  assert.equal(dlg(p), null, 'the dialog closed');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'the success toast');
+});
+test('F1c «Repetir» → «Programar»: the copy LANDED (reply lost), another session PAUSED it before the confirmation ⇒ CONFIRMED: its toast, never «Quedó como borrador»', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  b.net.lose = ['marketingOfferRepeat'];
+  const undo = beforeConfirm('marketingOfferRepeat', () => moveRaw(b, recOf(b, (x) => x.name === 'Almuerzo' && x.state === 'active'), 'paused_owner'));
+  try { p.btn('Programar', sheet(p)).click(); await settle(300); } finally { undo(); }
+  assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'paused_owner').length, 1, 'premise: the copy, paused by the other session');
+  assert.ok(!p.text().includes('Quedó como borrador'), 'F1c: never the invented «Quedó como borrador»');
+  assert.equal(notice(p), null, 'no fallback');
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov', 'F1c: the success toast');
+});
+test('F2 the REAL core\'s 429 too_many_pending (the brand\'s op claims are full) is DEFINITE: nothing written, ONE call — never confirmed', async () => {
+  const b = await world();
+  const d = await create(b, form({ name: 'Llena', max: '100' }));
+  let rev = d.rev;
+  for (let i = 0; i < 200; i += 1) {   // 200 live claims through the REAL writer: edits of one draft, each under its own op_id
+    const res = await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: rev, offer: authored(form({ name: 'Llena', max: String(100 + (i % 2)) })), opId: `op_fill_${String(i).padStart(12, '0')}`, token: b.token });
+    assert.equal(res.status, 200, 'premise: a claimed edit'); rev = res.body.offer.rev;
+  }
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const n0 = saves(b).length;
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  const last = saves(b).slice(n0);
+  assert.equal(offersNamed(b, LPS).length, 0, 'premise: nothing written (the 429 aborts the brand txn)');
+  assert.equal(last.length, 1, 'F2: ONE call — a definite 429 is never confirmed');
+  assert.ok(p.host().querySelector('.mk5r-modal .mk5b-err'), 'F2: the dialog stays with a refusal word');
+  assert.equal(notice(p), null, 'never the fallback');
+});
+test('F3 a STALE move\'s reply (its view left) never clears a NEWER move\'s «Confirmando…»', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  await publish(b, form({ name: 'Cena', pct: 30, start: NOW, end: NOW + 20 * DAY, days: [6], window: null }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  const D = () => p.mods['marketing-detail']._detailState;
+  await openDetail(p, 'Almuerzo');
+  let r1; b.net.drop = ['marketingOfferSetState']; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { r1 = r; }) };
+  p.btn('Pausar').click(); await settle(80);   // the first call dropped; its confirmation held in flight
+  assert.equal(D().confirming, true, 'premise: Almuerzo confirming');
+  p.host().querySelector('.mk5d-back').click(); await settle(120);
+  await openDetail(p, 'Cena');
+  let r2; b.net.drop = ['marketingOfferSetState']; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { r2 = r; }) };
+  p.btn('Pausar').click(); await settle(80);
+  assert.equal(D().confirming, true, 'premise: Cena confirming');
+  r1(); await settle(150);   // the OLD view's confirmation answers now
+  assert.equal(D().confirming, true, 'F3: Cena still confirming — the stale reply left it alone');
+  r2(); await settle(200);
+  assert.equal(D().confirming, false, 'then Cena\'s own answer settles it');
+});
+
 // ═══ slot 11-15 defects (advisor rulings): build EXACT to the mockup; text never crammed at 390 (16b) ═══════════════════════════
 // the mockup's own symbols (MOCKUP-portal-marketing v5 #i-tag / #i-users / #i-box), as the builder + editor rows draw them
 const I_TAG = 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z', I_USERS = 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', I_BOX = 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8';

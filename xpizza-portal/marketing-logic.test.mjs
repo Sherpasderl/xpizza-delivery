@@ -243,9 +243,9 @@ test('an incomplete 200 is UNKNOWN (never «Oferta programada»); only ALLOWLIST
     assert.deepEqual(ML.classifyWrite({ op: 'save', offerId: real.id, expectedRev: real.rev - 1 }, ok(o)), { outcome: 'unknown' }, `save: ${why}`);
   }
   assert.equal(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, ok(real)).outcome, 'saved', 'the complete record is definite');
-  for (const [status, error] of [[408, 'request_timeout'], [429, 'too_many_pending'], [405, 'method_not_allowed'], [409, 'something_new'], [400, 'something_new'], [418, 'teapot'], [403, 'something_else']])
+  for (const [status, error] of [[408, 'request_timeout'], [429, 'something_new'], [405, 'method_not_allowed'], [409, 'something_new'], [400, 'something_new'], [418, 'teapot'], [403, 'something_else']])
     assert.deepEqual(ML.classifyWrite({ op: 'create' }, { status, body: { error } }), { outcome: 'unknown' }, `${status} ${error}: UNKNOWN`);
-  for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'type_not_supported'], [409, 'offers_disabled']])
+  for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'type_not_supported'], [409, 'offers_disabled'], [429, 'too_many_pending']])
     assert.equal(ML.classifyWrite({ op: 'create' }, { status, body: { error } }).outcome, 'refused', `${status} ${error}: definite`);
   // advisor 11-15: op_id_conflict is OUR bug — never a refusal word, never confirmed ⇒ the fallback
   assert.deepEqual(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, { status: 409, body: { error: 'op_id_conflict' } }), { outcome: 'unknown', conflict: true }, '409 op_id_conflict: UNKNOWN, flagged');

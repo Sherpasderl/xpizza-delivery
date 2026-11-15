@@ -48,7 +48,6 @@ const REFUSAL_WORD = Object.freeze({
   off: () => 'Las ofertas no están disponibles en este momento.',
   not_ended: () => 'Solo se puede repetir una oferta terminada.',
   ended: () => 'Esta oferta ya terminó. Volvé a la lista para ver su estado.',
-  not_programmed: () => 'No pudimos programar la oferta. Quedó como borrador: revisala y probá de nuevo.',   // Codex r4 P1-2 (new copy)
 });
 
 const now = () => (B.ctx && typeof B.ctx.now === 'function' ? B.ctx.now() : Date.now());
@@ -581,7 +580,7 @@ async function program() {
   } else {
     const opId = newOpId();
     s = await sendConfirmed({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token }), g);
-    if (s.outcome === 'saved' && s.offer.state !== 'active') s = { outcome: 'refused', code: 'not_programmed' };   // it resolved to a record that is not programmed
+    // a 200 under our op_id IS our offer, CONFIRMED whatever its state now (Codex 11-15 P2-1: another session may have moved it since)
   }
   if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
@@ -783,7 +782,6 @@ async function repeatGo() {
   B.busy = false; B.confirming = false;
   if (r.outcome === 'unknown') { unknownOut(ctx); return; }
   if (r.outcome === 'refused' && r.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(r.offer_id); return; }
-  if (r.outcome === 'saved' && r.offer.state !== 'active') r = { outcome: 'refused', code: 'not_programmed' };
   if (r.outcome !== 'saved') { B.err = wordOf(r); render(); stale(ctx); return; }
   closeBuilder();
   const st = r.offer.schedule && r.offer.schedule.start;

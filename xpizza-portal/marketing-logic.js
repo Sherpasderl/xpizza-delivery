@@ -202,8 +202,8 @@ export function classifyWrite(attempt, res) {
     }
     if (attempt.opId) {   // 3a 9462baf40: an op_id reply to an edit / a move IS our operation — a replay answers the offer as it is NOW (a later
       // edit by someone else may have moved its rev / state); a fresh run is exactly ours (rev + 1)
-      if (o.id !== attempt.offerId) return { outcome: 'unknown' };
-      return attempt.program && o.state !== 'active' ? { outcome: 'unknown' } : { outcome: 'saved', offer: o };
+      // CONFIRMED whatever its state now (Codex 11-15 P2-1: another session may have paused / ended it since — the screen shows it as is)
+      return o.id === attempt.offerId ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
     }
     if (o.id !== attempt.offerId || o.rev !== attempt.expectedRev + 1) return { outcome: 'unknown' };
     if (attempt.op === 'state' && o.state !== attempt.to) return { outcome: 'unknown' };
@@ -212,7 +212,7 @@ export function classifyWrite(attempt, res) {
   }
   // op_id_conflict is OUR bug (an op_id reused across operations — advisor 11-15): never a refusal word, never confirmed ⇒ the fallback
   if (res.status === 409 && b.error === 'op_id_conflict') return { outcome: 'unknown', conflict: true };
-  if (DEFINITE[res.status] && DEFINITE[res.status].includes(b.error)) return { outcome: 'refused', ...refusalOf(res.status, b) };
+  if (DEFINITE[res.status] && DEFINITE[res.status].includes(b.error)) return { outcome: 'refused', ...refusalOf(res.status, b) };   // never confirmed
   return { outcome: 'unknown' };   // Codex r6.1-build P2-1: any other 4xx (408, 429 …) or 5xx is UNKNOWN — the list decides
 }
 // the DEFINITE refusals (3a offers-core + portal/ops-core @ 94e6b7ae9): nothing was written, the screen may word it. An ALLOWLIST by
@@ -222,6 +222,7 @@ const DEFINITE = Object.freeze({
   401: Object.freeze(['missing_bearer_token', 'invalid_credentials']),
   403: Object.freeze(['not_authorized']),
   404: Object.freeze(['not_found']),
+  429: Object.freeze(['too_many_pending']),   // offers-core putClaim: the brand's live op claims are full — the txn aborts, NOTHING written (Codex 11-15 P2-2)
   409: Object.freeze(['superseded', 'bad_transition', 'offers_disabled', 'current_malformed', 'overlap', 'too_many_live', 'too_many_offers',
     'live_edit_not_allowed', 'ended', 'not_ended', 'branch_not_live', 'menu_unavailable', 'category_too_large', 'duplicate', 'op_id_conflict',
     'type_not_supported']),
