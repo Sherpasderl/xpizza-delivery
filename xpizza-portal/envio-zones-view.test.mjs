@@ -152,6 +152,9 @@ test('D — a restaurant opened before the save: 409 zones_locked_while_open ⇒
   const box = p.d.querySelector('.envzfail');
   assert.ok(box, '🔴 the panel'); assert.equal(box.querySelector('b, h3').textContent, P('lockedSaveTitle'));
   assert.ok(box.textContent.includes('Centro'), 'the open branch by name');
+  // slot 11-15 (advisor, rule 16b): a lock row names the RESTAURANT and the branch, as the mockup draws it («Restaurante 2 · Sucursal 1») —
+  // two restaurants' «Sucursal 1» must never read the same
+  assert.deepEqual([...box.querySelectorAll('.blist .zbrow .k')].map((x) => x.textContent), ['Uno · Centro'], '«Restaurante · Sucursal»');
   assert.ok(zrow(p, 'Sector Norte'), 'the draft kept');
   const fees = [...box.querySelectorAll('button')].find((b) => b.textContent === P('feesOnly'));
   assert.ok(fees, 'the fees-only action (bands are dirty too)');

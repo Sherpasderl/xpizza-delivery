@@ -685,7 +685,12 @@ function zonesFailBox() {
     for (const b of f.branches.slice(0, 3)) {
       const row = el('div', 'zbrow');   // the mockup's .brow look, its own class (.brow is S2's review row: no colour crossing)
       const st = el('span', `st ${b.reason === 'open' ? 'open' : 'unk'}`); st.append(el('i'), document.createTextNode(EL.zonesCopy(b.reason === 'open' ? 'branchOpen' : 'branchHours')));
-      row.append(el('span', 'k', `${b.location_name || b.name || b.rid}`), st);
+      // «Restaurante · Sucursal» as the mockup draws it (slot 11-15, advisor: rule 16b — two restaurants' «Sucursal 1» never read the same);
+      // the 409 names the branch only (rid + location_name), so the restaurant comes from the loaded branch list
+      const br = S.branchesRaw.find((x) => x && x.rid === b.rid);
+      const rest = br && typeof br.brand_name === 'string' && br.brand_name.trim() ? br.brand_name.trim() : null;
+      const loc = b.location_name || b.name || b.rid;
+      row.append(el('span', 'k', rest ? `${rest} · ${loc}` : `${loc}`), st);
       list.append(row);
     }
     if (f.branches.length > 3) list.append(el('div', 'bmore', EL.zonesCopy('branchesMore')));
