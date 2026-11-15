@@ -5000,6 +5000,7 @@ const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 
 const V2R = { 'XP-V1': C3V2.receipt };
 const pvNotes = (S) => S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
 const recipeOfEntry = (e) => J(e.items).map((l) => ({ key: l.key, qty: l.qty, ...(l.options ? { options: l.options } : {}) }));
+// PROVENANCE-PIN:BEGIN c3r-v2
 const C3J = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8'));
 test('C-3r v2 RCPT-PIN: the receipt projector the fakes serve is 3a\'s REAL one, from the SAME 3a ref + blob that produced fixtures/c3r-v2', () => {
   assert.equal(MO3A.blob('xpizza-functions/my-orders.js'), MO3A_BLOB, '🔴 RCPT-PIN: the composed my-orders.js is the pinned blob');
@@ -5008,6 +5009,7 @@ test('C-3r v2 RCPT-PIN: the receipt projector the fakes serve is 3a\'s REAL one,
   const r = J(projectReceipt('P1', { ts: 1, restaurant: 'la_musa', price_snapshot: { v: 2, lines: [] } }, { order_type: 'pickup', status: 'delivered', payment_method: 'card_delivery' }));
   assert.deepEqual(r.price_snapshot, { v: 2, lines: [] }, 'premise: 3a step 1\'s passthrough is in the composed projector');
 });
+// PROVENANCE-PIN:END c3r-v2
 // the la_musa gap (advisor 11-14): an ID-keyed order (k = the extra's ID) through the REAL writer (place-real, LM-V1's body) and 3a's
 // REAL receipt (LM-V1, served verbatim); the reorder is eligible through the store's own D4-a context (servedCtx)
 const LMV1 = C3J.scenarios['LM-V1'];
@@ -5499,11 +5501,11 @@ function pushServer3a({ failSet = false, policy = null } = {}) {
   return { db, calls, handler, other, prefs: () => { const p = db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}; return [p.pedidos, p.promociones, p.rev]; }, tokens: () => Object.keys(db.get(PUSH_3A.CP.TOKENS) || {}).length };
 }
 const PUSH_RT = { ...G7_RUNTIME, guestCardOnly: undefined, push: true, rtdbBase: 'https://rtdb.test' };
-async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false, fbOpts } = {}) {
+async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false, fbOpts, db = { u_ana: {} }, orders } = {}) {
   const f = createFakePushPlugin(fake);
   const { ES, made } = fakeES();
   const pre = noBridge ? null : (w) => { w.Capacitor = { getPlatform: () => platform, Plugins: { PushNotifications: f.plugin } }; };
-  const r = await pedidosBoot({ u_ana: {} }, { storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
+  const r = await pedidosBoot(db, { ...(orders ? { orders } : {}), storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
     readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}), ...(fbOpts ? { fbOpts } : {}) });
   return { ...r, f, srv, made };
 }
@@ -5679,5 +5681,136 @@ test('PUSH-SHELL-10 (3a 472177443: a register never consents): «Ofertas de Sher
     assert.deepEqual(oc && [oc.channel, oc.value], ['push', true], '🔴 PUSH-SHELL-10: the consent comes from the switch\'s setPrefs');
     assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true']);
     assert.equal(txt(S.q('#toast')), 'Avisos activados');
+  } finally { S.w.close(); }
+});
+
+// ── Codex r1 (REVISE #1, 11-15) — the shell items; RED at 9ecfb0982 (proven in the slot) ──
+const pushHeld = (st) => JSON.parse(st.getItem('capp:push:v1') || '{}');
+const flushN = async (n = 8) => { for (let i = 0; i < n; i++) await flush(); };
+const toNotifs = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush(); await flush(); };
+const optIn = async (S, srv) => { await toNotifs(S); S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1); };
+test('PUSH-SHELL-11 (Codex r1 P1-1): the uid switches WHILE an opt-in waits on the OS ⇒ nothing is sent under the new person\'s token (no register, no consent, no prefs of theirs); the token minted for A meanwhile is invalidated', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f, srv, fb } = await pushBoot({ storage: st });
+  try {
+    await toNotifs(S);
+    let release; const gate = new Promise((r) => { release = r; }); const asked = []; const rq = f.plugin.requestPermissions;
+    f.plugin.requestPermissions = async () => { asked.push(1); await gate; return rq(); };
+    S.click('.switch[data-k="promociones"]'); await until(() => asked.length === 1);
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // B is a COMPLETED member: admitted on the switch
+    const sdk = await fb.loadSdk(); await sdk.authMod.signInWithCustomToken(null, 'ct:u_bob'); await flushN(4);
+    release(); await until(() => f.of('register').length === 1); await flushN();
+    const bob = srv.calls.filter((c) => /CustomerPush/.test(c.name) && subOf(c.headers['x-firebase-id-token']) === 'u_bob').map((c) => c.name);
+    assert.deepEqual(bob, [], '🔴 PUSH-SHELL-11: nothing of A\'s action is sent under B\'s token');
+    assert.equal(srv.db.get(`${PUSH_3A.CP.PREFS}/u_bob`) == null, true, 'B\'s prefs / consent untouched');
+    assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-11: the token minted for A while B is here is invalidated on the phone');
+    const h = pushHeld(st); assert.equal(h.token == null, true, 'no live token'); assert.deepEqual((h.pending || []).map((p) => p.owner), ['u_ana'], 'held for A\'s own session');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-12a (Codex r1 P1-4): the SDK signs out by itself (guest) ⇒ the token is invalidated on the phone at once; the server step waits for A\'s own session, then runs', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ promos: true }));
+    const { S, f, srv, fb } = await pushBoot({ storage: st, fake: { permission: 'granted' } });
+    try {
+      await optIn(S, srv);
+      const sdk = await fb.loadSdk(); await sdk.authMod.signOut(); await flushN();
+      assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12 (guest): the SDK\'s own sign-out invalidates the token on the phone');
+      assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for A');
+      assert.equal(srv.calls.filter((c) => c.name === 'unregisterCustomerPushToken').length, 0, 'never without A\'s session');
+      st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' })); await sdk.authMod.signInWithCustomToken(null, 'ct:u_ana');
+      await until(() => srv.tokens() === 0, 6000);
+      const un = srv.calls.find((c) => c.name === 'unregisterCustomerPushToken'); assert.equal(subOf(un.headers['x-firebase-id-token']), 'u_ana', '🔴 PUSH-SHELL-12 (guest): retried under A\'s OWN session');
+    } finally { S.w.close(); }
+  }
+});
+test('PUSH-SHELL-12b (Codex r1 P1-4): a restored session WITHOUT its completion mark ⇒ the token is forgotten while that session is still valid, THEN signed out', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ promos: true }));
+    const { S, f, srv, fb } = await pushBoot({ storage: st, fake: { permission: 'granted' } });
+    try {
+      await optIn(S, srv);
+      st.removeItem('capp:member_complete');
+      const outs = fb.calls.out; const sdk = await fb.loadSdk(); await sdk.authMod.signInWithCustomToken(null, 'ct:u_ana'); await flushN();
+      assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-12 (marker): 3a forgot the token under the still-valid session');
+      assert.equal(f.of('unregister').length, 1, 'and the phone');
+      assert.ok(fb.calls.out > outs, 'then signed out');
+    } finally { S.w.close(); }
+  }
+});
+test('PUSH-SHELL-12c (Codex r1 P1-4): a COLD restore as another person (B\'s session; the device holds A\'s registered token) ⇒ A\'s token is invalidated, never under B\'s token', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ uid: 'u_bob' })); st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));
+    const srv = pushServer3a();
+    assert.equal((await srv.other('registerCustomerPushToken', { token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: 'BwcHBwcHBwcHBwcHBwcHBw', pedidos: true, promociones: false })).ok, true, 'premise: A registered it');
+    st.setItem('capp:push:v1', JSON.stringify({ v: 1, state: 'granted', token: 'fcm_tok_test_0001', owner: 'u_ana', server: true, install_id: 'BwcHBwcHBwcHBwcHBwcHBw' }));
+    const { S, f } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: 'u_bob' } });
+    try {
+      await flushN();
+      assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12 (cold): A\'s token is invalidated when B\'s session is restored');
+      assert.deepEqual(srv.calls.filter((c) => /CustomerPush/.test(c.name) && subOf(c.headers['x-firebase-id-token']) === 'u_bob').map((c) => c.name), [], 'never under B\'s token');
+      assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for A');
+    } finally { S.w.close(); }
+  }
+});
+const p26 = () => {   // 3a's REAL handlers; the prefs read can be HELD (its answer computed first — a late, older read) or answered prefs: null
+  const srv = pushServer3a(), h0 = srv.handler, ctl = { hold: null, nullPrefs: false };
+  srv.handler = async (u, i) => { const r = await h0(u, i); if (/getCustomerPushPrefs/.test(u)) { if (ctl.nullPrefs) { const b = await r.json(); return { status: r.status, json: async () => ({ ...b, prefs: null }) }; } if (ctl.hold) await ctl.hold; } return r; };
+  return { srv, ctl };
+};
+test('PUSH-SHELL-13a (Codex r1 P2-6): the switches are INERT until this visit\'s permission and prefs reads succeed', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`);
+    let open; ctl.hold = new Promise((r) => { open = r; });
+    await toNotifs(S);
+    assert.equal(sw('pedidos').getAttribute('aria-disabled'), 'true', '🔴 PUSH-SHELL-13a: inert while the reads are out');
+    ctl.hold = null; open(); await until(() => sw('pedidos').getAttribute('aria-disabled') !== 'true');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13b (Codex r1 P2-6): a LATE, older prefs read never replaces newer prefs', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), live = (k) => sw(k) && sw(k).getAttribute('aria-disabled') !== 'true';
+    await toNotifs(S); await until(() => live('pedidos'));
+    S.click(sw('pedidos')); await until(() => srv.tokens() === 1); await until(() => sw('pedidos').getAttribute('aria-checked') === 'true' && live('pedidos'));
+    // visit 2's read (rev 1) is held; another device commits rev 2; visit 3 reads rev 2; THEN visit 2's lands
+    S.click('[data-act="notifs-back"]'); await flush();
+    let open2; ctl.hold = new Promise((r) => { open2 = r; });
+    S.click('[data-act="sub-notifs"]'); await flush();
+    ctl.hold = null; assert.equal((await srv.other('setCustomerPushPrefs', { pedidos: true, promociones: true, expected_rev: 1 })).ok, true, 'premise: rev 2 elsewhere');
+    S.click('[data-act="notifs-back"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => sw('promociones') && sw('promociones').getAttribute('aria-checked') === 'true');
+    open2(); await flushN();
+    assert.equal(sw('promociones').getAttribute('aria-checked'), 'true', '🔴 PUSH-SHELL-13b: a late older read never replaces the newer prefs');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13c (Codex r1 P2-6): a registered device whose prefs are missing stays INERT (never a guess)', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), live = (k) => sw(k) && sw(k).getAttribute('aria-disabled') !== 'true';
+    await toNotifs(S); await until(() => live('pedidos'));
+    S.click(sw('pedidos')); await until(() => srv.tokens() === 1); await until(() => sw('pedidos').getAttribute('aria-checked') === 'true' && live('pedidos'));
+    ctl.nullPrefs = true; S.click('[data-act="notifs-back"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flushN(4);
+    assert.equal(sw('pedidos').getAttribute('aria-disabled'), 'true', '🔴 PUSH-SHELL-13c: registered with no prefs ⇒ inert (never a guess)');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-14 (Codex r1 P2-7): the tap listener is up at STARTUP (a cold start from a tapped push lands on Inicio)', async () => {
+  const { S, f } = await pushBoot();
+  try {
+    await flushN(4);
+    assert.equal(f.listenerCount('pushNotificationActionPerformed'), 1, '🔴 PUSH-SHELL-14: listening from startup, on Inicio, before any push screen');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Pedidos»\' cache opens ITS receipt by its own detail read; a refused read ⇒ «Pedidos»', async () => {
+  const db = { u_ana: {} }, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-T9', { display_number: 52 });
+  const { S, f } = await pushBoot({ db, orders });
+  try {
+    await flushN(4);
+    // a tree without the fix ignores the tap: the wait ends quietly so the cell dies at ITS 🔴 (condition 2), never on the wait
+    f.tap({ order_id: 'XP-T9' }); await until(() => S.q('.mk-title') || (S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos'), 6000).catch(() => {});
+    assert.equal(S.q('.mk-title') ? txt(S.q('.mk-title')) : null, '¡Pedido entregado!', '🔴 PUSH-SHELL-15: the tapped order\'s own receipt');
+    assert.ok(txt(S.q('.mk-num')).startsWith('Orden #52'), 'its number');
+    S.click('[data-act="order-close"]'); await flush();
+    f.tap({ order_id: 'XP-NONE1' }); await until(() => S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos', 6000);
   } finally { S.w.close(); }
 });

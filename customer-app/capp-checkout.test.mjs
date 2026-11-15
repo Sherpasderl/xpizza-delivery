@@ -306,6 +306,7 @@ test('tip r7 (OWNER 11-09): the in-app tip is CARD-ONLY — a cash delivery has 
 // ── PLAN-capp-marketing-offers Slice A (advisor 11-14): the quote's offer, from 5f's REAL price path (fixtures/offer-quote) ──
 const OQ = JSON.parse(readFileSync(new URL('./fixtures/offer-quote/offer-quote.json', import.meta.url), 'utf8'));
 const OQ_CART = JSON.parse(readFileSync(new URL('./fixtures/offer-quote/cart.json', import.meta.url), 'utf8'));
+// PROVENANCE-PIN:BEGIN offer-quote
 const oqCanon = (v) => (Array.isArray(v) ? v.map(oqCanon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, oqCanon(v[k])])) : v);
 const oqSha = (v) => createHash('sha256').update(JSON.stringify(oqCanon(v))).digest('hex');
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -316,6 +317,7 @@ test('offer quote fixture: 5f\'s real quoteOrder responses for the capp cart, pi
   assert.equal(oqSha(OQ_CART), OQ.cart_sha256, '🔴 OQ-PIN: quoted for THIS cart.json');
   for (const [k, r] of Object.entries(OQ.scenarios)) assert.equal(r.total_cents, OQ_CART.items.reduce((a, i) => a + Math.round(i.subtotal * 100), 0), `premise: ${k} food = the cart subtotal`);
 });
+// PROVENANCE-PIN:END offer-quote
 const oqT = (k, mode = 'delivery') => { const f = ready(); if (mode === 'pickup') C.setMode(f, 'pickup'); return C.totals(f, { resp: OQ.scenarios[k], sig: 's', tipCents: C.tipCentsOf(f) }, OQ.scenarios[k].total_cents, 's'); };
 test('offer totals (5 A): the quote\'s offer rides the totals as sent; Subtotal stays GROSS; Total = the quote\'s net; no offer ⇒ today\'s exact object', () => {
   const T = oqT('BOGO_DEL'), o = OQ.scenarios.BOGO_DEL.offer;

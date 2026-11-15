@@ -239,27 +239,29 @@ test('PUSH-SERVER-ACK: a token the server did not take is never «registered» (
   assert.deepEqual(push.state(), { state: 'granted', snoozed_at: null, registered: false }, '🔴 PUSH-ACK: refused ⇒ not registered');
   assert.equal((await push.enable()).ok, true); assert.equal(f.of('requestPermissions').length, 1, 'granted already ⇒ no second prompt');
   assert.equal(push.state().registered, true, '🔴 PUSH-ACK: taken ⇒ registered');
-  const n = mk({ api: null }); await n.push.enable(); assert.equal(n.push.state().registered, true, 'no server in play ⇒ the device token alone');
+  const n = mk({ api: null }); await n.push.enable(); assert.equal(n.push.state().registered, false, 'no server in play ⇒ never registered (Codex r1 P2-5)');
 });
-test('PUSH-FORGET-2 (rule 20 + consent per person): sign-out also deletes the token ON THE PHONE (after the server call) and ends this device\'s opt-in; an OS denial stays', async () => {
+test('PUSH-FORGET-2 (rule 20 + consent per person): sign-out also deletes the token ON THE PHONE (never gated on the server) and ends this device\'s opt-in; an OS denial stays', async () => {
   const { push, f, api } = mk();
   await push.enable(); api.calls.length = 0;
   const seq = []; const un = f.plugin.unregister; f.plugin.unregister = async () => { seq.push('plugin'); return un(); }; const ar = api.unregister; api.unregister = async (b) => { seq.push('server'); return ar(b); };
   await push.forget();
-  assert.deepEqual(seq, ['server', 'plugin'], '🔴 PUSH-FORGET-2: the server forgets it, then the phone deletes it');
+  assert.deepEqual([...seq].sort(), ['plugin', 'server'], '🔴 PUSH-FORGET-2: the server forgets it AND the phone deletes it (in parallel — Codex r1 P1-2)');
   assert.equal(push.state().state, 'never', '🔴 PUSH-FORGET-2: the next member opts in for themselves');
   seq.length = 0; await push.forget(); assert.deepEqual(seq, [], 'nothing held ⇒ nothing called');
   const d = mk({ fake: { onRequest: 'denied' } }); await d.push.enable(); await d.push.forget();
   assert.equal(d.push.state().state, 'denied', '🔴 PUSH-FORGET-2: the phone\'s denial is the phone\'s');
   const off = mk({ enabled: false }); await off.push.forget(); assert.equal(off.f.calls.length, 0, 'dark ⇒ no plugin call');
 });
-test('PUSH-PERMISSION: the OS permission re-read (Ajustes) — denied ⇒ remembered and the token dropped; allowed again ⇒ the denial cleared', async () => {
+test('PUSH-PERMISSION: the OS permission re-read (Ajustes) — denied ⇒ remembered (the token KEPT: Codex r1 P1-3); allowed again ⇒ the denial cleared', async () => {
   const { push, f } = mk({ fake: { permission: 'granted' } });
   await push.enable(); assert.equal(push.state().registered, true, 'premise');
   f.setPermission('denied'); assert.equal(await push.permission(), 'denied');
-  assert.deepEqual(push.state(), { state: 'denied', snoozed_at: null, registered: false }, '🔴 PUSH-PERMISSION: turned off in Ajustes ⇒ denied');
+  assert.deepEqual(push.state(), { state: 'denied', snoozed_at: null, registered: true }, '🔴 PUSH-PERMISSION: turned off in Ajustes ⇒ denied (the registration is the sign-out\'s handle — kept)');
   f.setPermission('granted'); assert.equal(await push.permission(), 'granted');
-  assert.equal(push.state().state, 'never', '🔴 PUSH-PERMISSION: allowed again ⇒ the switches come back (a fresh opt-in)');
+  assert.equal(push.state().state, 'granted', '🔴 PUSH-PERMISSION: allowed again ⇒ the switches come back on the same registration');
+  const u = mk({ api: null, fake: { permission: 'granted' } }); await u.push.enable(); u.f.setPermission('denied'); await u.push.permission(); u.f.setPermission('granted'); await u.push.permission();
+  assert.equal(u.push.state().state, 'never', 'allowed again with NO acknowledged registration ⇒ a fresh opt-in');
   assert.equal(await mk({ enabled: false }).push.permission(), null, 'dark ⇒ null, no call');
 });
 // the approved mockup's own markup (MOCKUP-capp-push r1, extracted verbatim): frame 1 (the card), F2a / F2b (the screen), F2c (denied),
@@ -282,4 +284,59 @@ test('PUSH-ROW: the Cuenta row\'s subtitle — before push (v6), pedidos, both, 
   assert.equal(P.rowSub({ granted: true, pedidos: true, promociones: true }), 'Mis pedidos · Ofertas de Sherpa', '🔴 PUSH-ROW: F4b');
   assert.equal(P.rowSub({ denied: true, granted: true, pedidos: true }), 'Apagadas en tu teléfono', '🔴 PUSH-ROW: denied wins');
   assert.equal(P.rowSub({ granted: true, pedidos: false, promociones: true }), 'Ofertas de Sherpa', '🔴 PUSH-ROW: offers alone (advisor 11-14: no WhatsApp talk)');
+});
+
+// ── Codex r1 (REVISE #1, 11-15) — the core items, RED at 9ecfb0982 ──
+const drain = async (n = 30) => { for (let i = 0; i < n; i++) await null; };   // microtasks only (no real sleep)
+const hangApi = () => { const calls = []; return { calls, register: async (b, c) => { calls.push(['register', b, c]); return { ok: true, prefs: { pedidos: b.pedidos, promociones: b.promociones, rev: 1 } }; },
+  unregister: (b, c) => { calls.push(['unregister', b, c]); return new Promise(() => {}); } }; };   // a server that never answers
+test('PUSH-FORGET-3 (Codex r1 P1-2): the phone\'s invalidation never waits on the server; the token is held in a DURABLE pending record until the server confirms; a failure never reports success', async () => {
+  const a = mk({ api: hangApi() });
+  await a.push.enable({}, { owner: 'u_a' }); a.api.calls.length = 0;
+  a.push.forget();   // never awaited: the server hangs
+  const held = JSON.parse(a.store.getItem(P.KEY));   // BEFORE anything is sent
+  assert.deepEqual((held.pending || []).map((p) => [p.token, p.owner]), [['fcm_tok_test_0001', 'u_a']], '🔴 PUSH-FORGET-3: the token + its owner wait in a durable record (the app may close now)');
+  assert.equal(held.token == null, true, 'and it is no longer the live token');
+  await drain();
+  assert.equal(a.f.of('unregister').length, 1, '🔴 PUSH-FORGET-3: the phone deletes its token without waiting for the server');
+  // the next boot (a new core on the same storage): the server is retried with the OWNER's context; confirmed ⇒ the record goes
+  const api2 = fakeApi(); const ctx = []; const un = api2.unregister; api2.unregister = async (b, c) => { ctx.push(c); return un(b); };
+  const b = mk({ store: a.store, api: api2 });
+  const r = await b.push.settle();
+  assert.deepEqual(api2.calls, [['unregister', { token: 'fcm_tok_test_0001' }]], '🔴 PUSH-FORGET-3: retried at the next boot, the 6b body exactly');
+  assert.deepEqual(ctx, [{ owner: 'u_a' }], 'under the owner\'s context (the shell sends it only with THAT person\'s token)');
+  assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'confirmed ⇒ the record is gone');
+  assert.equal(b.f.of('unregister').length, 0, 'the phone already invalidated it ⇒ not again');
+  // a refusal / a failed native step is never a success, and the record stays for the next try
+  const no = { register: fakeApi().register, unregister: async () => ({ ok: false, reason: 'unavailable' }) };
+  const c = mk({ api: no }); await c.push.enable({}, { owner: 'u_c' });
+  const rc = await c.push.forget();
+  assert.equal(rc.ok, false, '🔴 PUSH-FORGET-3: a server refusal never reports success');
+  assert.equal((JSON.parse(c.store.getItem(P.KEY)).pending || []).length, 1, 'the record stays');
+  const d = mk(); await d.push.enable({}, { owner: 'u_d' }); d.f.plugin.unregister = async () => { throw new Error('native down'); };
+  const rd = await d.push.forget();
+  assert.equal(rd.ok, false, '🔴 PUSH-FORGET-3: a failed native invalidation never reports success');
+  assert.equal((JSON.parse(d.store.getItem(P.KEY)).pending || []).some((p) => p.native !== true), true, 'its native step is still owed');
+});
+test('PUSH-DENIAL-KEEPS (Codex r1 P1-3): an OS denial is UI state only — the token is never dropped except by a completed invalidation; a re-allow restores the opt-in', async () => {
+  const { push, f, api } = mk({ fake: { permission: 'granted' } });
+  await push.enable({}, { owner: 'u_a' }); api.calls.length = 0;
+  f.setPermission('denied'); await push.permission();
+  assert.equal(push.state().state, 'denied', 'premise: the denial shows');
+  await push.forget();
+  assert.deepEqual(api.calls.map((c) => c[0]), ['unregister'], '🔴 PUSH-DENIAL-KEEPS: a sign-out after a denial still invalidates the token (server)');
+  assert.equal(f.of('unregister').length, 1, '🔴 PUSH-DENIAL-KEEPS: and on the phone');
+  const g = mk({ fake: { permission: 'granted' } }); await g.push.enable({}, { owner: 'u_g' });
+  g.f.setPermission('denied'); await g.push.permission(); g.f.setPermission('granted'); await g.push.permission();
+  assert.deepEqual(g.push.state(), { state: 'granted', snoozed_at: null, registered: true }, '🔴 PUSH-DENIAL-KEEPS: allowed again ⇒ the same registration is back (no re-prompt)');
+});
+test('PUSH-ACK-PENDING (Codex r1 P2-5): a register the server has not answered is never «registered»', async () => {
+  let release, called; const inFlight = new Promise((r) => { called = r; });   // an EVENT (the register call), never a sleep
+  const api = { register: (b) => new Promise((r) => { release = () => r({ ok: true, prefs: { pedidos: true, promociones: false, rev: 1 } }); called(); }), unregister: async () => ({ ok: true }) };
+  const { push } = mk({ api });
+  const p = push.enable({}, { owner: 'u_a' }); await inFlight;
+  assert.equal(push.state().registered, false, '🔴 PUSH-ACK-PENDING: in flight ⇒ not registered');
+  release(); await p; assert.equal(push.state().registered, true, 'acknowledged ⇒ registered');
+  const n = mk({ api: null }); await n.push.enable();
+  assert.equal(n.push.state().registered, false, '🔴 PUSH-ACK-PENDING: no server ⇒ never registered');
 });

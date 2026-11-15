@@ -97,6 +97,8 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.strictEqual(rtj.support_whatsapp, '+50497952893', 'the help number rides the runtime block');
   const EXEMPT = { 'capp-auth-firebase.js': ['https://www.gstatic.com'], 'capp-shell-ui.js': ['https://wa.me'], 'capp-runtime.js': TRACK };   // the WEB default SDK; the boot always passes loadSdk
   assert.match(txt('capp-boot.js'), /loadSdk: \(\) => Promise\.all\(\[importModule\(`\$\{sdk\}firebase-app\.js`\)/, 'premise of the exemption: the boot overrides the SDK loader');
+  // Codex r1 P2-9 (advisor ruling (a)): the PACKAGED boot carries «Abrir Ajustes» → the first-party AppSettings plugin
+  assert.match(txt('capp-boot.js'), /if \(n === 'open-os-settings'\) \{[^\n]*Plugins\.AppSettings[^\n]*P\.open\(\)/, '🔴 SETTINGS-PKG: the packaged boot opens the app\'s settings on the shell\'s event');
   const misses = [];
   for (const [f, b] of B.files) {
     if (f.startsWith('vendor/') || !/\.(js|css|html)$/.test(f)) continue;

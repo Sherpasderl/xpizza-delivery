@@ -102,6 +102,12 @@
     const mapper = avail(o);
     return CappShellUI.mount(doc, {
       ...pass,
+      // the shell's events: «Abrir Ajustes» (MOCKUP-capp-push r1 F2c; Codex r1 P2-9) opens THIS app's settings through the first-party
+      // AppSettings plugin (the native package's; absent on the web ⇒ nothing, never a throw); every event still reaches the host's own
+      onEvent: (n, d) => {
+        if (n === 'open-os-settings') { try { const W = o.win || g, P = W.Capacitor && W.Capacitor.Plugins ? W.Capacitor.Plugins.AppSettings : null; if (P && typeof P.open === 'function') Promise.resolve(P.open()).catch(() => {}); } catch (_) {} }
+        if (typeof pass.onEvent === 'function') pass.onEvent(n, d);
+      },
       runtime: runtimeFor(rt, CappSignupApi),
       // D-4a Phase 1: the WEBSITE reflects / hydrates URLs; the native shell keeps today's navigation exactly (mode native ⇒ off)
       ...(rt.mode === 'web' ? { routing: true } : {}),

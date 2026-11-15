@@ -20,6 +20,7 @@
   const RETURNS_MAX = 2;   // owner Q2 (MOCKUP-capp-push r1): the card comes back after «Ahora no» at most twice
   const PLATFORMS = ['ios', 'android'];
   const ORDER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+  const PENDING_MAX = 8;   // held invalidations (a token waiting for its server's confirmation) — the oldest beyond this are dropped
 
   function createPush(o) {
     const plugin = o && o.plugin ? o.plugin : null, platform = o && PLATFORMS.includes(o.platform) ? o.platform : null;
@@ -64,7 +65,9 @@
       });
     }
 
-    async function enable(prefs = {}) {
+    // ctx.owner: the uid the token is registered FOR (Codex r1 P1-1) — kept with the token; the api gets it with every call so the
+    // shell sends only with THAT person's ID token
+    async function enable(prefs = {}, ctx = {}) {
       if (!on) return { ok: false, reason: 'unavailable' };
       let st;
       try {
@@ -74,38 +77,59 @@
       if (st !== 'granted') { write({ state: 'denied' }); return { ok: false, reason: 'denied' }; }
       const token = await tokenOnce();
       if (!token) return { ok: false, reason: 'registration_error' };
-      write({ state: 'granted', token, server: null });
-      if (!api || typeof api.register !== 'function') return { ok: true, server: null };
+      const owner = typeof ctx.owner === 'string' && ctx.owner ? ctx.owner : null;
+      write({ state: 'granted', token, owner, server: null });   // server null = not acknowledged ⇒ never «registered» (Codex r1 P2-5)
+      if (!api || typeof api.register !== 'function') return { ok: false, reason: 'no_server' };
       let r = null;
-      try { r = await api.register({ token, platform, app_build: appBuild, install_id: installId(), pedidos: prefs.pedidos !== false, promociones: prefs.promociones === true }); } catch (_) { r = null; }
+      try { r = await api.register({ token, platform, app_build: appBuild, install_id: installId(), pedidos: prefs.pedidos !== false, promociones: prefs.promociones === true }, { owner }); } catch (_) { r = null; }
       const ok = !!(r && r.ok === true);
-      write({ server: ok });   // a token the server did not take is never shown as «activados» (registered: false) — the next enable retries
+      if (read().token === token) write({ server: ok });   // a token the server did not take is never shown as «activados» — the next enable retries
       return { ok, server: r };
     }
 
     // the OS permission NOW (the customer may have changed it in Ajustes): denied ⇒ remembered; allowed again after a denial ⇒ the
-    // denial is cleared (the switches come back). The plugin's answer, or null
+    // denial is cleared. A denial is UI state ONLY (Codex r1 P1-3): the token stays — it is the handle a sign-out invalidates; only a
+    // completed invalidation (forget) ever drops it. Allowed again with that registration intact ⇒ opted in again, no new prompt
     async function permission() {
       if (!on) return null;
       let st = null; try { st = (await plugin.checkPermissions()).receive; } catch (_) { return null; }
       const s = read();
-      if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });
-      else if (st !== 'denied' && s.state === 'denied') write({ state: null });
+      if (st === 'denied' && s.state !== 'denied') write({ state: 'denied' });
+      else if (st !== 'denied' && s.state === 'denied') write({ state: s.token && s.server === true ? 'granted' : null });
       return st;
     }
 
     // consent is the PERSON's (owner Q4): a sign-out also ends this device's opt-in — the next member opts in for themselves (an OS
     // denial stays: it is the phone's)
+    // Codex r1 P1-2: the live token moves into a DURABLE pending record (token + owner) BEFORE anything is sent, so an app closed
+    // mid-way loses nothing; then the phone's invalidation (FCM delete / APNs unregister) and the server's run IN PARALLEL — the phone
+    // never waits on the server. A record leaves only when the server confirms; settle() retries it (the next boot). ok = both done
+    const pendingOf = (s) => (Array.isArray(s.pending) ? s.pending.filter((p) => p && typeof p.token === 'string' && p.token) : []);
     async function forget() {
-      const s0 = read(), tok = s0.token;
-      write({ token: null, server: null, ...(s0.state === 'granted' ? { state: null } : {}) });
-      if (!tok) return { ok: true, server: null };
-      let server = null;
-      if (api && typeof api.unregister === 'function') { try { server = await api.unregister({ token: tok }); } catch (_) { server = null; } }
-      // then the token itself dies on the phone (FCM delete / APNs unregister): even a server that missed the call can never reach the
-      // next person on this device with the last one's pushes (rule 20)
-      if (on) { try { await plugin.unregister(); } catch (_) {} }
-      return { ok: true, server };
+      const s0 = read(), pend = pendingOf(s0);
+      if (s0.token) pend.push({ token: s0.token, owner: typeof s0.owner === 'string' ? s0.owner : null, native: false });
+      write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });
+      return settle();
+    }
+    async function settle() {
+      const pend = pendingOf(read());
+      if (!pend.length) return { ok: true, server: null };
+      // the phone holds ONE token: invalidate it only while no newer live token exists (never kill the next opt-in's)
+      const nativeOwed = pend.some((p) => p.native !== true), nativeP = !nativeOwed ? Promise.resolve(true)
+        : !on || read().token ? Promise.resolve(false)
+        : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);
+      const mine = new Set(pend.map((p) => p.token));
+      // the phone's result is durable the moment it lands — never held hostage by a server that may never answer
+      nativeP.then((ok) => { if (ok) write({ pending: pendingOf(read()).map((p) => (mine.has(p.token) ? { ...p, native: true } : p)) }); });
+      const owed = pend.filter((p) => p.server !== true);
+      const serverP = Promise.all(owed.map((p) => (api && typeof api.unregister === 'function'
+        ? Promise.resolve().then(() => api.unregister({ token: p.token }, { owner: p.owner })).then((r) => r, () => null) : Promise.resolve(null))));
+      const [nativeOk, rs] = await Promise.all([nativeP, serverP]);
+      const done = new Set(owed.filter((p, i) => rs[i] && rs[i].ok === true).map((p) => p.token));
+      const left = pendingOf(read()).map((p) => (mine.has(p.token) ? { ...p, native: p.native === true || nativeOk, server: p.server === true || done.has(p.token) } : p))
+        .filter((p) => !(p.native === true && p.server === true));
+      write({ pending: left });
+      return { ok: nativeOk && done.size === owed.length, native: nativeOk, server: rs.length ? rs[rs.length - 1] : null };
     }
 
     function onTap(cb) {
@@ -117,8 +141,10 @@
       return () => { Promise.resolve(h).then((x) => x && typeof x.remove === 'function' && x.remove()).catch(() => {}); };
     }
 
-    const state = () => { const s = read(); return { state: s.state || 'never', snoozed_at: Number.isFinite(s.snoozed_at) ? s.snoozed_at : null, registered: !!s.token && s.server !== false }; };
-    return { available: () => on, shouldOffer, markOffered, snooze, enable, permission, forget, onTap, state };
+    const state = () => { const s = read(); return { state: s.state || 'never', snoozed_at: Number.isFinite(s.snoozed_at) ? s.snoozed_at : null, registered: !!s.token && s.server === true }; };
+    // whose the live token is, and how many invalidations are still owed (the shell's auth hook and boot retry read these)
+    const held = () => { const s = read(); return { owner: s.token && typeof s.owner === 'string' ? s.owner : null, live: !!s.token, pending: pendingOf(s).length }; };
+    return { available: () => on, shouldOffer, markOffered, snooze, enable, permission, forget, settle, held, onTap, state };
   }
 
   // the push UI copy — OWNER-APPROVED (MOCKUP-capp-push r1 + the Q1–Q6 rulings, 11-14); every string pinned by the SHIP GATE cell.

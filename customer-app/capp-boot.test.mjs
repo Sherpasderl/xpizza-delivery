@@ -116,7 +116,7 @@ test('N2: loadSdk imports the BUNDLED SDK (the vendored, locked version) — nev
 test('N2: other mount options pass through unchanged; no runtime ⇒ no mount', () => {
   const { c, CappShellUI } = capture(); const storage = {}, onEvent = () => {};
   Boot.boot({ d: 1 }, { runtime: RT(), CappShellUI, CappSignupApi, storage, onEvent, now: () => 5 });
-  assert.equal(c.opts.storage, storage); assert.equal(c.opts.onEvent, onEvent); assert.equal(c.opts.now(), 5); assert.deepEqual(c.doc, { d: 1 });
+  assert.equal(c.opts.storage, storage); assert.equal(c.opts.now(), 5); assert.deepEqual(c.doc, { d: 1 });
   for (const k of ['fetch', 'importModule', 'CappShellUI', 'CappSignupApi']) assert.equal(k in c.opts, false, `${k} is the boot's, not the shell's`);
   let mounted = 0; const none = { mount: () => { mounted++; } };
   assert.equal(Boot.boot({}, { CappShellUI: none, CappSignupApi }), null); assert.equal(Boot.boot({}, { runtime: { flags: {} }, CappShellUI: none, CappSignupApi }), null);
@@ -173,4 +173,21 @@ test('push flag: native + flag ⇒ runtime.push; the web build NEVER (even flagg
   assert.equal('push' in Boot.runtimeFor(RT({ mode: 'web', flags: { push: true } }), CappSignupApi), false, '🔴 PUSH-FLAG: never on the web (owner Q5)');
   assert.equal('push' in Boot.runtimeFor(RT(), CappSignupApi), false, 'no flag ⇒ dark');
   assert.equal('push' in Boot.runtimeFor(RT({ flags: { push: 'true' } }), CappSignupApi), false, 'only a literal true');
+});
+
+test('SETTINGS-BOOT (Codex r1 P2-9, advisor ruling (a)): the shell\'s «Abrir Ajustes» event opens THIS app\'s settings through the first-party AppSettings plugin; absent (web) ⇒ nothing, never a throw; every event still reaches the host', async () => {
+  const seen = [], opened = [];
+  const win = { Capacitor: { Plugins: { AppSettings: { open: async () => { opened.push(1); } } } } };
+  const { c, CappShellUI } = capture();
+  Boot.boot({}, { runtime: RT(), CappShellUI, CappSignupApi, win, onEvent: (n, d) => seen.push([n, d]) });
+  c.opts.onEvent('open-os-settings', {});
+  assert.equal(opened.length, 1, '🔴 SETTINGS-BOOT: open-os-settings ⇒ AppSettings.open()');
+  c.opts.onEvent('help', { x: 1 });
+  assert.equal(opened.length, 1, 'any other event opens nothing');
+  assert.deepEqual(seen, [['open-os-settings', {}], ['help', { x: 1 }]], 'every event still reaches the host\'s own onEvent');
+  for (const w of [{}, { Capacitor: {} }, { Capacitor: { Plugins: {} } }, { Capacitor: { Plugins: { AppSettings: { open: async () => { throw new Error('denied'); } } } } }]) {
+    const k = capture(); Boot.boot({}, { runtime: RT({ mode: 'web' }), CappShellUI: k.CappShellUI, CappSignupApi, win: w });
+    assert.doesNotThrow(() => k.c.opts.onEvent('open-os-settings', {}), 'no plugin / a failing plugin ⇒ quietly nothing');
+  }
+  await Promise.resolve();
 });

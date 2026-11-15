@@ -3985,6 +3985,11 @@
   "delivery/delivery-wire.js": {
    "pins": [
     {
+     "file": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+     "inverses": [],
+     "provenance": true
+    },
+    {
      "file": "xpizza-functions/dpao-wiring.guard.test.js",
      "inverses": [
       "tools/dpao-module-inverse.js",
@@ -6756,6 +6761,8 @@
    ],
    "lifts": [
     "charge-boundary.test.mjs",
+    "customer-app/fixtures/offer-changed/gen-offer-changed.mjs",
+    "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
     "s2b-paid-text.test.mjs",
     "xpizza-functions/attribution-refire.test.js",
     "xpizza-functions/catalog/charge-inputs.test.js",
@@ -6989,7 +6996,13 @@
    "lifts": []
   },
   "my-orders.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "order-exists.js": {
@@ -8101,6 +8114,26 @@
    "id": "L12-interp",
    "module": "scheduled-orders.js",
    "tool": "xpizza-functions/tools/hours-legacy-pins.js"
+  }
+ ],
+ "provenance_pins": [
+  {
+   "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+   "module": "delivery/delivery-wire.js",
+   "status": "ok",
+   "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
+   "blob": "272d3f65fcd3d2039d9233e6bb4962baa7fa4d1f",
+   "consumer": "customer-app/capp-checkout.test.mjs",
+   "live_differs": true
+  },
+  {
+   "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs",
+   "module": "my-orders.js",
+   "status": "ok",
+   "sha": "544732baa6ab200cd70892d4f3ffe0dc6948278a",
+   "blob": "534c0b1b5785a9179605ba6ff07e2692a1d26aa5",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": true
   }
  ]
 }

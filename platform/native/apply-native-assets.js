@@ -40,6 +40,8 @@ function patchStyles(xml) {
 }
 const validAppId = (appId) => { if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/.test(appId)) fail(`appId ${appId}`); return appId; };
 function mainActivity(appId) { return fs.readFileSync(path.join(SRC, 'android', 'java', 'MainActivity.java.tmpl'), 'utf8').replace('__PACKAGE__', validAppId(appId)); }
+// «Abrir Ajustes» (Codex r1 P2-9): the first-party AppSettings plugin, in the activity's package (MainActivity registers it)
+function appSettingsPlugin(appId) { return fs.readFileSync(path.join(SRC, 'android', 'java', 'AppSettingsPlugin.java.tmpl'), 'utf8').replace('__PACKAGE__', validAppId(appId)); }
 // what `cap add` writes: the template's MainActivity with ITS package (the only accepted original besides ours)
 const generatedMainActivity = (appId) => tpl('android/MainActivity.java').replace('package com.getcapacitor.myapp;', `package ${validAppId(appId)};`);
 // ── iOS: the bridge controller paints PageBackground; the launch screen is the approved mark (104 pt, centred, its own size —
@@ -77,6 +79,7 @@ function planFor({ appId, android, ios, png }) {
     out.push({ rel: `${res}/values/styles.xml`, edit: patchStyles, accept: [tpl('android/styles.xml')] });
     if (png) out.push({ rel: `${res}/drawable-xxxhdpi/splash_icon.png`, put: need('android-splash-icon-light-960.png') }, { rel: `${res}/drawable-night-xxxhdpi/splash_icon.png`, put: need('android-splash-icon-dark-960.png') });
     out.push({ rel: `android/app/src/main/java/${validAppId(appId).split('.').join('/')}/MainActivity.java`, edit: () => mainActivity(appId), accept: [generatedMainActivity(appId)] });
+    out.push({ rel: `android/app/src/main/java/${validAppId(appId).split('.').join('/')}/AppSettingsPlugin.java`, put: appSettingsPlugin(appId) });
   }
   if (ios) {
     const app = 'ios/App/App';
@@ -129,7 +132,7 @@ function apply(dir, opts) {
   return writes.map((w) => (w.del ? `- ${w.st.rel}` : w.st.rel));
 }
 
-module.exports = { patchStyles, patchStoryboard, patchLaunchScreen, mainActivity, generatedMainActivity, splashContents, planFor, apply, MARKS };
+module.exports = { patchStyles, patchStoryboard, patchLaunchScreen, mainActivity, appSettingsPlugin, generatedMainActivity, splashContents, planFor, apply, MARKS };
 
 if (require.main === module) {
   const cfg = JSON.parse(fs.readFileSync(path.join(PROJ, 'capacitor.config.json'), 'utf8'));
