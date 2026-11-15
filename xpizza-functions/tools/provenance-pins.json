@@ -1,0 +1,4 @@
+[
+ { "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs", "module": "delivery/delivery-wire.js", "fixture": "customer-app/fixtures/offer-quote/offer-quote.json", "sha_field": "sha", "blobs_field": "blobs", "consumer": "customer-app/capp-checkout.test.mjs" },
+ { "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs", "module": "my-orders.js", "fixture": "customer-app/fixtures/c3r-v2/c3r-v2.json", "sha_field": "source.commit", "blobs_field": "source.blobs", "consumer": "customer-app/capp-s7a2.test.mjs" }
+]

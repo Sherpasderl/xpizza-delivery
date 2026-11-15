@@ -15,7 +15,8 @@
 // 2. SERVER MODULES: the modules this branch edits (re-derived from `git diff --name-only <base>` — never a hand list).
 //    For each, every file that HASHES it (sha256 / createHash / a git-show base / baseOf) or LIFTS its source
 //    (readFileSync of it), and for each hashing site the registered inverse (a tools/*-inverse.js that names the module
-//    and that the site requires). An edited module hashed by a site with NO registered inverse → exit 1.
+//    and that the site requires). An edited module hashed by a site with NO registered inverse → exit 1 — unless the site is a
+//    PROVENANCE pin registered in tools/provenance-pins.json and proven by provenance() below.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -84,11 +85,49 @@ function deps(file, src) {
 }
 
 // `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only
-function build({ extra = {} } = {}) {
+// PROVENANCE PINS (advisor 11-15): a fixture generator that hashes an EXTRACTED tree of a fixed commit (its argv root + a 40-hex sha)
+// records history, not the live module, so an edit to the live module cannot break it and an inverse could only be a hand-built proof.
+// tools/provenance-pins.json registers each such (site, module); a row is honoured only when the tool itself proves (a) the site reads
+// the module under its argv root with a 40-hex sha argument and reads nothing else of code, (b) the fixture's recorded blob is
+// `git rev-parse <sha>:xpizza-functions/<module>`, (c) a consumer test reads the fixture and asserts against that immutable sha.
+// A refused row exits 1. `live_differs` (the live blob is not the pinned one) is information only: a stale fixture, never a failure.
+const PROV = path.join(__dirname, 'provenance-pins.json');
+const dig = (o, f) => f.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
+function provenance(rows, srcOf) {
+  return rows.map((r) => {
+    const site = srcOf(r.site);
+    if (site == null) return { site: r.site, module: r.module, status: 'absent' };
+    const refuse = (check, why) => ({ site: r.site, module: r.module, status: 'refused', check, why });
+    const V = (site.match(/(\w+)\s*=\s*process\.argv\[\d\]/) || [])[1];
+    if (!V || !site.includes('[0-9a-f]{40}')) return refuse('a', 'no argv root with a 40-hex sha argument');
+    const rooted = new RegExp(`^(?:path\\.)?join\\(\\s*${V}\\s*,`);
+    if (!/readFileSync\(\s*(?:path\.)?join\(/.test(site) || ![...site.matchAll(/readFileSync\(\s*([^;\n]*)/g)].some((m) => rooted.test(m[1]))) return refuse('a', `no read under the argv root ${V}`);
+    const stray = [...site.matchAll(/(?:readFileSync|createRequire)\(\s*([^;\n]*)/g)].map((m) => m[1])
+      .filter((x) => !rooted.test(x) && (/\.[cm]?js['"`]|xpizza-functions/.test(x) || !/['"`][\w./-]+\.(json|txt|csv)['"`]/.test(x)));
+    if (stray.length) return refuse('a', `reads code outside the argv root: ${stray[0].slice(0, 80)}`);
+    let fx; try { fx = JSON.parse(srcOf(r.fixture)); } catch (_) { return refuse('b', `fixture ${r.fixture} unreadable`); }
+    const sha = dig(fx, r.sha_field), blob = (dig(fx, r.blobs_field) || {})[r.module];
+    let want = null; try { want = execFileSync('git', ['rev-parse', '-q', '--verify', `${sha}:xpizza-functions/${r.module}`], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch (_) { /* refused below */ }
+    if (!/^[0-9a-f]{40}$/.test(sha || '') || !want || blob !== want) return refuse('b', `fixture blob ${blob} ≠ ${sha}:${r.module} (${want})`);
+    const con = isTest(r.consumer) ? srcOf(r.consumer) : null;
+    if (con == null) return refuse('c', `consumer test ${r.consumer} missing`);
+    const fxRel = path.posix.relative(path.posix.dirname(r.consumer), r.fixture);
+    if (!con.includes(fxRel) || !/assert/.test(con)
+      || !(/rev-parse['"`],\s*`\$\{[^}]+\}:/.test(con) || (/refLoader\(/.test(con) && con.includes(sha)))) return refuse('c', `no consumer test asserting ${fxRel} against its sha`);
+    const live = read(path.join(FN, r.module));
+    const liveBlob = live === '' ? null : require('crypto').createHash('sha1').update(`blob ${Buffer.byteLength(live)}\0`).update(live).digest('hex');
+    return { site: r.site, module: r.module, status: 'ok', sha, blob, consumer: r.consumer, live_differs: liveBlob !== blob };
+  });
+}
+
+function build({ extra = {}, provenance: provRows } = {}) {
   const SELF = new Set([__filename, OUT, path.join(FN, 'form-source-inventory.guard.test.js')]);   // the tool, its output and its guard (whose synthetic sources would match)
   const files = walk(ROOT).filter((f) => !SELF.has(f));
   const src = new Map(files.map((f) => [f, read(f)]));
   for (const [r, text] of Object.entries(extra)) { const abs = path.join(ROOT, r); if (!src.has(abs)) files.push(abs); src.set(abs, text); }
+  const srcOf = (r) => { const abs = path.join(ROOT, r); return src.has(abs) ? src.get(abs) : (fs.existsSync(abs) ? read(abs) : null); };
+  const provPins = provenance(provRows || (fs.existsSync(PROV) ? JSON.parse(read(PROV)) : []), srcOf);
+  const provOk = new Set(provPins.filter((p) => p.status === 'ok').map((p) => `${p.site}|${p.module}`));
   const direct = new Map(files.map((f) => [f, directSurfaces(f, src.get(f))]));
   const edges = new Map(files.map((f) => [f, deps(f, src.get(f))]));
   // transitive closure (memoised DFS; cycles are fine)
@@ -152,8 +191,9 @@ function build({ extra = {} } = {}) {
         const inv = inverses.filter((v) => (v.src.includes(`'${name}'`) || v.src.includes(`"${name}"`) || (name === 'index.js' && /unapply\w*Index|foldPortalSplit|unapply\w*\(src/.test(v.src)))
           && new RegExp(`${v.name.replace('tools/', '').replace('.js', '')}`).test(s)).map((v) => v.name).sort();
         const isInverseItself = /tools\/[\w-]+-inverse\.js$/.test(rel(f));
-        entry.pins.push({ file: rel(f), inverses: inv });
-        if (!inv.length && !isInverseItself) unregistered.push({ module: m, site: rel(f) });
+        const prov = provOk.has(`${rel(f)}|${m}`);
+        entry.pins.push({ file: rel(f), inverses: inv, ...(prov ? { provenance: true } : {}) });
+        if (!inv.length && !isInverseItself && !prov) unregistered.push({ module: m, site: rel(f) });
       } else entry.lifts.push(rel(f));
     }
     entry.pins.sort((a, b) => a.file.localeCompare(b.file)); entry.lifts.sort();
@@ -185,10 +225,11 @@ function build({ extra = {} } = {}) {
     : [];
   return { _doc: 'PLAN-A §5 — generated by tools/form-source-inventory.js; never hand-edit. Regenerate with --write.', base: BASE,
     surfaces, helpers: [...helpersUsed].sort(), seed, seed_problems: seedProblems, server_modules_edited: changed, server, unregistered,
-    region_pins: regionPins };
+    region_pins: regionPins, provenance_pins: provPins };
 }
+const verdict = (inv) => (inv.seed_problems.length || inv.unregistered.length || inv.provenance_pins.some((p) => p.status === 'refused') ? 1 : 0);
 
-module.exports = { build, OUT, SEED };
+module.exports = { build, verdict, OUT, SEED };
 
 if (require.main === module) {
   const inv = build();
@@ -199,6 +240,9 @@ if (require.main === module) {
   for (const [s, v] of Object.entries(inv.surfaces)) console.log(`  ${s}: ${v.tests.length} tests (${v.via_helper.length} via a helper)`);
   for (const [m, v] of Object.entries(inv.server)) console.log(`  ${m}: ${v.pins.length} hashing sites, ${v.lifts.length} lifting sites`);
   console.log(`  seed: ${inv.seed.length} (${inv.seed.filter((x) => x.status === 'reader').length} readers, ${inv.seed.filter((x) => x.status === 'named-only').length} named-only, ${inv.seed.filter((x) => x.status === 'removed_or_renamed').length} removed/renamed)`);
-  if (inv.seed_problems.length) { console.error('🔴 seed entries not accounted for:', JSON.stringify(inv.seed_problems, null, 1)); process.exit(1); }
-  if (inv.unregistered.length) { console.error('🔴 edited modules hashed with NO registered inverse:', JSON.stringify(inv.unregistered, null, 1)); process.exit(1); }
+  if (inv.seed_problems.length) console.error('🔴 seed entries not accounted for:', JSON.stringify(inv.seed_problems, null, 1));
+  for (const p of inv.provenance_pins) console.log(`  provenance pin ${p.site} → ${p.module}: ${p.status}${p.status === 'refused' ? ` (${p.check}: ${p.why})` : ''}${p.live_differs ? ` — ℹ live blob ≠ pinned blob (fixture at ${p.sha.slice(0, 9)} is stale vs the live module; information only)` : ''}`);
+  if (inv.provenance_pins.some((p) => p.status === 'refused')) console.error('🔴 provenance pins refused:', JSON.stringify(inv.provenance_pins.filter((p) => p.status === 'refused'), null, 1));
+  if (inv.unregistered.length) console.error('🔴 edited modules hashed with NO registered inverse:', JSON.stringify(inv.unregistered, null, 1));
+  if (verdict(inv)) process.exit(1);
 }

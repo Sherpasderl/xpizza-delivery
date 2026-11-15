@@ -8101,5 +8101,17 @@
    "module": "scheduled-orders.js",
    "tool": "xpizza-functions/tools/hours-legacy-pins.js"
   }
+ ],
+ "provenance_pins": [
+  {
+   "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+   "module": "delivery/delivery-wire.js",
+   "status": "absent"
+  },
+  {
+   "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs",
+   "module": "my-orders.js",
+   "status": "absent"
+  }
  ]
 }
