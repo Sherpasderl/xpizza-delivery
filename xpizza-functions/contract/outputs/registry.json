@@ -2285,9 +2285,6 @@
    "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
    "reason": "the confirmation Total"
   },
-  "xpizza-portal/ventas-logic.js#viewModel@xpizza-portal/ventas.js#paintBody": {
-   "status": "pending"
-  },
   "xpizza-track/driver-eta.js#distanceMeters@xpizza-track/driver-glide.js#update": {
    "status": "pending"
   },
