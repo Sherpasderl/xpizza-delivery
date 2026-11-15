@@ -319,6 +319,7 @@
     "marketing_live":        { ".read": false, ".write": false },
     "marketing_live_b":      { ".read": false, ".write": false },
     "marketing_offer_ops":   { ".read": false, ".write": false },
+    "marketing_brand":       { ".read": false, ".write": false },
     "marketing_usage":       { ".read": false, ".write": false },
     "anuncio_slots":         { ".read": false, ".write": false },
     "anuncio_bookings":      { ".read": false, ".write": false },

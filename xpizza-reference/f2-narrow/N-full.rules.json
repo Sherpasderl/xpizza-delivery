@@ -699,6 +699,10 @@
       ".read": false,
       ".write": false
     },
+    "marketing_brand": {
+      ".read": false,
+      ".write": false
+    },
     "marketing_usage": {
       ".read": false,
       ".write": false
