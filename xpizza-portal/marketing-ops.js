@@ -1,84 +1,71 @@
-// Portal «Marketing» — the writes whose outcome is not proven yet, kept OUTSIDE any dialog (Codex r2 + r3, advisor rulings 11-14:
-// operation identity, and ONE server call per operation).
-//   programming a NEW offer / «Repetir» — ONE call each (3a e3c5f7366: marketingOfferSave program:true · marketingOfferRepeat with
-//     source_id + dates + program), carrying a client op_id. The op_id is minted when the review step (or the repeat sheet) opens,
-//     stored in localStorage (shared across tabs) keyed by user + restaurant (brand) + kind + source, with its created_at, and REUSED
-//     by every retry until an outcome PROVES it (a reply for it; a duplicate; an op_id conflict). It is dropped at 6 days (< the
-//     server's 7-day claim). Storage failure ⇒ module state only — the server's 409 duplicate backstop covers the residue.
-//   known-id writes (a draft save / edit / publish / pause / resume / end) — an UNKNOWN outcome blocks further writes to THAT offer
-//     until a read shows its rev ≥ the rev the write would make (Codex r3 P2-8).
-const KEY = (uid) => `sherpa.portal.mkt.ops.${uid}`;   // one envelope PER USER (Codex r3 P1-4)
-export const OP_TTL_MS = 6 * 86400000;                 // < 3a's OP_TTL_MS (7 days): never retry an op the server may have forgotten
+// Portal «Marketing» — the writes whose outcome is not proven yet, kept OUTSIDE any dialog (Codex r2–r4, advisor rulings 11-14).
+//   RULE A (r4) — a SENT operation is FROZEN. Programming a new offer / «Repetir» is ONE server call carrying a client op_id; the moment
+//     it is sent, its exact payload is stored WITH its op_id, and every retry resends THAT payload until an outcome proves it (a reply
+//     for it, a duplicate, an explicit refusal). The dialog shows it read-only meanwhile: a different campaign is a new, explicit action.
+//   RULE B (r4) — one storage key PER OPERATION: `sherpa.op.{uid}.{brand}.{kind}.{source}` → { op_id, payload, created_at }. No
+//     whole-envelope rewrite: another tab never overwrites an unrelated key; settling removes only its own key. In-memory state is
+//     authoritative in this tab (a failed setItem never replaces it with the persisted copy); storage is read only for a key this tab
+//     does not hold (another tab's pending operation is adopted). Entries are dropped at 6 days (< the server's 7-day claim).
+//   known-id writes (a draft save / edit / pause / resume / end) — an UNKNOWN outcome blocks further writes to THAT offer until a
+//     read shows its rev ≥ the rev the write would make (r3 P2-8); per-offer keys `sherpa.unsettled.{uid}.{offerId}` → { sentRev }.
+export const OP_TTL_MS = 6 * 86400000;   // < 3a's OP_TTL_MS (7 days): never retry an op the server may have forgotten
 const S = { uid: null, ops: new Map(), unsettled: new Map(), now: () => Date.now() };
 
 const store = () => { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch (_) { return null; } };
-function save() {
-  if (!S.uid) return;
-  try { const st = store(); if (st) st.setItem(KEY(S.uid), JSON.stringify({ uid: S.uid, ops: [...S.ops], unsettled: [...S.unsettled] })); } catch (_) { /* full / blocked: module state still holds */ }
-}
-function load(uid) {
-  S.uid = uid; S.ops = new Map(); S.unsettled = new Map();
-  if (!uid) return;
-  try {
-    const st = store();
-    const v = st ? JSON.parse(st.getItem(KEY(uid)) || 'null') : null;
-    if (v && v.uid === uid && Array.isArray(v.ops) && Array.isArray(v.unsettled)) { S.ops = new Map(v.ops); S.unsettled = new Map(v.unsettled); }
-  } catch (_) { /* unreadable: start clean */ }
-  expire();
-}
-// another tab may have minted / proven an op since: re-read the shared envelope before deciding (unreadable ⇒ keep module state)
-function refresh() {
-  if (!S.uid) return;
-  try {
-    const st = store();
-    const v = st ? JSON.parse(st.getItem(KEY(S.uid)) || 'null') : null;
-    if (v && v.uid === S.uid && Array.isArray(v.ops)) { S.ops = new Map(v.ops); if (Array.isArray(v.unsettled)) S.unsettled = new Map(v.unsettled); }
-  } catch (_) { /* storage failure: module state stands */ }
-  expire();
-}
-function expire() {
-  const t = S.now();
-  let changed = false;
-  for (const [k, op] of S.ops) if (!(Number.isSafeInteger(op.at) && t - op.at < OP_TTL_MS)) { S.ops.delete(k); changed = true; }
-  if (changed) save();
-}
+const opStoreKey = (k) => `sherpa.op.${S.uid}.${k}`;
+const unsetStoreKey = (id) => `sherpa.unsettled.${S.uid}.${id}`;
+function put(key, value) { try { const st = store(); if (st) st.setItem(key, JSON.stringify(value)); } catch (_) { /* quota / blocked: memory stands */ } }
+function drop(key) { try { const st = store(); if (st) st.removeItem(key); } catch (_) { /* memory stands */ } }
+function get(key) { try { const st = store(); const v = st ? st.getItem(key) : null; return v ? JSON.parse(v) : null; } catch (_) { return null; } }
+const fresh = (op) => !!op && typeof op.op_id === 'string' && Number.isSafeInteger(op.created_at) && S.now() - op.created_at < OP_TTL_MS;
+
 // the session's user (marketing.js on portal:auth): another user never inherits these
-export function forUser(uid) { if (uid !== S.uid) load(uid); }
+export function forUser(uid) { if (uid !== S.uid) { S.uid = uid; S.ops = new Map(); S.unsettled = new Map(); } }
 // every completion is bound to the user it started for: ticket() at the start; another user's ticket mutates nothing
 export const ticket = () => S.uid;
 const mine = (who) => who === undefined || who === S.uid;
 
-export const opKey = (brandId, kind, sourceId = '') => `${brandId}|${kind}|${sourceId}`;
+export const opKey = (brandId, kind, sourceId = '') => `${brandId}.${kind}.${sourceId}`;
 const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
-// THE op_id of this key's operation: the pending one (any tab's, younger than 6 days), else a new one — recorded before any request
-export function opFor(k, who) {
-  if (!mine(who)) return null;
-  refresh();
-  const cur = S.ops.get(k);
-  if (cur) return cur.op_id;
-  const op = { op_id: newOpId(), at: S.now() };
-  S.ops.set(k, op); save();
-  return op.op_id;
+// the PENDING (sent, unproven) operation of this key: this tab's, else another tab's from storage; expired ⇒ none
+export function pendingOp(k) {
+  if (!S.uid) return null;
+  let op = S.ops.get(k);
+  if (!op) { const v = get(opStoreKey(k)); if (fresh(v)) { op = v; S.ops.set(k, v); } }
+  if (op && !fresh(op)) { S.ops.delete(k); drop(opStoreKey(k)); return null; }
+  return op || null;
 }
-export const pendingOpId = (k) => { refresh(); const cur = S.ops.get(k); return cur ? cur.op_id : null; };
-// an outcome PROVED the operation (its reply, a duplicate, an op_id conflict): the next one is new. Only the op_id it proved.
-export function dropOp(k, opId, who) {
+// SEND: the pending operation of this key if any (its frozen payload is what goes), else a NEW one frozen with `payload` — stored
+// before the request leaves
+export function sendOp(k, payload, who) {
+  if (!mine(who) || !S.uid) return null;
+  const cur = pendingOp(k);
+  if (cur) return cur;
+  const op = { op_id: newOpId(), payload, created_at: S.now() };
+  S.ops.set(k, op); put(opStoreKey(k), op);
+  return op;
+}
+// an outcome PROVED the operation: remove ONLY its own key, and only if it is still that op_id
+export function settleOp(k, opId, who) {
   if (!mine(who)) return;
-  refresh();
-  const cur = S.ops.get(k);
-  if (cur && cur.op_id === opId) { S.ops.delete(k); save(); }
+  const cur = S.ops.get(k) || get(opStoreKey(k));
+  if (cur && cur.op_id === opId) { S.ops.delete(k); drop(opStoreKey(k)); }
 }
 
-export function markUnsettled(offerId, sentRev, who) { if (!mine(who)) return; S.unsettled.set(offerId, { sentRev }); save(); }
-export const unsettled = (offerId) => S.unsettled.has(offerId);
+export function markUnsettled(offerId, sentRev, who) { if (!mine(who) || !S.uid) return; S.unsettled.set(offerId, { sentRev }); put(unsetStoreKey(offerId), { sentRev }); }
+export function unsettled(offerId) {
+  if (S.unsettled.has(offerId)) return true;
+  const v = S.uid ? get(unsetStoreKey(offerId)) : null;
+  if (v && Number.isSafeInteger(v.sentRev)) { S.unsettled.set(offerId, v); return true; }
+  return false;
+}
 // a successful read of offers settles a known-id write ONLY on rev proof (rev ≥ the sent rev); a lower rev proves nothing
 export function reconcile(offers) {
   let changed = false;
-  for (const id of [...S.unsettled.keys()]) {
-    const o = offers.find((x) => x && x.id === id);
-    if (o && Number.isSafeInteger(o.rev) && o.rev >= S.unsettled.get(id).sentRev) { S.unsettled.delete(id); changed = true; }
+  for (const o of offers) {
+    if (!o || !unsettled(o.id)) continue;
+    if (Number.isSafeInteger(o.rev) && o.rev >= S.unsettled.get(o.id).sentRev) { S.unsettled.delete(o.id); drop(unsetStoreKey(o.id)); changed = true; }
   }
-  if (changed) save();
   return changed;
 }
 export const _opsState = S;   // test-only (S.now is the ledger's clock)

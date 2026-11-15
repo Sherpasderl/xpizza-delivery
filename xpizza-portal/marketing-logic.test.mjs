@@ -399,36 +399,49 @@ test('recovery of a create / repeat: no record carrying OUR op_id ⇒ UNKNOWN (n
   assert.equal(ML.classifyRecovery({ op: 'repeat', opId: 'op_mine', sourceId: 'o_x' }, body).outcome, 'unknown', 'the same for a repeat');
   assert.equal(typeof ML.findCreated, 'undefined', 'content matching is retired');
 });
-test('the ops ledger (marketing-ops.js): one op_id per (user, restaurant, kind, source) — reused until PROVEN, dropped at 6 days; another user\'s ticket writes nothing; known-id writes settle on rev proof only', async () => {
-  const OPS = await import('./marketing-ops.js');
+function memStorage({ setFails = false } = {}) {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (setFails) throw new Error('QuotaExceededError'); m.set(k, String(v)); }, removeItem: (k) => m.delete(k), m };
+}
+test('the ops ledger (RULE A + B): a SENT op is frozen with its payload under its OWN key; reused until proven; another tab adopts it and never erases it; a failed write keeps memory; 6-day expiry; rev-proven known-id writes', async () => {
+  const shared = memStorage();
+  globalThis.localStorage = shared;
+  const A = await import(`./marketing-ops.js?tab=a${Date.now()}`), B = await import(`./marketing-ops.js?tab=b${Date.now()}`);
   const t0 = Date.UTC(2026, 10, 16, 18);
-  OPS._opsState.now = () => t0;
-  OPS.forUser('u_ledger');
-  const k = OPS.opKey('tb', 'create');
-  const a = OPS.opFor(k);
-  assert.match(a, /^[A-Za-z0-9_-]{16,64}$/, 'an op_id 3a\'s OP_RE accepts');
-  assert.equal(OPS.opFor(k), a, 'a retry of the same operation reuses its op_id');
-  assert.notEqual(OPS.opFor(OPS.opKey('tb', 'repeat', 'o_src')), a, 'another kind / source is another operation');
-  OPS.dropOp(k, 'op_not_this_one');
-  assert.equal(OPS.pendingOpId(k), a, 'dropping another op_id proves nothing');
-  OPS.dropOp(k, a);
-  assert.equal(OPS.pendingOpId(k), null, 'a proven outcome drops it');
-  const b = OPS.opFor(k);
-  assert.notEqual(b, a, 'the next operation is new');
-  OPS._opsState.now = () => t0 + OPS.OP_TTL_MS;   // 6 days later (< the server's 7-day claim)
-  assert.equal(OPS.pendingOpId(k), null, 'an op older than 6 days is dropped (never retried past the server\'s claim)');
-  OPS._opsState.now = () => t0;
-  OPS.dropOp(k, 'x', 'u_someone_else');
-  OPS.markUnsettled('o7', 2, 'u_someone_else');
-  assert.equal(OPS.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
-  OPS.markUnsettled('o9', 3);
-  OPS.reconcile([{ id: 'o9', rev: 2 }]);
-  assert.equal(OPS.unsettled('o9'), true, 'a read below the sent rev proves nothing (Codex r3 P2-8)');
-  OPS.reconcile([{ id: 'o9', rev: 3 }]);
-  assert.equal(OPS.unsettled('o9'), false, 'rev ≥ the sent rev settles it');
-  OPS.forUser('u_other');
-  assert.equal(OPS.pendingOpId(k), null, 'another user never inherits the ledger');
-  OPS._opsState.now = () => Date.now();
+  A._opsState.now = () => t0; B._opsState.now = () => t0;
+  A.forUser('u1'); B.forUser('u1');
+  const k = A.opKey('tb', 'create');
+  assert.equal(A.pendingOp(k), null, 'nothing pending before a send');
+  const op = A.sendOp(k, { rid: 'r', offer: { name: 'X' } });
+  assert.match(op.op_id, /^[A-Za-z0-9_-]{16,64}$/, 'an op_id 3a\'s OP_RE accepts');
+  assert.deepEqual(JSON.parse(shared.getItem('sherpa.op.u1.tb.create.')), op, 'RULE B: its OWN key holds { op_id, payload, created_at }');
+  assert.equal(A.sendOp(k, { rid: 'r', offer: { name: 'CHANGED' } }).payload.offer.name, 'X', 'RULE A: a retry resends the FROZEN payload, never the new form');
+  B.markUnsettled('o1', 2);   // another tab writes an UNRELATED key
+  assert.equal(B.pendingOp(k).op_id, op.op_id, 'the other tab ADOPTS the pending op');
+  assert.equal(JSON.parse(shared.getItem('sherpa.op.u1.tb.create.')).op_id, op.op_id, 'and never erases it (Codex r4 P1-4)');
+  B.settleOp(k, 'op_not_this_one');
+  assert.equal(A.pendingOp(k).op_id, op.op_id, 'settling another op_id removes nothing');
+  A.settleOp(k, op.op_id);
+  assert.equal(shared.getItem('sherpa.op.u1.tb.create.'), null, 'settling removes ONLY its key');
+  assert.ok(shared.getItem('sherpa.unsettled.u1.o1'), 'the unrelated key stays');
+  globalThis.localStorage = memStorage({ setFails: true });
+  const C = await import(`./marketing-ops.js?tab=c${Date.now()}`);
+  C._opsState.now = () => t0; C.forUser('u1');
+  const c1 = C.sendOp(k, { rid: 'r', offer: {} });
+  assert.equal(C.sendOp(k, { rid: 'r', offer: {} }).op_id, c1.op_id, 'a failed setItem keeps the in-memory op (Codex r4 P1-3)');
+  C._opsState.now = () => t0 + C.OP_TTL_MS;
+  assert.equal(C.pendingOp(k), null, 'an op older than 6 days is dropped (never retried past the server\'s claim)');
+  C._opsState.now = () => t0;
+  C.markUnsettled('o7', 2, 'u_someone_else');
+  assert.equal(C.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
+  C.markUnsettled('o9', 3);
+  C.reconcile([{ id: 'o9', rev: 2 }]);
+  assert.equal(C.unsettled('o9'), true, 'a read below the sent rev proves nothing (Codex r3 P2-8)');
+  C.reconcile([{ id: 'o9', rev: 3 }]);
+  assert.equal(C.unsettled('o9'), false, 'rev ≥ the sent rev settles it');
+  C.forUser('u2');
+  assert.equal(C.pendingOp(k), null, 'another user never inherits the ledger');
+  delete globalThis.localStorage;
 });
 test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME offer, one record; a malformed op_id ⇒ 400', async () => {
   const b = await backend();

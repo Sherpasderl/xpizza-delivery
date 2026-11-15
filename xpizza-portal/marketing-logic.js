@@ -247,6 +247,7 @@ export function classifyRecovery(attempt, readBody) {
     return o.state === attempt.from ? { outcome: 'not_landed', offer: o } : { outcome: 'conflict', offer: o };   // moved, then put back
   }
   const authored = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
+  if (attempt.program && o.state !== 'active') return { outcome: 'not_programmed', offer: o };   // a save + program PROVES only by being active (Codex r4 P1-2)
   if (same(authored(o), authored(attempt.sent))) return { outcome: 'saved', offer: o };
   if (attempt.prev && same(authored(o), authored(attempt.prev))) return { outcome: 'not_landed', offer: o };   // landed, then undone
   return { outcome: 'conflict', offer: o };

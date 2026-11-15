@@ -46,6 +46,7 @@ const REFUSAL_WORD = Object.freeze({
   off: () => 'Las ofertas no están disponibles en este momento.',
   not_ended: () => 'Solo se puede repetir una oferta terminada.',
   ended: () => 'Esta oferta ya terminó. Volvé a la lista para ver su estado.',
+  not_programmed: () => 'No pudimos programar la oferta. Quedó como borrador: revisala y probá de nuevo.',   // Codex r4 P1-2 (new copy)
 });
 
 const now = () => (B.ctx && typeof B.ctx.now === 'function' ? B.ctx.now() : Date.now());
@@ -62,7 +63,7 @@ function blockedNow() { return !!(B.form && B.offer && OPS.unsettled(B.offer.id)
 // an UNKNOWN known-id write (a save / a state move): blocked here, and in the ledger until a successful read reconciles the offer
 function unknownOn(o, ctx, who) { OPS.markUnsettled(o.id, o.rev + 1, who); stale(ctx); }   // the ledger blocks it (no sticky flag: a proven reconcile unblocks — Codex r3 P2-9)
 function opened(host, ctx) {   // the shared part of every opening
-  B.gen += 1; B.op = null; B.fx = { levels: [], stack: [] };
+  B.gen += 1; B.pending = null; B.fx = { levels: [], stack: [] };
   B.opener = typeof document !== 'undefined' ? document.activeElement : null;
   B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
 }
@@ -76,12 +77,19 @@ export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
     B.mode = 'new'; B.offer = null;
     B.form = { ...ML.emptyForm(type), ...SUGGEST[type], branches: ctx.branches.map((b) => b.rid), start: hnDay0(now()), end: null, weekly: true };
     B.nameAuto = true;
+    // RULE A (Codex r4): a SENT, unproven «Programar oferta» is frozen — the dialog opens on ITS review, read-only; «Volver» closes
+    const op = OPS.pendingOp(OPS.opKey(ctx.brandId, 'create'));
+    if (op) freeze(op, ML.formFromOffer(op.payload.offer));
   }
   B.layer = el('div', 'mk5b-layer');
   host.append(B.layer);
   render();
   loadMenu();
   const x = B.layer.querySelector('.mk5b-x'); if (x && x.focus) x.focus();
+}
+function freeze(op, form) {
+  B.pending = op; B.form = form; B.nameAuto = false; B.custom = isCustom(B.form.window);
+  B.review = B.mode !== 'repeat'; B.err = wordOf({ outcome: 'unknown' });
 }
 export function closeBuilder() {
   B.gen += 1;
@@ -111,7 +119,7 @@ document.addEventListener('keydown', (e) => {
   if (B.open && e.key === 'Tab') { if (B.layer && B.layer.isConnected) trapTab(e, topDialog()); return; }
   if (!B.open || e.key !== 'Escape') return;
   if (B.dp) { B.dp = null; render(); return; }            // Esc closes the calendar first
-  if (B.review) { B.review = false; render(); return; }   // then the review sheet
+  if (B.review && !B.pending) { B.review = false; render(); return; }   // then the review sheet (a frozen one closes the dialog)
   closeBuilder();                                          // then the dialog
 });
 
@@ -388,7 +396,7 @@ function foot(w) {
   const ft = el('div', 'mk5b-foot');
   const fine = el('p', 'mk5b-fine', `${w.cost.lead} `); if (w.cost.ceiling) fine.append(el('span', 'mk5b-nb', w.cost.ceiling));
   const go = el('button', 'mk5b-go', 'Revisar y programar'); go.type = 'button'; go.disabled = !!w.block || B.busy || blockedNow();
-  go.addEventListener('click', () => { if (!w.block && !blockedNow()) { B.review = true; B.err = null; if (!B.offer) B.op = OPS.opFor(OPS.opKey(B.ctx.brandId, 'create'), OPS.ticket()); render(); } });   // the op_id is minted as the review opens
+  go.addEventListener('click', () => { if (!w.block && !blockedNow()) { B.review = true; B.err = null; render(); } });
   ft.append(fine, go);
   if (w.block) ft.append(el('div', 'mk5b-block', w.block));
   const dr = el('button', 'mk5b-draft', 'Guardar borrador'); dr.type = 'button'; dr.disabled = B.busy || blockedNow();
@@ -512,7 +520,8 @@ function datePopover() {
 // ── the review sheet (3b) and the writes ────────────────────────────────────────────────────────────────────────────────────────
 function reviewSheet(w) {
   const scrim = el('div', 'mk5r-scrim');
-  scrim.addEventListener('click', (e) => { if (e.target === scrim && !B.busy) { B.review = false; render(); } });
+  const off = () => { if (B.pending) closeBuilder(); else { B.review = false; render(); } };   // frozen: no way back into the form
+  scrim.addEventListener('click', (e) => { if (e.target === scrim && !B.busy) off(); });
   const m = el('div', 'mk5r-modal'); m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'revT');
   const mh = el('div', 'mk5r-mh'); const mt = el('div', 'mk5r-mt', 'Revisá tu oferta'); mt.id = 'revT';
   mh.append(mt, el('div', 'mk5r-ms', 'Así queda. Si algo no cuadra, volvé y cambialo.'));
@@ -530,7 +539,7 @@ function reviewSheet(w) {
   mb.append(rows, fine);
   if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); mb.append(e); }
   const mf = el('div', 'mk5r-mf');
-  const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', () => { B.review = false; render(); });
+  const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', off);
   const ok = el('button', 'mk5r-ok', 'Programar oferta'); ok.type = 'button'; ok.disabled = B.busy || blockedNow(); ok.addEventListener('click', () => program());
   mf.append(back, ok);
   m.append(mh, mb, mf);
@@ -551,31 +560,31 @@ function authoredNow() {
   if (Number.isSafeInteger(B.form.start) && B.form.start < soon) B.form.start = soon;
   return ML.offerFromForm(B.form);
 }
-// «Programar oferta» — ONE call (3a e3c5f7366: save + program, all or nothing; advisor 11-14). A new offer carries the op_id minted
-// when the review opened: a retry reuses it, and the server answers THAT operation. A reply that proves an EARLIER operation of this
-// key (its record is not this form) closes it and this form goes as a new one. 409 duplicate ⇒ the existing offer is shown.
-async function createProgrammed(offer, { rid, token, who, ctx }) {
-  const k = OPS.opKey(ctx.brandId, 'create'), rr = () => getMarketingRaw({ rid, token });
+// «Programar oferta» — ONE call (3a: save + program, all or nothing). A NEW offer goes as a frozen operation (RULE A, Codex r4): the
+// first send stores its exact payload with its op_id; every retry resends THAT payload; an outcome proves it — a reply (the RETURNED
+// offer is the truth: its state and schedule), a 409 duplicate (the existing offer is shown), an explicit refusal (unfrozen, worded).
+async function sendCreate(k, { rid, offer, token, who }) {
   for (let n = 0; n < 2; n++) {
-    const opId = OPS.opFor(k, who);
-    if (!opId) return { outcome: 'stale' };
-    const c = await safe(ML.settleWrite({ op: 'create', opId, sent: offer }, () => offerSaveRaw({ rid, expectedRev: 0, offer, opId, program: true, token }), rr));
-    if (c.outcome === 'saved') {
-      OPS.dropOp(k, opId, who);   // proven
-      if (c.offer.state === 'active' && ML.authoredEqual(c.offer, offer)) return c;
-      continue;                   // it proved an earlier operation (its reply was lost): this form is a new one
-    }
-    if (c.outcome === 'refused' && c.code === 'duplicate') { OPS.dropOp(k, opId, who); return { outcome: 'duplicate', offerId: c.offer_id }; }
-    if (c.outcome === 'refused' && c.code === 'op_conflict') { OPS.dropOp(k, opId, who); continue; }
-    return c;   // UNKNOWN: the op stays (a retry reuses it) · another refusal: nothing was claimed, the op stays harmlessly
+    const op = OPS.sendOp(k, { rid, offer }, who);
+    if (!op) return { outcome: 'stale' };
+    const { rid: r0, offer: o0 } = op.payload, rr = () => getMarketingRaw({ rid: r0, token });
+    const c = await safe(ML.settleWrite({ op: 'create', opId: op.op_id, sent: o0 }, () => offerSaveRaw({ rid: r0, expectedRev: 0, offer: o0, opId: op.op_id, program: true, token }), rr));
+    if (c.outcome === 'unknown') return { ...c, op };
+    OPS.settleOp(k, op.op_id, who);   // proven, whichever way
+    if (c.outcome === 'refused' && c.code === 'op_conflict') continue;   // the op_id was another operation's: nothing of ours — send anew
+    if (c.outcome === 'refused' && c.code === 'duplicate') return { outcome: 'duplicate', offerId: c.offer_id };
+    if (c.outcome === 'saved' && c.offer.state !== 'active') return { outcome: 'refused', code: 'not_programmed' };   // it resolved to a record that is not programmed
+    return c;
   }
   return { outcome: 'unknown' };
 }
 async function program() {
   if (B.busy || blockedNow()) return;
-  const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token, who = OPS.ticket();
-  const r = authoredNow();
+  const g = B.gen, ctx = B.ctx, token = ctx.token, who = OPS.ticket();
+  const frozen = B.pending;
+  const r = frozen ? { ok: true, offer: frozen.payload.offer } : authoredNow();
   if (!r.ok) { B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
+  const rid = frozen ? frozen.payload.rid : rid0();
   B.busy = true; B.err = null; render();
   let s;
   if (B.offer) {   // a draft being continued: its id + rev are its identity — update AND program it in ONE CAS
@@ -584,17 +593,19 @@ async function program() {
       () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, program: true, token }), () => getMarketingRaw({ rid, token })));
     if (B.gen !== g) { stale(ctx); return; }
     if (s.outcome === 'unknown') unknownOn(o, ctx, who);
+    if (s.outcome === 'not_programmed') { B.offer = s.offer; s = { outcome: 'refused', code: 'not_programmed' }; }   // a newer draft: NOT programmed (Codex r4 P1-2)
     if (s.outcome === 'refused' && s.code === 'duplicate') s = { outcome: 'duplicate', offerId: s.offer_id };
   } else {
-    s = await createProgrammed(r.offer, { rid, token, who, ctx });
+    s = await sendCreate(OPS.opKey(ctx.brandId, 'create'), { rid, offer: r.offer, token, who });
     if (B.gen !== g) { stale(ctx); return; }
-    if (s.outcome === 'unknown') stale(ctx);
+    if (s.outcome === 'unknown') { freeze(s.op, ML.formFromOffer(s.op.payload.offer)); stale(ctx); }
+    else B.pending = null;
   }
   B.busy = false;
   if (s.outcome === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(s.offerId); return; }   // never an error: the existing offer
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
   closeBuilder();
-  ctx.toast(programmedToast(s.offer));
+  ctx.toast(programmedToast(s.offer));   // from the RETURNED offer
   ctx.onDone && ctx.onDone();
 }
 // «Guardar borrador» — a separate, harmless draft write (no op_id: a lost reply leaves at most a stray draft — advisor 11-14)
@@ -752,7 +763,8 @@ export function openRepeater(host, ctx, offer) {
   const start = hnDay0(now());
   B.form = { ...ML.formFromOffer(offer), start, end: start + len + DAY - 1 };
   B.custom = isCustom(B.form.window);
-  B.op = OPS.opFor(OPS.opKey(ctx.brandId, 'repeat', offer.id), OPS.ticket());   // minted as the sheet opens; a retry reuses it
+  const op = OPS.pendingOp(OPS.opKey(ctx.brandId, 'repeat', offer.id));   // RULE A: a sent, unproven repeat is frozen — its dates, read-only
+  if (op) freeze(op, { ...B.form, start: op.payload.schedule.start, end: op.payload.schedule.end ?? null });
   B.layer = el('div', 'mk5b-layer');
   host.append(B.layer);
   render();
@@ -770,7 +782,7 @@ function repeatSheet(w) {
   mh.append(mt, el('div', 'mk5r-ms', 'Misma oferta, mismos días y horas, mismas sucursales. Solo elegís las fechas nuevas.'));
   const mb = el('div', 'mk5r-mb');
   const dates = el('div', 'mk5b-dates');
-  dates.append(dateField('Inicio', 'start', B.form.start, { disabled: B.busy }), dateField('Fin', 'end', B.form.end, { disabled: B.busy }));
+  dates.append(dateField('Inicio', 'start', B.form.start, { disabled: B.busy || !!B.pending }), dateField('Fin', 'end', B.form.end, { disabled: B.busy || !!B.pending }));
   const sum = el('div', 'mk5b-sum'); sum.append(svg(...ROW_ICON.sch));
   const st = el('span'); st.append(el('b', null, w.schedSummary.strong), document.createTextNode(` · ${repeatRest(w, B.form.audience)}`));
   sum.append(st);
@@ -783,28 +795,34 @@ function repeatSheet(w) {
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;
 }
-// «Programar» — ONE call (3a e3c5f7366): copy + the new dates + program under the op_id; a retry reuses it; 409 duplicate ⇒ the
-// existing offer is shown; an op_id conflict ⇒ a new op, once
+// «Programar» — ONE call (3a): copy + the new dates + program, as a FROZEN operation (RULE A): the first send stores its schedule with
+// its op_id; every retry resends THAT schedule; the toast reads the RETURNED offer (Codex r4 P2-5); 409 duplicate ⇒ the existing offer
 async function repeatGo() {
   if (B.busy) return;
   const g = B.gen, src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token, who = OPS.ticket();
   const soon = Math.ceil((now() + 60000) / 60000) * 60000;
-  const schedule = { start: Math.max(B.form.start, soon), ...(B.form.end !== null ? { end: B.form.end } : {}) };
+  const want = { start: Math.max(B.form.start, soon), ...(B.form.end !== null ? { end: B.form.end } : {}) };
   B.busy = true; B.err = null; render();
-  const k = OPS.opKey(ctx.brandId, 'repeat', src.id), rr = () => getMarketingRaw({ rid, token });
-  let r = { outcome: 'unknown' };
+  const k = OPS.opKey(ctx.brandId, 'repeat', src.id);
+  let r = { outcome: 'unknown' }, op = null;
   for (let n = 0; n < 2; n++) {
-    const opId = OPS.opFor(k, who);
-    if (!opId) break;
-    r = await safe(ML.settleWrite({ op: 'repeat', opId, sourceId: src.id }, () => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token }), rr));
-    if (r.outcome === 'saved' || (r.outcome === 'refused' && (r.code === 'duplicate' || r.code === 'op_conflict'))) OPS.dropOp(k, opId, who);
+    op = OPS.sendOp(k, { rid, schedule: want }, who);
+    if (!op) break;
+    const { rid: r0, schedule } = op.payload, rr = () => getMarketingRaw({ rid: r0, token });
+    r = await safe(ML.settleWrite({ op: 'repeat', opId: op.op_id, sourceId: src.id }, () => offerRepeatRaw({ rid: r0, sourceId: src.id, opId: op.op_id, schedule, token }), rr));
+    if (r.outcome === 'unknown') break;
+    OPS.settleOp(k, op.op_id, who);
     if (!(r.outcome === 'refused' && r.code === 'op_conflict')) break;
   }
   if (B.gen !== g) { stale(ctx); return; }
   B.busy = false;
+  if (r.outcome === 'unknown' && op) { freeze(op, { ...B.form, start: op.payload.schedule.start, end: op.payload.schedule.end ?? null }); B.err = wordOf(r); render(); stale(ctx); return; }
+  B.pending = null;
   if (r.outcome === 'refused' && r.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(r.offer_id); return; }
+  if (r.outcome === 'saved' && r.offer.state !== 'active') r = { outcome: 'refused', code: 'not_programmed' };
   if (r.outcome !== 'saved') { B.err = wordOf(r); render(); stale(ctx); return; }
   closeBuilder();
-  ctx.toast(`Campaña programada para el ${longDate(schedule.start).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov»
+  const st = r.offer.schedule && r.offer.schedule.start;
+  ctx.toast(`Campaña programada para el ${longDate(st).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov» — the RETURNED copy's start
   if (ctx.onDone) ctx.onDone();
 }
