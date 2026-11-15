@@ -183,7 +183,16 @@ const defsOf = (decl) => { const defs = new Map(); for (const d of decl) if (d.p
 // in that page's own colours — «faithful preview of the customer order page's card; changes with that page». Exactly this selector,
 // property and value; anything else on it (or this value anywhere else) is judged like every other rule. The customer-side gold price is
 // on the owner's list as a separate question.
-export const EXEMPT = Object.freeze([Object.freeze({ sel: '.phoprice', prop: 'color', value: '#7A5A08' })]);
+// THE STARS-ONLY EXCEPTION (owner 2026-11-14, MOCKUP-portal-calificaciones-color decision Q1 «A shape, yellow stars»): the Calificaciones
+// rating stars are a clear warm yellow (#FFD60A, a #E3A800 hairline in light for 3:1) — the star tokens, defined ONLY in the three theme
+// blocks, used ONLY by the star rule. Chips, tags and bars stay pastel; this value anywhere else is judged like every other rule.
+export const STARS_EXEMPT = Object.freeze([
+  { sel: ':root, :root[data-theme="light"]', prop: '--star', value: '#FFD60A' }, { sel: ':root, :root[data-theme="light"]', prop: '--star-line', value: '#E3A800' },
+  { sel: ':root[data-theme="dark"]', prop: '--star', value: '#FFD60A' }, { sel: ':root[data-theme="dark"]', prop: '--star-line', value: '#FFD60A' },
+  { sel: ':root:not([data-theme="light"])', prop: '--star', value: '#FFD60A' }, { sel: ':root:not([data-theme="light"])', prop: '--star-line', value: '#FFD60A' },
+  { sel: '.calif .stars svg', prop: 'fill', value: 'var(--star)' }, { sel: '.calif .stars svg', prop: 'stroke', value: 'var(--star-line)' },
+].map(Object.freeze));
+export const EXEMPT = Object.freeze([Object.freeze({ sel: '.phoprice', prop: 'color', value: '#7A5A08' }), ...STARS_EXEMPT]);
 const exempt = (sel, prop, value) => EXEMPT.some((e) => e.sel === sel && e.prop === prop && e.value === value);
 // judge «prop: value» (var() resolved across every scope of `defs`) → the reports
 function judgeDecl(at, prop, value, defs) {
@@ -343,7 +352,11 @@ test('non-vacuity: the measure finds amber / gold (today\'s tokens, a raw litera
 });
 
 test('the .phoprice exemption covers ONLY that selector, property and value (the customer card preview)', () => {
-  assert.deepEqual(EXEMPT, [{ sel: '.phoprice', prop: 'color', value: '#7A5A08' }], 'one entry, exactly');
+  assert.deepEqual(EXEMPT.slice(0, 1), [{ sel: '.phoprice', prop: 'color', value: '#7A5A08' }], 'the photo-preview entry, exactly');
+  assert.equal(STARS_EXEMPT.length, 8, 'the stars-only exception: six token definitions + the star rule\'s fill and stroke — nothing else');
+  assert.ok(STARS_EXEMPT.every((e) => /^--star(-line)?$/.test(e.prop) || e.sel === '.calif .stars svg'), 'only the star tokens and the star rule');
+  assert.ok(amberInSheet(`${CSS}\n.ctag{background:var(--star)}`).some((b) => b.includes('.ctag {')), 'the star yellow on anything but the stars is judged (chips stay pastel)');
+  assert.ok(amberInSheet(`${CSS}\n.calif .stars svg{color:#FFD60A}`).some((b) => b.includes('color: #FFD60A')), 'another property on the star rule is judged');
   assert.ok(declarations(CSS).some((d) => d.sel === '.phoprice' && d.prop === 'color' && d.value === '#7A5A08'), 'premise: the preview\'s price rule is in the sheet');
   assert.ok(amberInSheet(`${CSS}\n.phoprice{background:#E3B54A}`).some((b) => b.includes('.phoprice { background')), 'another property on it is judged');
   assert.ok(amberInSheet(`${CSS}\n.other{color:#7A5A08}`).some((b) => b.includes('.other {')), 'the same value elsewhere is judged');

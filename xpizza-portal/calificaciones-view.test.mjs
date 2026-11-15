@@ -6,6 +6,10 @@
 // ref). Run: node --test calificaciones-view.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const DIR = dirname(fileURLToPath(import.meta.url));
 import { SEED, fakeDb, order, server, tokenOf, JSDOM, fetchRatingComments } from './calificaciones-harness.mjs';
 
 const { V2, AG, ratingsOf } = await import('./calificaciones-harness.mjs');
@@ -49,6 +53,7 @@ test('first paint: the final layout\'s boxes as quiet bars; the scope, the secti
   assert.equal(v.$('.sect .subl').textContent, P('anon'));
   assert.equal(v.$('[aria-busy="true"]') !== null, true);
   assert.equal(v.$$('.kfigs.sk .kfig').length, 2); assert.equal(v.$$('.clist .skrow').length, 5); assert.ok(v.$('.pager .skb.b'));
+  assert.ok(v.$$('.clist .skrow').every((r) => r.querySelector(':scope > .skb.c') && r.querySelector('.skl .skb.a') && r.querySelector('.skl .skb.s') && r.querySelector('.skl .skb.t')), 'the bones mirror the new row: a disc, a name bar, a stars bar, a text bar');
   h.release(); await settle();
   assert.equal(v.$('[aria-busy="true"]'), null, 'rows replace the bars');
   assert.equal(v.$$('.crow').length, 3);
@@ -124,18 +129,36 @@ test('a LATER page that fails keeps the rows shown; the pager area carries the e
   assert.equal(v.$$('.crow').length, 40); assert.equal(v.$('.pager .cerr'), null);
 });
 
-test('a row: mint stars + the comment clamped to three lines with «Leer más» / «Leer menos» (aria-expanded); no name, no date', async () => {
+test('a row (the colour delta, owner 11-14): the anonymous disc + «Cliente», the yellow stars, the comment clamped with «Leer más» / «Leer menos»; no name, date, tag or dish (PLAN-3a r2)', async () => {
   const v = page(await rated(1)); await settle();
   const row = v.$('.crow');
   assert.equal(row.tagName, 'DIV');
-  const st = row.querySelector('.stars'); assert.equal(st.getAttribute('aria-label'), '1 de 5 estrellas');
+  const av = row.querySelector(':scope > .cav');
+  assert.ok(av && av.classList.contains('anon') && av.getAttribute('aria-hidden') === 'true', 'the neutral disc (every rating today is anonymous)');
+  assert.ok(av.querySelector('svg path') && av.querySelector('svg circle'), 'the person glyph, never initials');
+  const body = row.querySelector(':scope > .cbody');
+  assert.equal(body.querySelector('.chd .cname.anon').textContent, 'Cliente', 'the drawn name of an anonymous rating');
+  const st = body.querySelector('.stars'); assert.equal(st.getAttribute('aria-label'), '1 de 5 estrellas');
   assert.equal(st.querySelectorAll('svg path').length, 5, 'the star shape inline (the portal has no sprite)');
-  const p = row.querySelector('.ctxt'); assert.ok(p.classList.contains('clamp')); assert.equal(p.textContent, 'Comentario 0');
-  const more = row.querySelector('button.qact.cmore'); assert.equal(more.textContent, P('readMore')); assert.equal(more.getAttribute('aria-expanded'), 'false');
+  assert.equal(st.querySelectorAll('svg.e').length, 4, 'four outlined empties');
+  const p = body.querySelector('.ctxt'); assert.ok(p.classList.contains('clamp')); assert.equal(p.textContent, 'Comentario 0');
+  const more = body.querySelector('button.qact.cmore'); assert.equal(more.textContent, P('readMore')); assert.equal(more.getAttribute('aria-expanded'), 'false');
   more.click();
   assert.ok(!p.classList.contains('clamp')); assert.equal(more.textContent, P('readLess')); assert.equal(more.getAttribute('aria-expanded'), 'true');
-  assert.equal(row.children.length, 3, 'stars · text · expander, nothing else');
+  assert.deepEqual([...body.children].map((c) => c.className), ['chd', 'stars', 'ctxt', 'qact cmore'], 'header · stars · text · expander — 🔴 no tag, dishes or date until PLAN-3a r2 serves them');
 });
+test('the colour delta\'s stars (owner 11-14 «A shape, yellow stars»): filled #FFD60A with a #E3A800 hairline in light, #FFD60A in dark; empties outlined in --mute2', () => {
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  const block = (sel) => { const i = css.indexOf(sel); assert.ok(i >= 0, sel); return css.slice(i, css.indexOf('}', i)); };
+  const tok = (b, k) => (b.match(new RegExp(`--${k}:([^;]+);`)) || [])[1];
+  const light = block(':root, :root[data-theme="light"]{'), dark = block(':root[data-theme="dark"]{'), sys = block('@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){');
+  assert.deepEqual([tok(light, 'star'), tok(light, 'star-line')], ['#FFD60A', '#E3A800'], 'light');
+  assert.deepEqual([tok(dark, 'star'), tok(dark, 'star-line')], ['#FFD60A', '#FFD60A'], 'dark');
+  assert.deepEqual([tok(sys, 'star'), tok(sys, 'star-line')], ['#FFD60A', '#FFD60A'], 'system dark');
+  assert.match(css, /\.calif \.stars svg\{[^}]*fill:var\(--star\);stroke:var\(--star-line\)/, 'the filled stars');
+  assert.match(css, /\.calif \.stars svg\.e\{fill:none;stroke:var\(--mute2\)/, 'the empties');
+});
+
 
 test('copy: the approved strings are literal; every other string is a ⟦cal.key⟧ placeholder until the owner approves the mockup', () => {
   for (const [k, v] of Object.entries({ title: 'Lo que dicen tus clientes', avg: 'Calificación promedio', count: 'Calificaciones' })) assert.equal(calCopy(k), v);

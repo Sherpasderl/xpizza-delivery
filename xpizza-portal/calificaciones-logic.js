@@ -73,14 +73,28 @@ export const CAL_COPY = Object.freeze({
 });
 export const calCopy = (k) => (typeof CAL_COPY[k] === 'string' ? CAL_COPY[k] : `⟦cal.${k}⟧`);
 
-// the rows, as the mockup draws a rating: N filled stars then outlined ones («N de 5 estrellas», approved), the comment as TEXT clamped
-// to three lines, and the row's own expander (shown by CSS only when the text overflows)
+// the rows, as the colour delta draws them (MOCKUP-portal-calificaciones-color, owner 11-14): every rating served today is ANONYMOUS ⇒ the
+// neutral disc with the person glyph + «Cliente»; then N filled (yellow) stars and outlined ones («N de 5 estrellas», approved), the
+// comment as TEXT clamped to three lines, and the row's own expander (shown by CSS only when the text overflows). The named row (initials
+// on a tone disc, «Cliente nuevo», the dish pills, «Calificado el …») waits for PLAN-3a r2 to serve it — ABSENT until then.
 const SVG = 'http://www.w3.org/2000/svg';
 const STAR = 'M12 2.5l2.9 6 6.6 1-4.8 4.6 1.1 6.6L12 17.6l-5.8 3.1 1.1-6.6L2.5 9.5l6.6-1z';
+const PERSON = 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2';   // + a circle (cx 12, cy 7, r 4): the mockup's #i-user
+const ANON_NAME = 'Cliente';   // the drawn name of an anonymous rating (the colour delta, owner-approved)
 export function renderCommentRows(doc, rows) {
   const frag = doc.createDocumentFragment();
   for (const r of rows) {
     const row = doc.createElement('div'); row.className = 'crow';
+    const av = doc.createElement('span'); av.className = 'cav anon'; av.setAttribute('aria-hidden', 'true');
+    const g = doc.createElementNS(SVG, 'svg'); g.setAttribute('viewBox', '0 0 24 24'); g.setAttribute('aria-hidden', 'true');
+    const gp = doc.createElementNS(SVG, 'path'); gp.setAttribute('d', PERSON);
+    const gc = doc.createElementNS(SVG, 'circle'); gc.setAttribute('cx', '12'); gc.setAttribute('cy', '7'); gc.setAttribute('r', '4');
+    g.append(gp, gc); av.append(g);
+    const body = doc.createElement('div'); body.className = 'cbody';
+    const hd = doc.createElement('div'); hd.className = 'chd';
+    const nm = doc.createElement('b'); nm.className = 'cname anon'; nm.textContent = ANON_NAME; hd.append(nm);
+    body.append(hd);
+    row.append(av, body);
     if (r.stars !== null) {
       const st = doc.createElement('span'); st.className = 'stars';
       st.setAttribute('role', 'img'); st.setAttribute('aria-label', `${r.stars} de 5 estrellas`);
@@ -91,7 +105,7 @@ export function renderCommentRows(doc, rows) {
         const path = doc.createElementNS(SVG, 'path'); path.setAttribute('d', STAR);
         svg.append(path); st.append(svg);
       }
-      row.append(st);
+      body.append(st);
     }
     const p = doc.createElement('p'); p.className = 'ctxt clamp'; p.textContent = r.comment;
     const more = doc.createElement('button'); more.type = 'button'; more.className = 'qact cmore';
@@ -101,7 +115,7 @@ export function renderCommentRows(doc, rows) {
       p.classList.toggle('clamp', !open);
       more.textContent = calCopy(open ? 'readLess' : 'readMore'); more.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
-    row.append(p, more);
+    body.append(p, more);
     frag.append(row);
   }
   return frag;

@@ -202,8 +202,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "92cb7a98bec52cecd0b4dea8e1307d0d2fb784a24c1abab053226e97bcfe432f",
-   "bytes": 182787
+   "sha256": "2b1873640e18df0802de98e3119411a627dc8d2113bc6b522952755b7a997b5e",
+   "bytes": 184179
   }
  },
  "diff_aid": {
@@ -233,6 +233,8 @@
    "--sky-text": "#1E4E99",
    "--sky-soft": "#E6F0FB",
    "--sky-line": "#B7D2F3",
+   "--star": "#FFD60A",
+   "--star-line": "#E3A800",
    "--mint-soft": "#DFF4ED",
    "--mint-line": "#A9E0D0",
    "--mint-text": "#0E6A55",
@@ -928,7 +930,31 @@
    ],
    [
     "",
+    ".calif .cav.anon",
+    "background",
+    "var(--card-2)"
+   ],
+   [
+    "",
+    ".calif .cav.anon",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".calif .cav.anon",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".calif .cempty p,.calif .cerr p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cname.anon",
     "color",
     "var(--mute)"
    ],
@@ -979,12 +1005,6 @@
     ".calif .skb",
     "background",
     "var(--line2)"
-   ],
-   [
-    "",
-    ".calif .stars",
-    "color",
-    "var(--mint-text)"
    ],
    [
     "",

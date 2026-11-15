@@ -64,7 +64,10 @@ function paintLoading(v) {
   const figs = mk(v, 'div', 'kfigs surface sk'); figs.setAttribute('aria-hidden', 'true');
   for (let i = 0; i < 2; i++) { const f = mk(v, 'div', 'kfig'); f.append(mk(v, 'span', 'skb l'), mk(v, 'span', 'skb n')); figs.append(f); }
   const list = mk(v, 'div', 'clist'); list.setAttribute('aria-hidden', 'true');
-  for (const w of SK_WIDTHS) { const row = mk(v, 'div', 'skrow'); const t = mk(v, 'span', 'skb t'); t.style.width = w; row.append(mk(v, 'span', 'skb s'), t); list.append(row); }
+  for (const w of SK_WIDTHS) {   // the bones mirror the new row (the colour delta): a disc, a name bar, a stars bar, a text bar
+    const row = mk(v, 'div', 'skrow'); const l = mk(v, 'div', 'skl'); const t = mk(v, 'span', 'skb t'); t.style.width = w;
+    l.append(mk(v, 'span', 'skb s'), mk(v, 'span', 'skb a'), t); row.append(mk(v, 'span', 'skb c'), l); list.append(row);
+  }
   const pager = mk(v, 'div', 'pager'); pager.setAttribute('aria-hidden', 'true'); pager.append(mk(v, 'span', 'skb b'));
   const sr = mk(v, 'span', 'sr-only', calCopy('srLoading'));
   st.append(figs, sect(v), list, pager, sr);
