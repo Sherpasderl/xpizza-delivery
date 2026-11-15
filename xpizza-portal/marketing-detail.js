@@ -4,12 +4,12 @@
 // figures, the chart, «Resultados», the Límites progress, the per-branch sales, the «not yet» reorder line, the end sheet's «Lleva»)
 // is ABSENT — SOURCE_GATE in marketing.js (the 5f results read). The cap-pause strip is absent (no automatic pause exists); an
 // OWNER pause shows v5's strip «Pausada por vos el …» + «Reanudar» (the date: 3a's paused_at). Every write's outcome from
-// classifyWrite / settleWrite; refusals stay on the sheet as panels; successes are v5's toasts.
-import { offerSetStateRaw, getMarketingRaw } from './api.js';
+// classifyWrite (one call, no recovery read — r6.1); refusals stay on the sheet as panels; an UNKNOWN goes to the list; successes are
+// v5's toasts.
+import { offerSetStateRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
 import { focusKey, layered, trapTab } from './marketing-focus.js';
-import * as OPS from './marketing-ops.js';
 
 const BACK = 'M15 18l-6-6 6-6';
 const PAUSE = [{ tag: 'rect', x: 6, y: 5, width: 4, height: 14, rx: 1 }, { tag: 'rect', x: 14, y: 5, width: 4, height: 14, rx: 1 }];
@@ -114,7 +114,7 @@ function paint() {
     const strip = el('div', 'mk5d-strip'); strip.setAttribute('role', 'status');
     strip.append(svg(...PAUSE));
     const tx = el('span', 'mk5d-stxt'); tx.append(el('b', null, ML.pausedWord(o.paused_at, D.ctx.now ? D.ctx.now() : Date.now())));   // v5 5c «Pausada por vos el 9 nov» (3a's paused_at)
-    const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy || OPS.unsettled(o.id); rb.addEventListener('click', () => move('resume'));
+    const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy; rb.addEventListener('click', () => move('resume'));
     strip.append(tx, rb);
     out.push(strip);
   }
@@ -142,7 +142,7 @@ function actions(o) {
   const box = el('div', 'mk5d-acts');
   const acts = ML.actionsOf(o);
   if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.addEventListener('click', () => D.ctx.onEdit(o)); box.append(b); }
-  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy || OPS.unsettled(o.id); b.addEventListener('click', () => move('pause')); box.append(b); }
+  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); box.append(b); }
   const menu = [];
   if (acts.includes('repeat')) menu.push(['repeat', 'Repetir campaña']);
   if (acts.includes('end')) menu.push(['end', 'Terminar oferta']);
@@ -168,22 +168,19 @@ function errRow(closable) {
   if (closable) { const c = el('button', 'mk5d-errx', 'Cerrar'); c.type = 'button'; c.addEventListener('click', () => { D.err = null; render(); }); e.append(c); }
   return e;
 }
-function errWord(c) {
-  if (c.outcome === 'unknown') return 'No sabemos si se guardó. Volvé a la lista antes de intentar de nuevo.';
-  return 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.';
-}
-// pause / resume / end: ONE state move through settleWrite
+const errWord = () => 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.';   // a DEFINITE refusal
+// pause / resume / end: ONE state move, classified ONCE (r6.1) — an UNKNOWN outcome hands over to the list (ctx.onUnknown)
 export async function move(kind) {
-  if (D.busy || OPS.unsettled(D.offer.id)) return;
-  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, who = OPS.ticket();
+  if (D.busy) return;
+  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token;
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
-  const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to, from: o.state };
-  const r = await ML.settleWrite(a, () => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, token }), () => getMarketingRaw({ rid, token }))
-    .catch(() => ({ outcome: 'unknown' }));
+  const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to };
+  const r = await offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
   if (!D.host || D.gen !== g) { if (ctx.onChanged) ctx.onChanged(); return; }   // bound to the view it started in
   D.busy = false;
-  if (r.outcome !== 'saved') { D.err = errWord(r); if (r.outcome === 'unknown') { OPS.markUnsettled(o.id, o.rev + 1, who); if (ctx.onChanged) ctx.onChanged(); } render(); return; }   // unsettled until a read reconciles it (Codex r2)
+  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown(); else if (ctx.onChanged) ctx.onChanged(); return; }
+  if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
@@ -205,7 +202,7 @@ function endSheet(o) {
   if (D.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, D.err)); mb.append(e); }
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = D.busy; back.addEventListener('click', closeSheet);
-  const ok = el('button', 'mk5r-ok', 'Terminar oferta'); ok.type = 'button'; ok.disabled = D.busy || OPS.unsettled(o.id); ok.addEventListener('click', () => move('end'));
+  const ok = el('button', 'mk5r-ok', 'Terminar oferta'); ok.type = 'button'; ok.disabled = D.busy; ok.addEventListener('click', () => move('end'));
   mf.append(back, ok);
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;

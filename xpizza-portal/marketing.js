@@ -13,8 +13,7 @@ import { token } from './auth.js';
 import { getMyBranches, getMarketingRaw } from './api.js';
 import { el, svg, button, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
-import { openBuilder, openEditor, openRepeater, closeBuilder, builderOpen, refreshBuilder } from './marketing-builder.js';
-import * as OPS from './marketing-ops.js';
+import { openBuilder, openEditor, openRepeater, closeBuilder, builderOpen } from './marketing-builder.js';
 import { mountDetail, unmountDetail, refreshDetail } from './marketing-detail.js';
 
 // ── what v5 draws that this build does NOT (advisor 11-14) ─────────────────────────────────────────────────────────────────────
@@ -74,6 +73,7 @@ const S = {
   status: 'idle', tab: 'home', branches: [], reads: null, offers: [], off: false,
   filter: { rid: 'all', estado: 'all' }, howOpen: false, menu: null,
   detail: null, dhost: null, ohost: null,   // O3: the open offer's id; the detail's host; the list's row-move host
+  loadSeq: 0, notice: null,   // r6.1: the newest list request wins; the UNKNOWN banner over the list
 };
 const can = (cap) => !!(S.sel && S.sel.caps.includes(cap));
 function snap() {
@@ -87,7 +87,6 @@ document.addEventListener('portal:auth', (e) => {
   S.gen += 1;
   if (uid !== S.uid) { S.offers = []; S.reads = null; S.branches = []; S.status = 'idle'; S.menu = null; closeDetail(); if (S.body) S.body.replaceChildren(); }
   S.uid = uid;
-  OPS.forUser(uid);   // the pending-writes ledger is per user
 });
 
 // the brand's member branches the caller may read marketing for (getMyBranches), in the server's order
@@ -123,27 +122,28 @@ async function revalidateSwitch() {
   if (on !== swGet(S.uid, g.brandId)) { swSet(S.uid, g.brandId, on); requestNavRefresh(); }
 }
 
+// r6.1 P1-3: the NEWEST request wins — every load takes a request id; an answer older than the newest issued request is dropped
 async function load() {
-  const g = snap();
+  const g = snap(), id = ++S.loadSeq;
+  const live = () => g.alive() && id === S.loadSeq;
   if (!S.reads) { S.status = 'loading'; render(); }
   try {
     const bs = await branchesOf(g);
-    if (!g.alive()) return;
+    if (!live()) return;
     S.branches = bs;
     const rids = S.filter.rid === 'all' ? bs.map((b) => b.rid) : bs.filter((b) => b.rid === S.filter.rid).map((b) => b.rid);
     const reads = await Promise.all(rids.map(readOne));
-    if (!g.alive()) return;
-    if (reads.some((r) => r.kind === 'error') || !reads.length) { S.status = 'error'; render(); return; }
+    if (!live()) return;
+    if (reads.some((r) => r.kind === 'error') || !reads.length) { S.status = 'error'; S.reads = null; S.offers = []; render(); return; }   // never the old rows under it
     S.off = reads.some((r) => r.kind === 'off');
     swSet(S.uid, g.brandId, !S.off);
     S.reads = reads;
     S.offers = S.off ? [] : ML.unionOffers(reads.map((r) => r.offers));
     S.status = 'ready';
-    if (!S.off && OPS.reconcile(S.offers)) refreshBuilder(S.offers);   // a successful read settles the pending writes it can prove (Codex r2)
     if (S.detail) { const o = S.offers.find((x) => x.id === S.detail); if (o) refreshDetail(o); else closeDetail(); }   // the page follows the fresh read
   } catch (err) {
-    if (!g.alive() || (err && err.kind === 'obsolete')) return;
-    S.status = 'error';
+    if (!live() || (err && err.kind === 'obsolete')) return;
+    S.status = 'error'; S.reads = null; S.offers = [];
   }
   render();
 }
@@ -155,6 +155,7 @@ function render() {
   const { top } = topBlock('Marketing', empty && S.tab === 'home' ? LEDE_EMPTY : LEDE, []);
   if (S.detail && S.status === 'ready' && !S.off) { S.body.replaceChildren(S.dhost); return; }   // O3: the detail replaces the list
   const out = [top];
+  if (S.notice) { const n = el('div', 'mk5b-err'); n.dataset.notice = 'unknown'; n.setAttribute('role', 'status'); n.append(el('span', null, S.notice)); out.push(n); }   // r6.1 UNKNOWN
   if (S.status === 'loading') out.push(skeleton());
   else if (S.status === 'error') out.push(errBox(OFFLINE[0], OFFLINE[1], () => load()));
   else if (S.status === 'ready' && !S.off) {
@@ -172,7 +173,7 @@ function tabs() {
   const items = [['home', 'Campañas'], ...(can('marketing.edit') ? [['create', 'Crear campaña']] : [])];
   for (const [id, word] of items) {
     const on = S.tab === id;
-    const b = button(`mk5-tab${on ? ' mk5-on' : ''}`, word, () => { if (S.tab !== id) { S.tab = id; S.menu = null; render(); } });
+    const b = button(`mk5-tab${on ? ' mk5-on' : ''}`, word, () => { if (S.tab !== id) { S.tab = id; S.menu = null; S.notice = null; render(); } });
     if (on) b.setAttribute('aria-current', 'page');
     nav.append(b);
   }
@@ -205,7 +206,7 @@ function homeTab() {
     const cur = S.filter.rid === 'all' ? null : S.branches.find((b) => b.rid === S.filter.rid);
     filt.append(pill('fbr', cur ? cur.name : 'Todas las sucursales',
       [{ value: 'all', word: 'Todas las sucursales', selected: !cur }, ...S.branches.map((b) => ({ value: b.rid, word: b.name, selected: !!cur && cur.rid === b.rid }))],
-      (v) => { S.filter.rid = v; S.reads = null; load(); }, { on: !!cur }));
+      (v) => { S.filter.rid = v; S.reads = null; S.notice = null; load(); }, { on: !!cur }));
   }
   const counts = ML.estadoCounts(S.offers);
   filt.append(pill('fst', S.filter.estado === 'all' ? 'Estado' : ESTADO_WORD[S.filter.estado],
@@ -305,9 +306,17 @@ function emptyState() {
 // ── the builder (marketing-builder.js, O2) ───────────────────────────────────────────────────────────────────────────────────
 function builderCtx() {
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onChangeType: () => { S.tab = 'create'; render(); } };
+    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: afterUnknown, onChangeType: () => { S.tab = 'create'; render(); } };
 }
-function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) openBuilder(S.host, builderCtx(), opts); }
+// r6.1 (owner 11-15): a write whose outcome is UNKNOWN — every dialog / sheet / detail closes, «Campañas» RE-READS (no cached row paints
+// meanwhile, nor after a failed read) and the banner says so. The list is the truth.
+function afterUnknown() {
+  closeBuilder(); closeDetail();
+  S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = ML.UNKNOWN_WORD;
+  render();
+  load();
+}
+function startBuilder(opts) { if (can('marketing.edit') && S.host && !builderOpen()) { S.notice = null; openBuilder(S.host, builderCtx(), opts); } }
 function onRowAction(a, id) {
   const o = S.offers.find((x) => x.id === id);
   if (!o) return;
@@ -323,7 +332,7 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 // ── O3 · the offer detail (marketing-detail.js) ────────────────────────────────────────────────────────────────────────────────
 function detailCtx(o) {
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
-    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: afterUnknown, onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
 }
 // 409 duplicate (3a e3c5f7366): an identical offer is already programmed — never an error: the list re-reads and THAT offer opens
 async function showExisting(id) {
@@ -335,7 +344,7 @@ function openDetail(id) {
   const o = S.offers.find((x) => x.id === id);
   if (!o || !S.dhost) return;
   unmountDetail();
-  S.detail = id; S.menu = null;
+  S.detail = id; S.menu = null; S.notice = null;
   mountDetail(S.dhost, detailCtx(o));
   render();
   if (typeof window.scrollTo === 'function') try { window.scrollTo(0, 0); } catch (_) { /* jsdom */ }
@@ -362,7 +371,7 @@ registerView({
     S.dhost = el('div', 'mk5d'); S.ohost = el('div');
     wrap.append(S.body);
     host.replaceChildren(wrap);
-    S.status = 'idle'; S.reads = null; S.offers = []; S.tab = 'home'; S.menu = null; S.howOpen = false; S.filter = { rid: 'all', estado: 'all' }; S.detail = null;
+    S.status = 'idle'; S.reads = null; S.offers = []; S.tab = 'home'; S.menu = null; S.howOpen = false; S.filter = { rid: 'all', estado: 'all' }; S.detail = null; S.notice = null;
     render();
     load();
   },

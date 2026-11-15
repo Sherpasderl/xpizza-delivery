@@ -192,8 +192,8 @@ export function actionsOf(o) {
 // res: { status, body } | { status: 200, body: null, malformed: true } | { transport: true } (api.js rawCall).
 //   saved   — a clean 200 whose offer is the one we wrote (the rev moved by exactly one; for a state move, the state we asked for)
 //   refused — a 4xx with the server's own code: NOTHING landed; { code, field?, reason?, with?, current_rev? } for the screen
-//   unknown — 503 / 500 / transport / a malformed 200: it MAY have landed (a failed unmirror or undo) ⇒ a fresh read decides
-//             (classifyRecovery). Never shown as success.
+//   unknown — 503 / 500 / transport / a malformed 200: it MAY have landed (a failed unmirror or undo) ⇒ the LIST decides (UNKNOWN_WORD,
+//             r6.1). Never shown as success, never as a failure.
 // attempt: { op: 'create'|'save'|'state'|'repeat', offerId?, expectedRev?, to? }
 export function classifyWrite(attempt, res) {
   if (!res || res.transport || res.malformed) return { outcome: 'unknown' };
@@ -228,50 +228,9 @@ export function refusalOf(status, b) {
   return out;
 }
 
-// After an UNKNOWN: the FRESH read decides → saved | not_landed | conflict | unknown. attempt (as above) plus, for a save, `sent` (the
-// authored offer) and `prev` (the server offer the edit started from); for a state move, `from` (the stored state it started from).
-// A create / repeat is found by OPERATION IDENTITY only (Codex r2, advisor ruling 11-14): a record carrying our op_id ⇒ saved;
-// anything else ⇒ UNKNOWN — never «not landed» (the request may still be running), never a lookalike (content can't tell whose).
-export function classifyRecovery(attempt, readBody) {
-  const m = readModel(readBody);
-  if (m.kind !== 'ok') return { outcome: 'unknown' };
-  if (attempt.op === 'create' || attempt.op === 'repeat') {
-    const o = attempt.opId ? m.offers.find((x) => x.op_id === attempt.opId) : null;
-    return o ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
-  }
-  const o = m.offers.find((x) => x.id === attempt.offerId);
-  if (!o) return { outcome: 'conflict' };
-  if (o.rev === attempt.expectedRev) return { outcome: 'not_landed', offer: o };
-  if (attempt.op === 'state') {
-    if (o.state === attempt.to) return { outcome: 'saved', offer: o };
-    return o.state === attempt.from ? { outcome: 'not_landed', offer: o } : { outcome: 'conflict', offer: o };   // moved, then put back
-  }
-  const authored = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
-  if (attempt.program && o.state !== 'active') return { outcome: 'not_programmed', offer: o };   // a save + program PROVES only by being active (Codex r4 P1-2)
-  if (same(authored(o), authored(attempt.sent))) return { outcome: 'saved', offer: o };
-  if (attempt.prev && same(authored(o), authored(attempt.prev))) return { outcome: 'not_landed', offer: o };   // landed, then undone
-  return { outcome: 'conflict', offer: o };
-}
-// a server offer vs an authored one: the same authored offer? (a replayed create answers the FIRST attempt's record — Codex r2)
-export const authoredEqual = (o, sent) => {
-  const au = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
-  return same(au(o), au(sent));
-};
-const pk = (o) => (o.type === 'bogo' && Array.isArray(o.params.cats) ? { cats: o.params.cats, free_per_order: o.params.free_per_order } : o.params);
-const sched = (s) => ({ start: s.start ?? null, end: s.end ?? null, days: s.days, window: s.window ?? null });
-const caps = (c) => ({ redemptions: c.redemptions ?? null, spend_cents: c.spend_cents ?? null, weekly: c.weekly });
-
-// ONE write, settled: send → classifyWrite; an UNKNOWN re-reads ONCE (getMarketing) and classifyRecovery decides. Calls injected
-// (api.js offerSaveRaw / offerSetStateRaw / offerRepeatRaw, getMarketingRaw) so this stays DOM-free. A read that fails too stays
-// `unknown` — the screen says it could not confirm, never that it saved.
-export async function settleWrite(attempt, send, reread) {
-  const first = classifyWrite(attempt, await send());
-  if (first.outcome !== 'unknown') return first;
-  let r;
-  try { r = await reread(); } catch (_) { return { outcome: 'unknown' }; }
-  if (!r || r.transport || r.status !== 200) return { outcome: 'unknown' };
-  return classifyRecovery(attempt, r.body);
-}
+// An UNKNOWN write (r6.1, advisor 11-15): the client never classifies it — no recovery read, no inference from rev, content or state
+// (a CAS may still commit; a live mirror may still roll back). The screen closes, the list re-reads, and it says exactly this:
+export const UNKNOWN_WORD = 'No sabemos si se guardó. Revisá la lista.';
 
 // ── O1 · the «Campañas» list (MOCKUP-portal-marketing v5 s-home, owner-approved 11-14) ─────────────────────────────────────────
 // Each row: the type icon, the name (+ «N de M sucursales» when narrowed), the status as a dot + word, «Horario» in plain words.

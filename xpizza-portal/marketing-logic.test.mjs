@@ -161,8 +161,8 @@ test('states: publish / pause / resume / end / repeat through the real core; the
   const d = await create(b, form({ name: 'Ciclo' }));
   assert.deepEqual(ML.actionsOf(d), ['publish', 'end']);
   const move = async (o, to) => {
-    const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to, from: o.state };
-    return ML.settleWrite(a, () => offerSetStateRaw({ rid: RID, offerId: o.id, to, expectedRev: o.rev, token: b.token }), () => read(b));
+    const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to };
+    return ML.classifyWrite(a, await offerSetStateRaw({ rid: RID, offerId: o.id, to, expectedRev: o.rev, token: b.token }));
   };
   const pub = await move(d, 'active');
   assert.deepEqual([pub.outcome, pub.offer.state, pub.offer.status], ['saved', 'active', 'scheduled'], 'published, starts tomorrow');
@@ -206,7 +206,7 @@ test('refusals map to honest keys: overlap (with the clashing names), stale + cu
   assert.equal(ML.refusalOf(409, { error: 'something_new' }).code, 'other', 'an unknown code is `other`, its code kept');
 });
 
-test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN, and the fresh read proves it did not land (still active, still applied)', async () => {
+test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN — and the client classifies it no further (r6.1: the list decides)', async () => {
   const b = await backend();
   const live = await publish(b, form({ name: 'Firme' }));
   b.fake.failReads.add('marketing_live_b/tb');   // the price-path mirror transaction fails (an outage) — 3a's ONE brand-node txn (applyMirror)
@@ -214,34 +214,28 @@ test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN, and the fre
   const raw = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token });
   assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
   assert.deepEqual(ML.classifyWrite(attempt, raw), { outcome: 'unknown' }, 'the 503 is unknown — never saved');
-  // the outage ends before the fresh read (3a's read and its mirror txn share the brand node: a read during the outage fails too)
-  const s = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => { b.fake.failReads.clear(); return read(b); });
-  assert.equal(s.outcome, 'not_landed', 'the fresh read decides: the pause did NOT land');
-  assert.deepEqual([s.offer.state, s.offer.rev, s.offer.drift], ['active', live.rev, null], 'still active, still applied, no drift');
   b.fake.failReads.clear();
   assert.deepEqual(ML.classifyWrite(attempt, { transport: true }), { outcome: 'unknown' }, 'a transport failure is unknown');
   assert.deepEqual(ML.classifyWrite(attempt, { status: 200, body: null, malformed: true }), { outcome: 'unknown' }, 'a malformed 200 is unknown');
   assert.deepEqual(ML.classifyWrite(attempt, { status: 500, body: { error: 'error' } }), { outcome: 'unknown' }, 'a 500 is unknown');
-  b.net.down = true;
-  const t = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
-  assert.deepEqual(t, { outcome: 'unknown' }, 'the write AND the re-read fail: still unknown, never saved');
-  b.net.down = false;
-  const ok = await ML.settleWrite(attempt, () => offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }), () => read(b));
+  const ok = ML.classifyWrite(attempt, await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token }));
   assert.equal(ok.outcome, 'saved', 'healthy again: the same pause saves');
 });
 
-test('an unknown that DID land is recovered as saved; one moved by someone else is a conflict', async () => {
-  const b = await backend();
-  const d = await create(b, form({ name: 'Borrador' }));
-  const sent = authored(form({ name: 'Borrador 2' }));
-  const w = await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 1, offer: sent, token: b.token });
-  assert.equal(w.status, 200, 'premise: it landed');
-  const attempt = { op: 'save', offerId: d.id, expectedRev: 1, sent, prev: d };
-  assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'saved', 'landed (the reply was lost) ⇒ saved');
-  await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 2, offer: authored(form({ name: 'De otra persona' })), token: b.token });
-  assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'conflict', 'someone else wrote it since ⇒ conflict');
-  assert.equal(ML.classifyRecovery({ op: 'create' }, (await read(b)).body).outcome, 'unknown', 'a create without a proven op_id stays UNKNOWN (Codex r2: never the list\'s guess)');
-  assert.equal(ML.classifyRecovery(attempt, { ok: true }).outcome, 'unknown', 'an unreadable re-read stays unknown');
+// r6.1 (owner 11-15, advisor; Codex r6 P1-1 / P1-2): the client never classifies an UNKNOWN — no recovery read, no inference
+test('r6.1 no client recovery: classifyRecovery, settleWrite and authoredEqual are gone; an UNKNOWN stays unknown in classifyWrite', () => {
+  for (const n of ['classifyRecovery', 'settleWrite', 'authoredEqual', 'findCreated']) assert.equal(typeof ML[n], 'undefined', `${n}: retired`);
+  const a = { op: 'save', offerId: 'o1', expectedRev: 3 };
+  for (const res of [{ transport: true }, { status: 500, body: { error: 'error' } }, { status: 503, body: { error: 'unavailable' } }, { status: 200, body: null, malformed: true }, { status: 200, body: { ok: true, offer: { id: 'o1', rev: 3 } } }])
+    assert.deepEqual(ML.classifyWrite(a, res), { outcome: 'unknown' }, `${JSON.stringify(res).slice(0, 60)}: unknown, never saved / not landed`);
+});
+// SHIP-GATE (r6.1): the ONE unknown-outcome string — the owner-approved meaning in the mockup's «vos» voice (advisor 11-15)
+test('SHIP-GATE copy: an UNKNOWN outcome reads exactly «No sabemos si se guardó. Revisá la lista.»; neither old string ships anywhere in xpizza-portal/', () => {
+  assert.equal(ML.UNKNOWN_WORD, 'No sabemos si se guardó. Revisá la lista.');
+  const OLD = ['Revisá tu lista antes de intentar de nuevo', 'Volvé a la lista antes de intentar de nuevo'];
+  const files = readdirSync(DIR).filter((f) => /\.(js|html)$/.test(f) && !f.startsWith('__'));
+  assert.ok(files.includes('marketing-builder.js') && files.includes('marketing-detail.js'), 'premise: the screens are scanned');
+  for (const f of files) { const t = readFileSync(join(DIR, f), 'utf8'); for (const o of OLD) assert.ok(!t.includes(o), `${f}: the old unknown string «${o}» is gone`); }
 });
 
 test('live_drift: an active offer whose pause half-ran is NOT applied; a non-active one still in the price path IS still applied', async () => {
@@ -388,61 +382,6 @@ test('O2a: the one-line block reason under «Revisar y programar» — the first
   assert.equal(block({ type: 'pct', pct: 15, max: '' }), 'Para revisar, poné el descuento máximo por pedido.', 'pct requires its maximum here (v2 item 3; stricter than the server)');
 });
 
-// Codex r2 (advisor ruling 11-14): a lost create / repeat is resolved by OPERATION IDENTITY, never by content — a lookalike is not ours
-test('recovery of a create / repeat: no record carrying OUR op_id ⇒ UNKNOWN (never not_landed, never a lookalike draft)', async () => {
-  const b = await backend();
-  const f = form({ name: 'Gemela' });
-  await create(b, f);                                   // an identical draft (another operator's, or ours — content can't tell)
-  const body = (await read(b)).body;
-  assert.equal(ML.classifyRecovery({ op: 'create', opId: 'op_mine', sent: authored(f) }, body).outcome, 'unknown', 'a lookalike draft is never taken as ours');
-  assert.equal(ML.classifyRecovery({ op: 'create', opId: 'op_mine', sent: authored(form({ name: 'Otra' })) }, body).outcome, 'unknown', 'no match is NOT «not landed» (the request may still be running)');
-  assert.equal(ML.classifyRecovery({ op: 'repeat', opId: 'op_mine', sourceId: 'o_x' }, body).outcome, 'unknown', 'the same for a repeat');
-  assert.equal(typeof ML.findCreated, 'undefined', 'content matching is retired');
-});
-function memStorage({ setFails = false } = {}) {
-  const m = new Map();
-  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { if (setFails) throw new Error('QuotaExceededError'); m.set(k, String(v)); }, removeItem: (k) => m.delete(k), clear: () => m.clear(), m };
-}
-test('the ops ledger (RULE A + B): a SENT op is frozen with its payload under its OWN key; reused until proven; another tab adopts it and never erases it; a failed write keeps memory; 6-day expiry; rev-proven known-id writes', async () => {
-  const shared = memStorage();
-  globalThis.localStorage = shared;
-  const A = await import(`./marketing-ops.js?tab=a${Date.now()}`), B = await import(`./marketing-ops.js?tab=b${Date.now()}`);
-  const t0 = Date.UTC(2026, 10, 16, 18);
-  A._opsState.now = () => t0; B._opsState.now = () => t0;
-  A.forUser('u1'); B.forUser('u1');
-  const k = A.opKey('tb', 'create');
-  assert.equal(A.pendingOp(k), null, 'nothing pending before a send');
-  const op = A.sendOp(k, { rid: 'r', offer: { name: 'X' } });
-  assert.match(op.op_id, /^[A-Za-z0-9_-]{16,64}$/, 'an op_id 3a\'s OP_RE accepts');
-  assert.deepEqual(JSON.parse(shared.getItem('sherpa.op.u1.tb.create.')), op, 'RULE B: its OWN key holds { op_id, payload, created_at }');
-  assert.equal(A.sendOp(k, { rid: 'r', offer: { name: 'CHANGED' } }).payload.offer.name, 'X', 'RULE A: a retry resends the FROZEN payload, never the new form');
-  B.markUnsettled('o1', 2);   // another tab writes an UNRELATED key
-  assert.equal(B.pendingOp(k).op_id, op.op_id, 'the other tab ADOPTS the pending op');
-  assert.equal(JSON.parse(shared.getItem('sherpa.op.u1.tb.create.')).op_id, op.op_id, 'and never erases it (Codex r4 P1-4)');
-  B.settleOp(k, 'op_not_this_one');
-  assert.equal(A.pendingOp(k).op_id, op.op_id, 'settling another op_id removes nothing');
-  A.settleOp(k, op.op_id);
-  assert.equal(shared.getItem('sherpa.op.u1.tb.create.'), null, 'settling removes ONLY its key');
-  assert.ok(shared.getItem('sherpa.unsettled.u1.o1'), 'the unrelated key stays');
-  globalThis.localStorage = memStorage({ setFails: true });
-  const C = await import(`./marketing-ops.js?tab=c${Date.now()}`);
-  C._opsState.now = () => t0; C.forUser('u1');
-  const c1 = C.sendOp(k, { rid: 'r', offer: {} });
-  assert.equal(C.sendOp(k, { rid: 'r', offer: {} }).op_id, c1.op_id, 'a failed setItem keeps the in-memory op (Codex r4 P1-3)');
-  C._opsState.now = () => t0 + C.OP_TTL_MS;
-  assert.equal(C.pendingOp(k), null, 'an op older than 6 days is dropped (never retried past the server\'s claim)');
-  C._opsState.now = () => t0;
-  C.markUnsettled('o7', 2, 'u_someone_else');
-  assert.equal(C.unsettled('o7'), false, 'another user\'s ticket writes nothing (Codex r3 P1-4)');
-  C.markUnsettled('o9', 3);
-  C.reconcile([{ id: 'o9', rev: 2 }]);
-  assert.equal(C.unsettled('o9'), true, 'a read below the sent rev proves nothing (Codex r3 P2-8)');
-  C.reconcile([{ id: 'o9', rev: 3 }]);
-  assert.equal(C.unsettled('o9'), false, 'rev ≥ the sent rev settles it');
-  C.forUser('u2');
-  assert.equal(C.pendingOp(k), null, 'another user never inherits the ledger');
-  delete globalThis.localStorage;
-});
 test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME offer, one record; a malformed op_id ⇒ 400', async () => {
   const b = await backend();
   const f = form({ name: 'Una vez' });
