@@ -252,6 +252,19 @@ const MERGE_ALLOW = {
   '8839193d customer-app/capp-colour-allowlist.json': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   '8839193d customer-app/capp-guards.test.mjs': 'union + ONLY the ruled forked-lane BASE move to 827373d6 (advisor 11-15, ruling (a)): 3 comment lines, the BASE line, 1 blank',
   '8839193d customer-app/capp-home.js': 'hand-resolved same-line merge of offers desk-hide + push preview-hide; cell CH-ABIERTO-3',
+  '8839193d customer-app/capp-menu.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/fixtures/s7a2/gen-directory.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/index.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/shell.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-push.test.mjs': 'union + the PUSH-TAP microtask (vclock step 9 in the merged tree)',
+  '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
+  '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
+  '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
