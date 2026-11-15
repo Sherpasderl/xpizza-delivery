@@ -1111,6 +1111,13 @@
     // cart (C.totals refuses a subtotal mismatch) and the cart's own mode; else «—» and the same requote(), debounced (rapid edits ⇒
     // ONE request), asked only once an address exists. Total = the quote's net minus its tip (the cart draws no Propina row, v6)
     const cartAddr = () => !!S.flow && S.flow.mode === S.mode && quotable(S.flow);
+    // Codex backfill P2 (ee6dedd6a): an already-CONFIRMED address prices the cart before the checkout, offers or not — the flow is seeded
+    // exactly as openCheckout seeds it; no confirmed seed ⇒ no flow (v6 «según tu dirección», G-A1)
+    function cartFlow() {
+      if (S.flow || !mods() || frozenNow()) return;
+      const sp = seedPin(); if (!sp || sp.confirmed !== true) return;
+      seededFlow(); if (S.flow.mode !== S.mode) C.setMode(S.flow, S.mode);
+    }
     // desk (advisor 11-13 (a), exact to D-3 r3 frame 2a): before a matching quote the Envío cell is the store fee cell's fact «Envío
     // desde L {floor}» (or, for a member under the rule-10 predicate, the struck floor + «Gratis»); priced ⇒ the quote's amount; no
     // guest line (frame 2a's card-only note stands there); the Total follows the cart's rule
@@ -1126,6 +1133,7 @@
         // the cart never shows a client total; the checkout asks again
         return `<div class="ctot">${sub}${discRowHtml(P)}<div class="sumrow tot"><span>Total</span><span>${P.ready ? moneyC(P.total - P.tip) : '—'}</span></div></div>`;
       }
+      cartFlow();
       const addr = cartAddr(), T0 = addr ? totalsNow() : { ready: false };
       const T = T0.ready && T0.subtotal === Math.round(total * 100) ? T0 : { ready: false };
       if (addr && !T.ready) cartQuoteSoon();

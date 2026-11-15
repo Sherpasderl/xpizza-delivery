@@ -720,10 +720,12 @@
       if (step === 'pedido' || step === 'pago') st.ui.resumeTo(step);
       reflect();
     }
+    let reorderGen = 0;   // C-3r v2: the «Volver a pedir» tap generation — any navigation (onShow) and any cart action advance it
     // ── the shell navigation (one history owner) ──
     const nav = CappShellNav.createShellNav({ win, home: { name: 'home' },
       onShow: (entry, x) => {
         if (!hydrating) cancelRoute();   // any user navigation cancels a pending cold link
+        reorderGen++;   // … and voids a «Volver a pedir» tap still awaiting its receipt (Codex backfill P2: a round trip to the same tab)
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
@@ -1655,7 +1657,6 @@
     // (never blocked). ONE check runs before applying EITHER outcome: the same tap generation, the same owner and member, the same auth
     // user, and the customer still where they tapped (no other tab, no store opened) — a late success and a late fallback both drop
     const RECEIPT_WAIT_MS = 1500;
-    let reorderGen = 0;
     const withDeadline = (p, ms) => new Promise((res) => { const h = T.setTimeout(() => res(null), ms); Promise.resolve(p).then((v) => { T.clearTimeout(h); res(v); }, () => { T.clearTimeout(h); res(null); }); });
     async function reorder(oid) {
       const r = pastRow(oid); if (!r) return;
@@ -1692,6 +1693,7 @@
     // (reconcile first; a purchased cart cleared), its mutation (frozen ⇒ refused; the order-text cap) and its persistence (never while
     // frozen), in its order. Anything the store would refuse or disclose ⇒ the store itself opens and decides. Nothing beyond a tap in the store
     function addPast(rid, key) {
+      reorderGen++;   // a newer cart action voids a pending reorder: its late cart replacement never discards this dish (Codex backfill P2)
       const row = dir.view().rows.find((x) => x.rid === rid), cfg = row && cfgOf(row.entry), view = row && viewOf(rid, row.entry), e = cache.peek(rid);
       const A = apiMod();
       if (!cfg || !view || !A || !(e && e.state === 'fresh') || availOf(rid).has(key)) return enter(rid, key);   // the store's own «+» preconditions (a sold-out dish ⇒ its store)

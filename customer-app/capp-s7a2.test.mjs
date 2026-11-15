@@ -5149,6 +5149,34 @@ test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y; X\'s receipt resolv
     assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-RACE older: Y (the latest tap) enters');
   } finally { S.w.close(); }
 });
+// Codex backfill (asm10 reconciliation, P2 on fa9cbc169): the tap generation advanced only on ANOTHER reorder — a round trip back to the
+// same tab passed the «still where they tapped» check, and a dish added meanwhile was replaced by the late reorder. ANY navigation and
+// ANY cart action now void the pending tap
+test('C-3r v2 R4.3 race — a ROUND TRIP (Pedidos → Inicio → Pedidos) during the await ⇒ the old tap is void: no store opens', async () => {
+  const { S, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.tabbar [data-tab="home"]'); await flush(); await flush();
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', 'premise: back on «Pedidos» (the tab the tap was made on)');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE round trip: a newer navigation voids the pending reorder');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE round trip: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a CART ACTION («+» on a past dish) during the await ⇒ the old tap is void: the added dish stays, no store opens', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const { S, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 1]], 'premise: the «+» landed in the cart');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE cart action: a newer cart action voids the pending reorder');
+    assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 1]], '🔴 C3R-V2-RACE cart action: the dish added meanwhile is never replaced');
+  } finally { S.w.close(); }
+});
 
 // ── C-1b (PLAN-capp-c1-build r0 §5 option C; D-3 r3 9.4 «Para vos» + the store heart): the member's favorites through 3a's
 // getMyFavorites / setFavorite. The fake answers in the REAL handler's bodies (fixtures/c1b/favorites-contract.json, generated

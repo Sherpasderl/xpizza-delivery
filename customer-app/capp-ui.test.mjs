@@ -3953,6 +3953,21 @@ test('G-A6 a chosen tip stays out of the cart (v6 draws no Propina row there): t
   await backToCart(b);
   assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A6: the cart Total leaves the tip out');
 });
+// Codex backfill (asm10 reconciliation, P2 on ee6dedd6a): a store WITHOUT offers ignored an already-confirmed address — no flow before the
+// checkout ⇒ cartAddr() false ⇒ zero quotes, «· según tu dirección» and a Total that silently left delivery out. The confirmed seed pin
+// now prices the cart (the flow seeded exactly as openCheckout seeds it); an UNCONFIRMED seed is still «no address yet» (v6, G-A1)
+test('G-A7 (Codex backfill P2): a CONFIRMED address prices the cart before the checkout — «—» for Envío AND Total until the quote lands; never the subtotal as Total', async () => {
+  const b = bootCo({ mountOpts: { seedPin: { lat: 15.52, lng: -88.04, confirmed: true } } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
+  const food = b.plain.price * 100;
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, 'Envío —', 'Total —'], '🔴 G-A7: a confirmed address ⇒ pending «—», never a Total without delivery');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 1, '🔴 G-A7: ONE quote for the confirmed address');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A7: priced in place');
+  const u = bootCo({ mountOpts: { seedPin: { lat: 15.52, lng: -88.04, confirmed: false } } }); u.ui.cart.inc(u.plain.key); u.ui.render(); await u.click('#cart-bar');
+  u.timers.flush(); await settle();
+  assert.deepEqual(cartRows(u), [`Subtotal ${L_(food)}`, 'Envío · según tu dirección', `Total ${L_(food)}`], '🔴 G-A7: an unconfirmed seed is no address yet (v6)');
+  assert.equal(u.srv.of('quoteOrder').length, 0, '🔴 G-A7: nothing asked without a confirmed address');
+});
 
 // ── the DESK aside's totals (advisor 11-13 option (a), exact to D-3 r3 frame 2a): «Envío desde L {fee floor}» before a quote (the
 // store fee cell's fact), the quote's amount once priced, Total as the cart; the member's struck «Gratis» only through the rule-10

@@ -38854,5 +38854,58 @@
   "kills_with": [
    "🔴 PUSH-SHELL-14: listening from startup"
   ]
+ },
+ {
+  "id": "bk-01",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (ee6dedd6a): a confirmed address never seeds the cart flow again (zero quotes, a Total without delivery)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const sp = seedPin(); if (!sp || sp.confirmed !== true) return;",
+  "to": "const sp = seedPin(); if (true) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A7",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 G-A7: a confirmed address ⇒ pending «—»"
+  ]
+ },
+ {
+  "id": "bk-02",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (fa9cbc169): navigation no longer voids a pending reorder (a round trip to the same tab reopens it)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        reorderGen++;   // … and voids",
+  "to": "        // … and voids",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^C-3r v2 R4.3 race — a ROUND TRIP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 C3R-V2-RACE round trip"
+  ]
+ },
+ {
+  "id": "bk-03",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (fa9cbc169): a cart action no longer voids a pending reorder (the late replacement discards the added dish)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      reorderGen++;   // a newer cart action",
+  "to": "      // a newer cart action",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^C-3r v2 R4.3 race — a CART ACTION",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 C3R-V2-RACE cart action"
+  ]
  }
 ]
