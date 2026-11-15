@@ -211,3 +211,73 @@ test('storage that throws or fills: no cache, never a crash; the session keeps a
   c.clear('uA');
   assert.deepEqual([...s.m.keys()].sort(), ['sherpa.portal.envio.uA', 'sherpa.portal.rend.uB|r_a|2026-11-01|x|day|none'], 'clear(uid): that user\'s bodies only; other caches untouched');
 });
+
+// ═══ V1 · the tab's drawing model (MOCKUP-portal-rendimiento-ventas-delta, PLAN-portal-ventas-draw-r0) — from REAL answers ══════════
+const byLabel = (m) => Object.fromEntries(m.buckets.map((b) => [b.label, b]));
+test('V1 chart · day buckets: «Ventas por día», the axis labels («2 nov», «3» …), the bucket tooltip, a nice y-scale from the data', async () => {
+  route({ serve: await world() });
+  const b = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
+  const m = RL.chartModel(b, { range: OLD, nowMs: NOW });
+  assert.equal(m.title, 'Ventas por día');
+  assert.deepEqual(m.buckets.map((x) => x.label), ['2 nov', '3', '4', '5', '6', '7', '8'], 'the month on the first bucket (and at a change)');
+  assert.ok(m.buckets.every((x) => x.k === 'ok'));
+  const d5 = byLabel(m)['5'];
+  assert.deepEqual([d5.cents, d5.orders, d5.tip.strong, d5.tip.rest], [31000, 1, 'L 310', '5 nov · 1 pedido'], 'the server\'s bucket, worded');
+  assert.deepEqual([m.ymaxCents, m.ticks], [100000, [0, 25000, 50000, 75000, 100000]], 'max L 310 ⇒ step L 250 (the mockup\'s nice steps), 4 steps');
+  assert.equal(m.sparse, false, '≤ 14 buckets: every label');
+});
+test('V1 chart · «Hoy»: hour buckets (today\'s heatmap row), the shipped 12–22 window widened by order hours; the running hour is partial, later hours empty', async () => {
+  route({ serve: await world() });
+  const r = { from: TODAY, to: TODAY };
+  const b = await getSalesStats({ rid: 'r_a', ...r, granularity: 'day', compare: 'none', token });
+  const m = RL.chartModel(b, { range: r, nowMs: NOW });
+  assert.equal(m.title, 'Ventas por hora');
+  assert.deepEqual([m.buckets[0].label, m.buckets[m.buckets.length - 1].label], ['11:00', '22:00'], 'widened to 11 by today\'s 11:00 order');
+  const h = byLabel(m);
+  assert.deepEqual([h['11:00'].k, h['11:00'].cents, h['11:00'].tip.rest], ['ok', 15000, '11:00 – 12:00 · 1 pedido']);
+  assert.deepEqual([h['15:00'].k, h['15:00'].tip.rest], ['partial', '15:00 – 16:00 · 0 pedidos · en curso'], 'now = 15:00: the running hour');
+  assert.ok(['16:00', '22:00'].every((l) => h[l].k === 'future' && h[l].cents === null), 'hours after now are empty positions, never zeros');
+});
+test('V1 chart · long ranges: week buckets keyed by the server, the clipped first week «semana parcial», the running week «en curso»; label row sampled', async () => {
+  route({ serve: await world() });
+  const r = { from: '2026-07-01', to: TODAY };
+  const b = await getSalesStats({ rid: 'r_a', ...r, granularity: VL.granularityFor(r), compare: 'none', token });
+  const m = RL.chartModel(b, { range: r, nowMs: NOW });
+  assert.equal(m.title, 'Ventas por semana');
+  assert.equal(m.buckets[0].label, '1 jul', 'the first bucket starts at the range (a Wednesday), not its Monday');
+  assert.equal(m.buckets[0].tip.rest.endsWith('semana parcial') || m.buckets[0].k === 'missing', true, 'a clipped first week says so (or is uncomputed)');
+  const last = m.buckets[m.buckets.length - 1];
+  assert.deepEqual([last.k, last.tip.rest.endsWith('en curso')], ['partial', true], 'the running week');
+  assert.equal(m.sparse, true, '> 14 buckets: a sampled label row');
+  assert.ok(m.buckets.filter((x) => x.k === 'missing').length > 0, 'weeks the roll-up never computed are breaks, never zeros');
+});
+test('V1 words: freshness from the server (live ⇒ «Hoy en vivo · actualizado hace N min» by fetch; else «Calculado hoy / ayer / el …, h:mm p. m.»), the range and the pill', async () => {
+  route({ serve: await world() });
+  const old = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
+  const t = Math.max(...old.days.map((d) => Date.parse(d.computed_at)).filter(Number.isFinite));   // the REAL roll-up's stamp
+  const { clock12 } = await import('./portal-time.js');
+  assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 60000 }), `Calculado hoy, ${clock12(t)}`, 'the roll-up\'s own stamp, THE portal clock');
+  assert.equal(RL.freshWords(old, { fetchedAt: t, nowMs: t + 86400000 }), `Calculado ayer, ${clock12(t)}`);
+  assert.match(RL.freshWords(old, { fetchedAt: t, nowMs: t + 5 * 86400000 }), /^Calculado el \d{1,2} [a-z]{3}, \d{1,2}:\d{2} [ap]\. m\.$/, 'older: «el 9 nov»');
+  const r = RL.rendRangeFor('14d', TODAY);
+  const live = await getSalesStats({ rid: 'r_a', ...r, granularity: 'day', compare: 'none', token });
+  assert.equal(RL.freshWords(live, { fetchedAt: NOW - 10 * 60000, nowMs: NOW }), 'Hoy en vivo · actualizado hace 10 min', 'live ⇒ when THIS body arrived');
+  assert.equal(RL.rangeWords({ from: TODAY, to: TODAY }), 'jueves 12 de noviembre');
+  assert.equal(RL.rangeWords(r), '30 oct – 12 nov 2026');
+  assert.equal(RL.rangeWords({ from: '2026-11-06', to: TODAY }), '6 – 12 nov 2026');
+  assert.equal(RL.rangeWords({ from: '2025-12-24', to: '2026-01-03' }), '24 dic 2025 – 3 ene 2026');
+  assert.equal(RL.pillWords('14d', r, TODAY), 'Últimos 14 días');
+  assert.equal(RL.pillWords('custom', { from: '2026-05-01', to: TODAY }, TODAY), '1 may – 12 nov', 'this year: no year on the pill');
+  assert.equal(RL.pillWords('custom', { from: '2025-12-24', to: '2025-12-25' }, TODAY), '24 – 25 dic 2025');
+  assert.equal(RL.missingNote(['2026-11-10', '2026-11-11']), 'Aún sin calcular: 10 nov, 11 nov · los totales de arriba no los incluyen.');
+});
+test('V1 figures + «Productos más vendidos» from the REAL body: three figures (no deltas), honest «—» for an empty ticket / an outage; units + sales, the bar against the top sales', async () => {
+  route({ serve: await world() });
+  const b = await getSalesStats({ rid: 'r_a', ...OLD, granularity: 'day', compare: 'none', token });
+  assert.deepEqual(RL.figures(b, 'ok'), [['Ventas', 'L 580'], ['Pedidos', '2'], ['Ticket promedio', 'L 290']]);
+  const none = await getSalesStats({ rid: 'r_b', from: '2026-11-08', to: '2026-11-09', granularity: 'day', compare: 'none', token });
+  assert.deepEqual(RL.figures(none, 'empty'), [['Ventas', 'L 0'], ['Pedidos', '0'], ['Ticket promedio', '—']], 'no average without orders');
+  assert.deepEqual(RL.figures(null, 'unavailable'), [['Ventas', '—'], ['Pedidos', '—'], ['Ticket promedio', '—']], 'never a number without its answer');
+  const rows = RL.topProducts(b);
+  assert.deepEqual(rows.map((x) => [x.name, x.qty, x.sales, x.width]), [['Pepperoni 12″', '2', 'L 310', 100], ['Carnívora 18″', '1', 'L 270', 87]], 'ranked by sales; the bar is its sales against the top');
+});
