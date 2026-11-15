@@ -79,8 +79,10 @@ export function mountBranches(root, ctx) {
   // ── «Pausar pedidos» on the branch page (PLAN-portal-pausar-in-sucursales §2.2; MOCKUP-…-pausar-in-sucursales F1–F4) ──
   // ONE pause control for the page: its action sits in the header's actions row; a failed call's box lands in the page's error slot
   // (between the header and the grid) for THAT branch; patchBranch repaints the page from the answer.
-  const pc = pauseControl(ctx, { candidates: () => L.scopeBranches(ctx.sel).filter((b) => L.can(b, 'location.pause')), repaint: () => render(),
-    showError: (box) => { V.pauseErr = { rid: V.det, box }; render(); }, clearError: () => { V.pauseErr = null; } });
+  // Codex backfill P2s (advisor 11-15): the confirm resolves the branch on screen against the AUTHORIZED branches (an owner may open B
+  // while the global scope is A); a result belongs to the rid it was SUBMITTED for (a manager's default detail has V.det null)
+  const pc = pauseControl(ctx, { candidates: () => branches().filter((b) => L.can(b, 'location.pause')), repaint: () => render(),
+    showError: (box, rid) => { V.pauseErr = { rid, box }; render(); }, clearError: (rid) => { if (!rid || (V.pauseErr && V.pauseErr.rid === rid)) V.pauseErr = null; } });
   // the status block (today's card lines, D1: every state) under the lede; the inactive note only where `noteOk` (D3); closed: no note (D2)
   function pauseHeader(b, st, top, noteOk) {
     if (!L.can(b, 'location.pause')) return;

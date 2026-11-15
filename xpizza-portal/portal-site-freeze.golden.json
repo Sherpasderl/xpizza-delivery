@@ -75,6 +75,7 @@
   "ops-dom.js",
   "package-lock.json",
   "package.json",
+  "pausar-backfill.test.mjs",
   "pause-control.js",
   "pause-control.test.mjs",
   "perf/portal.origins.json",
