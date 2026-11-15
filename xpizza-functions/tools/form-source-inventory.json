@@ -1950,6 +1950,7 @@
   "xpizza-driver": {
    "tests": [
     "customer-app/capp-readers.test.mjs",
+    "platform/fonts/build-fonts.test.mjs",
     "xpizza-dispatch-mobile/reassign-guard.test.mjs",
     "xpizza-driver/brand-helpers.test.js",
     "xpizza-driver/cash-helpers.test.js",

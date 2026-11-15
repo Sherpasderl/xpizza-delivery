@@ -5137,12 +5137,12 @@ function pushServer3a({ failSet = false, policy = null } = {}) {
   return { db, calls, handler, other, prefs: () => { const p = db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}; return [p.pedidos, p.promociones, p.rev]; }, tokens: () => Object.keys(db.get(PUSH_3A.CP.TOKENS) || {}).length };
 }
 const PUSH_RT = { ...G7_RUNTIME, guestCardOnly: undefined, push: true, rtdbBase: 'https://rtdb.test' };
-async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false } = {}) {
+async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false, fbOpts } = {}) {
   const f = createFakePushPlugin(fake);
   const { ES, made } = fakeES();
   const pre = noBridge ? null : (w) => { w.Capacitor = { getPlatform: () => platform, Plugins: { PushNotifications: f.plugin } }; };
   const r = await pedidosBoot({ u_ana: {} }, { storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
-    readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}) });
+    readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}), ...(fbOpts ? { fbOpts } : {}) });
   return { ...r, f, srv, made };
 }
 const pushTxt = (S) => txt(S.q('.mk-num span'));
@@ -5238,10 +5238,13 @@ test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — 
       assert.equal(f.calls.length + srv.calls.length, 0, `🔴 PUSH-GATE ${what}: no plugin / server call`);
     } finally { S.w.close(); }
   }
-  // a guest (the native flag on): the token is a member's — no card on a guest's order
-  const f = createFakePushPlugin(), { ES } = fakeES();
-  const G = bootShell({ runtime: { ...RUNTIME, push: true, rtdbBase: 'https://rtdb.test' }, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh12' })), geolocation: GEO_OK2, mountExtra: { EventSource: ES }, preMount: (w) => { w.Capacitor = { getPlatform: () => 'android', Plugins: { PushNotifications: f.plugin } }; } });
-  try { await flush(); await placeShellCash(G); assert.equal(G.q('.px-ask'), null, '🔴 PUSH-GATE: a guest ⇒ no card'); assert.equal(f.calls.length, 0); } finally { G.w.close(); }
+  // a guest: the SAME native boot as a member's (flag on, the signup runtime, the bridge) signed out — only the member gate stands
+  // (the token is a member's); the slot-11-14 sweep showed the old guest boot (no signup runtime) could never draw the card at all
+  const { S: G, f } = await pushBoot({ fbOpts: { persisted: null }, storage: memStorage({}) });
+  try {
+    await shellPlaceTolerant(G); await until(() => G.q('.mk-num'));
+    assert.equal(G.q('.px-ask'), null, '🔴 PUSH-GATE: a guest ⇒ no card'); assert.equal(osAsks(f), 0, 'a guest ⇒ nothing asks the OS');
+  } finally { G.w.close(); }
 });
 test('PUSH-SHELL-5 (rule 20): «Cerrar sesión» ⇒ 3a forgets THIS token under the still-valid session, the phone deletes it, THEN the SDK signs out', async () => {
   const { S, f, srv, fb } = await pushBoot({ fake: { permission: 'granted' } });

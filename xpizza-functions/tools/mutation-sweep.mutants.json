@@ -36629,7 +36629,7 @@
   "label": "the card on a guest's / any order (no member gate)",
   "file": "../customer-app/capp-shell-ui.js",
   "from": "    const pushUi = () => !!(S.member && pushCore() && push.available());",
-  "to": "    const pushUi = () => !!(pushCore() && push.available()) || !!S.member;",
+  "to": "    const pushUi = () => !!(pushCore() && push.available());",
   "command": [
    "node",
    "--test",

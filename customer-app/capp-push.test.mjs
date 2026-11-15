@@ -183,17 +183,21 @@ test('PUSH-CONSENT (ruled 11-14; 3a e73a605a2): «Ofertas de Sherpa» ON = setPr
   assert.deepEqual(oc && [oc.channel, oc.value, oc.copy_version], ['push', true, CP.PUSH_OFFERS_COPY_VERSION], '🔴 PUSH-CONSENT: the server recorded the PUSH channel\'s consent, at the shown copy\'s version');
 });
 test('PUSH-API-REV (3a e73a605a2): a register never rewrites prefs; a stale expected_rev ⇒ stale_prefs WITH the current prefs; another installation\'s replay ⇒ token_in_use; an unreadable policy ⇒ unavailable', async () => {
-  const { api } = pushServer();
+  const { api, calls } = pushServer();
   const REG = (o) => api.pushRegister({ idToken: IDT, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false, ...o });
   const first = await REG({ promociones: true });
   assert.deepEqual(first.prefs, { pedidos: true, promociones: false, rev: 1 }, '🔴 PUSH-API-REV: a register NEVER consents (3a 472177443) — offers start off whatever the body says');
   await api.pushSetPrefs({ idToken: IDT, pedidos: false, promociones: true, expected_rev: 1 });
   assert.deepEqual(await REG({ pedidos: true, promociones: false }), { ok: true, prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: a refresh never re-consents / rewrites');
   assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true, expected_rev: 1 }), { ok: false, reason: 'stale_prefs', prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: stale ⇒ the current prefs back');
-  assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true }), { ok: false, reason: 'bad_request' }, 'no expected_rev ⇒ never sent');
+  const sent0 = calls.length;
+  assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true }), { ok: false, reason: 'bad_request' }, 'no expected_rev ⇒ bad_request');
+  assert.equal(calls.length, sent0, '🔴 PUSH-API-REV: no expected_rev ⇒ never sent');
   assert.deepEqual(await api.pushRegister({ idToken: IDT2, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: 'another-install-0001', pedidos: true, promociones: false }), { ok: false, reason: 'token_in_use' }, '🔴 PUSH-API-REV: another installation ⇒ token_in_use');
   assert.equal((await api.pushRegister({ idToken: IDT2, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false })).ok, true, 'the SAME installation (a uid switch) moves it');
-  assert.deepEqual(await REG({ install_id: 'short' }), { ok: false, reason: 'bad_request' }, 'a malformed install_id is never sent');
+  const sent = calls.length;   // 3a ALSO answers bad_request to it: the reply alone cannot tell the client's refusal from the server's
+  assert.deepEqual(await REG({ install_id: 'short' }), { ok: false, reason: 'bad_request' }, 'a malformed install_id ⇒ bad_request');
+  assert.equal(calls.length, sent, '🔴 PUSH-API-REV: a malformed install_id is never sent');
   const bad = pushServer({ policy: { v: 1, promo_daily_max: -5, promo_weekly_max: 1, quiet_from: 0, quiet_to: 0 } });
   assert.deepEqual(await bad.api.pushGetPrefs({ idToken: IDT }), { ok: false, reason: 'unavailable' }, '🔴 PUSH-API-REV: an unreadable policy ⇒ unavailable (503)');
 });
