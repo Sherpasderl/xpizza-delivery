@@ -10,7 +10,8 @@ import { knownControl } from './control-state.js';   // THE known control states
 // Codex backfill r2 (advisor 11-15): ONE pause state per page session, shared by EVERY view's controller (Inicio and Sucursales each make
 // one): a branch's LOCK (a write or its recovery in flight — every view disables that branch's actions), the per-branch READ GENERATION
 // (any write or re-read anywhere invalidates the older re-reads of that branch), and the views to repaint when a lock moves.
-const STORE = { busy: new Set(), reads: new Map(), views: new Set() };
+// busy: rid → the HOLDER's token { epoch, op } (Codex r3: lock OWNERSHIP — only the holder releases; a stale op never touches a newer lock)
+const STORE = { busy: new Map(), reads: new Map(), views: new Set(), epoch: 0, op: 0 };
 const nextRead = (rid) => { const g = (STORE.reads.get(rid) || 0) + 1; STORE.reads.set(rid, g); return g; };
 // a NEW account / sign-in starts a new session: its locks and read generations never carry over (an in-flight recovery of the old
 // context is abandoned — its continuation sees ctx.alive() false); the views' repaints stay registered (the views outlive a sign-in)
@@ -18,14 +19,14 @@ const hooked = new WeakSet();   // each document once (a page has one; a test ha
 function hookAuth() {
   if (typeof document === 'undefined' || hooked.has(document)) return;
   hooked.add(document);
-  document.addEventListener('portal:auth', () => { STORE.busy.clear(); STORE.reads.clear(); });
+  document.addEventListener('portal:auth', () => { STORE.epoch += 1; STORE.busy.clear(); STORE.reads.clear(); });   // a new session epoch
 }
 // test-only: a fresh page session (the suites share ONE module instance across cells; a real page starts with an empty store)
-export function _resetPauseStore() { STORE.busy.clear(); STORE.reads.clear(); STORE.views.clear(); }
-function lock(rid, on) {
-  if (on) STORE.busy.add(rid); else STORE.busy.delete(rid);
-  for (const repaint of STORE.views) { try { repaint(); } catch (_) { /* one view's repaint never blocks another's */ } }
-}
+export function _resetPauseStore() { STORE.epoch += 1; STORE.busy.clear(); STORE.reads.clear(); STORE.views.clear(); }
+const repaintAll = () => { for (const repaint of STORE.views) { try { repaint(); } catch (_) { /* one view's repaint never blocks another's */ } } };
+// acquire → the token that alone may release this lock; release(rid, token) is a no-op unless that token is still the holder
+function acquire(rid) { const token = { epoch: STORE.epoch, op: ++STORE.op }; STORE.busy.set(rid, token); repaintAll(); return token; }
+function release(rid, token) { if (STORE.busy.get(rid) !== token) return; STORE.busy.delete(rid); repaintAll(); }
 
 // «Pausar pedidos» moves inside «Sucursales» (§2.4): where an old «pausas» entry lands — the branch's page when the selection is one
 // branch (or the brand has one), the list for «Todas»; an explicit rid in scope wins. Wired when the nav entry goes (§2.3).
@@ -107,7 +108,7 @@ export function pauseControl(ctx, hooks) {
     if (STORE.busy.has(b.rid)) return;
     const gen = ctx.gen();
     nextRead(b.rid);   // a write invalidates every older re-read of this branch, in every view
-    lock(b.rid, true);
+    const tk = acquire(b.rid);
     ctx.setBusy(`pause-${b.rid}`, true);
     clearError(b.rid);
     repaint();
@@ -119,12 +120,12 @@ export function pauseControl(ctx, hooks) {
       err = e;   // judged below: an ambiguous transport failure, or a definite refusal (a panel, never a toast)
     }
     ctx.setBusy(`pause-${b.rid}`, false);
-    if (!ctx.alive(gen)) { lock(b.rid, false); return; }
+    if (!ctx.alive(gen)) { release(b.rid, tk); return; }   // a stale op releases ONLY its own lock (never a newer session's)
     // Codex backfill P1 (advisor 11-15, rule 17's spirit): an AMBIGUOUS outcome — the reply lost in transport (status 0), a malformed 200,
     // or the server's own control.state «unknown» — is UNKNOWN: no success toast, the neutral box, the actions kept disabled until the
     // AUTHORITATIVE control state is read back
-    if (err ? (err.kind === 'Unavailable' && !err.status) : !(out && out.ok === true && definite(out.control))) { unconfirmed(b, gen); return; }
-    lock(b.rid, false);
+    if (err ? (err.kind === 'Unavailable' && !err.status) : !(out && out.ok === true && definite(out.control))) { unconfirmed(b, gen, tk); return; }
+    release(b.rid, tk);
     if (!err) { ctx.patchBranch(b.rid, { control: out.control }); ctx.toast(okText); return; }
     repaint();
     const box = (err.status === 409)
@@ -134,7 +135,7 @@ export function pauseControl(ctx, hooks) {
   }
   // the authoritative re-read (getMyBranches), the newest per branch wins: the state AS READ, then the actions; a failed / unknown read
   // leaves the box and keeps the actions disabled (advisor 11-15). Copy: two approved strings (review.js + the Pausar 409 body), (a).
-  async function unconfirmed(b, gen) {
+  async function unconfirmed(b, gen, tk) {
     showError(errBox('No pudimos confirmar el resultado', 'Recargá para ver cómo quedó.'), b.rid);
     const seq = nextRead(b.rid);   // the newest re-read of this branch, across every view
     let e1 = null;
@@ -146,7 +147,7 @@ export function pauseControl(ctx, hooks) {
     if (!ctx.alive(gen) || STORE.reads.get(b.rid) !== seq) return;   // a newer write / re-read (in any view) or another context decides
     const row = e1 && Array.isArray(e1.branches) ? e1.branches.find((x) => x && x.rid === b.rid) : null;
     if (!row || !definite(row.control)) { repaint(); return; }   // still unknown: the box stays, the actions stay disabled
-    lock(b.rid, false);
+    release(b.rid, tk);
     clearError(b.rid);
     ctx.patchBranch(b.rid, { control: row.control });
   }

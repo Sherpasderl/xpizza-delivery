@@ -174,3 +174,30 @@ test('X1 the cross-view race: Inicio\'s ambiguous «Reanudar» holds a re-read (
   const shown = btn(P.view, 'Reanudar pedidos') ? 'paused' : btn(P.view, 'Pausar sucursal') ? 'open' : 'none';
   assert.equal(shown, server, 'X1: the state shown equals the newest server state');
 });
+
+// Codex backfill r3 (advisor 11-15): lock OWNERSHIP — after a sign-in clears the store (a reload deferred by unsaved edits), a NEW write's
+// lock is never released by the OLD write that settles later
+test('L1 two controllers, a sign-in clears the store, a NEW write (Inicio) holds the lock; the OLD write (Sucursales) settles ⇒ the new lock still held, the actions still disabled', async () => {
+  const fake = await world();
+  const { writePause } = req('./merchant/merchant-control');
+  assert.equal((await writePause({ db: fake, now: () => Date.now(), timestamp: () => Date.now(), newOpId: () => 'oc_l1' }, 'pv_centro', { op: 'pause', forMs: 30 * 60e3, reason: 'Cocina llena', actor: 'portal:x', principal: 'x' })).ok, true, 'premise: Centro paused');
+  let r1, r2; const h1 = new Promise((r) => { r1 = r; }), h2 = new Promise((r) => { r2 = r; });
+  let writes = 0;
+  const P = await open(fake, { rid: 'pv_centro', withInicio: true, fault: (fn) => (fn === 'setBranchPause' ? (++writes === 1 ? { hold: h1 } : { hold: h2 }) : undefined) });
+  btn(P.view, 'Reanudar pedidos').click(); await settle(10);   // the OLD write (Sucursales' controller), held
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: OWNER } }));   // a new session: the store clears
+  document.dispatchEvent(new CustomEvent('portal:signed-in'));
+  await settle(30);
+  P.mods.shell.goto('inicio'); await settle(10);
+  const home = P.byId.get('viewinicio');
+  const again = btn(home, 'Reanudar');
+  assert.ok(again && !again.disabled, 'premise: the new session offers «Reanudar» (the store was cleared)');
+  again.click(); await settle(10);   // the NEW write (Inicio's controller), held: it holds the lock
+  assert.ok(btn(home, 'Reanudar').disabled, 'premise: the new write locked the branch');
+  r1(); await settle(30);   // the OLD write settles (its context is dead)
+  assert.ok(btn(home, 'Reanudar').disabled, 'L1: the new write\'s lock is still held — the old write released nothing');
+  P.mods.shell.goto('suc', { rid: 'pv_centro' }); await settle(10);
+  const suc = btn(P.view, 'Reanudar pedidos') || btn(P.view, 'Pausar sucursal');
+  assert.ok(suc && suc.disabled, 'L1: and Sucursales still disables the branch');
+  r2(); await settle(30);
+});
