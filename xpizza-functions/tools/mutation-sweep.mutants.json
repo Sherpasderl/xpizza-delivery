@@ -38907,5 +38907,40 @@
   "kills_with": [
    "🔴 C3R-V2-RACE cart action"
   ]
+ },
+ {
+  "id": "lf-01",
+  "slice": "capp-sbs-followup",
+  "label": "offers SBS 11-15 defect A: the checkout logo chip loses its initials (a failed logo is an empty disc)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "alt=\"\" data-initials=\"${esc(String(cfg.name",
+  "to": "alt=\"\" data-x=\"${esc(String(cfg.name",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^LF-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 LF-1: a failed checkout logo"
+  ]
+ },
+ {
+  "id": "nb-01",
+  "slice": "capp-sbs-followup",
+  "label": "offers SBS 11-15 defect B (16b): the guest card option breaks «3D Secure» across lines again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\\u00a0Secure).",
+  "to": "<b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^NB-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 NB-1:"
+  ]
  }
 ]

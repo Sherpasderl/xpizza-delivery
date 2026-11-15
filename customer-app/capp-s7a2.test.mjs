@@ -3841,6 +3841,18 @@ test('C-6d checkout: the guest\'s next step is ONLY the true sentence (never «N
   const { S: N } = await deskCheckout();
   try { assert.equal(N.q('.col-b .guestline'), null, 'guest rules off ⇒ no guest line'); } finally { N.w.close(); }
 });
+// LF-1 (the offers SBS 11-15, defect A): the checkout's logo chip (capp-ui logoChip — the store card, «Tu pedido», the receipt) is the
+// D6 plate too: a logo that fails to load becomes the initials, through the shell's ONE listener — never an empty disc
+test('LF-1 (D6 on the checkout): a store-card logo that FAILS to load becomes the initials plate', async () => {
+  const { S } = await deskCheckout();
+  try {
+    const img = S.q('.col-b .storecard .lg img');
+    assert.ok(img, 'premise: the directory\'s logo is drawn as an image');
+    img.dispatchEvent(new S.w.Event('error'));
+    const chip = S.q('.col-b .storecard .lg');
+    assert.ok(chip.classList.contains('txt') && chip.textContent === 'XP' && !chip.querySelector('img'), `🔴 LF-1: a failed checkout logo ⇒ the «XP» plate (${chip.outerHTML.slice(0, 160)})`);
+  } finally { S.w.close(); }
+});
 test('C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order', () => {
   const CappOrder = require('./capp-order.js');
   const o = { mode: 'delivery', status: 'out', storeName: 'Tienda', display_number: 12, driver: 'Marvin', addr: 'Col. Centro', windowText: '7:40 – 7:55 p. m.', lines: [{ n: 1, name: 'Plato', total: 100 }], fee: 45, pay: 'cash' };

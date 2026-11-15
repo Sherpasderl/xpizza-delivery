@@ -943,7 +943,7 @@
     // cents → «L 485» (whole) / «L 485.50»
     const moneyC = (c) => { const n = Number(c) || 0; return n % 100 === 0 ? money(n / 100) : 'L ' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const storeLine = () => esc(cfg.name || '') + (cfg.branch ? ' · ' + esc(cfg.branch) : '');
-    const logoChip = (cls) => (cfg.logo ? `<span class="${cls}${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`);
+    const logoChip = (cls) => (cfg.logo ? `<span class="${cls}${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="" data-initials="${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}"></span>` : `<span class="${cls} txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`);
     const finitePin = (p) => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
     // ── the order context, the state key (what a quote stands for) and the totals of the CURRENT state ──
@@ -1259,14 +1259,14 @@
       const lp = lockedPay(); if (lp !== null) f.pay = lp;
       const payOff = (v) => (lp !== null && lp !== v ? ' disabled' : '');
       const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
+      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button>
       <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
       const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button></div>
+      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
       const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
-        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
+        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D\u00a0Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
       const sdkC = sdkOn() && !S.desk;   // S2-checkout (v7): the payment row in the bar replaces the «Pago» section (the installed app only)
       const bar = sdkC ? sdkBar(T, { label: ctaLabel(T), enabled: !ctaOff(T), act: 'confirm', id: 'cta' }) : `<div class="paybar">${ctaBtn}</div>`;

@@ -4062,13 +4062,26 @@ test('offers OFF golden: no offer ⇒ the checkout and the cart sheet are byte-i
   const ETA_WAS = '<span>≈ 30 min', ETA_NOW = '<span>30–45 min', SURF = ['store0', 'store1', 'pick', 'co', 'cart'];
   const cnt = (s, x) => s.split(x).length - 1;
   assert.deepEqual([SURF.map((k) => cnt(raw[k], ETA_WAS)), SURF.map((k) => cnt(tip[k], ETA_NOW))], [[1, 1, 0, 1, 0], [1, 1, 0, 1, 0]], '🔴 OF-OFF-ETA: the rule-11 window is the only mapped span, once per surface that draws it');
-  const was = { ...raw, ...Object.fromEntries(SURF.map((k) => [k, raw[k].replace(ETA_WAS, ETA_NOW)])) };
+  // the offers-SBS follow-up NB-1 (advisor 11-15) is the other mapped difference: «3D Secure»'s no-break space, once, on the checkout
+  // (LF-1 changes nothing here: this world has no logo, so its chip is already the initials plate)
+  const NB_WAS = '3D Secure', NB_NOW = '3D&nbsp;Secure';
+  assert.deepEqual([SURF.map((k) => cnt(raw[k], NB_WAS)), SURF.map((k) => cnt(tip[k], NB_NOW))], [[0, 0, 0, 1, 0], [0, 0, 0, 1, 0]], '🔴 OF-OFF-NB: NB-1 is the only other mapped span');
+  const was = { ...raw, ...Object.fromEntries(SURF.map((k) => [k, raw[k].replace(ETA_WAS, ETA_NOW).replace(NB_WAS, NB_NOW)])) };
   assert.equal(tip.store0, was.store0, '🔴 OF-OFF-GOLDEN: the store page');
   assert.equal(tip.store1, was.store1, '🔴 OF-OFF-GOLDEN: the store page after an add');
   assert.deepEqual([tip.pq, was.pq], [0, 0], '🔴 OF-OFF-NOQUOTE: a store without offers asks nothing on the store page');
   assert.equal(tip.pick, was.pick, '🔴 OF-OFF-GOLDEN: the pickup cart sheet');
   assert.equal(tip.co, was.co, '🔴 OF-OFF-GOLDEN: the checkout');
   assert.equal(tip.cart, was.cart, '🔴 OF-OFF-GOLDEN: the cart sheet');
+});
+// NB-1 (the offers SBS 11-15, defect B, rule 16b): at 390 the card option broke as «PixelPay (3D / Secure).» — the name is ONE unit
+test('NB-1 (16b): «3D Secure» never breaks across lines — the checkout joins it with a no-break space', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] } });
+  await oqCheckout(b);
+  const t = b.q('.screen').textContent;
+  assert.ok(t.includes('PixelPay (3D'), 'premise: the card option is drawn');
+  assert.ok(t.includes('(3D Secure).') && !t.includes('3D Secure'), '🔴 NB-1: the card option joins «3D Secure» with a no-break space');
+  assert.ok(!readFileSync(join(HERE, 'capp-ui.js'), 'utf8').includes('3D Secure'), '🔴 NB-1: no breakable «3D Secure» left in capp-ui.js (the saved-tender row too)');
 });
 // Q3 (frame 4): the order refused offer_changed (5f's REAL bodies) ⇒ the checkout re-quotes; a HIGHER Total asks «Confirmar» / «Volver»
 async function ocFilled(b) {

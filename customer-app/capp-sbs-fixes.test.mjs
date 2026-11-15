@@ -34,7 +34,10 @@ test('D6 (robustness / 16b): a logo that FAILS to load becomes the initials plat
   assert.equal(av.getAttribute('aria-hidden'), 'true', 'the plate is decorative (the name is beside it)');
   assert.ok(d.querySelector('img.other'), 'an unrelated image is never touched');
   const src = readFileSync(join(HERE, 'capp-ui.js'), 'utf8') + readFileSync(join(HERE, 'capp-home.js'), 'utf8');
-  assert.equal((src.match(/<img src="\$\{esc\((?:cfg|r)\.logo\)\}"[^>]*data-initials=/g) || []).length, 2, '🔴 D6: BOTH logo images (store avatar, card chip) carry their initials');
+  // every logo image (store avatar, card chip, the checkout's chip — LF-1, the offers SBS 11-15) carries its initials
+  const logos = [...src.matchAll(/<img src="\$\{esc\((?:cfg|r)\.logo\)\}" alt="[^"]*"( data-initials=)?/g)];
+  assert.equal(logos.length, 3, 'premise: the three logo images');
+  assert.deepEqual(logos.filter((m) => !m[1]).map((m) => m[0]), [], '🔴 D6: EVERY logo image carries its initials');
   assert.ok(/CappHome\.logoFallback\(doc\)/.test(readFileSync(join(HERE, 'capp-shell-ui.js'), 'utf8')), '🔴 D6: the shell installs it');
 });
 
