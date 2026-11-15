@@ -4,7 +4,7 @@
   "units": 663,
   "sites": 4918,
   "mapped": 1850,
-  "exempt": 3053,
+  "exempt": 3068,
   "byR": {
    "R9": 66,
    "R8": 131,
@@ -44,8 +44,8 @@
    "server seed": 2,
    "server fixtures": 5,
    "server support": 5,
-   "unreachable-on-surface": 337,
-   "page-fn": 513,
+   "unreachable-on-surface": 338,
+   "page-fn": 527,
    "form-account-profile": 14,
    "form-composer": 59
   },
@@ -53105,7 +53105,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/calificaciones2-harness.mjs#publishStats#restaurant_id#0",
@@ -53127,7 +53128,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/calificaciones2-harness.mjs#getMyBranches#status#1",
@@ -53139,7 +53141,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/editor.js#rowsOf#items#0",
@@ -53999,7 +54002,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/photo-contract-fake.mjs#shapeProblem#items#0",
@@ -54124,7 +54128,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/rend-logic.js#topProducts#items#0",
@@ -54133,7 +54138,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/render.js#groupByCategory#items#0",
@@ -54294,7 +54300,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/stats-harness.mjs#fetch#status#0",
@@ -54306,7 +54313,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/stats-harness.mjs#fetch#status#1",
@@ -54318,7 +54326,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/stats-harness.mjs#fetch#status#2",
@@ -54330,7 +54339,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/stats-harness.mjs#fetch#status#3",
@@ -54342,7 +54352,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/team.js#render#status#0",
@@ -54403,7 +54414,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": null
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/ventas-tab.js#shown#status#0",
@@ -54415,7 +54427,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/ventas-tab.js#shown#status#1",
@@ -54427,7 +54440,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-portal/ventas-tab.js#errCard#status#0",
@@ -54439,7 +54453,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": null
+   "rule": "page-fn",
+   "exempt": true
   },
   {
    "id": "xpizza-factura/preview.js#<top>#items#0",
@@ -56007,7 +56022,7 @@
    "base": "o",
    "line": 43,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones-harness.mjs",
@@ -56015,7 +56030,7 @@
    "base": "o",
    "line": 44,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones-harness.mjs",
@@ -56023,7 +56038,7 @@
    "base": "o",
    "line": 44,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones-harness.mjs",
@@ -56031,7 +56046,7 @@
    "base": "o",
    "line": 44,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones-harness.mjs",
@@ -56039,7 +56054,7 @@
    "base": "o",
    "line": 44,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones2-harness.mjs",
@@ -56047,7 +56062,7 @@
    "base": "o",
    "line": 40,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones2-harness.mjs",
@@ -56055,7 +56070,7 @@
    "base": "o",
    "line": 41,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones2-harness.mjs",
@@ -56063,7 +56078,7 @@
    "base": "o",
    "line": 41,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones2-harness.mjs",
@@ -56071,7 +56086,7 @@
    "base": "o",
    "line": 41,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/calificaciones2-harness.mjs",
@@ -56079,7 +56094,7 @@
    "base": "o",
    "line": 41,
    "how": "computed",
-   "rule": null
+   "rule": "page-fn"
   },
   {
    "file": "xpizza-portal/editor.js",

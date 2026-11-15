@@ -204,7 +204,7 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "6bae7e1d877042653059a89e93b3610f7727445d40be087d3f6fed29fdaf1f13",
+   "sha256": "7eb8f5e6114d58f8e2a2e7f36056fc43bf447cf399ca71f1c187c717a4a3a6c3",
    "bytes": 185294
   }
  },
@@ -236,7 +236,7 @@
    "--sky-soft": "#E6F0FB",
    "--sky-line": "#B7D2F3",
    "--star": "#FFD60A",
-   "--star-line": "#E3A800",
+   "--star-line": "#B38400",
    "--rose-soft": "#FCEBF1",
    "--rose-line": "#F0C3D3",
    "--rose-text": "#9A2D55",

@@ -28,7 +28,8 @@ export function createCommentList({ rid, fetchPage }) {
   let phase = 'idle';
   let restarted = false;   // a refused cursor restarts from page 1 ONCE per list
   let inflight = null;
-  const state = () => ({ rows: rows.slice(), more: !done, phase });
+  let epoch = 0;           // moves on a restart: the view repaints its list instead of appending (Codex 11-15 P2-1)
+  const state = () => ({ rows: rows.slice(), more: !done, phase, epoch });
 
   async function run() {
     for (let calls = 0; calls < FOLLOW_MAX && !done;) {
@@ -38,7 +39,7 @@ export function createCommentList({ rid, fetchPage }) {
         body = await fetchPage({ rid, cursor });
       } catch (e) {
         if (e && e.kind === 'BadRequest' && e.body && e.body.reason === 'bad_cursor' && cursor !== undefined && !restarted) {
-          restarted = true; rows = []; cursor = undefined; calls = 0;
+          restarted = true; rows = []; cursor = undefined; calls = 0; epoch += 1;
           continue;
         }
         phase = e && e.kind === 'NotAuthorized' ? 'denied' : e && e.kind === 'NotSignedIn' ? 'signin' : 'error';
@@ -192,15 +193,15 @@ export function overviewOf(o, rids) {
 // cursor restarts from page 1 ONCE, empty pages are followed at most FOLLOW_MAX calls per load (the server's own bounded scan).
 // fetchPage({ cursor }) → the body, or throws (api.js ApiError) → { load, state }; state: { rows, more, phase, overview }
 export function createReviewList({ rids, fetchPage }) {
-  let rows = [], cursor, done = false, phase = 'idle', restarted = false, inflight = null, overview = null, first = true;
-  const state = () => ({ rows: rows.slice(), more: !done, phase, overview });
+  let rows = [], cursor, done = false, phase = 'idle', restarted = false, inflight = null, overview = null, first = true, epoch = 0;
+  const state = () => ({ rows: rows.slice(), more: !done, phase, overview, epoch });   // epoch: moves on a restart (the view repaints)
   const okBody = (b) => !!b && typeof b === 'object' && b.ok === true && Array.isArray(b.reviews) && (b.cursor === null || typeof b.cursor === 'string');
   async function run() {
     for (let calls = 0; calls < FOLLOW_MAX && !done;) {
       let body;
       try { calls += 1; body = await fetchPage({ cursor }); } catch (e) {
         if (e && e.kind === 'BadRequest' && e.body && e.body.reason === 'bad_cursor' && cursor !== undefined && !restarted) {
-          restarted = true; rows = []; cursor = undefined; calls = 0; first = true; continue;
+          restarted = true; rows = []; cursor = undefined; calls = 0; first = true; epoch += 1; continue;
         }
         phase = e && e.kind === 'NotAuthorized' ? 'denied' : e && e.kind === 'NotSignedIn' ? 'signin' : 'error';
         return;

@@ -184,10 +184,11 @@ const defsOf = (decl) => { const defs = new Map(); for (const d of decl) if (d.p
 // property and value; anything else on it (or this value anywhere else) is judged like every other rule. The customer-side gold price is
 // on the owner's list as a separate question.
 // THE STARS-ONLY EXCEPTION (owner 2026-11-14, MOCKUP-portal-calificaciones-color decision Q1 «A shape, yellow stars»): the Calificaciones
-// rating stars are a clear warm yellow (#FFD60A, a #E3A800 hairline in light for 3:1) — the star tokens, defined ONLY in the three theme
+// rating stars are a clear warm yellow (#FFD60A, a #B38400 outline in light: 3.38:1 on white, 3.12:1 on #F6F6F2 — WCAG 1.4.11; Codex 11-15
+// measured the old #E3A800 at 2.13:1, contrast-only tweak, advisor 11-15) — the star tokens, defined ONLY in the three theme
 // blocks, used ONLY by the star rule. Chips, tags and bars stay pastel; this value anywhere else is judged like every other rule.
 export const STARS_EXEMPT = Object.freeze([
-  { sel: ':root, :root[data-theme="light"]', prop: '--star', value: '#FFD60A' }, { sel: ':root, :root[data-theme="light"]', prop: '--star-line', value: '#E3A800' },
+  { sel: ':root, :root[data-theme="light"]', prop: '--star', value: '#FFD60A' }, { sel: ':root, :root[data-theme="light"]', prop: '--star-line', value: '#B38400' },
   { sel: ':root[data-theme="dark"]', prop: '--star', value: '#FFD60A' }, { sel: ':root[data-theme="dark"]', prop: '--star-line', value: '#FFD60A' },
   { sel: ':root:not([data-theme="light"])', prop: '--star', value: '#FFD60A' }, { sel: ':root:not([data-theme="light"])', prop: '--star-line', value: '#FFD60A' },
   { sel: '.calif .stars svg', prop: 'fill', value: 'var(--star)' }, { sel: '.calif .stars svg', prop: 'stroke', value: 'var(--star-line)' },

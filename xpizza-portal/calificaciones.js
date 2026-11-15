@@ -54,19 +54,23 @@ function personIcon(v) {   // the mockup's #i-user: the shoulders + the head
   return s;
 }
 const rids = (v) => (v.scope === 'all' ? v.branches.map((b) => b.rid) : [v.scope]);
+export const MAX_ALL = 10;   // getMerchantReviews takes ≤ 10 rids: «Todas» is offered only up to that (Codex 11-15 P2-6)
+const allOffered = (v) => v.branches.length <= MAX_ALL;
 const nameOf = (v, rid) => (v.branches.find((b) => b.rid === rid) || { name: rid }).name || rid;
 const filtered = (v) => v.stars.length > 0 || v.comment !== 'any';
 
 // ── the lists: a NEW named list for every scope / period / filter change (latest request wins: a stale answer is never painted);
 // the earlier (v1) list per branch, independent of the period and the filters ──────────────────────────────────────────────────────
-// keep: a LIST filter change — the Overview ignores the list filters (the approved notes), so it and the filters stay put; only the
-// list area re-loads (no flash, no reflow above it)
+// keep: a LIST filter change — the Overview ignores the list filters (the approved notes), so the scope's Overview (the SAME node) and
+// the filters stay through the WHOLE change, loading and completion; only the list area re-loads (Codex 11-15 P2-5). The Overview
+// changes only with the period or the branch. Each request captures ITS rid set: a cursor never rides with another set (P2-2).
 function start(v, { keep = false } = {}) {
-  const prev = v.named && v.named.st;
-  v.keep = keep && prev && (prev.phase === 'ready' || prev.phase === 'empty') ? { overview: prev.overview } : (keep && v.keep ? v.keep : null);
+  keep = keep && !!v.ovEl;   // a filter change before the scope's first answer is a scope start
+  if (!keep) { v.ovEl = null; v.scopeOv = undefined; }
   v.seq += 1; const seq = v.seq;
-  const list = createReviewList({ rids: rids(v), fetchPage: ({ cursor }) => fetchMerchantReviews({ rids: rids(v), weeks: v.weeks, stars: v.stars, comment: v.comment, cursor, token: v.ctx.token }) });
-  v.named = { list, st: null, seq };
+  const rs = rids(v), weeks = v.weeks, stars = v.stars, comment = v.comment;
+  const list = createReviewList({ rids: rs, fetchPage: ({ cursor }) => fetchMerchantReviews({ rids: rs, weeks, stars, comment, cursor, token: v.ctx.token }) });
+  v.named = { list, st: null, seq, rids: rs, keep, epoch: 0 };
   if (!v.earlier || v.earlier.rid !== v.earlierRid) startEarlier(v);
   paint(v);
   loadNamed(v, seq);
@@ -79,14 +83,18 @@ function startEarlier(v) {
 async function loadNamed(v, seq) {
   const st = await v.named.list.load();
   if (V !== v || v.named.seq !== seq) return;   // a newer scope / filter / period: this answer is dropped
-  const firstPaint = !v.named.st || v.named.st.phase === 'error';
-  v.named.st = st;
+  const restarted = st.epoch !== v.named.epoch;   // a refused cursor restarted from page 1: the list (and the Overview) repaint (P2-1)
+  const firstPaint = !v.named.st || v.named.st.phase === 'error' || restarted;
+  v.named.st = st; v.named.epoch = st.epoch;
+  if (!v.named.keep && (st.phase === 'ready' || st.phase === 'empty') && (v.scopeOv === undefined || restarted)) {
+    v.scopeOv = st.overview; v.scopeNotLive = st.phase === 'empty' && !filtered(v); v.ovEl = null;
+  }
   if (firstPaint || !v.namedEl) paint(v); else appendNamed(v);
 }
 async function loadEarlier(v, e) {
   const st = await e.list.load();
   if (V !== v || v.earlier !== e) return;
-  const first = !e.st || e.st.phase === 'error';
+  const first = !e.st || e.st.phase === 'error' || st.epoch !== e.st.epoch;   // a restart repaints, never appends a stale slice
   e.st = st;
   if (first || !v.earlierEl) paint(v); else appendEarlier(v);
 }
@@ -100,7 +108,10 @@ async function branchesOf(v) {
   const list = e1.branches.filter((b) => b && b.brand_id === me.brand_id && b.state === 'member' && b.role === 'owner' && Array.isArray(b.caps) && b.caps.includes('stats.read'));
   if (!list.length) return;
   const own = list.find((b) => b.rid === v.ctx.rid);
+  const before = v.branches.map((b) => b.rid).join(',');
   v.branches = [own, ...list.filter((b) => b.rid !== v.ctx.rid)].map((b) => ({ rid: b.rid, name: b.name || b.rid }));
+  if (v.scope === 'all' && !allOffered(v)) { v.scope = v.ctx.rid; v.earlierRid = v.ctx.rid; start(v); return; }   // over the cap: per branch
+  if (v.scope === 'all' && v.branches.map((b) => b.rid).join(',') !== before) { start(v); return; }   // an ACTIVE «Todas»: restart with the full set (P2-2)
   repaintScopeRow(v);   // the pill's label and box are unchanged (the page's own branch); only its menu gains the options
 }
 
@@ -148,7 +159,7 @@ function scopeRow(v) {
   const rl = mk(v, 'span', 'cf-vrl', p.range); row.append(rl);
   const all = v.scope === 'all';
   row.append(pill(v, { label: all ? calCopy('allBranches') : `${calCopy('branchPrefix')} ${nameOf(v, v.scope)}`, on: all, role: 'listbox', aria: calCopy('branchMenu'),
-    items: [{ value: 'all', label: calCopy('allBranches'), selected: all }, ...v.branches.map((b) => ({ value: b.rid, label: b.name, selected: !all && b.rid === v.scope }))],
+    items: [...(allOffered(v) ? [{ value: 'all', label: calCopy('allBranches'), selected: all }] : []), ...v.branches.map((b) => ({ value: b.rid, label: b.name, selected: !all && b.rid === v.scope }))],
     onPick: (r) => { closeMenu(v); if (r === v.scope) return; v.scope = r; if (r !== 'all') v.earlierRid = r; start(v); } }));
   return row;
 }
@@ -164,9 +175,9 @@ function figuresOne(v, f) {
   g.append(mk(v, 'div', 'kbase', calCopy('allBase')));
   return g;
 }
-function figuresMany(v, byRid) {   // «Todas las sucursales»: one line per branch, never combined
+function figuresMany(v, byRid, rs) {   // «Todas las sucursales»: one line per branch of the REQUEST, never combined
   const g = mk(v, 'div', 'ovg all many');
-  for (const b of v.branches) {
+  for (const b of rs.map((r) => ({ rid: r, name: nameOf(v, r) }))) {
     const f = byRid && byRid[b.rid];
     const r = mk(v, 'div', 'cf-brow'); r.append(mk(v, 'span', 'cf-bn', b.name));
     if (f) { const n = mk(v, 'b', null, f.average.toFixed(1)); n.append(mk(v, 'small', null, calCopy('avgOf'))); r.append(n, mk(v, 'span', null, `${f.count} ${calCopy('countUnit')}`)); }
@@ -198,9 +209,12 @@ function bars(v, ov, notLive) {
   }
   return g;
 }
+// the scope's Overview: built ONCE per period / branch answer (or a restart) and then the SAME node through every filter change
+function scopeOverview(v) { if (!v.ovEl) v.ovEl = overview(v, v.scopeOv, v.scopeNotLive); return v.ovEl; }
 function overview(v, ov, notLive) {
   const box = mk(v, 'div', 'kfigs surface ov');
-  box.append(v.scope === 'all' ? figuresMany(v, ov && ov.publicByRid) : figuresOne(v, ov && ov.publicOne), bars(v, ov, notLive));
+  const rs = v.named.rids;   // the shape by the REQUEST's rid count: one rid ⇒ the server's `public` (P2-3)
+  box.append(rs.length > 1 ? figuresMany(v, ov && ov.publicByRid, rs) : figuresOne(v, ov && ov.publicOne), bars(v, ov, notLive));
   return box;
 }
 
@@ -254,6 +268,7 @@ function errorBox(v, onRetry, denied) {
 }
 function namedPager(v) {
   const p = v.namedPagerEl; const st = v.named.st;
+  if (st.phase === 'denied') { p.replaceChildren(errorBox(v, null, true)); return; }   // a 403 on a later page: the denied state (P2-4)
   if (st.phase === 'error' || st.phase === 'signin') { p.replaceChildren(errorBox(v, () => moreNamed(v))); return; }
   if (!st.more) { p.replaceChildren(mk(v, 'div', 'endl', calCopy('endNamed'))); return; }
   const b = el('button', 'btn', calCopy('moreNamed')); b.type = 'button'; b.addEventListener('click', () => moreNamed(v, b)); p.replaceChildren(b);
@@ -289,6 +304,7 @@ function earlierBlock(v, out) {
 }
 function earlierPager(v) {
   const st = v.earlier.st, p = v.earlierPagerEl;
+  if (st.phase === 'denied') { p.replaceChildren(errorBox(v, null, true)); return; }   // a 403 on a later page: the denied state (P2-4)
   if (st.phase === 'error' || st.phase === 'signin') { p.replaceChildren(errorBox(v, () => moreEarlier(v))); return; }
   if (!st.more) { p.replaceChildren(mk(v, 'div', 'endl', calCopy('end'))); return; }
   const b = el('button', 'btn', calCopy('more')); b.type = 'button'; b.addEventListener('click', () => moreEarlier(v, b)); p.replaceChildren(b);
@@ -320,8 +336,8 @@ function paint(v) {
   v.scopeEl = scopeRow(v); out.push(v.scopeEl);
   const st = v.named.st;
   v.namedEl = null;
-  if (!st && v.keep) {   // a list filter changed: the Overview + filters as they were, the list's own bones
-    out.push(overview(v, v.keep.overview, false), listSect(v), filters(v, false)); listBones(v, out);
+  if (!st && v.named.keep) {   // a list filter changed: the scope's Overview (the SAME node) + the filters, the list's own bones
+    out.push(scopeOverview(v), listSect(v), filters(v, false)); listBones(v, out);
     r.setAttribute('aria-busy', 'true'); out.push(mk(v, 'span', 'sr-only', calCopy('srLoading')));
   } else if (!st) { bones(v, out); r.setAttribute('aria-busy', 'true'); out.push(mk(v, 'span', 'sr-only', calCopy('srLoading'))); }
   else if (st.phase === 'denied') out.push(errorBox(v, null, true));
@@ -329,7 +345,7 @@ function paint(v) {
     out.push(errorBox(v, () => { if (v.earlier && v.earlier.st && v.earlier.st.phase !== 'ready' && v.earlier.st.phase !== 'empty') startEarlier(v); start(v); }));
   } else {
     const notLive = st.phase === 'empty' && !filtered(v);   // Q3: «not live yet» and «no named rating yet» share ONE honest copy
-    out.push(overview(v, st.overview, notLive), listSect(v));
+    out.push(scopeOverview(v), listSect(v));
     if (notLive) { const c = mk(v, 'div', 'cempty'); c.append(mk(v, 'b', null, calCopy('notLiveTitle')), mk(v, 'p', null, calCopy('notLiveBody'))); out.push(c); }
     else {
       out.push(filters(v, false));

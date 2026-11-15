@@ -2,6 +2,9 @@
 // 3a's REAL reviews v2 + v1 cores at the pin and 5f's REAL getMyBranchesCore (calificaciones2-harness.mjs), the portal's real api.js.
 // Run: node --test calificaciones2-view.test.mjs
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { JSDOM, UIDS, NOW, CUT, DAY, H, RW, world, goLive, rated, named, rate, buildBuckets, publishStats, discovery, server, tokenOf } from './calificaciones2-harness.mjs';
 const { calificacionesTab, CAL_COPY, _califState } = await import('./calificaciones.js');
@@ -294,6 +297,95 @@ test('V17 no earlier comment: the approved step-1 empty lines under «Calificaci
   const p = await page(db); await settle(150);
   const e = p.$('.sect.earlier').nextElementSibling;
   assert.deepEqual([e.querySelector('b').textContent, e.querySelector('p').textContent], ['Todavía no hay comentarios', 'Cuando tus clientes califiquen un pedido con un comentario, lo vas a ver acá.'], 'V17');
+});
+
+// ═══ Codex r1 FULL HIGH on a17b952fe..8d2673e13 (REVISE, 7 P2s — advisor 11-15) ═══════════════════════════════════════════════
+test('K1 a refused cursor RESTARTS the rendered list too: page 1 again (a rating that arrived meanwhile on top), never the stale slice, no false end', async () => {
+  const db = await world();
+  await named(db, UIDS[0]);
+  for (let i = 0; i < 25; i += 1) await rated(db, UIDS[0], `XPZ-k${String(i).padStart(2, '0')}`, { at: NOW - (3 + i) * H, store: 5, comment: `k${i}` });
+  const p = await page(db); await settle(150);
+  assert.equal(p.$$('.clist .crow:not(.v1)').length, 20, 'premise: page 1');
+  await rated(db, UIDS[0], 'XPZ-knew', { at: NOW - 2 * H, store: 4, comment: 'nueva' });   // arrives after page 1
+  const salt = process.env.OTP_SALT; process.env.OTP_SALT = 'calificaciones2-rotated-salt-'.padEnd(40, 'y');   // the sealing key rotates ⇒ the cursor is refused
+  try { p.$$('.pager .btn').find((b) => b.textContent === 'Ver más calificaciones').click(); await settle(200); } finally { process.env.OTP_SALT = salt; }
+  assert.ok(p.srv.calls.some((c) => c.fn === 'getMerchantReviews' && c.status === 400), 'premise: the real core refused the cursor (400 bad_cursor)');
+  const texts = p.$$('.clist .crow:not(.v1) .ctxt').map((n) => n.textContent);
+  assert.equal(texts[0], 'nueva', 'K1: the restarted page 1 is what the list shows');
+  assert.equal(new Set(texts).size, texts.length, 'no duplicates');
+  assert.ok(!p.$$('.endl').some((x) => x.textContent === 'No hay más calificaciones.'), 'K1: no false end');
+});
+test('K2 «Todas» chosen BEFORE discovery lands: when the branch list arrives the active «Todas» restarts with the full rid set — never a cursor from another set', async () => {
+  const db = await world();
+  await named(db, UIDS[0]);
+  for (let i = 0; i < 25; i += 1) await rated(db, UIDS[0], `XPZ-t${String(i).padStart(2, '0')}`, { at: NOW - (2 + i) * H, store: 5, comment: `t${i}` });
+  let release; const branches = new Promise((r) => { release = r; });
+  const p = await page(db, { hold: { getMyBranches: branches } }); await settle(120);
+  p.$$('.cf-filt .cf-pill')[1].click();
+  [...p.$('.cf-filt .cf-menu.cf-show').querySelectorAll('button')].find((b) => b.textContent === 'Todas las sucursales').click(); await settle(120);
+  assert.equal(p.reviews().at(-1).query.rids, 'x_pizza', 'premise: only the known branch yet');
+  release(); await settle(200);
+  const last = p.reviews().at(-1).query;
+  assert.deepEqual([last.rids, last.cursor], ['x_pizza,xp_sur', undefined], 'K2: the active «Todas» restarted with the full set, page 1');
+  p.$$('.pager .btn').find((b) => b.textContent === 'Ver más calificaciones').click(); await settle(150);
+  const qs = p.reviews().map((c) => c.query);
+  for (const q of qs.filter((x) => x.cursor)) assert.equal(q.rids, 'x_pizza,xp_sur', 'K2: a cursor rides only with ITS rid set');
+});
+test('K3 «Todas» over ONE branch: the server answers `public` for one rid ⇒ the figures read it (12), never «Menos de 10»', async () => {
+  const db = await populated(12);
+  const p = await page(db, { e1: await discovery({ branches: { x_pizza: 'Centro' } }) }); await settle(150);
+  p.$$('.cf-filt .cf-pill')[1].click();
+  [...p.$('.cf-filt .cf-menu.cf-show').querySelectorAll('button')].find((b) => b.textContent === 'Todas las sucursales').click(); await settle(200);
+  assert.equal(p.reviews().at(-1).query.rids, 'x_pizza', 'premise: one rid');
+  assert.ok(!p.el.textContent.includes('Menos de 10 calificaciones'), 'K3: not «Menos de 10»');
+  assert.ok(p.$$('.kn').some((n) => n.textContent === '12en total'), 'K3: the published count');
+});
+test('K4 a 403 on a LATER page (access revoked meanwhile): BOTH pagers show the denied state — no enabled «Ver más»', async () => {
+  const db = await world({ live: false });
+  for (let i = 0; i < 25; i += 1) await rated(db, UIDS[i % 26], `XPZ-d${String(i).padStart(2, '0')}`, { at: CUT - (40 + i) * DAY, store: 4, comment: `antes ${i}`, disclosure: undefined });
+  await goLive(db);
+  await named(db, UIDS[0]);
+  for (let i = 0; i < 25; i += 1) await rated(db, UIDS[0], `XPZ-n${String(i).padStart(2, '0')}`, { at: NOW - (2 + i) * H, store: 5, comment: `n${i}` });
+  const p = await page(db); await settle(200);
+  db.set('brand_members/x_pizza/owners/ownerX', null);   // the owner's membership revoked between pages
+  for (const label of ['Ver más calificaciones', 'Ver más comentarios anteriores']) { p.$$('.pager .btn').find((b) => b.textContent === label).click(); await settle(150); }
+  const pagers = p.$$('.pager');
+  assert.equal(pagers.filter((x) => x.querySelector('.cerr')).length, 2, 'K4: both pagers carry the box');
+  for (const x of pagers) assert.equal(x.querySelector('.cerr b') ? x.querySelector('.cerr b').textContent : null, 'Tu cuenta no puede ver las calificaciones de esta sucursal.', 'K4: the denied state');
+  assert.ok(!p.$$('.pager .btn').some((b) => !b.disabled), 'K4: no enabled «Ver más» / «Reintentar»');
+});
+test('K5 a filter change keeps the scope\'s Overview through the WHOLE change — the SAME node, loading and completion', async () => {
+  const db = await populated(12);
+  const p = await page(db); await settle(150);
+  const ov = p.$('.kfigs.ov');
+  p.$$('.cf-filt.cf-sub .cf-pill')[1].click();
+  [...p.$('.cf-filt.cf-sub .cf-menu.cf-show').querySelectorAll('button')].find((b) => b.textContent === 'Con comentario').click(); await settle(150);
+  assert.equal(p.$('.kfigs.ov'), ov, 'K5: the Overview node is the same after the filtered answer');
+  p.$('.cf-filt.cf-sub .qact').click(); await settle(150);
+  assert.equal(p.$('.kfigs.ov'), ov, 'K5: and after «Quitar filtros»');
+});
+test('K6 «Todas» is offered only for ≤ 10 branches (the server\'s cap): 11 ⇒ per-branch only; 10 ⇒ offered', async () => {
+  const db = await populated(12);
+  const names = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i === 0 ? 'x_pizza' : `xp_b${i}`, i === 0 ? 'Centro' : `Sucursal ${i}`]));
+  for (const [n, want] of [[11, false], [10, true]]) {
+    const p = await page(db, { e1: await discovery({ branches: names(n) }) }); await settle(150);
+    const opts = [...p.$$('.cf-filt')[0].querySelectorAll('.cf-menu')[1].querySelectorAll('button')].map((b) => b.textContent);
+    assert.equal(opts.filter((o) => o !== 'Todas las sucursales').length, n, `premise: ${n} branches listed`);
+    assert.equal(opts.includes('Todas las sucursales'), want, `K6: ${n} branches ⇒ «Todas» ${want ? 'offered' : 'NOT offered'}`);
+  }
+});
+test('K7 the stars clear 3:1 (WCAG 1.4.11): the light outline on white AND on the card surface; dark unchanged; every row\'s stars carry «N de 5 estrellas»', async () => {
+  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'styles.css'), 'utf8');
+  const block = (sel) => { const i = css.indexOf(sel); return css.slice(i, css.indexOf('}', i)); };
+  const tok = (b, k) => b.match(new RegExp(`--${k}:\\s*(#[0-9A-Fa-f]{6})`))[1];
+  const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p2, q) => q - p2); return (x + 0.05) / (y + 0.05); };
+  const light = block(':root, :root[data-theme="light"]{'), dark = block(':root[data-theme="dark"]{');
+  for (const ground of ['card', 'board', 'board-2']) assert.ok(ratio(tok(light, 'star-line'), tok(light, ground)) >= 3, `K7: --star-line ${tok(light, 'star-line')} on --${ground} ≥ 3:1 (${ratio(tok(light, 'star-line'), tok(light, ground)).toFixed(2)})`);
+  assert.deepEqual([tok(light, 'star'), tok(dark, 'star'), tok(dark, 'star-line')], ['#FFD60A', '#FFD60A', '#FFD60A'], 'the owner\'s yellow fill; dark unchanged');
+  const db = await populated(12);
+  const p = await page(db); await settle(150);
+  for (const s of p.$$('.stars')) assert.match(s.getAttribute('aria-label') || '', /^[1-5] de 5 estrellas$/, 'K7: an accessible text value');
 });
 
 test('SHIP GATE: no placeholder ships — every Calificaciones string is owner-approved text', () => {
