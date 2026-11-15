@@ -121,6 +121,7 @@
   "shell.js",
   "shell.test.mjs",
   "sherpa-client.js",
+  "stats-harness.mjs",
   "structure-s1.test.mjs",
   "structure-s2.test.mjs",
   "styles.css",
@@ -132,6 +133,8 @@
   "ventas-harness.mjs",
   "ventas-logic.js",
   "ventas-logic.test.mjs",
+  "ventas-tab.js",
+  "ventas-tab.test.mjs",
   "ventas.js",
   "ventas.test.mjs",
   "wiring-ast.mjs"
@@ -198,8 +201,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "3353baa35b921028a9bf678e100eb3486e02437e0e058fc8d63acbd373351314",
-   "bytes": 165313
+   "sha256": "d9e5548af139a47daab44ac039e1f5c868051b5bc0097de5f002ecf9458f62d4",
+   "bytes": 173101
   }
  },
  "diff_aid": {
@@ -5395,6 +5398,210 @@
    [
     "",
     ".vcsvnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-card",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".vd-figs",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-fill",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vd-fresh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-kl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-lnk",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-lnk",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".vd-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".vd-none",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-note",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-num",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-numv",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-ok span",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-ok",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-opt",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".vd-opt",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-opt:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-pill.vd-on",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".vd-pill:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".vd-rico",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".vd-rico",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".vd-rl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vd-rowh",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-seldot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-sk",
+    "background",
+    "var(--line2)"
+   ],
+   [
+    "",
+    ".vd-tip",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vd-tip",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".vd-track",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vd-xl .vd-xmiss,.vd-xl .vd-xfut",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vd-xl",
     "color",
     "var(--mute)"
    ],
