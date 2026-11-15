@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-3a-marketing-server r0 §2.1 / §3.3 (advisor APPROVED 2026-11-14) — the restaurant OFFER, pure: its one shape rule, the
-// live-edit allowlist, the weekly overlap rule and the compact record the price path reads (marketing_live/{rid}/{offerId}).
+// live-edit allowlist, the weekly overlap rule and the compact record the price path reads (marketing_brand/{brandId}/live/{rid}/{offerId}).
 // Restaurant-funded (owner 11-12): no field here can express a Sherpa subsidy. Dish identity is by KEY only; never a price copy.
 // Brand-agnostic: no rid / brand literal. No PII.
 //
@@ -10,7 +10,7 @@
 
 const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);
 const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
-const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);
+const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);   // (r3: a refused program is never a record — its claim carries the refusal)
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
   cat_items_max: 100,                                // a category offer's RESOLVED dish keys (frozen at save / publish)
@@ -73,6 +73,7 @@ function paramsOf(type, p, stored = false) {
     return { items: [...p.items], free_per_order: p.free_per_order };
   }
   if (type === 'envio') {
+    if (stored && (p === undefined || p === null)) p = {};   // RTDB never stores an empty object: a STORED «sin mínimo» envío reads back params-less
     if (!exactKeys(p, [], ['min_cents'])) return null;
     const min = nul(p.min_cents);   // absent / null = no minimum order
     if (min !== null && !c(min)) return null;

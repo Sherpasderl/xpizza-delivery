@@ -701,7 +701,7 @@
     ],
     "line": 44,
     "text": "const leaf = (await db.ref(`restaurants/${rid}/identity/brand_id`).once('value')).val();",
-    "reason": "R4 false positive: identity/brand_id leaf read (the branch's brand for marketing_live_b, brandIdOf — PLAN-3a-live-mirror-rekey r2), no hours (advisor 2026-11-14)"
+    "reason": "R4 false positive: identity/brand_id leaf read (the branch's brand for marketing_brand/{brandId}/live, brandIdOf — PLAN-3a-marketing-brand-root r3), no hours (advisor 2026-11-14)"
   },
   {
     "file": "marketing/brand-of.js",

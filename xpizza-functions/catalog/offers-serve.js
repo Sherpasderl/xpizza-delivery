@@ -3,7 +3,7 @@
 // offer flag (offerFlagOf → { offers: [{ type, pct?, off_cents?, min_cents? }] }, wired by the directory's owner). Only when platform_config/marketing.offers_enabled is on (its ONE reader);
 // off, or on any trouble, the key is ABSENT — the body, and so the ETag (public-menu.js: sha256 over rid + representation + the
 // canonical body), are byte-identical to before.
-//   SOURCE: marketing_live_b/{identity.brand_id}/{rid} — the price path's own mirror (PLAN-3a-live-mirror-rekey r2) (present only while an offer is active, ≤ LIMITS.live_max). The PRICE
+//   SOURCE: marketing_brand/{identity.brand_id}/live/{rid} — the price path's own mirror (PLAN-3a-marketing-brand-root r3) (present only while an offer is active, ≤ LIMITS.live_max). The PRICE
 //   PATH stays the authority: a served offer is a hint; a paused / ended one is refused at the quote (offer_changed).
 //   SERVED: [{ type, params, schedule }] for audience 'all' offers whose schedule has not ended — public params only (pct { pct,
 //   max_cents? } · lps { off_cents, min_cents } · envio { min_cents? } · bogo { items | cats, free_per_order }; a category offer
@@ -45,7 +45,7 @@ async function readOffers(rid, deps) {
   const own = leaf === null ? (await db.ref(`brands/${rid}`).once('value')).val() : null;
   const brandId = brandIdOf(rid, leaf === null ? {} : { brand_id: leaf }, own === null ? {} : { [rid]: own });
   if (brandId === UNKNOWN) return { on: true, live: null };
-  const live = (await db.ref(`marketing_live_b/${brandId}/${rid}`).once('value')).val();
+  const live = (await db.ref(`marketing_brand/${brandId}/live/${rid}`).once('value')).val();
   return { on: true, live };
 }
 const SW = require('../marketing/switch-memo');
