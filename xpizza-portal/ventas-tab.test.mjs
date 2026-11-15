@@ -476,3 +476,18 @@ test('R8b P2 a successful authorised load lifts the refusal: the owner gets the 
   assert.equal(t.V._ventasTabState.status, 'ok', 'precondition: served again');
   assert.deepEqual(t.qa('.vd-file .vd-lnk').map((b) => b.disabled), [false, false], 'a successful authorised load lifts the refusal');
 });
+test('V2b «Personalizado» without a pair, then a branch switch and «Más detalle»: still nothing requested, no dimming, no throw (the load guard)', async () => {
+  const t = await tab();
+  await choose(t, 'Personalizado');
+  const before = t.stats().length;
+  const figsBefore = figs(t);
+  t.qa('.vd-pill')[1].click(); await settle();
+  t.qa('.vd-menu.vd-show .vd-opt').find((o) => t.text(o) === 'Sur').click(); await settle(60);
+  assert.deepEqual(figs(t), figsBefore, 'a switch without a valid pair leaves the body untouched');
+  assert.notEqual(t.V._ventasTabState.status, 'error', 'and never turns it into an error');
+  assert.equal(t.stats().length, before, 'a branch switch without a valid pair requests nothing');
+  assert.ok(!t.q('.vd-body').classList.contains('vd-dim'), 'and dims nothing');
+  await toDetail(t); await settle(60);
+  assert.equal(t.stats().length, before, '«Más detalle» without a valid pair requests nothing');
+  assert.deepEqual(t.errors.map(String), [], 'no throw');
+});
