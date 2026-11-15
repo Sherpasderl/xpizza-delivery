@@ -118,9 +118,10 @@ export function classifyCancel(attempt, res) {
   return refusal(res) || { outcome: 'unknown' };
 }
 
-// After an UNKNOWN booking: the booking list first (a reserved booking for that week ⇒ saved), then the week's slot: `mine` with no
-// booking is a half-made reservation (`incomplete` — booking the week again completes it), `free` or `capped` (the slot is free) ⇒
-// not_landed, `taken` ⇒ conflict (another restaurant got it).
+// After an UNKNOWN booking: the booking list first (a reserved booking for that week ⇒ saved), then the week's slot: `free` or `capped`
+// (the slot is free) ⇒ not_landed, `taken` ⇒ conflict (another restaurant got it). `mine` with no LISTED booking ⇒ UNKNOWN: 3a's weeks
+// read releases this branch's orphan slots before it reports (anuncio-core getAnuncioWeeksCore → releaseOrphan, 60272a791), so `mine`
+// is backed by a REAL record and the two reads (not atomic) simply disagree — never a guess (slot 11-15 follow-up, advisor).
 export function classifyBookRecovery(attempt, weeksRes, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);
   if (list && list.some((x) => x.week === attempt.week && x.status !== 'cancelled')) return { outcome: 'saved' };
@@ -128,7 +129,7 @@ export function classifyBookRecovery(attempt, weeksRes, marketingBody, nowMs) {
   if (m.kind !== 'ok' || !list) return { outcome: 'unknown' };
   const w = m.weeks.find((x) => x.week === attempt.week);
   if (!w) return { outcome: 'unknown' };
-  return { outcome: { mine: 'incomplete', free: 'not_landed', capped: 'not_landed', taken: 'conflict' }[w.state] || 'unknown' };
+  return { outcome: { free: 'not_landed', capped: 'not_landed', taken: 'conflict' }[w.state] || 'unknown' };
 }
 export function classifyCancelRecovery(attempt, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);

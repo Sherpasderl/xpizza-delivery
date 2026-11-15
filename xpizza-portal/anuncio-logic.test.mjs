@@ -314,3 +314,19 @@ test('the cap copy is the owner\'s, verbatim (approved 11-14, PLAN-portal-market
   assert.equal(AL.CAP_COPY.capNone, 'Vas a poder reservar más adelante, cuando se abran nuevas semanas o si cancelás una de las tuyas.');
   assert.ok(Object.isFrozen(AL.CAP_COPY));
 });
+
+// slot 11-15 follow-up (advisor-approved): at the lane pin, getAnuncioWeeks reconciles this branch's orphan slots BEFORE it reports
+// state (3a anuncio-core.js getAnuncioWeeksCore: releaseOrphan per orphanOf, then `mine` only for a slot backed by a REAL record) —
+// so `mine` with no LISTED booking means the two reads disagree (they are not atomic): UNKNOWN, never a guess (`incomplete` is gone)
+test('book recovery: the week reads `mine` but the booking list (read BEFORE the book committed) lacks it ⇒ UNKNOWN — never «incomplete», never «saved»', async () => {
+  const w = await world();
+  await eligible(w.raw, 'tb_centro');
+  const stale = (await w.api.marketing()).body;                       // the list, read before the book commits
+  assert.ok(!(stale.bookings || []).some((b) => b.week === W), 'premise: the stale list has no booking for the week');
+  const k = await bookOk(w, W);                                       // the REAL book commits (record + slot)
+  const weeks = await w.api.weeks();
+  assert.equal(weeks.body.weeks.find((x) => x.week === W).state, 'mine', 'premise: the real weeks read says «mine» (a real record backs it)');
+  assert.ok(k && k.id, 'premise: a real booking');
+  assert.deepEqual(AL.classifyBookRecovery({ week: W }, weeks, stale, BOOK_AT), { outcome: 'unknown' }, 'the reads disagree ⇒ UNKNOWN');
+  assert.deepEqual(AL.classifyBookRecovery({ week: W }, weeks, (await w.api.marketing()).body, BOOK_AT), { outcome: 'saved' }, 'a fresh list shows it ⇒ saved');
+});
