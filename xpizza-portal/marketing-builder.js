@@ -59,6 +59,10 @@ const stale = (ctx) => { if (ctx && ctx.onChanged) ctx.onChanged(); };
 const sendOnce = (attempt, send) => send().then((res) => ML.classifyWrite(attempt, res), () => ({ outcome: 'unknown' }));
 // r6.1 (owner 11-15): an UNKNOWN outcome closes the dialog; the host goes to «Campañas», re-reads it and says so (ML.UNKNOWN_WORD)
 function unknownOut(ctx) { closeBuilder(); if (ctx.onUnknown) ctx.onUnknown(); else stale(ctx); }
+// a write whose dialog was DISMISSED (or replaced) before its reply: an UNKNOWN still goes to the list — banner, rows cleared, re-read —
+// within the account / brand it started in (the host checks); the dialog now on screen (another opening) is left alone. Anything else
+// only refreshes the list.
+function gone(ctx, out) { if (out && out.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else stale(ctx); }
 // r6.1 P2: a NEW op_id for every user submission (a click of «Programar oferta» / «Programar»), never stored, never resent
 const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
 function opened(host, ctx) {   // the shared part of every opening
@@ -557,7 +561,7 @@ async function program() {
     s = await sendOnce({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token }));
     if (s.outcome === 'saved' && s.offer.state !== 'active') s = { outcome: 'refused', code: 'not_programmed' };   // it resolved to a record that is not programmed
   }
-  if (B.gen !== g) { stale(ctx); return; }
+  if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome === 'refused' && s.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(s.offer_id); return; }   // never an error: the existing offer
@@ -577,7 +581,7 @@ async function saveDraft() {
   const s = o
     ? await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }))
     : await sendOnce({ op: 'create' }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, token }));
-  if (B.gen !== g) { stale(ctx); return; }
+  if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome !== 'saved') { B.err = wordOf(s); B.review = true; render(); return; }
@@ -690,7 +694,7 @@ async function saveEdit() {
   const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token;
   B.busy = true; B.err = null; render();
   const s = await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }));
-  if (B.gen !== g) { stale(ctx); return; }
+  if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
@@ -750,7 +754,7 @@ async function repeatGo() {
   B.busy = true; B.err = null; render();
   const opId = newOpId();
   let r = await sendOnce({ op: 'repeat', opId, sourceId: src.id }, () => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token }));
-  if (B.gen !== g) { stale(ctx); return; }
+  if (B.gen !== g) { gone(ctx, r); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false;
   if (r.outcome === 'unknown') { unknownOut(ctx); return; }
   if (r.outcome === 'refused' && r.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(r.offer_id); return; }

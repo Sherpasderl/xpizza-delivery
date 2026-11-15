@@ -177,7 +177,10 @@ export async function move(kind) {
   D.busy = true; D.err = null; render();
   const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to };
   const r = await offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
-  if (!D.host || D.gen !== g) { if (ctx.onChanged) ctx.onChanged(); return; }   // bound to the view it started in
+  if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1)
+    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
+    return;
+  }
   D.busy = false;
   if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown(); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }

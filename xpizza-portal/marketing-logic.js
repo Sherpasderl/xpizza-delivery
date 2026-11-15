@@ -195,7 +195,7 @@ export function classifyWrite(attempt, res) {
   const b = isObj(res.body) ? res.body : {};
   if (res.status === 200) {
     const o = b.offer;
-    if (b.ok !== true || !isObj(o) || !isInt(o.rev, 1, 1e15)) return { outcome: 'unknown' };
+    if (b.ok !== true || !recordShapeOk(o)) return { outcome: 'unknown' };   // Codex r6.1-build P1-2: an incomplete 200 is never definite
     if (attempt.op === 'create' || attempt.op === 'repeat') {
       if (attempt.opId) return { outcome: 'saved', offer: o };   // an op_id reply IS our operation's record — a replay answers it as it is NOW (any rev / state); the caller checks it is THIS form
       return o.rev === 1 && o.state === 'draft' ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
@@ -205,8 +205,29 @@ export function classifyWrite(attempt, res) {
     if (attempt.program && o.state !== 'active') return { outcome: 'unknown' };   // save + program in ONE call: a 200 that isn't active isn't it
     return { outcome: 'saved', offer: o };
   }
-  if (res.status >= 400 && res.status < 500 && typeof b.error === 'string') return { outcome: 'refused', ...refusalOf(res.status, b) };
-  return { outcome: 'unknown' };
+  if (DEFINITE[res.status] && DEFINITE[res.status].includes(b.error)) return { outcome: 'refused', ...refusalOf(res.status, b) };
+  return { outcome: 'unknown' };   // Codex r6.1-build P2-1: any other 4xx (408, 429 …) or 5xx is UNKNOWN — the list decides
+}
+// the DEFINITE refusals (3a offers-core + portal/ops-core @ 94e6b7ae9): nothing was written, the screen may word it. An ALLOWLIST by
+// status and code — a 400 bad_request carries its reason (validation: caps_not_supported, type_not_supported, start_past …).
+const DEFINITE = Object.freeze({
+  400: Object.freeze(['bad_request', 'bad_rid']),
+  401: Object.freeze(['missing_bearer_token', 'invalid_credentials']),
+  403: Object.freeze(['not_authorized']),
+  404: Object.freeze(['not_found']),
+  409: Object.freeze(['superseded', 'bad_transition', 'offers_disabled', 'current_malformed', 'overlap', 'too_many_live', 'too_many_offers',
+    'live_edit_not_allowed', 'ended', 'not_ended', 'branch_not_live', 'menu_unavailable', 'category_too_large', 'duplicate', 'op_id_conflict',
+    'type_not_supported']),
+});
+// a 200's record is complete: what every screen reads (id, rev, state, type, name, branches, schedule, the type's own params)
+const PARAMS_OK = Object.freeze({
+  pct: (p) => isInt(p.pct, 1, 100), lps: (p) => isInt(p.off_cents, 1, 1e12), nuevos: (p) => isInt(p.pct, 1, 100) || isInt(p.off_cents, 1, 1e12),
+  bogo: (p) => (Array.isArray(p.items) || Array.isArray(p.cats)) && isInt(p.free_per_order, 1, 100), envio: () => true,
+});
+export function recordShapeOk(o) {
+  return isObj(o) && typeof o.id === 'string' && o.id.length > 0 && isInt(o.rev, 1, 1e15) && Object.prototype.hasOwnProperty.call(MOVES, o.state)
+    && TYPES.includes(o.type) && typeof o.name === 'string' && Array.isArray(o.branches) && o.branches.length > 0
+    && isObj(o.schedule) && Array.isArray(o.schedule.days) && isObj(o.params) && PARAMS_OK[o.type](o.params);
 }
 // the server's code → the KEY a screen words. Codes verbatim (offers-core.js); anything unrecognised is `other` with the code kept.
 const CODES = Object.freeze({

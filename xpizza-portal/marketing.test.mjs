@@ -1005,3 +1005,121 @@ test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rul
   assert.deepEqual(added, ['.mk5-ogrid>.mk5-card{grid-column:span 3}', '.mk5-card,.mk5-ogrid>.mk5-card{grid-column:auto;padding:20px 18px}']);
   assert.ok(after.includes('.mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}'), 'the 6-column grid itself unchanged');
 });
+
+// ═══ Codex r6.1-build REVISE #1 (advisor 11-15): every write path's lost reply is UNKNOWN; a dismissed write still lands in the list ═══
+const UNK = 'No sabemos si se guardó. Revisá la lista.';
+const unknownLanded = (p, label) => {
+  assert.equal(notice(p) && notice(p).textContent, UNK, `${label}: the banner`);
+  assert.ok(!/No pudimos guardar|No pudimos hacer el cambio|No pudimos programar/.test(p.text()), `${label}: never a failure word`);
+  assert.equal(dlg(p), null, `${label}: no dialog`);
+  assert.equal(sheet(p), null, `${label}: no sheet`);
+};
+test('L1 «Repetir» → «Programar», the reply lost ⇒ UNKNOWN: the sheet closes, the list re-reads, the banner', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  b.net.lose = ['marketingOfferRepeat'];
+  p.btn('Programar', sheet(p)).click(); await settle(250);
+  unknownLanded(p, 'repeat');
+  assert.equal(stored(b, 'Almuerzo').length, 2, 'premise: the copy landed on the server');
+});
+test('L2 «Guardar borrador», the reply lost ⇒ UNKNOWN (never «Borrador guardado», never a refusal)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = ['marketingOfferSave'];
+  p.btn('Guardar borrador', dlg(p)).click(); await settle(250);
+  unknownLanded(p, 'draft');
+  assert.notEqual(toastText(p), 'Borrador guardado');
+});
+test('L3 «Seguir editando» → «Programar oferta» on a draft, the reply lost ⇒ UNKNOWN', async () => {
+  const b = await world();
+  await create(b, form({ name: 'Borrador uno', max: '100' }));   // a complete draft (pct needs its maximum to review)
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  p.mods.marketing.clock.now = () => NOW;
+  p.btn('Acciones', rowNamed(p, 'Borrador uno')).click(); await settle();
+  rowNamed(p, 'Borrador uno').querySelector('[data-act="continue"]').click(); await settle(80);
+  b.net.lose = ['marketingOfferSave'];
+  const rv = await toReview(p);
+  assert.ok(rv, 'premise: the review opened');
+  p.btn('Programar oferta', rv).click(); await settle(250);
+  unknownLanded(p, 'draft-program');
+  assert.notEqual(toastText(p), 'Oferta programada. Empieza hoy.');
+});
+test('L4 «Reanudar» on a paused offer, the reply lost ⇒ UNKNOWN', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.lose = ['marketingOfferSetState'];
+  p.btn('Reanudar').click(); await settle(250);
+  unknownLanded(p, 'resume');
+  assert.equal(p.host().querySelector('.mk5d-head'), null, 'the detail closed');
+});
+test('L5 «Terminar oferta» (the 5b sheet), the reply lost ⇒ UNKNOWN', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
+  b.net.lose = ['marketingOfferSetState'];
+  p.btn('Terminar oferta', sheet(p)).click(); await settle(250);
+  unknownLanded(p, 'end');
+});
+test('L6 DISMISS then lost (Codex P1-1): «Guardar cambios», Esc while pending, the reply lost ⇒ still UNKNOWN — the banner, NO cached rows during the re-read', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await dropEnd(p);
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave'];
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  assert.equal(dlg(p), null, 'premise: dismissed mid-write');
+  let go; release(); b.net.hold = { fn: 'getMarketing', until: new Promise((r) => { go = r; }) };   // the re-read held: what paints meanwhile?
+  await settle(150);
+  assert.equal(notice(p) && notice(p).textContent, UNK, 'the banner, although the dialog was dismissed');
+  assert.equal(p.host().querySelectorAll('.mk5-row').length, 0, 'no cached rows during the re-read');
+  go(); await settle(150);
+  assert.ok(rowNamed(p, 'Almuerzo'), 'the fresh read paints');
+});
+test('L7 DISMISS then lost on «Programar oferta» ⇒ UNKNOWN; a dialog opened meanwhile (another opening) is left alone', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave'];
+  p.btn('Programar oferta', sh).click(); await settle(40);
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  assert.equal(dlg(p), null, 'premise: dismissed mid-write');
+  await openCard(p, 'nuevos');
+  release(); await settle(250);
+  assert.equal(notice(p) && notice(p).textContent, UNK, 'the banner');
+  assert.ok(dlg(p), 'the dialog opened meanwhile stays');
+  assert.equal(dlg(p).querySelector('.mk5b-type .mk5b-lbl').textContent, 'Para clientes nuevos', 'untouched');
+});
+test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner for another user)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await dropEnd(p);
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave'];
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
+  p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle();
+  release(); await settle(200);
+  assert.equal(notice(p), null, 'no banner under another account');
+});

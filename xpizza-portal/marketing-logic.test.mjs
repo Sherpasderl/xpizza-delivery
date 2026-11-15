@@ -230,6 +230,24 @@ test('r6.1 no client recovery: classifyRecovery, settleWrite and authoredEqual a
   for (const res of [{ transport: true }, { status: 500, body: { error: 'error' } }, { status: 503, body: { error: 'unavailable' } }, { status: 200, body: null, malformed: true }, { status: 200, body: { ok: true, offer: { id: 'o1', rev: 3 } } }])
     assert.deepEqual(ML.classifyWrite(a, res), { outcome: 'unknown' }, `${JSON.stringify(res).slice(0, 60)}: unknown, never saved / not landed`);
 });
+// Codex r6.1-build P1-2 / P2-1 (advisor 11-15): a 200 is definite only with a COMPLETE record; a refusal only from the allowlist
+test('an incomplete 200 is UNKNOWN (never «Oferta programada»); only ALLOWLISTED 4xx are definite — 408, 429, 405, an unknown code are UNKNOWN', async () => {
+  const b = await backend();
+  const real = await publish(b, form({ name: 'Completa' }));
+  assert.equal(ML.recordShapeOk(real), true, 'premise: the real core\'s record is complete');
+  const ok = (offer) => ({ status: 200, body: { ok: true, offer } });
+  const drop = (k) => { const o = { ...real }; delete o[k]; return o; };
+  for (const [o, why] of [[{ rev: 1, state: 'active' }, 'no id / schedule (Codex\'s case)'], [drop('state'), 'no state'], [drop('schedule'), 'no schedule'], [drop('id'), 'no id'],
+    [drop('branches'), 'no branches'], [{ ...real, params: {} }, 'pct without its pct'], [{ ...real, state: 'live' }, 'a state the server never stores']]) {
+    assert.deepEqual(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, ok(o)), { outcome: 'unknown' }, `create: ${why}`);
+    assert.deepEqual(ML.classifyWrite({ op: 'save', offerId: real.id, expectedRev: real.rev - 1 }, ok(o)), { outcome: 'unknown' }, `save: ${why}`);
+  }
+  assert.equal(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, ok(real)).outcome, 'saved', 'the complete record is definite');
+  for (const [status, error] of [[408, 'request_timeout'], [429, 'too_many_pending'], [405, 'method_not_allowed'], [409, 'something_new'], [400, 'something_new'], [418, 'teapot'], [403, 'something_else']])
+    assert.deepEqual(ML.classifyWrite({ op: 'create' }, { status, body: { error } }), { outcome: 'unknown' }, `${status} ${error}: UNKNOWN`);
+  for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'op_id_conflict'], [409, 'type_not_supported'], [409, 'offers_disabled']])
+    assert.equal(ML.classifyWrite({ op: 'create' }, { status, body: { error } }).outcome, 'refused', `${status} ${error}: definite`);
+});
 // SHIP-GATE (r6.1): the ONE unknown-outcome string — the owner-approved meaning in the mockup's «vos» voice (advisor 11-15)
 test('SHIP-GATE copy: an UNKNOWN outcome reads exactly «No sabemos si se guardó. Revisá la lista.»; neither old string ships anywhere in xpizza-portal/', () => {
   assert.equal(ML.UNKNOWN_WORD, 'No sabemos si se guardó. Revisá la lista.');

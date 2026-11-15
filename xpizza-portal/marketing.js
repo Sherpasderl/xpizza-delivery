@@ -308,13 +308,17 @@ function emptyState() {
 
 // ── the builder (marketing-builder.js, O2) ───────────────────────────────────────────────────────────────────────────────────
 function builderCtx() {
+  const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };   // the account + brand every write of this context started in
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: afterUnknown, onChangeType: () => { S.tab = 'create'; render(); } };
+    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: (o) => afterUnknown(origin, o), onChangeType: () => { S.tab = 'create'; render(); } };
 }
 // r6.1 (owner 11-15): a write whose outcome is UNKNOWN — every dialog / sheet / detail closes, «Campañas» RE-READS (no cached row paints
-// meanwhile, nor after a failed read) and the banner says so. The list is the truth.
-function afterUnknown() {
-  closeBuilder(); closeDetail();
+// meanwhile, nor after a failed read) and the banner says so. The list is the truth. A write whose dialog was DISMISSED first still
+// lands here (Codex r6.1-build P1-1) — the dialog now open (another opening) stays; only another account / brand (or no page) drops it.
+function afterUnknown(origin, { dismissed = false } = {}) {
+  if (!origin || origin.uid !== S.uid || !S.sel || origin.brandId !== S.sel.brandId || !S.body) return;
+  if (!dismissed) closeBuilder();
+  closeDetail();
   S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = ML.UNKNOWN_WORD;
   render();
   load();
@@ -334,8 +338,9 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 
 // ── O3 · the offer detail (marketing-detail.js) ────────────────────────────────────────────────────────────────────────────────
 function detailCtx(o) {
+  const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
-    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: afterUnknown, onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: (x) => afterUnknown(origin, x), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
 }
 // 409 duplicate (3a e3c5f7366): an identical offer is already programmed — never an error: the list re-reads and THAT offer opens
 async function showExisting(id) {
