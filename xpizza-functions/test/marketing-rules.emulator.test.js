@@ -42,7 +42,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       const deps = { db, verifyIdToken: async () => ({ uid: OWNER }), now: () => NOW, readMirror: makeRtdbMirrorReader(db) };
       const rq = (body) => ({ method: 'POST', body, get: (h) => (h === 'authorization' ? 'Bearer t' : undefined) });
       const s = await C.marketingOfferSaveCore(deps, rq({ rid: 'tb_centro', expected_rev: 0, offer: { name: 'Prueba', type: 'bogo', params: { items: [K1], free_per_order: 1 }, audience: 'all', branches: ['tb_centro'],
-        schedule: { start: NOW + 86400000, days: [5], window: { from: 1260, to: 0 } }, caps: { weekly: false } } }));
+        schedule: { start: NOW + 86400000, days: [5], window: { from: 1260, to: 0 } } } }));
       assert.strictEqual(s.status, 200, `premise: the real core created the offer (${JSON.stringify(s.body)})`);
       offerId = s.body.offer.id;
       const p = await C.marketingOfferSetStateCore(deps, rq({ rid: 'tb_centro', offer_id: offerId, to: 'active', expected_rev: 1 }));
