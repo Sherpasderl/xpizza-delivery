@@ -7857,7 +7857,9 @@
   },
   "stats/stats-api.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/statscmp-wiring.guard.test.js"
+   ]
   },
   "stats/stats-build.js": {
    "pins": [],
