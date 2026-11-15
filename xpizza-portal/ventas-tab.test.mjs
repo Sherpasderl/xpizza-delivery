@@ -99,7 +99,7 @@ test('V1 frame 8 · the honest empty: L 0 · 0 · «—», one calm card with th
   t.q('.vd-pill').click(); await settle();
   t.qa('.vd-menu.vd-show .vd-opt')[0].click(); await settle(100);   // «Hoy»: r_b sold nothing today
   assert.deepEqual(figs(t), [['Ventas', 'L 0'], ['Pedidos', '0'], ['Ticket promedio', '—']], 'no average without orders');
-  assert.equal(t.text(t.q('.vd-ok')), 'Sin ventas en este períodoProbá con otro período.');
+  assert.equal(t.text(t.q('.vd-ok')), 'Sin ventas en este períodoProbá con otro período.', 'the calm card, the shipped copy');
   assert.equal(t.q('.vd-card'), null, 'no chart');
   assert.equal(t.q('.vd-prods'), null, 'no products');
 });
@@ -109,7 +109,7 @@ test('V1 frame 10 · 503 on «Todas»: «—» figures, the shipped error copy, 
   assert.deepEqual(figs(t).map(([, v]) => v), ['—', '—', '—'], 'never a number without its answer');
   const c = t.q('.vd-err');
   assert.equal(c.getAttribute('role'), 'alert');
-  assert.deepEqual([...c.querySelectorAll(':scope > b, :scope > span')].map((x) => t.text(x)), ['No pudimos cargar las ventas', 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.', 'Como una de tus sucursales no respondió, no mostramos un total parcial de «Todas las sucursales».']);
+  assert.deepEqual([...c.querySelectorAll(':scope > b, :scope > span')].map((x) => t.text(x)), ['No pudimos cargar las ventas', 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.', 'Como una de tus sucursales no respondió, no mostramos un total parcial de «Todas las sucursales».'], 'the shipped copy + the «never a partial total» sentence');
   [...c.querySelectorAll('button')].find((b) => t.text(b) === 'Ver una sucursal').click(); await settle();
   assert.ok(t.q('.vd-menu.vd-show'), 'the branch menu opens');
   assert.equal(t.text(t.q('.vd-menu.vd-show .vd-opt')), 'Todas las sucursales');
