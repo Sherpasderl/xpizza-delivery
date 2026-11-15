@@ -8,7 +8,11 @@
 // active offer's schedule at read time (statusOf) — no job flips a state, and the price path evaluates the schedule itself.
 // RTDB drops nulls: an absent end / window / cap / start IS null (the parsers read it back that way).
 
-const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);
+const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);   // every type a STORED record may carry
+// the types v1 may author, activate and project (owner 11-15): «envío gratis» waits for the payout ledger (nothing can deduct the waived
+// fee from the restaurant yet) — an old envío record still READS (it can be listed and ended), never goes live.
+const V1_TYPES = Object.freeze(['pct', 'lps', 'bogo', 'nuevos']);
+const typeSupported = (type) => V1_TYPES.includes(type);
 const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
 const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);   // (r3: a refused program is never a record — its claim carries the refusal)
 const LIMITS = Object.freeze({
@@ -116,6 +120,7 @@ function validateAuthored(input, { isRid, stored = false }) {
   const name = nameOf(input.name);
   if (name === null) return fail('name', 'bad_name');
   if (!TYPES.includes(input.type)) return fail('type', 'bad_type');
+  if (!stored && !typeSupported(input.type)) return fail('type', 'type_not_supported');
   const params = paramsOf(input.type, input.params, stored);
   if (params === null) return fail('params', 'bad_params');
   if (!AUDIENCES.includes(input.audience)) return fail('audience', 'bad_audience');
@@ -187,7 +192,7 @@ function resolveCats(menu, cats) {
 }
 
 // The compact record the PRICE PATH reads — present only while state === 'active'. `name` rides for the overlap refusal's wording.
-const liveProjection = (rec, brandId) => stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule });
+const liveProjection = (rec, brandId) => (!typeSupported(rec.type) ? null : stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule }));
 
 // ── the weekly overlap rule (mockup 3 «1 con cruce») ────────────────────────────────────────────────────────────────────────────
 // An offer's weekly minutes: for each day d, [d·1440 + from, d·1440 + to) where a window ending at or before its start runs past
@@ -230,7 +235,7 @@ const hnDow = (ms) => new Date(ms - HN_OFFSET_MS).getUTCDay();
 
 module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
-  validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
+  V1_TYPES, typeSupported, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
   weeklyIntervals, schedulesOverlap, dishesOf, usesCats, resolveCats, statusOf, hnDow,
   paramsOf, scheduleOf,   // the ONE params / schedule rule, for the public offers read (catalog/offers-serve.js)
 };

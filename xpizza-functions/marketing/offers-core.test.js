@@ -172,7 +172,10 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ type: 'pct', params: { pct: 10, max_cents: 0 } }, 'bad_params'],
         [{ type: 'pct', params: { pct: 10, max_cents: 5050 } }, 'bad_params'],
         [{ type: 'lps', params: { off_cents: 5050, min_cents: 30000 } }, 'bad_params'],
-        [{ type: 'envio', params: { min_cents: 0 } }, 'bad_params'],
+        // v1 types (owner 11-15): «envío gratis» waits for the payout ledger — refused before its params are even judged
+        [{ type: 'envio', params: { min_cents: 0 } }, 'type_not_supported'],
+        [{ type: 'envio', params: {} }, 'type_not_supported'],
+        [{ type: 'envio', params: { min_cents: 30000 } }, 'type_not_supported'],
         [{ type: 'nuevos', params: { off_cents: 99 }, audience: 'new' }, 'bad_params'],
         // v1 caps (owner 11-15): ANY caps value but absent / null is refused — never stored, never half-enforced
         [{ caps: { weekly: false } }, 'caps_not_supported'],
@@ -189,7 +192,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         assert.deepStrictEqual([z.status, z.body.offer && 'caps' in z.body.offer, 'caps' in (fake.get(`marketing_brand/tb/offers/${z.body.offer && z.body.offer.id}`) || {})], [200, false, false], `caps: null ⇒ accepted, nothing stored (${JSON.stringify(z.body)})`); }
       const both = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], items: [K1], free_per_order: 1 } }) });
       assert.deepStrictEqual([both.status, both.body.reason], [400, 'bad_params'], 'the builder sends items OR cats, never both (items are the server\'s)');
-      for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }], [{ type: 'envio', params: {} }, {}]]) {
+      for (const [o, want] of [[{ type: 'pct', params: { pct: 10 } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: null } }, { pct: 10 }], [{ type: 'pct', params: { pct: 10, max_cents: 15000 } }, { pct: 10, max_cents: 15000 }]]) {
         const r = await save(deps, `t-${OWNER}`, { offer: offer(o) });
         assert.deepStrictEqual([r.status, r.body.offer && r.body.offer.params], [200, want], `money: ${JSON.stringify(o.params)} ⇒ stored ${JSON.stringify(want)} (absent = none)`);
       }
@@ -694,15 +697,16 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
 
     // ── 5n. Codex brand-root r1 (3 × P2) ──
     {
-      // P2-1: a «sin mínimo» envío is stored params-less (RTDB drops {}); an identical second one is STILL a duplicate
-      const { deps } = await setup();
+      // v1 (owner 11-15): envío is refused on EVERY authored path — create, create + program, and an edit of a draft into envío
+      const { fake, deps } = await setup();
       const env = () => offer({ name: 'Envío gratis', type: 'envio', params: {} });
       const e1 = await save(deps, `t-${OWNER}`, { offer: env(), op_id: 'op_' + 'e'.repeat(20), program: true });
-      assert.strictEqual(e1.status, 200, `premise: the first no-minimum envío is programmed (${JSON.stringify(e1.body)})`);
-      const e2 = await save(deps, `t-${OWNER}`, { offer: env(), op_id: 'op_' + 'f'.repeat(20), program: true });
-      assert.deepStrictEqual([e2.status, e2.body.error, e2.body.offer_id], [409, 'duplicate', e1.body.offer.id], `a second identical no-minimum envío ⇒ 409 duplicate (stored params-less ≡ {}) (${JSON.stringify(e2.body)})`);
-      ok('Codex P2-1: two identical «sin mínimo» envíos are duplicates (params normalised through the stored rule on both sides)');
-    }
+      assert.deepStrictEqual([e1.status, e1.body.field, e1.body.reason], [400, 'type', 'type_not_supported'], `envío create + program ⇒ 400 type_not_supported (${JSON.stringify(e1.body)})`);
+      const d = await created(deps, { name: 'Diez', type: 'pct', params: { pct: 10 } });
+      const e2 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Diez', type: 'envio', params: {} }) });
+      assert.deepStrictEqual([e2.status, e2.body.reason], [400, 'type_not_supported'], 'a draft edited INTO envío ⇒ 400 type_not_supported');
+      assert.deepStrictEqual(Object.keys((fake.get('marketing_brand/tb/offers')) || {}), [d.id], 'nothing envío was ever stored');
+      ok('v1: envío refused on create, create + program and edit (type_not_supported); nothing stored');    }
     {
       // P2-2a: 120 refusals over 120 days — expired claims are pruned on EVERY committing txn, refusal-only ones included
       const { fake, deps } = await setup();
@@ -767,7 +771,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.strictEqual(ids.filter(Boolean).length, 10, 'premise: ten offers programmed, each ending NOW + 2 days');
       const T3 = NOW + 3 * DAY; const later = { ...deps, now: () => T3 };
       assert.ok(ids.every((id) => { const e = fake.get(`marketing_brand/tb/live/tb_centro/${id}`); return e && e.removed !== true; }), 'premise: no job ended them — their entries are still projections');
-      const eleventh = await save(later, `t-${OWNER}`, { offer: offer({ name: 'Después', type: 'envio', params: {}, schedule: { start: T3 + DAY, end: T3 + 9 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true });
+      const eleventh = await save(later, `t-${OWNER}`, { offer: offer({ name: 'Después', type: 'lps', params: { off_cents: 5000, min_cents: 30000 }, schedule: { start: T3 + DAY, end: T3 + 9 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true });
       assert.strictEqual(eleventh.status, 200, `entries past their schedule end never count toward live_max (${JSON.stringify(eleventh.body)})`);
       assert.ok(ids.every((id) => fake.get(`marketing_brand/tb/live/tb_centro/${id}/removed`) === true), 'the brand txn tombstoned the expired entries it saw (the node stays tidy)');
       const listed = (await get(later, `t-${OWNER}`, 'tb_centro')).body.offers.filter((o) => ids.includes(o.id));
@@ -811,27 +815,35 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       void k2sat;
       ok('overlap across the week boundary (Saturday night into Sunday)');
       for (let i = 0; i < 5; i++) await published(deps, { name: `Pct ${i}`, type: 'pct', params: { pct: 10 + 5 * i } });   // distinct params: never a duplicate
-      const eleventh = await created(deps, { name: 'Once', type: 'envio', params: {} });   // no minimum = the field absent
+      const eleventh = await created(deps, { name: 'Once', type: 'lps', params: { off_cents: 5000, min_cents: 30000 } });
       const t = await move(deps, `t-${OWNER}`, { offer_id: eleventh.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([t.status, t.body.error], [409, 'too_many_live'], 'the 11th live offer on a branch ⇒ too_many_live');
       ok('MAX_LIVE: 10 scheduled+live offers per branch');
     }
 
-    // ── 6a. RTDB never stores an empty object: a «sin mínimo» envío (params {}) is stored params-less — it still reads back, lists and serves ──
+    // ── 6a. an OLD envío record (stored by the pre-v1 writer, before envío was refused — RTDB drops its empty params): it still reads
+    //        back and lists, it can be ended, but it can NEVER be activated, repeated or projected (owner 11-15) ──
     {
       const { fake, deps } = await setup();
-      const e = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Envío gratis', type: 'envio', params: {} }), program: true });
-      assert.strictEqual(e.status, 200, `premise: programmed (${JSON.stringify(e.body)})`);
-      const id = e.body.offer.id;
-      assert.strictEqual(fake.get(`marketing_brand/tb/offers/${id}`).params, undefined, 'premise: stored as RTDB stores it — no params node');
-      const listed = (await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.find((o) => o.id === id);
-      assert.deepStrictEqual([listed && listed.params, listed && listed.live_drift], [{}, undefined], 'the portal read lists it with params {} (never dropped as malformed, never drift)');
-      const ended = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'paused_owner', expected_rev: 1 });
-      assert.strictEqual(ended.status, 200, `a params-less envío is never current_malformed on a later move (${JSON.stringify(ended.body)})`);
-      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: 2 })).status, 200, 'and resumes');
-      const served = require('../catalog/offers-serve').publicOffer(fake.get(`marketing_brand/tb/live/tb_centro/${id}`), NOW + 2 * DAY);
-      assert.deepStrictEqual(served && [served.type, served.params], ['envio', {}], 'the public reader serves the stored entry (params {})');
-      ok('a «sin mínimo» envío survives RTDB\'s empty-object drop: read back, listed, moved and served');
+      const draftId = 'o_' + 'a'.repeat(12), liveId = 'o_' + 'b'.repeat(12), endedId = 'o_' + 'c'.repeat(12);
+      const base = { v: 1, name: 'Envío gratis', type: 'envio', audience: 'all', branches: ['tb_centro'], created_by: OWNER, created_at: NOW, updated_at: NOW };
+      const sched = { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } };
+      await fake.ref(`marketing_brand/tb/offers/${draftId}`).set({ ...base, rev: 1, state: 'draft', schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${liveId}`).set({ ...base, rev: 2, state: 'paused_owner', paused_at: NOW, schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${endedId}`).set({ ...base, rev: 3, state: 'ended', ended_reason: 'owner', schedule: { ...sched, start: NOW - 30 * DAY, end: NOW - DAY } });
+      const listed = (await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.filter((o) => o.type === 'envio');
+      assert.deepStrictEqual(listed.map((o) => [o.id, o.params]).sort(), [[draftId, {}], [liveId, {}], [endedId, {}]], 'an old params-less envío still reads back and lists (params {}, never malformed)');
+      for (const [id, rev] of [[draftId, 1], [liveId, 2]]) {
+        const a = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: rev });
+        assert.deepStrictEqual([a.status, a.body.error], [409, 'type_not_supported'], `an old envío (${id === draftId ? 'draft' : 'paused'}) can never be activated (${JSON.stringify(a.body)})`);
+      }
+      const rp = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: endedId, program: true, schedule: { start: NOW + 2 * DAY } }));
+      assert.deepStrictEqual([rp.status, rp.body.reason], [400, 'type_not_supported'], `an old ended envío can never be repeated (${JSON.stringify(rp.body)})`);
+      assert.deepStrictEqual(mirrored(fake), [], 'no envío ever reaches the live mirror');
+      const end = await move(deps, `t-${OWNER}`, { offer_id: liveId, to: 'ended', expected_rev: 2 });
+      assert.strictEqual(end.status, 200, `an old envío can still be ENDED (${JSON.stringify(end.body)})`);
+      assert.strictEqual(OM.liveProjection({ ...base, rev: 9, state: 'active', schedule: sched }, 'tb'), null, 'liveProjection never projects an envío record');
+      ok('an old envío record: listed, endable, never activated / repeated / projected');
     }
 
     // ── 6b. the race (advisor 11-14, rule 5): two clashing publishes at once — the per-branch transaction lets exactly one through ──
