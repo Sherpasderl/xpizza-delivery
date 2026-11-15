@@ -105,7 +105,7 @@ test('WAKE-7 (Codex r1 P2): the page owns an INDEPENDENT ceiling — if capp-spl
 // `.ring{…animation:spin .9s linear infinite}` — the ring orbited the mark's top-left every 0.9 s. Advisor: SCOPE the overlay's class
 // names (a unique prefix) + a cell on the cascade + a guard that no other capp rule can reach them. jsdom computes no animations, so
 // the cells walk the REAL stylesheets (the CSSOM, @media included) and match each rule against the REAL overlay markup ──
-const CSS_FILES = ['capp.css', 'capp-fonts.css'];   // the stylesheets the native page loads
+const CSS_FILES = ['figtree-fonts.css', 'capp.css'];   // the stylesheets the native page loads, in its order (WAKE-CSS)
 const WAKE_KF = new Set(['a-settle', 'a-ring', 'a-halo', 'a-pivot', 'cs-cap']);
 const STATE_CLASSES = [...readFileSync(join(HERE, 'capp-splash.js'), 'utf8').matchAll(/classList\.add\('([\w-]+)'\)/g)].map((m) => m[1]);
 function overlayDoc() {
@@ -115,6 +115,11 @@ function overlayDoc() {
   for (const s of w.document.styleSheets) walk(s.cssRules);
   return { w, rules, kf };
 }
+// the Figtree swap (ebe410c7e) deleted capp-fonts.css while this list still named it (merge 8839193d9): the list is the pages' OWN links
+const sheetsOf = (page) => [...readFileSync(join(HERE, page), 'utf8').matchAll(/<link rel="stylesheet" href="([^"]+)">/g)].map((m) => m[1]);
+test('WAKE-CSS: CSS_FILES is exactly the stylesheets index.html and shell.html link, in order (the cells walk what the page loads)', () => {
+  for (const page of ['index.html', 'shell.html']) assert.deepEqual(CSS_FILES, sheetsOf(page), `🔴 WAKE-CSS: CSS_FILES ≠ ${page}'s stylesheet links`);
+});
 const overlayClasses = () => { const { w } = overlayDoc(); const el = w.document.getElementById('csplash'); return new Set([...[el, ...el.querySelectorAll('*')].flatMap((e) => [...e.classList]), ...STATE_CLASSES]); };
 test('WAKE-8 (W1): every animation that reaches an overlay element is the wake\'s own (a-settle / a-ring / a-halo / a-pivot / cs-cap) — never another rule\'s (the global spinner\'s «spin»), in the base and every state', () => {
   const { w, rules, kf } = overlayDoc(), el = w.document.getElementById('csplash');

@@ -36973,6 +36973,40 @@
   ]
  },
  {
+  "id": "w1-04",
+  "slice": "wake",
+  "label": "the W1 cells walk the DELETED capp-fonts.css again (the Figtree swap ebe410c7e × W1, merge 8839193d) — WAKE-CSS",
+  "file": "../customer-app/capp-splash.test.mjs",
+  "from": "const CSS_FILES = ['figtree-fonts.css', 'capp.css'];",
+  "to": "const CSS_FILES = ['capp-fonts.css', 'capp.css'];",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-CSS",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 WAKE-CSS: CSS_FILES ≠ index.html"
+  ]
+ },
+ {
+  "id": "w1-05",
+  "slice": "wake",
+  "label": "the native shell page links a stylesheet the W1 cells do not walk — WAKE-CSS pins shell.html too",
+  "file": "../customer-app/shell.html",
+  "from": "<link rel=\"stylesheet\" href=\"figtree-fonts.css\">",
+  "to": "<link rel=\"stylesheet\" href=\"capp-fonts.css\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-CSS",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 WAKE-CSS: CSS_FILES ≠ shell.html"
+  ]
+ },
+ {
   "id": "c3v2-01",
   "slice": "c3r-v2",
   "label": "R4.3: the check guards only the SUCCESS path (a late fallback applies unchecked)",
