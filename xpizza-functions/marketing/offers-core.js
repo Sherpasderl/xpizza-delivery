@@ -4,7 +4,7 @@
 //
 //   getMarketing            GET  ?rid=                                                    marketing.read → { switches, offers, bookings }
 //   marketingOfferSave      POST { rid, offer_id?, expected_rev, offer, op_id?, program? }  marketing.edit → create (expected_rev 0) / edit
-//   marketingOfferSetState  POST { rid, offer_id, to, expected_rev }                      marketing.edit → publish / pause / resume / end
+//   marketingOfferSetState  POST { rid, offer_id, to, expected_rev, op_id? }              marketing.edit → publish / pause / resume / end
 //   marketingOfferRepeat    POST { rid, source_id | offer_id, op_id?, program?, schedule? } marketing.edit → a copy of an ended offer
 //
 // AUTHORIZATION: a verified ID token (customer / handheld refused before any read — portal/ops-core verifiedContext), then
@@ -17,7 +17,10 @@
 //   marketing_brand/{brandId}/offers/{offerId}      the authored record (rev CAS)
 //   marketing_brand/{brandId}/live/{rid}/{offerId}  the price path's compact record (offer-model liveProjection) while the offer is
 //                                                   active, else a tombstone { removed, rev } (readers: offers-serve, 5f offer-wire)
-//   marketing_brand/{brandId}/ops/{op_id}           the idempotency claim { offer_id, kind, at, source_id?, refused? } (7-day TTL)
+//   marketing_brand/{brandId}/ops/{op_id}           the idempotency claim { offer_id, kind, at, source_id?, to?, refused? } (7-day TTL)
+//     kind: create | repeat | edit | state (owner 11-15: an edit and a SetState accept an OPTIONAL op_id, claimed in the same brand
+//     txn as the record). A resend of the same kind replays (200 with the CURRENT view, or the stored judgement 409); another kind,
+//     source, offer or `to` under the op_id ⇒ 409 op_id_conflict. A non-judgement abort writes no claim.
 // Async work (auth, the switch, branch authorization, dish resolution, shape validation) runs BEFORE the transaction; inside, a PURE step
 // decides on the CURRENT node: the claim (replay / conflict), the record CAS + moves, the judgement (duplicate FIRST, then the overlap
 // per branch and MAX_LIVE), then writes everything or aborts with nothing written. A refused op_id create / repeat writes ONLY its claim
@@ -106,7 +109,6 @@ function liveJudgement(offerId, value, live, t) {
     && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
   return clash.length ? { error: 'overlap', with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() } : null;
 }
-const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with ? { with: v.with } : {}), ...(v.offer_id ? { offer_id: v.offer_id } : {}) });
 // THE duplicate backstop (advisor 11-14, the portal's single-call Ofertas): another offer of the restaurant already programmed or active with
 // the SAME kind, params and branch set and an OVERLAPPING schedule ⇒ { error: 'duplicate', offer_id }. Judged on the WHOLE brand node (the
 // branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
@@ -167,12 +169,13 @@ async function brandTxn(db, brandId, step) {
 // a copy of the node the step may change (never the transaction's own input)
 const draftNode = (node) => ({ ...node, offers: { ...(isObj(node.offers) ? node.offers : {}) }, live: { ...(isObj(node.live) ? node.live : {}) }, ops: { ...(isObj(node.ops) ? node.ops : {}) } });
 const liveClaim = (c, t) => isObj(c) && OM.OFFER_ID_RE.test(String(c.offer_id)) && Number.isSafeInteger(c.at) && t - c.at < OP_TTL_MS;
-// the claim for `opId` → null (none / expired) | { replay } | { abort } (another kind / source)
-function claimCheck(node, opId, kind, sourceId, t) {
+// the claim for `opId` → null (none / expired) | { replay } | { abort } (another kind, or a bound field — the repeat's source_id, the
+// edit's / move's offer_id, the move's `to` — that differs)
+function claimCheck(node, opId, kind, bind, t) {
   if (opId === undefined) return null;
   const c = isObj(node.ops) ? node.ops[opId] : null;
   if (!liveClaim(c, t)) return null;
-  if (c.kind !== kind || (kind === 'repeat' && c.source_id !== sourceId)) return { abort: OP_CONFLICT() };
+  if (c.kind !== kind || Object.entries(bind).some(([k, v]) => c[k] !== v)) return { abort: OP_CONFLICT() };
   if (isObj(c.refused)) return { abort: refusedReply(c.refused) };
   const rec = isObj(node.offers) ? node.offers[c.offer_id] : null;
   if (isObj(rec) && OM.recordOk(rec, opts)) return { abort: reply(200, { ok: true, offer: offerView(c.offer_id, rec, t) }) };
@@ -225,12 +228,13 @@ const offerView = (id, rec, nowMs) => ({
   ...(rec.ended_reason ? { ended_reason: rec.ended_reason } : {}), ...(rec.repeated_from ? { repeated_from: rec.repeated_from } : {}),
   ...(rec.state === 'paused_owner' && Number.isSafeInteger(rec.paused_at) ? { paused_at: rec.paused_at } : {}),
 });
-// a refusal of a NEW offer under an op_id: only the claim is written, carrying it (its retry answers the same 409); else nothing
-function refuse(node, opId, kind, sourceId, offerId, verdict, rid, t) {
+// a JUDGEMENT refusal under an op_id: only the claim is written, carrying it (its retry answers the same 409); else nothing.
+// bind = the claim's bound fields beside offer_id (repeat: source_id; state: to)
+function refuse(node, opId, kind, bind, offerId, verdict, rid, t) {
   const why = { error: verdict.error, rid, ...(verdict.with ? { with: verdict.with } : {}), ...(verdict.offer_id ? { offer_id: verdict.offer_id } : {}) };
   if (opId === undefined) return { abort: refusedReply(why) };
   const next = draftNode(node);
-  const full = putClaim(next, opId, { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why }, t);
+  const full = putClaim(next, opId, { offer_id: offerId, kind, at: t, ...bind, refused: why }, t);
   if (full) return { abort: full };
   tidyExpired(next, t);
   return { next, result: refusedReply(why) };
@@ -296,7 +300,7 @@ async function marketingOfferSaveCore(deps, req) {
   const creating = body.offer_id === undefined;
   if (!creating && !(typeof body.offer_id === 'string' && OM.OFFER_ID_RE.test(body.offer_id))) return reply(400, { error: 'bad_request', field: 'offer_id' });
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0 || (creating !== (body.expected_rev === 0))) return reply(400, { error: 'bad_request', field: 'expected_rev' });
-  if (body.op_id !== undefined && (!creating || !isOpId(body.op_id))) return reply(400, { error: 'bad_request', field: 'op_id' });
+  if (body.op_id !== undefined && !isOpId(body.op_id)) return reply(400, { error: 'bad_request', field: 'op_id' });
   if (body.program !== undefined && body.program !== true) return reply(400, { error: 'bad_request', field: 'program' });
   const program = body.program === true;   // the portal's single-call Ofertas: save AND program in ONE operation (all or nothing)
   const v = OM.validateAuthored(body.offer, opts);
@@ -304,14 +308,15 @@ async function marketingOfferSaveCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
   if (denied) return denied;
   const dish = await resolveDishes(deps, v.value);
-  // a CLAIMED create answers its replay first: a preparation failure (a dish left the menu after a lost reply) waits for the claim
-  // check inside the txn (Codex brand-root r1 P2-3)
-  if (dish.fail && !(creating && body.op_id !== undefined)) return dish.fail;
+  // a CLAIMED create / edit answers its replay first: a preparation failure (a dish left the menu after a lost reply) waits for the
+  // claim check inside the txn (Codex brand-root r1 P2-3)
+  if (dish.fail && body.op_id === undefined) return dish.fail;
   const value = dish.value;
   const t = now();
   const proposed = creating ? newOfferId() : body.offer_id;
   return brandTxn(db, brandId, (node) => {
-    if (creating) { const c = claimCheck(node, body.op_id, 'create', null, t); if (c) return c; }   // the replay FIRST (before any validation)
+    const c = creating ? claimCheck(node, body.op_id, 'create', {}, t) : claimCheck(node, body.op_id, 'edit', { offer_id: proposed }, t);
+    if (c) return c;   // the replay FIRST (before any validation, the expected_rev included: a lost reply's resend carries the old one)
     if (dish.fail) return { abort: dish.fail };   // no replay: the deferred preparation failure
     const cur = isObj(node.offers) ? node.offers[proposed] : null;
     let rec;
@@ -335,11 +340,11 @@ async function marketingOfferSaveCore(deps, req) {
     rec = OM.stripNulls(rec);
     if (rec.state === 'active') {
       const j = judgeActive(node, brandId, proposed, rec, t);
-      if (j) return creating ? refuse(node, body.op_id, 'create', null, proposed, j.verdict, j.rid, t) : { abort: judgementReply(j.verdict, j.rid) };
+      if (j) return refuse(node, body.op_id, creating ? 'create' : 'edit', {}, proposed, j.verdict, j.rid, t);
     }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t);
-    if (creating && body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'create', at: t }, t); if (full) return { abort: full }; }
+    if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: creating ? 'create' : 'edit', at: t }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
   });
 }
@@ -356,6 +361,7 @@ async function marketingOfferSetStateCore(deps, req) {
   if (!(typeof body.offer_id === 'string' && OM.OFFER_ID_RE.test(body.offer_id))) return reply(400, { error: 'bad_request', field: 'offer_id' });
   if (!['active', 'paused_owner', 'ended'].includes(body.to)) return reply(400, { error: 'bad_request', field: 'to' });
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 1) return reply(400, { error: 'bad_request', field: 'expected_rev' });
+  if (body.op_id !== undefined && !isOpId(body.op_id)) return reply(400, { error: 'bad_request', field: 'op_id' });
   let pre;   // read for the async work only (authorization, dish resolution); the transaction re-decides on the CURRENT record
   try { pre = await val(db, `${brandPath(brandId)}/offers/${body.offer_id}`); } catch (_) { return UNAVAILABLE(); }
   if (pre === null) return reply(404, { error: 'not_found' });
@@ -364,12 +370,16 @@ async function marketingOfferSetStateCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
   const t = now();
+  let prepFail = null;
   if (body.to === 'active') {   // a category offer is RE-RESOLVED at publish / resume (frozen from here)
     const dish = await resolveDishes(deps, value);
-    if (dish.fail) return dish.fail;
-    value = dish.value;
+    if (dish.fail && body.op_id === undefined) return dish.fail;
+    if (dish.fail) prepFail = dish.fail; else value = dish.value;   // a CLAIMED move: the failure waits for the claim check
   }
   return brandTxn(db, brandId, (node) => {
+    const c = claimCheck(node, body.op_id, 'state', { offer_id: body.offer_id, to: body.to }, t);
+    if (c) return c;   // the replay FIRST (before the expected_rev check: a lost reply's resend carries the old one)
+    if (prepFail) return { abort: prepFail };
     const cur = isObj(node.offers) ? node.offers[body.offer_id] : null;
     if (cur === null || cur === undefined) return { abort: reply(404, { error: 'not_found' }) };
     if (!OM.recordOk(cur, opts)) return { abort: reply(409, { error: 'current_malformed' }) };
@@ -384,9 +394,10 @@ async function marketingOfferSetStateCore(deps, req) {
     const rec = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') rec.ended_reason = 'owner'; else delete rec.ended_reason;
     if (body.to === 'paused_owner') rec.paused_at = t; else delete rec.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
-    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t); if (j) return { abort: judgementReply(j.verdict, j.rid) }; }
+    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t); if (j) return refuse(node, body.op_id, 'state', { to: body.to }, body.offer_id, j.verdict, j.rid, t); }
     const next = draftNode(node);
     writeOffer(next, brandId, body.offer_id, rec, t);
+    if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: body.offer_id, kind: 'state', at: t, to: body.to }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(body.offer_id, rec, t) }) };
   });
 }
@@ -430,7 +441,7 @@ async function marketingOfferRepeatCore(deps, req) {
   }
   const proposed = newOfferId();
   return brandTxn(db, brandId, (node) => {
-    const c = claimCheck(node, body.op_id, 'repeat', sourceId, t);   // the replay FIRST (before any validation or capacity)
+    const c = claimCheck(node, body.op_id, 'repeat', { source_id: sourceId }, t);   // the replay FIRST (before any validation or capacity)
     if (c) return c;
     if (prepFail) return { abort: prepFail };   // no replay: the deferred preparation failure
     const s = isObj(node.offers) ? node.offers[sourceId] : null;
@@ -441,7 +452,7 @@ async function marketingOfferRepeatCore(deps, req) {
     const keep = endedToPrune(node.offers, t).filter((id) => id !== sourceId);   // never the offer being repeated
     if (Object.keys(isObj(node.offers) ? node.offers : {}).length - keep.length >= OM.LIMITS.offers_max) return { abort: reply(409, { error: 'too_many_offers' }) };
     const rec = OM.stripNulls({ v: 1, rev: 1, ...draft, state: program ? 'active' : 'draft', repeated_from: sourceId, created_by: ctx.uid, created_at: t, updated_at: t });
-    if (program) { const j = judgeActive(node, brandId, proposed, rec, t); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
+    if (program) { const j = judgeActive(node, brandId, proposed, rec, t); if (j) return refuse(node, body.op_id, 'repeat', { source_id: sourceId }, proposed, j.verdict, j.rid, t); }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t, [sourceId]);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }

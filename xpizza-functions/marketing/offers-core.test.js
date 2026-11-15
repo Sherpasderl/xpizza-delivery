@@ -794,6 +794,123 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('the expired-entry tidy runs on a refusal-only txn too');
     }
 
+    // ── 5r. op_id on EDIT and on SetState (owner 11-15): optional; claimed in the SAME brand transaction as the record (kinds 'edit' /
+    //        'state', the 7-day life); a same-kind resend replays (200 with the CURRENT view, or the stored judgement 409); another kind,
+    //        another offer or another `to` under the op_id ⇒ 409 op_id_conflict; a non-judgement abort writes no claim ──
+    {
+      const { fake, db, deps } = await setup();
+      const op = (c) => 'op_' + c.repeat(20);
+      const claim = (id) => fake.get(`marketing_brand/tb/ops/${id}`);
+      const recRev = (id) => fake.get(`marketing_brand/tb/offers/${id}`).rev;
+      // (1) an edit, the reply lost, the resend with the OLD expected_rev ⇒ the same 200, the rev bumped ONCE
+      const d = await created(deps, { name: 'Para editar' });
+      const edit = (o = {}) => save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Editada' }), op_id: op('e'), ...o });
+      const e1 = await edit();
+      assert.deepStrictEqual([e1.status, e1.body.offer && e1.body.offer.rev, e1.body.offer && e1.body.offer.name], [200, 2, 'Editada'], `premise: a claimed edit (${JSON.stringify(e1.body)})`);
+      assert.deepStrictEqual(claim(op('e')), { offer_id: d.id, kind: 'edit', at: NOW }, 'edit claim: written beside the record');
+      const e2 = await edit();
+      assert.deepStrictEqual([e2.status, e2.body.offer && e2.body.offer.id, e2.body.offer && e2.body.offer.rev, recRev(d.id)], [200, d.id, 2, 2], 'edit resend: the same 200, rev bumped once');
+      ok('edit + op_id: a lost reply then a resend with the old expected_rev ⇒ the same 200, one edit');
+      // (a) a replay after ANOTHER writer changed the offer ⇒ 200 with the CURRENT view, rev not bumped again
+      const other = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 2, offer: offer({ name: 'Otro escritor' }) });
+      assert.strictEqual(other.status, 200, 'premise: another writer edited (rev 3)');
+      const e3 = await edit();
+      assert.deepStrictEqual([e3.status, e3.body.offer && e3.body.offer.name, e3.body.offer && e3.body.offer.rev, recRev(d.id)], [200, 'Otro escritor', 3, 3], 'edit replay after another writer: the CURRENT view, rev = the other writer\'s');
+      ok('edit replay after another writer: 200 with the current view, never a second bump');
+      // (2) pause / resume / end, each resent ⇒ one transition each
+      const p = await published(deps, { name: 'Para mover', type: 'pct', params: { pct: 10 } });
+      const mv = (to, rev, c) => move(deps, `t-${OWNER}`, { offer_id: p.id, to, expected_rev: rev, op_id: op(c) });
+      for (const [to, rev, c] of [['paused_owner', 2, 'p'], ['active', 3, 'q'], ['ended', 4, 'n']]) {
+        const a = await mv(to, rev, c);
+        assert.deepStrictEqual([a.status, a.body.offer && a.body.offer.state, a.body.offer && a.body.offer.rev], [200, to, rev + 1], `premise: ${to}`);
+        assert.deepStrictEqual(claim(op(c)), { offer_id: p.id, kind: 'state', at: NOW, to }, `state claim: written beside the record (${to})`);
+        const b = await mv(to, rev, c);
+        assert.deepStrictEqual([b.status, b.body.offer && b.body.offer.state, recRev(p.id)], [200, to, rev + 1], `state resend: the same 200, one transition (${to})`);
+      }
+      ok('SetState + op_id: pause, resume and end each resent ⇒ the same 200, one transition');
+      // (b) a NON-judgement abort (superseded) under an op_id ⇒ the definite refusal, NO claim; the resend ⇒ the same refusal
+      const s1 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Tarde' }), op_id: op('s') });
+      assert.deepStrictEqual([s1.status, s1.body.error, claim(op('s'))], [409, 'superseded', null], 'non-judgement abort: superseded, no claim written');
+      const s2 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Tarde' }), op_id: op('s') });
+      assert.deepStrictEqual([s2.status, s2.body.error, claim(op('s'))], [409, 'superseded', null], 'non-judgement abort resend: the same refusal, still no claim');
+      ok('a non-judgement abort under an op_id writes no claim; its resend answers the same refusal');
+      // cross-kind / cross-offer / cross-`to` ⇒ op_id_conflict, nothing written
+      const q = await created(deps, { name: 'Tercera', type: 'pct', params: { pct: 15 } });
+      const before = clone(fake.get('marketing_brand/tb'));
+      const x1 = await move(deps, `t-${OWNER}`, { offer_id: d.id, to: 'ended', expected_rev: 3, op_id: op('e') });          // an EDIT claim reused for a state move
+      const x2 = await save(deps, `t-${OWNER}`, { offer_id: p.id, expected_rev: 5, offer: offer(), op_id: op('p') });          // a STATE claim reused for an edit
+      const x3 = await save(deps, `t-${OWNER}`, { offer_id: q.id, expected_rev: 1, offer: offer({ name: 'Otra' }), op_id: op('e') });   // the edit claim, another offer
+      const x4 = await move(deps, `t-${OWNER}`, { offer_id: p.id, to: 'paused_owner', expected_rev: 5, op_id: op('n') });    // the end claim, another `to`
+      assert.deepStrictEqual([x1, x2, x3, x4].map((x) => [x.status, x.body.error]), Array(4).fill([409, 'op_id_conflict']), 'cross-kind replay refused: edit↔state, another offer, another `to` ⇒ op_id_conflict');
+      assert.deepStrictEqual(fake.get('marketing_brand/tb'), before, 'a conflict writes nothing');
+      const cr = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Nueva' }), op_id: op('c') });
+      assert.strictEqual(cr.status, 200, 'premise: a create claim');
+      const x5 = await save(deps, `t-${OWNER}`, { offer_id: cr.body.offer.id, expected_rev: 1, offer: offer({ name: 'Nueva 2' }), op_id: op('c') });
+      assert.deepStrictEqual([x5.status, x5.body.error], [409, 'op_id_conflict'], 'cross-kind replay refused: a CREATE claim reused for an edit of its own offer');
+      ok('one op_id is never reused across kinds, offers or targets: 409 op_id_conflict, nothing written');
+      // ONE brand transaction carries the record AND its claim (a write spy on the brand root)
+      const writes = [];
+      const spy = { ref(pth) { const r = db.ref(pth); if (!String(pth).startsWith('marketing_brand')) return r; return { ...r,
+        set: (v) => { writes.push(['set', pth]); return r.set(v); }, update: (v) => { writes.push(['update', pth]); return r.update(v); },
+        remove: () => { writes.push(['remove', pth]); return r.remove(); }, transaction: (fn) => { writes.push(['txn', pth]); return r.transaction(fn); } }; } };
+      const one = await save({ ...deps, db: spy }, `t-${OWNER}`, { offer_id: q.id, expected_rev: 1, offer: offer({ name: 'Espiada', type: 'pct', params: { pct: 15 } }), op_id: op('w') });
+      assert.strictEqual(one.status, 200, 'premise: a claimed edit through the spy');
+      const two = await move({ ...deps, db: spy }, `t-${OWNER}`, { offer_id: q.id, to: 'ended', expected_rev: 2, op_id: op('x') });
+      assert.strictEqual(two.status, 200, 'premise: a claimed end through the spy');
+      assert.deepStrictEqual(writes, [['txn', 'marketing_brand/tb'], ['txn', 'marketing_brand/tb']], 'one brand transaction carries the record and its claim (no second write)');
+      assert.deepStrictEqual([claim(op('w')).kind, claim(op('x')).kind, recRev(q.id)], ['edit', 'state', 3], 'both claims landed with their records');
+      ok('the claim is written in the SAME brand transaction as the record (one write per call)');
+      // a malformed op_id on edit / state ⇒ 400 before any claim; no op_id ⇒ no claim (old clients unchanged)
+      assert.deepStrictEqual([(await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 3, offer: offer(), op_id: 'bad op' })).body.field,
+        (await move(deps, `t-${OWNER}`, { offer_id: d.id, to: 'ended', expected_rev: 3, op_id: 7 })).body.field], ['op_id', 'op_id'], 'a malformed op_id on edit / state ⇒ 400');
+      const nOps = Object.keys(fake.get('marketing_brand/tb/ops') || {}).length;
+      assert.strictEqual((await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 3, offer: offer({ name: 'Sin op' }) })).status, 200, 'premise: an edit without op_id');
+      assert.strictEqual(Object.keys(fake.get('marketing_brand/tb/ops') || {}).length, nOps, 'no op_id ⇒ no claim written');
+      ok('op_id is optional on edit / state (no op_id ⇒ no claim); a malformed one ⇒ 400');
+      // the claim expires after 7 days: the same op_id is then a FRESH call (the old expected_rev is superseded)
+      const late = await save({ ...deps, now: () => NOW + 8 * DAY }, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Editada' }), op_id: op('e') });
+      assert.deepStrictEqual([late.status, late.body.error], [409, 'superseded'], 'an edit claim older than 7 days ⇒ a fresh call');
+      ok('an edit / state claim expires after 7 days');
+    }
+    // ── 5s. a JUDGEMENT refusal under an op_id is claimed: the resend answers the same 409 even after the blocker ends ──
+    {
+      const { fake, deps } = await setup();
+      const OPR = 'op_' + 'r'.repeat(20);
+      const a = await published(deps, { name: 'A pausada' });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: A paused');
+      const b = await published(deps, { name: 'B activa', params: { items: [K1, K2], free_per_order: 1 } });   // shares K1 on the same days: blocks A's resume (overlap)
+      const r1 = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3, op_id: OPR });
+      assert.deepStrictEqual([r1.status, r1.body.error], [409, 'overlap'], `premise: the resume is refused by the judgement (${JSON.stringify(r1.body)})`);
+      const rc = fake.get(`marketing_brand/tb/ops/${OPR}`);
+      assert.strictEqual(rc && rc.refused && rc.refused.error, 'overlap', 'judgement refusal: the claim carries the refusal');
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: b.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: the blocker ended');
+      const r2 = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3, op_id: OPR });
+      assert.deepStrictEqual([r2.status, r2.body], [409, r1.body], 'judgement refusal resend: the SAME 409 (the first result), never a late resume');
+      assert.strictEqual(fake.get(`marketing_brand/tb/offers/${a.id}`).state, 'paused_owner', 'nothing resumed');
+      const r3 = await move(deps, `t-${OWNER}`, { offer_id: a.id, to: 'active', expected_rev: 3 });
+      assert.strictEqual(r3.status, 200, 'a NEW call (no op_id) after the blocker ended resumes');
+      ok('a judgement refusal under an op_id is claimed: its resend answers the same 409; a new call is judged afresh');
+    }
+    // ── 5t. a claimed edit / resume answers its replay BEFORE a dish-resolution failure (a dish left the menu after the lost reply) ──
+    {
+      const { deps, db } = await setup();
+      const OPD = 'op_' + 'd'.repeat(20), OPM = 'op_' + 'm'.repeat(20);
+      const d = await created(deps, { name: 'Con K1' });
+      const e1 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Con K1 editada' }), op_id: OPD });
+      assert.strictEqual(e1.status, 200, 'premise: a claimed edit');
+      const p = await published(deps, { name: 'Pausar y volver', schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1, 2], window: { from: 600, to: 900 } } });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: p.id, to: 'paused_owner', expected_rev: 2 })).status, 200, 'premise: paused');
+      const m1 = await move(deps, `t-${OWNER}`, { offer_id: p.id, to: 'active', expected_rev: 3, op_id: OPM });
+      assert.strictEqual(m1.status, 200, `premise: a claimed resume (${JSON.stringify(m1.body)})`);
+      await makeRtdbMirror(db)('tb_centro', { version: 'v2', seq: 2, rid: 'tb_centro', menu: { [K2]: 220, [K3]: 90 }, extras: {} });   // K1 left the menu
+      const plain = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 2, offer: offer({ name: 'Sin op' }) });
+      assert.strictEqual(plain.status !== 200, true, `premise: K1 gone ⇒ an unclaimed edit fails its preparation (${JSON.stringify(plain.body)})`);
+      const e2 = await save(deps, `t-${OWNER}`, { offer_id: d.id, expected_rev: 1, offer: offer({ name: 'Con K1 editada' }), op_id: OPD });
+      assert.deepStrictEqual([e2.status, e2.body.offer && e2.body.offer.rev], [200, 2], 'claimed edit: the replay answers before the dish failure');
+      const m2 = await move(deps, `t-${OWNER}`, { offer_id: p.id, to: 'active', expected_rev: 3, op_id: OPM });
+      assert.deepStrictEqual([m2.status, m2.body.offer && m2.body.offer.rev], [200, 4], 'claimed resume: the replay answers before the dish failure');
+      ok('a claimed edit / resume replays before a deferred dish-resolution failure');
+    }
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();
