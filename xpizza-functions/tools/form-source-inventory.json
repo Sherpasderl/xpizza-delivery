@@ -491,9 +491,14 @@
     "xpizza-orders/form-serial-order.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/inicio.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -857,9 +862,13 @@
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
-    "xpizza-portal/envio-view.test.mjs"
+    "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -1341,9 +1350,14 @@
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/inicio.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -1717,9 +1731,13 @@
     "xpizza-groupless-golden.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
-    "xpizza-portal/envio-view.test.mjs"
+    "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -2264,7 +2282,9 @@
   "xpizza-functions/tools/seed-catalog.js",
   "xpizza-functions/tools/seed-source-store.js",
   "xpizza-functions/tools/splice-form-bundle.js",
-  "xpizza-functions/tools/verify-first-group-core.js"
+  "xpizza-functions/tools/verify-first-group-core.js",
+  "xpizza-portal/calificaciones2-harness.mjs",
+  "xpizza-portal/stats-harness.mjs"
  ],
  "seed": [
   {

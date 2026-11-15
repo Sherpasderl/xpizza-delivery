@@ -1,5 +1,5 @@
-// P-1 «Calificaciones» — the shared REAL-server harness (moved verbatim from calificaciones.test.mjs; used by it and by
-// calificaciones-view.test.mjs): the REAL getMerchantRatingComments core over the server test's query-faithful RTDB fake, orders from
+// P-1 «Calificaciones» — the shared REAL-server harness (moved verbatim from calificaciones.test.mjs; used by it and by the slot's
+// calificaciones backend; the step-1 view cells retired with the step-1 page — step 2: calificaciones2-view.test.mjs): the REAL getMerchantRatingComments core over the server test's query-faithful RTDB fake, orders from
 // the REAL writers (intake, fulfilment stamp, rateOrderCore), the portal's REAL api.js through a fetch that hands the request to it.
 import assert from 'node:assert/strict';
 import { createRequire, Module } from 'node:module';

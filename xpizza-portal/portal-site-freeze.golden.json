@@ -32,9 +32,11 @@
   "calificaciones-harness.mjs",
   "calificaciones-logic.js",
   "calificaciones-view.js",
-  "calificaciones-view.test.mjs",
   "calificaciones.js",
   "calificaciones.test.mjs",
+  "calificaciones2-harness.mjs",
+  "calificaciones2-view.test.mjs",
+  "calificaciones2.test.mjs",
   "category-name.browser.test.mjs",
   "editor.js",
   "editor.test.mjs",
@@ -202,8 +204,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "5ad2a3d7bc3810b1c05146a5c6986bd68af0a9f6c2d82e203eeb66ea4576c207",
-   "bytes": 177286
+   "sha256": "6bae7e1d877042653059a89e93b3610f7727445d40be087d3f6fed29fdaf1f13",
+   "bytes": 185294
   }
  },
  "diff_aid": {
@@ -235,6 +237,13 @@
    "--sky-line": "#B7D2F3",
    "--star": "#FFD60A",
    "--star-line": "#E3A800",
+   "--rose-soft": "#FCEBF1",
+   "--rose-line": "#F0C3D3",
+   "--rose-text": "#9A2D55",
+   "--bar-pos": "#1F8A6B",
+   "--bar-neu": "#7E7E83",
+   "--bar-neg": "#C25578",
+   "--bar-track": "#E7E7E1",
    "--mint-soft": "#DFF4ED",
    "--mint-line": "#A9E0D0",
    "--mint-text": "#0E6A55",
@@ -948,7 +957,271 @@
    ],
    [
     "",
+    ".calif .cav.t0",
+    "background",
+    "var(--mint-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t0",
+    "border-color",
+    "var(--mint-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t0",
+    "color",
+    "var(--mint-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "background",
+    "var(--sky-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "border-color",
+    "var(--sky-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t1",
+    "color",
+    "var(--sky-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "background",
+    "var(--lav-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "border-color",
+    "var(--lav-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t2",
+    "color",
+    "var(--lav-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "background",
+    "var(--rose-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "border-color",
+    "var(--rose-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t3",
+    "color",
+    "var(--rose-text)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "background",
+    "var(--sand-soft)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "border-color",
+    "var(--sand-line)"
+   ],
+   [
+    "",
+    ".calif .cav.t4",
+    "color",
+    "var(--sand-text)"
+   ],
+   [
+    "",
     ".calif .cempty p,.calif .cerr p",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-bn",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-brow b small",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-brow b",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-brow",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-cb.cf-chk",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-cb.cf-chk",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-dl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-dn",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-dot",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-ed",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-few",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-menu button",
+    "background",
+    "none"
+   ],
+   [
+    "",
+    ".calif .cf-menu button",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-menu button:hover",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .cf-menu",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".calif .cf-meta",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-mr",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .cf-pill",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".calif .cf-pill",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "background",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "border-color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".calif .cf-pill.cf-on",
+    "color",
+    "var(--board)"
+   ],
+   [
+    "",
+    ".calif .cf-pill:hover",
+    "border-color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .cf-seg button.cf-sel",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".calif .cf-vrl",
     "color",
     "var(--mute)"
    ],
@@ -960,7 +1233,43 @@
    ],
    [
     "",
+    ".calif .df",
+    "background",
+    "var(--bar-neu)"
+   ],
+   [
+    "",
+    ".calif .df.neg",
+    "background",
+    "var(--bar-neg)"
+   ],
+   [
+    "",
+    ".calif .df.pos",
+    "background",
+    "var(--bar-pos)"
+   ],
+   [
+    "",
+    ".calif .dist",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".calif .dt",
+    "background",
+    "var(--bar-track)"
+   ],
+   [
+    "",
     ".calif .endl",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kbase",
     "color",
     "var(--mute2)"
    ],
@@ -975,6 +1284,12 @@
     ".calif .kfig .kn small",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".calif .kfig.dist .ksay",
+    "color",
+    "var(--ink)"
    ],
    [
     "",

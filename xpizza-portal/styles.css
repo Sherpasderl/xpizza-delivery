@@ -17,6 +17,7 @@
     --green:#0E9F5B; --green-soft:#E7F5EC; --green-line:#BEE6CE;
     /* MOCKUP-pastel-chips (owner 2026-11-12, no amber): sand = caution, sky = pending / unpublished */
     --sand-text:#7A4A24; --sand-soft:#F7EEE5; --sand-line:#E6D2BE; --sky-text:#1E4E99; --sky-soft:#E6F0FB; --sky-line:#B7D2F3; --star:#FFD60A; --star-line:#E3A800;
+    --rose-soft:#FCEBF1; --rose-line:#F0C3D3; --rose-text:#9A2D55; --bar-pos:#1F8A6B; --bar-neu:#7E7E83; --bar-neg:#C25578; --bar-track:#E7E7E1;
     --mint-soft:#DFF4ED; --mint-line:#A9E0D0; --mint-text:#0E6A55; --lav-soft:#F0EDFB; --lav-line:#C9C1F0; --lav-text:#4E3DA6;   /* mint = Sherpa-only · lavender = Recomendada (owner-approved pastel chips 11-12) */
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
     /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
@@ -37,6 +38,7 @@
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C; --star:#FFD60A; --star-line:#FFD60A;
+    --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF; --bar-pos:#4FBF9C; --bar-neu:#8A8A90; --bar-neg:#C96E8E; --bar-track:#26262A;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
@@ -51,6 +53,7 @@
     --accent:#3FD98A; --accent-2:#33C77B; --accent-ink:#06130C; --accent-line:rgba(63,217,138,.32);
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C; --star:#FFD60A; --star-line:#FFD60A;
+    --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF; --bar-pos:#4FBF9C; --bar-neu:#8A8A90; --bar-neg:#C96E8E; --bar-track:#26262A;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
@@ -1027,6 +1030,92 @@
     .calif .kfigs.sk .kfig{display:flex;justify-content:space-between;align-items:center;padding:14px 0}
     .calif .kfigs.sk .kfig .skb.l{margin-top:0}
     .calif .kfigs.sk .kfig .skb.n{height:20px;margin-top:0;width:56px}
+  }
+  /* «Calificaciones» STEP 2 — EXACT to MOCKUP-portal-calificaciones-step2.html (owner-APPROVED 11-15), scoped under .calif. A mockup class
+     that already lives elsewhere with colour takes a cf- name (the colour grammar refuses a class crossing two ancestor chains): the
+     pills / menus / range (.vpre .menu .vrl → cf-pill cf-menu cf-vrl), the branch lines (.brow → cf-brow), the bar labels (.dl .dn), the
+     row meta (.cmeta → cf-meta), the switch (.seg) and the state classes (.on → cf-on on a pill, cf-sel on the switch, cf-chk on a
+     checked box: no attribute selector carries a colour). The chosen option's dot is an element (cf-dot). */
+  .calif .cf-filt{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:22px;min-width:0}
+  .calif .cf-filt.cf-sub{margin-top:14px}
+  .calif .cf-pill{padding:8px 12px 8px 14px;border-radius:999px;font-size:12.5px;min-height:40px;background:var(--board-2);color:var(--ink);border:1px solid transparent;font-weight:600;font-family:inherit;line-height:1.3;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+  .calif .cf-pill svg{width:14px;height:14px;stroke:var(--mute);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .calif .cf-pill:hover{border-color:var(--line)}
+  .calif .cf-pill:disabled{cursor:default;opacity:.6}
+  .calif .cf-pill.cf-on{background:var(--ink);color:var(--board);border-color:var(--ink)}
+  .calif .cf-pill.cf-on svg{stroke:var(--board)}
+  .calif .cf-vrl{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap;padding:0 4px}
+  .calif .cf-filt .qact{margin-left:2px}
+  .calif .cf-kebab{position:relative}
+  .calif .cf-menu{position:absolute;left:0;top:calc(100% + 6px);min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:6px;display:none;z-index:9}
+  .calif .cf-menu.cf-show{display:block}
+  .calif .cf-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:none;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);border-radius:8px;text-align:left;white-space:nowrap}
+  .calif .cf-menu button:hover{background:var(--board-2)}
+  .calif .cf-mr{margin-left:auto;color:var(--mute2);font-weight:500;font-size:12.5px;font-variant-numeric:tabular-nums}
+  .calif .cf-dot{width:6px;height:6px;border-radius:50%;background:var(--ink);margin-left:auto;flex:none}
+  .calif .cf-mr + .cf-dot{margin-left:10px}
+  .calif .cf-cb{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--mute2);display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .calif .cf-cb svg{width:11px;height:11px;stroke:var(--board);fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;display:none}
+  .calif .cf-cb.cf-chk{background:var(--ink);border-color:var(--ink)}
+  .calif .cf-cb.cf-chk svg{display:block}
+  .cf-pill,.cf-opt,.cf-tab,.cmore{cursor:pointer}   /* the clickables, single compounds (portal-wiring's pointer guard) */
+  .calif .kfigs.surface.ov{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px 44px;align-items:start}
+  .calif .ovg{min-width:0}
+  .calif .ovg.all{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}
+  .calif .kbase{grid-column:1/-1;font-size:12px;color:var(--mute2);line-height:1.45;margin-top:2px;text-wrap:pretty}
+  .calif .ovg.bars .kbase{margin-top:10px}
+  .calif .ovg.all.many{grid-template-columns:1fr;gap:0}
+  .calif .cf-brow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 18px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line);font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .calif .cf-brow:first-child{border-top:none;padding-top:0}
+  .calif .cf-brow b{font-family:var(--disp);font-size:17px;font-weight:750;letter-spacing:-.02em;color:var(--ink);white-space:nowrap}
+  .calif .cf-brow b small{font-family:var(--body);font-size:12px;font-weight:500;color:var(--mute2);letter-spacing:0;margin-left:4px}
+  .calif .cf-bn{color:var(--ink);font-weight:600;white-space:nowrap}
+  .calif .cf-few{grid-column:2/4;color:var(--mute2);font-weight:500;text-align:right;white-space:nowrap}
+  .calif .kfig.dist{display:block}
+  .calif .dist{display:grid;grid-template-columns:auto minmax(0,1fr) 3ch;gap:5px 10px;align-items:center;margin-top:7px;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .calif .cf-dl{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:var(--mute);font-weight:600}
+  .calif .cf-dl svg{width:11px;height:11px;fill:var(--mute2);display:block}
+  .calif .dt{height:8px;border-radius:999px;background:var(--bar-track);overflow:hidden;min-width:0}
+  .calif .df{display:block;height:100%;border-radius:999px;background:var(--bar-neu);transition:width .5s cubic-bezier(.2,.7,.3,1)}
+  .calif .df.pos{background:var(--bar-pos)}
+  .calif .df.neg{background:var(--bar-neg)}
+  .calif .cf-dn{text-align:right;color:var(--mute);white-space:nowrap}
+  .calif .kfig.dist .ksay{font-size:14px;color:var(--ink);margin-top:8px;max-width:38ch}
+  .calif .cav{font-family:var(--disp);font-weight:750;font-size:12.5px;letter-spacing:-.01em}
+  .calif .cav.t0{background:var(--mint-soft);border-color:var(--mint-line);color:var(--mint-text)}
+  .calif .cav.t1{background:var(--sky-soft);border-color:var(--sky-line);color:var(--sky-text)}
+  .calif .cav.t2{background:var(--lav-soft);border-color:var(--lav-line);color:var(--lav-text)}
+  .calif .cav.t3{background:var(--rose-soft);border-color:var(--rose-line);color:var(--rose-text)}
+  .calif .cav.t4{background:var(--sand-soft);border-color:var(--sand-line);color:var(--sand-text)}
+  .calif .cf-meta{margin-top:9px;font-size:12.5px;color:var(--mute2);line-height:1.45;font-variant-numeric:tabular-nums;text-wrap:pretty}
+  .calif .cf-ed{color:var(--mute)}
+  .calif .crow.v1{display:block}
+  .calif .crow.v1 .stars{margin-top:0}
+  .calif .cempty .btn{margin-top:18px;min-height:44px}
+  .calif .cempty.tight{padding:28px 0 24px}
+  .calif .sect.earlier{margin-top:40px;padding-top:28px;border-top:1px solid var(--line)}
+  .calif .cf-seg{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+  .calif .cf-seg button{padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--mute);font:inherit;font-size:12.5px;font-weight:650;min-height:36px}
+  .calif .cf-seg button.cf-sel{background:var(--tint2);border-color:var(--accent);color:var(--accent)}
+  .calif .kfigs.sk .skb.base{width:200px;height:11px;margin-top:4px;grid-column:1/-1}
+  .calif .kfigs.sk .skb.bb{margin-top:10px}
+  .calif .kfigs.sk .kfig .skb.d{width:100%;max-width:300px;height:72px;margin-top:9px;border-radius:8px}
+  .calif .skrow .skb.m{width:150px;height:11px;margin-top:10px}
+  .calif .skrow.v1 .skb.t{margin-top:12px}
+  @media(max-width:920px){
+    .calif .kfigs.surface.ov{grid-template-columns:1fr;gap:0}
+    .calif .ovg.all{grid-template-columns:1fr;gap:0}
+    .calif .ovg.all .kbase{padding:0 0 12px;margin-top:-4px}
+    .calif .ovg.bars{border-top:1px solid var(--line)}
+    .calif .kfig.dist{padding:12px 0 4px}
+    .calif .dist{margin-top:9px;gap:6px 10px;width:100%}
+    .calif .ovg.bars .kbase{margin-top:8px;padding-bottom:10px}
+    .calif .cf-brow{padding:10px 0}
+    .calif .cf-brow:first-child{padding-top:11px}
+    .calif .kfig.dist .ksay{max-width:none}
+    .calif .kfigs.sk .kfig.dist{display:block}
+    .calif .kfigs.sk .kfig.dist .skb.d{max-width:none;height:84px}
+    .calif .kfigs.sk .skb.base{margin:0 0 12px}
   }
   .vs1{background:var(--green)}
   .vs2{background:var(--green-line)}
