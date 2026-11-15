@@ -40,6 +40,10 @@ const { verifyQuoteToken } = require('../quote-token');
 const R = require('../access/roster');
 const CFG = require('../marketing/config');
 const C = require('../marketing/offers-core');
+const OM = require('../marketing/offer-model');
+// OG-NOCAPS (advisor 11-15): the adaptive CAPS below exists for the BASE only — on a v1 tree (offer-model exports V1_TYPES) AUTHORED must not list
+// caps, so the adaptive branch can never silently send caps on the candidate.
+if (OM.V1_TYPES) { assert.ok(!OM.AUTHORED.includes('caps'), '🔴 OG-NOCAPS: a v1 tree (V1_TYPES) authors no caps — the adaptive caps branch is for the base only'); console.log('  ✓ OG-NOCAPS: v1 tree, AUTHORED lists no caps'); }
 
 const GOLDEN = path.join(__dirname, 'marketing-off.base.golden.json');
 const CAPTURE = process.env.MKT_GOLDEN_CAPTURE === '1';
@@ -104,7 +108,7 @@ const writeCfg = async (on) => { const cur = (await rtdb.ref('platform_config/ma
   await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 2, cents: 3000 }], restaurants: { x_pizza: { active: true, free_delivery: false }, [THIRD]: { active: true, free_delivery: false } } });
   // an ACTIVE offer on both restaurants (written while ON), then the switch OFF
   // the SAME file runs on the base (caps REQUIRED) and the candidate (v1 owner 11-15: caps REFUSED) — the tree's own authored-field list decides
-  const CAPS = require('../marketing/offer-model').AUTHORED.includes('caps') ? { caps: { redemptions: null, spend_cents: null, weekly: false } } : {};
+  const CAPS = OM.AUTHORED.includes('caps') ? { caps: { redemptions: null, spend_cents: null, weekly: false } } : {};
   await writeCfg(true);
   for (const rid of ['x_pizza', THIRD]) {
     const s = await C.marketingOfferSaveCore(offerDeps(), oreq(rid, { expected_rev: 0, offer: { name: 'Oferta', type: 'pct', params: { pct: 20, max_cents: 100000 }, audience: 'all', branches: [rid],
