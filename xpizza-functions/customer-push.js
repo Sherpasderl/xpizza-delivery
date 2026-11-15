@@ -32,6 +32,10 @@ const DEVICE_MAX = 10;
 const TOKENS = 'customer_push_tokens';
 const PREFS = 'customer_push_prefs';
 const FENCE = '_deleted';
+const DRAIN = 'customer_push_drain';   // customer_push_drain/{uid} = at — the deletion's DURABLE drain obligation (closed only at zero tokens)
+// a register ADMITTED before the deletion can still commit its token after the deletion's own drain: the obligation is closed only by the
+// scheduled pass, once it is older than any request's lifetime AND the uid holds zero tokens
+const DRAIN_GRACE_MS = 10 * 60 * 1000;
 // the version of the «Ofertas de Sherpa» switch's sub-line copy the person saw (capp's copy; bumped with it — pinned in the contract)
 const PUSH_OFFERS_COPY_VERSION = 'push-offers-1';
 const PLATFORMS = Object.freeze(['ios', 'android']);
@@ -71,12 +75,31 @@ async function pruneCustomerToken(db, hash, claim, uid = null) {
   return removed;
 }
 
-// the deletion's DRAIN (after its atomic update installed the fence): every registration of `uid` discovered NOW, each removed only while
-// it still names this uid and the claim seen (a shared device another account re-registered meanwhile is kept). → the count removed
+// the deletion's DRAIN (after its atomic update installed the fence AND opened the drain obligation customer_push_drain/{uid}): every
+// registration of `uid` discovered NOW, each removed only while it still names this uid and the claim seen (a shared device another
+// account re-registered meanwhile is kept). It NEVER closes the obligation itself (a register admitted before the deletion may still
+// commit afterwards): drainPending does, past DRAIN_GRACE_MS and at zero tokens. Throws on an outage. → { drained, remaining }
 async function drainPushFor(db, uid) {
-  let n = 0;
-  for (const d of await devicesOf(db, uid)) if (await pruneCustomerToken(db, d.hash, d.claim, uid)) n += 1;
-  return n;
+  let drained = 0;
+  for (const d of await devicesOf(db, uid)) if (await pruneCustomerToken(db, d.hash, d.claim, uid)) drained += 1;
+  return { drained, remaining: (await devicesOf(db, uid)).length };
+}
+// THE scheduled pass over every open drain obligation (an existing tick — signup-endpoints pruneResidual): each uid is re-drained; its
+// obligation closes only when it is older than DRAIN_GRACE_MS AND the uid holds ZERO tokens (closed by a compare on its own `at`).
+// → { drained, pending } (pending = obligations still open: tokens left, a failed drain, or inside the grace)
+async function drainPending(db, now = Date.now()) {
+  const open = (await db.ref(DRAIN).once('value')).val() || {};
+  let drained = 0; let pending = 0;
+  for (const [uid, at] of Object.entries(isObj(open) ? open : {})) {
+    try {
+      const r = await drainPushFor(db, uid);
+      drained += r.drained;
+      if (r.remaining === 0 && Number.isSafeInteger(at) && now - at >= DRAIN_GRACE_MS) {
+        await db.ref(`${DRAIN}/${uid}`).transaction((cur) => (cur === null ? null : cur === at ? null : undefined));
+      } else pending += 1;
+    } catch (_) { pending += 1; }
+  }
+  return { drained, pending };
 }
 
 // THE sender's gate for an offer push (5f's sender): the person's PUSH-channel consent is given — never the email / WhatsApp consent
@@ -140,7 +163,7 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
     let wasFenced = false;
     const pt = await db.ref(`${PREFS}/${uid}`).transaction((cur) => {
       wasFenced = fenced(cur);
-      if (cur === null) return { rev: 1, pedidos: b.pedidos, promociones: b.promociones, at: t, offers_consent: consentOf(null, b.promociones, t) };
+      if (cur === null) return { rev: 1, pedidos: b.pedidos, promociones: false, at: t };   // NEVER consents (Codex r2): push offers start OFF, no consent record — opting in is setPrefs only
       return undefined;   // present (or fenced): untouched
     });
     // the cap: the oldest registrations beyond DEVICE_MAX are evicted (compare-and-clear on their claim; never this one)
@@ -198,4 +221,4 @@ function makeCustomerPush({ getDatabase, getAuth, checkRateLimit, now = () => Da
   return { registerCustomerPushToken, unregisterCustomerPushToken, setCustomerPushPrefs, getCustomerPushPrefs };
 }
 
-module.exports = { makeCustomerPush, drainPushFor, pruneCustomerToken, pushOffersConsented, PUSH_OFFERS_COPY_VERSION, hashOf, DEVICE_MAX, TOKENS, PREFS, FENCE, RATE_WRITE, RATE_READ };
+module.exports = { makeCustomerPush, drainPushFor, drainPending, pruneCustomerToken, pushOffersConsented, PUSH_OFFERS_COPY_VERSION, hashOf, DEVICE_MAX, TOKENS, PREFS, FENCE, DRAIN, DRAIN_GRACE_MS, RATE_WRITE, RATE_READ };

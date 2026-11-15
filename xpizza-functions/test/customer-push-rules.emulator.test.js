@@ -39,7 +39,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       ['staff', env.authenticatedContext('disp_1').database()],
       ['unauthenticated', env.unauthenticatedContext().database()],
     ];
-    const paths = ['customer_push_tokens', `customer_push_tokens/${hash}`, `customer_push_tokens/${hash}/token`, 'customer_push_prefs', `customer_push_prefs/${U}`, `customer_push_prefs/${U}/offers_consent`];
+    const paths = ['customer_push_tokens', `customer_push_tokens/${hash}`, `customer_push_tokens/${hash}/token`, 'customer_push_prefs', `customer_push_prefs/${U}`, `customer_push_prefs/${U}/offers_consent`, 'customer_push_drain', `customer_push_drain/${U}`];
     for (const [who, db] of ctxs) {
       for (const p of paths) {
         await no(`${who} cannot READ ${p.replace(hash, '<hash>')}`, db.ref(p).get());

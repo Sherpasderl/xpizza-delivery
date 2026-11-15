@@ -22,7 +22,10 @@ function accountDeleteUpdates(uid, phoneHash, tombstoneAt = null, push = null) {
   // account (BC2), so this is one more equal-size key per account, not a new unbounded class. The legacy 2-arg
   // form (pruneUpdates) is kept for its tests only; no caller deletes through it.
   if (tombstoneAt != null) updates[`deleted_uids/${uid}`] = tombstoneAt;
-  if (push && Number.isSafeInteger(push.fenceAt)) updates[`customer_push_prefs/${uid}`] = { _deleted: push.fenceAt };
+  if (push && Number.isSafeInteger(push.fenceAt)) {
+    updates[`customer_push_prefs/${uid}`] = { _deleted: push.fenceAt };
+    updates[`customer_push_drain/${uid}`] = push.fenceAt;   // the DURABLE drain obligation (Codex push r2): closed only at zero tokens
+  }
   return updates;
 }
 

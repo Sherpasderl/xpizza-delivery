@@ -1140,6 +1140,10 @@
       ".read": false,
       ".write": false
     },
+    "customer_push_drain": {
+      ".read": false,
+      ".write": false
+    },
     "merchant_push_log": {
       ".read": false,
       ".write": false

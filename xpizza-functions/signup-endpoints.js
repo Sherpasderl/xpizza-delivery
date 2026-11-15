@@ -198,7 +198,8 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // null on the same key, as user_private is) — every setFavorite is a parent transaction that aborts on it, so none outlives the account
   await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
-  // (compare-and-clear on uid + claim). A register racing this clears itself; a drain failure is logged — the sender refuses a tombstoned uid.
+  // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
+  // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.
   try { await require('./customer-push').drainPushFor(db, uid); } catch (e) { console.error(`deleteAccountCore: push drain for ${uid} failed (${e && e.code ? e.code : 'error'}) — the sender refuses the tombstoned uid`); }
   try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
@@ -311,7 +312,10 @@ async function pruneResidual(db, now = Date.now()) {
   // has its own schedule, drainRatingRedactions in index.js)
   let ratings;
   try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }
-  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+  // PLAN-3a-capp-push-tokens (Codex push r2): every open push drain obligation is re-drained until its uid holds ZERO tokens (isolated)
+  let pushDrain;
+  try { pushDrain = await require('./customer-push').drainPending(db, now); } catch (e) { pushDrain = { error: true }; console.error('pruneResidual: push drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), pushDrain };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.

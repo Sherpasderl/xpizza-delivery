@@ -7854,6 +7854,7 @@
   "signup-endpoints.js": {
    "pins": [],
    "lifts": [
+    "xpizza-functions/customer-push.test.js",
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
   },

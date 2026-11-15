@@ -62,7 +62,7 @@
    "application-sleep": 2
   },
   "clocks": {
-   "business-sample": 201,
+   "business-sample": 202,
    "display": 41,
    "persisted-stamp": 62,
    "business-comparison": 14,
@@ -6598,7 +6598,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#0",
-   "line": 95,
+   "line": 134,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6611,7 +6611,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#1",
-   "line": 96,
+   "line": 135,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6624,7 +6624,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#2",
-   "line": 98,
+   "line": 137,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6637,7 +6637,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#3",
-   "line": 98,
+   "line": 137,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -6650,7 +6650,7 @@
   },
   {
    "id": "xpizza-functions/customer-push.js#handle>anon#status#4",
-   "line": 101,
+   "line": 140,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -55470,7 +55470,7 @@
    "file": "xpizza-functions/customer-push.js",
    "fn": "exactKeys",
    "base": "o",
-   "line": 42,
+   "line": 50,
    "how": "Object.keys",
    "rule": "server-reader:customer-push.js",
    "r": "R17"
@@ -58232,7 +58232,7 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:withDeadline>anon:setTimeout",
-   "line": 256,
+   "line": 260,
    "delay": "ms",
    "class": "io-deadline"
   },
@@ -58461,8 +58461,13 @@
    "class": "business-sample"
   },
   {
+   "key": "xpizza-functions/customer-push.js:drainPending:Date.now()",
+   "line": 90,
+   "class": "business-sample"
+  },
+  {
    "key": "xpizza-functions/customer-push.js:makeCustomerPush>anon:Date.now()",
-   "line": 79,
+   "line": 117,
    "class": "business-sample"
   },
   {
@@ -59732,12 +59737,12 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:drainRatingRedactions:Date.now()",
-   "line": 232,
+   "line": 236,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:pruneResidual:Date.now()",
-   "line": 306,
+   "line": 310,
    "class": "business-sample"
   },
   {

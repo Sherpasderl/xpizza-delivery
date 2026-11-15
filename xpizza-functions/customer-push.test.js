@@ -116,27 +116,30 @@ const deleteAcct = (db, uid, o = {}) => quietly(() => SE.deleteAccountCore(db, A
     {
       const w = world();
       const r = await w.register(A, 1, { promociones: true });
-      assert.deepStrictEqual(r.body, { ok: true, prefs: { pedidos: true, promociones: true, rev: 1 } }, `push offers ON with NO email/WhatsApp consent ⇒ 200 (${JSON.stringify(r.body)})`);
-      assert.deepStrictEqual(prefsNode(w.db, A).offers_consent, { channel: 'push', value: true, copy_version: CP.PUSH_OFFERS_COPY_VERSION, at: CLOCK }, 'the push-offers consent record is written at initialization');
+      assert.deepStrictEqual(r.body, { ok: true, prefs: { pedidos: true, promociones: false, rev: 1 } }, `a register NEVER consents: the prefs initialize with push offers OFF, whatever the body says (${JSON.stringify(r.body)})`);
+      assert.strictEqual(prefsNode(w.db, A).offers_consent, undefined, 'and NO consent record is written by a register (Codex r2)');
+      const on = await w.setPrefs(A, { pedidos: true, promociones: true, expected_rev: 1 });
+      assert.deepStrictEqual(on.body, { ok: true, prefs: { pedidos: true, promociones: true, rev: 2 } }, 'opting in is setPrefs only — with NO email/WhatsApp consent ⇒ 200');
+      assert.deepStrictEqual(prefsNode(w.db, A).offers_consent, { channel: 'push', value: true, copy_version: CP.PUSH_OFFERS_COPY_VERSION, at: CLOCK }, 'the push-offers consent record is written by the opt-in');
       // a withdrawal on device 2, then device 1 REFRESHES carrying its old promociones = true ⇒ the withdrawal stands
       CLOCK += 1000;
-      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: false, expected_rev: 1 })).body, { ok: true, prefs: { pedidos: true, promociones: false, rev: 2 } }, 'withdrawn (rev 2)');
+      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: false, expected_rev: 2 })).body, { ok: true, prefs: { pedidos: true, promociones: false, rev: 3 } }, 'withdrawn (rev 3)');
       const tOff = CLOCK; CLOCK += 1000;
       const refresh = await w.register(A, 1, { promociones: true });
-      assert.deepStrictEqual(refresh.body.prefs, { pedidos: true, promociones: false, rev: 2 }, 'a token refresh NEVER rewrites the prefs: the withdrawal stands (returned as stored)');
+      assert.deepStrictEqual(refresh.body.prefs, { pedidos: true, promociones: false, rev: 3 }, 'a token refresh NEVER rewrites the prefs: the withdrawal stands (returned as stored)');
       assert.deepStrictEqual([prefsNode(w.db, A).offers_consent.value, prefsNode(w.db, A).offers_consent.at], [false, tOff], 'and never re-consents');
       ok('a register never touches prefs or consent: a refresh after a withdrawal on another device keeps the withdrawal');
-      const stale = await w.setPrefs(A, { pedidos: false, promociones: true, expected_rev: 1 });
-      assert.deepStrictEqual([stale.code, stale.body.reason, stale.body.prefs], [409, 'stale_prefs', { pedidos: true, promociones: false, rev: 2 }], 'a STALE pref write (expected_rev 1 < 2) ⇒ 409 stale_prefs with the current prefs');
-      assert.strictEqual(prefsNode(w.db, A).rev, 2, 'nothing written');
+      const stale = await w.setPrefs(A, { pedidos: false, promociones: true, expected_rev: 2 });
+      assert.deepStrictEqual([stale.code, stale.body.reason, stale.body.prefs], [409, 'stale_prefs', { pedidos: true, promociones: false, rev: 3 }], 'a STALE pref write (expected_rev 2 < 3) ⇒ 409 stale_prefs with the current prefs');
+      assert.strictEqual(prefsNode(w.db, A).rev, 3, 'nothing written');
       // the email promos consent (the REAL signup writer) never moves the push one; the sender's gate reads only the push record
       assert.deepStrictEqual((await S.completeProfile(w.db, { uid: A, rid: S.PLATFORM_SCOPE, email: 'ana@gmail.com', acceptTerms: true, promos: true, now: 5 })).ok, true, 'premise: email promos ON');
       assert.strictEqual(CP.pushOffersConsented(prefsNode(w.db, A)), false, 'email promos ON never lets an offer push through while push offers are OFF');
-      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: true, expected_rev: 2 })).body.prefs, { pedidos: true, promociones: true, rev: 3 });
+      assert.deepStrictEqual((await w.setPrefs(A, { pedidos: true, promociones: true, expected_rev: 3 })).body.prefs, { pedidos: true, promociones: true, rev: 4 });
       assert.deepStrictEqual((await S.setPromos(w.db, { uid: A, rid: S.PLATFORM_SCOPE, value: false, now: 6 })).ok, true, 'premise: email promos OFF');
       assert.strictEqual(CP.pushOffersConsented(prefsNode(w.db, A)), true, 'email promos OFF does NOT turn push offers off');
       const t3 = prefsNode(w.db, A).offers_consent.at; CLOCK += 1000;
-      await w.setPrefs(A, { pedidos: false, promociones: true, expected_rev: 3 });
+      await w.setPrefs(A, { pedidos: false, promociones: true, expected_rev: 4 });
       assert.strictEqual(prefsNode(w.db, A).offers_consent.at, t3, 'a pedidos-only change keeps the consent record as it was');
       assert.strictEqual(CP.pushOffersConsented(null), false, 'no prefs ⇒ no');
       assert.strictEqual(CP.pushOffersConsented({ pedidos: true, promociones: true, rev: 1 }), false, 'a prefs node without the consent record ⇒ no (never inferred)');
@@ -225,6 +228,42 @@ const deleteAcct = (db, uid, o = {}) => quietly(() => SE.deleteAccountCore(db, A
       assert.strictEqual(late && late.code, 403, `a register landing during the drain is refused (the fence is already in) (${JSON.stringify(late && late.body)})`);
       assert.strictEqual(devices(w3.db, A).length, 0, 'no device of the deleted account survives (fence → discover → drain)');
       ok('fence → discover → drain: a register landing during the drain is refused; no device survives the deletion');
+    }
+
+    // ── 10b. Codex r2: a DURABLE drain obligation — deletion records customer_push_drain/{uid} in its atomic update; it is cleared only when the
+    //        person holds NO token; the scheduled residual pass (signup-endpoints pruneResidual, an existing tick) re-drains until then ──
+    {
+      const w = world();
+      await w.register(A, 1);
+      assert.strictEqual(await deleteAcct(w.db, A), true);
+      assert.ok(w.db.get(`${CP.DRAIN}/${A}`) != null, 'the deletion opens the obligation and never closes it itself (a register admitted before it may still commit)');
+      assert.deepStrictEqual((await quietly(() => CP.drainPending(w.db, CLOCK + 60 * 1000))), { drained: 0, pending: 1 }, 'inside the grace the pass keeps it open');
+      assert.deepStrictEqual((await quietly(() => CP.drainPending(w.db, CLOCK + CP.DRAIN_GRACE_MS))), { drained: 0, pending: 0 }, 'past the grace, at zero tokens, the pass closes it');
+      assert.strictEqual(w.db.get(`${CP.DRAIN}/${A}`) ?? null, null);
+      // a register ADMITTED before the deletion commits its token AFTER the drain, then dies before its self-cleanup
+      const w2 = world();
+      await w2.register(A, 1);
+      w2.db.hooks[`${CP.TOKENS}/${CP.hashOf(DEV(2))}`] = async () => { assert.strictEqual(await deleteAcct(w2.db, A), true, 'premise: the deletion ran (fence + drain) first'); };
+      w2.db.hooks[`${CP.PREFS}/${A}`] = async () => { throw new Error('the register instance died'); };   // before its self-cleanup
+      assert.strictEqual((await w2.register(A, 2)).code, 503, 'premise: the late register died after committing its token');
+      assert.deepStrictEqual([devices(w2.db, A).length, w2.db.get(`${CP.DRAIN}/${A}`) != null], [1, true], 'premise: a token of the deleted account survived — and the obligation is still open');
+      const resid = { pushDrain: await quietly(() => CP.drainPending(w2.db, CLOCK + CP.DRAIN_GRACE_MS)) };
+      assert.deepStrictEqual([devices(w2.db, A).length, w2.db.get(`${CP.DRAIN}/${A}`) ?? null], [0, null], 'the scheduled residual pass re-drains: no token left, the obligation closed');
+      assert.deepStrictEqual(resid.pushDrain, { drained: 1, pending: 0 }, 'the pass reports what it drained');
+      // the scheduled pass IS pruneResidual's (an existing tick): it calls drainPending(db, now), isolated (its own try)
+      assert.ok(/require\('\.\/customer-push'\)\.drainPending\(db, now\)/.test(require('fs').readFileSync(require('path').join(__dirname, 'signup-endpoints.js'), 'utf8')), 'premise: pruneResidual runs the push drain pass');
+      ok('a durable drain obligation: a late token committed after the drain is removed by the scheduled pass, which closes the obligation only at zero');
+      // a drain that FAILS surfaces as incomplete: the obligation stays open (and the pass reports it) until a pass completes
+      const w3 = world();
+      await w3.register(A, 1);
+      w3.db.hooks[`${CP.TOKENS}/${CP.hashOf(DEV(1))}`] = async () => { throw new Error('rtdb unavailable'); };   // the deletion's drain txn fails
+      assert.strictEqual(await deleteAcct(w3.db, A), true, 'the account is deleted (the fence + tombstone are in)');
+      assert.ok(w3.db.get(`${CP.DRAIN}/${A}`) != null, 'a failed drain surfaces as INCOMPLETE: the obligation stays open');
+      w3.db.hooks[`${CP.TOKENS}/${CP.hashOf(DEV(1))}`] = async () => { throw new Error('rtdb unavailable'); };
+      assert.deepStrictEqual((await quietly(() => CP.drainPending(w3.db, CLOCK + CP.DRAIN_GRACE_MS))), { drained: 0, pending: 1 }, 'a pass that cannot drain reports the obligation as pending');
+      assert.deepStrictEqual((await quietly(() => CP.drainPending(w3.db, CLOCK + CP.DRAIN_GRACE_MS))), { drained: 1, pending: 0 }, 'the next healthy pass drains it');
+      assert.deepStrictEqual([devices(w3.db, A).length, w3.db.get(`${CP.DRAIN}/${A}`) ?? null], [0, null]);
+      ok('a failed drain stays open (incomplete, reported pending) until a pass drains it to zero');
     }
 
     // ── 11. pruneCustomerToken (the sender's FCM terminal-error prune): compare-and-clear on the claim ──
