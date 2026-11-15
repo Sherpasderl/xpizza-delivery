@@ -1,8 +1,8 @@
 'use strict';
 // STATS comparison.missing_days (advisor 11-15) — the statscmp layer's own pin: stats/stats-api.js minus the comparison.missing_days
 // hunk === BASE:stats/stats-api.js byte-for-byte; the layer is non-vacuous, detects a tampered or
-// duplicated hunk, passes other files through; and every reader that peels D4 also peels statscmp, just outside it (the d4-wiring
-// INNER rule keeps D4 on the raw read). Run: node statscmp-wiring.guard.test.js
+// duplicated hunk, passes other files through; and every reader that peels D4 also peels statscmp in the peel chain enclosing it (newer layers may sit
+// between; the d4-wiring INNER rule keeps D4 on the raw read). Run: node statscmp-wiring.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -33,10 +33,13 @@ ok(`${F} minus the ${HUNKS.length} comparison.missing_days hunk(s) === ${BASE}:$
   for (const f of files) {
     const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
     const re = /require\('[./]*tools\/d4-intake-inverse'\)\.unapplyD4Module\(/g; let m;
-    while ((m = re.exec(s))) if (!/unapplyStatsCmpModule\([^,]+, $/.test(s.slice(Math.max(0, m.index - 120), m.index))) bare.push(`${f}@${m.index}`);
+    // the contiguous chain of layer peels enclosing the D4 call (newer layers sit INSIDE older ones, D4 innermost) must include statscmp
+    while ((m = re.exec(s))) { let pre = s.slice(Math.max(0, m.index - 2000), m.index); const chain = []; let w;
+      while ((w = /require\('[./]*tools\/[a-z0-9-]+'\)\.(unapply\w+Module)\([^,()]+, $/.exec(pre))) { chain.push(w[1]); pre = pre.slice(0, w.index); }
+      if (!chain.includes('unapplyStatsCmpModule')) bare.push(`${f}@${m.index}`); }
   }
   assert.ok(files.length > 50, `STATSCMP: non-vacuity (${files.length} readers)`);
   assert.deepStrictEqual(bare, [], `STATSCMP: 🔴 a D4 peel without the statscmp peel around it: ${bare.join(', ')}`);
-  ok(`every D4 peel in ${files.length} readers is wrapped by the statscmp peel`);
+  ok(`every D4 peel in ${files.length} readers is enclosed by the statscmp peel`);
 }
 console.log(`statscmp-wiring.guard: OK (${n})`);
