@@ -350,7 +350,7 @@ test('R1 P1 🔴 a 401/403 while a CACHED body is showing: the sales leave the s
   assert.match(t.text(t.q('.vd-err b')), /^(Solo el dueño ve las ventas|No tenés acceso a este local)$/, 'the shipped owner-only copy');
   assert.equal(t.q('.vd-heat'), null, 'no cached section stays');
   assert.ok(t.qa('.vd-file .vd-lnk').every((b) => b.disabled), 'no export is offered enabled');
-  assert.equal(t.V._ventasTabState.csvRefused, true, 'the export handler refuses too');
+  assert.equal(t.V._ventasTabState.refused.has('r_a'), true, 'the export handler refuses too (the refused scope: r_a)');
   assert.deepEqual(rendKeys(t), [], 'the protected bodies leave the session cache');
 });
 test('R2 P2 a cancelled export (the period changed mid-export) releases «Preparando…»: the exports work again for the new period', async () => {
@@ -410,4 +410,69 @@ test('R6 P2 «Personalizado» chosen BEFORE the first answer: no crash — the p
   assert.equal(t.qa('.vd-fig .vd-skn').length, 3, 'the reserved frame');
   t.T.hold = null; release(); await settle(150);
   assert.deepEqual(t.errors.map(String), [], 'no throw when the answer lands');
+});
+// ═══ Codex r2: the two reproductions (verbatim scenarios) + the in-flight export across a refusal ═════════════════════════════════
+// hold one class of request: `before` ⇒ held BEFORE the server sees it (it is judged after a later revoke); else served, then held
+function holdFetch(match, { before = false } = {}) {
+  const original = globalThis.fetch; let release, arrived;
+  const held = new Promise((r) => { release = r; }), started = new Promise((r) => { arrived = r; });
+  globalThis.fetch = async (u, o) => {
+    if (!match(new URL(u).searchParams)) return original(u, o);
+    if (before) { arrived(); await held; return original(u, o); }
+    const res = await original(u, o); arrived(); await held; return res;
+  };
+  return { release: () => release(), started, restore: () => { globalThis.fetch = original; } };
+}
+test('R7 P1 🔴 an OLDER successful answer landing after a 403 never refills the cleared cache — the protected figures never come back', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  const h = holdFetch((q) => q.get('from') === '2026-11-06' && q.get('format') !== 'csv');   // the 7-day answer: served (owner then), held
+  await choose(t, 'Últimos 7 días'); await h.started;
+  t.serve.revoke('r_a');
+  await choose(t, 'Últimos 14 días'); await settle(80);   // the server now refuses: deny()
+  assert.equal(t.V._ventasTabState.status, 'denied', 'precondition: refused');
+  assert.deepEqual(rendKeys(t), [], 'precondition: the cache cleared');
+  h.release(); await settle(100);
+  assert.deepEqual(rendKeys(t), [], 'late successful response must not repopulate denied cache');
+  h.restore();
+  await choose(t, 'Últimos 7 días'); await settle(100);
+  assert.deepEqual(figs(t).map(([, v]) => v), ['—', '—', '—'], 'protected figures must not reappear after denial');
+});
+test('R7b P1 🔴 an export already answered when the refusal lands is NOT saved (an export is bound to the same ticket)', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  t.q('.vd-back').click(); await settle(80);
+  const st = holdFetch((q) => q.get('format') !== 'csv' && q.get('compare') === 'previous', { before: true });   // the detail read: judged later
+  const csv = holdFetch((q) => q.get('format') === 'csv');   // the export: served while still the owner, held
+  t.q('.vd-more').click(); await settle(30);   // the cached detail paints at once, exports offered; its revalidate is held
+  dl(t, 'Resumen diario (CSV)').click(); await csv.started;
+  t.serve.revoke('r_a');
+  st.release(); await settle(80);   // the detail read: 403 ⇒ deny()
+  assert.equal(t.V._ventasTabState.status, 'denied', 'precondition: refused');
+  csv.release(); await settle(120);
+  assert.equal((await t.saved()).length, 0, 'a file of protected sales is never saved after the refusal');
+  csv.restore(); st.restore();
+});
+test('R8 P2 a 403 on «Todas» refuses only THAT scope: a branch the owner still has loads and exports', async () => {
+  const t = await tab();
+  t.serve.revoke('r_a');
+  await choose(t, 'Últimos 7 días'); await settle(80);
+  assert.equal(t.V._ventasTabState.status, 'denied', 'precondition: «Todas» refused');
+  t.qa('.vd-pill')[1].click(); await settle();
+  t.qa('.vd-menu.vd-show .vd-opt').find((o) => t.text(o) === 'Sur').click(); await settle(100);
+  assert.equal(t.V._ventasTabState.status, 'ok', 'precondition: Sur loads');
+  await toDetail(t);
+  assert.deepEqual(t.qa('.vd-file .vd-lnk').map((b) => b.disabled), [false, false], 'authorized branch exports should recover');
+  dl(t, 'Resumen diario (CSV)').click(); await settle(150);
+  assert.deepEqual((await t.saved()).map((f) => f.name), ['ventas_r_b_2026-11-06_2026-11-12.csv'], 'and they work');
+});
+test('R8b P2 a successful authorised load lifts the refusal: the owner gets the branch back ⇒ its exports work again', async () => {
+  const t = await tab({ rids: ['r_a'] });
+  await toDetail(t);
+  t.serve.revoke('r_a');
+  await choose(t, 'Últimos 7 días'); await settle(80);
+  assert.equal(t.V._ventasTabState.status, 'denied', 'precondition: refused');
+  t.serve.grant('r_a');
+  await choose(t, 'Últimos 14 días'); await settle(100);
+  assert.equal(t.V._ventasTabState.status, 'ok', 'precondition: served again');
+  assert.deepEqual(t.qa('.vd-file .vd-lnk').map((b) => b.disabled), [false, false], 'a successful authorised load lifts the refusal');
 });

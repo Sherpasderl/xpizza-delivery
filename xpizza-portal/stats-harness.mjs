@@ -47,6 +47,7 @@ export async function world({ extra = [], keyerFails = false } = {}) {
   };
   // the owner loses a branch (the membership row removed): the REAL authorizer answers its next read with a 403
   serve.revoke = (rid) => { MEMBERS.delete(`brand_members/${rid}/owners/uA`); };
+  serve.grant = (rid) => { MEMBERS.set(`brand_members/${rid}/owners/uA`, { granted_at: 2, granted_by: 'x' }); };   // the owner gets it back
   return serve;
 }
 // the portal's api.js → the real core (the functions.js handler: status + json)

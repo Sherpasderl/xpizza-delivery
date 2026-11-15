@@ -25,7 +25,7 @@ const BAD_LINE = `${BAD[0]} · ${String(BAD[1]).replace(/\.$/, '')}`;
 const PRESETS = RL.REND_PRESETS;   // Hoy · 7 · 14 · 30 · Personalizado (Q2)
 const API = { getSalesStats, getSalesStatsMulti };
 const S = { host: null, ctx: null, gen: 0, preset: RL.REND_DEFAULT_PRESET, branch: 'all', branches: [], menu: null,
-  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, failErr: null, cache: null, csvBusy: null, csvOp: null, csvSeq: 0, csvNote: '', csvRefused: false, mount: 0, custom: { from: null, to: null }, cal: null, cerr: '' };
+  view: 'tab', status: 'loading', body: null, freshAt: null, dim: false, failed: null, failErr: null, cache: null, csvBusy: null, csvOp: null, csvSeq: 0, csvNote: '', refused: new Set(), authEp: 0, mount: 0, custom: { from: null, to: null }, cal: null, cerr: '' };
 const now = () => (S.ctx && S.ctx.now ? S.ctx.now() : Date.now());
 const today = () => todayHN(now());
 // the requested range: a preset's, or a VALID custom pair (else null — nothing is requested)
@@ -48,7 +48,7 @@ export function mountVentasTab(host, ctx) {
   branchesOf(m).then((changed) => { if (m !== S.mount) return; if (g === S.gen) load(); else if (changed) { S.gen += 1; load(); } });
 }
 export function unmountVentasTab() { S.gen += 1; S.mount += 1; S.host = null; S.menu = null; }
-document.addEventListener('portal:auth', () => { S.gen += 1; S.mount += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; S.csvBusy = null; S.csvOp = null; S.csvNote = ''; S.csvRefused = false; });
+document.addEventListener('portal:auth', () => { S.gen += 1; S.mount += 1; S.branches = []; S.branch = 'all'; S.body = null; S.status = 'loading'; S.preset = RL.REND_DEFAULT_PRESET; S.csvBusy = null; S.csvOp = null; S.csvNote = ''; S.refused = new Set(); S.authEp += 1; });
 // THE liveness of a request: its generation — moved by every auth event, branch / period change, mount — checked synchronously right
 // before fetch (api.js assertLive): a context change inside the token await sends nothing (the shipped page's rule, codex S2 r2)
 const assertWhile = (g) => () => { if (g !== S.gen) throw Object.assign(new Error(ABORT), { kind: ABORT }); };
@@ -74,31 +74,37 @@ async function branchesOf(m) {
 
 async function load() {
   if (!S.host) return;
-  const g = S.gen;
+  const g = S.gen, ep = S.authEp, ids = rids();
   const r = range();
   if (!r) { render(); return; }   // «Personalizado» without a valid pair: nothing is requested, the body untouched
   S.csvNote = '';   // a CSV note belongs to its period
   if (S.body) S.dim = true; else S.status = 'loading';
   render();
-  await RD.loadStats({ uid: S.ctx.uid, rids: rids(), range: r, assertLive: assertWhile(g), compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
+  await RD.loadStats({ uid: S.ctx.uid, rids: ids, range: r, assertLive: assertWhile(g), keep: () => ep === S.authEp, compare: S.view === 'detail' ? 'previous' : 'none',   // the tab shows no comparison; «Más detalle» does
     token: S.ctx.token, api: API, cache: S.cache, now, ui: {
-    paint: ({ body, freshAt }) => { if (g !== S.gen) return; S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
-    stamp: ({ freshAt }) => { if (g !== S.gen) return; S.freshAt = freshAt; S.dim = false; S.range = r; render(); },
+    paint: ({ body, freshAt, source }) => { if (g !== S.gen) return; if (source === 'network') authorised(ids); S.body = body; S.freshAt = freshAt; S.status = RL.statsState({ body }).state; S.failed = null; S.dim = false; S.range = r; render(); },
+    stamp: ({ freshAt }) => { if (g !== S.gen) return; authorised(ids); S.freshAt = freshAt; S.dim = false; S.range = r; render(); },
     fail: ({ error, hasBody }) => {
       if (g !== S.gen || (error && error.kind === ABORT)) return;
       S.dim = false;
-      if (RL.statsState({ error }).state === 'denied') deny(error);   // a 401 / 403 ALWAYS takes the protected data down, cached or not (codex r1 P1)
+      if (RL.statsState({ error }).state === 'denied') deny(error, ids);   // a 401 / 403 ALWAYS takes the protected data down, cached or not (codex r1 P1)
       else if (!hasBody) { S.body = null; S.status = RL.statsState({ error }).state; S.failed = S.branch; S.failErr = error; }
       render();
     },
   } }).catch(() => { if (g === S.gen) { S.status = 'error'; S.body = null; S.dim = false; render(); } });
 }
-// the server refused this owner: the sales, their cache and the exports leave together
-function deny(error) {
+// the server refused this owner: the sales, their cache and the exports leave together. The auth ticket moves, so every answer or export
+// already in flight is dropped (no cache write, no paint, no file — codex r2 P1); the refusal is recorded for THAT scope only (r2 P2)
+const scopeKeyOf = (ids) => RD.scopeKey(RD.scopeOf(ids));
+function deny(error, ids) {
+  S.authEp += 1;
   S.body = null; S.freshAt = null; S.range = null; S.status = 'denied'; S.failed = S.branch; S.failErr = error;
-  S.csvRefused = true; S.csvBusy = null; S.csvOp = null;
+  S.refused.add(scopeKeyOf(ids)); S.csvBusy = null; S.csvOp = null;
   if (S.cache) S.cache.clear(S.ctx && S.ctx.uid);
 }
+// a successful authorised read of a scope lifts that scope's refusal (one branch's key is its rid, the CSV refusal's key too)
+function authorised(ids) { S.refused.delete(scopeKeyOf(ids)); }
+const csvRefused = (rid) => !!rid && S.refused.has(rid);
 // the screen's state: an empty answer for days the roll-up never computed is UNAVAILABLE, not zero (codex r1)
 const shown = () => (S.status === 'empty' && RL.allMissing(S.body, S.range) ? 'uncomputed' : S.status);
 function pick(kind, v) {
@@ -449,7 +455,7 @@ function downloads() {
     const row = el('div', 'vd-file'); const i = el('span', 'vd-fico'); i.append(svg(FILE));
     const tx = el('div', 'vd-filet'); tx.append(el('b', 'vd-fileb', title), el('span', 'vd-filed', desc));
     const b = el('button', 'vd-lnk'); b.type = 'button'; b.append(svg(DL), el('span', null, busy() === kind ? 'Preparando…' : 'Descargar'));
-    b.disabled = !!busy() || S.csvRefused;
+    b.disabled = !!busy() || csvRefused(csvRid());
     b.addEventListener('click', () => exportCsv(kind));
     row.append(i, tx, b); box.append(row);
   }
@@ -461,13 +467,14 @@ function downloads() {
 const busy = () => (S.csvBusy && S.csvOp && S.csvOp.g === S.gen ? S.csvBusy : null);
 async function exportCsv(kind) {
   const r = range(), rid = csvRid();
-  if (!rid || !r || busy() || S.csvRefused) return;   // the handler itself refuses, not only the button
+  if (!rid || !r || busy() || csvRefused(rid)) return;   // the handler itself refuses, not only the button
   if (kind === 'orders' && daysBetween(r.from, r.to) + 1 > ORDERS_CSV_MAX_DAYS) {
     S.csvNote = `El detalle de pedidos se descarga de hasta ${ORDERS_CSV_MAX_DAYS} días por vez. Elegí un período más corto.`;
     render(); return;
   }
   const g = S.gen;
-  const alive = () => g === S.gen;
+  const ep = S.authEp;
+  const alive = () => g === S.gen && ep === S.authEp;   // a refusal after the request left drops it: nothing is saved
   const op = { g, id: ++S.csvSeq };
   S.csvBusy = kind; S.csvOp = op; S.csvNote = ''; render();
   let note = '';
@@ -487,7 +494,7 @@ async function exportCsv(kind) {
     save(kind === 'orders' ? joinCsvPages(pages) : pages[0], name || csvFilename(kind, rid, r));
   } catch (e) {
     if (!alive() || (e && e.kind === ABORT)) return;
-    if (e && e.kind === 'NotAuthorized') S.csvRefused = true;   // a CSV 403 refuses BOTH exports
+    if (e && e.kind === 'NotAuthorized') S.refused.add(rid);   // a CSV 403 refuses BOTH exports of THAT branch
     note = e && e.kind === 'CsvHeader' ? 'No pudimos preparar el archivo. Avisanos y lo revisamos.' : ventasMessage(e && e.kind, e && e.body && e.body.error).join('. ');
   } finally {
     if (S.csvOp === op) { S.csvBusy = null; S.csvOp = null; if (alive()) S.csvNote = note; render(); }

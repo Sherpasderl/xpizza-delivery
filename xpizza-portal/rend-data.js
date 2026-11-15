@@ -58,8 +58,10 @@ const canon = (v) => (Array.isArray(v) ? v.map(canon) : isObj(v) ? Object.fromEn
 export const sameBody = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
 
 // ONE load of the tab's stats. api: { getSalesStats, getSalesStatsMulti } (api.js); ui: { paint({ body, freshAt, source }),
-// stamp({ freshAt }), fail({ error, hasBody }) }. → the final { source: 'cache+same' | 'cache+swap' | 'network' | 'error', … }
-export async function loadStats({ uid, rids, range, compare, token, assertLive, api, cache, now = () => Date.now(), ui }) {
+// stamp({ freshAt }), fail({ error, hasBody }) }. → the final { source: 'cache+same' | 'cache+swap' | 'network' | 'error' | 'dropped', … }
+// `keep` (optional): the answer's ticket — false once the screen was refused after the request left; such an answer writes NOTHING (no cache
+// entry, no paint), so an older success can never refill what a 401 / 403 cleared (codex Ventas r2 P1)
+export async function loadStats({ uid, rids, range, compare, token, assertLive, keep = () => true, api, cache, now = () => Date.now(), ui }) {
   const scope = scopeOf(rids);
   if (!scope || !uid) throw new Error('loadStats: a uid and at least one branch');
   const key = cacheKey(uid, scope, range, compare);
@@ -73,6 +75,7 @@ export async function loadStats({ uid, rids, range, compare, token, assertLive, 
     ui.fail({ error, hasBody: !!cached });
     return { source: 'error', error, cached: !!cached };
   }
+  if (!keep()) return { source: 'dropped' };
   const fetchedAt = now();
   if (cache) cache.put(key, body, fetchedAt);
   const freshAt = freshness(body, fetchedAt);
