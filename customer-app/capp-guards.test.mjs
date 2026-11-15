@@ -238,8 +238,20 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {
-  // (empty at BASE 604e96ab: the asm8 195147ff and asm9 11273d0c entries name merges BELOW the base — in the RC the lane branches from —
-  // so they would read as stale; advisor ruling 11-13, option (a), as at the 11-12 BASE move)
+  // feat/capp-offers-r20 (advisor 11-15): every hit proven line by line — the merge's `git show --cc` lines that come from NO parent are
+  // listed in each reason (none, or exactly the ruled lines); PROVISIONAL with the merges until Codex/advisor approve capp-push r2
+  'b63d58a0 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-checkout.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN offer-quote marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-s7a2.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN c3r-v2 marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api-sdk.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-colour-allowlist.json': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-guards.test.mjs': 'union + ONLY the ruled forked-lane BASE move to 827373d6 (advisor 11-15, ruling (a)): 3 comment lines, the BASE line, 1 blank',
+  '8839193d customer-app/capp-home.js': 'hand-resolved same-line merge of offers desk-hide + push preview-hide; cell CH-ABIERTO-3',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
