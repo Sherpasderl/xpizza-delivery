@@ -81,25 +81,30 @@ ok(`every hashing site of an edited module names a registered inverse (${Object.
   const GEN = "const FN = process.argv[2], SHA = process.argv[3];\nif (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n"
     + `const blob = (rel) => { const b = readFileSync(join(FN, rel)); return createHash('sha1').update(\`blob \${b.length}\\0\`).update(b).digest('hex'); };\nconst out = { sha: SHA, blobs: { '${M}': blob('${M}') } };\n`;
   const fix = (sha = HEAD, blob = BLOB) => JSON.stringify({ sha, blobs: { [M]: blob } });
-  const CONSRC = "const Z = JSON.parse(readFileSync(new URL('./fixtures/zz-prov/zz.json', import.meta.url), 'utf8'));\n"
-    + "for (const [r, b] of Object.entries(Z.blobs)) assert.equal(git('rev-parse', `${Z.sha}:xpizza-functions/${r}`), b, 'pin');\n";
-  const ROW = { site: SITE, module: M, fixture: FIX, sha_field: 'sha', blobs_field: 'blobs', consumer: CON, site_sha256: h(GEN), consumer_sha256: h(CONSRC) };
+  // the consumer is pinned by REGION (advisor r2 tweak): only the bytes between its PROVENANCE-PIN markers, so the rest of a big suite can move
+  const REGION = "const Z = JSON.parse(readFileSync(new URL('./fixtures/zz-prov/zz.json', import.meta.url), 'utf8'));\n"
+    + "test('zz pin', () => { for (const [r, b] of Object.entries(Z.blobs)) assert.equal(git('rev-parse', `${Z.sha}:xpizza-functions/${r}`), b, 'pin'); });\n";
+  const BEG = '// PROVENANCE-PIN:BEGIN zz\n', END = '// PROVENANCE-PIN:END zz\n';
+  const CONSRC = `import assert from 'node:assert';\n${BEG}${REGION}${END}test('other cell', () => {});\n`;
+  const ROW = { site: SITE, module: M, fixture: FIX, sha_field: 'sha', blobs_field: 'blobs', consumer: CON, consumer_region: 'zz', site_sha256: h(GEN), consumer_sha256: h(REGION) };
   const world = (o = {}) => build({ extra: { [SITE]: o.site ?? GEN, [FIX]: o.fix ?? fix(), ...(o.con === null ? {} : { [CON]: o.con ?? CONSRC }) }, provenance: { rows: o.rows ?? [ROW] } });
   const pp = (w) => w.provenance_pins.find((p) => p.site === SITE);
   const isUnreg = (w) => w.unregistered.some((u) => u.module === M && u.site === SITE);
-  const refused = (w, check) => isUnreg(w) && pp(w).status === 'refused' && pp(w).check === check && verdict(w) === 1;
+  const refused = (w, check, reason) => isUnreg(w) && pp(w).status === 'refused' && pp(w).check === check && (!reason || pp(w).reason === reason) && verdict(w) === 1;
 
   // the real registry: the two rows, each with both reviewed content hashes, each reported (dormant until its generator is in the tree)
   const real = JSON.parse(fs.readFileSync(path.join(__dirname, 'tools/provenance-pins.json'), 'utf8'));
   assert.ok(/re-register/i.test(real._doc || ''), 'the registry documents its re-register step');
   assert.deepStrictEqual(real.rows.map((r) => `${r.site}|${r.module}`).sort(), ['customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs|my-orders.js', 'customer-app/fixtures/offer-quote/gen-offer-quote.mjs|delivery/delivery-wire.js'], 'the registry is the two advisor-approved rows');
-  assert.ok(real.rows.every((r) => /^[0-9a-f]{64}$/.test(r.site_sha256) && /^[0-9a-f]{64}$/.test(r.consumer_sha256)), 'every row pins its generator and consumer by sha256');
+  assert.ok(real.rows.every((r) => /^[0-9a-f]{64}$/.test(r.site_sha256) && /^[0-9a-f]{64}$/.test(r.consumer_sha256) && /^[\w-]+$/.test(r.consumer_region || '')), 'every row pins its generator (whole file) and its consumer region by sha256');
   assert.deepStrictEqual(inv.provenance_pins.map((p) => `${p.site}|${p.module}`).sort(), real.rows.map((r) => `${r.site}|${r.module}`).sort(), '🔴 PROV-REPORT: every registry row is reported');
 
   const ctl = world({ rows: [] });
   assert.ok(isUnreg(ctl) && verdict(ctl) === 1, '🔴 PROV-CTL: an unregistered extracted-tree hash site still exits 1');
   const live = build({ extra: { 'xpizza-functions/zz-synthetic.guard.test.js': "const sha = (s) => require('crypto').createHash('sha256').update(s).digest('hex');\nassert.strictEqual(sha(read('my-orders.js')), 'x');" }, provenance: { rows: [ROW] } });
   assert.ok(live.unregistered.some((u) => u.module === M && u.site === 'xpizza-functions/zz-synthetic.guard.test.js') && verdict(live) === 1, '🔴 PROV-CTL: an unregistered LIVE-tree hash site still exits 1 beside a valid registry');
+  const out = world({ con: `${CONSRC}test('a new cell after the region', () => { assert.ok(1); });\n`.replace("import assert from 'node:assert';\n", "import assert from 'node:assert';\nimport { x } from './y.mjs';\n") });
+  assert.ok(!isUnreg(out) && pp(out).status === 'ok' && verdict(out) === 0, `🔴 PROV-CON-OUT: edits OUTSIDE the region (above and below) keep the pin ok: ${JSON.stringify(pp(out))}`);
   const good = world();
   assert.ok(!isUnreg(good) && pp(good).status === 'ok' && verdict(good) === 0, `🔴 PROV-OK: a registered pin with both reviewed hashes and the right blob is accepted: ${JSON.stringify(pp(good))}`);
   assert.strictEqual(pp(good).live_differs, false, 'PROV-INFO: pinned at HEAD ⇒ the live blob is the pinned blob');
@@ -108,10 +113,23 @@ ok(`every hashing site of an edited module names a registered inverse (${Object.
 
   const g = world({ site: `${GEN}// reviewed? no\n` });
   assert.ok(refused(g, 'generator_changed'), `🔴 PROV-GEN: an edited generator is refused until re-registered: ${JSON.stringify(pp(g))}`);
-  const c = world({ con: `${CONSRC}assert.ok(true);\n` });
-  assert.ok(refused(c, 'consumer_changed'), `🔴 PROV-CON: an edited consumer is refused until re-registered: ${JSON.stringify(pp(c))}`);
+  const c = world({ con: CONSRC.replace("b, 'pin'", "b, 'pin2'") });
+  assert.ok(refused(c, 'consumer_changed', 'region_bytes'), `🔴 PROV-CON: an edit INSIDE the consumer region is refused until re-registered: ${JSON.stringify(pp(c))}`);
   const c2 = world({ con: null });
-  assert.ok(refused(c2, 'consumer_changed'), `🔴 PROV-CON: a missing consumer is refused: ${JSON.stringify(pp(c2))}`);
+  assert.ok(refused(c2, 'consumer_changed', 'marker_missing'), `🔴 PROV-CON: a missing consumer is refused: ${JSON.stringify(pp(c2))}`);
+  const cm = world({ con: CONSRC.replace(END, '') });
+  assert.ok(refused(cm, 'consumer_changed', 'marker_missing'), `🔴 PROV-MARK-MISSING: a consumer without its END marker is refused: ${JSON.stringify(pp(cm))}`);
+  const cf = world({ con: CONSRC.replace(BEG, '// PROVENANCE-PIN:BEGIN zz (moved)\n') });
+  assert.ok(refused(cf, 'consumer_changed', 'marker_malformed'), `🔴 PROV-MARK-MALFORMED: a marker that is not the bare line comment is refused: ${JSON.stringify(pp(cf))}`);
+  const cd = world({ con: `${CONSRC}${BEG}${REGION}${END}` });
+  assert.ok(refused(cd, 'consumer_changed', 'marker_duplicate'), `🔴 PROV-MARK-DUP: two regions with the same id are refused: ${JSON.stringify(pp(cd))}`);
+  const co = world({ con: `import assert from 'node:assert';\n${END}${REGION}${BEG}` });
+  assert.ok(refused(co, 'consumer_changed', 'marker_order'), `🔴 PROV-MARK-ORDER: END before BEGIN is refused: ${JSON.stringify(pp(co))}`);
+  const cb = world({ con: `import assert from 'node:assert';\n/*\n${BEG}${REGION}${END}*/\ntest('other cell', () => {});\n` });
+  assert.ok(refused(cb, 'consumer_changed', 'block_comment'), `🔴 PROV-STUB: the reviewed region moved into a block comment (bytes unchanged) is refused: ${JSON.stringify(pp(cb))}`);
+  const STUB = REGION.split('\n').filter(Boolean).map((l) => `// ${l}\n`).join('');
+  const cs = world({ con: `${BEG}${STUB}${END}`, rows: [{ ...ROW, consumer_sha256: h(STUB) }] });
+  assert.ok(refused(cs, 'consumer_changed', 'comment_only'), `🔴 PROV-STUB: a comment-only region is refused even if registered: ${JSON.stringify(pp(cs))}`);
   const b = world({ fix: fix(HEAD, '0'.repeat(40)) });
   assert.ok(refused(b, 'fixture_blob'), `🔴 PROV-B: a fixture blob that is not the module at its sha is refused: ${JSON.stringify(pp(b))}`);
   // Codex r1's four bypasses, each now a byte change to a reviewed file ⇒ refused by construction
@@ -122,7 +140,7 @@ ok(`every hashing site of an edited module names a registered inverse (${Object.
     '40-hex only in a comment': { site: GEN.replace("if (!/^[0-9a-f]{40}$/.test(SHA || '')) throw new Error('usage');\n", '// [0-9a-f]{40}\n') },
   };
   for (const [k, o] of Object.entries(attacks)) { const w = world(o); assert.ok(isUnreg(w) && pp(w).status === 'refused' && verdict(w) === 1, `🔴 PROV-R1: Codex r1 bypass «${k}» is refused: ${JSON.stringify(pp(w))}`); }
-  ok('provenance pins (reviewed content pins): the 2 registry rows reported with both hashes; an unregistered site (extracted or live tree) exits 1; a registered pin is accepted, a stale one only flagged live_differs; an edited generator, an edited or missing consumer and a wrong fixture blob are each refused; Codex r1\'s 4 bypasses are refused');
+  ok('provenance pins (reviewed content pins): the 2 registry rows reported with both hashes; an unregistered site (extracted or live tree) exits 1; a registered pin is accepted, a stale one only flagged live_differs; the consumer is pinned by its PROVENANCE-PIN region (edits outside it stay ok; an edit inside, a missing / malformed / duplicated / reversed marker, a block-commented or comment-only region are refused); an edited generator and a wrong fixture blob are refused; Codex r1\'s 4 bypasses are refused');
 }
 
 console.log(`\nform-source-inventory.guard: OK (${n})`);

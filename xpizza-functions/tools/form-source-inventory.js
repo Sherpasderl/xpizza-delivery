@@ -87,20 +87,39 @@ function deps(file, src) {
 // `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only
 // PROVENANCE PINS (advisor 11-15; r2 «reviewed content pins»): a fixture generator that hashes an EXTRACTED tree of a fixed commit
 // records history, not the live module, so an edit to the live module cannot break it and an inverse could only be a hand-built proof.
-// tools/provenance-pins.json registers each such (site, module) with the sha256 of the generator and of its consumer test AS REVIEWED
-// (human + Codex). A row is honoured only while both files are byte-identical to those hashes (any edit ⇒ generator_changed /
-// consumer_changed until re-registered by a reviewed diff) AND the fixture's recorded blob is `git rev-parse <sha>:xpizza-functions/<module>`
+// tools/provenance-pins.json registers each such (site, module) with the sha256 of the WHOLE generator and of its consumer test's
+// PROVENANCE-PIN REGION (regionOf), both AS REVIEWED (human + Codex). A row is honoured only while both are byte-identical to those
+// hashes (any edit ⇒ generator_changed / consumer_changed until re-registered by a reviewed diff; the rest of the suite may change) AND the fixture's recorded blob is `git rev-parse <sha>:xpizza-functions/<module>`
 // (fixture_blob). A refused row exits 1. `live_differs` (the live blob is not the pinned one) is information only, never a failure.
 const PROV = path.join(__dirname, 'provenance-pins.json');
 const dig = (o, f) => f.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
 const sha256 = (s) => (s == null ? null : require('crypto').createHash('sha256').update(s).digest('hex'));
+// the consumer's REVIEWED REGION: the exact bytes between `// PROVENANCE-PIN:BEGIN <id>` and `// PROVENANCE-PIN:END <id>`, each a bare line
+// comment, exactly one of each, in order, live code (not inside a block comment) and not comment-only. Anything else: why the region is void.
+function regionOf(src, id) {
+  if (src == null) return { reason: 'marker_missing' };
+  const lines = src.split('\n');
+  const at = (k) => lines.flatMap((l, i) => (new RegExp(`PROVENANCE-PIN:${k} ${id}(?![\\w-])`).test(l) ? [i] : []));
+  const b = at('BEGIN'), e = at('END');
+  if (!b.length || !e.length) return { reason: 'marker_missing' };
+  if (b.length > 1 || e.length > 1) return { reason: 'marker_duplicate' };
+  if (lines[b[0]].trim() !== `// PROVENANCE-PIN:BEGIN ${id}` || lines[e[0]].trim() !== `// PROVENANCE-PIN:END ${id}`) return { reason: 'marker_malformed' };
+  if (e[0] < b[0]) return { reason: 'marker_order' };
+  const before = lines.slice(0, b[0]).join('\n');
+  if (before.lastIndexOf('/*') > before.lastIndexOf('*/')) return { reason: 'block_comment' };
+  const body = lines.slice(b[0] + 1, e[0]);
+  if (!body.some((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l))) return { reason: 'comment_only' };
+  return { text: body.map((l) => `${l}\n`).join('') };
+}
 function provenance(rows, srcOf) {
   return rows.map((r) => {
     const site = srcOf(r.site);
     if (site == null) return { site: r.site, module: r.module, status: 'absent' };
     const refuse = (check, why) => ({ site: r.site, module: r.module, status: 'refused', check, why });
     if (sha256(site) !== r.site_sha256) return refuse('generator_changed', `${r.site} is not the reviewed generator (re-register)`);
-    if (sha256(srcOf(r.consumer)) !== r.consumer_sha256) return refuse('consumer_changed', `${r.consumer} is missing or not the reviewed consumer (re-register)`);
+    const reg = regionOf(srcOf(r.consumer), r.consumer_region);
+    if (reg.reason) return { ...refuse('consumer_changed', `${r.consumer}: no valid PROVENANCE-PIN region ${r.consumer_region} (${reg.reason})`), reason: reg.reason };
+    if (sha256(reg.text) !== r.consumer_sha256) return { ...refuse('consumer_changed', `${r.consumer}: region ${r.consumer_region} is not the reviewed one (re-register)`), reason: 'region_bytes' };
     let fx; try { fx = JSON.parse(srcOf(r.fixture)); } catch (_) { return refuse('fixture_blob', `fixture ${r.fixture} unreadable`); }
     const sha = dig(fx, r.sha_field), blob = (dig(fx, r.blobs_field) || {})[r.module];
     let want = null; try { want = execFileSync('git', ['rev-parse', '-q', '--verify', `${sha}:xpizza-functions/${r.module}`], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch (_) { /* refused below */ }
