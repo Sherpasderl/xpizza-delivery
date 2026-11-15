@@ -10,7 +10,7 @@
 
 const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);
 const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
-const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);
+const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended', 'refused']);   // refused: a TERMINAL program refusal (Codex program r1 P1-2)
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
   cat_items_max: 100,                                // a category offer's RESOLVED dish keys (frozen at save / publish)

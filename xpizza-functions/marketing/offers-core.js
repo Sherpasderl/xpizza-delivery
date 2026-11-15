@@ -109,7 +109,8 @@ const judgementReply = (v, rid) => reply(409, { error: v.error, rid, ...(v.with 
 // THE duplicate backstop (advisor 11-14, the portal's single-call Ofertas): another offer of the restaurant already programmed or active with
 // the SAME kind, params and branch set and an OVERLAPPING schedule ⇒ { error: 'duplicate', offer_id }. Judged on the WHOLE brand node (the
 // branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
-const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
+const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array.isArray(x)) ? [...v].sort() : v).map(canon).join(',')}]` :   // set-valued params (items, cats) normalised: order never matters
+   isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 function duplicateOf(all, offerId, proj, branches, schedule) {
   const held = {};
   for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
@@ -132,6 +133,8 @@ function duplicateOf(all, offerId, proj, branches, schedule) {
 async function liveProblem(deps, brandId, offerId, value) {
   let all;
   try { all = await val(deps.db, liveBrandPath(brandId)); } catch (_) { return UNAVAILABLE(); }
+  const dup = duplicateOf(all, offerId, { type: value.type, params: OM.liveProjection({ ...value, rev: 0, state: 'active' }, brandId).params }, value.branches, value.schedule);
+  if (dup) return judgementReply({ error: 'duplicate', offer_id: dup }, value.branches[0]);   // the duplicate FIRST, on every path (P2-4)
   for (const rid of value.branches) {
     const v = liveJudgement(offerId, value, isObj(all) ? all[rid] : null);
     if (v) return judgementReply(v, rid);
@@ -167,6 +170,20 @@ async function casWrite(db, path, expectedRev, decide) {
   if (why !== 'write') return { fail: reply(409, { error: why || 'refused', ...(last && last.field ? { field: last.field } : {}) }) };
   if (!tx.committed || !isObj(s) || s.rev !== expectedRev + 1) return { fail: UNAVAILABLE() };
   return { rec: s };
+}
+
+// A CREATE that programmed in the same call and was REFUSED (Codex program r1 P1-2): the record becomes a TERMINAL `refused` record at a
+// NEW rev (monotonic — never deleted, so no rev is ever reused under a newer tombstone), carrying the refusal; its mirror is applied for
+// that rev (tombstones only — nothing priced). A same-op retry answers the SAME refusal. → the 409 | 503
+const refusedReply = (rec) => reply(409, { error: rec.refused.error, ...(rec.refused.rid ? { rid: rec.refused.rid } : {}), ...(rec.refused.with ? { with: rec.refused.with } : {}), ...(rec.refused.offer_id ? { offer_id: rec.refused.offer_id } : {}) });
+async function refuseProgram(db, brandId, path, offerId, rec, verdict, rid, t) {
+  const why = { error: verdict.error, rid, ...(verdict.with ? { with: verdict.with } : {}), ...(verdict.offer_id ? { offer_id: verdict.offer_id } : {}) };
+  let w;
+  try { w = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...cur, state: 'refused', refused: why, rev: cur.rev + 1, updated_at: t }; }); } catch (_) { return UNAVAILABLE(); }
+  if (w.fail) return UNAVAILABLE();
+  const m = await applyFromRecord(db, brandId, path, offerId, w.rec);
+  if (m.fail) return UNAVAILABLE();
+  return refusedReply(w.rec);
 }
 
 // THE mirror writer (PLAN-3a-live-mirror-rekey r2; Codex 2-phase r2 → advisor ruling): EVERY mirror mutation of an offer — publish, edit,
@@ -224,14 +241,7 @@ async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
   const r = await applyFromRecord(db, brandId, path, offerId, rec, { alsoRids: prevBranches });
   if (r.fail) return UNAVAILABLE();
   if (!r.verdict) return null;
-  if (!isObj(before)) {   // a CREATE that programmed in the same call (program: true): all or nothing — the record it made is removed (a refused txn wrote no mirror)
-    let gone = false;
-    try {
-      const tx = await db.ref(path).transaction((cur) => { gone = false; if (cur === null) return null; if (isObj(cur) && cur.rev === rec.rev) { gone = true; return null; } return undefined; });
-      gone = gone && tx && tx.committed;
-    } catch (_) { gone = false; }
-    return gone ? judgementReply(r.verdict, r.rid) : UNAVAILABLE();
-  }
+  if (!isObj(before)) return refuseProgram(db, brandId, path, offerId, rec, r.verdict, r.rid, t);   // a CREATE that programmed in the same call
   const undo = await casWrite(db, path, rec.rev, (cur, d) => { d.why = 'write'; return { ...before, rev: cur.rev + 1, updated_at: t }; });
   if (undo.fail) return UNAVAILABLE();
   const u = await applyFromRecord(db, brandId, path, offerId, undo.rec, { alsoRids: rec.branches });
@@ -240,8 +250,11 @@ async function settleMirrors(db, brandId, path, offerId, rec, before, t) {
 }
 
 // Q4: the brand's ended offers older than 180 days (by their last write) — removed by the next create, in ONE update of the brand node
+// a refused attempt never counts toward offers_max (a terminal record of a failed call, pruned like an ended one)
+const isRefused = (r) => isObj(r) && r.state === 'refused';
+const counted = (all) => Object.values(isObj(all) ? all : {}).filter((r) => !isRefused(r)).length;
 const endedToPrune = (all, t) => Object.entries(isObj(all) ? all : {})
-  .filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
+  .filter(([, r]) => isObj(r) && (r.state === 'ended' || r.state === 'refused') && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
 async function pruneEnded(db, brandId, ids) {
   if (!ids.length) return;
   try { await db.ref(offersPath(brandId)).update(Object.fromEntries(ids.map((id) => [id, null]))); } catch (_) { /* retried by the next create */ }
@@ -288,10 +301,26 @@ async function claimOp(db, brandId, opId, kind, t, sourceId = null) {
   return out;
 }
 const OP_CONFLICT = () => reply(409, { error: 'op_id_conflict' });
-// an op_id retry that lost the create-only race (or found the claim): the claimed offer as it is now → the 200 reply | null
+// an op_id retry that lost the create-only race (or found the claim): the claimed offer as it is NOW — success means the record AND its
+// mirror agree at the record's rev (Codex program r1 P1-1): an ACTIVE record whose mirror is not there re-runs the idempotent, rev-guarded
+// brand txn (repair-on-replay) and answers 200 only after it; a refusal there turns its own first write (rev 1) into the terminal refusal.
+// → the 200 / 409 reply | null (no record yet: the caller creates under the claimed id)
 async function replayOf(db, brandId, offerId, t) {
-  const rec = await val(db, `${offersPath(brandId)}/${offerId}`);
-  return isObj(rec) && OM.recordOk(rec, opts) ? reply(200, { ok: true, offer: offerView(offerId, rec, t) }) : null;
+  const path = `${offersPath(brandId)}/${offerId}`;
+  const rec = await val(db, path);
+  if (!(isObj(rec) && OM.recordOk(rec, opts))) return null;
+  if (rec.state === 'refused' && isObj(rec.refused)) return refusedReply(rec);
+  if (rec.state === 'active') {
+    const all = (await val(db, liveBrandPath(brandId))) || {};
+    const at = rec.branches.every((rid) => { const e = isObj(all[rid]) ? all[rid][offerId] : null; return isObj(e) && e.removed !== true && e.rev === rec.rev; });
+    if (!at) {
+      const m = await applyFromRecord(db, brandId, path, offerId, rec);
+      if (m.fail) return UNAVAILABLE();
+      if (m.verdict) return rec.rev === 1 ? refuseProgram(db, brandId, path, offerId, rec, m.verdict, m.rid, t) : UNAVAILABLE();
+      if (m.stale) { const now2 = await val(db, path); if (isObj(now2) && OM.recordOk(now2, opts)) return reply(200, { ok: true, offer: offerView(offerId, now2, t) }); }
+    }
+  }
+  return reply(200, { ok: true, offer: offerView(offerId, rec, t) });
 }
 const offerView = (id, rec, nowMs) => ({
   id, rev: rec.rev, state: rec.state, status: OM.statusOf(rec, nowMs),
@@ -325,10 +354,11 @@ async function getMarketingCore(deps, req) {
     .map(([id, b]) => ({ id, week: b.week, status: AM.bookingStatus(b, t), price_cents: b.price_cents, cancel_deadline: b.cancel_deadline, hidden_days: AM.hiddenDays(b) }))
     .sort((x, y) => (x.week < y.week ? 1 : x.week > y.week ? -1 : 0));
   const offers = Object.entries(isObj(all) ? all : {})
-    .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.branches.includes(rid))
+    .filter(([id, rec]) => OM.OFFER_ID_RE.test(id) && OM.recordOk(rec, opts) && rec.state !== 'refused' && rec.branches.includes(rid))   // a refused attempt is never listed
     .map(([id, rec]) => {
       const m = isObj(live) ? live[id] : undefined;
       const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;   // a tombstone is «not live»
+      if (drift) console.warn('marketing_live_drift', JSON.stringify({ offer: id, rev: rec.rev, mirror_rev: isObj(m) ? m.rev : null }));   // the backstop ALERT: a record ≠ its mirror (Codex program r1)
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
     .sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
@@ -369,7 +399,6 @@ async function marketingOfferSaveCore(deps, req) {
   if (dish.fail) return dish.fail;
   const value = dish.value;
   const t = now();
-  if (program) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }); }
   let offerId = creating ? newOfferId() : body.offer_id;
   if (creating && body.op_id !== undefined) {   // idempotent create: the claimed id; a repeat answers the offer it already made
     let c;
@@ -384,11 +413,14 @@ async function marketingOfferSaveCore(deps, req) {
     let all;
     try { all = (await val(db, offersPath(brandId))) || {}; } catch (_) { return UNAVAILABLE(); }
     prune = endedToPrune(all, t);
-    if (Object.keys(isObj(all) ? all : {}).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
+    if (counted(all) - prune.filter((id) => !isRefused(all[id])).length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
   }
   let prevRec = null;
+  if (!creating) { try { prevRec = await val(db, `${offersPath(brandId)}/${offerId}`); } catch (_) { return UNAVAILABLE(); } }
+  // program: the publish validation (a future start) applies to a record being PROGRAMMED (a create, a draft, a paused one) — never to an
+  // already live offer's edit (caps / end) — and only AFTER any op_id replay above (Codex program r1 P2-3)
+  if (program && !(isObj(prevRec) && prevRec.state === 'active')) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }); }
   if (!creating) {   // an active / paused offer: the live-edit allowlist is checked against the record the CAS will see
-    try { prevRec = await val(db, `${offersPath(brandId)}/${offerId}`); } catch (_) { return UNAVAILABLE(); }
     if (isObj(prevRec) && (program || prevRec.state === 'active' || prevRec.state === 'paused_owner')) {
       const live = await liveProblem(deps, brandId, offerId, value);   // a later end CAN create an overlap: the same judgement as a publish
       if (live) return live;
@@ -400,7 +432,7 @@ async function marketingOfferSaveCore(deps, req) {
       return OM.stripNulls({ v: 1, rev: 1, ...value, state: program ? 'active' : 'draft', created_by: ctx.uid, created_at: t, updated_at: t });
     }
     if (!OM.recordOk(cur, opts)) { d.why = 'current_malformed'; return undefined; }
-    if (cur.state === 'ended') { d.why = 'ended'; return undefined; }
+    if (cur.state === 'ended' || cur.state === 'refused') { d.why = cur.state; return undefined; }
     if (cur.state !== 'draft') {
       const p = OM.liveEditProblem(OM.authoredOf(cur, opts), value);
       if (p) { d.why = 'live_edit_not_allowed'; d.field = p; return undefined; }
@@ -421,7 +453,7 @@ async function marketingOfferSaveCore(deps, req) {
 
 // ── marketingOfferSetState ─────────────────────────────────────────────────────────────────────────────────────────────────
 // to: 'active' (publish a draft, or resume a paused offer) | 'paused_owner' | 'ended'
-const MOVES = Object.freeze({ draft: ['active', 'ended'], active: ['paused_owner', 'ended'], paused_owner: ['active', 'ended'], ended: [] });
+const MOVES = Object.freeze({ draft: ['active', 'ended'], active: ['paused_owner', 'ended'], paused_owner: ['active', 'ended'], ended: [], refused: [] });
 async function marketingOfferSetStateCore(deps, req) {
   const { db, now = () => Date.now() } = deps;
   const h = await writeHead(deps, req);
@@ -498,6 +530,14 @@ async function marketingOfferRepeatCore(deps, req) {
   const value = OM.authoredOf(src, opts);
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
+  // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, max timestamp) — BEFORE any claim or write (P2-5)
+  let programSchedule = null;
+  if (program) {
+    const sc = isObj(body.schedule) ? body.schedule : {};
+    if (Object.keys(sc).some((k) => k !== 'start' && k !== 'end') || sc.start === undefined || sc.start === null) return reply(400, { error: 'bad_request', field: 'schedule' });
+    programSchedule = OM.scheduleOf({ days: value.schedule.days, start: sc.start, end: sc.end === undefined ? null : sc.end, window: value.schedule.window });
+    if (!programSchedule) return reply(400, { error: 'bad_request', field: 'schedule' });
+  }
   let offerId = newOfferId();
   if (body.op_id !== undefined) {   // idempotent repeat (see claimOp), bound to its SOURCE — a replay comes BEFORE the capacity check (P2-4)
     let c;
@@ -508,12 +548,10 @@ async function marketingOfferRepeatCore(deps, req) {
     if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
   }
   const prune = endedToPrune(all, t).filter((id) => id !== sourceId);   // never the offer being repeated
-  if (Object.keys(all).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
+  if (counted(all) - prune.filter((id) => !isRefused(all[id])).length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
-  if (program) {   // the new dates, validated as a publish; a category offer is re-resolved (frozen from here)
-    const sc = isObj(body.schedule) ? body.schedule : {};
-    if (Object.keys(sc).some((k) => k !== 'start' && k !== 'end') || !Number.isSafeInteger(sc.start) || !(sc.end === undefined || sc.end === null || (Number.isSafeInteger(sc.end) && sc.end > sc.start))) return reply(400, { error: 'bad_request', field: 'schedule' });
-    draft = { ...value, schedule: { ...value.schedule, start: sc.start, end: sc.end === undefined ? null : sc.end } };
+  if (program) {   // the new dates (validated above), checked as a publish; a category offer is re-resolved (frozen from here)
+    draft = { ...value, schedule: programSchedule };
     const pub = OM.validatePublishable(draft, t);
     if (!pub.ok) return reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason });
     const dish = await resolveDishes(deps, draft);

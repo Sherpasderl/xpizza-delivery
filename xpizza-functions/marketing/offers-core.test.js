@@ -34,16 +34,27 @@ const clone = (v) => (v == null ? null : JSON.parse(JSON.stringify(v)));
 
 // production transaction semantics over the shared fake (see header)
 function prodDb(fake) {
+  // STRICT (Codex program r1): RTDB never retains an empty object (a removed leaf prunes its empty parents) and a snapshot is IMMUTABLE
+  // (every val() is a fresh copy — a caller mutating it never changes what the next reader sees)
+  const prune = (p) => { const ks = String(p).split('/').filter(Boolean); for (let i = ks.length - 1; i > 0; i--) { const up = ks.slice(0, i).join('/'); const v = fake.get(up); if (v && typeof v === 'object' && !Object.keys(v).length) fake.put(up, null); else break; } };
+  const snap = (v) => ({ val: () => (v === null || v === undefined ? null : JSON.parse(JSON.stringify(v))), exists: () => v !== null && v !== undefined });
   return {
     ref(p = '') {
       const r = fake.ref(p);
-      return { ...r, get: () => r.once(),
+      return { ...r,
+        async once() { const s0 = await r.once(); return snap(s0.val()); },
+        get() { return this.once(); },
+        async set(v) { await r.set(v); if (v === null) prune(p); },
+        async remove() { await r.remove(); prune(p); },
+        async update(m) { await r.update(m); for (const [k, v] of Object.entries(m)) if (v === null) prune(`${p}/${k}`); },
         async transaction(fn) {
           for (const pp of fake.failReads) if (String(p).startsWith(pp)) throw new Error(`injected failure: ${p}`);
           const cold = fn(null);
-          if (cold === undefined) return { committed: false, snapshot: { val: () => null } };
-          if (fake.get(p) === null) { fake.put(p, cold); return { committed: true, snapshot: { val: () => fake.get(p) } }; }
-          return r.transaction(fn);
+          if (cold === undefined) return { committed: false, snapshot: snap(null) };
+          if (fake.get(p) === null) { fake.put(p, cold); if (cold === null) prune(p); return { committed: true, snapshot: snap(fake.get(p)) }; }
+          const out = await r.transaction(fn);
+          if (out.committed && fake.get(p) === null) prune(p);
+          return { committed: out.committed, snapshot: snap(out.snapshot.val()) };
         } };
     },
   };
@@ -545,7 +556,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
     {
       const { fake, deps } = await setup();
       const pct = (o = {}) => offer({ name: 'Diez por ciento', type: 'pct', params: { pct: 10 }, ...o });
-      const count = () => Object.keys(fake.get('marketing_offers/tb') || {}).length;
+      const count = () => Object.values(fake.get('marketing_offers/tb') || {}).filter((r) => r.state !== 'refused').length;   // a refused attempt is terminal, never counted
       const OPA = 'op_' + 'a'.repeat(20), OPB = 'op_' + 'b'.repeat(20), OPC = 'op_' + 'c'.repeat(20);
       const p1 = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OPA, program: true });
       assert.deepStrictEqual([p1.status, p1.body.offer && p1.body.offer.state], [200, 'active'], `program: true creates AND programs in one call (${JSON.stringify(p1.body)})`);
@@ -555,7 +566,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([retry.status, retry.body.offer.id, retry.body.offer.state, count()], [200, p1.body.offer.id, 'active', n1], 'a retry with the SAME op_id ⇒ the same programmed offer');
       const reload = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OPB, program: true });   // the reply was lost, the page reloaded: a NEW op_id
       assert.deepStrictEqual([reload.status, reload.body.error, reload.body.offer_id], [409, 'duplicate', p1.body.offer.id], `a lost reply then a reload with a NEW op_id ⇒ 409 duplicate carrying the programmed offer's id (${JSON.stringify(reload.body)})`);
-      assert.strictEqual(count(), n1, 'all or nothing: the refused create left NO record behind');
+      assert.strictEqual(count(), n1, 'all or nothing: the refused create left no offer behind (only its terminal `refused` record, never counted)');
       ok('program: true creates + programs in one call; a same-op_id retry ⇒ the same offer; a reload with a new op_id ⇒ 409 duplicate, nothing left behind');
       // two tabs racing (two op_ids, the same offer) ⇒ ONE programmed — the backstop is judged inside the brand txn
       const tab = (op) => save(deps, `t-${OWNER}`, { offer: pct({ name: 'Doble pestaña', params: { pct: 20 } }), op_id: op, program: true });
@@ -592,6 +603,72 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('repeat + program: true copies, dates and programs in one call (source bound); a second one ⇒ 409 duplicate');
     }
 
+    // ── 5m. Codex program r1 ──
+    {
+      const { fake, db, deps } = await setup();
+      const pct = (o = {}) => offer({ name: 'Diez por ciento', type: 'pct', params: { pct: 10 }, ...o });
+      const liveAt = (id) => { const e = fake.get(`marketing_live_b/tb/tb_centro/${id}`); return e && e.removed !== true ? e.rev : null; };
+      // P1-1 (a failed brand txn after the record CAS ⇒ a 503): a same-op RETRY repairs the mirror and only then answers 200
+      fake.failReads.add('marketing_live_b/tb');
+      const OP1 = 'op_' + 'j'.repeat(20);
+      const first = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OP1, program: true });
+      fake.failReads.clear();
+      assert.strictEqual(first.status, 503, 'premise: the record CAS committed, the brand txn failed (every retry) ⇒ 503');
+      const id1 = Object.keys(fake.get('marketing_offers/tb')).find((k) => fake.get(`marketing_offers/tb/${k}`).params.pct === 10);
+      assert.strictEqual(liveAt(id1), null, 'premise: the record is ahead of its mirror');
+      const again = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OP1, program: true });
+      assert.deepStrictEqual([again.status, again.body.offer && again.body.offer.id, again.body.offer && again.body.offer.state], [200, id1, 'active'], 'the retry answers the SAME offer…');
+      assert.strictEqual(liveAt(id1), again.body.offer.rev, '…ONLY after re-running the brand txn: the mirror is live at the record\'s rev (repair-on-replay)');
+      ok('Codex P1-1: a same-op retry after a failed brand txn repairs the mirror (record + mirror at one rev) before answering 200');
+      // P1-2 (a refused program is NEVER deleted): the refusal is a terminal `refused` state at a NEW rev; its retry answers the refusal
+      const OP2 = 'op_' + 'k'.repeat(20);
+      const dup = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OP2, program: true });
+      assert.deepStrictEqual([dup.status, dup.body.error, dup.body.offer_id], [409, 'duplicate', id1], 'premise: a duplicate ⇒ 409');
+      const refusedId = Object.keys(fake.get('marketing_offers/tb')).find((k) => fake.get(`marketing_offers/tb/${k}`).state === 'refused');
+      const rr = fake.get(`marketing_offers/tb/${refusedId}`);
+      assert.deepStrictEqual([rr && rr.state, rr && rr.rev], ['refused', 2], 'the refused create is KEPT as a terminal `refused` record at a NEW rev (never deleted, never a reused rev)');
+      const again2 = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OP2, program: true });
+      assert.deepStrictEqual([again2.status, again2.body.error, again2.body.offer_id], [409, 'duplicate', id1], 'its same-op retry answers the SAME refusal (never recreates rev 1)');
+      assert.strictEqual(fake.get(`marketing_offers/tb/${refusedId}`).rev, 2, 'and writes nothing');
+      assert.ok(!(await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.some((o) => o.id === refusedId), 'a refused attempt is never listed to the merchant');
+      ok('Codex P1-2: a refused program becomes a terminal `refused` record at a new rev; its retry answers the same 409; never listed');
+      // cleanup failure: the refusal's own write fails ⇒ 503; the same-op retry re-judges (repair-on-replay) and records the refusal
+      const OP3 = 'op_' + 'l'.repeat(20);
+      let failNext = true;
+      const flaky = { ref: (p) => { const r = db.ref(p);
+        if (/^marketing_offers\/tb\/o_/.test(p)) return { ...r, transaction: async (fn) => { const cur = fake.get(p); if (failNext && cur && cur.state === 'active' && cur.rev === 1) { failNext = false; throw new Error('the refusal write failed'); } return r.transaction(fn); } };
+        return r; } };
+      const f1 = await save({ ...deps, db: flaky }, `t-${OWNER}`, { offer: pct(), op_id: OP3, program: true });
+      assert.strictEqual(f1.status, 503, 'premise: the refusal write failed ⇒ 503');
+      const f2 = await save(deps, `t-${OWNER}`, { offer: pct(), op_id: OP3, program: true });
+      assert.deepStrictEqual([f2.status, f2.body.error, f2.body.offer_id], [409, 'duplicate', id1], 'the same-op retry re-judges and answers the refusal (never a 200 active with no mirror)');
+      ok('a failed refusal write ⇒ 503; the same-op retry re-judges and records the refusal');
+      // P2-3: the replay runs BEFORE the publish validation; the start-in-future rule never applies to a LIVE edit (caps / end)
+      const late = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer: pct(), op_id: OP1, program: true });
+      assert.strictEqual(late.status, 200, 'a same-op retry after the start passed REPLAYS (never 400 start_past)');
+      const liveEdit = await save({ ...deps, now: () => NOW + 3 * DAY }, `t-${OWNER}`, { offer_id: id1, expected_rev: again.body.offer.rev, offer: pct({ caps: { redemptions: 90, spend_cents: null, weekly: false } }), program: true });
+      assert.strictEqual(liveEdit.status, 200, `program on an ALREADY LIVE offer (a caps edit after its start) is never refused start_past (${JSON.stringify(liveEdit.body)})`);
+      ok('P2-3: replay precedes the publish validation; a live edit with program is never refused start_past');
+      // P2-4: set-valued params are normalised (item order) and the DUPLICATE is judged first on every path — draft programming included
+      const bogo = (items, o = {}) => offer({ name: 'Dos por uno', params: { items, free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: { from: 600, to: 720 } }, ...o });
+      const b1 = await save(deps, `t-${OWNER}`, { offer: bogo([K1, K2]), op_id: 'op_' + 'n'.repeat(20), program: true });
+      assert.strictEqual(b1.status, 200, 'premise: programmed');
+      const b2 = await save(deps, `t-${OWNER}`, { offer: bogo([K2, K1]), op_id: 'op_' + 'o'.repeat(20), program: true });
+      assert.deepStrictEqual([b2.status, b2.body.error, b2.body.offer_id], [409, 'duplicate', b1.body.offer.id], 'the same items in ANOTHER order ⇒ a duplicate (set-valued params normalised), judged BEFORE the overlap rule');
+      const draft = await created(deps, { name: 'Dos por uno', params: { items: [K2, K1], free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [1], window: { from: 600, to: 720 } } });
+      const pub = await move(deps, `t-${OWNER}`, { offer_id: draft.id, to: 'active', expected_rev: 1 });
+      assert.deepStrictEqual([pub.status, pub.body.error, pub.body.offer_id], [409, 'duplicate', b1.body.offer.id], 'publishing a draft identical to a live offer ⇒ duplicate (first), not overlap');
+      ok('P2-4: set-valued params normalised; the duplicate is judged first on every path (draft programming included)');
+      // P2-5: the repeat's full schedule is validated through the shared model BEFORE any claim or write
+      const src = await published(deps, { name: 'Fuente', type: 'pct', params: { pct: 40 } });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: src.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const OPS = 'op_' + 't'.repeat(20);
+      const bad = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', source_id: src.id, op_id: OPS, program: true, schedule: { start: 9e15, end: 9.1e15 } }));
+      assert.deepStrictEqual([bad.status, bad.body.field], [400, 'schedule'], 'a timestamp beyond the shared model\'s maximum ⇒ 400 schedule');
+      assert.strictEqual(fake.get(`marketing_offer_ops/tb/${OPS}`) ?? null, null, 'and NO claim was written for it');
+      ok('P2-5: the repeat\'s schedule is validated by the shared model before any claim or write');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();
@@ -607,7 +684,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: later.id, to: 'active', expected_rev: 1 })).status, 200, 'dates that do not meet never clash');
       ok('overlap: same dish × overlapping hours refused with names; midnight edge, other dishes and later dates pass');
       const k2sat = await published(deps, { name: 'Sábado tarde K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [6], window: { from: 1380, to: 60 } } });
-      const k2sun = await created(deps, { name: 'Domingo K2', params: { items: [K2], free_per_order: 1 }, schedule: { start: NOW + 40 * DAY, days: [0], window: { from: 30, to: 120 } } });
+      const k2sun = await created(deps, { name: 'Domingo K2', params: { items: [K2], free_per_order: 2 }, schedule: { start: NOW + 40 * DAY, days: [0], window: { from: 30, to: 120 } } });
       const wrap = await move(deps, `t-${OWNER}`, { offer_id: k2sun.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([wrap.status, wrap.body.error, wrap.body.with], [409, 'overlap', ['Sábado tarde K2']], 'Saturday 23:00–01:00 runs into SUNDAY: the week wraps');
       void k2sat;
@@ -635,7 +712,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('race: two clashing publishes at once ⇒ exactly one wins; the other refused (overlap), its record back to draft, one mirror');
       // a live edit that would now clash (a later end) is judged the same way and undone
       const c = await published(deps, { name: 'Diciembre K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 10 * DAY, days: [1], window: null } });
-      await published(deps, { name: 'Enero K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + 12 * DAY, end: NOW + 20 * DAY, days: [1], window: null } });
+      await published(deps, { name: 'Enero K3', params: { items: [K3], free_per_order: 2 }, schedule: { start: NOW + 12 * DAY, end: NOW + 20 * DAY, days: [1], window: null } });
       const ext = await save(deps, `t-${OWNER}`, { offer_id: c.id, expected_rev: 2, offer: offer({ name: 'Diciembre K3', params: { items: [K3], free_per_order: 1 }, schedule: { start: NOW + DAY, end: NOW + 15 * DAY, days: [1], window: null } }) });
       assert.deepStrictEqual([ext.status, ext.body.error, ext.body.with], [409, 'overlap', ['Enero K3']], 'a later end that runs into another offer is refused');
       assert.strictEqual(fake.get(`marketing_live_b/tb/tb_centro/${c.id}/schedule/end`), NOW + 10 * DAY, 'the edited offer keeps its OLD mirror');
