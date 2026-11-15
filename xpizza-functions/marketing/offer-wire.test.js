@@ -135,6 +135,19 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const fresh = await place(w, items, null, { orderId: 'ordD' });
     assert.strictEqual(fresh.offer, null, `${L}: a new order sees the pause`);
   });
+  await cell('MW-STORED-ENVIO: v1 (Codex REVISE #1 P1) — a LIVE card checkout grandfathered at a STORED restaurant envío waiver is never resumed at it: the REAL chargeContext grandfathers it, withOffer refuses it offer_changed (no reuse at the old total); a fresh placement of the same order charges the full fee, no offer', async (L) => {
+    const w = await xworld(); const items = [line('Pepperoni', 2)];
+    const rec = DW.withDelivery({ ctx: P.withDeliveryDiscount(envio(), 6000, 'restaurant') }, orderBreakdownCents(440, RID));   // the REAL recorded fields of an envío-waived order
+    w.fake.put('orders/ordE', { ...DW.orderFields(rec), restaurant_id: RID, order_type: 'delivery', lat: 14.11, lng: -87.21, hub_lat: 14.1, hub_lng: -87.2, payment_status: 'pending', active_attempt_id: 'attE',
+      offer: { offer_id: 'o_aaaaaaaaaaaa', rev: 1, type: 'envio', name: 'Envío', discount_cents: 0, waived_envio_cents: 6000, funded_by: 'restaurant' } });   // a pre-v1 envío order (no v1 writer can make one)
+    w.fake.put('payment_attempts/attE', { hosted_state: 'created', hosted_expires_at: Date.now() + 600000, hosted_checkout_url: 'https://x' });
+    const dq0 = await DW.chargeContext(w.db, 'ordE', { ctx: envio() }, { order_type: 'delivery', lat: 14.11, lng: -87.21 }, Date.now(), Promise.resolve({ pricing: null }));
+    assert.deepStrictEqual([dq0 && dq0.grandfathered, dq0 && dq0.ctx && dq0.ctx.promo_discount_cents, dq0 && dq0.ctx && dq0.ctx.delivery_discount_funder], [true, 6000, 'restaurant'], `${L}: premise — the REAL chargeContext grandfathers the stored waiver`);
+    const dq = await OW.withOffer({ db: w.db, rid: RID, items, tables: TABLES, baseTotalL: foodL(items), dq: dq0, reward: null, app: true, orderId: 'ordE', nowMs: NOW + 3600000, placement: true, log: quiet });
+    assert.deepStrictEqual([dq && dq.refusal, dq && dq.httpStatus, OW.offerOf(dq)], ['offer_changed', 409, null], `🔴 ${L}: the stored waiver is refused, never resumed`);
+    const fresh = await place(w, items, null, { ctx: envio(), orderId: 'ordE' });
+    assert.deepStrictEqual([fresh.offer, fresh.recorded.total_cents, fresh.recorded.promo_discount_cents || 0, 'delivery_discount_funder' in fresh.recorded], [null, 50000, 0, false], `🔴 ${L}: a fresh placement charges the full fee, no offer`);
+  });
   await cell('MW-FAIL: an unreadable mirror ⇒ no offer, logged with a code only — and a quote that had one is refused offer_changed at placement', async (L) => {
     const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const items = [line('Pepperoni', 2)];

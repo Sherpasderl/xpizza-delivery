@@ -62,6 +62,9 @@ function waivedCtx(ctx, offer) {
 async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null, app = false, orderId = null, nowMs = Date.now(), placement = false, log = console }) {
   if (reward || !app) return dq;
   if (dq && dq.refusal) return dq;                       // a refused envío answers first, untouched
+  // v1 (owner 11-16; Codex REVISE #1 P1): a restaurant envío waiver is never honoured — a live card checkout grandfathered at a STORED one
+  // is not resumed at its old total: refused offer_changed before any acquire (no reuse, nothing charged or refunded; the client re-quotes)
+  if (dq && dq.grandfathered && dq.ctx && dq.ctx.delivery_discount_funder === 'restaurant') return { refusal: 'offer_changed', httpStatus: 409 };
   try {
     const cfg = await configOf(db, nowMs);
     if (!cfg || cfg.offers_enabled !== true) return dq;

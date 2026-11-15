@@ -373,6 +373,26 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E14 offer_next under the minimum (type, remaining, off); at the minimum the lps offer applies with its min_cents and no offer_next');
 
+  // ── E15 (Codex REVISE #1 P1). a LIVE card checkout whose stored order carries a restaurant envío waiver is never resumed at it ──
+  {
+    const xid = (await liveIds(BRAND.x_pizza, 'x_pizza'))[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
+    void xid;
+    const k = cartOf('x_pizza', 3);
+    await clean(); offerCaches(); CHARGED.length = 0;
+    const qk = await quote('x_pizza', k.s.items);
+    const kb = bodyOf('x_pizza', 'online', k.s, { quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents });
+    await clean(); const r1 = await post(app.chargeOnlineOrder, kb);
+    assert.ok(r1.status === 200 && CHARGED.length === 1, `E15 premise: a live checkout issued (${r1.text.slice(0, 160)})`);
+    const o = await order(kb.order_id); const aid = o.active_attempt_id;
+    // the order as a pre-v1 envío offer would have stored it (no v1 writer can): the fee waived, funded by the restaurant
+    await rtdb.ref(`orders/${kb.order_id}`).update({ promo_discount_cents: o.delivery_cents, delivery_discount_funder: 'restaurant', offer: { offer_id: 'o_aaaaaaaaaaaa', rev: 1, type: 'envio', name: 'Envío', discount_cents: 0, waived_envio_cents: o.delivery_cents, funded_by: 'restaurant' } });
+    await clean(); const r2 = await post(app.chargeOnlineOrder, kb);
+    assert.deepStrictEqual([r2.status, r2.json && r2.json.error], [409, 'offer_changed'], `🔴 E15: the stored envío waiver is refused, never resumed (${r2.text.slice(0, 200)})`);
+    const after = await order(kb.order_id);
+    assert.deepStrictEqual([CHARGED.length, after.active_attempt_id, (await rtdb.ref(`payment_attempts/${aid}/hosted_state`).get()).val()], [1, aid, 'created'], '🔴 E15: no new charge, the attempt untouched (nothing charged, refunded or rotated)');
+  }
+  ok('E15 a live card checkout at a stored restaurant envío waiver: refused offer_changed, no reuse, no new charge, the attempt untouched');
+
   // ── E6. a legacy-form order ⇒ no offer ──
   {
     const { s } = cartOf(THIRD);
