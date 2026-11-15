@@ -21,7 +21,7 @@ const T = NOW + 3600000; const WEEK = 7 * 86400000;
 async function offered(caps) {
   const w = await world({ rid: RID, menu: MENU });
   const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 }, caps: { redemptions: null, spend_cents: null, weekly: false, ...caps } });
-  const offer = OP.offerFor({ cfg: await CFG.readMarketingConfig(w.db), live: w.fake.get(`marketing_live/${RID}`), nowMs: T, items, rid: RID, tables: TABLES, baseTotalL: 400 });
+  const offer = OP.offerFor({ cfg: await CFG.readMarketingConfig(w.db), live: w.live(), nowMs: T, items, rid: RID, tables: TABLES, baseTotalL: 400 });
   assert.ok(offer && offer.offer_id === id, 'premise: the REAL offer ctx');
   return { w, id, offer };
 }

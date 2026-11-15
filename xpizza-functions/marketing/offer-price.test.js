@@ -70,7 +70,7 @@ async function world({ offers_enabled = true } = {}) {
     return s.body.offer.id;
   };
   const cfg = async () => CFG.readMarketingConfig(db);
-  const live = () => fake.get('marketing_live/tb_centro');
+  const live = () => fake.get('marketing_live_b/tb/tb_centro');   // 3a's brand-keyed mirror (66987f452)
   return { fake, db, publish, cfg, live };
 }
 const line = (key, qty = 1, extras = []) => ({ name: key, qty, extras });

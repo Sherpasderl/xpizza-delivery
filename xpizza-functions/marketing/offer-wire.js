@@ -5,7 +5,9 @@
 //   too. No offer ⇒ the SAME `dq` object (OFF / no candidate / a reward / a legacy form ⇒ byte-identical).
 // Reads (rule 7):
 //   · platform_config/marketing: per-instance cache ≤ 60 s (3a Q9, ruled); an unreadable config ⇒ OFF and NOT cached.
-//   · marketing_live/{rid}: ONE read; quotes cached per instance ≤ 60 s, placement reads FRESH (Q6: a pause is honoured at once).
+//   · marketing_live_b/{brandId}/{rid} (3a's brand-keyed mirror, 66987f452): ONE read; quotes cached per instance ≤ 60 s, placement reads
+//     FRESH (Q6: a pause is honoured at once). The brand by marketing/brand-of (brand-model brandIdOf — the writer's own rule; cached
+//     60 s, quotes and placements alike: a branch's brand does not move); no brand ⇒ no mirror read, no offer (fail closed).
 //   · the chosen offer's marketing_usage/{offerId}: ONE fresh point read (only when an offer would apply) — a capped offer is skipped.
 //   · a card retry of an EXISTING order reuses the offer frozen on it (orders/{id}/offer, one point read, only when offers are on):
 //     the order's economics are fixed at its first placement, never re-priced by a later mirror (promo §10 «frozen economics»).
@@ -20,7 +22,8 @@ const OM_LIVE_MAX = require('./offer-model').LIMITS.live_max;
 
 const TTL_MS = 60000;
 let cfgCache = null;                 // { at, v }
-const liveCache = new Map();         // rid → { at, v }
+const liveCache = new Map();         // `${brandId}/${rid}` → { at, v }
+const BO = require('./brand-of');
 const fresh = (c, nowMs) => !!c && nowMs >= c.at && nowMs - c.at < TTL_MS;
 const codeOf = (e) => (e && e.code != null ? String(e.code).slice(0, 40) : 'unknown');
 
@@ -31,10 +34,13 @@ async function configOf(db, nowMs) {
   return v;
 }
 async function mirrorOf(db, rid, nowMs, { cached }) {
-  const c = liveCache.get(rid);
+  const brand = await BO.brandOf(db, rid, { nowMs, cached: true });
+  if (!brand) return null;                                   // an unresolvable brand: no offer (never a guessed key)
+  const key = `${brand}/${rid}`;
+  const c = liveCache.get(key);
   if (cached && fresh(c, nowMs)) return c.v;
-  const v = (await db.ref(`marketing_live/${rid}`).once('value')).val();
-  liveCache.set(rid, { at: nowMs, v });
+  const v = (await db.ref(`marketing_live_b/${key}`).once('value')).val();
+  liveCache.set(key, { at: nowMs, v });
   return v;
 }
 
@@ -99,6 +105,6 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
 }
 
 const offerOf = (dq) => (dq && OP.isServerOfferCtx(dq.offer) ? dq.offer : null);
-const _resetCaches = () => { cfgCache = null; liveCache.clear(); };   // tests only
+const _resetCaches = () => { cfgCache = null; liveCache.clear(); BO._reset(); };   // tests only
 
 module.exports = { withOffer, offerOf, storedOfferOf, TTL_MS, _resetCaches };

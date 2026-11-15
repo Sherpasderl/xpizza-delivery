@@ -29,7 +29,7 @@ const client = (status) => ({ interpretStatus: realClient.interpretStatus, verif
 async function heldOrder(extra = {}) {
   const w = await world({ rid: RID, menu: MENU });
   const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
-  const offer = OP.offerFor({ cfg: await CFG.readMarketingConfig(w.db), live: w.fake.get(`marketing_live/${RID}`), nowMs: T, items, rid: RID, tables: { restaurantId: RID, menu: MENU, extras: {} }, baseTotalL: 400 });
+  const offer = OP.offerFor({ cfg: await CFG.readMarketingConfig(w.db), live: w.live(), nowMs: T, items, rid: RID, tables: { restaurantId: RID, menu: MENU, extras: {} }, baseTotalL: 400 });
   assert.ok(offer, 'premise: the REAL offer');
   w.fake.put('orders/PZ-1', { order_id: 'PZ-1', restaurant_id: RID, customer_name: 'Ana', customer_phone: '50488887777', items_text: 'x2', total: 350, total_cents: 35000, subtotal_cents: 35000, tax_cents: 0,
     payment_method: 'online', payment_status: 'pending', order_type: 'pickup', pickup_time: 'standard', status: 'pending_payment', active_attempt_id: 'A', payment_fingerprint: 'fp', created_at: 1, offer: OP.frozenOf(offer), ...extra });

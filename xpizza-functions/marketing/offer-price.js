@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-5f-marketing-price r0 (APPROVED 2026-11-14) — offerFor: the ONE best restaurant offer for an order, PURE.
-//   Input: the marketing config (marketing/config readMarketingConfig), this branch's live mirror (3a's marketing_live/{rid}, read by the
+//   Input: the marketing config (marketing/config readMarketingConfig), this branch's live mirror (3a's marketing_live_b/{brandId}/{rid}, read by the
 //   caller), the cart, its GROSS food total (computeServerTotal's lempiras) and the server envío ctx. Output: null, or a SERVER offer ctx
 //   { offer_id, rev, type, name, discount_cents, waived_envio_cents } — recognised by identity (isServerOfferCtx), so a request body can
 //   never mint one (the delivery ctx precedent, delivery-pricing.js mint).

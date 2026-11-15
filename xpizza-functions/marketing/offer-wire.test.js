@@ -212,13 +212,57 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const capped = await xworld();
     const big = await capped.publish({ type: 'lps', params: { off_cents: 9000, min_cents: 50000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
     await capped.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 60000 } });
-    const bigOffer = OP.offerFor({ cfg: { offers_enabled: true }, live: capped.fake.get(`marketing_live/${RID}`), nowMs: NOW + 3600000, items: [line('Pepperoni', 3)], rid: RID, tables: TABLES, baseTotalL: foodL([line('Pepperoni', 3)]) });
+    const bigOffer = OP.offerFor({ cfg: { offers_enabled: true }, live: capped.live(), nowMs: NOW + 3600000, items: [line('Pepperoni', 3)], rid: RID, tables: TABLES, baseTotalL: foodL([line('Pepperoni', 3)]) });
     assert.strictEqual(bigOffer.offer_id, big, `${L}: premise — the big one applies at L 660`);
     assert.ok((await OU.holdCounters(capped.db, bigOffer, { salesCents: 66000, nowMs: NOW + 3600000 })).ok, `${L}: premise — its one use held`);
     OW._resetCaches();
     assert.deepStrictEqual((await quote(capped, items)).dqo.offer_next, { type: 'lps', remaining_cents: 16000, off_cents: 5000 }, `${L}: the capped one is skipped`);
     const off = await xworld({ offers_enabled: false }); OW._resetCaches();   // the per-instance config cache held «on»
     assert.ok(!('offer_next' in (await quote(off, items)).dqo), `${L}: offers off ⇒ absent`);
+  });
+
+  // ── the brand-keyed mirror (3a's rekey 66987f452; advisor 11-14 GO + ruling: the brand by brand-model brandIdOf via marketing/brand-of) ──
+  await cell('OW-BRAND-KEY: the mirror is read at marketing_live_b/{the identity\'s brand}/{rid} — a rid NAMED x_pizza whose identity names brand xp prices xp\'s entry, never a decoy keyed by the rid string nor one at the old path', async (L) => {
+    const w = await xworld(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 10000 } });
+    const entry = w.live()[id];
+    assert.ok(entry, `${L}: premise — 3a's writer mirrored it under ${BRAND}`);
+    const decoy = { ...entry, params: { ...entry.params, off_cents: 9000 } };
+    w.fake.put(`marketing_live_b/${RID}/${RID}/${id}`, decoy); w.fake.put(`marketing_live/${RID}/${id}`, decoy);
+    const cdb = counting(w.db);
+    const { dqo } = await quote(w, [line('Pepperoni', 2)], { db: cdb });
+    assert.strictEqual(OW.offerOf(dqo) && OW.offerOf(dqo).discount_cents, 5000, `🔴 ${L}: ${BRAND}'s entry priced, never a decoy`);
+    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')), [`marketing_live_b/${BRAND}/${RID}`], `🔴 ${L}: exactly the brand-keyed read`);
+  });
+
+  await cell('OW-LEGACY-E2E: both prod-shaped legacy singletons (identity WITHOUT brand_id, a legacy brands/{rid}) — 3a\'s REAL writer mirrors under the brand brand-of resolves (writer and reader agree), and a quote and a placement both price the offer', async (L) => {
+    const BO = require('./brand-of');
+    for (const rid of ['x_pizza', 'la_musa']) {
+      OW._resetCaches(); BO._reset();
+      const w = await world({ rid, menu: MENU, legacy: true });
+      const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 10000 } });
+      const brand = await BO.brandOf(w.db, rid, { nowMs: NOW, cached: false });
+      assert.strictEqual(brand, rid, `🔴 ${L}: ${rid} resolves to its own legacy brand`);
+      assert.ok(w.fake.get(`marketing_live_b/${brand}/${rid}/${id}`), `🔴 ${L}: ${rid} — the writer keyed the mirror by the SAME brand the reader resolves`);
+      const tables = { restaurantId: rid, menu: MENU, extras: {} }; const items = [{ ...line('Pepperoni', 2), id: 'Pepperoni' }];   // id + name: priced in either key mode (menu-pricing defaultKeyMode)
+      const t = computeServerTotal(items, rid, tables); assert.strictEqual(t.error, null, 'premise');
+      const base = { db: w.db, rid, items, tables, baseTotalL: t.total, reward: null, app: true, log: quiet };
+      const q = await OW.withOffer({ ...base, dq: { ctx: null, uid: 'cust1' }, nowMs: NOW + 3600000 });
+      assert.strictEqual(OW.offerOf(q) && OW.offerOf(q).offer_id, id, `🔴 ${L}: ${rid} — the quote prices the offer`);
+      const pl = await OW.withOffer({ ...base, dq: null, nowMs: NOW + 3600000 + 60000, placement: true });
+      assert.strictEqual(OW.offerOf(pl) && OW.offerOf(pl).offer_id, id, `🔴 ${L}: ${rid} — the placement prices the offer`);
+    }
+  });
+
+  await cell('OW-BRAND-NONE: a branch whose brand cannot be resolved (no identity.brand_id and no legacy record) ⇒ no offer, and no mirror is read (fail closed)', async (L) => {
+    require('./brand-of')._reset();
+    const w = await world({ rid: 'lm_none', menu: MENU, legacy: true });
+    await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 10000 } });
+    w.fake.put('brands/lm_none', null);
+    const cdb = counting(w.db);
+    const items = [line('Pepperoni', 2)]; const tables = { restaurantId: 'lm_none', menu: MENU, extras: {} };
+    const q = await OW.withOffer({ db: cdb, rid: 'lm_none', items, tables, baseTotalL: computeServerTotal(items, 'lm_none', tables).total, dq: { ctx: null, uid: 'cust1' }, reward: null, app: true, nowMs: NOW + 3600000, log: quiet });
+    assert.strictEqual(OW.offerOf(q), null, `🔴 ${L}: no brand ⇒ no offer`);
+    assert.ok(!cdb.reads.some((p) => p.startsWith('marketing_live')), `🔴 ${L}: no mirror read (${cdb.reads})`);
   });
 
   FINISHED = true;

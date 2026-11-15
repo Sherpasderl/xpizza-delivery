@@ -31,10 +31,13 @@ function prodDb(fake) {
 const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ id: `d${i}`, data: () => v })) });
 
 // rid + its brand; menu = { key: lempiras }; every dish in category 'c1'
-async function world({ rid = 'tb_centro', brand = 'tb', menu, extras = {}, offers_enabled = true } = {}) {
+// legacy: the PROD shape (advisor 11-14 read-only count: both live restaurants) — a legacy singleton brand record brands/{rid} and an
+// identity WITHOUT brand_id; the brand is then the rid by brand-model brandIdOf, for the writer and the readers alike
+async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = {}, offers_enabled = true, legacy = false } = {}) {
+  const brand = legacy ? rid : brandIn;
   const fake = createFakeDb({
-    brands: { [brand]: { name: 'Marca', active: true, locations: { [rid]: 'member' }, activation: { state: 'on', since: 1 } } },
-    restaurants: { [rid]: { identity: { brand_id: brand, name: rid, active: true, version: 1 } } },
+    brands: { [brand]: { name: 'Marca', active: true, locations: { [rid]: 'member' }, activation: { state: legacy ? 'legacy' : 'on', since: 1 } } },
+    restaurants: { [rid]: { identity: { ...(legacy ? {} : { brand_id: brand }), name: rid, active: true, version: 1 } } },
   });
   const db = prodDb(fake);
   assert.strictEqual((await R.mutateRoster({ db: fake, now: () => 1 }, brand, { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@m.hn' } })).ok, true, 'premise: owner');
@@ -63,7 +66,8 @@ async function world({ rid = 'tb_centro', brand = 'tb', menu, extras = {}, offer
     const cur = fake.get('platform_config/marketing');
     assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: cur.policy_version, config: cfgBody(on), actor: 'cli:op', now: 2 })).ok, true, 'premise: switch');
   };
-  return { fake, db, rid, publish, pause, setOffers };
+  const live = () => fake.get(`marketing_live_b/${brand}/${rid}`);   // the mirror as 3a's writer keys it (66987f452)
+  return { fake, db, rid, brand, publish, pause, setOffers, live };
 }
 
 module.exports = { world, prodDb, NOW, DAY, OWNER };
