@@ -368,7 +368,7 @@ function renderDetail() {
     p.append(pays); two.append(a, p); body.append(two);
     body.append(dsect('Horas de más pedidos', el('span', 'vd-peak', m.peak)));
     const heat = el('div', 'vd-heat'); heat.setAttribute('role', 'img'); heat.setAttribute('aria-label', 'Pedidos por día y hora');
-    heat.style.gridTemplateColumns = `34px repeat(${m.hours.length}, minmax(0, 1fr))`;
+    heat.style.gridTemplateColumns = ['38px', ...m.hours.map(() => '1fr')].join(' ');   // one column per shipped hour
     heat.append(el('span'));
     for (const h of m.hours) heat.append(el('span', 'vd-hh', String(h)));
     for (const row of m.heat) {
