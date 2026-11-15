@@ -449,4 +449,4 @@ async function marketingOfferRepeatCore(deps, req) {
   });
 }
 
-module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)
+module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX, writeOffer };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)

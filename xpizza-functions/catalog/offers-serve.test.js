@@ -221,6 +221,12 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       assert.deepStrictEqual((await flagAt(tue)), { offers: [{ type: 'pct', pct: 10 }, { type: 'bogo' }] },
         'the flag: pct its percent, bogo no amount (envío is refused in v1); the out-of-window category offer is absent');
       assert.deepStrictEqual((await flagAt(satNight)).offers.filter((o) => o.type === 'bogo').length, 2, 'inside its window the category offer joins');
+      // defence in depth (Codex 11-15): an ACTIVE envío mirror entry (legacy shape — no v1 writer can make one) is never served
+      const envEntry = { rev: 2, brand_id: 'xb', name: 'Envío', type: 'envio', params: { min_cents: 30000 }, audience: 'all', schedule: sched };
+      assert.strictEqual(OS.publicOffer(envEntry, tue), null, 'publicOffer never serves an envío entry (v1 types only)');
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'e'.repeat(12)}`).set(envEntry);
+      assert.ok(!(await flagAt(tue)).offers.some((o) => o.type === 'envio'), 'an active envío mirror entry never reaches the directory flag');
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'e'.repeat(12)}`).set(null);
       assert.deepStrictEqual((await flagAt(NOW + 5 * DAY)).offers.filter((o) => o.type === 'bogo').length, 1, 'Saturday noon: outside 21:00–00:00 ⇒ absent');
       assert.strictEqual((await flagAt(NOW + 31 * DAY)), null, 'past their end (and outside the open-ended category offer\'s Fri/Sat window) ⇒ no flag at all');
       ok('offerFlagOf: { offers: [{ type, pct? , off_cents?, min_cents? }] } inside the window now; ended / out-of-window absent; no private field');

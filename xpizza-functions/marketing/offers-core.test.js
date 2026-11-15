@@ -874,6 +874,12 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.strictEqual(end.status, 200, `an old envío can still be ENDED (${JSON.stringify(end.body)})`);
       assert.strictEqual(OM.liveProjection({ ...base, rev: 9, state: 'active', schedule: sched }, 'tb'), null, 'liveProjection never projects an envío record');
       ok('an old envío record: listed, endable, never activated / repeated / projected');
+      // Codex 11-15 (a surviving mutant): an ACTIVE record whose projection is null (an unsupported type) is TOMBSTONED in the mirror,
+      // never written as a null entry — writeOffer directly (no public path can activate envío, so the fallback is only reachable here)
+      const next = { offers: {}, live: {}, ops: {} };
+      C.writeOffer(next, 'tb', draftId, { ...base, rev: 7, state: 'active', schedule: sched }, NOW);
+      assert.deepStrictEqual(next.live.tb_centro && next.live.tb_centro[draftId], { removed: true, rev: 7 }, 'an active envío record is tombstoned, never projected or nulled');
+      ok('writeOffer: an active record with a null projection ⇒ a tombstone');
     }
 
     // ── 6b. the race (advisor 11-14, rule 5): two clashing publishes at once — the per-branch transaction lets exactly one through ──
