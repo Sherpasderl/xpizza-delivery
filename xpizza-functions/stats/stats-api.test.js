@@ -202,6 +202,29 @@ const Q = (o) => ({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', .
     ok('unsettled yesterday computed live; never-computed days reported as missing');
   }
 
+  // 6b. 🔴 comparison.missing_days (advisor 11-15, Inicio «… el jueves pasado»): the comparison names its never-computed days with the
+  //     SAME rule as the main range — a stored ZERO day (the real nightly rollup above wrote 09-25..10-19) is present, a live day is
+  //     present, a never-computed day is missing. compare=none ⇒ comparison null (unchanged).
+  {
+    const zero = (await core(w)({ restaurantId: 'r_a', from: '2026-10-01', to: '2026-10-03', compare: 'previous' }, 'ownerA')).body;
+    assert.deepStrictEqual(zero.comparison.range, { from: '2026-09-28', to: '2026-09-30' }, 'premise: the previous window');
+    assert.strictEqual(zero.comparison.kpis.orders, 0, 'premise: the comparison days are stored ZERO days');
+    assert.deepStrictEqual(zero.comparison.missing_days, [], '🔴 CMP-MISSING-A: a stored zero day is NOT missing');
+    const gap = (await core(w)({ restaurantId: 'r_a', from: '2026-09-26', to: '2026-09-28', compare: 'previous' }, 'ownerA')).body;
+    assert.deepStrictEqual(gap.comparison.range, { from: '2026-09-23', to: '2026-09-25' }, 'premise: the previous window');
+    assert.deepStrictEqual(gap.comparison.missing_days, ['2026-09-23', '2026-09-24'], '🔴 CMP-MISSING-B: never-computed comparison days are named; the stored 09-25 is not');
+    assert.deepStrictEqual(gap.missing_days, [], 'premise: the main range is fully stored (its own field is unchanged)');
+    const wk = (await core(w)({ restaurantId: 'r_a', from: '2026-10-01', to: '2026-10-01', compare: 'previous_week' }, 'ownerA')).body;
+    assert.deepStrictEqual(wk.comparison.missing_days, ['2026-09-24'], '🔴 CMP-MISSING-B: previous_week names its never-computed day');
+    const nowEarly = T.dayStartMs('2026-10-21') + 3600000;   // 01:00 on the 21st: the 20th is NOT stored, it is computed live
+    const live = (await core(w, { nowMs: nowEarly })({ restaurantId: 'r_a', from: '2026-10-21', to: '2026-10-21', compare: 'previous' }, 'ownerA')).body;
+    assert.deepStrictEqual(live.comparison.range, { from: '2026-10-20', to: '2026-10-20' }, 'premise: yesterday is the comparison');
+    assert.deepStrictEqual(live.comparison.missing_days, [], '🔴 CMP-MISSING-C: a live (unsettled yesterday) comparison day is NOT missing');
+    const none = (await core(w)({ restaurantId: 'r_a', from: '2026-10-01', to: '2026-10-03', compare: 'none' }, 'ownerA')).body;
+    assert.strictEqual(none.comparison, null, 'compare=none ⇒ no comparison');
+    ok('comparison.missing_days: never-computed comparison days named; stored zero and live days are not (same rule as the main range)');
+  }
+
   // 7. 🔴 PRIVACY: no phone, name, address or hmac anywhere in a JSON or CSV response.
   {
     const bodies = [

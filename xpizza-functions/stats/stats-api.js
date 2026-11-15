@@ -283,7 +283,8 @@ async function getSalesStatsCore(deps, req) {
   let comparison = null;
   if (cmp) {
     const cm = B.mergeSummaries(r.cmpDates.map((d) => byDate.get(d)));
-    comparison = { range: cmp, ...shapePeriod(cm, r.cmpDates, byDate, firsts, cmp.from, p.granularity) };
+    // missing_days: the SAME rule as the main range below (a never-computed day ≠ zero; live days are present) — advisor 11-15, Inicio
+    comparison = { range: cmp, missing_days: r.cmpDates.filter((d) => !byDate.has(d)), ...shapePeriod(cm, r.cmpDates, byDate, firsts, cmp.from, p.granularity) };
     period.deltas = {
       sales_pct: pct(period.kpis.sales_cents, comparison.kpis.sales_cents),
       orders_pct: pct(period.kpis.orders, comparison.kpis.orders),
