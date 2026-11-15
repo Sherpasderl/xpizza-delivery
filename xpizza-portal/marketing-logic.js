@@ -187,8 +187,8 @@ export function actionsOf(o) {
 // res: { status, body } | { status: 200, body: null, malformed: true } | { transport: true } (api.js rawCall).
 //   saved   — a clean 200 whose offer is the one we wrote (the rev moved by exactly one; for a state move, the state we asked for)
 //   refused — a 4xx with the server's own code: NOTHING landed; { code, field?, reason?, with?, current_rev? } for the screen
-//   unknown — 503 / 500 / transport / a malformed 200: it MAY have landed (a failed unmirror or undo) ⇒ the LIST decides (UNKNOWN_WORD,
-//             r6.1). Never shown as success, never as a failure.
+//   unknown — 503 / 500 / transport / a malformed 200: it MAY have landed (a failed unmirror or undo) ⇒ a create / repeat / draft is confirmed
+//             ONCE under its op_id (marketing-builder sendConfirmed); otherwise the LIST decides (UNKNOWN_WORD, owner 11-15). Never shown as success, never as a failure.
 // attempt: { op: 'create'|'save'|'state'|'repeat', offerId?, expectedRev?, to? }
 export function classifyWrite(attempt, res) {
   if (!res || res.transport || res.malformed) return { outcome: 'unknown' };
@@ -246,7 +246,9 @@ export function refusalOf(status, b) {
 
 // An UNKNOWN write (r6.1, advisor 11-15): the client never classifies it — no recovery read, no inference from rev, content or state
 // (a CAS may still commit; a live mirror may still roll back). The screen closes, the list re-reads, and it says exactly this:
-export const UNKNOWN_WORD = 'No sabemos si se guardó. Revisá la lista.';
+// owner 11-15 (MOCKUP v5b 1c): the calm fallback — a save the page could not confirm (a create / repeat / draft after its ONE
+// confirmation, an edit / move at once). A neutral notice, never the error style.
+export const UNKNOWN_WORD = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
 
 // ── O1 · the «Campañas» list (MOCKUP-portal-marketing v5 s-home, owner-approved 11-14) ─────────────────────────────────────────
 // Each row: the type icon, the name (+ «N de M sucursales» when narrowed), the status as a dot + word, «Horario» in plain words.

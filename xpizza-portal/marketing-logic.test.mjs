@@ -248,10 +248,10 @@ test('an incomplete 200 is UNKNOWN (never «Oferta programada»); only ALLOWLIST
   for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'op_id_conflict'], [409, 'type_not_supported'], [409, 'offers_disabled']])
     assert.equal(ML.classifyWrite({ op: 'create' }, { status, body: { error } }).outcome, 'refused', `${status} ${error}: definite`);
 });
-// SHIP-GATE (r6.1): the ONE unknown-outcome string — the owner-approved meaning in the mockup's «vos» voice (advisor 11-15)
-test('SHIP-GATE copy: an UNKNOWN outcome reads exactly «No sabemos si se guardó. Revisá la lista.»; neither old string ships anywhere in xpizza-portal/', () => {
-  assert.equal(ML.UNKNOWN_WORD, 'No sabemos si se guardó. Revisá la lista.');
-  const OLD = ['Revisá tu lista antes de intentar de nuevo', 'Volvé a la lista antes de intentar de nuevo'];
+// SHIP-GATE (owner 11-15, confirm every save): the ONE fallback string — shown only when a save could not be confirmed (MOCKUP v5b 1c)
+test('SHIP-GATE copy: an UNCONFIRMED outcome reads exactly «No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.»; no old unknown string ships anywhere in xpizza-portal/', () => {
+  assert.equal(ML.UNKNOWN_WORD, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
+  const OLD = ['Revisá tu lista antes de intentar de nuevo', 'Volvé a la lista antes de intentar de nuevo', 'No sabemos si se guardó'];
   const files = readdirSync(DIR).filter((f) => /\.(js|html)$/.test(f) && !f.startsWith('__'));
   assert.ok(files.includes('marketing-builder.js') && files.includes('marketing-detail.js'), 'premise: the screens are scanned');
   for (const f of files) { const t = readFileSync(join(DIR, f), 'utf8'); for (const o of OLD) assert.ok(!t.includes(o), `${f}: the old unknown string «${o}» is gone`); }

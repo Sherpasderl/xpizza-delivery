@@ -619,7 +619,7 @@ test('R13 programming an offer IDENTICAL to one already live: 409 duplicate ⇒ 
   assert.equal(p.host().querySelector('.mk5b-err'), null, 'no error');
 });
 
-test('R14 storage blocked: still ONE call; a lost reply + a reload mints another op_id — the server\'s 409 duplicate keeps it to ONE live offer', async () => {
+test('R14 storage blocked: a lost reply is confirmed ONCE under the same op_id (owner 11-15); a reload mints another op_id — the server\'s 409 duplicate keeps it to ONE live offer', async () => {
   const b = await world();
   let p = await page({ b, noStorage: true });
   await p.signIn(); await p.open();
@@ -631,7 +631,9 @@ test('R14 storage blocked: still ONE call; a lost reply + a reload mints another
   await openCard(p, 'lps');
   p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
   const ops = saves(b).map((c) => c.body.op_id);
-  assert.notEqual(ops[1], ops[0], 'no storage: the reload could not keep the op_id');
+  assert.equal(ops.length, 3, 'the call + its ONE confirmation, then the reloaded page\'s call');
+  assert.equal(ops[1], ops[0], 'the confirmation: the SAME op_id');
+  assert.notEqual(ops[2], ops[0], 'no storage: the reload could not keep the op_id');
   assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer (the backstop)');
   assert.ok(p.host().querySelector('.mk5d-head'), 'the existing offer is shown');
 });
@@ -780,7 +782,7 @@ test('U1 an edit whose outcome is ambiguous (it never reached the server — the
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev, 'premise: nothing landed (yet)');
   assert.equal(dlg(p), null, 'the dialog closed');
-  assert.equal(notice(p) && notice(p).textContent, 'No sabemos si se guardó. Revisá la lista.', 'the ONE string');
+  assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'the ONE string');
   assert.ok(!p.text().includes('No pudimos guardar'), 'never «No pudimos guardar» (unchanged rev ≠ not landed)');
   assert.notEqual(toastText(p), 'Cambios guardados');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read: the offer as the server has it');
@@ -797,7 +799,7 @@ test('U2 an edit whose reply is lost after it landed ⇒ UNKNOWN, never success:
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'premise: it landed on the server');
   assert.notEqual(toastText(p), 'Cambios guardados', 'matching content is never taken as success');
-  assert.equal(notice(p).textContent, 'No sabemos si se guardó. Revisá la lista.');
+  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
   const after = b.calls.slice(from);
   assert.equal(after[0].fn, 'marketingOfferSave', 'premise: the write first');
   assert.equal(reads(b, from).length, 2, 'exactly the list\'s two branch reads — zero recovery reads between the write and the navigation');
@@ -832,7 +834,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   q.btn('Guardar cambios', dlg(q)).click(); await settle(150);
   assert.equal(dlg(q), null, 'the dialog closed');
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'no cached row while the UNKNOWN\'s read is pending');
-  assert.equal(notice(q).textContent, 'No sabemos si se guardó. Revisá la lista.');
+  assert.equal(notice(q).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
   go(); await settle(150);
   assert.ok(rowNamed(q, 'Almuerzo'), 'the fresh read paints');
   // … and a failed read paints the error box, never the old rows
@@ -842,25 +844,26 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   q.btn('Guardar cambios', dlg(q)).click(); await settle(250);
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'a failed read: no old rows under the error');
   assert.ok(q.btn('Reintentar'), 'the error box');
-  assert.equal(notice(q).textContent, 'No sabemos si se guardó. Revisá la lista.');
+  assert.equal(notice(q).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
 });
-test('U4 «Programar oferta» UNKNOWN ⇒ the list (nothing stored); the NEXT submission mints a NEW op_id — the server\'s duplicate refusal is the backstop', async () => {
+test('U4 two distinct «Programar oferta» submissions ⇒ two distinct op_ids; an UNCONFIRMED one (both calls ambiguous) ⇒ the list (nothing stored), the next click mints a NEW op_id', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
-  b.net.drop = ['marketingOfferSave'];
-  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
+  b.net.drop = ['marketingOfferSave', 'marketingOfferSave'];   // the call AND its one confirmation never reach the server
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
   assert.equal(dlg(p), null, 'the dialog closed');
-  assert.equal(notice(p).textContent, 'No sabemos si se guardó. Revisá la lista.');
+  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
   assert.deepEqual(Object.keys(localOf(p)).filter((k) => /^sherpa\.(op|unsettled)\./.test(k)), [], 'no operation is stored');
   await openCard(p, 'lps');
   assert.equal(p.host().querySelector('.mk5r-modal'), null, 'a fresh dialog — no frozen review');
   p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
   const ops = saves(b).map((c) => c.body.op_id);
-  assert.equal(ops.length, 2);
+  assert.equal(ops.length, 3, 'the first submission + its one confirmation, then the second submission');
   assert.ok(ops.every((x) => /^op_[A-Za-z0-9_-]{12,}$/.test(x)), 'each carries an op_id');
-  assert.notEqual(ops[1], ops[0], 'two submissions ⇒ two op_ids');
+  assert.equal(ops[1], ops[0], 'the confirmation re-sends the SAME op_id');
+  assert.notEqual(ops[2], ops[0], 'two submissions ⇒ two op_ids');
   assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer');
 });
 test('U5 op_id_conflict is a DEFINITE refusal: its word, the dialog stays, nothing resent; the next click mints a fresh op_id', async () => {
@@ -897,7 +900,7 @@ test('U6 «Pausar» from the detail, its outcome UNKNOWN ⇒ the detail closes, 
   b.net.lose = ['marketingOfferSetState'];
   p.btn('Pausar').click(); await settle(250);
   assert.equal(p.host().querySelector('.mk5d-head'), null, 'the detail closed');
-  assert.equal(notice(p).textContent, 'No sabemos si se guardó. Revisá la lista.');
+  assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read');
   assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'never a failure word');
 });
@@ -1007,14 +1010,14 @@ test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rul
 });
 
 // ═══ Codex r6.1-build REVISE #1 (advisor 11-15): every write path's lost reply is UNKNOWN; a dismissed write still lands in the list ═══
-const UNK = 'No sabemos si se guardó. Revisá la lista.';
+const UNK = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
 const unknownLanded = (p, label) => {
   assert.equal(notice(p) && notice(p).textContent, UNK, `${label}: the banner`);
   assert.ok(!/No pudimos guardar|No pudimos hacer el cambio|No pudimos programar/.test(p.text()), `${label}: never a failure word`);
   assert.equal(dlg(p), null, `${label}: no dialog`);
   assert.equal(sheet(p), null, `${label}: no sheet`);
 };
-test('L1 «Repetir» → «Programar», the reply lost ⇒ UNKNOWN: the sheet closes, the list re-reads, the banner', async () => {
+test('L1 «Repetir» → «Programar», the reply lost ⇒ ONE confirmation under the SAME op_id: the server replays the copy ⇒ its own toast, no banner, ONE copy', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
@@ -1023,19 +1026,32 @@ test('L1 «Repetir» → «Programar», the reply lost ⇒ UNKNOWN: the sheet cl
   await openDetail(p, 'Almuerzo');
   (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
   b.net.lose = ['marketingOfferRepeat'];
-  p.btn('Programar', sheet(p)).click(); await settle(250);
-  unknownLanded(p, 'repeat');
-  assert.equal(stored(b, 'Almuerzo').length, 2, 'premise: the copy landed on the server');
+  const from = b.calls.length;
+  p.btn('Programar', sheet(p)).click(); await settle(300);
+  const reps = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferRepeat');
+  assert.equal(reps.length, 2, 'the call + ONE confirmation');
+  assert.equal(reps[1].body.op_id, reps[0].body.op_id, 'the confirmation: the SAME op_id');
+  assert.equal(stored(b, 'Almuerzo').length, 2, 'the source + ONE copy (the confirmation replayed it)');
+  assert.equal(notice(p), null, 'confirmed: no banner');
+  assert.equal(sheet(p), null, 'the sheet closed');
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov', 'the same toast as a direct success');
 });
-test('L2 «Guardar borrador», the reply lost ⇒ UNKNOWN (never «Borrador guardado», never a refusal)', async () => {
+test('L2 «Guardar borrador», the reply lost ⇒ ONE confirmation under the SAME op_id (drafts too, owner 11-15) ⇒ «Borrador guardado», ONE draft', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
   b.net.lose = ['marketingOfferSave'];
-  p.btn('Guardar borrador', dlg(p)).click(); await settle(250);
-  unknownLanded(p, 'draft');
-  assert.notEqual(toastText(p), 'Borrador guardado');
+  const from = b.calls.length;
+  p.btn('Guardar borrador', dlg(p)).click(); await settle(300);
+  const sv = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSave');
+  assert.equal(sv.length, 2, 'the call + ONE confirmation');
+  assert.ok(/^op_[A-Za-z0-9_-]{12,}$/.test(sv[0].body.op_id), 'a draft create carries an op_id');
+  assert.equal(sv[1].body.op_id, sv[0].body.op_id, 'the confirmation: the SAME op_id');
+  assert.equal(offersNamed(b, LPS).length, 1, 'ONE draft');
+  assert.equal(notice(p), null, 'confirmed: no banner');
+  assert.equal(dlg(p), null, 'the dialog closed');
+  assert.equal(toastText(p), 'Borrador guardado', 'the same toast as a direct success');
 });
 test('L3 «Seguir editando» → «Programar oferta» on a draft, the reply lost ⇒ UNKNOWN', async () => {
   const b = await world();
@@ -1093,7 +1109,7 @@ test('L6 DISMISS then lost (Codex P1-1): «Guardar cambios», Esc while pending,
   go(); await settle(150);
   assert.ok(rowNamed(p, 'Almuerzo'), 'the fresh read paints');
 });
-test('L7 DISMISS then lost on «Programar oferta» ⇒ UNKNOWN; a dialog opened meanwhile (another opening) is left alone', async () => {
+test('L7 DISMISS then lost on «Programar oferta» ⇒ the ONE confirmation still runs and lands it: no banner; a dialog opened meanwhile (another opening) is left alone', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
@@ -1105,8 +1121,12 @@ test('L7 DISMISS then lost on «Programar oferta» ⇒ UNKNOWN; a dialog opened 
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(dlg(p), null, 'premise: dismissed mid-write');
   await openCard(p, 'nuevos');
-  release(); await settle(250);
-  assert.equal(notice(p) && notice(p).textContent, UNK, 'the banner');
+  release(); await settle(300);
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.equal(ops.length, 2, 'the call + ONE confirmation');
+  assert.equal(ops[1], ops[0], 'the SAME op_id');
+  assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer');
+  assert.equal(notice(p), null, 'confirmed: no banner');
   assert.ok(dlg(p), 'the dialog opened meanwhile stays');
   assert.equal(dlg(p).querySelector('.mk5b-type .mk5b-lbl').textContent, 'Para clientes nuevos', 'untouched');
 });
@@ -1122,6 +1142,106 @@ test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner
   p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle();
   release(); await settle(200);
   assert.equal(notice(p), null, 'no banner under another account');
+});
+
+// ═══ owner 11-15 «confirm every save» (MOCKUP v5b 3d/3e/3f/1c): an ambiguous CREATE / REPEAT / DRAFT is re-sent ONCE under the SAME
+// op_id — 3a's claim (offers-core claimCheck) replays the first answer or lands it now, exactly once. Only a second ambiguous answer
+// falls back to the list, in a NEUTRAL notice. Edits and moves (no op_id on the wire yet) keep the fallback directly.
+const FALLBACK = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
+test('C1 «Programar oferta», the reply lost (it LANDED) ⇒ ONE confirmation, SAME op_id ⇒ the replayed offer: the direct-success toast, no banner, ONE offer', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = ['marketingOfferSave'];
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  const ops = saves(b).map((c) => c.body.op_id);
+  assert.equal(ops.length, 2, 'the call + ONE confirmation');
+  assert.equal(ops[1], ops[0], 'C1: the confirmation re-sends the SAME op_id');
+  assert.equal(offersNamed(b, LPS).length, 1, 'C1: ONE offer (the claim replayed it)');
+  assert.equal(notice(p), null, 'C1: confirmed ⇒ no fallback');
+  assert.equal(dlg(p), null, 'the dialog closed');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'C1: the same toast as a direct success');
+});
+test('C2 «Programar oferta», the call never reached the server ⇒ the confirmation LANDS it, exactly once', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.drop = ['marketingOfferSave'];
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  assert.equal(saves(b).length, 2, 'the call + ONE confirmation');
+  assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'C2: landed once, programmed');
+  assert.equal(notice(p), null, 'no fallback');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /);
+});
+test('C3 while the confirmation is in flight: «Confirmando…» on the primary, «Volver» disabled, the quiet line (v5b 3d)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  b.net.drop = ['marketingOfferSave'];   // the first call never reaches the server (a drop throws before the hold) …
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) };   // … so the hold catches the confirmation
+  p.btn('Programar oferta', sh).click(); await settle(100);
+  const m = p.host().querySelector('.mk5r-modal');
+  assert.ok(m, 'the review stays open while confirming');
+  const ok = m.querySelector('.mk5r-ok'), ghost = ok.querySelector('.mk5-ghost');
+  assert.equal((m.querySelector('.mk5r-cfm') || {}).textContent, 'La conexión tardó. Estamos confirmando que se guardó.', 'C3: the quiet line');
+  assert.equal(ok.disabled, true);
+  assert.equal(ghost && ghost.nextElementSibling.textContent, 'Confirmando…', 'C3: the busy label');
+  assert.equal(ghost.textContent, 'Programar oferta', 'the idle label kept (invisible) — same size, nothing moves');
+  assert.equal(m.querySelector('.mk5r-back').disabled, true, '«Volver» disabled');
+  release(); await settle(250);
+  assert.equal(p.host().querySelector('.mk5r-modal'), null, 'then confirmed: closed');
+  assert.equal(p.host().querySelector('.mk5r-cfm'), null);
+});
+test('C4 BOTH ambiguous ⇒ NEVER a second resend; the list re-reads with the NEUTRAL fallback notice between the filters and «Ofertas» (v5b 1c)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.drop = ['marketingOfferSave', 'marketingOfferSave'];
+  const n0 = saves(b).length;   // the set-up's own save comes before
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(400);
+  assert.equal(saves(b).length - n0, 2, 'C4: the call + ONE confirmation — never a second resend');
+  assert.equal(dlg(p), null, 'the dialog closed');
+  const n = notice(p);
+  assert.equal(n && n.textContent, FALLBACK, 'C4: the fallback, exact');
+  assert.ok(n.classList.contains('mk5-notice') && !n.classList.contains('mk5b-err'), 'C4: neutral, never the error style');
+  assert.equal(n.getAttribute('role'), 'status');
+  assert.ok(n.previousElementSibling && n.previousElementSibling.classList.contains('mk5-bar'), 'after the filters');
+  assert.ok(n.nextElementSibling && n.nextElementSibling.classList.contains('mk5-sect'), 'before «Ofertas»');
+  assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read');
+});
+test('C5 the confirmation returns a DEFINITE refusal (the first call ran and was refused, its reply lost) ⇒ the dialog stays with the refusal\'s word (v5b 3f)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  await b.setSwitch(false, 1);   // the switch goes OFF on the server: the call is refused (409 offers_disabled) — and that reply is lost
+  b.net.lose = ['marketingOfferSave'];
+  p.btn('Programar oferta', sh).click(); await settle(300);
+  assert.equal(saves(b).length, 2, 'the call + ONE confirmation');
+  const m = p.host().querySelector('.mk5r-modal');
+  assert.ok(m, 'C5: the review stays open');
+  assert.equal(m.querySelector('.mk5b-err').textContent, 'Las ofertas no están disponibles en este momento.', 'C5: the refusal\'s own word');
+  assert.equal(notice(p), null, 'no fallback');
+  assert.equal(m.querySelector('.mk5r-ok').disabled, false, 'idle again');
+});
+test('C6 a DEFINITE first answer is never confirmed: ONE call (a direct success, a direct refusal)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
+  assert.equal(saves(b).length, 1, 'C6: a 200 ⇒ one call');
+  await openCard(p, 'pct');
+  await b.setSwitch(false, 1);
+  p.btn('Guardar borrador', dlg(p)).click(); await settle(250);
+  assert.equal(saves(b).length, 2, 'C6: a 409 ⇒ one call');
 });
 
 // ═══ slot 11-15 defects (advisor rulings): build EXACT to the mockup; text never crammed at 390 (16b) ═══════════════════════════

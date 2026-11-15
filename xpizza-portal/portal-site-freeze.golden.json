@@ -192,8 +192,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "7fa1b46ad5eadd9593b777f9b087e9362437bfb416f1d0d0237ee6885799a442",
-   "bytes": 193677
+   "sha256": "fddd89b70191c004959d72212002073937532a8664a430301dcac26a053301a5",
+   "bytes": 194552
   }
  },
  "diff_aid": {
@@ -2919,6 +2919,18 @@
    ],
    [
     "",
+    ".mk5-notice",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".mk5-notice",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
     ".mk5-olede",
     "color",
     "var(--mute)"
@@ -3954,6 +3966,12 @@
     ".mk5r-back",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".mk5r-cfm",
+    "color",
+    "var(--mute)"
    ],
    [
     "",

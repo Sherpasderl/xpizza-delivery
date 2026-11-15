@@ -53,25 +53,38 @@ const REFUSAL_WORD = Object.freeze({
 
 const now = () => (B.ctx && typeof B.ctx.now === 'function' ? B.ctx.now() : Date.now());
 const B = { open: false, host: null, ctx: null, mode: 'new', offer: null, form: null, nameAuto: true, row: null, pvOpen: false, dp: null,
-  review: false, busy: false, err: null, menu: null, layer: null, picking: false,
+  review: false, busy: false, confirming: false, err: null, menu: null, layer: null, picking: false,
   gen: 0, blocked: false, opener: null, fx: { levels: [], stack: [] } };
 // Codex r1 P1-4: every write is bound to the dialog OPENING it started in (B.gen moves on every open / close) and to the restaurant
 // context it captured — a reply that comes back to another opening only refreshes the list (stale()), never the dialog on screen.
 const stale = (ctx) => { if (ctx && ctx.onChanged) ctx.onChanged(); };
 // ONE call, classified ONCE (r6.1): a thrown call is an UNKNOWN, never a stuck «busy»; there is no recovery read
 const sendOnce = (attempt, send) => send().then((res) => ML.classifyWrite(attempt, res), () => ({ outcome: 'unknown' }));
-// r6.1 (owner 11-15): an UNKNOWN outcome closes the dialog; the host goes to «Campañas», re-reads it and says so (ML.UNKNOWN_WORD)
+// r6.1 (owner 11-15): an UNKNOWN outcome closes the dialog; the host goes to «Campañas», re-reads it and says so (ML.UNKNOWN_WORD, the
+// fallback — for a create / repeat / draft only after its one confirmation was ambiguous too)
 function unknownOut(ctx) { closeBuilder(); if (ctx.onUnknown) ctx.onUnknown(); else stale(ctx); }
 // a write whose dialog was DISMISSED (or replaced) before its reply: an UNKNOWN still goes to the list — banner, rows cleared, re-read —
 // within the account / brand it started in (the host checks); the dialog now on screen (another opening) is left alone. Anything else
 // only refreshes the list.
 function gone(ctx, out) { if (out && out.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else stale(ctx); }
+// owner 11-15 «confirm every save» (MOCKUP v5b 3d): an ambiguous create / repeat / draft is re-sent ONCE under the SAME op_id — 3a's claim
+// replays the first answer or lands it now, exactly once (offers-core claimCheck). Never a second resend, never a fresh id; only a second
+// ambiguous answer is UNKNOWN (the list + the fallback). While the confirmation is in flight the open dialog says «Confirmando…».
+async function sendConfirmed(attempt, send, g) {
+  const s = await sendOnce(attempt, send);
+  if (s.outcome !== 'unknown') return s;
+  if (B.gen === g) { B.confirming = true; render(); }
+  return sendOnce(attempt, send);
+}
+const CFM_NOTE = 'La conexión tardó. Estamos confirmando que se guardó.';
+// the busy primary: the idle label kept invisible in the same grid cell, so the button keeps its size (nothing moves)
+function busyLabel(b, idle) { b.classList.add('mk5-busy'); b.setAttribute('aria-busy', 'true'); b.replaceChildren(el('span', 'mk5-ghost', idle), el('span', null, 'Confirmando…')); b.firstChild.setAttribute('aria-hidden', 'true'); }
 // r6.1 P2: a NEW op_id for every user submission (a click of «Programar oferta» / «Programar»), never stored, never resent
 const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
 function opened(host, ctx) {   // the shared part of every opening
   B.gen += 1; B.fx = { levels: [], stack: [] };
   B.opener = typeof document !== 'undefined' ? document.activeElement : null;
-  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.err = null; B.picking = false;
+  B.host = host; B.ctx = ctx; B.open = true; B.row = null; B.pvOpen = false; B.dp = null; B.review = false; B.busy = false; B.confirming = false; B.err = null; B.picking = false;
 }
 
 // ── open / close ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -391,6 +404,7 @@ function foot(w) {
   if (w.block) ft.append(el('div', 'mk5b-block', w.block));
   const dr = el('button', 'mk5b-draft', 'Guardar borrador'); dr.type = 'button'; dr.disabled = B.busy;
   dr.addEventListener('click', () => saveDraft());
+  if (B.confirming) { busyLabel(dr, 'Guardar borrador'); ft.append(el('p', 'mk5r-cfm', CFM_NOTE)); }
   ft.append(dr);
   return ft;
 }
@@ -530,6 +544,7 @@ function reviewSheet(w) {
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', off);
   const ok = el('button', 'mk5r-ok', 'Programar oferta'); ok.type = 'button'; ok.disabled = B.busy; ok.addEventListener('click', () => program());
+  if (B.confirming) { busyLabel(ok, 'Programar oferta'); mf.append(el('p', 'mk5r-cfm', CFM_NOTE)); }
   mf.append(back, ok);
   m.append(mh, mb, mf);
   scrim.append(m);
@@ -565,11 +580,11 @@ async function program() {
     s = await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev, program: true }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, program: true, token }));
   } else {
     const opId = newOpId();
-    s = await sendOnce({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token }));
+    s = await sendConfirmed({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token }), g);
     if (s.outcome === 'saved' && s.offer.state !== 'active') s = { outcome: 'refused', code: 'not_programmed' };   // it resolved to a record that is not programmed
   }
   if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
-  B.busy = false;
+  B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome === 'refused' && s.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(s.offer_id); return; }   // never an error: the existing offer
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
@@ -577,19 +592,20 @@ async function program() {
   ctx.toast(programmedToast(s.offer));   // from the RETURNED offer
   ctx.onDone && ctx.onDone();
 }
-// «Guardar borrador» — a separate, harmless draft write (no op_id: a lost reply leaves at most a stray draft — advisor 11-14)
+// «Guardar borrador» — a separate draft write; a NEW draft carries an op_id and is confirmed once like every create (owner 11-15
+// «confirm every save»: drafts too — advisor 11-15, superseding 11-14's «no op_id»). A draft being continued is an edit (no op_id yet).
 async function saveDraft() {
   if (B.busy) return;
   const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token;
   const r = authoredNow();
   if (!r.ok) { B.review = true; B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
   B.busy = true; render();
-  const o = B.offer;
+  const o = B.offer, opId = o ? undefined : newOpId();
   const s = o
     ? await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }))
-    : await sendOnce({ op: 'create' }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, token }));
+    : await sendConfirmed({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, token }), g);
   if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
-  B.busy = false;
+  B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome !== 'saved') { B.err = wordOf(s); B.review = true; render(); return; }
   closeBuilder();
@@ -747,6 +763,7 @@ function repeatSheet(w) {
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = B.busy; back.addEventListener('click', closeBuilder);
   const ok = el('button', 'mk5r-ok', 'Programar'); ok.type = 'button'; ok.disabled = B.busy || !(B.form.end > B.form.start); ok.addEventListener('click', () => repeatGo());
+  if (B.confirming) { busyLabel(ok, 'Programar'); mf.append(el('p', 'mk5r-cfm', CFM_NOTE)); }
   mf.append(back, ok);
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;
@@ -760,9 +777,9 @@ async function repeatGo() {
   const schedule = { start: Math.max(B.form.start, soon), ...(B.form.end !== null ? { end: B.form.end } : {}) };
   B.busy = true; B.err = null; render();
   const opId = newOpId();
-  let r = await sendOnce({ op: 'repeat', opId, sourceId: src.id }, () => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token }));
+  let r = await sendConfirmed({ op: 'repeat', opId, sourceId: src.id }, () => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token }), g);
   if (B.gen !== g) { gone(ctx, r); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
-  B.busy = false;
+  B.busy = false; B.confirming = false;
   if (r.outcome === 'unknown') { unknownOut(ctx); return; }
   if (r.outcome === 'refused' && r.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(r.offer_id); return; }
   if (r.outcome === 'saved' && r.offer.state !== 'active') r = { outcome: 'refused', code: 'not_programmed' };

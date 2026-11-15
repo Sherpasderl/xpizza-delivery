@@ -158,7 +158,8 @@ function render() {
   const { top } = topBlock('Marketing', empty && S.tab === 'home' ? LEDE_EMPTY : LEDE, []);
   if (S.detail && S.status === 'ready' && !S.off) { S.body.replaceChildren(S.dhost); return; }   // O3: the detail replaces the list
   const out = [top];
-  if (S.notice) { const n = el('div', 'mk5b-err'); n.dataset.notice = 'unknown'; n.setAttribute('role', 'status'); n.append(el('span', null, S.notice)); out.push(n); }   // r6.1 UNKNOWN
+  // the fallback (owner 11-15, v5b 1c): between the filters and «Ofertas» once the list is in; above whatever stands in for it before
+  if (S.notice && (S.status !== 'ready' || S.off || S.tab !== 'home' || empty)) out.push(noticeEl());
   if (S.status === 'loading') out.push(skeleton());
   else if (S.status === 'error') out.push(errBox(OFFLINE[0], OFFLINE[1], () => load()));
   else if (S.status === 'ready' && !S.off) {
@@ -217,9 +218,17 @@ function homeTab() {
     (v) => { S.filter.estado = v; render(); }, { on: S.filter.estado !== 'all' }));
   bar.append(filt);
   out.push(bar);
+  if (S.notice) out.push(noticeEl());
   const sect = el('div', 'mk5-sect'); sect.append(el('h2', null, 'Ofertas'));
   out.push(sect, list(ML.byEstado(S.offers, S.filter.estado)));
   return out;
+}
+
+// the calm, NEUTRAL fallback notice (v5b 1c: surface-2, hairline, ink text, the info icon) — never the error style
+function noticeEl() {
+  const n = el('div', 'mk5-notice'); n.dataset.notice = 'unknown'; n.setAttribute('role', 'status');
+  n.append(svg({ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 11v5M12 8h.01'), el('span', null, S.notice));
+  return n;
 }
 
 function list(offers) {

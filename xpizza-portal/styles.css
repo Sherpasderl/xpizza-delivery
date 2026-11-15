@@ -1516,6 +1516,16 @@
   .mk5b-pvnote{font-size:12px;color:var(--mute2);line-height:1.5;margin-top:12px;text-align:center;text-wrap:pretty}
   .mk5b-err{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:12px;border:1px solid transparent;background:var(--card);font-size:13px;line-height:1.5;color:var(--rose-text)}
   .mk5b-err svg{width:17px;height:17px;stroke:var(--rose-text);fill:none;stroke-width:2;flex:none;margin-top:2px}
+  /* owner 11-15 «confirm every save» (MOCKUP v5b 3d · 1c): the busy primary keeps its size; the quiet footer line; the NEUTRAL fallback notice */
+  .mk5-busy{display:inline-grid;place-items:center}
+  .mk5-busy>span{grid-area:1/1;white-space:nowrap}
+  .mk5-ghost{visibility:hidden}
+  .mk5-busy:disabled{opacity:.72;cursor:progress}
+  .mk5r-cfm{flex:1 1 100%;margin:0 0 2px;font-size:13px;color:var(--mute);line-height:1.55;text-wrap:balance}
+  .mk5b-foot .mk5r-cfm{text-align:center}
+  .mk5-notice{display:flex;gap:11px;align-items:flex-start;margin-top:26px;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:var(--board-2);font-size:13.5px;line-height:1.55;color:var(--ink)}
+  .mk5-notice svg{width:17px;height:17px;stroke:var(--mute);fill:none;stroke-width:2;stroke-linecap:round;flex:none;margin-top:2px}
+  .mk5-notice span{text-wrap:pretty}
   /* the calendar popover (v5 «the portal's standard date picker»: Sunday-first, Spanish) */
   .mk5b-dpbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px;padding:11px 13px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;font-family:inherit;text-align:left}
   .mk5b-dpbtn:hover{border-color:var(--mute2)}
