@@ -103,10 +103,12 @@ const writeCfg = async (on) => { const cur = (await rtdb.ref('platform_config/ma
   }
   await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 2, cents: 3000 }], restaurants: { x_pizza: { active: true, free_delivery: false }, [THIRD]: { active: true, free_delivery: false } } });
   // an ACTIVE offer on both restaurants (written while ON), then the switch OFF
+  // the SAME file runs on the base (caps REQUIRED) and the candidate (v1 owner 11-15: caps REFUSED) — the tree's own authored-field list decides
+  const CAPS = require('../marketing/offer-model').AUTHORED.includes('caps') ? { caps: { redemptions: null, spend_cents: null, weekly: false } } : {};
   await writeCfg(true);
   for (const rid of ['x_pizza', THIRD]) {
     const s = await C.marketingOfferSaveCore(offerDeps(), oreq(rid, { expected_rev: 0, offer: { name: 'Oferta', type: 'pct', params: { pct: 20, max_cents: 100000 }, audience: 'all', branches: [rid],
-      schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { redemptions: null, spend_cents: null, weekly: false } } }));
+      schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, ...CAPS } }));
     assert.strictEqual(s.status, 200, 'premise: offer saved');
     assert.strictEqual((await C.marketingOfferSetStateCore(offerDeps(), oreq(rid, { offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }))).status, 200, 'premise: offer active');
   }
