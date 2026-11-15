@@ -460,12 +460,16 @@
       return { pushLine: v.granted && v.pedidos ? CappPush.COPY.orderLinePush : '', pushAsk: od.pushAsk && !v.granted && !v.denied ? CappPush.askHtml() : '' };
     }
     // the screen's visit: the OS permission now (changed in Ajustes?) + the member's prefs from the server
+    // Codex r2 P2-6: each visit is a generation — only the CURRENT visit's reads count (a late read of an earlier visit never frees
+    // this visit's switches while its own reads are still out)
+    let pushVisit = 0;
     async function pushRefresh() {
       const uid = S.member && S.member.uid; if (!uid) return;
+      const visit = ++pushVisit;
       S.pushReady = null;   // inert while this visit's reads are out (Codex r1 P2-6)
       const perm = await push.permission();
       let r = null; try { const tok = await tokFor(uid); r = tok && suApi ? await suApi.pushGetPrefs({ idToken: tok }) : null; } catch (_) { r = null; }
-      if (dead || !S.member || S.member.uid !== uid) return;
+      if (dead || !S.member || S.member.uid !== uid || visit !== pushVisit) return;
       // 3a e73a605a2: an unreadable policy (503) ⇒ the switches stay as last known, inert, with no error copy; a good read frees them.
       // Codex r1 P2-6: live only when BOTH reads succeeded; a registered device whose prefs are missing stays inert (never a guess) —
       // a device not yet opted in needs none (its switches are off and ARE the opt-in)
