@@ -10,7 +10,8 @@ const { BASE, HUNKS, FILES, unapplyS2bextModule } = require('./tools/s2bext-modu
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.deepStrictEqual([...FILES].sort(), ['catalog/add-product.js', 'catalog/candidate-validate.js', 'catalog/catalog-firestore.js', 'catalog/catalog-menu.js', 'catalog/catalog-publish.js', 'catalog/edit-catalog-handler.js', 'catalog/form-menu-source.js', 'catalog/identity-overlay.js', 'catalog/public-menu.js', 'catalog/publish-edited-handler.js', 'catalog/reset-draft.js', 'catalog/resolve-lines.js', 'catalog/source-accounting.js', 'catalog/source-store.js', 'catalog/structure-gate.js', 'factura/pricing.js', 'index.js', 'menu-pricing.js', 'quote-token.js', 'rewards-redeem-intake.js', 'tools/publish-version.js'], 'the owned files');
 for (const f of FILES) {
-  const src = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the NEWEST layer: the file on disk
+  const disk = fs.readFileSync(path.join(__dirname, f), 'utf8');   // the file on disk
+  const src = require('./tools/memberreads-module-inverse').unapplyMemberReadsModule(f, disk);   // 3a member-reads (b6f6b82b1+, disjoint index.js insertions) peeled at the read
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyS2bextModule(f, src), b, `🔴 ${f} minus the s2bext hunks is not ${BASE}:${f}`);

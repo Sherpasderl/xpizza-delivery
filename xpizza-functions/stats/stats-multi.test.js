@@ -2,7 +2,7 @@
 // S2 (PLAN-portal-inicio-server-r0, advisor-approved 11-13) — getSalesStats over SEVERAL branches (`restaurantIds`), merged on the
 // server. The REAL authorizeCatalogEdit over a membership double; data from a REAL rollup over real-writer fixtures (stats-api.test.js's
 // world); the expected money comes from the server's own B.mergeSummaries / B.avgPaidTicket over the REAL stored dailies — never a
-// formula in the test. The single-branch path is pinned byte-for-byte against the base module (604e96ab5) loaded from git.
+// formula in the test. The single-branch path is pinned byte-for-byte against the base module (BASE_REF) loaded from git.
 // Run: node stats/stats-multi.test.js
 const assert = require('assert');
 const path = require('path');
@@ -23,7 +23,7 @@ process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('�
 let n = 0; const fails = [];
 async function cell(label, fn) { try { await fn(label); console.log(`  ✓ ${++n} ${label}`); } catch (e) { fails.push(label); console.log(`  ✗ ${label}: ${e.message}`); } }
 
-const BASE_REF = '604e96ab5';   // train/asm9 — the single-branch module before S2
+const BASE_REF = '530325fec';   // the single-branch module before S2 — merge-forward 11-15: main 799bc544e + comparison.missing_days (was 604e96ab5, train/asm9)
 const keyer = makeCustomerKeyer('s'.repeat(40));
 const NOW = T.dayStartMs('2026-10-20') + 15 * 3600000;
 const TODAY = '2026-10-20';

@@ -2,8 +2,8 @@
 /**
  * S-C favorites (PLAN §S-C; Codex S-C r1 folded) — the user_favorites RULES, behaviourally (the real rules file on the emulator):
  *   npm run test:favorites-rules
- *   1 the member OWNER sets / reads / updates / deletes its own favorites (single rid and the whole node); an empty / null write
- *     is a DELETE and succeeds (.validate never runs on a delete);
+ *   1 PLAN-3a-capp-member-reads R2.2: writes are SERVER-ONLY — the member OWNER reads its own favorites, and EVERY client write is
+ *     denied (a set, an update, a whole-node replacement, an empty {} and a null delete), valid or not;
  *   2 a scalar whole-node write (string / number / boolean), direct or via a root multi-path update, is refused;
  *   3 another customer, an unauthenticated client, a REAL seeded dispatcher (staff membership, no customer claim) and a handheld are
  *     denied read, write and delete; nobody reads the user_favorites root;
@@ -11,10 +11,12 @@
  *     owned half does not land);
  *   5 the owner's still-valid session is denied READ and WRITE under EVERY tombstone kind and the sweep claim (deleted_uids,
  *     user_private.deleted_at, user_profiles.deleting_at);
- *   6 validation: a malformed / too-short rid, a regex-valid rid that is NOT a real restaurant (no restaurants/{rid}/identity), a
- *     non-empty value missing createdAt, a string / future createdAt, an extra field, and a malformed whole-uid replacement ⇒ denied;
- *     the node is bounded by the number of real restaurants.
- * (The purge itself — accountDeleteUpdates nulls user_favorites/{uid} — is proven by deletion-tombstone.test + account-lifecycle.test.)
+ *   6 every client write is denied whatever its shape (a valid favorite of a real restaurant included);
+ *   7 the REAL setFavorite / getMyFavorites (my-favorites.js) over the emulator with rules bypassed, as Admin is: a server-written
+ *     favorite is readable by the owner client-direct and denied to a stranger; the handler refuses what the rules' validator would
+ *     (a bad rid ⇒ 400, a non-real restaurant ⇒ 404 — never laxer than the rules); the deletion FENCE { _deleted } blocks it.
+ * (The fence write itself — deleteAccountCore replaces user_favorites/{uid} with { _deleted: at } — is proven by my-favorites.test and
+ * deletion-tombstone.test.)
  */
 require('./_emulator-required')('database');
 const fs = require('fs');
@@ -43,18 +45,18 @@ const FAV = (t = 1) => ({ createdAt: t });
   const peek = async (p) => { let v; await env.withSecurityRulesDisabled(async (ctx) => { v = (await ctx.database().ref(p).once('value')).val(); }); return v; };
   const owner = () => env.authenticatedContext(U, { customer: true }).database();
   try {
-    // 1. the member owner
+    // 1. the member owner READS; every client write is denied (R2.2: server-only writes)
     await seed();
-    await assertSucceeds(owner().ref(`user_favorites/${U}/x_pizza`).set(FAV(Date.now())));
-    await assertSucceeds(owner().ref(`user_favorites/${U}/la_musa`).set(FAV()));
     await assertSucceeds(owner().ref(`user_favorites/${U}`).get());
-    await assertSucceeds(owner().ref(`user_favorites/${U}/x_pizza`).set(null));
-    await assertSucceeds(owner().ref(`user_favorites/${U}`).set({ merch_a: FAV(), la_musa: FAV() }));
-    await assertSucceeds(owner().ref(`user_favorites/${U}/merch_a`).set({}));          // {} is a delete — allowed
-    assert.strictEqual(await peek(`user_favorites/${U}/merch_a`), null, 'the empty write deleted the favorite');
-    await assertSucceeds(owner().ref(`user_favorites/${U}`).set(null));                // whole-node delete
-    assert.strictEqual(await peek(`user_favorites/${U}`), null);
-    ok('the member owner sets / reads / deletes its own favorites (single rid and the whole node); an empty {} and a null write are DELETES and succeed');
+    await assertSucceeds(owner().ref(`user_favorites/${U}/x_pizza`).get());
+    await assertFails(owner().ref(`user_favorites/${U}/la_musa`).set(FAV()));
+    await assertFails(owner().ref(`user_favorites/${U}/x_pizza`).set(null));
+    await assertFails(owner().ref(`user_favorites/${U}`).set({ merch_a: FAV(), la_musa: FAV() }));
+    await assertFails(owner().ref(`user_favorites/${U}/x_pizza`).set({}));
+    await assertFails(owner().ref(`user_favorites/${U}`).set(null));
+    await assertFails(owner().ref(`user_favorites/${U}`).update({ la_musa: FAV() }));
+    assert.deepStrictEqual(await peek(`user_favorites/${U}`), { x_pizza: FAV() }, 'nothing the owner wrote landed');
+    ok('R2.2: the member owner reads its own favorites; EVERY client write is denied — set, update, whole-node, an empty {} and a null delete');
 
     // 2. scalar whole-node writes (Codex r1 #1)
     await seed();
@@ -106,26 +108,43 @@ const FAV = (t = 1) => ({ createdAt: t });
     }
     ok('the owner\'s still-valid session is denied READ and WRITE under deleted_uids, user_private.deleted_at and the sweep claim');
 
-    // 6. validation + the real-restaurant bound (Codex r1 #2 / #3 / #4)
+    // 6. every client write is denied whatever its shape — a valid favorite of a real restaurant included
     await seed();
-    for (const [why, rid, val] of [['a malformed rid (upper / space)', 'X Pizza', FAV()], ['a one-char rid', 'a', FAV()],
-      ['a regex-valid rid that is NOT a real restaurant', 'ghost_rid', FAV()],
-      ['a non-empty value missing createdAt', 'la_musa', { note: 'x' }], ['a string createdAt', 'la_musa', { createdAt: 'now' }],
-      ['a future createdAt', 'la_musa', { createdAt: Date.now() + 3600e3 }], ['an extra field', 'la_musa', { createdAt: 1, note: 'x' }]]) {
+    for (const [why, rid, val] of [['a valid favorite of a REAL restaurant', 'merch_a', FAV()], ['a malformed rid', 'X Pizza', FAV()],
+      ['a non-real restaurant', 'ghost_rid', FAV()], ['missing createdAt', 'la_musa', { note: 'x' }], ['a future createdAt', 'la_musa', { createdAt: Date.now() + 3600e3 }]]) {
       await assertFails(owner().ref(`user_favorites/${U}/${rid}`).set(val));
       assert.ok(true, why);
     }
-    for (const [why, val] of [['a ghost rid in the replacement', { x_pizza: FAV(), ghost_rid: FAV() }], ['a malformed child', { x_pizza: { note: 'x' } }],
-      ['an extra field in a child', { x_pizza: { createdAt: 1, extra: 1 } }], ['a scalar child', { x_pizza: 7 }]]) {
-      await assertFails(owner().ref(`user_favorites/${U}`).set(val));
-      assert.ok(true, why);
-    }
+    await assertFails(owner().ref(`user_favorites/${U}`).set(Object.fromEntries(REAL.map((r) => [r, FAV()]))));
     assert.deepStrictEqual(await peek(`user_favorites/${U}`), { x_pizza: FAV() });
-    await assertSucceeds(owner().ref(`user_favorites/${U}/merch_a`).set(FAV()));        // a REAL non-house restaurant is allowed
-    await assertSucceeds(owner().ref(`user_favorites/${U}`).set(Object.fromEntries(REAL.map((r) => [r, FAV()]))));
-    assert.deepStrictEqual(Object.keys(await peek(`user_favorites/${U}`)).sort(), [...REAL].sort());
-    await assertFails(owner().ref(`user_favorites/${U}`).set({ ...Object.fromEntries(REAL.map((r) => [r, FAV()])), ghost_rid: FAV() }));
-    ok('validation: malformed / too-short / NON-REAL rids, a non-empty value missing createdAt, a string / future createdAt, an extra field and malformed whole-uid replacements are denied; a real rid is allowed and the node holds at most one entry per real restaurant');
+    ok('every client write is denied whatever its shape — a valid favorite of a real restaurant, a malformed / non-real rid, a bad createdAt, a whole-node set');
+
+    // 7. the REAL handlers over the emulator, rules bypassed as Admin is (R1.6): server-written ⇒ owner-readable, stranger-denied;
+    //    the handler is never laxer than the rules' validator; the fence blocks it
+    {
+      const { makeMyFavorites } = require('../my-favorites');
+      let adminDb = null;
+      const TOKS = { [`tok-${U}`]: { uid: U, customer: true } };
+      const run = async (fn) => env.withSecurityRulesDisabled(async (ctx) => { adminDb = ctx.database(); await fn(); });
+      const h = makeMyFavorites({ getDatabase: () => adminDb, getAuth: () => ({ verifyIdToken: async (t) => { if (!TOKS[t]) throw new Error('bad'); return TOKS[t]; } }),
+        checkRateLimit: async () => ({ allowed: true, retryAfterSec: 0 }) });
+      const call = async (handler, method, body) => { const headers = { 'x-firebase-id-token': `tok-${U}` };
+        const req = { method, query: method === 'GET' ? { context: 'platform' } : {}, body, headers, get: (x) => headers[String(x).toLowerCase()] };
+        const res = { set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } }; await handler(req, res); return res; };
+      await seed();
+      let r; await run(async () => { r = await call(h.setFavorite, 'POST', { context: 'platform', rid: 'la_musa', on: true }); });
+      assert.strictEqual(r.code, 200, 'the server writes');
+      const got = (await assertSucceeds(owner().ref(`user_favorites/${U}/la_musa`).get())).val();
+      assert.ok(got && Number.isFinite(got.createdAt) && Object.keys(got).length === 1, 'exactly { createdAt }, readable by the owner');
+      await assertFails(env.authenticatedContext(U2, { customer: true }).database().ref(`user_favorites/${U}/la_musa`).get());
+      await run(async () => { r = await call(h.setFavorite, 'POST', { context: 'platform', rid: 'X Pizza', on: true }); }); assert.strictEqual(r.code, 400, 'a bad rid ⇒ 400 (as the validator)');
+      await run(async () => { r = await call(h.setFavorite, 'POST', { context: 'platform', rid: 'ghost_rid', on: true }); }); assert.strictEqual(r.code, 404, 'a non-real restaurant ⇒ 404 (as the validator)');
+      await run(async () => { r = await call(h.getMyFavorites, 'GET'); }); assert.deepStrictEqual(r.body.favorites.sort(), ['la_musa', 'x_pizza'], 'the bounded createdAt query on the real index');
+      await env.withSecurityRulesDisabled(async (ctx) => { await ctx.database().ref(`user_favorites/${U}`).set({ _deleted: 9 }); });
+      await run(async () => { r = await call(h.setFavorite, 'POST', { context: 'platform', rid: 'merch_a', on: true }); });
+      assert.strictEqual(r.code, 403, 'an observed fence ⇒ 403'); assert.deepStrictEqual(await peek(`user_favorites/${U}`), { _deleted: 9 }, 'the fence intact');
+    }
+    ok('the REAL setFavorite / getMyFavorites over the emulator (rules bypassed, as Admin): a server-written favorite is owner-readable and stranger-denied; a bad rid ⇒ 400 and a non-real restaurant ⇒ 404 like the validator; the fence blocks it');
   } finally { await env.cleanup(); }
   console.log(`\nfavorites-rules.emulator: OK (${n})`);
   process.exit(0);

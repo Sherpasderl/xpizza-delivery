@@ -17,7 +17,7 @@
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
   // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
-  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder']);
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -132,6 +132,28 @@
         if (r.status === 409 && RATE_409.has(j.error)) return { ok: false, reason: j.error };
         if (r.status === 400 && j.error === 'dish_not_purchased') return { ok: false, reason: 'dish_not_purchased' };
         return { ok: false, reason: r.status === 403 ? 'not_allowed' : reasonOf(r) };
+      },
+      // C-1b (3a's member-reads (1), my-favorites.js @990cf8c4): the member's favorites (newest first, ≤ 50) + the restaurants they
+      // recently ordered from — a GET ?context=platform, the token in its HEADER (rule 20). Field by field: a malformed entry is dropped
+      async getMyFavorites({ idToken } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        const r = await call(E.getMyFavorites, { method: 'GET', idToken, query: 'context=platform' });
+        const j = r.json;
+        if (r.status !== 200 || !j || j.ok !== true || !Array.isArray(j.favorites) || !Array.isArray(j.recent)) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
+        const favorites = j.favorites.filter((x) => typeof x === 'string' && RID_RE.test(x));
+        const recent = j.recent.filter((x) => x && typeof x === 'object' && typeof x.rid === 'string' && RID_RE.test(x.rid) && Number.isSafeInteger(x.last_at) && x.last_at > 0).map((x) => ({ rid: x.rid, last_at: x.last_at }));
+        return { ok: true, favorites, more: j.more === true, recent };
+      },
+      // the heart: { rid, on } — idempotent; 409 too_many (the cap) / 404 unknown_restaurant / 403 deleted are reasons
+      async setFavorite({ idToken, rid, on } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        if (!(typeof rid === 'string' && RID_RE.test(rid)) || typeof on !== 'boolean') return { ok: false, reason: 'bad_request' };
+        const r = await call(E.setFavorite, { body: { context: 'platform', rid, on }, idToken });
+        const j = r.json || {};
+        if (r.status === 200 && j.ok === true && typeof j.on === 'boolean') return { ok: true, on: j.on };
+        if (r.status === 409 && j.reason === 'too_many') return { ok: false, reason: 'too_many' };
+        if (r.status === 404 && j.reason === 'unknown_restaurant') return { ok: false, reason: 'unknown_restaurant' };
+        return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
       },
       async redeemSignupGrant({ grant, email, name, promos }) {
         const r = await call(E.redeemSignupGrant, { body: { grant, context: CONTEXT, email, name, accept_terms: true, promos: promos === true } });

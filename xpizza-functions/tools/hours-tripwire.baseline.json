@@ -680,5 +680,16 @@
     "line": 2113,
     "text": "returnBase = await resolveReturnBaseForCharge(restaurantId, process.env, { identity: s3bIdentity, entryMode: body.entry_mode, requestOrigin: req.get('origin'), readBrandId: () => db.ref(`restaurants/${restaurantId}/identity/brand_id`).get().then((s) => s.val()) });",
     "reason": "R4 false positive: S3b hosted-checkout return routing reads identity/brand_id (resolveReturnBaseForCharge readBrandId), no hours"
+  },
+  {
+    "file": "my-favorites.js",
+    "line_sha256": "f0a6a8f7b1c5e2307fb7a6df35dd516dd6c3120952a37998c3f2f8049212eaa8",
+    "occurrence": 1,
+    "rules": [
+      "R4"
+    ],
+    "line": 107,
+    "text": "const nm = (await db.ref(`restaurants/${rid}/identity/name`).once('value')).val();",
+    "reason": "R4 false positive: identity/name leaf read (add-time existence), no hours (advisor 2026-11-13)"
   }
 ]

@@ -52,13 +52,7 @@ const ROOT = path.join(FUNCTIONS, '..');
 
 /* Each entry RUNS; its failure is reported and excused. Passing, or naming a file that is not in the
    plan, fails the run. */
-const KNOWN_RED = {
-  'customer-app/capp-url-token.test.mjs': {
-    reason: 'rule 20 (advisor 2026-11-13): the member last-tip read (capp-api.js, PLAN-capp-tip-step r6) puts the ID token in the URL (?auth=); red until 3a\'s header-token callable lands and the read moves to it',
-    owner: 'capp (client) + 3a (callable)',
-    since: '2026-11-13',
-  },
-};
+const KNOWN_RED = {};   // the rule-20 url-token guard's entry expired with the getMyLastTip swap (advisor 11-13)
 
 /* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
    asserts something fails the run, as does one naming no planned file. */

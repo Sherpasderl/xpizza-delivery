@@ -13,19 +13,19 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
-const { attributionUid } = require('../create-order-build');
 const R = require('./rating-core');
 const V2 = require('./rating-v2');
 
 const GENERIC = { httpStatus: 403, body: { ok: false, error: 'not_allowed' } };
 
-// The verified customer uid, or null (any failure → null: the generic refusal)
+// The verified customer uid, or null (any failure → null: the generic refusal). THE member predicate (member-auth.memberUidOf; the
+// advisor's follow-up to PLAN-3a-capp-member-reads R2.1): a customer token, never a handheld (the rules' handheld !== true), and NONE
+// of the three tombstones — deleted_uids, user_private/{uid}/deleted_at and the inactivity sweep's user_profiles/{uid}/deleting_at
+// (before, only deleted_uids was read). Shared by rateOrder, getMyRating and createSupportTicket.
 async function customerUidOf(db, idToken, verifyIdToken) {
-  if (typeof idToken !== 'string' || !idToken) return null;
   try {
-    const dec = await verifyIdToken(idToken);
-    if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;   // S-A(d) read: a handheld device token never acts as a customer (the rules' handheld !== true)
-    return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).get()).exists());
+    const r = await require('../member-auth').memberUidOf(db, idToken, verifyIdToken);
+    return r.uid || null;
   } catch (_) { return null; }
 }
 

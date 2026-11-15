@@ -209,12 +209,12 @@
       // a mount NEVER reads location.search itself: only the store that OWNS a hosted-checkout return gets it, once
       const ret = S.ret && S.ret.rid === entry.rid && !freshBody ? S.ret : null; if (ret) S.ret = null;
       // C-1a: the store's social row, FROZEN per mount — the rating (CappHome's one source), the share target (the store's own URL)
-      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid) };
+      const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid), isFav: () => isFav(entry.rid) };   // C-1b: the member's heart reads the book live
       const ui = CappUI.mount(doc, { ...uo, ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
         onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
-        onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
+        onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'fav') { setFav(entry.rid, !!(detail && detail.on)); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
       S.store = { rid: entry.rid, ui, entry, body: e.body, fp: null, adopt: null };
       watchMenu(S.store);
       const carry = !carried && S.carry && S.carry.rid === entry.rid ? S.carry.snap : null; S.carry = null;   // «+» from Pedidos whose persist failed
@@ -678,14 +678,14 @@
     }
     function vm() {
       const v = dir.view();
-      if (S.tab !== 'home') homeSeen = null; else if (!homeSeen) homeSeen = new Map();
+      if (S.tab !== 'home') { homeSeen = null; pvVisit = null; S.pvPage = 0; } else if (!homeSeen) homeSeen = new Map();   // C1b-P3: the «Para vos» page is per visit too
       const rows = S.heldErr ? [] : v.rows.map((r) => {
         const cfg = cfgOf(r.entry) || {}, e = cache.peek(r.rid);
         return { ...r, cfg, view: viewOf(r.rid, r.entry), menuState: e ? e.state : null, held: !!S.held && S.held.rid === r.rid, ...(homeSeen ? { seenRatings: seenRatingsOf(r) } : {}) };
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
-      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
+      return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm() } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -936,7 +936,103 @@
       if (!ok) { try { if (storage && r) storage.removeItem(ACTIVE_KEY); } catch (_) {} return; }
       S.order = { ...o2, grant: null, offerDone: true, payAdj: null };   // shown only to its owner (activeOrder)
     }
+    // ── C-1b (PLAN-capp-c1-build r0 §5 option C; 3a's getMyFavorites / setFavorite): the MEMBER's book — favorites (newest first)
+    // + recently ordered restaurants. Cached-first per member (capp:fav:<uid>: rids and dates only, rule 20 minimal), ONE read after
+    // paint; a sign-out or a member switch REMOVES the previous member's book from the device. Hearts reflect it live; the «Para
+    // vos» row is frozen per Inicio visit (no row inserted into a visible Inicio) ──
+    const FAV_KEY = (uid) => `capp:fav:${uid}`;
+    // Codex HIGH r1 (asm9b): favGen = the identity GENERATION (bumped on every identity change), captured at a tap / a read and
+    // re-validated after EVERY await — a mismatch drops silently (no dispatch, no apply, no toast).
+    // Codex HIGH r2 (advisor 11-13) — the model: favConf = CONFIRMED, the last server truth (the cached book, then reads and
+    // successful writes); favPend: rid → { want } = at most ONE write in flight per rid, later taps only move «want» (coalesced) and
+    // the settled write is followed by «want» only when it differs from confirmed; S.fav (what every reader shows) = confirmed
+    // overlaid with the wishes of the rids with pending work. A read updates CONFIRMED only for the rids with no write pending or
+    // settled since it started (favEnd: rid → the clock its last write settled at). A failure clears the rid's pending ⇒ the UI falls
+    // back to confirmed. The device keeps CONFIRMED only (never an unconfirmed wish)
+    let favGen = 0, pvVisit = null, favClock = 0, favConf = null;
+    const favPend = new Map(), favEnd = new Map();
+    S.fav = null;
+    const RIDRE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
+    function favParse(v) {
+      if (!v || typeof v !== 'object' || v.v !== 1 || !Array.isArray(v.favorites) || !Array.isArray(v.recent)) return null;
+      return { favorites: v.favorites.filter((x) => typeof x === 'string' && RIDRE.test(x)), recent: v.recent.filter((x) => x && RIDRE.test(String(x.rid)) && Number.isSafeInteger(x.last_at)).map((x) => ({ rid: x.rid, last_at: x.last_at })) };
+    }
+    const withFav = (list, rid, on) => { const rest = list.filter((x) => x !== rid); return on ? [rid, ...rest] : rest; };
+    // the view + the device copy + the surfaces, after every change of confirmed or pending
+    function favShow() {
+      if (!favConf) { S.fav = null; return; }
+      let favorites = favConf.favorites;
+      for (const [rid, p] of favPend) favorites = withFav(favorites, rid, p.want);
+      S.fav = { who: favConf.who, favorites, recent: favConf.recent };
+      writeJ(FAV_KEY(favConf.who), { v: 1, favorites: favConf.favorites, recent: favConf.recent });
+      storeHeart(); schedule();
+    }
+    function favIdentity() {
+      const uid = S.member && S.member.uid ? S.member.uid : null;
+      if (favConf && favConf.who === uid) return;
+      if (favConf && favConf.who) { try { storage && storage.removeItem(FAV_KEY(favConf.who)); } catch (_) {} }   // the previous member's book leaves the device
+      favGen++; favConf = null; S.fav = null; favPend.clear(); favEnd.clear();
+      if (pvVisit !== null) pvVisit = [];   // mid-visit: the row is frozen EMPTY (no insertion; a signed-out member's row leaves at once)
+      if (!uid || !suApi || !fbAuth) return;
+      const c = favParse(readJ(FAV_KEY(uid)));
+      favConf = { who: uid, favorites: c ? c.favorites : [], recent: c ? c.recent : [] };
+      S.fav = { who: uid, favorites: favConf.favorites, recent: favConf.recent };
+      const gen = favGen;
+      T.setTimeout(async () => {   // after paint: never awaited by a render
+        if (dead || gen !== favGen) return;
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        if (!tok || dead || gen !== favGen) return;
+        const start = favClock;   // a write pending now, or settled after this point, may postdate the snapshot
+        const r = await suApi.getMyFavorites({ idToken: tok });
+        if (dead || gen !== favGen || !r || r.ok !== true || !favConf) return;
+        const keep = (rid) => favPend.has(rid) || (favEnd.get(rid) || 0) > start;
+        let favorites = r.favorites.filter((x) => !keep(x));
+        for (const rid of [...favConf.favorites].reverse()) if (keep(rid)) favorites = [rid, ...favorites];   // those rids stay as confirmed
+        favConf = { who: uid, favorites, recent: r.recent }; favShow();
+      }, 0);
+    }
+    const isFav = (rid) => !!(S.fav && S.fav.favorites.includes(rid));
+    function storeHeart() { try { if (S.store && S.store.ui && typeof S.store.ui.socialUpdated === 'function') S.store.ui.socialUpdated(); } catch (_) {} }
+    function setFav(rid, on) {
+      if (!favConf || !S.member || !suApi || !fbAuth || !RIDRE.test(String(rid))) return;
+      const p = favPend.get(rid);
+      if (p) { p.want = on; favShow(); return; }   // a write is in flight: the wish is coalesced, sent when it settles (if still needed)
+      if (favConf.favorites.includes(rid) === on) { favShow(); return; }   // already confirmed so
+      favPend.set(rid, { want: on }); favShow();
+      favPump(rid, favGen);
+    }
+    async function favPump(rid, gen) {
+      for (;;) {
+        const p = favPend.get(rid); if (!p) return;
+        const on = p.want;
+        if (favConf.favorites.includes(rid) === on) { favPend.delete(rid); favShow(); return; }   // nothing left to send
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        if (dead || gen !== favGen || !favConf) return;   // another identity now: never dispatched under it
+        const r = tok ? await suApi.setFavorite({ idToken: tok, rid, on }) : { ok: false, reason: 'unauthenticated' };
+        if (dead || gen !== favGen || !favConf) return;   // a stale answer never lands on a later session (no apply, no toast)
+        favEnd.set(rid, ++favClock);
+        if (!r || r.ok !== true) {
+          favPend.delete(rid); favShow();   // the UI falls back to confirmed
+          // PLACEHOLDER copy for the 50 cap until the owner rules (advisor 11-13); the other failure is the app's calm retry line
+          toast(r && r.reason === 'too_many' ? 'Llegaste al máximo de favoritos.' : 'No pudimos guardar tu favorito. Intentá de nuevo.');
+          return;
+        }
+        favConf = { ...favConf, favorites: withFav(favConf.favorites, rid, typeof r.on === 'boolean' ? r.on : on) };   // the server's read-back
+      }
+    }
+    // the per-visit «Para vos» list: favorites first (newest first), then the recent restaurants not among them; only listed stores
+    function paraVosOf(rows) {
+      if (!pvVisit && !S.fav) { pvVisit = []; return []; }   // rule 7: decided at the visit's FIRST paint — not admitted yet ⇒ none this visit
+      if (!S.fav) return [];
+      if (!pvVisit) {
+        const listed = new Set(rows.filter((r) => !r.gone).map((r) => r.rid)), rec = new Map(S.fav.recent.map((x) => [x.rid, x.last_at]));
+        const ids = [...S.fav.favorites, ...S.fav.recent.map((x) => x.rid).filter((x) => !S.fav.favorites.includes(x))].filter((x, i, a) => listed.has(x) && a.indexOf(x) === i);
+        pvVisit = ids.map((rid) => { const p = rec.has(rid) ? hnParts(rec.get(rid)) : null; return { rid, again: p ? `${p.d} ${MON3[p.mo - 1]}` : null }; });
+      }
+      return pvVisit.map((x) => { const row = rows.find((r) => r.rid === x.rid); return row ? { r: CappHome.storeOf(row), fav: isFav(x.rid), again: x.again } : null; }).filter(Boolean);
+    }
     function identityChanged() {
+      favIdentity();
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
       rateGen++; rateCache.clear(); if (S.layer === 'rate') { S.rate = null; closeLayer(); }   // C-2: nothing of the previous identity's ratings
       S.held = null; S.reorder = null; S.carry = null;   // Codex VP r1 #2: a held tap / «Volver a pedir» of the previous identity never lands
@@ -1497,6 +1593,7 @@
       if (a === 'signout') return void signOutNow();
       if (a === 'forget') return openLayer('forget');   // G7 frame 2
       if (a === 'forget-confirm') { closeLayer(); return void signOutNow({ forget: true }); }
+      if (a === 'fav-card') { const rid = t.dataset.rid; setFav(rid, !isFav(rid)); return; }   // C-1b: the «Para vos» card's heart, in place
       if (a === 'open-store') return enter(t.dataset.rid, null);
       if (a === 'open-dish') return enter(t.dataset.rid, t.dataset.id);
       if (a === 'cuisine') { S.cuisine = t.dataset.val || ''; S.featPage = 0; return renderNow(); }
@@ -1504,6 +1601,7 @@
       if (a === 'clearfilters') { S.cuisine = ''; S.filters.clear(); S.featPage = 0; return renderNow(); }
       // C-6b: the desktop Inicio rows — «Destacados» paged by 4, «Ver todo» → «Todos los restaurantes», ‹ on the dish rows
       if (a === 'feat-prev' || a === 'feat-next') { S.featPage = Math.max(0, (S.featPage || 0) + (a === 'feat-next' ? 1 : -1)); return renderNow(); }
+      if (a === 'pv-prev' || a === 'pv-next') { S.pvPage = Math.max(0, (S.pvPage || 0) + (a === 'pv-next' ? 1 : -1)); return renderNow(); }   // C1b-P3 (the home clamps)
       if (a === 'seeall') { const el = app.querySelector('section[aria-label="Todos los restaurantes"]'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
       if (a === 'rowprev') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: -Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
       if (a === 'rownext') { const row = t.closest('.hsec') && t.closest('.hsec').querySelector('.hrow'); if (row && row.scrollBy) row.scrollBy({ left: Math.round(row.clientWidth * 0.8), behavior: 'smooth' }); return; }
