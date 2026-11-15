@@ -3,7 +3,7 @@
 // otherwise; the sheet is marketing-builder.js openRepeater). Every result block of v5 (the headline, the three
 // figures, the chart, «Resultados», the Límites progress, the per-branch sales, the «not yet» reorder line, the end sheet's «Lleva»)
 // is ABSENT — SOURCE_GATE in marketing.js (the 5f results read). The cap-pause strip is absent (no automatic pause exists); an
-// OWNER pause shows v5's strip «Pausada por vos» + «Reanudar» (its date is not stored: absent). Every write's outcome from
+// OWNER pause shows v5's strip «Pausada por vos el …» + «Reanudar» (the date: 3a's paused_at). Every write's outcome from
 // classifyWrite / settleWrite; refusals stay on the sheet as panels; successes are v5's toasts.
 import { offerSetStateRaw, getMarketingRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
@@ -113,7 +113,7 @@ function paint() {
   if (o.status === 'paused_owner' && D.ctx.canEdit && ML.actionsOf(o).includes('resume')) {   // v5 5c: «Pausada por vos …» + «Reanudar» (the date is not stored)
     const strip = el('div', 'mk5d-strip'); strip.setAttribute('role', 'status');
     strip.append(svg(...PAUSE));
-    const tx = el('span', 'mk5d-stxt'); tx.append(el('b', null, 'Pausada por vos'));   // v5 «… el 9 nov»: the date is SOURCE_GATE paused-date
+    const tx = el('span', 'mk5d-stxt'); tx.append(el('b', null, ML.pausedWord(o.paused_at, D.ctx.now ? D.ctx.now() : Date.now())));   // v5 5c «Pausada por vos el 9 nov» (3a's paused_at)
     const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy || OPS.unsettled(o.id); rb.addEventListener('click', () => move('resume'));
     strip.append(tx, rb);
     out.push(strip);

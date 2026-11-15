@@ -98,7 +98,7 @@ test('SOURCE_GATE: the v5 blocks this build can\'t source are named, each with i
   const b = await world();
   const p = await page({ b });
   const ids = p.mods.marketing.SOURCE_GATE.map(([id]) => id);
-  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'tope', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'detail-results', 'paused-date', 'empty-results']);
+  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'tope', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'detail-results', 'empty-results']);
   for (const [id, why] of p.mods.marketing.SOURCE_GATE) assert.ok(typeof why === 'string' && why.length > 20, `${id}: a reason`);
   assert.deepEqual(p.mods.marketing.NOT_DRAWN.map(([id]) => id), ['switch-off', 'live-drift']);
 });
@@ -495,7 +495,7 @@ test('O3 «Pausar» → the REAL core pauses (v5\'s toast); 5c\'s strip «Pausad
   assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'the real core stored the pause');
   const h = p.host();
   assert.equal(h.querySelector('.mk5d-meta .mk5-st').textContent, 'Pausada· vos');
-  assert.equal(h.querySelector('.mk5d-strip .mk5d-stxt').textContent, 'Pausada por vos', '🔴 no invented date');
+  assert.equal(h.querySelector('.mk5d-strip .mk5d-stxt').textContent, 'Pausada por vos hoy', 'the date is 3a\'s paused_at (today ⇒ «hoy», v5\'s row word)');
   assert.equal(p.btn('Pausar'), undefined, 'no «Pausar» while paused');
   p.btn('Reanudar', h.querySelector('.mk5d-strip')).click(); await settle(120);
   assert.equal(toastText(p), 'Oferta activa de nuevo');
@@ -565,12 +565,13 @@ test('O3 the list\'s row moves: «Pausar» in place (v5\'s toast; the row reads 
   await offerSetStateRaw({ rid: RID, offerId: old.id, to: 'ended', expectedRev: old.rev, token: b.token });
   const p = await page({ b });
   await p.signIn(); await p.open();
+  p.mods.marketing.clock.now = () => NOW;   // the page's clock = the real core's
   p.btn('Acciones', rowNamed(p, 'Almuerzo')).click(); await settle();
   rowNamed(p, 'Almuerzo').querySelector('[data-act="pause"]').click(); await settle(150);
   assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.');
   assert.ok(p.host().querySelector('.mk5-list'), 'still the list');
   assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').textContent, 'Pausada· vos');
-  assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').title, 'Pausada por vos');
+  assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').title, 'Pausada por vos hoy', 'v5\'s row tooltip, dated by 3a\'s paused_at');
   p.btn('Acciones', rowNamed(p, 'Almuerzo')).click(); await settle();
   rowNamed(p, 'Almuerzo').querySelector('[data-act="end"]').click(); await settle();
   assert.equal(sheet(p).querySelector('.mk5r-mt').textContent, '¿Terminar «Almuerzo»?');
@@ -814,4 +815,19 @@ test('R9 a detached detail sheet lets go of Tab (the page lost its host under it
   p.d.dispatchEvent(e);
   assert.equal(e.defaultPrevented, false, 'Tab is not trapped by a sheet no one can see');
   assert.equal(p.mods['marketing-detail']._detailState.sheet, null, 'the detached sheet is dropped');
+});
+
+test('O3 «Pausada por vos el …»: the date is 3a\'s paused_at — an earlier day reads «el 9 nov» on the strip and the row tooltip', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const keep = b.deps.now;
+  b.deps.now = () => NOW - 7 * DAY;   // the owner paused it a week ago (Mon 9 nov)
+  const r = await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token });
+  b.deps.now = keep;
+  assert.equal(r.status, 200, 'premise: paused by the real core');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  assert.equal(rowNamed(p, 'Almuerzo').querySelector('.mk5-st').title, 'Pausada por vos el 9 nov', 'the row tooltip');
+  await openDetail(p, 'Almuerzo');
+  assert.equal(p.host().querySelector('.mk5d-strip .mk5d-stxt').textContent, 'Pausada por vos el 9 nov', 'v5 5c, exact');
 });

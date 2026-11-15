@@ -30,7 +30,6 @@ export const SOURCE_GATE = Object.freeze([
   ['how-anuncios', 'the «Anuncios.» paragraph of «¿Cómo funcionan?» — the Anuncio stays dark'],
   ['sherpa-collections', '«Campañas de Sherpa» — no server for the collections yet'],
   ['detail-results', 'the detail\'s headline, the three figures, the weekly chart, «Resultados», the Límites progress + help, the per-branch sales, the «not yet» reorder line and the end sheet\'s «Lleva» row — the per-offer results read, 5f'],
-  ['paused-date', 'the date in «Pausada por vos el 9 nov» (and the row tooltip\'s «hoy») — the server stores no pause time, only updated_at'],
   ['empty-results', 'the empty state\'s «acá vas a ver cuánto vendiste… cuántos pedidos trajo…» — it promises results the page cannot show until the per-offer results read lands, 5f'],
 ]);
 // states the server produces that v5 does not draw (advisor 11-14: render nothing until a frame is approved)
@@ -233,7 +232,7 @@ function list(offers) {
     if (r.branchNote) c1.append(el('span', 'mk5-br', r.branchNote));
     const c2 = el('div', 'mk5-c2');
     const st = el('span', 'mk5-st'); st.append(el('i', `mk5-dot mk5-${r.status.key}`), document.createTextNode(r.status.word));
-    if (r.status.key === 'pausa') { st.append(el('span', 'mk5-why', '· vos')); st.title = 'Pausada por vos'; }   // v5: the owner's pause (the only pause the server has)
+    if (r.status.key === 'pausa') { st.append(el('span', 'mk5-why', '· vos')); st.title = ML.pausedWord(r.pausedAt, clock.now()); }   // v5: the owner's pause (the only pause the server has), dated by 3a's paused_at
     c2.append(st);
     const c3 = el('div', 'mk5-c3');
     if (r.horario) c3.textContent = r.horario; else c3.append(el('span', 'mk5-faint', 'Sin programar'));
@@ -324,7 +323,7 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 // ── O3 · the offer detail (marketing-detail.js) ────────────────────────────────────────────────────────────────────────────────
 function detailCtx(o) {
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
-    toast, onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
 }
 function openDetail(id) {
   const o = S.offers.find((x) => x.id === id);

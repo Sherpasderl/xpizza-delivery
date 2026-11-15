@@ -307,7 +307,7 @@ export function listRows(offers, { nBranches, canEdit }) {
   return GROUP.flatMap((g) => offers.filter((o) => (o.status === g))).map((o) => ({
     id: o.id, name: o.name, icon: TYPE_ICON[o.type], status: statusView(o), horario: o.status === 'draft' ? null : horario(o.schedule),
     branchNote: Array.isArray(o.branches) && Number.isInteger(nBranches) && o.branches.length < nBranches ? `${o.branches.length} de ${nBranches} sucursales` : null,
-    menu: rowMenu(o, canEdit), drift: o.drift || null,
+    menu: rowMenu(o, canEdit), drift: o.drift || null, pausedAt: Number.isSafeInteger(o.paused_at) ? o.paused_at : null,
   }));
 }
 // «Todas las sucursales»: each branch read returns the brand's offers that include it — one row per offer, the newest rev
@@ -315,6 +315,13 @@ export function unionOffers(lists) {
   const by = new Map();
   for (const l of lists) for (const o of l || []) { const cur = by.get(o.id); if (!cur || o.rev > cur.rev) by.set(o.id, o); }
   return [...by.values()].sort((x, y) => (y.updated_at - x.updated_at) || (x.id < y.id ? -1 : 1));
+}
+// the owner's pause, worded from 3a's paused_at (offerView, c5bbce740): «Pausada por vos hoy» (v5's row word) · «… el 9 nov» (v5 5c);
+// no paused_at (an older record) ⇒ «Pausada por vos», never a guessed day
+export function pausedWord(pausedAt, nowMs) {
+  if (!Number.isSafeInteger(pausedAt)) return 'Pausada por vos';
+  const day = (ms) => Math.floor((ms - HN_MS) / 86400000);
+  return day(pausedAt) === day(nowMs) ? 'Pausada por vos hoy' : `Pausada por vos el ${dayMonth(pausedAt)}`;
 }
 export const ESTADOS = Object.freeze(['all', 'live', 'scheduled', 'paused_owner', 'ended', 'draft']);   // Todas · Activas · Programadas · Pausadas · Terminadas · Borradores
 export const estadoCounts = (offers) => Object.fromEntries(ESTADOS.map((e) => [e, e === 'all' ? offers.length : offers.filter((o) => o.status === e).length]));
