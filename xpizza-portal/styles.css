@@ -1230,6 +1230,7 @@
   .ops .status.hstatus{display:inline-flex;margin-top:14px;max-width:100%}
   .ops .status.hstatus b{display:block}
   .ops .top .cnote{display:block}   /* the card's own .fnote.cnote (type, colour, 12 px above), as a block under the status */
+  .ops .top .lede,.ops .top .cnote{text-wrap:pretty}   /* the approved mockup's final cascade (visual check r5–r8: no orphaned last word) */
   .ops .cact{margin-top:14px}
   .ops .cnote{margin-top:12px}
   .btn.danger{color:var(--red-text);border-color:var(--red-line)}

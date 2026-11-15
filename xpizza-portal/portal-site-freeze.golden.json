@@ -91,6 +91,8 @@
   "portal-no-amber.test.mjs",
   "portal-request-ids.test.mjs",
   "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
+  "portal-site-freeze.golden.json",
   "portal-time.js",
   "portal-wiring.test.mjs",
   "portalui-guards.t1-hunks.json",
@@ -197,8 +199,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "fc56e784a411ad46839e1835befbd09e15933c39e9f9b6b8712d56abf6e6b4b7",
-   "bytes": 166167
+   "sha256": "a53d67a558c2e744c05a35aaefbac4e9ed96f4c8eaad07fa42997a3f5e1381b8",
+   "bytes": 166310
   }
  },
  "diff_aid": {
