@@ -495,11 +495,14 @@
     "xpizza-orders/form-safe-render.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
     "xpizza-orders/form-serial-order.test.mjs",
+    "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/marketing-logic.test.mjs",
+    "xpizza-portal/marketing.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -867,11 +870,14 @@
     "xpizza-functions/unassign-wiring.guard.test.js",
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
+    "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
-    "xpizza-portal/envio-view.test.mjs"
+    "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/marketing-logic.test.mjs",
+    "xpizza-portal/marketing.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -1357,11 +1363,14 @@
     "xpizza-orders/form-identity-strip.copy.test.mjs",
     "xpizza-orders/form-live-menu.copy.test.mjs",
     "xpizza-orders/form-serial-order.copy.test.mjs",
+    "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/marketing-logic.test.mjs",
+    "xpizza-portal/marketing.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -1739,11 +1748,14 @@
     "xpizza-functions/wacancel-wiring.guard.test.js",
     "xpizza-functions/wahealth-wiring.guard.test.js",
     "xpizza-groupless-golden.test.mjs",
+    "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
-    "xpizza-portal/envio-view.test.mjs"
+    "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/marketing-logic.test.mjs",
+    "xpizza-portal/marketing.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -2291,7 +2303,9 @@
   "xpizza-functions/tools/seed-catalog.js",
   "xpizza-functions/tools/seed-source-store.js",
   "xpizza-functions/tools/splice-form-bundle.js",
-  "xpizza-functions/tools/verify-first-group-core.js"
+  "xpizza-functions/tools/verify-first-group-core.js",
+  "xpizza-portal/marketing-harness.mjs",
+  "xpizza-portal/ref-tree.mjs"
  ],
  "seed": [
   {

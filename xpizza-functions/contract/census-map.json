@@ -47,6 +47,11 @@
    "map": "R11"
   },
   {
+   "rule": "portal-marketing",
+   "file": "^xpizza-portal/(marketing(-builder|-detail|-logic|-focus)?|anuncio-logic)\\.js$|^xpizza-portal/marketing-harness\\.mjs$",
+   "exempt": "portal «Marketing» (Ofertas + the dark Anuncio, advisor 11-15): reads OFFER / booking records from 3a's marketing endpoints — `status` is an offer's or a booking's own state (or an HTTP status), `items` a 2×1 offer's dish keys — never a persisted order; marketing-harness.mjs is a test helper (the real cores at a pin)"
+  },
+  {
    "rule": "form-cart",
    "file": "^(xpizza-orders|la-musa-orders)/",
    "fn": "^(updateCart|updateCartReviewBody|renderCartReview)",
@@ -2287,6 +2292,15 @@
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",
+  "xpizza-portal/anuncio-logic.js#weeksModel": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#bookingsView": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyBook": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyCancel": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyBookRecovery": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyCancelRecovery": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#ok200": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/marketing-logic.js#appliesTo": "Ofertas «Aplica a:» list for a CATEGORY 2×1 (the server's frozen dish keys) — exercised by marketing-logic.test.mjs; no page row renders it yet (the detail shows «Cómo está armada» without the dish list)",
+  "xpizza-portal/marketing-logic.js#bogo": "PARAMS_OK.bogo — reached by DYNAMIC dispatch PARAMS_OK[o.type] from recordShapeOk (classifyWrite, every Ofertas write), which the static reference walk cannot see",
   "la-musa-orders/account.js#renderConfirmCard": "legacy confirm card superseded by deliverCardHtml / renderS2RichSummary — it is referenced only in comments",
   "xpizza-portal/photo-contract-fake.mjs#createPhotoFake": "portal DISH PHOTOS B contract fake — a TEST helper imported only by the portal suites (photo-flow / photo-logic tests); no page references it, by design",
   "xpizza-portal/photo-contract-fake.mjs#getEditableCatalog": "portal DISH PHOTOS B contract fake — a TEST helper imported only by the portal suites (photo-flow / photo-logic tests); no page references it, by design",
