@@ -58,7 +58,7 @@ test('zonesFromBody: the read\'s zones + lock — editable ONLY when zones_edita
 });
 
 test('toBody: zones ride ONLY when passed — without them the body is today\'s, byte for byte; the real writer accepts both', async () => {
-  assert.deepEqual(EL.toBody(ROWS, 0), { expected_policy_version: 0, bands: BANDS });
+  assert.deepEqual(EL.toBody(ROWS, 0), { expected_policy_version: 0, bands: BANDS }, 'no zones passed: today\'s body, no no_delivery_zones key');
   assert.equal(JSON.stringify(EL.toBody(ROWS, 0, [], undefined)), JSON.stringify(EL.toBody(ROWS, 0)), 'undefined zones: today\'s body');
   const withZ = EL.toBody(ROWS, 0, [], [ZONE()]);
   assert.deepEqual(withZ.no_delivery_zones, [ZONE()]);
