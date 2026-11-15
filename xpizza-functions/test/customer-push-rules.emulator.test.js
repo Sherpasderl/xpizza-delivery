@@ -29,7 +29,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       await db.ref('/').set(null);
       const h = CP.makeCustomerPush({ getDatabase: () => db, getAuth: () => ({ verifyIdToken: async () => ({ uid: U, customer: true }) }), checkRateLimit: async () => ({ allowed: true }), now: () => 1_800_000_000_000 });
       const res = { set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
-      await h.registerCustomerPushToken({ method: 'POST', query: { context: 'platform' }, body: { token: TOKEN, platform: 'ios', app_build: '1.0.0', pedidos: true, promociones: true }, get: () => 'id-token' }, res);
+      await h.registerCustomerPushToken({ method: 'POST', query: { context: 'platform' }, body: { token: TOKEN, platform: 'ios', app_build: '1.0.0', install_id: 'inst_rules_' + 'q'.repeat(16), pedidos: true, promociones: true }, get: () => 'id-token' }, res);
       assert.deepStrictEqual([res.code, res.body && res.body.ok], [200, true], `premise: the REAL callable registered (${JSON.stringify(res.body)})`);
       assert.ok((await db.ref(`customer_push_tokens/${hash}`).get()).exists() && (await db.ref(`customer_push_prefs/${U}`).get()).exists(), 'premise: both nodes seeded');
     });
