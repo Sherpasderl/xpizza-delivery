@@ -184,6 +184,7 @@
     "order_ratings": { ".read": false, ".write": false },
     "ratings_v2": { ".read": false, ".write": false, ".indexOn": ["owner_uid"] },
     "rating_index": { ".read": false, ".write": false },
+    "rating_buckets": { ".read": false, ".write": false },
     "stats_buckets": { ".read": false, ".write": false },
     "stats_agg": { ".read": false, ".write": false },
     "support_tickets": { ".read": false, ".write": false },

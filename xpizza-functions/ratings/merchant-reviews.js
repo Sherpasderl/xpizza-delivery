@@ -4,7 +4,13 @@
 // frozen at the first submission) are ever returned; anonymous ratings stay in v1 (getMerchantRatingComments), per branch.
 //   GET ?rids=<rid>[,<rid>…≤10]&weeks=1|4|13[&stars=1..5[,…]][&comment=any|with|without][&cursor=<sealed>]
 //   Authorization: Bearer <ID token>   (the portal transport, as v1)
-//   → 200 { ok, reviews: [Row], cursor } | 400 bad_request | bad_cursor | 401 | 403 | 405 | 429 | 503
+//   → 200 { ok, reviews: [Row], cursor, overview: Overview | null } | 400 bad_request | bad_cursor | 401 | 403 | 405 | 429 | 503
+// OVERVIEW (S4; r5 §3, r3 §2 freshness) — on the FIRST page only (null on a cursor page):
+//   { public: { count, average } | null, public_by_rid?: { rid: … }, stars: { 1..5 } | null, stars_n: n | null, overview_state }
+//   public = public_stats/{rid} exactly as published (lifetime, ≥ 10), per branch: `public` for ONE rid, else null + public_by_rid
+//   (never combined). stars = the DISCLOSED counts of the window's closed weeks (rating_buckets, ONE bounded query per rid, ≤ 91
+//   keys) — only when every window day is fresh AND the count is ≥ 10; stars_n is null whenever stars is (no count under the
+//   floor). overview_state: 'stale' when any day's bucket is missing or older than its band (30 h in the last 8 days, else 8 d).
 // AUTHORIZATION — v1's order, for EVERY rid: a verified token; a customer / handheld token ⇒ 403 before any read; resolveAccess(…, rid)
 //   + can(access, 'stats.read'); ANY rid failing ⇒ 403 for the whole call (never a silent subset); a membership outage ⇒ 503.
 // WINDOW — weeks = the last N CLOSED HN weeks (Mon–Sun; a week closes 7 days after its Sunday ends). The list runs from the oldest
@@ -32,34 +38,21 @@ const CONCURRENCY = 8;
 const MAX_RIDS = 10;
 const HISTORY = 50;        // user_orders entries per owner (r1 Q-A)
 const FREQUENT_MIN = 2;    // ≥ 2 EARLIER fulfilled orders here ⇒ 'frequent' (r2 Q-D); exactly 1 ⇒ no tag
-const WEEKS = Object.freeze([1, 4, 13]);
 const RATE = Object.freeze({ windowMs: 60 * 1000, max: 30 });
 const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
-const HN_OFFSET_MS = 6 * 3600e3;   // America/Tegucigalpa: UTC−6, no daylight saving
-const DAY = 86400e3, WEEK = 7 * DAY;
 const FULFILLED = new Set(['delivered', 'completed']);
 const CURSOR = makeSealer('sherpa/merchant-reviews-cursor/v1');
 const AVATAR_INFO = 'sherpa/review-avatar/v1';
 
+const FLOOR = 10;             // the bars need ≥ 10 disclosed ratings in the window (rule 8)
+const MAX_WINDOW_DAYS = 91;   // 13 weeks
+const FRESH_RECENT_MS = 30 * 3600e3, FRESH_OLDER_MS = 8 * 86400e3, RECENT_MS = 8 * 86400e3;
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { ok: false, reason: 'unavailable', retryable: true });
 const BAD = () => reply(400, { ok: false, reason: 'bad_request' });
 const BAD_CURSOR = () => reply(400, { ok: false, reason: 'bad_cursor' });
 
-// the Monday 00:00 HN (as ms) of the week holding `t`
-function hnMonday(t) {
-  const local = t - HN_OFFSET_MS;
-  const dayStart = Math.floor(local / DAY) * DAY;
-  const dow = (new Date(dayStart).getUTCDay() + 6) % 7;   // Mon = 0
-  return dayStart - dow * DAY + HN_OFFSET_MS;
-}
-// the window of the last N CLOSED weeks: { start: the oldest week's Monday, closedEnd: the newest closed week's end (exclusive) }.
-// The week that ended last Sunday closes next Monday (+7 d), so the newest closed week is the one before it.
-function windowOf(weeks, now) {
-  const closedEnd = hnMonday(now) - WEEK;
-  return { start: closedEnd - weeks * WEEK, closedEnd };
-}
-const hnDate = (t) => new Date(t - HN_OFFSET_MS).toISOString().slice(0, 10);
+const { WEEKS, hnMonday, windowOf, hnDate, daysOf, dayStart, DAY } = require('./review-window');   // the ONE period model
 
 // tone (r2 §2): HMAC-SHA256(K, uid) with K = HKDF(OTP_SALT, 'sherpa/review-avatar/v1'); the first 4 bytes big-endian, mod 5
 const avatarKey = (salt) => Buffer.from(crypto.hkdfSync('sha256', Buffer.from(salt, 'utf8'), Buffer.alloc(0), AVATAR_INFO, 32));
@@ -95,6 +88,31 @@ function parseQuery(q) {
   const cursor = q.cursor === undefined ? undefined : str(q.cursor);
   if (cursor === null || (cursor !== undefined && !/^[A-Za-z0-9_-]{40,4096}$/.test(cursor))) return null;
   return { rids: [...rids].sort(), weeks, stars, comment, cursor };
+}
+
+// public_stats/{rid} → { count, average } only when both are published (the producer publishes them at ≥ 10), else null
+const publicOf = (v) => (v && Number.isFinite(v.rating_count) && Number.isFinite(v.rating_avg) ? { count: v.rating_count, average: v.rating_avg } : null);
+async function overviewOf(db, f, now) {
+  const w = windowOf(f.weeks, now);
+  const days = daysOf(w.start, w.closedEnd);
+  const [pubs, buckets] = await Promise.all([
+    Promise.all(f.rids.map(async (rid) => [rid, publicOf((await db.ref(`public_stats/${rid}`).once('value')).val())])),
+    Promise.all(f.rids.map(async (rid) => (await db.ref(`rating_buckets/${rid}`).orderByKey().startAt(days[0]).endAt(days[days.length - 1]).limitToFirst(MAX_WINDOW_DAYS).once('value')).val() || {})),
+  ]);
+  const stars = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; let stale = false;
+  for (const m of buckets) {
+    for (const d of days) {
+      const b = m[d];
+      const band = dayStart(d) >= now - RECENT_MS ? FRESH_RECENT_MS : FRESH_OLDER_MS;
+      if (!b || typeof b !== 'object' || !Number.isFinite(b.at) || b.at < now - band) { stale = true; continue; }
+      for (let k = 1; k <= 5; k++) if (Number.isSafeInteger(b[`n${k}`]) && b[`n${k}`] > 0) stars[k] += b[`n${k}`];
+    }
+  }
+  const n = Object.values(stars).reduce((a, x) => a + x, 0);
+  const served = !stale && n >= FLOOR;
+  const byRid = Object.fromEntries(pubs);
+  return { public: f.rids.length === 1 ? byRid[f.rids[0]] : null, ...(f.rids.length > 1 ? { public_by_rid: byRid } : {}),
+    stars: served ? stars : null, stars_n: served ? n : null, overview_state: stale ? 'stale' : 'fresh' };
 }
 
 const hasComment = (nd) => typeof nd.comment === 'string' && nd.comment.trim() !== '';
@@ -214,7 +232,8 @@ async function merchantReviewsCore({ db, verifyIdToken, checkRateLimit, salt, re
     edited: p.nd.edited_at != null,
     ...(extra.get(p.key) || {}),
   }));
-  return reply(200, { ok: true, reviews, cursor });
+  const overview = f.cursor === undefined ? await overviewOf(db, f, t) : null;
+  return reply(200, { ok: true, reviews, cursor, overview });
 }
 
 function makeMerchantReviews({ getDatabase, getAuth, checkRateLimit, resolveContext = null, salt = () => process.env.OTP_SALT, now = () => Date.now() }) {

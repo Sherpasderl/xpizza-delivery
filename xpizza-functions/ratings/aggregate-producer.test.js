@@ -123,8 +123,11 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
     const ors = orderReads(db, mark);
     assert.strictEqual(ors.length, 7 * 4, `🔴 exactly 4 leaf reads × 7 closed-day orders (got ${ors.length})`);
     assert.ok(ors.every((r) => r.kind === 'get' && /^orders\/XPZ-\d+\/(restaurant_id|status|customer_phone|dish_qty)$/.test(r.path)), '🔴 leaf reads only — never an order node, never the orders root');
-    const q = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge);
+    // closeDay's day query (DAY_BUDGET + 1) vs the reviews-v2 bucket builder's own per-day queries (its OWN budget, r3 §2)
+    const q = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge && r.first === P.DAY_BUDGET + 1);
     assert.strictEqual(q.length, 1, 'ONE key-range query for the one closed day'); assert.strictEqual(q[0].first, P.DAY_BUDGET + 1);
+    const rbq = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge && r.first !== P.DAY_BUDGET + 1);
+    assert.ok(rbq.length <= 106 && rbq.every((r) => r.first <= require('./review-buckets').REVIEW_WINDOW_BUDGET + 1), `the bucket builder: ≤ 1 day query per range day, each within its budget (${rbq.length})`);
     const m2 = db.reads.length;
     await P.aggregateRestaurant(deps(db, { runId: 'run2' }), R);
     assert.strictEqual(orderReads(db, m2).length, 0, '🔴 a second run the same day reads ZERO orders (the watermark)');
@@ -225,6 +228,27 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
   }
   ok('prices by canonical id: the guarded tables through the identity map (cents); an unusable context or no tables ⇒ null, never a guess');
 
+  // ── 8. reviews v2 S4 (r3 §2): buildReviewBuckets is its OWN step per rid — a closeDay failure never stops it, and its failure never
+  //       changes public_stats (byte-identical) ──
+  {
+    const seedDay = async (db) => { for (let i = 0; i < 3; i++) await served(db, { at: Y0 + 3600e3 * (1 + i), dish: { d1: 1 } }); };
+    const db = fakeDb(); await seedDay(db);
+    const real = db.ref;
+    db.ref = (p) => { const r = real(p); return String(p).startsWith(`stats_buckets/${R}/`) ? { ...r, set: async () => { throw new Error('closeDay down'); } } : r; };
+    await assert.rejects(() => P.aggregateRestaurant(deps(db), R), /closeDay down/, 'premise: closeDay failed');
+    db.ref = real;
+    assert.strictEqual((db.get(`rating_buckets/${R}/${YDAY}`) || {}).at, NOW, 'a closeDay failure ⇒ the review buckets are still built');
+    const okDb = fakeDb(); seq = 1000; await seedDay(okDb);
+    const badDb = fakeDb(); seq = 1000; await seedDay(badDb);
+    const rb = badDb.ref;
+    badDb.ref = (p) => { const r = rb(p); return String(p).startsWith('rating_buckets/') ? { ...r, set: async () => { throw new Error('buckets down'); }, once: async () => { throw new Error('buckets down'); }, update: async () => { throw new Error('buckets down'); } } : r; };
+    const errs = []; const ce = console.error; console.error = (...a) => errs.push(a.join(' '));
+    try { await P.aggregateRestaurant(deps(okDb), R); await P.aggregateRestaurant(deps(badDb), R); } finally { console.error = ce; }
+    assert.deepStrictEqual(badDb.get(`public_stats/${R}`), okDb.get(`public_stats/${R}`), 'a builder failure ⇒ public_stats byte-identical to a run where it succeeded');
+    assert.ok(errs.some((l) => /review buckets/.test(l)), 'the builder failure is logged');
+  }
+  ok('reviews v2 S4: buildReviewBuckets runs in its own try — a closeDay failure still builds the buckets; a builder failure never touches public_stats');
+
   FINISHED = true;
   console.log(`aggregate-producer: OK (${n})`);
-})().catch((e) => { process.stderr.write(`aggregate-producer: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`aggregate-producer: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

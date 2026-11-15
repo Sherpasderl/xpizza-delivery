@@ -9,11 +9,14 @@
 //   2. drop buckets older than 90 days (stats_buckets is server-only; the cust keys expire with them);
 //   3. ratings (F4, few for now): walk rating_index/{rid} in pages through rating-v2.readCountable (RATINGS_BUDGET, loud abort);
 //   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish).
+// + reviews v2 S4 (PLAN-3a-merchant-reviews-v2 r3 §2): review-buckets.buildReviewBuckets(rid) — its OWN step in its OWN try, right after
+//   retention and BEFORE any day closes: a closeDay / step-3 failure never stops it, and its failure never touches public_stats.
 // Repeat-customer keys are PSEUDONYMOUS: HMAC-SHA256 under HKDF(OTP_SALT, 'sherpa/stats-repeat/v1') of the normalized phone digits,
 // never the digits; stored only inside the 90-day buckets (automatic expiry); only the COUNT is published.
 const crypto = require('crypto');
 const V2 = require('./rating-v2');
 const AG = require('./aggregate');
+const RB = require('./review-buckets');
 const { hnDateISO } = require('../lib/hn-date');
 
 const LEASE_MS = 10 * 60 * 1000;
@@ -112,6 +115,7 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
     // already happened. A retention failure is logged and never blocks the closing / publication.
     let dropped = 0;
     try { dropped = await applyRetention(db, rid, nowMs); } catch (e) { console.error('aggregate retention', rid, e && e.message); }
+    try { await RB.buildReviewBuckets({ db, nowMs }, rid); } catch (e) { console.error('review buckets', rid, e && e.message); }   // reviews v2 S4: isolated
     const yesterday = hnDateISO(nowMs - AG.DAY_MS);
     const wm = await leaf(db, `stats_agg/${rid}/watermark`);
     let day = typeof wm === 'string' && DAY_RE.test(wm) ? nextDay(wm) : yesterday;

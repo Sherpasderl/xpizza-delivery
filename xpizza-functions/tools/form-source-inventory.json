@@ -2946,6 +2946,8 @@
   "ratings/rating-fulfilment.js",
   "ratings/rating-v2.js",
   "ratings/ratings-config.js",
+  "ratings/review-buckets.js",
+  "ratings/review-window.js",
   "ratings/sealed-cursor.js",
   "reorder-normalize.js",
   "resolve-manual.js",
@@ -7585,6 +7587,14 @@
    ]
   },
   "ratings/ratings-config.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/review-buckets.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/review-window.js": {
    "pins": [],
    "lifts": []
   },
