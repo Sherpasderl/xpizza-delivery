@@ -87,27 +87,22 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "index.js",
-  "now": "  // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).\n  const OFU = require('./marketing/offer-usage'); const offerHeld = OFW.offerOf(dq) ? await OFU.holdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, nowMs: Date.now() }) : null; if (offerHeld && !offerHeld.ok) return res.status(409).json({ error: 'offer_changed', order_id: orderId });   /* marketing step 2: the usage hold, after every refusal and before the write (a cap ⇒ nothing written) */ if (isScheduled) {\n    const heldUpdates = buildScheduledOrderRecord({\n",
-  "was": "  // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).\n  if (isScheduled) {\n    const heldUpdates = buildScheduledOrderRecord({\n"
- },
- {
-  "file": "index.js",
-  "now": "    /* serial3:begin cash-reward-provenance-held */\n    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) heldUpdates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq), offerHeld && { week: offerHeld.week, salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents });   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)\n    /* serial3:end cash-reward-provenance-held */\n",
+  "now": "    /* serial3:begin cash-reward-provenance-held */\n    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) heldUpdates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)\n    /* serial3:end cash-reward-provenance-held */\n",
   "was": "    /* serial3:begin cash-reward-provenance-held */\n    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)\n    /* serial3:end cash-reward-provenance-held */\n"
  },
  {
   "file": "index.js",
-  "now": "      console.error('createOrder: scheduled write failed', e);\n      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); if (offerHeld && offerHeld.ok) await OFU.unholdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, week: offerHeld.week }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's, the offer usage)\n      return res.status(500).json({ error: 'Database write failed', detail: e.message });\n",
+  "now": "      console.error('createOrder: scheduled write failed', e);\n      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)\n      return res.status(500).json({ error: 'Database write failed', detail: e.message });\n",
   "was": "      console.error('createOrder: scheduled write failed', e);\n      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order\n      return res.status(500).json({ error: 'Database write failed', detail: e.message });\n"
  },
  {
   "file": "index.js",
-  "now": "  /* serial3:begin cash-reward-provenance */\n  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) updates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq), offerHeld && { week: offerHeld.week, salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents });   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)\n  /* serial3:end cash-reward-provenance */\n",
+  "now": "  /* serial3:begin cash-reward-provenance */\n  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) updates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)\n  /* serial3:end cash-reward-provenance */\n",
   "was": "  /* serial3:begin cash-reward-provenance */\n  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)\n  /* serial3:end cash-reward-provenance */\n"
  },
  {
   "file": "index.js",
-  "now": "    console.error('createOrder: write failed', e);\n    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); if (offerHeld && offerHeld.ok) await OFU.unholdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, week: offerHeld.week }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's, the offer usage)\n    return res.status(500).json({ error: 'Database write failed', detail: e.message });\n",
+  "now": "    console.error('createOrder: write failed', e);\n    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)\n    return res.status(500).json({ error: 'Database write failed', detail: e.message });\n",
   "was": "    console.error('createOrder: write failed', e);\n    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order\n    return res.status(500).json({ error: 'Database write failed', detail: e.message });\n"
  },
  {
@@ -119,16 +114,6 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "    total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split\n    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown), ...(OFW.offerOf(dq) ? { offer: OFP.frozenOf(OFW.offerOf(dq)) } : {}),   // A-F: factura comp rebaja (x_pizza only)\n    ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)\n",
   "was": "    total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split\n    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown),   // A-F: factura comp rebaja (x_pizza only)\n    ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)\n"
- },
- {
-  "file": "index.js",
-  "now": "  // D4 §A2 B4 (r7): the fresh-issuance gate, HOISTED with the release as a parameter — hosted passes releaseHoldIfOwned, the SDK finish a no-op (no hold: §A00)\n  const runGate = async (recordedTotalCents, releaseHold) => require('./marketing/offer-usage').afterGate({ db, orderId, offer: OFW.offerOf(dq), salesCents: effBreakdown.subtotal_cents + effBreakdown.tax_cents, releaseHold }, (await DW.refusalGate(dq, releaseHold, orderId)) || (await pickupGate(releaseHold)) || await applyConfirmedNetGate({\n    gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n",
-  "was": "  // D4 §A2 B4 (r7): the fresh-issuance gate, HOISTED with the release as a parameter — hosted passes releaseHoldIfOwned, the SDK finish a no-op (no hold: §A00)\n  const runGate = async (recordedTotalCents, releaseHold) => (await DW.refusalGate(dq, releaseHold, orderId)) || (await pickupGate(releaseHold)) || applyConfirmedNetGate({\n    gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,\n"
- },
- {
-  "file": "index.js",
-  "now": "    orderId, ...DW.gateExtra(dq),\n  }));   // marketing step 2: an accepted gate with an offer holds the usage before any money (a cap ⇒ 409 offer_changed)\n\n",
-  "was": "    orderId, ...DW.gateExtra(dq),\n  });\n\n"
  },
  {
   "file": "index.js",
@@ -144,11 +129,6 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "      total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,\n      redemption: state === 'paid' ? redeemSummary : null, ...(state === 'paid' && offerShown ? { offer: offerShown } : {}) });\n  }\n",
   "was": "      total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,\n      redemption: state === 'paid' ? redeemSummary : null });\n  }\n"
- },
- {
-  "file": "index.js",
-  "now": "      const order = (await db.ref(`orders/${orderId}`).once('value')).val();\n      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now()); if (order && order.offer) await require('./marketing/offer-usage').releaseForOrder(db, orderId).catch((e) => console.error('onOrderCancelled: offer usage release failed', orderId, e && e.code != null ? String(e.code).slice(0, 40) : 'unknown'));   // marketing step 2: the cancel gives the offer usage back, once\n    } catch (e) {\n",
-  "was": "      const order = (await db.ref(`orders/${orderId}`).once('value')).val();\n      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now());\n    } catch (e) {\n"
  },
  {
   "file": "index.js",

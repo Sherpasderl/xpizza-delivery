@@ -8,7 +8,7 @@
 //   · marketing_brand/{brandId}/live/{rid} (3a's ONE brand root, c4538460a): ONE read; quotes cached per instance ≤ 60 s, placement reads
 //     FRESH (Q6: a pause is honoured at once). The brand by marketing/brand-of (brand-model brandIdOf — the writer's own rule; cached
 //     60 s, quotes and placements alike: a branch's brand does not move); no brand ⇒ no mirror read, no offer (fail closed).
-//   · the chosen offer's marketing_usage/{offerId}: ONE fresh point read (only when an offer would apply) — a capped offer is skipped.
+//   · no usage / cap read (offers v1, owner 11-16: no caps; marketing/offer-usage.js is kept for v2, unreferenced).
 //   · a card retry of an EXISTING order reuses the offer frozen on it (orders/{id}/offer, one point read, only when offers are on):
 //     the order's economics are fixed at its first placement, never re-priced by a later mirror (promo §10 «frozen economics»).
 // Scope (5f ruling, reported): offers apply to SHERPA APP orders only — the legacy order forms are frozen (rule 40) and show no offer.
@@ -17,8 +17,6 @@
 const CFG = require('./config');
 const OP = require('./offer-price');
 const P = require('../delivery/delivery-pricing');
-const OU = require('./offer-usage');
-const OM_LIVE_MAX = require('./offer-model').LIMITS.live_max;
 
 const TTL_MS = 60000;
 let cfgCache = null;                 // { at, v }
@@ -73,27 +71,13 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
     if (!offer) {
       if (dq && dq.grandfathered) return dq;             // a live issued checkout priced with no offer stays without one
       const live = await mirrorOf(db, rid, nowMs, { cached: !placement });
-      // step 2: the chosen offer's usage, read FRESH (one point read, only when an offer would apply); a capped one is skipped and the
-      // next best tried — so a quote never keeps offering what the placement's hold must refuse (no offer_changed loop)
-      const excluded = new Set();
-      for (let i = 0; i <= OM_LIVE_MAX; i += 1) {
-        offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, excluded });
-        if (!offer || !OU.capReached((await db.ref(`marketing_usage/${offer.offer_id}`).once('value')).val(), offer, nowMs)) break;
-        excluded.add(offer.offer_id); offer = null;
-      }
+      offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward });   // offers v1: no caps, no usage read
     }
     if (!offer) {
-      // a QUOTE with no offer may name the next one (capp Slice A, advisor 11-14): only its minimum unmet, a capped one skipped as above
+      // a QUOTE with no offer may name the next one (capp Slice A, advisor 11-14): only its minimum unmet
       if (placement || !dq || typeof dq !== 'object') return dq;
-      const live = await mirrorOf(db, rid, nowMs, { cached: true });
-      const skip = new Set();
-      for (let i = 0; i <= OM_LIVE_MAX; i += 1) {
-        const n = OP.nextOfferFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, excluded: skip });
-        if (!n) return dq;
-        if (!OU.capReached((await db.ref(`marketing_usage/${n.offer_id}`).once('value')).val(), n, nowMs)) return { ...dq, offer_next: n.shown };
-        skip.add(n.offer_id);
-      }
-      return dq;
+      const n = OP.nextOfferFor({ cfg, live: await mirrorOf(db, rid, nowMs, { cached: true }), nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward });
+      return n ? { ...dq, offer_next: n.shown } : dq;
     }
     const c = waivedCtx(ctx, offer);
     if (c === CANNOT) return dq;                         // never half an offer

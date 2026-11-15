@@ -110,7 +110,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.strictEqual(cdb.reads.filter((p) => isMirror(p)).length, before + 2, `${L}: placement fresh`);
   });
   await cell('MW-ENVIO-FUNDER: a restaurant envío offer ⇒ promo_discount_cents = the fee, funder «restaurant», envío not charged; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
-    const w = await xworld(); await w.publish({ type: 'envio', params: { min_cents: 20000 } });
+    const w = await xworld(); await w.plantEnvio({ min_cents: 20000 });
     const items = [line('Pepperoni', 2)];
     const { q } = await quote(w, items, { ctx: envio() });
     assert.strictEqual(q.net_total_cents, 44000, `${L}: quote waives the L 60`);
@@ -178,30 +178,28 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.notDeepStrictEqual(computeEarn({ items, subtotalCents: 42000, restaurantId: LM }), computeEarn({ items, subtotalCents: 52000, restaurantId: LM }), `${L}: non-vacuity — the gross would earn differently`);
   });
 
-  await cell('MW-CAPPED: an offer at its cap is skipped by the quote AND the placement — the next best applies (no offer_changed loop); none left ⇒ full price', async (L) => {
-    const OU = require('./offer-usage');
+  await cell('MW-NO-CAPS: offers v1 (owner 11-16, limits = A) — no cap is read or enforced: 3a\'s v1 core publishes caps-less entries and both apply; a usage node «over any cap» and a legacy entry still carrying caps change nothing; no marketing_usage path is ever read', async (L) => {
     const w = await xworld();
-    await w.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
-    await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    const best = await w.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 } });
+    const other = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    assert.ok(!('caps' in w.live()[best]) && !('caps' in w.live()[other]), `${L}: premise — 3a's v1 projection carries no caps`);
+    for (const id of [best, other]) w.fake.put(`marketing_usage/${id}`, { redemptions: 999, spend_cents: 99999900, orders: 999, sales_cents: 1, new_customers: 0, week: { key: '2026-W47', redemptions: 999, spend_cents: 99999900 } });
     const items = [line('Pepperoni', 2)];
-    const first = await place(w, items, null);
-    assert.strictEqual(first.offer.discount_cents, 8000, `${L}: premise — the better offer first`);
-    assert.ok((await OU.holdCounters(w.db, first.offer, { salesCents: 36000, nowMs: NOW + 3600000 })).ok, `${L}: premise — its one use held`);
-    OW._resetCaches();
-    const { q } = await quote(w, items);
-    assert.strictEqual(q.components.offer_discount_cents, 5000, `${L}: the quote skips the capped offer`);
-    const p = await place(w, items, q.quote_token);
-    assert.deepStrictEqual([p.gate.refuse, p.offer.discount_cents, p.recorded.total_cents], [null, 5000, 44000 - 5000], `${L}: the placement agrees`);
-    const w2 = await xworld(); const only = await w2.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 20000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
-    const o = await place(w2, items, null);
-    assert.strictEqual(o.offer.offer_id, only, 'premise');
-    await OU.holdCounters(w2.db, o.offer, { salesCents: 36000, nowMs: NOW + 3600000 });
-    OW._resetCaches();
-    assert.strictEqual((await place(w2, items, null)).offer, null, `${L}: none left ⇒ full price`);
+    const cdb = counting(w.db);
+    const { q, dqo } = await quote(w, items, { db: cdb });
+    assert.strictEqual(q.components.offer_discount_cents, 8000, `${L}: the quote applies the best offer whatever its usage`);
+    const p = await place(w, items, q.quote_token, { db: cdb });
+    assert.deepStrictEqual([p.gate.refuse, p.offer && p.offer.offer_id, p.recorded.total_cents], [null, best, 44000 - 8000], `${L}: the placement agrees`);
+    assert.deepStrictEqual(cdb.reads.filter((r) => r.startsWith('marketing_usage')), [], `🔴 ${L}: no usage is ever read`);
+    assert.ok(!('caps' in OW.offerOf(dqo)) && !('caps' in p.offer), `${L}: the offer ctx carries no caps`);
+    const frozen = OP.frozenOf(p.offer);
+    assert.deepStrictEqual(Object.keys(frozen).sort(), ['discount_cents', 'funded_by', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `🔴 ${L}: the frozen order fact has no usage fields`);
+    const legacy = { ...w.live()[best], caps: { redemptions: 1, spend_cents: 100, weekly: true } };
+    w.fake.put(`marketing_brand/${BRAND}/live/${RID}/${best}`, legacy); OW._resetCaches();
+    assert.strictEqual(OW.offerOf((await quote(w, items)).dqo).discount_cents, 8000, `🔴 ${L}: a legacy entry carrying caps prices exactly the same (caps ignored)`);
   });
 
-  await cell('MW-NEXT: a QUOTE with no offer carries offer_next (the best one only its minimum away); an applied offer, a placement, offers off ⇒ none; a capped next is skipped', async (L) => {
-    const OU = require('./offer-usage');
+  await cell('MW-NEXT: a QUOTE with no offer carries offer_next (the best one only its minimum away); an applied offer, a placement, offers off ⇒ none; no usage is read', async (L) => {
     const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } });
     const items = [line('Pepperoni', 2)];   // L 440
     const { dqo } = await quote(w, items);
@@ -211,14 +209,10 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     assert.ok(!('offer_next' in p.dq), `${L}: a placement never carries offer_next`);
     const applied = await quote(w, [line('Pepperoni', 3)]);   // L 660 ≥ L 500
     assert.ok(OW.offerOf(applied.dqo) && !('offer_next' in applied.dqo), `${L}: an applied offer ⇒ no offer_next`);
-    const capped = await xworld();
-    const big = await capped.publish({ type: 'lps', params: { off_cents: 9000, min_cents: 50000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
-    await capped.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 60000 } });
-    const bigOffer = OP.offerFor({ cfg: { offers_enabled: true }, live: capped.live(), nowMs: NOW + 3600000, items: [line('Pepperoni', 3)], rid: RID, tables: TABLES, baseTotalL: foodL([line('Pepperoni', 3)]) });
-    assert.strictEqual(bigOffer.offer_id, big, `${L}: premise — the big one applies at L 660`);
-    assert.ok((await OU.holdCounters(capped.db, bigOffer, { salesCents: 66000, nowMs: NOW + 3600000 })).ok, `${L}: premise — its one use held`);
-    OW._resetCaches();
-    assert.deepStrictEqual((await quote(capped, items)).dqo.offer_next, { type: 'lps', remaining_cents: 16000, off_cents: 5000 }, `${L}: the capped one is skipped`);
+    const cdb = counting(w.db); OW._resetCaches();
+    w.fake.put(`marketing_usage/${Object.keys(w.live())[0]}`, { redemptions: 999, spend_cents: 99999900, orders: 999, sales_cents: 1, new_customers: 0, week: { key: '2026-W47', redemptions: 999, spend_cents: 99999900 } });
+    assert.deepStrictEqual((await quote(w, items, { db: cdb })).dqo.offer_next, { type: 'lps', remaining_cents: 6000, off_cents: 5000 }, `${L}: a usage node never hides the next offer (v1: no caps)`);
+    assert.deepStrictEqual(cdb.reads.filter((r) => r.startsWith('marketing_usage')), [], `${L}: no usage read for offer_next`);
     const off = await xworld({ offers_enabled: false }); OW._resetCaches();   // the per-instance config cache held «on»
     assert.ok(!('offer_next' in (await quote(off, items)).dqo), `${L}: offers off ⇒ absent`);
   });

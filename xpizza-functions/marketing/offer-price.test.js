@@ -62,7 +62,7 @@ async function world({ offers_enabled = true } = {}) {
   // ONE offer, published by the REAL cores (save draft → active); offers_enabled must be on to write, so OFF worlds flip it after
   const publish = async (o) => {
     const req = (body) => ({ method: 'POST', body: { rid: 'tb_centro', ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
-    const offer = { name: 'Oferta', audience: 'all', branches: ['tb_centro'], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { redemptions: null, spend_cents: null, weekly: false }, ...o };
+    const offer = { name: 'Oferta', audience: 'all', branches: ['tb_centro'], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o };
     const s = await C.marketingOfferSaveCore(deps, req({ expected_rev: 0, offer }));
     assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
     const m = await C.marketingOfferSetStateCore(deps, req({ offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
@@ -71,7 +71,15 @@ async function world({ offers_enabled = true } = {}) {
   };
   const cfg = async () => CFG.readMarketingConfig(db);
   const live = () => fake.get('marketing_brand/tb/live/tb_centro');   // 3a's ONE brand root (c4538460a)
-  return { fake, db, publish, cfg, live };
+  // An envío entry PLANTED in the mirror: 3a's v1 core refuses the type (owner 11-16), so no writer can mirror one — this is a REAL
+  // projection (a pct offer through the cores) with its type turned into envío; params absent = how RTDB stores «sin mínimo»
+  const plantEnvio = async (params) => {
+    const id = await publish({ type: 'pct', params: { pct: 5 } });
+    const e = { ...live()[id], type: 'envio' }; delete e.params; if (params && Object.keys(params).length) e.params = params;
+    fake.put(`marketing_brand/tb/live/tb_centro/${id}`, e);
+    return id;
+  };
+  return { fake, db, publish, cfg, live, plantEnvio };
 }
 const line = (key, qty = 1, extras = []) => ({ name: key, qty, extras });
 const food = (items) => { const t = computeServerTotal(items, 'tb_centro', TABLES); assert.strictEqual(t.error, null, 'premise: priceable cart'); return t.total; };
@@ -145,7 +153,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.strictEqual(await pick(w, items, { baseTotalL: food(items) + 1 }), null, L);
   });
   await cell('OP-ENVIO: a delivery with no Sherpa promo and food ≥ min ⇒ the whole fee waived; pickup / Sherpa promo on / under min ⇒ nothing', async (L) => {
-    const w = await world(); await w.publish({ type: 'envio', params: { min_cents: 30000 } });
+    const w = await world(); await w.plantEnvio({ min_cents: 30000 });
     assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `${L}: waived`);
     assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: envio({ mode: 'pickup' }) }), null, `${L}: pickup`);
     assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: Sherpa's promo on (ruling 4757)`);
@@ -153,7 +161,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: JSON.parse(JSON.stringify(envio())) }), null, `${L}: a request-shaped ctx is not the server's`);
   });
   await cell('OP-ENVIO-NOMIN: a «sin mínimo» envío as RTDB STORES it — no params node (RTDB never stores an empty object; 3a 11-14) — is priced: the whole fee waived', async (L) => {
-    const w = await world(); const id = await w.publish({ type: 'envio', params: {} });
+    const w = await world(); const id = await w.plantEnvio({});
     const path = `marketing_brand/tb/live/tb_centro/${id}`;
     assert.ok(w.fake.get(path), `${L}: premise — 3a's writer mirrored it`);
     w.fake.put(`${path}/params`, null);   // the production shape: RTDB drops the empty params node (this fake keeps {})
@@ -167,7 +175,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const w = await world();
     await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     await w.publish({ type: 'pct', params: { pct: 20, max_cents: 100000 } });
-    await w.publish({ type: 'envio', params: {} });   // no minimum = absent (b62765981)
+    await w.plantEnvio({});   // no minimum = absent (b62765981)
     assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio() })), { type: 'pct', discount_cents: 8800, waived_envio_cents: 0 }, `${L}: L 88 beats L 60 and L 50`);
     assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio({ free: true }) })), { type: 'pct', discount_cents: 8800, waived_envio_cents: 0 }, `${L}: Sherpa's promo + the food offer`);
     const t = await world();
@@ -210,9 +218,24 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const o = await pick(w, [line(K2, 2)]);
     assert.ok(OP.isServerOfferCtx(o), L);
     assert.strictEqual(OP.isServerOfferCtx(JSON.parse(JSON.stringify(o))), false, `${L}: a copy`);
-    assert.deepStrictEqual(Object.keys(o).sort(), ['caps', 'discount_cents', 'min_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `${L} (+ the label fact min_cents for lps, advisor 11-14)`);
+    assert.deepStrictEqual(Object.keys(o).sort(), ['discount_cents', 'min_cents', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `${L} (+ the label fact min_cents for lps, advisor 11-14)`);
     assert.strictEqual(o.min_cents, 20000, L);
     assert.deepStrictEqual([o.offer_id, o.rev, o.name], [id, w.live()[id].rev, 'Oferta'], L);
+  });
+  await cell('OP-CAPS-ABSENT: offers v1 (owner 11-16) — 3a\'s REAL v1 core mirrors NO caps and the entry is priced; a legacy entry still carrying caps (any shape, even malformed) prices the same: caps are ignored', async (L) => {
+    const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
+    assert.ok(!('caps' in w.live()[id]), `${L}: premise — 3a's v1 projection has no caps`);
+    const want = { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 };
+    assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)])), want, `🔴 ${L}: a caps-less entry is priced`);
+    for (const caps of [{ redemptions: 1, spend_cents: 100, weekly: true }, { weekly: 'x' }, 'junk', null]) {
+      w.fake.put(`marketing_brand/tb/live/tb_centro/${id}/caps`, caps);
+      assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)])), want, `🔴 ${L}: caps ${JSON.stringify(caps)} ignored`);
+    }
+  });
+  await cell('OP-PIN: the merged tree\'s marketing/offer-model.js (liveProjection) is byte-identical to 3a\'s APPROVED v1 pin 20000624d — the projection these cells price is the shipping one', async (L) => {
+    const { execFileSync } = require('child_process');
+    const pinned = execFileSync('git', ['show', '20000624d2b3e71f1dc48b6288a10fd2780d5837:./offer-model.js'], { cwd: __dirname, maxBuffer: 1 << 24 });
+    assert.ok(Buffer.compare(pinned, require('fs').readFileSync(require('path').join(__dirname, 'offer-model.js'))) === 0, `🔴 ${L}: offer-model.js differs from 20000624d — re-pin with the advisor`);
   });
   await cell('OP-MALFORMED: a corrupt mirror (not an object / a bad id / a missing rev / a bad schedule) applies nothing and never throws', async (L) => {
     const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
@@ -226,7 +249,8 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const w = await world(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const offer = await pick(w, [line(K2, 2)]);
     assert.ok(offer, `${L}: premise — the REAL offer`);
-    const stored = OP.frozenOf(offer, { week: '2026-W47', salesCents: 39000 });   // what the order write stores (with its usage hold)
+    const stored = OP.frozenOf(offer);   // what the order write stores (offers v1: no usage hold)
+    assert.deepStrictEqual(Object.keys(stored).sort(), ['discount_cents', 'funded_by', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `🔴 ${L}: the frozen fact carries no usage / caps`);
     assert.deepStrictEqual(OP.pollOfferOf(stored), { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, L);
     assert.ok(typeof stored.name === 'string' && !('name' in OP.pollOfferOf(stored)), `${L}: the stored record has a name; the poll never carries it`);
     for (const bad of [undefined, null, 'x', {}, { ...stored, discount_cents: -100 }, { ...stored, type: 'nope' }, { ...stored, waived_envio_cents: 1.5 }]) assert.strictEqual(OP.pollOfferOf(bad), null, `${L}: ${JSON.stringify(bad)}`);
@@ -238,7 +262,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.deepStrictEqual(OP.quoteOfferOf(lps), { type: 'lps', min_cents: 20000, discount_cents: 5000, waived_envio_cents: 0 }, `${L}: lps`);
     const w2 = await world(); await w2.publish({ type: 'pct', params: { pct: 20, max_cents: 10000 } });
     assert.deepStrictEqual(OP.quoteOfferOf(await pick(w2, [line(K2, 2)])), { type: 'pct', pct: 20, discount_cents: 8800, waived_envio_cents: 0 }, `${L}: pct`);
-    const w3 = await world(); await w3.publish({ type: 'envio', params: { min_cents: 20000 } });
+    const w3 = await world(); await w3.plantEnvio({ min_cents: 20000 });
     assert.deepStrictEqual(OP.quoteOfferOf(await pick(w3, [line(K2, 2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `${L}: envío`);
     assert.ok(typeof lps.name === 'string' && !('name' in OP.quoteOfferOf(lps)) && !('offer_id' in OP.quoteOfferOf(lps)) && !('rev' in OP.quoteOfferOf(lps)), `${L}: the minted offer has a name; the quote never carries it`);
   });
@@ -250,7 +274,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.deepStrictEqual([brief(await pick(at, [line(K2, 2)])), await next(at, [line(K2, 2)])], [{ type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, null], `${L}: at the minimum the offer applies, no next`);
     const two = await world(); await two.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }); await two.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 60000 } });
     assert.deepStrictEqual(await next(two, [line(K2, 2)]), { type: 'lps', remaining_cents: 16000, off_cents: 8000 }, `${L}: two ⇒ the best saving`);
-    const ev = await world(); await ev.publish({ type: 'envio', params: { min_cents: 50000 } });
+    const ev = await world(); await ev.plantEnvio({ min_cents: 50000 });
     assert.deepStrictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio() }), { type: 'envio', remaining_cents: 6000, waived_envio_cents: 6000 }, `${L}: an envío offer`);
     assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ mode: 'pickup' }) }), null, `${L}: envío on a pickup — another condition unmet ⇒ none`);
     assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: envío already free (Sherpa's promo) ⇒ none`);
@@ -258,8 +282,6 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.strictEqual(await next(pc, [line(K1)]), null, `${L}: a pct offer has no minimum ⇒ never next`);
     const off = await world({ offers_enabled: false }); await off.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }).catch(() => {});
     assert.strictEqual(await next(off, [line(K2, 2)]), null, `${L}: offers off ⇒ none`);
-    const [a, b] = [await two.publish({ type: 'lps', params: { off_cents: 9000, min_cents: 70000 } }), null]; void b;
-    assert.deepStrictEqual(await next(two, [line(K2, 2)], { excluded: new Set([a]) }), { type: 'lps', remaining_cents: 16000, off_cents: 8000 }, `${L}: an excluded (capped) candidate is skipped`);
   });
 
   FINISHED = true;

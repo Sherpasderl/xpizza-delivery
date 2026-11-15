@@ -50,7 +50,7 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async () => buildMenu(snap(rows), snap([]), { exists: true, data: () => ({ categories: [{ id: 'c1' }], item_order: rows.map((r) => r.key) }) }, 'test') };
   const req = (body) => ({ method: 'POST', body: { rid, ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
   const publish = async (o) => {
-    const offer = { name: 'Oferta', audience: 'all', branches: [rid], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { redemptions: null, spend_cents: null, weekly: false }, ...o };
+    const offer = { name: 'Oferta', audience: 'all', branches: [rid], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o };   // offers v1: no caps (owner 11-16; 3a's core refuses them)
     const s = await C.marketingOfferSaveCore(deps, req({ expected_rev: 0, offer }));
     assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
     const m = await C.marketingOfferSetStateCore(deps, req({ offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
@@ -67,7 +67,15 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: cur.policy_version, config: cfgBody(on), actor: 'cli:op', now: 2 })).ok, true, 'premise: switch');
   };
   const live = () => fake.get(`marketing_brand/${brand}/live/${rid}`);   // the mirror as 3a's writer keys it (ONE brand root, c4538460a)
-  return { fake, db, rid, brand, publish, pause, setOffers, live };
+  // An envío entry PLANTED in the mirror: 3a's v1 core refuses the type (owner 11-16), so no writer can mirror one — a REAL projection
+  // (a pct offer through the cores) with its type turned into envío; params absent = how RTDB stores «sin mínimo»
+  const plantEnvio = async (params) => {
+    const id = await publish({ type: 'pct', params: { pct: 5 } });
+    const e = { ...live()[id], type: 'envio' }; delete e.params; if (params && Object.keys(params).length) e.params = params;
+    fake.put(`marketing_brand/${brand}/live/${rid}/${id}`, e);
+    return id;
+  };
+  return { fake, db, rid, brand, publish, pause, setOffers, live, plantEnvio };
 }
 
 module.exports = { world, prodDb, NOW, DAY, OWNER };

@@ -100,7 +100,7 @@ const offerDeps = () => ({ db: rtdb, verifyIdToken: async (t) => { if (t !== `t-
   readMirror: makeRtdbMirrorReader(rtdb), readCategoryMenu: async () => { throw new Error('no category offers here'); } });
 const oreq = (rid, body) => ({ method: 'POST', body: { rid, ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
 async function publish(rid, o) {
-  const offer = { name: 'Oferta', audience: 'all', branches: [rid], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { redemptions: null, spend_cents: null, weekly: false }, ...o };
+  const offer = { name: 'Oferta', audience: 'all', branches: [rid], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, ...o };
   const s = await C.marketingOfferSaveCore(offerDeps(), oreq(rid, { expected_rev: 0, offer }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
   const m = await C.marketingOfferSetStateCore(offerDeps(), oreq(rid, { offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
@@ -220,22 +220,12 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E3 card: the PixelPay amount × 100 = the quoted discounted net; the pending record carries the offer; E3b the paid poll shows the offer summary, never its id');
 
-  // ── E4. envío offer ──
+  // ── E4. envío offer: 3a's v1 core REFUSES the type (owner 11-16: «envío gratis» held until the payout ledger) ──
   {
-    const pauseAll = async () => { for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id); };
-    await pauseAll();
-    const envioId = await publish(THIRD, { type: 'envio', params: {} });   // no minimum = absent (3a b62765981)
-    assert.strictEqual((await rtdb.ref(`marketing_brand/${BRAND[THIRD]}/live/${THIRD}/${envioId}/params`).get()).exists(), false, 'premise: REAL RTDB stores the «sin mínimo» envío WITHOUT a params node (entryOf must price it)');
-    const { cart, s } = cartOf(THIRD);
-    await clean(); offerCaches();
-    const q = await quote(THIRD, s.items);
-    assert.strictEqual(q.json.net_total_cents, cart.subtotalCents(), 'E4: the quote waives the fee');
-    const cb = bodyOf(THIRD, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
-    await clean(); assert.strictEqual((await post(app.createOrder, cb)).status, 200, 'E4: placed');
-    const o = await order(cb.order_id);
-    assert.deepStrictEqual([o.total_cents, o.delivery_cents, o.promo_discount_cents, o.delivery_discount_funder, o.offer.waived_envio_cents], [cart.subtotalCents(), FEE, FEE, 'restaurant', FEE], '🔴 E4: the waived fee, funder «restaurant»');
+    const r = await C.marketingOfferSaveCore(offerDeps(), oreq(THIRD, { expected_rev: 0, offer: { name: 'Envío', audience: 'all', branches: [THIRD], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, type: 'envio', params: {} } }));
+    assert.deepStrictEqual([r.status, r.body && r.body.reason], [400, 'type_not_supported'], `E4: 3a's REAL v1 core refuses an envío offer (${JSON.stringify(r.body)})`);
   }
-  ok('E4 envío offer: the stored order waives the fee — promo_discount_cents = the fee, delivery_discount_funder «restaurant»');
+  ok('E4 envío: 3a\'s v1 core refuses the type (no v1 writer can mirror one)');
 
   // ── E5. paused between quote and order ──
   {
@@ -281,69 +271,57 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   }
   ok('E7 cash retry with an offer = the same order (gross fingerprint); E8 the card fingerprint binds the discounted net');
 
-  // ── E9–E11. step 2: usage held at placement, a cap skips the offer, a cancel gives it back, a card counts once ──
+  // ── E9–E12. offers v1 (owner 11-16, limits = A): NO usage anywhere — cash, a second order, the cancel trigger, a card + its retry, the
+  //    sweep → manual_reconciliation → abandon: marketing_usage is never written and the frozen offer carries no usage field ──
   {
     const usageOf = async (id) => (await rtdb.ref(`marketing_usage/${id}`).get()).val();
+    const noUsage = (o) => !['usage', 'usage_week', 'usage_sales_cents', 'caps'].some((k) => k in o.offer);
     for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id);
-    const capId = await publish(THIRD, { type: 'pct', params: { pct: 10, max_cents: 100000 }, caps: { redemptions: 1, spend_cents: null, weekly: false } });
+    const oid3 = await publish(THIRD, { type: 'pct', params: { pct: 10, max_cents: 100000 } });
     const { cart, s } = cartOf(THIRD);
     const d = Math.floor((cart.subtotalCents() * 10) / 10000) * 100;
-    await clean(); offerCaches();
-    const q1 = await quote(THIRD, s.items);
-    assert.strictEqual(q1.json.offer && q1.json.offer.discount_cents, d, 'E9 premise: offered');
-    const qLate = await quote(THIRD, s.items);   // a second customer quoted while the one use is still open
-    assert.strictEqual(qLate.json.offer && qLate.json.offer.discount_cents, d, 'E9 premise: the second quote is offered too');
-    const b1 = bodyOf(THIRD, 'cash', s, { quote_token: q1.json.quote_token, expected_net_cents: q1.json.net_total_cents });
-    await clean(); assert.strictEqual((await post(app.createOrder, b1)).status, 200, 'E9: the first order');
-    const o1 = await order(b1.order_id);
-    assert.deepStrictEqual([o1.offer.usage, (await usageOf(capId)).redemptions, (await usageOf(capId)).spend_cents], ['held', 1, d], '🔴 E9: the usage held WITH the order');
-    // E9b: that second customer places AFTER the cap is reached ⇒ the placement skips the capped offer (fresh usage read) and the cash
-    // gate refuses against the signed one — the EXACT body, nothing written, nothing counted
-    const b2 = bodyOf(THIRD, 'cash', s, { quote_token: qLate.json.quote_token, expected_net_cents: qLate.json.net_total_cents });
-    await clean(); offerCaches(); const late = await post(app.createOrder, b2);
-    assert.deepStrictEqual([late.status, late.json], [409, { error: 'offer_changed', net_total_cents: qLate.json.net_total_cents + d, order_id: b2.order_id }], `🔴 E9b: the cash cap answers exactly (${late.text.slice(0, 200)})`);
-    assert.deepStrictEqual([await order(b2.order_id), (await usageOf(capId)).redemptions], [null, 1], 'E9b: nothing written, nothing counted');
-    await clean(); offerCaches();
-    const q2 = await quote(THIRD, s.items);
-    assert.ok(!q2.json.offer, 'E9: the capped offer is no longer quoted (no offer_changed loop)');
-    // E10: the cancel trigger gives the use back, once
-    await rtdb.ref(`orders/${b1.order_id}/status`).set('cancelled');
-    const ev = { data: { before: { val: () => 'new' }, after: { val: () => 'cancelled' } }, params: { orderId: b1.order_id } };
-    await app.onOrderCancelled.run(ev); await app.onOrderCancelled.run(ev);
-    assert.deepStrictEqual([(await order(b1.order_id)).offer.usage, (await usageOf(capId)).redemptions], ['released', 0], '🔴 E10: released exactly once (the trigger ran twice)');
-    await clean(); offerCaches();
-    assert.ok((await quote(THIRD, s.items)).json.offer, 'E10: offered again after the release');
-    // E11: a card order holds at the gate, counted once across a retried request
-    await pauseOffer(THIRD, BRAND[THIRD], capId);
+    for (const tag of ['first', 'second']) {
+      await clean(); offerCaches();
+      const q = await quote(THIRD, s.items);
+      assert.strictEqual(q.json.offer && q.json.offer.discount_cents, d, `E9 premise: the ${tag} quote is offered`);
+      const b = bodyOf(THIRD, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+      await clean(); assert.strictEqual((await post(app.createOrder, b)).status, 200, `E9: the ${tag} cash order`);
+      const o = await order(b.order_id);
+      assert.ok(o.offer.discount_cents === d && noUsage(o), `🔴 E9: the ${tag} order applies the offer with no usage field (${JSON.stringify(o.offer)})`);
+      if (tag === 'first') {
+        // E10: the cancel trigger runs as before (no offer usage to give back)
+        await rtdb.ref(`orders/${b.order_id}/status`).set('cancelled');
+        const ev = { data: { before: { val: () => 'new' }, after: { val: () => 'cancelled' } }, params: { orderId: b.order_id } };
+        await app.onOrderCancelled.run(ev);
+        assert.ok(noUsage(await order(b.order_id)), '🔴 E10: the cancel writes no usage');
+      }
+    }
+    assert.strictEqual(await usageOf(oid3), null, '🔴 E9/E10: marketing_usage is never written (cash, cancel)');
+    // E11: a card order and its retried request
+    await pauseOffer(THIRD, BRAND[THIRD], oid3);
     const xId = (await liveIds(BRAND.x_pizza, 'x_pizza'))[0] || await publish('x_pizza', { type: 'pct', params: { pct: 20, max_cents: 100000 } });
-    const before = ((await usageOf(xId)) || {}).redemptions || 0;
     const k = cartOf('x_pizza', 4);
     await clean(); offerCaches(); CHARGED.length = 0;
     const qk = await quote('x_pizza', k.s.items);
     const kb = bodyOf('x_pizza', 'online', k.s, { quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents });
     await clean(); const r1 = await post(app.chargeOnlineOrder, kb);
     assert.ok(r1.status === 200 && CHARGED.length === 1, `E11 premise: issued (${r1.text.slice(0, 160)})`);
-    assert.deepStrictEqual([(await order(kb.order_id)).offer.usage, (await usageOf(xId)).redemptions], ['held', before + 1], '🔴 E11: the card held at the gate');
     await clean(); const r2 = await post(app.chargeOnlineOrder, kb);
     assert.ok(r2.status === 200 || r2.status === 202, `E11: the retry answered (${r2.text.slice(0, 160)})`);
-    assert.strictEqual((await usageOf(xId)).redemptions, before + 1, '🔴 E11: the retry counts nothing more');
-    // E12 (ruling (a)): the LIVE hosted path has no decline writer — the declined checkout simply expires; the REAL sweep flags it for a
-    // person with the usage STILL held (an unknown outcome is never a release, rule 17); the person's REAL abandon cancels it; the
-    // cancel hook gives the use back.
+    assert.ok(noUsage(await order(kb.order_id)) && (await usageOf(xId)) === null, '🔴 E11: the card gate writes no usage, nor its retry');
+    // E12: the REAL sweep → manual_reconciliation → the REAL abandon → the cancel hook: still no usage
     const aid = (await order(kb.order_id)).active_attempt_id;
     assert.strictEqual((await rtdb.ref(`payment_attempts/${aid}/hosted_state`).get()).val(), 'created', 'E12 premise: a live, unpaid hosted checkout');
-    await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(Date.now() - 16 * 60000);   // time passes: past expiry + the 15-min callback grace
+    await rtdb.ref(`payment_attempts/${aid}/hosted_expires_at`).set(Date.now() - 16 * 60000);
     await app.sweepStalePending.run({});
     const flagged = await order(kb.order_id);
     assert.deepStrictEqual([flagged.status, flagged.payment_status], ['pending_payment', 'manual_reconciliation'], 'E12 premise: the REAL sweep flagged it for a person');
-    assert.deepStrictEqual([flagged.offer.usage, (await usageOf(xId)).redemptions], ['held', before + 1], '🔴 E12: at manual_reconciliation the usage is STILL held');
     const ab = await post(app.resolveManualReconciliation, { order_id: kb.order_id, action: 'abandon' }, process.env.RECON_SECRET);
     assert.strictEqual((await order(kb.order_id)).status, 'cancelled', `E12 premise: the REAL abandon cancels (${ab.status} ${ab.text.slice(0, 160)})`);
-    const evk = { data: { before: { val: () => 'pending_payment' }, after: { val: () => 'cancelled' } }, params: { orderId: kb.order_id } };
-    await app.onOrderCancelled.run(evk);
-    assert.deepStrictEqual([(await order(kb.order_id)).offer.usage, (await usageOf(xId)).redemptions], ['released', before], '🔴 E12: the abandon\'s cancel releases the use');
+    await app.onOrderCancelled.run({ data: { before: { val: () => 'pending_payment' }, after: { val: () => 'cancelled' } }, params: { orderId: kb.order_id } });
+    assert.ok(noUsage(await order(kb.order_id)) && (await usageOf(xId)) === null, '🔴 E12: sweep, abandon and cancel write no usage');
   }
-  ok('E9 a cap: held with the order, then no longer quoted; E10 the cancel trigger releases once; E11 a card holds at the gate, once across a retry; E12 a declined hosted checkout: still held at manual_reconciliation, released by the abandon');
+  ok('E9 v1 no caps: two cash orders both apply the offer, no usage field, marketing_usage never written; E10 the cancel trigger; E11 a card + its retry; E12 sweep → abandon → cancel — no usage anywhere');
 
   // ── E13. the SDK placement (placeSdkOrder = the same card handler in SDK mode) refuses a changed offer with the SAME body ──
   {

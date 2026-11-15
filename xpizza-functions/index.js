@@ -1265,7 +1265,7 @@ createOrderApp.all('*', async (req, res) => {
   // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The slot
   // was already RE-VALIDATED above (before the reserve); releaseAt was computed there. No re-validation here
   // (nothing between the reserve and this write may fail — that's the orphaned-hold fix).
-  const OFU = require('./marketing/offer-usage'); const offerHeld = OFW.offerOf(dq) ? await OFU.holdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, nowMs: Date.now() }) : null; if (offerHeld && !offerHeld.ok) return res.status(409).json({ error: 'offer_changed', order_id: orderId });   /* marketing step 2: the usage hold, after every refusal and before the write (a cap ⇒ nothing written) */ if (isScheduled) {
+  if (isScheduled) {
     const heldUpdates = buildScheduledOrderRecord({
       orderId, orderType, now, trackingToken, total: DW.totalLempiras(dq, effectiveTotal), lat, lng, fields, hubSnap,
       restaurantId, priceBreakdown, facturaPriced, cashTenderedCents, freeOrder, rewardStamp, menuVersionId: menuOrderVersionOf(pricingTables),
@@ -1281,7 +1281,7 @@ createOrderApp.all('*', async (req, res) => {
     Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
     /* a1:end cash-marker-held */
     /* serial3:begin cash-reward-provenance-held */
-    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) heldUpdates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq), offerHeld && { week: offerHeld.week, salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents });   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
+    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) heldUpdates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
     /* serial3:end cash-reward-provenance-held */
     /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
        grace one afterwards: absent means no token was presented, present means this exact net was
@@ -1293,7 +1293,7 @@ createOrderApp.all('*', async (req, res) => {
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
     } catch (e) {
       console.error('createOrder: scheduled write failed', e);
-      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); if (offerHeld && offerHeld.ok) await OFU.unholdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, week: offerHeld.week }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's, the offer usage)
+      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)
       return res.status(500).json({ error: 'Database write failed', detail: e.message });
     }
     /* tippref:begin cash-held */
@@ -1328,7 +1328,7 @@ createOrderApp.all('*', async (req, res) => {
   Object.assign(updates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
   /* a1:end cash-marker */
   /* serial3:begin cash-reward-provenance */
-  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) updates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq), offerHeld && { week: offerHeld.week, salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents });   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
+  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) updates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
   /* serial3:end cash-reward-provenance */
   /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
      grace one afterwards: absent means no token was presented, present means this exact net was
@@ -1341,7 +1341,7 @@ createOrderApp.all('*', async (req, res) => {
     console.log(`createOrder: wrote ${orderType} order ${orderId}`);
   } catch (e) {
     console.error('createOrder: write failed', e);
-    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {}); if (offerHeld && offerHeld.ok) await OFU.unholdCounters(db, OFW.offerOf(dq), { salesCents: priceBreakdown.subtotal_cents + priceBreakdown.tax_cents, week: offerHeld.week }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's, the offer usage)
+    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)
     return res.status(500).json({ error: 'Database write failed', detail: e.message });
   }
   /* tippref:begin cash-live */
@@ -2180,13 +2180,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     if (redemptionOwnsHold) await releaseRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, now: Date.now() }).catch(() => {});
   }; const pickupGate = (releaseHold = releaseHoldIfOwned) => require('./catalog/pickup-backstop').pickupGateRefusal({ restaurantId, versionId: menuOrderVersionOf(pricingTables), keyMode: keyModeOfTables(pricingTables), kind: 'binding', body, gates: gateReader() }, releaseHold);   // S2-8: the pickup-only backstop in the card path's fresh-only gate chain
   // D4 §A2 B4 (r7): the fresh-issuance gate, HOISTED with the release as a parameter — hosted passes releaseHoldIfOwned, the SDK finish a no-op (no hold: §A00)
-  const runGate = async (recordedTotalCents, releaseHold) => require('./marketing/offer-usage').afterGate({ db, orderId, offer: OFW.offerOf(dq), salesCents: effBreakdown.subtotal_cents + effBreakdown.tax_cents, releaseHold }, (await DW.refusalGate(dq, releaseHold, orderId)) || (await pickupGate(releaseHold)) || await applyConfirmedNetGate({
+  const runGate = async (recordedTotalCents, releaseHold) => (await DW.refusalGate(dq, releaseHold, orderId)) || (await pickupGate(releaseHold)) || applyConfirmedNetGate({
     gateInput: gateInputFromRequest(body, { reward: redemptionResolved, rid: restaurantId,
       tables: pricingTables, secret: process.env.QUOTE_TOKEN_SECRET, enforce: tokenEnforce, nowMs: Date.now() }),
     recordedTotalCents,                        // === totalCents === the amount handed to createHostedCharge
     releaseHold,
     orderId, ...DW.gateExtra(dq),
-  }));   // marketing step 2: an accepted gate with an offer holds the usage before any money (a cap ⇒ 409 offer_changed)
+  });
 
   /* D4 §A3: hosted's answer for a refused / closed acquire — ONE mapping (hosted after its own release; the SDK finish for its
      deferred refusals and create-once conflicts). Returns a responder (res) => …, byte-identical to the inline answers it replaced. */
@@ -4217,7 +4217,7 @@ exports.onOrderCancelled = onValueWritten(
     try {
       const db = getDatabase();
       const order = (await db.ref(`orders/${orderId}`).once('value')).val();
-      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now()); if (order && order.offer) await require('./marketing/offer-usage').releaseForOrder(db, orderId).catch((e) => console.error('onOrderCancelled: offer usage release failed', orderId, e && e.code != null ? String(e.code).slice(0, 40) : 'unknown'));   // marketing step 2: the cancel gives the offer usage back, once
+      if (order) await cleanupTasksAndDriver({ db }, orderId, order, Date.now());
     } catch (e) {
       console.error(`onOrderCancelled: task/driver cleanup failed for ${orderId}`, e && e.message);
     }

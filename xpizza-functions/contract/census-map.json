@@ -551,7 +551,6 @@
   "index.js#cancelPaidOrder": "payment",
   "index.js#chargeOnlineApp.all": "intake",
   "index.js#chargeOnlineApp.all>anon": "intake",
-  "index.js#runGate": "intake",
   "index.js#a8FpG": "intake",
   "index.js#chargeOnlineApp.use": "intake",
   "index.js#createOrderApp.all": "intake",
