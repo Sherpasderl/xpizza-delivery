@@ -357,6 +357,7 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
     const base = bodyOf('x_pizza', 'online', k.s, { quote_token: qk.json.quote_token, expected_net_cents: qk.json.net_total_cents, order_id: `sdk_261114-${String(Date.now() % 1e6).padStart(6, '0')}-MKTPRCEX` });   // the SDK id grammar (no I L O U)
     const sb = PC.placeBody(base, { kind: 'new', sdk_token: 'tok_emu', save: false, authentication_identifier: null, display: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031 } }, 'att_emu_mktprice000001', { guest: false });
     assert.ok(sb, 'E13 premise: the client builds the SDK body');
+    await rtdb.ref('platform_config/sdk_pay').set({ available: true, restaurants: { x_pizza: true } });   // Admin's SDK switch ON for this branch (absent ⇒ «unavailable», fail-closed)
     await clean(); offerCaches(); const r = await post(app.placeSdkOrder, sb, 'idt_member');
     assert.deepStrictEqual([r.status, r.json], [409, { error: 'offer_changed', net_total_cents: qk.json.net_total_cents + qk.json.offer.discount_cents, order_id: sb.order_id }], `🔴 E13: the SDK placement answers the SAME offer_changed body (${r.text.slice(0, 200)})`);
     assert.strictEqual(FAKE.calls.length, 0, 'E13: no provider call (nothing charged)');
