@@ -389,6 +389,38 @@ const deepKeys = (v, acc = []) => { if (v && typeof v === 'object') for (const [
   }
   ok('cursor: sealed to caller + rids + filters (else 400 bad_cursor); an empty page advances it; the last page ⇒ null');
 
+  // ── 14b. key separation (advisor 11-15): every OTP_SALT use is its OWN HKDF-SHA256 key (distinct info labels, the label also the
+  //         AES-GCM AAD) — a v1 comments cursor never opens at v2, a v2 cursor never at v1; the derived keys differ from each other and
+  //         from the raw salt ──
+  {
+    const MC = require('./merchant-comments');
+    const { makeSealer } = require('./sealed-cursor');
+    const db = await world();
+    for (let i = 0; i < 25; i++) await rated(db, UIDS[i % 12], `XPZ-xl${String(i).padStart(2, '0')}`, { at: NOW - (i + 1) * H, comment: `xl${i}` });
+    const salt = process.env.OTP_SALT;
+    const key = V2.indexKey(NOW - H, 'XPZ-xl00');
+    // a REAL v1 cursor payload sealed under v1's own key ⇒ refused by v2
+    const v1tok = MC._cursor.seal(MC._cursor.deriveKey(salt), { v: 1, rid: 'x_pizza', uid: 'ownerX', k: key });
+    assert.strictEqual(MC._cursor.open(MC._cursor.deriveKey(salt), v1tok, 'x_pizza', 'ownerX'), key, 'premise: the v1 token opens at v1');
+    const r1 = await call(handler(db), { query: { rids: 'x_pizza', weeks: '1', cursor: v1tok } });
+    assert.deepStrictEqual([r1.code, r1.body], [400, { ok: false, reason: 'bad_cursor' }], 'cross-label: a v1 comments cursor at v2 ⇒ 400 bad_cursor');
+    // the SAME v1-shaped payload sealed under v2's label ⇒ refused by v1 (the key AND the AAD differ) — and v2's real cursor too
+    const v2Sealer = makeSealer('sherpa/merchant-reviews-cursor/v1');
+    const asV2 = v2Sealer.seal(v2Sealer.deriveKey(salt), { v: 1, rid: 'x_pizza', uid: 'ownerX', k: key });
+    const v1h = MC.makeMerchantRatingComments({ getDatabase: () => db, getAuth: () => ({ verifyIdToken }), checkRateLimit: async () => ({ allowed: true }) }).getMerchantRatingComments;
+    const r2 = await call(v1h, { query: { rid: 'x_pizza', cursor: asV2 } });
+    assert.deepStrictEqual([r2.code, r2.body.reason], [400, 'bad_cursor'], 'cross-label: a v2-sealed cursor at v1 ⇒ 400 bad_cursor');
+    const real = (await list(handler(db), { rids: 'x_pizza', weeks: '1' })).cursor;
+    assert.ok(typeof real === 'string', 'premise: v2 issued a real cursor');
+    const r3 = await call(v1h, { query: { rid: 'x_pizza', cursor: real } });
+    assert.strictEqual(r3.code, 400, `cross-label: v2's real cursor at v1 ⇒ refused 400 (${r3.body.reason}: longer than v1's sealed-cursor bound)`);
+    // the derived keys: pairwise distinct, and none is the raw salt
+    const keys = { v1cursor: MC._cursor.deriveKey(salt), v2cursor: v2Sealer.deriveKey(salt), tone: MR.avatarKey(salt), raw: Buffer.from(salt, 'utf8').subarray(0, 32) };
+    const hex = Object.entries(keys).map(([k, b]) => [k, Buffer.from(b).toString('hex')]);
+    assert.strictEqual(new Set(hex.map(([, h]) => h)).size, hex.length, `key separation: the v1 cursor, v2 cursor and tone keys are pairwise distinct and none equals the raw salt (${hex.map(([k]) => k)})`);
+  }
+  ok('key separation: v1 and v2 cursors never open at each other (400 bad_cursor); the HKDF-derived keys are pairwise distinct and never the raw salt');
+
   // ── 15. the read budget (r3 §7): 10 rids × full pages ⇒ ≤ 60 index entries IN TOTAL, ≤ 60 nodes + ≤ 60 tombstone leaves; undisclosed
   //        rows cost nothing beyond node + tombstone (no user_private / order / history read) ──
   {
