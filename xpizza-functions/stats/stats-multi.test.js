@@ -116,6 +116,23 @@ const both = (o = {}) => ({ restaurantIds: 'r_a,r_b', ...H, compare: 'none', ...
     assert.ok(r.body.days.some((d) => d.computed_at === 'live'), `${L}: today is live`);
     assert.ok(r.body.deltas && 'sales_pct' in r.body.deltas, `${L}: deltas`);
   });
+  await cell('MS-CMP-MISSING: the merged comparison names a day missing when ANY branch never computed it (the union rule of the top-level missing_days); a day stored by every branch (zero included) is not', async (L) => {
+    // its OWN world: the real nightly rollup, then a second real run for r_a ONLY over 09-22..09-24 ⇒ r_a has those (zero) days, r_b never computed them
+    const w2 = await world();
+    await J.runStatsRollup({ rtdb: w2.rtdb, fsdb: w2.fs, keyer, listRestaurants: async () => ['r_a'], log: () => {} }, { nowMs: NOW, mode: 'range', from: '2026-09-22', to: '2026-09-24', commit: true });
+    const c2 = core(w2);
+    const q = { from: '2026-09-25', to: '2026-09-27', compare: 'previous' };
+    const m = await c2({ restaurantIds: 'r_a,r_b', ...q }, 'both');
+    assert.strictEqual(m.status, 200, `${L}: ${JSON.stringify(m.body)}`);
+    assert.deepStrictEqual(m.body.comparison.range, { from: '2026-09-22', to: '2026-09-24' }, `${L}: premise — the previous window`);
+    const [a, b] = await Promise.all(['r_a', 'r_b'].map((rid) => c2({ restaurantId: rid, ...q }, 'both')));
+    assert.deepStrictEqual([a.body.comparison.missing_days, b.body.comparison.missing_days], [[], ['2026-09-22', '2026-09-23', '2026-09-24']], `${L}: premise — the single answers (r_a stored zero days, r_b never computed)`);
+    assert.deepStrictEqual(m.body.comparison.missing_days, ['2026-09-22', '2026-09-23', '2026-09-24'], `🔴 MS-CMP-MISSING-ANY: ${L}`);
+    const all = await c2({ restaurantIds: 'r_a,r_b', from: '2026-10-01', to: '2026-10-03', compare: 'previous' }, 'both');
+    assert.deepStrictEqual(all.body.comparison.missing_days, [], `🔴 MS-CMP-MISSING-NONE: stored by every branch (zero days) ⇒ not missing — ${L}`);
+    assert.strictEqual((await c2({ restaurantIds: 'r_a,r_b', from: '2026-10-01', to: '2026-10-03', compare: 'none' }, 'both')).body.comparison, null, `${L}: compare=none ⇒ no comparison`);
+  });
+
   await cell('MS-BOUNDS: 1 id / 21 ids / a duplicate / both forms / a CSV ⇒ 400', async (L) => {
     const st = async (q) => (await c({ ...H, ...q }, 'both')).status;
     assert.strictEqual(await st({ restaurantIds: 'r_a' }), 400, `${L}: one`);

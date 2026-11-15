@@ -366,7 +366,8 @@ async function salesStatsMulti(deps, req, q) {
   const cmp = views[0].cmp;
   const period = shape(periodDates, p.from);
   let comparison = null;
-  if (cmp) { comparison = { range: cmp, ...shape(cmpDates, cmp.from) }; period.deltas = deltasOf(period, comparison); }
+  // comparison.missing_days: the union rule of the top-level missing_days below — missing when ANY branch never computed the day
+  if (cmp) { comparison = { range: cmp, missing_days: cmpDates.filter((d) => views.some((v) => !v.byDate.has(d))), ...shape(cmpDates, cmp.from) }; period.deltas = deltasOf(period, comparison); }
   const dayInfo = (d) => { const xs = views.map((v) => v.dayInfo(d)); return xs.includes(null) ? null : xs.includes('live') ? 'live' : xs.sort()[0]; };
   return reply(200, {
     restaurantIds: [...ids].sort(), range: { from: p.from, to: p.to, granularity: p.granularity, compare: p.compare },
