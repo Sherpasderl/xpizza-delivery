@@ -257,6 +257,160 @@ const FORBIDDEN = /order|XPZ|LMS|owner|uid|delivery|token|dish|rated|edited|fulf
   }
   ok('Codex run 3: the cursor — round-trips; its body is ciphertext (≠ the plaintext encoding, no order-id bytes in clear); the wrong key / rid / uid ⇒ refused; EVERY tampered byte position ⇒ refused; a fresh IV per seal; the length bound is DERIVED from the largest payload (128-char uid at worst-case escaping, 40-char rid, 64-char order id) and page 2 works through the handler for such a caller');
 
+  // ════ Calificaciones v2 S2 (PLAN-3a-merchant-reviews-v2 r6.1 §2, r6.2 §1 + §3, r5 §2): v1 serves the PRE-cut-over band only.
+  // A node is served iff post_cutover !== true AND disclosure !== 1 AND (no cut-over exists, or rated_at < cut-over − 1 h). Every rating
+  // below is written by the REAL rateOrder and the cut-over by the REAL config writer; nothing is hand-seeded on a rating node. ════
+  const RC = require('./ratings-config');
+  const H = 60 * 60 * 1000, C = 50 * H, M = RC.CUTOVER_MARGIN_MS;
+  const ACK = { at: 1_700_000_000_000, by: 'owner', policy_url: 'https://sherpa.example/privacidad' };
+  const enable = async (db, stamp = C) => { const r = await RC.writeRatingsConfig(db, { payload: { disclosure_v: 1, policy_ack: ACK }, stamp }); assert.strictEqual(r.ok, true, 'premise: the real config writer enabled disclosure'); };
+  // a rating first submitted at `at` (fulfilled 1 h before), through the real writers; disclosure asks for the stamp
+  async function ratedAt(db, uid, id, at, { comment, store = 4, disclosure } = {}) {
+    await place(db, uid, id); await fulfil(db, id, at - H);
+    const r = await rate(db, uid, { order_id: id, store, comment, ...(disclosure !== undefined ? { disclosure } : {}) }, at);
+    assert.strictEqual(r.httpStatus, 200, `premise: rated ${id} — ${JSON.stringify(r.body)}`);
+  }
+  const texts = async (h, tok = 'ownerX') => { const r = await call(h, { token: tok, query: { rid: 'x_pizza' } }); assert.strictEqual(r.code, 200, `premise: v1 answered 200 (${JSON.stringify(r.body)})`); return r.body.comments.map((c) => c.comment).sort(); };
+  const CUT_LEAF = `${RC.PATH}/disclosure_cutover_at`;
+  const cutReads = (db) => db.reads.filter((r) => r.path === CUT_LEAF).length;
+
+  // ── 30. before go-live (no cut-over): v1 is unchanged — every anonymous comment served ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-g1', 10 * H, { comment: 'Antes uno' });
+    await ratedAt(db, B, 'XPZ-g2', 49.5 * H, { comment: 'Antes dos', disclosure: 1 });   // dark: disclosure asked but not stamped
+    assert.deepStrictEqual(await texts(handler(db)), ['Antes dos', 'Antes uno'], 'before go-live: v1 unchanged — every anonymous comment is served');
+  }
+  ok('S2: before go-live (no cut-over at either read) v1 serves exactly what it served before');
+
+  // ── 31. after go-live: v1 never returns a post-cut-over rating, whatever its disclosure ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-pre', C - 3 * H, { comment: 'Anónimo previo' });
+    await enable(db);
+    await ratedAt(db, A, 'XPZ-p0', C + H, { comment: 'Posterior sin nombre', disclosure: 0 });
+    await ratedAt(db, B, 'XPZ-p1', C + 2 * H, { comment: 'Posterior con nombre', disclosure: 1 });
+    assert.deepStrictEqual(await texts(handler(db)), ['Anónimo previo'], 'v1 never returns a post-cutover rating: pre served; post disclosure 0 and 1 absent');
+  }
+  ok('S2: after go-live v1 serves only the pre-cut-over band; post-cut-over ratings (disclosed or not) never appear');
+
+  // ── 32. the margin edge (r6.1 P1-1): rated_at = cut-over − margin − 1 ⇒ served; = cut-over − margin exactly ⇒ not ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-e1', C - M - 1, { comment: 'Justo antes del margen' });
+    await ratedAt(db, B, 'XPZ-e2', C - M, { comment: 'En el margen' });
+    await ratedAt(db, A, 'XPZ-e3', C - 1, { comment: 'Un ms antes' });
+    await enable(db);
+    assert.deepStrictEqual(await texts(handler(db)), ['Justo antes del margen'], 'the margin edge: cutover − MARGIN − 1 in v1; cutover − MARGIN exactly (and later) NOT in v1');
+  }
+  ok('S2: the 1 h margin — rated_at < cut-over − 1 h served; the boundary and the last hour are never served');
+
+  // ── 33. r6.2: a STAMPED rating whose instance clock was slow (rated_at in the pre band) is never served ──
+  {
+    const db = fakeDb(SEED);
+    await enable(db);
+    await ratedAt(db, A, 'XPZ-sk', C - 3 * H, { comment: 'Reloj atrasado' });   // written AFTER activation by a 3 h slow instance
+    assert.strictEqual(db.get('ratings_v2/XPZ-sk/post_cutover'), true, 'premise: the writer stamped it');
+    assert.deepStrictEqual(await texts(handler(db)), [], 'v1 never serves a post_cutover-stamped rating (skewed clock, pre-band rated_at)');
+    // a rating written during a config OUTAGE before go-live is stamped too: never served by v1, even with no cut-over
+    const g = fakeDb(SEED);
+    await place(g, A, 'XPZ-out'); await fulfil(g, 'XPZ-out', H);
+    const out = { ...g, ref: (p) => (String(p).startsWith(RC.PATH) ? { ...g.ref(p), get: async () => { throw new Error('outage'); }, once: async () => { throw new Error('outage'); } } : g.ref(p)) };
+    assert.strictEqual((await rateOrderCore(out, { body: { order_id: 'XPZ-out', store: 3, comment: 'Durante la caída' }, idToken: `tok-${A}`, now: 2 * H, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) })).httpStatus, 200, 'premise: written during the outage');
+    assert.deepStrictEqual(await texts(handler(g)), [], 'v1 never serves a post_cutover-stamped rating (written during a config outage, before go-live)');
+  }
+  ok('S2 (r6.2): the post_cutover stamp wins — a skewed-clock or outage-written rating is never served by v1');
+
+  // ── 34. an edit never crosses the line: a pre-cut-over rating re-rated after the cut-over stays in v1 (the basis is rated_at) ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-ed', C - 3 * H, { comment: 'Versión uno' });
+    await enable(db);
+    assert.strictEqual((await rate(db, A, { order_id: 'XPZ-ed', comment: 'Versión dos', disclosure: 1 }, C + H)).httpStatus, 200, 'premise: re-rated after the cut-over');
+    assert.deepStrictEqual(await texts(handler(db)), ['Versión dos'], 'an edit never crosses the line: a pre-cutover rating re-rated after stays in v1');
+  }
+  ok('S2: an edit after the cut-over never moves a rating out of the pre band (rated_at, not edited_at)');
+
+  // ── 35. fail closed: the cut-over read throws, or the stored cut-over is malformed ⇒ 503, never a page ──
+  {
+    for (const bad of ['x', 0, -1, 1.5]) {
+      const db = fakeDb(SEED);
+      await ratedAt(db, A, 'XPZ-m', 10 * H, { comment: 'Anónimo' });
+      db.set(RC.PATH, { disclosure_v: 1, policy_ack: ACK, disclosure_cutover_at: bad });   // a state the real writer never produces
+      const r = await call(handler(db), { token: 'ownerX', query: { rid: 'x_pizza' } });
+      assert.deepStrictEqual([r.code, r.body.reason], [503, 'unavailable'], `a malformed cutover (${JSON.stringify(bad)}) at the first read ⇒ 503`);
+    }
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-t', 10 * H, { comment: 'Anónimo' });
+    const real = db.ref.bind(db);
+    db.ref = (p) => (p === CUT_LEAF ? { once: async () => { throw new Error('outage'); }, get: async () => { throw new Error('outage'); } } : real(p));
+    const r = await call(handler(db), { token: 'ownerX', query: { rid: 'x_pizza' } });
+    assert.deepStrictEqual([r.code, r.body.reason], [503, 'unavailable'], 'v1 fails closed: the cutover read throws ⇒ 503, never 200');
+  }
+  ok('S2: v1 fails closed — an unreadable or malformed cut-over ⇒ 503');
+
+  // ── 36. in-flight activation (r6.1 P1-2): absent at the first read, committed DURING the candidate reads ⇒ the re-read sees it ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-if1', C - 3 * H, { comment: 'Previo' });
+    await ratedAt(db, B, 'XPZ-if2', C - 30 * 60 * 1000, { comment: 'En la última media hora' });   // no stamp: written before activation
+    const real = db.ref.bind(db); let armed = true;
+    db.ref = (p) => {
+      if (armed && String(p).startsWith('ratings_v2/')) { armed = false; return { ...real(p), once: async (...a) => { await enable(db); return real(p).once(...a); } }; }
+      return real(p);
+    };
+    assert.deepStrictEqual(await texts(handler(db)), ['Previo'], 'in-flight activation: the re-read sees the cutover and drops the margin-band candidate');
+    // and a call whose re-read finds a MALFORMED cut-over ⇒ 503
+    const g = fakeDb(SEED);
+    await ratedAt(g, A, 'XPZ-if3', 10 * H, { comment: 'Previo' });
+    const rg = g.ref.bind(g); let arm2 = true;
+    g.ref = (p) => { if (arm2 && String(p).startsWith('ratings_v2/')) { arm2 = false; g.set(RC.PATH, { disclosure_v: 1, policy_ack: ACK, disclosure_cutover_at: 'x' }); } return rg(p); };
+    const r = await call(handler(g), { token: 'ownerX', query: { rid: 'x_pizza' } });
+    assert.strictEqual(r.code, 503, 'a malformed cutover at the RE-read ⇒ 503');
+  }
+  ok('S2: an activation committed during the scan is caught by the post-scan re-read (the rule applied to the read candidates); a malformed re-read ⇒ 503');
+
+  // ── 37. absence is never cached; a valid cut-over is memoized — the read bounds (r6.2 §3) asserted by a read spy ──
+  {
+    const db = fakeDb(SEED);
+    await ratedAt(db, A, 'XPZ-b1', C - 3 * H, { comment: 'Previo' });
+    await ratedAt(db, B, 'XPZ-b2', C - 30 * 60 * 1000, { comment: 'Margen' });
+    const h = handler(db);
+    let r0 = cutReads(db);
+    assert.deepStrictEqual(await texts(h), ['Margen', 'Previo'], 'premise: call 1 before go-live serves both');
+    assert.strictEqual(cutReads(db) - r0, 2, 'read bounds: before activation (absent at both reads) ⇒ +2 leaf reads');
+    await enable(db);
+    r0 = cutReads(db);
+    assert.deepStrictEqual(await texts(h), ['Previo'], 'absence never cached: call 2 after activation applies the rule');
+    assert.strictEqual(cutReads(db) - r0, 1, 'read bounds: after activation, cold (no memo) ⇒ +1');
+    r0 = cutReads(db);
+    assert.deepStrictEqual(await texts(h), ['Previo'], 'premise: call 3 still applies the rule');
+    assert.strictEqual(cutReads(db) - r0, 0, 'read bounds: after activation, memoized ⇒ +0');
+    // absent at the first read, present at the re-read ⇒ +2, then memoized
+    const g = fakeDb(SEED);
+    await ratedAt(g, A, 'XPZ-b3', C - 3 * H, { comment: 'Previo' });
+    const rg = g.ref.bind(g); let arm = true;
+    g.ref = (p) => { if (arm && String(p).startsWith('ratings_v2/')) { arm = false; return { ...rg(p), once: async (...a) => { await enable(g); return rg(p).once(...a); } }; } return rg(p); };
+    const hg = handler(g);
+    r0 = cutReads(g); await texts(hg);
+    assert.strictEqual(cutReads(g) - r0, 2, 'read bounds: absent at the first read, present at the re-read ⇒ +2');
+    r0 = cutReads(g); await texts(hg);
+    assert.strictEqual(cutReads(g) - r0, 0, 'read bounds: the re-read\'s valid cutover is memoized ⇒ +0 next');
+  }
+  ok('S2 (r6.2 §3): absence is never cached; read bounds +2 (absent) / +1 (cold, present) / +0 (memoized) / +2 then memoized');
+
+  // ── 38. r5 §2 defence in depth: a DISCLOSED node is never served by v1 — even unstamped (a config with disclosure_v 1 + ack but no
+  //        cut-over, which the real writer never produces, seeded raw) ──
+  {
+    const db = fakeDb(SEED);
+    db.set(RC.PATH, { disclosure_v: 1, policy_ack: ACK });
+    await ratedAt(db, A, 'XPZ-ds', 10 * H, { comment: 'Con nombre', disclosure: 1 });
+    await ratedAt(db, B, 'XPZ-an', 11 * H, { comment: 'Sin nombre' });
+    assert.deepStrictEqual([db.get('ratings_v2/XPZ-ds/disclosure'), db.get('ratings_v2/XPZ-ds/post_cutover')], [1, undefined], 'premise: disclosed and unstamped');
+    assert.deepStrictEqual(await texts(handler(db)), ['Sin nombre'], 'a disclosed rating is never served by v1 (even unstamped)');
+  }
+  ok('S2 (r5 §2): a disclosed rating never reaches v1, even without the post_cutover stamp');
+
   FINISHED = true;
   console.log(`merchant-comments: OK (${n})`);
-})().catch((e) => { process.stderr.write(`merchant-comments: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`merchant-comments: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
