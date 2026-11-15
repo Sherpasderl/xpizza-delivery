@@ -13,4 +13,25 @@ class ThemedBridgeViewController: CAPBridgeViewController {
         webView?.backgroundColor = bg
         webView?.scrollView.backgroundColor = bg
     }
+
+    // «Abrir Ajustes» (MOCKUP-capp-push r1 F2c; Codex r1 P2-9, advisor ruling (a)): the first-party plugin lives in this file (already in
+    // the App target), registered as the bridge loads
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(AppSettingsPlugin())
+    }
+}
+
+// THIS app's page in the phone's Settings (where its notification permission lives) — UIApplication.openSettingsURLString
+@objc(AppSettingsPlugin)
+public class AppSettingsPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "AppSettingsPlugin"
+    public let jsName = "AppSettings"
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)]
+
+    @objc func open(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { call.reject("settings_unavailable"); return }
+            UIApplication.shared.open(url, options: [:]) { ok in ok ? call.resolve() : call.reject("settings_unavailable") }
+        }
+    }
 }

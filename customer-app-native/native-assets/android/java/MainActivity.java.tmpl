@@ -17,6 +17,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(AppSettingsPlugin.class);   // «Abrir Ajustes» (Codex r1 P2-9) — a local plugin registers before the bridge starts
         super.onCreate(savedInstanceState);
         paintWebView();
     }

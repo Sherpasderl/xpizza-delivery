@@ -409,7 +409,7 @@
       if (!fbAuth) return;
       if (forget) CappDeviceAccount.forget(storage);
       signingOut = true; dropMember(); renderNow();
-      await pushForget();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
+      await pushAuthExit();   // the server forgets THIS device's token while the session's ID token is still valid (rule 20)
       try { await fbAuth.signOut(); } catch (_) { signingOut = false; const u = auth && auth.user ? auth.user() : null; if (u && u.uid) applyMember(CappDeviceAccount.readProfile(storage, u.uid) || { uid: u.uid }); renderNow(); return; }
       signingOut = false; renderNow();
     }
@@ -420,19 +420,37 @@
       CappPush = pick(o, 'CappPush', './capp-push.js');
       const cap = win && win.Capacitor, plugin = cap && cap.Plugins ? cap.Plugins.PushNotifications || null : null;
       const platform = cap && typeof cap.getPlatform === 'function' ? cap.getPlatform() : null;
-      const withTok = (fn) => async (b) => { const tok = fbAuth ? await fbAuth.idToken() : null; return tok && suApi ? suApi[fn]({ idToken: tok, ...b }) : { ok: false, reason: 'unauthenticated' }; };
+      // Codex r1 P1-1: every call is sent ONLY under the token OWNER's own session (the core hands each call its owner); a register
+      // also needs that owner still admitted. Another identity now ⇒ nothing is sent (never B's token for A's token / consent)
+      const withTok = (fn, member) => async (b, c) => { const tok = await tokFor(c && c.owner, { member }); return tok && suApi ? suApi[fn]({ idToken: tok, ...b }) : { ok: false, reason: 'owner_gone' }; };
       push = CappPush.createPush({ enabled: true, plugin, platform, storage, now: () => Number(nowMs()), appBuild: typeof CAPP_SYSTEM_VERSION !== 'undefined' ? CAPP_SYSTEM_VERSION : (o.version || ''),
-        api: { register: withTok('pushRegister'), unregister: withTok('pushUnregister') } });
+        api: { register: withTok('pushRegister', true), unregister: withTok('pushUnregister', false) } });
       push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });
       return push;
     }
     const pushUi = () => !!(S.member && pushCore() && push.available());
+    // Codex r1 P1-1: the ID token FOR `uid` — the session (and, for a member action, the admitted member) must be that uid both before
+    // the token read and after it; a switch in between ⇒ null, nothing sent. The result of a call is re-checked by its caller
+    async function tokFor(uid, { member = true } = {}) {
+      const mine = () => { const u = auth && auth.user ? auth.user() : null; return !dead && !!u && u.uid === uid && (!member || (!!S.member && S.member.uid === uid)); };
+      if (typeof uid !== 'string' || !uid || !fbAuth || !mine()) return null;
+      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      return tok && mine() ? tok : null;
+    }
     // the member's prefs as the server last answered (null until read) — per uid; a device that is not registered shows both off
     function pushVm() {
       const st = push.state(), pr = S.pushPrefs && S.member && S.pushPrefs.uid === S.member.uid ? S.pushPrefs : null, on = st.state === 'granted' && st.registered;
-      return { granted: on, denied: st.state === 'denied', pedidos: on && (pr ? pr.pedidos : true), promociones: on && (pr ? pr.promociones : false), busy: !!(S.pushBusy || S.pushDown) };
+      // Codex r1 P2-6: inert until THIS visit's permission AND prefs reads succeeded for this member (pushRefresh) — never a guess
+      const ready = !!S.member && S.pushReady === S.member.uid;
+      return { granted: on, denied: st.state === 'denied', pedidos: on && (pr ? pr.pedidos : true), promociones: on && (pr ? pr.promociones : false), busy: !!(S.pushBusy || S.pushDown || !ready) };
     }
-    const keepPrefs = (r) => { if (S.member && r && r.ok === true && r.prefs) S.pushPrefs = { uid: S.member.uid, pedidos: r.prefs.pedidos === true, promociones: r.prefs.promociones === true, rev: r.prefs.rev }; };
+    // the server's prefs, kept per uid — a LATE read never replaces newer committed prefs (Codex r1 P2-6: rev order)
+    const keepPrefs = (r) => {
+      if (!S.member || !r || r.ok !== true || !r.prefs || !Number.isSafeInteger(r.prefs.rev)) return;
+      const cur = S.pushPrefs && S.pushPrefs.uid === S.member.uid && Number.isSafeInteger(S.pushPrefs.rev) ? S.pushPrefs : null;
+      if (cur && r.prefs.rev < cur.rev) return;
+      S.pushPrefs = { uid: S.member.uid, pedidos: r.prefs.pedidos === true, promociones: r.prefs.promociones === true, rev: r.prefs.rev };
+    };
     // «Pedido recibido»: the soft card once per order (decided at its first paint), the order line once push is on
     function pushOrder(od) {
       if (!pushUi()) return {};
@@ -444,11 +462,15 @@
     // the screen's visit: the OS permission now (changed in Ajustes?) + the member's prefs from the server
     async function pushRefresh() {
       const uid = S.member && S.member.uid; if (!uid) return;
-      await push.permission();
-      let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushGetPrefs({ idToken: tok }) : null; } catch (_) { r = null; }
+      S.pushReady = null;   // inert while this visit's reads are out (Codex r1 P2-6)
+      const perm = await push.permission();
+      let r = null; try { const tok = await tokFor(uid); r = tok && suApi ? await suApi.pushGetPrefs({ idToken: tok }) : null; } catch (_) { r = null; }
       if (dead || !S.member || S.member.uid !== uid) return;
-      // 3a e73a605a2: an unreadable policy (503) ⇒ the switches stay as last known, inert, with no error copy; a good read frees them
-      if (r && r.ok === true) { S.pushDown = false; if (r.prefs) keepPrefs(r); else S.pushPrefs = { uid, pedidos: true, promociones: false, rev: 0 }; } else if (r && r.reason === 'unavailable') S.pushDown = true;
+      // 3a e73a605a2: an unreadable policy (503) ⇒ the switches stay as last known, inert, with no error copy; a good read frees them.
+      // Codex r1 P2-6: live only when BOTH reads succeeded; a registered device whose prefs are missing stays inert (never a guess) —
+      // a device not yet opted in needs none (its switches are off and ARE the opt-in)
+      if (r && r.ok === true) { S.pushDown = false; if (r.prefs) keepPrefs(r); if (perm != null && (r.prefs || !push.state().registered)) S.pushReady = uid; }
+      else if (r && r.reason === 'unavailable') S.pushDown = true;
       if (S.tab === 'notifs') renderNow();
     }
     // the person's ONE change (k → val) on the server's prefs, a rev CAS (3a e73a605a2): a stale rev ⇒ the 409's CURRENT prefs are kept
@@ -456,7 +478,7 @@
     async function pushApply(k, val, base) {
       const uid = S.member.uid; let cur = base;
       for (let i = 0; i < 2; i++) {
-        let r = null; try { const tok = await fbAuth.idToken(); r = tok && suApi ? await suApi.pushSetPrefs({ idToken: tok, pedidos: cur.pedidos, promociones: cur.promociones, [k]: val, expected_rev: cur.rev }) : null; } catch (_) { r = null; }
+        let r = null; try { const tok = await tokFor(uid); r = tok && suApi ? await suApi.pushSetPrefs({ idToken: tok, pedidos: cur.pedidos, promociones: cur.promociones, [k]: val, expected_rev: cur.rev }) : null; } catch (_) { r = null; }
         if (dead || !S.member || S.member.uid !== uid) return null;
         if (r && r.ok === true) { keepPrefs(r); return true; }
         if (!(r && r.reason === 'stale_prefs' && r.prefs)) return false;
@@ -469,8 +491,9 @@
     // stands — a register never rewrites existing prefs (3a e73a605a2), so a choice it did not carry is applied by setPrefs
     async function pushEnable(prefs, k) {
       const uid = S.member && S.member.uid; S.pushBusy = true; renderNow();
-      const r = await push.enable(prefs);
-      if (dead || !S.member || S.member.uid !== uid) { S.pushBusy = false; return r; }
+      const r = await push.enable(prefs, { owner: uid });   // the token is registered FOR uid (Codex r1 P1-1)
+      // another identity now: nothing of A's is applied, and a token minted for A while B is here is invalidated at once
+      if (dead || !S.member || S.member.uid !== uid) { S.pushBusy = false; if (!dead) pushAuthExit(); return r; }
       let ok = r.ok;
       if (ok) { keepPrefs(r.server); const sp = r.server.prefs; if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true; }
       S.pushBusy = false;
@@ -480,7 +503,7 @@
       return { ...r, ok };
     }
     async function pushPref(k) {
-      if (S.pushBusy || S.pushDown) return;
+      if (S.pushBusy || S.pushDown || !S.member || S.pushReady !== S.member.uid) return;
       const v = pushVm(); if (v.denied) return;
       const val = !v[k];
       if (!v.granted) { if (val) await pushEnable({ pedidos: v.pedidos, promociones: v.promociones, [k]: true }, k); renderNow(); return; }   // the switch IS the consent (owner Q4)
@@ -503,17 +526,40 @@
       if (a === 'push-settings') { emit('open-os-settings', {}); return; }   // the host opens the phone's Ajustes (owner Q5)
     }
     // a tapped order push: the device's live order ⇒ its screen; else the member's receipt — held until the member is admitted
+    // Codex r1 P2-8: a past order not in «Pedidos»' cache is resolved by its OWN detail read (the receipt carries its row's fields);
+    // refused / failed ⇒ «Pedidos» (honest, nothing guessed)
     function pushTapRun() {
       const id = S.pushTap; if (!id || !S.member) return;
       S.pushTap = null;
       const od = activeOrder();
-      if (od && od.order_id === id) nav.go({ name: 'order' }); else nav.go({ name: 'receipt', oid: id });
+      if (od && od.order_id === id) { nav.go({ name: 'order' }); return; }
+      if (receiptRowOf(id)) { nav.go({ name: 'receipt', oid: id }); return; }
+      const uid = S.member.uid;
+      readReceipt(id).then((d) => { if (dead || !S.member || S.member.uid !== uid) return; if (d) nav.go({ name: 'receipt', oid: id }); else nav.tab({ name: 'orders' }); });
     }
-    // sign-out / a uid switch: bounded (3 s) — a hung network never holds the sign-out
+    // bounded (3 s) — a hung network never holds the sign-out; the phone's invalidation already ran (it never waits on the server) and
+    // what the server has not confirmed stays in the core's durable record (Codex r1 P1-2)
     async function pushForget() {
       if (!push || !push.available()) return;
-      S.pushPrefs = null;
+      S.pushPrefs = null; S.pushReady = null;
       await Promise.race([push.forget().catch(() => {}), new Promise((r) => T.setTimeout(r, 3000))]);
+    }
+    // Codex r1 P1-4: THE one auth-transition hook — every way an identity ends (the shell's sign-out, the SDK's own sign-out ⇒ guest,
+    // a uid switch, a session without its completion mark) forgets the device's live token for ITS owner: whenever the session is no
+    // longer an admitted member who owns it. Push never shipped before the owner field, so a token with no owner is no one's here
+    function pushAuthExit() {
+      const c = runtime.push === true && SU ? pushCore() : null;
+      if (!c || !c.available() || !c.held().live) return Promise.resolve();
+      const u = auth && auth.user ? auth.user() : null, owner = c.held().owner;
+      if (!signingOut && u && u.uid && owner === u.uid && S.member && S.member.uid === u.uid && completeUid() === u.uid) return Promise.resolve();
+      return pushForget();
+    }
+    // the held invalidations (an app closed mid-sign-out), retried after the first paint and never awaited by anything: ≤ 8 records
+    // (the core's PENDING_MAX), the whole retry capped at 5 s — the server step goes only under each record owner's own session
+    function pushSettleSoon() {
+      const c = runtime.push === true && SU ? pushCore() : null;
+      if (!c || !c.available() || !c.held().pending) return;
+      T.setTimeout(() => { if (!dead) Promise.race([c.settle().catch(() => {}), new Promise((r) => T.setTimeout(r, 5000))]); }, 0);
     }
     function startAuth() {
       if (!SU || fbAuth || dead) return;
@@ -522,7 +568,7 @@
       auth = CappAuthState.createAuthState({ subscribe: fbAuth.subscribe, timers: T });
       auth.onChange((st) => {
         storeAuth();
-        if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }   // a CONFIRMED sign-out: no personal data stays on show
+        if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }   // a CONFIRMED sign-out: no personal data stays on show
         if (st !== 'member') { dropMember(); schedule(); return; }
         const u = auth.user && auth.user();
         // Codex G7 r1 #2: a cached profile of ANOTHER uid than the session's is purged (never shown, never kept)
@@ -531,12 +577,16 @@
         if (signup && signup.state.open) { schedule(); return; }
         // a RESTORED session without THIS uid's completion mark: never a member; signed out (a rejected sign-out is retried at the next
         // restore — nothing is cleared until the 'guest' callback confirms it)
-        if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }
+        // (Codex r1 P1-4: the device's token is forgotten FIRST, while this session's token is still valid — bounded, then signed out)
+        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }
         // a session the SDK RESTORED (no sheet ran): the cached profile of THIS uid, at once (cached-first)
         // Codex Pedidos r2 P1: a switch to ANOTHER uid drops the previous member SYNCHRONOUSLY (before any token await) — whatever was
         // issued or shown for them is void before the new identity is admitted
-        if (u && u.uid && S.member && S.member.uid !== u.uid) { dropMember(); pushForget(); }
-        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); return; }
+        if (u && u.uid && S.member && S.member.uid !== u.uid) dropMember();
+        // a token another person owns (a live switch, OR a cold restore as someone else — Codex r1 P1-4) is forgotten before admission
+        { const c = runtime.push === true ? pushCore() : null, h = c && c.available() ? c.held() : null; if (h && h.live && h.owner !== (u && u.uid)) pushForget(); }
+        if (u && u.uid && (!S.member || S.member.uid !== u.uid)) { const c = CappDeviceAccount.readProfile(storage, u.uid); applyMember(c || { uid: u.uid }); pushSettleSoon(); return; }
+        pushSettleSoon();
         schedule();
       });
       // the sheet's own host: an .app layer (the theme tokens live on .app) OUTSIDE the store mount's #app, transparent until open
@@ -548,6 +598,9 @@
         api: (suApi = CappSignupApi.createSignupApi({ endpoints: SU.endpoints, fetch: o.signupFetch })), auth: fbAuth, google: o.google || null, timers: T,
         ...(runtime.intlPhone === true ? { intlPhone: true, CappPhone: typeof CappPhone !== 'undefined' ? CappPhone : o.CappPhone } : {}),   // part B (b): the in-sheet country pane
         onEvent: (n, d) => { if (n === 'signed-in') signedIn(d); } });
+      // Codex r1 P2-7: the push core (and its TAP listener) at startup — a cold start from a tapped push lands on Inicio and the tap
+      // is queued (S.pushTap) until the member is admitted
+      if (runtime.push === true) pushCore();
     }
     function settleRet(rid, out) {
       const a = S.retAssoc; if (!a || a.rid !== rid) return;
@@ -1259,9 +1312,17 @@
       });
     }
     let receiptGen = 0; const receiptCache = new Map(), receiptInflight = new Map();
-    function openReceipt(oid) {
+    // the receipt's head row: «Pedidos»' cached row, else one built from the order's own kept receipt (a tapped push — P2-8)
+    function receiptRowOf(oid) {
       const who = ownerNow(), rd = S.ordersRead && S.ordersRead.who === who ? S.ordersRead : null;
       const row = rd && typeof oid === 'string' ? rd.past.find((r) => r.order_id === oid) : null;
+      if (row) return row;
+      const d = typeof oid === 'string' ? receiptCache.get(oid) : null;
+      return d ? { order_id: d.order_id, restaurant: d.restaurant, ts: d.ts, order_type: d.order_type, status: d.status, display_number: d.display_number, items_text: d.items_text,
+        total: d.totals && Number.isSafeInteger(d.totals.total_cents) ? d.totals.total_cents / 100 : null } : null;
+    }
+    function openReceipt(oid) {
+      const who = ownerNow(), row = receiptRowOf(oid);
       if (!row || !S.member) return false;
       S.receipt = { oid, who, row, data: receiptCache.get(oid) || null, failed: false };
       if (!S.receipt.data) loadReceipt(S.receipt);

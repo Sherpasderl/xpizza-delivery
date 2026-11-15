@@ -27538,8 +27538,8 @@
   "slice": "g6",
   "label": "an ordinary sign-out keeps the cached profile",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }",
-  "to": "if (st === 'guest') { clearComplete(); }",
+  "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }",
+  "to": "if (st === 'guest') { clearComplete(); pushAuthExit(); pushSettleSoon(); }",
   "command": [
    "node",
    "--test",
@@ -27640,7 +27640,7 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: a restored uid is applied without its completion mark",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }\n",
+  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }\n",
   "to": "",
   "command": [
    "node",
@@ -27708,8 +27708,8 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: the uid is marked before its sign-out is confirmed (a rejected sign-out admits it at the next restore)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {});",
-  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); fbAuth.signOut().catch(() => {});",
+  "from": "completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
   "command": [
    "node",
    "--test",
@@ -36764,8 +36764,8 @@
   "slice": "capp-push",
   "label": "a 503 read leaves the switches live",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "} else if (r && r.reason === 'unavailable') S.pushDown = true;",
-  "to": "}",
+  "from": "else if (r && r.reason === 'unavailable') S.pushDown = true;",
+  "to": "else if (r && r.reason === 'unavailable') S.pushReady = uid;",
   "command": [
    "node",
    "--test",
@@ -36800,7 +36800,7 @@
   "slice": "capp-push",
   "label": "sign-out without forgetting the token",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "      await pushForget();   // the server forgets",
+  "from": "      await pushAuthExit();   // the server forgets",
   "to": "      void 0;   // the server forgets",
   "command": [
    "node",
@@ -36865,6 +36865,95 @@
   ],
   "kills_with": [
    "PUSH-SHELL-6: the tap opens its live screen"
+  ]
+ },
+ {
+  "id": "push-s11",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-1: a push call takes whatever session token is current (not the owner's)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const tok = await tokFor(c && c.owner, { member });",
+  "to": "const tok = fbAuth ? await fbAuth.idToken() : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-11: nothing of A's action is sent under B's token"
+  ]
+ },
+ {
+  "id": "push-s12",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: the SDK's own sign-out (guest) never forgets the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "clearComplete(); pushAuthExit(); pushSettleSoon(); }",
+  "to": "clearComplete(); pushSettleSoon(); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (guest)"
+  ]
+ },
+ {
+  "id": "push-s13",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: a session without its completion mark is signed out without forgetting the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "to": "dropMember(); fbAuth.signOut().catch(() => {});",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (marker)"
+  ]
+ },
+ {
+  "id": "push-s14",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: a cold restore as another person keeps the previous owner's token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (h && h.live && h.owner !== (u && u.uid)) pushForget();",
+  "to": "if (h && h.live && S.member && h.owner !== (u && u.uid)) pushForget();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (cold)"
+  ]
+ },
+ {
+  "id": "push-s15",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-9: the packaged boot drops «Abrir Ajustes» (no AppSettings call)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "if (n === 'open-os-settings') {",
+  "to": "if (n === 'open-os-settings-x') {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^SETTINGS-BOOT",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SETTINGS-BOOT: open-os-settings ⇒ AppSettings.open()"
   ]
  }
 ]
