@@ -1,6 +1,6 @@
 'use strict';
 // PLAN-5f-marketing-price r0 (APPROVED 2026-11-14) — offerFor: the ONE best restaurant offer for an order, PURE.
-//   Input: the marketing config (marketing/config readMarketingConfig), this branch's live mirror (3a's marketing_live_b/{brandId}/{rid}, read by the
+//   Input: the marketing config (marketing/config readMarketingConfig), this branch's live mirror (3a's marketing_brand/{brandId}/live/{rid}, read by the
 //   caller), the cart, its GROSS food total (computeServerTotal's lempiras) and the server envío ctx. Output: null, or a SERVER offer ctx
 //   { offer_id, rev, type, name, discount_cents, waived_envio_cents } — recognised by identity (isServerOfferCtx), so a request body can
 //   never mint one (the delivery ctx precedent, delivery-pricing.js mint).
@@ -29,7 +29,9 @@ const floorL = (cents) => Math.floor(cents / L) * L;
 function entryOf(id, e) {
   if (!OM.OFFER_ID_RE.test(id) || !isObj(e)) return null;
   if (!Number.isSafeInteger(e.rev) || e.rev < 1 || !OM.TYPES.includes(e.type) || typeof e.name !== 'string' || !e.name) return null;
-  const s = e.schedule, p = e.params;
+  // RTDB never stores an empty object: a STORED «sin mínimo» envío reads back params-less — {} (the same rule as offer-model paramsOf(…, stored=true));
+  // every other type still needs its params
+  const s = e.schedule, p = e.type === 'envio' && e.params == null ? {} : e.params;
   if (!isObj(s) || !isObj(p)) return null;
   const start = s.start, end = s.end == null ? null : s.end;
   if (!Number.isSafeInteger(start) || (end !== null && !(Number.isSafeInteger(end) && end > start))) return null;

@@ -1,5 +1,5 @@
 'use strict';
-// The offer readers' BRAND of a branch (advisor 11-14 GO: the live mirror re-keys to marketing_live_b/{brandId}/{rid}): the SAME rule the
+// The offer readers' BRAND of a branch (advisor 11-14 GO: the live mirror is keyed by brand: marketing_brand/{brandId}/live/{rid}): the SAME rule the
 // writer's authorization resolves (brands/brand-model.js brandIdOf — identity.brand_id first, else a valid LEGACY singleton record
 // brands/{rid} ⇒ the rid), read least-privilege (the brand_id LEAF, never the identity node; brands/{rid} only when the leaf is absent):
 //   BO-WORLD:   a branch made by the REAL marketing world (roster writer + identity) ⇒ its brand

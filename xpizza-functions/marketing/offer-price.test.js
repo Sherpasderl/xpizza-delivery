@@ -70,7 +70,7 @@ async function world({ offers_enabled = true } = {}) {
     return s.body.offer.id;
   };
   const cfg = async () => CFG.readMarketingConfig(db);
-  const live = () => fake.get('marketing_live_b/tb/tb_centro');   // 3a's brand-keyed mirror (66987f452)
+  const live = () => fake.get('marketing_brand/tb/live/tb_centro');   // 3a's ONE brand root (c4538460a)
   return { fake, db, publish, cfg, live };
 }
 const line = (key, qty = 1, extras = []) => ({ name: key, qty, extras });
@@ -151,6 +151,17 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: Sherpa's promo on (ruling 4757)`);
     assert.strictEqual(await pick(w, [line(K2)], { deliveryContext: envio() }), null, `${L}: L 220 < L 300`);
     assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: JSON.parse(JSON.stringify(envio())) }), null, `${L}: a request-shaped ctx is not the server's`);
+  });
+  await cell('OP-ENVIO-NOMIN: a «sin mínimo» envío as RTDB STORES it — no params node (RTDB never stores an empty object; 3a 11-14) — is priced: the whole fee waived', async (L) => {
+    const w = await world(); const id = await w.publish({ type: 'envio', params: {} });
+    const path = `marketing_brand/tb/live/tb_centro/${id}`;
+    assert.ok(w.fake.get(path), `${L}: premise — 3a's writer mirrored it`);
+    w.fake.put(`${path}/params`, null);   // the production shape: RTDB drops the empty params node (this fake keeps {})
+    assert.strictEqual(w.fake.get(`${path}/params`), null, `${L}: premise — no params node`);
+    assert.deepStrictEqual(brief(await pick(w, [line(K2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `🔴 ${L}: priced with no minimum`);
+    const pct = await world(); const pid = await pct.publish({ type: 'pct', params: { pct: 20 } });
+    pct.fake.put(`marketing_brand/tb/live/tb_centro/${pid}/params`, null);
+    assert.strictEqual(await pick(pct, [line(K2, 2)]), null, `🔴 ${L}: only envío may lack params — a params-less pct stays unpriced`);
   });
   await cell('OP-BEST: the largest saving wins; Sherpa promo + a FOOD offer combine; a tie ⇒ the smallest offer id', async (L) => {
     const w = await world();

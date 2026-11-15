@@ -58,7 +58,7 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     return s.body.offer.id;
   };
   const pause = async (id) => {
-    const rev = fake.get(`marketing_offers/${brand}/${id}`).rev;
+    const rev = fake.get(`marketing_brand/${brand}/offers/${id}`).rev;
     const m = await C.marketingOfferSetStateCore(deps, req({ offer_id: id, to: 'paused_owner', expected_rev: rev }));
     assert.strictEqual(m.status, 200, `premise: paused (${JSON.stringify(m.body)})`);
   };
@@ -66,7 +66,7 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     const cur = fake.get('platform_config/marketing');
     assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: cur.policy_version, config: cfgBody(on), actor: 'cli:op', now: 2 })).ok, true, 'premise: switch');
   };
-  const live = () => fake.get(`marketing_live_b/${brand}/${rid}`);   // the mirror as 3a's writer keys it (66987f452)
+  const live = () => fake.get(`marketing_brand/${brand}/live/${rid}`);   // the mirror as 3a's writer keys it (ONE brand root, c4538460a)
   return { fake, db, rid, brand, publish, pause, setOffers, live };
 }
 

@@ -1,6 +1,6 @@
 'use strict';
 // The BRAND of a branch, for the offer readers (advisor 11-14 ruling, rule 4 — one source): the live mirror is keyed
-// marketing_live_b/{brandId}/{rid}, and the readers must resolve the brand EXACTLY as the writer's authorization does — the pure
+// marketing_brand/{brandId}/live/{rid} (3a's ONE brand root), and the readers must resolve the brand EXACTLY as the writer's authorization does — the pure
 // brands/brand-model.js brandIdOf (identity.brand_id first; absent ⇒ a VALID legacy singleton record brands/{rid} ⇒ the rid; else
 // unknown). This module is only its I/O: least privilege (the brand_id LEAF, never the identity node — it carries the hub, phone and
 // WhatsApp instance), brands/{rid} read only when the leaf is absent, and a per-instance cache with the mirror's TTL.

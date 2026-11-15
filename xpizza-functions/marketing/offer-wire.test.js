@@ -35,7 +35,8 @@ const PRICING = (free) => P.readPricing({ policy_version: 1, bands: [{ max_km: 1
 const envio = ({ free = false, mode = 'delivery' } = {}) => P.quoteDelivery({ pricing: PRICING(free), hub: { lat: 14.1, lng: -87.2 }, mode, pin: { lat: 14.11, lng: -87.21, confirmed: true }, customerUid: 'cust1' }).ctx;
 const xworld = (o = {}) => world({ rid: RID, brand: BRAND, menu: MENU, ...o });
 
-// a read-counting db wrapper (marketing_live / platform_config / orders reads)
+// a read-counting db wrapper (mirror / platform_config / orders reads); isMirror: the brand-root mirror OR any retired mirror path
+const isMirror = (p) => /^marketing_brand\/[^/]+\/live\//.test(String(p)) || String(p).startsWith('marketing_live');
 function counting(db) { const reads = []; return { reads, ref: (p) => { const r = db.ref(p); return { ...r, once: async (...a) => { reads.push(p); return r.once(...a); } }; } }; }
 
 async function quote(w, items, { ctx = null, db = w.db, nowMs = NOW + 3600000 } = {}) {
@@ -60,7 +61,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const cdb = counting(w.db); const dq = { ctx: envio(), uid: 'cust1' };
     const items = [line('Pepperoni', 2)];
     assert.strictEqual(await OW.withOffer({ db: cdb, rid: RID, items, tables: TABLES, baseTotalL: 440, dq, app: true, nowMs: NOW, log: quiet }), dq, `${L}: same object`);
-    assert.ok(!cdb.reads.some((p) => p.startsWith('marketing_live') || p.startsWith('orders/')), `${L}: no mirror / order read (${cdb.reads})`);
+    assert.ok(!cdb.reads.some((p) => isMirror(p) || p.startsWith('orders/')), `${L}: no mirror / order read (${cdb.reads})`);
     const p = await place(w, items, null, { ctx: envio() });
     assert.deepStrictEqual(p.recorded, DW.withDelivery({ ctx: envio() }, orderBreakdownCents(440, RID)), `${L}: byte-identical breakdown`);
     assert.strictEqual(p.offer, null, L);
@@ -100,13 +101,13 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const cdb = counting(w.db); const items = [line('Pepperoni', 2)];
     for (const t of [0, 1000, 59999]) await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + t });
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 1, `${L}: one mirror read for three quotes in 60 s`);
+    assert.deepStrictEqual(cdb.reads.filter((p) => isMirror(p)).length, 1, `${L}: one mirror read for three quotes in 60 s`);
     await quote(w, items, { db: cdb, nowMs: NOW + 3600000 + 60000 });
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, 2, `${L}: re-read after 60 s`);
+    assert.deepStrictEqual(cdb.reads.filter((p) => isMirror(p)).length, 2, `${L}: re-read after 60 s`);
     assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('platform_config')).length, 2, `${L}: the config too`);
-    const before = cdb.reads.filter((p) => p.startsWith('marketing_live')).length;
+    const before = cdb.reads.filter((p) => isMirror(p)).length;
     await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60001 }); await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60002 });
-    assert.strictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')).length, before + 2, `${L}: placement fresh`);
+    assert.strictEqual(cdb.reads.filter((p) => isMirror(p)).length, before + 2, `${L}: placement fresh`);
   });
   await cell('MW-ENVIO-FUNDER: a restaurant envío offer ⇒ promo_discount_cents = the fee, funder «restaurant», envío not charged; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
     const w = await xworld(); await w.publish({ type: 'envio', params: { min_cents: 20000 } });
@@ -138,7 +139,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const w = await xworld(); await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });
     const items = [line('Pepperoni', 2)];
     const { q } = await quote(w, items);
-    const broken = { ref: (p) => (String(p).startsWith('marketing_live') ? { once: async () => { throw Object.assign(new Error('secret path data'), { code: 'UNAVAILABLE' }); } } : w.db.ref(p)) };
+    const broken = { ref: (p) => (isMirror(p) ? { once: async () => { throw Object.assign(new Error('secret path data'), { code: 'UNAVAILABLE' }); } } : w.db.ref(p)) };
     const logs = []; const log = { warn: (...a) => logs.push(a), log() {}, error() {} };
     const dq = await OW.withOffer({ db: broken, rid: RID, items, tables: TABLES, baseTotalL: 440, dq: null, app: true, nowMs: NOW + 3700000, placement: true, log });
     assert.strictEqual(dq, null, `${L}: no offer`);
@@ -222,16 +223,16 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
   });
 
   // ── the brand-keyed mirror (3a's rekey 66987f452; advisor 11-14 GO + ruling: the brand by brand-model brandIdOf via marketing/brand-of) ──
-  await cell('OW-BRAND-KEY: the mirror is read at marketing_live_b/{the identity\'s brand}/{rid} — a rid NAMED x_pizza whose identity names brand xp prices xp\'s entry, never a decoy keyed by the rid string nor one at the old path', async (L) => {
+  await cell('OW-BRAND-KEY: the mirror is read at marketing_brand/{the identity\'s brand}/live/{rid} — a rid NAMED x_pizza whose identity names brand xp prices xp\'s entry, never a decoy keyed by the rid string nor one at either retired path', async (L) => {
     const w = await xworld(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 10000 } });
     const entry = w.live()[id];
     assert.ok(entry, `${L}: premise — 3a's writer mirrored it under ${BRAND}`);
     const decoy = { ...entry, params: { ...entry.params, off_cents: 9000 } };
-    w.fake.put(`marketing_live_b/${RID}/${RID}/${id}`, decoy); w.fake.put(`marketing_live/${RID}/${id}`, decoy);
+    w.fake.put(`marketing_brand/${RID}/live/${RID}/${id}`, decoy); w.fake.put(`marketing_live_b/${BRAND}/${RID}/${id}`, decoy); w.fake.put(`marketing_live/${RID}/${id}`, decoy);
     const cdb = counting(w.db);
     const { dqo } = await quote(w, [line('Pepperoni', 2)], { db: cdb });
     assert.strictEqual(OW.offerOf(dqo) && OW.offerOf(dqo).discount_cents, 5000, `🔴 ${L}: ${BRAND}'s entry priced, never a decoy`);
-    assert.deepStrictEqual(cdb.reads.filter((p) => p.startsWith('marketing_live')), [`marketing_live_b/${BRAND}/${RID}`], `🔴 ${L}: exactly the brand-keyed read`);
+    assert.deepStrictEqual(cdb.reads.filter((p) => isMirror(p)), [`marketing_brand/${BRAND}/live/${RID}`], `🔴 ${L}: exactly the brand-keyed read`);
   });
 
   await cell('OW-LEGACY-E2E: both prod-shaped legacy singletons (identity WITHOUT brand_id, a legacy brands/{rid}) — 3a\'s REAL writer mirrors under the brand brand-of resolves (writer and reader agree), and a quote and a placement both price the offer', async (L) => {
@@ -242,7 +243,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
       const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 10000 } });
       const brand = await BO.brandOf(w.db, rid, { nowMs: NOW, cached: false });
       assert.strictEqual(brand, rid, `🔴 ${L}: ${rid} resolves to its own legacy brand`);
-      assert.ok(w.fake.get(`marketing_live_b/${brand}/${rid}/${id}`), `🔴 ${L}: ${rid} — the writer keyed the mirror by the SAME brand the reader resolves`);
+      assert.ok(w.fake.get(`marketing_brand/${brand}/live/${rid}/${id}`), `🔴 ${L}: ${rid} — the writer keyed the mirror by the SAME brand the reader resolves`);
       const tables = { restaurantId: rid, menu: MENU, extras: {} }; const items = [{ ...line('Pepperoni', 2), id: 'Pepperoni' }];   // id + name: priced in either key mode (menu-pricing defaultKeyMode)
       const t = computeServerTotal(items, rid, tables); assert.strictEqual(t.error, null, 'premise');
       const base = { db: w.db, rid, items, tables, baseTotalL: t.total, reward: null, app: true, log: quiet };
@@ -262,7 +263,7 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const items = [line('Pepperoni', 2)]; const tables = { restaurantId: 'lm_none', menu: MENU, extras: {} };
     const q = await OW.withOffer({ db: cdb, rid: 'lm_none', items, tables, baseTotalL: computeServerTotal(items, 'lm_none', tables).total, dq: { ctx: null, uid: 'cust1' }, reward: null, app: true, nowMs: NOW + 3600000, log: quiet });
     assert.strictEqual(OW.offerOf(q), null, `🔴 ${L}: no brand ⇒ no offer`);
-    assert.ok(!cdb.reads.some((p) => p.startsWith('marketing_live')), `🔴 ${L}: no mirror read (${cdb.reads})`);
+    assert.ok(!cdb.reads.some((p) => isMirror(p)), `🔴 ${L}: no mirror read (${cdb.reads})`);
   });
 
   FINISHED = true;
