@@ -463,6 +463,41 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('the owner pause stamps paused_at (server time), resume clears it, the read exposes it while paused');
     }
 
+    // ── 5j. create / repeat are IDEMPOTENT per (restaurant, client op_id) (advisor 11-14; portal-ui drops its content-matching findCreated) ──
+    {
+      const { fake, deps } = await setup();
+      const OP = 'op_' + 'k'.repeat(20);
+      const count = () => Object.keys(fake.get('marketing_offers/tb') || {}).length;
+      const n0 = count();
+      const first = await save(deps, `t-${OWNER}`, { offer: offer(), op_id: OP });
+      assert.strictEqual(first.status, 200, `premise: created (${JSON.stringify(first.body)})`);
+      const retry = await save(deps, `t-${OWNER}`, { offer: offer(), op_id: OP });   // the reply was lost; the client retries
+      assert.deepStrictEqual([retry.status, retry.body.offer.id, retry.body.offer.rev, retry.body.offer.state], [200, first.body.offer.id, 1, 'draft'], 'a lost reply then a retry ⇒ the SAME offer (its current rev and state)');
+      assert.strictEqual(count(), n0 + 1, 'and one offer, never two');
+      ok('create idempotent: a lost reply then a retry with the same op_id ⇒ the same offer, one offer');
+      const OP2 = 'op_' + 'm'.repeat(20);
+      const [c1, c2] = await Promise.all([save(deps, `t-${OWNER}`, { offer: offer({ name: 'Concurrente' }), op_id: OP2 }), save(deps, `t-${OWNER}`, { offer: offer({ name: 'Concurrente' }), op_id: OP2 })]);
+      assert.deepStrictEqual([c1.status, c2.status, c1.body.offer.id === c2.body.offer.id], [200, 200, true], `two concurrent calls with one op_id ⇒ both answer the SAME offer (${JSON.stringify([c1.body, c2.body])})`);
+      assert.strictEqual(count(), n0 + 2, 'one offer for the concurrent pair');
+      const other = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Otra' }), op_id: 'op_' + 'p'.repeat(20) });
+      assert.ok(other.status === 200 && other.body.offer.id !== first.body.offer.id && count() === n0 + 3, 'a DIFFERENT op_id ⇒ a new offer');
+      assert.deepStrictEqual([(await save(deps, `t-${OWNER}`, { offer: offer(), op_id: 'bad op' })).status, (await save(deps, `t-${OWNER}`, { offer: offer(), op_id: 'bad op' })).body.field], [400, 'op_id'], 'a malformed op_id ⇒ 400');
+      ok('concurrent calls with one op_id ⇒ one offer; a different op_id ⇒ a new offer; a malformed op_id ⇒ 400');
+      // the op_id expires after 7 days: the same op_id then creates afresh
+      const late = await save({ ...deps, now: () => NOW + 8 * DAY }, `t-${OWNER}`, { offer: offer({ schedule: { start: NOW + 9 * DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }), op_id: OP });
+      assert.ok(late.status === 200 && late.body.offer.id !== first.body.offer.id, `an op_id older than 7 days no longer matches ⇒ a new offer (${JSON.stringify(late.body)})`);
+      ok('an op_id expires after 7 days');
+      // REPEAT is idempotent the same way
+      const ended = await published(deps, { name: 'Para repetir' });
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: ended.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const ROP = 'op_' + 'r'.repeat(20);
+      const rep = (o = {}) => C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: ended.id, op_id: ROP, ...o }));
+      const r1 = await rep(); const before = count(); const r2 = await rep();
+      assert.deepStrictEqual([r1.status, r2.status, r2.body.offer && r2.body.offer.id], [200, 200, r1.body.offer && r1.body.offer.id], 'repeat: a retry with the same op_id ⇒ the SAME new draft');
+      assert.strictEqual(count(), before, 'and never a second draft');
+      ok('repeat idempotent per op_id');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();

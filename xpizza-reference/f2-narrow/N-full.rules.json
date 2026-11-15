@@ -691,6 +691,10 @@
       ".read": false,
       ".write": false
     },
+    "marketing_offer_ops": {
+      ".read": false,
+      ".write": false
+    },
     "marketing_usage": {
       ".read": false,
       ".write": false

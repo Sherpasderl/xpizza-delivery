@@ -55,7 +55,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       ['unauthenticated', env.unauthenticatedContext().database()],
     ];
     const paths = ['marketing_offers/tb', `marketing_offers/tb/${offerId}`, 'marketing_live/tb_centro', `marketing_live/tb_centro/${offerId}`, `marketing_usage/${offerId}`, 'platform_config/marketing',
-      'anuncio_slots/W2027-03-08', 'anuncio_bookings/tb_centro', 'anuncio_bookings/tb_centro/b_aaaaaaaaaaaa'];   // step 3: the Anuncio's two nodes
+      'anuncio_slots/W2027-03-08', 'anuncio_bookings/tb_centro', 'anuncio_bookings/tb_centro/b_aaaaaaaaaaaa',   // step 3: the Anuncio's two nodes
+      'marketing_offer_ops/tb', 'marketing_offer_ops/tb/op_kkkkkkkkkkkkkkkkkkkk'];   // the create / repeat op_id claims (idempotency)
     for (const [who, db] of ctxs) {
       for (const p of paths) {
         await no(`${who} cannot READ ${p.replace(offerId, '<offer>')}`, db.ref(p).get());

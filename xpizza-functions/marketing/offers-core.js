@@ -269,6 +269,39 @@ async function pruneEnded(db, brandId, ids) {
 }
 
 const bodyOf = (req) => (isObj(req && req.body) ? req.body : {});
+
+// IDEMPOTENT create / repeat per (restaurant, client op_id) (advisor 11-14; portal-ui retries a lost reply): ONE create-only transaction
+// claims marketing_offer_ops/{brandId}/{op_id} = { offer_id, kind, at } BEFORE the record is created under that id (the record create is
+// create-only too). A repeat call finds the claim and answers THAT offer (its current rev and state); while the first call is still in
+// flight (claimed, record not yet written) the repeat creates under the SAME claimed id — create-only, so exactly one record ever exists
+// and the loser answers the winner's. An op_id older than OP_TTL_MS no longer matches (the claim is replaced; expired claims are pruned).
+const OP_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const OP_TTL_MS = 7 * 86400000;
+const opsPath = (brandId) => `marketing_offer_ops/${brandId}`;
+// → { offerId, fresh } (fresh = this call made the claim)
+async function claimOp(db, brandId, opId, kind, t) {
+  const proposed = newOfferId();
+  let out = null;
+  const tx = await db.ref(`${opsPath(brandId)}/${opId}`).transaction((cur) => {
+    if (isObj(cur) && OM.OFFER_ID_RE.test(String(cur.offer_id)) && cur.kind === kind && Number.isSafeInteger(cur.at) && t - cur.at < OP_TTL_MS) { out = { offerId: cur.offer_id, fresh: false }; return undefined; }
+    out = { offerId: proposed, fresh: true };
+    return { offer_id: proposed, kind, at: t };
+  });
+  if (out && out.fresh && !(tx && tx.committed)) return null;
+  if (out && out.fresh) {   // the brand's EXPIRED claims leave with a fresh one (bounded by the create rate)
+    try {
+      const all = (await val(db, opsPath(brandId))) || {};
+      const old = Object.entries(isObj(all) ? all : {}).filter(([, c]) => !(isObj(c) && Number.isSafeInteger(c.at) && t - c.at < OP_TTL_MS)).map(([k]) => k);
+      if (old.length) await db.ref(opsPath(brandId)).update(Object.fromEntries(old.map((k) => [k, null])));
+    } catch (_) { /* retried by the next fresh claim */ }
+  }
+  return out;
+}
+// an op_id retry that lost the create-only race (or found the claim): the claimed offer as it is now → the 200 reply | null
+async function replayOf(db, brandId, offerId, t) {
+  const rec = await val(db, `${offersPath(brandId)}/${offerId}`);
+  return isObj(rec) && OM.recordOk(rec, opts) ? reply(200, { ok: true, offer: offerView(offerId, rec, t) }) : null;
+}
 const offerView = (id, rec, nowMs) => ({
   id, rev: rec.rev, state: rec.state, status: OM.statusOf(rec, nowMs),
   ...OM.authoredOf(rec, opts),
@@ -334,6 +367,7 @@ async function marketingOfferSaveCore(deps, req) {
   const creating = body.offer_id === undefined;
   if (!creating && !OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
   if (!Number.isSafeInteger(body.expected_rev) || body.expected_rev < 0 || (creating !== (body.expected_rev === 0))) return reply(400, { error: 'bad_request', field: 'expected_rev' });
+  if (body.op_id !== undefined && (!creating || !OP_RE.test(String(body.op_id)))) return reply(400, { error: 'bad_request', field: 'op_id' });
   const v = OM.validateAuthored(body.offer, opts);
   if (!v.ok) return reply(400, { error: 'bad_request', field: v.field, reason: v.reason });
   const denied = await authorizeBranches(deps, ctx, brandId, v.value.branches);
@@ -342,7 +376,14 @@ async function marketingOfferSaveCore(deps, req) {
   if (dish.fail) return dish.fail;
   const value = dish.value;
   const t = now();
-  const offerId = creating ? newOfferId() : body.offer_id;
+  let offerId = creating ? newOfferId() : body.offer_id;
+  if (creating && body.op_id !== undefined) {   // idempotent create: the claimed id; a repeat answers the offer it already made
+    let c;
+    try { c = await claimOp(db, brandId, body.op_id, 'create', t); } catch (_) { return UNAVAILABLE(); }
+    if (!c) return UNAVAILABLE();
+    offerId = c.offerId;
+    if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
+  }
   let prune = [];
   if (creating) {   // the brand's bound (every state counts) + Q4: ended offers older than 180 days leave with this write
     let all;
@@ -372,7 +413,10 @@ async function marketingOfferSaveCore(deps, req) {
     d.why = 'write';
     return OM.stripNulls({ ...cur, ...value, schedule: value.schedule, caps: value.caps, rev: cur.rev + 1, updated_at: t });
   });
-  if (w.fail) return w.fail;
+  if (w.fail) {
+    if (creating && body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }   // the concurrent twin won the create-only write
+    return w.fail;
+  }
   if (w.rec.state === 'active') { const m = await settleMirrors(db, brandId, `${offersPath(brandId)}/${offerId}`, offerId, w.rec, prevRec, t); if (m) return m; }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
@@ -437,6 +481,7 @@ async function marketingOfferRepeatCore(deps, req) {
   const { body, ctx } = h;
   const brandId = h.access.brandId;
   if (!OM.OFFER_ID_RE.test(body.offer_id)) return reply(400, { error: 'bad_request', field: 'offer_id' });
+  if (body.op_id !== undefined && !OP_RE.test(String(body.op_id))) return reply(400, { error: 'bad_request', field: 'op_id' });
   let all;
   try { all = (await val(db, offersPath(brandId))) || {}; } catch (_) { return UNAVAILABLE(); }
   const src = isObj(all) ? all[body.offer_id] : null;
@@ -449,13 +494,23 @@ async function marketingOfferRepeatCore(deps, req) {
   if (denied) return denied;
   const prune = endedToPrune(all, t).filter((id) => id !== body.offer_id);   // never the offer being repeated
   if (Object.keys(all).length - prune.length >= OM.LIMITS.offers_max) return reply(409, { error: 'too_many_offers' });
-  const offerId = newOfferId();
+  let offerId = newOfferId();
+  if (body.op_id !== undefined) {   // idempotent repeat (see claimOp)
+    let c;
+    try { c = await claimOp(db, brandId, body.op_id, 'repeat', t); } catch (_) { return UNAVAILABLE(); }
+    if (!c) return UNAVAILABLE();
+    offerId = c.offerId;
+    if (!c.fresh) { let r; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { return UNAVAILABLE(); } if (r) return r; }
+  }
   const draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   const w = await casWrite(db, `${offersPath(brandId)}/${offerId}`, 0, (cur, d) => {
     d.why = 'write';
     return OM.stripNulls({ v: 1, rev: 1, ...draft, state: 'draft', repeated_from: body.offer_id, created_by: ctx.uid, created_at: t, updated_at: t });
   });
-  if (w.fail) return w.fail;
+  if (w.fail) {
+    if (body.op_id !== undefined) { let r = null; try { r = await replayOf(db, brandId, offerId, t); } catch (_) { /* the 503 below */ } if (r) return r; }
+    return w.fail;
+  }
   await pruneEnded(db, brandId, prune);
   return reply(200, { ok: true, offer: offerView(offerId, w.rec, t) });
 }
