@@ -65,7 +65,7 @@
   },
   "clocks": {
    "business-sample": 222,
-   "display": 44,
+   "display": 43,
    "persisted-stamp": 62,
    "business-comparison": 14,
    "io-deadline": 4
@@ -4242,7 +4242,7 @@
   },
   {
    "id": "xpizza-functions/catalog/offers-serve.js#publicOffer#items#0",
-   "line": 63,
+   "line": 64,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -59193,17 +59193,12 @@
   },
   {
    "key": "xpizza-functions/catalog/offers-serve.js:withOffers:Date.now()",
-   "line": 83,
+   "line": 84,
    "class": "business-sample"
   },
   {
-   "key": "xpizza-functions/catalog/offers-serve.js:inWindowNow:new Date()",
-   "line": 100,
-   "class": "display"
-  },
-  {
    "key": "xpizza-functions/catalog/offers-serve.js:offerFlagOf:Date.now()",
-   "line": 117,
+   "line": 113,
    "class": "business-sample"
   },
   {

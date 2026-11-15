@@ -15,6 +15,7 @@
 //   entries drop first (deterministic).
 const CFG = require('../marketing/config');
 const OM = require('../marketing/offer-model');
+const OR = require('../marketing/offer-rules');
 
 const OFFERS_TIMEOUT_MS = 1500;
 const OK_TTL_MS = 60 * 1000;
@@ -92,14 +93,9 @@ async function withOffers(rid, body, deps = {}) {
 // null — the PUBLIC AMOUNTS of the live audience-'all' offers INSIDE their schedule window right now (a home chip must be honest on its
 // own: «Envío gratis» carries its minimum, rule 10). Never a name, items, caps, schedule or id; a bogo carries no amount. The window
 // is the offer model's own weekly rule (weeklyIntervals: a window past midnight belongs to the day it starts), in HN time.
-const HN_OFFSET_MS = 6 * 3600000;   // Honduras: UTC−6, no DST (lib/hn-date.js)
 const FLAG_FIELDS = Object.freeze(['pct', 'off_cents', 'min_cents']);
 function inWindowNow(schedule, nowMs) {
-  if (!(Number.isSafeInteger(schedule.start) && schedule.start <= nowMs)) return false;
-  if (Number.isSafeInteger(schedule.end) && nowMs >= schedule.end) return false;
-  const hn = new Date(nowMs - HN_OFFSET_MS);
-  const m = hn.getUTCDay() * 1440 + hn.getUTCHours() * 60 + hn.getUTCMinutes();
-  return OM.weeklyIntervals({ days: schedule.days, window: schedule.window || null }).some(([a, b]) => m >= a && m < b);
+  return OR.inWindow(schedule, nowMs);   // the ONE in-window rule, shared with the capp (marketing/offer-rules.js; advisor 11-14)
 }
 function flagOf(raw, nowMs) {
   if (!isObj(raw) || raw.on !== true || !isObj(raw.live)) return null;
