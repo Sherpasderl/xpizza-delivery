@@ -5111,12 +5111,12 @@ test('rule 11 guard (Inicio): every store card\'s time is a window — delivery 
 });
 
 // ── push stage 2 (MOCKUP-capp-push r1, owner-approved 11-14): the shell's wiring. The server is 3a's REAL customer-push.js at
-// e73a605a2 (install_id + the prefs rev CAS; refLoader: the module + its require closure from ONE sha) over 3a's strict RTDB double; the phone is the fake of
+// 472177443 (APPROVED: install_id, the prefs rev CAS, a register never consents; refLoader: the module + its require closure from ONE sha) over 3a's strict RTDB double; the phone is the fake of
 // @capacitor/push-notifications 8.1.1 (capp-push.test PUSH-PIN) behind a Capacitor bridge present before the shell mounts ──
 const { refLoader: pushRef } = await import('./test/ref-require.mjs');
 const { createFakePushPlugin } = await import('./test/fake-push-plugin.mjs');
 const PUSH_3A = refLoader3a();
-function refLoader3a() { const R = pushRef(join(HERE, '..'), 'e73a605a2e2a2bbd70c748bcfeee9f74ba9509b4'); return { CP: R.require('xpizza-functions/customer-push.js'), fakeRtdb: R.require('xpizza-functions/test/_fake-rtdb-sdk.js').fakeRtdb }; }
+function refLoader3a() { const R = pushRef(join(HERE, '..'), '4721774431f6c93dd51b7bf3d523e4ac791dc126'); return { CP: R.require('xpizza-functions/customer-push.js'), fakeRtdb: R.require('xpizza-functions/test/_fake-rtdb-sdk.js').fakeRtdb }; }
 function pushServer3a({ failSet = false, policy = null } = {}) {
   const db = PUSH_3A.fakeRtdb({ ...(policy ? { platform_config: { push: policy } } : {}), user_profiles: { u_ana: { phone: '50496123344', phone_hash: 'ph_a', created_at: 1, last_login: 1 } } }, { strict: true });
   const sub = (t) => { try { return JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')).sub; } catch (_) { return null; } };
@@ -5301,5 +5301,18 @@ test('PUSH-SHELL-9 (3a e73a605a2): «Activar avisos» when the person\'s prefs a
     S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask')); await flush();
     assert.deepEqual(srv.prefs(), [true, false, 2], '🔴 PUSH-SHELL-9: the person\'s «Activar avisos» is applied (rev CAS)');
     assert.equal(txt(S.q('#toast')), 'Avisos activados'); assert.equal(pushTxt(S), '· Te avisamos con una notificación');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-10 (3a 472177443: a register never consents): «Ofertas de Sherpa» turned on BEFORE push is on ⇒ the opt-in, then setPrefs applies the person\'s switch — the push-offers consent recorded, «Mis pedidos» as they chose (off)', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.promociones, true, 'the register carries the choice (the server ignores it)');
+    assert.deepEqual(srv.prefs(), [false, true, 2], '🔴 PUSH-SHELL-10: the person\'s «Ofertas» applied by setPrefs (rev 1 → 2)');
+    const oc = (srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent;
+    assert.deepEqual(oc && [oc.channel, oc.value], ['push', true], '🔴 PUSH-SHELL-10: the consent comes from the switch\'s setPrefs');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true']);
+    assert.equal(txt(S.q('#toast')), 'Avisos activados');
   } finally { S.w.close(); }
 });

@@ -123,12 +123,12 @@ test('PUSH-TAP: a tapped ORDER push opens that order; a malformed id or another 
   });
 });
 
-// ── PLAN-capp-push r1 §6b: the CLIENT against 3a's REAL callables (customer-push.js @ feat/capp-push-tokens-3a e73a605a2 (the per-channel consent; install_id, the prefs rev CAS), composed with
+// ── PLAN-capp-push r1 §6b: the CLIENT against 3a's REAL callables (customer-push.js @ feat/capp-push-tokens-3a 472177443 (approved: per-channel consent, install_id, the prefs rev CAS, register never consents), composed with
 // its whole require closure by refLoader; 3a's own strict RTDB double; the promos consent by the REAL signup writer) ──
 const { refLoader } = await import('./test/ref-require.mjs');
 const { execFileSync } = await import('node:child_process');
 const ROOT = join(HERE, '..');
-const A3P = 'e73a605a2e2a2bbd70c748bcfeee9f74ba9509b4', R3 = refLoader(ROOT, A3P);
+const A3P = '4721774431f6c93dd51b7bf3d523e4ac791dc126', R3 = refLoader(ROOT, A3P);
 const CP = R3.require('xpizza-functions/customer-push.js'), SC = R3.require('xpizza-functions/signup-core.js'), { fakeRtdb } = R3.require('xpizza-functions/test/_fake-rtdb-sdk.js');
 const Api = require('./capp-signup-api.js');
 const UID = 'u_' + 'a'.repeat(24), IDT = `id-${UID}`;
@@ -150,7 +150,7 @@ function pushServer({ policy } = {}) {
   const api = Api.createSignupApi({ fetch, endpoints: Object.fromEntries(Api.ENDPOINTS.map((n) => [n, `https://fn.test/${n}`])) });
   return { db, api, calls };
 }
-test('PUSH-API-PIN: 3a\'s customer-push.js is the pinned blob at e73a605a2 (feat/capp-push-tokens-3a: per-channel consent, install_id, the prefs rev CAS), composed with its closure', () => {
+test('PUSH-API-PIN: 3a\'s customer-push.js is the pinned blob at 472177443 (feat/capp-push-tokens-3a, APPROVED), composed with its closure', () => {
   assert.equal(R3.blob('xpizza-functions/customer-push.js'), execFileSync('git', ['rev-parse', `${A3P}:xpizza-functions/customer-push.js`], { cwd: ROOT, encoding: 'utf8' }).trim());
   for (const n of ['registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']) assert.ok(Api.ENDPOINTS.includes(n), `🔴 PUSH-API: ${n} is a client endpoint`);
 });
@@ -185,7 +185,9 @@ test('PUSH-CONSENT (ruled 11-14; 3a e73a605a2): «Ofertas de Sherpa» ON = setPr
 test('PUSH-API-REV (3a e73a605a2): a register never rewrites prefs; a stale expected_rev ⇒ stale_prefs WITH the current prefs; another installation\'s replay ⇒ token_in_use; an unreadable policy ⇒ unavailable', async () => {
   const { api } = pushServer();
   const REG = (o) => api.pushRegister({ idToken: IDT, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false, ...o });
-  await REG(); await api.pushSetPrefs({ idToken: IDT, pedidos: false, promociones: true, expected_rev: 1 });
+  const first = await REG({ promociones: true });
+  assert.deepEqual(first.prefs, { pedidos: true, promociones: false, rev: 1 }, '🔴 PUSH-API-REV: a register NEVER consents (3a 472177443) — offers start off whatever the body says');
+  await api.pushSetPrefs({ idToken: IDT, pedidos: false, promociones: true, expected_rev: 1 });
   assert.deepEqual(await REG({ pedidos: true, promociones: false }), { ok: true, prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: a refresh never re-consents / rewrites');
   assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true, expected_rev: 1 }), { ok: false, reason: 'stale_prefs', prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: stale ⇒ the current prefs back');
   assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true }), { ok: false, reason: 'bad_request' }, 'no expected_rev ⇒ never sent');
