@@ -120,13 +120,14 @@ export const setDeliveryPricingRaw = ({ token, assertLive, body }) => rawCall('s
 // may hide a moved record (a failed unmirror / undo), so marketing-logic.js classifyWrite decides saved / refused / UNKNOWN and a
 // fresh getMarketing settles an unknown. The read takes the rid as `?rid=` (offers-core.js:220); every write carries it in the BODY.
 export const getMarketingRaw = ({ rid, token, assertLive }) => rawCall('getMarketing', { params: { rid }, token, assertLive });
-export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, token, assertLive }) =>
-  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer }, token, assertLive });
+// opId: a create's client operation id (Codex r2: the server is idempotent per (restaurant, op_id) once 3a lands; ignored before)
+export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, opId, token, assertLive }) =>
+  rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
 export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, token, assertLive }) =>
   rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev }, token, assertLive });
 // the 2×1 product picker's menu (Ofertas O2b): the editable catalog of one branch, as a RAW outcome (a failed read ⇒ the picker says so)
 export const getEditableCatalogRaw = ({ rid, token, assertLive }) => rawCall('getEditableCatalog', { rid, token, assertLive });
-export const offerRepeatRaw = ({ rid, offerId, token, assertLive }) => rawCall('marketingOfferRepeat', { body: { rid, offer_id: offerId }, token, assertLive });
+export const offerRepeatRaw = ({ rid, offerId, opId, token, assertLive }) => rawCall('marketingOfferRepeat', { body: { rid, offer_id: offerId, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
 // the «Anuncio» (anuncio-core.js:5-7), DARK: anuncio-logic.js decides every outcome; nothing imports these until its screens are drawn.
 // The book body is rid + week ONLY — the server refuses anything else (a price never comes from the client); there is no charge call.
 export const getAnuncioWeeksRaw = ({ rid, token, assertLive }) => rawCall('getAnuncioWeeks', { params: { rid }, token, assertLive });

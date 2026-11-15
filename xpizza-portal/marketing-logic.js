@@ -8,7 +8,7 @@
 //   offer-model.js:39-90   paramsOf — every money field is whole lempiras (a positive multiple of 100 centavos); ABSENT = none,
 //                          never a 0 sentinel. bogo: AUTHORED items XOR cats; a STORED category offer also carries its resolved items
 //   offer-model.js:94-117  scheduleOf / capsOf — the window in MINUTES after HN midnight; the spend cap whole lempiras too
-//   offer-model.js:146-160 liveEditProblem — on an active / paused offer only a cap RAISED and the end moved LATER
+//   offer-model.js:167-179 liveEditProblem — on an active / paused offer: a cap RAISED, the end moved LATER, the days / window (3a c5bbce740)
 //   offer-model.js:228-234 statusOf — draft | scheduled | live | paused_owner | ended, derived at read time
 //   offers-core.js:5-8     getMarketing GET ?rid= · marketingOfferSave · marketingOfferSetState · marketingOfferRepeat (POST, rid in BODY)
 //   offers-core.js:31      a 503 { error: 'unavailable', retryable } — an outage, OR a failed unmirror / undo (offers-core.js:166-196,
@@ -141,8 +141,9 @@ export function formFromOffer(o) {
 // the dishes a server offer covers, for «Aplica a: {lista}» — a category offer's list as the SERVER froze it (never resolved here)
 export const appliesTo = (o) => (o && o.type === 'bogo' && isObj(o.params) && Array.isArray(o.params.items) ? [...o.params.items] : []);
 
-// ── live edits (offer-model.js:146-160) ───────────────────────────────────────────────────────────────────────────────────────
-// What may change on THIS offer: a draft — anything; active / paused — only a cap raised and the end moved later; ended — nothing.
+// ── live edits (offer-model.js:167-179 @ c5bbce740) ───────────────────────────────────────────────────────────────────────────────────────
+// What may change on THIS offer: a draft — anything; active / paused — a cap raised, the end moved later, the days and the window
+// (3a 4245a74bf); ended — nothing.
 export function editable(o) {
   if (!o || o.state === 'ended' || o.status === 'ended') return 'none';
   return o.state === 'draft' ? 'all' : 'caps_and_end';
@@ -154,7 +155,7 @@ export function liveEditProblem(prev, next) {
   const pk = (o) => (o.type === 'bogo' && Array.isArray(o.params.cats) ? { cats: o.params.cats, free_per_order: o.params.free_per_order } : o.params);
   if (!same(pk(prev), pk(next))) return 'params';
   const ps = prev.schedule, ns = next.schedule;
-  if ((ps.start ?? null) !== (ns.start ?? null) || !same(ps.days, ns.days) || !same(ps.window ?? null, ns.window ?? null)) return 'schedule';
+  if ((ps.start ?? null) !== (ns.start ?? null)) return 'schedule';   // 3a 4245a74bf (v5 3c): the days and the window MAY change live; the start stays locked
   const pe = ps.end ?? null, ne = ns.end ?? null;
   if (!(ne === null || (pe !== null && ne >= pe))) return 'schedule';
   const up = (a, b) => b === null || (a !== null && b >= a);
@@ -200,7 +201,10 @@ export function classifyWrite(attempt, res) {
   if (res.status === 200) {
     const o = b.offer;
     if (b.ok !== true || !isObj(o) || !isInt(o.rev, 1, 1e15)) return { outcome: 'unknown' };
-    if (attempt.op === 'create' || attempt.op === 'repeat') return o.rev === 1 && o.state === 'draft' ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
+    if (attempt.op === 'create' || attempt.op === 'repeat') {
+      if (attempt.opId) return { outcome: 'saved', offer: o };   // an op_id reply IS our operation's record — a replay answers it as it is NOW (any rev / state)
+      return o.rev === 1 && o.state === 'draft' ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
+    }
     if (o.id !== attempt.offerId || o.rev !== attempt.expectedRev + 1) return { outcome: 'unknown' };
     if (attempt.op === 'state' && o.state !== attempt.to) return { outcome: 'unknown' };
     return { outcome: 'saved', offer: o };
@@ -224,12 +228,15 @@ export function refusalOf(status, b) {
 
 // After an UNKNOWN: the FRESH read decides → saved | not_landed | conflict | unknown. attempt (as above) plus, for a save, `sent` (the
 // authored offer) and `prev` (the server offer the edit started from); for a state move, `from` (the stored state it started from).
-// A create / repeat has no id to look for: with `known` (the offer ids read BEFORE the write) the fresh read finds the record it
-// made (findCreated); without it the list itself is the truth (`reread`).
+// A create / repeat is found by OPERATION IDENTITY only (Codex r2, advisor ruling 11-14): a record carrying our op_id ⇒ saved;
+// anything else ⇒ UNKNOWN — never «not landed» (the request may still be running), never a lookalike (content can't tell whose).
 export function classifyRecovery(attempt, readBody) {
   const m = readModel(readBody);
   if (m.kind !== 'ok') return { outcome: 'unknown' };
-  if (attempt.op === 'create' || attempt.op === 'repeat') return Array.isArray(attempt.known) ? findCreated(attempt, m.offers) : { outcome: 'reread' };
+  if (attempt.op === 'create' || attempt.op === 'repeat') {
+    const o = attempt.opId ? m.offers.find((x) => x.op_id === attempt.opId) : null;
+    return o ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
+  }
   const o = m.offers.find((x) => x.id === attempt.offerId);
   if (!o) return { outcome: 'conflict' };
   if (o.rev === attempt.expectedRev) return { outcome: 'not_landed', offer: o };
@@ -242,17 +249,11 @@ export function classifyRecovery(attempt, readBody) {
   if (attempt.prev && same(authored(o), authored(attempt.prev))) return { outcome: 'not_landed', offer: o };   // landed, then undone
   return { outcome: 'conflict', offer: o };
 }
-// After an UNKNOWN create / repeat: the new record is a rev-1 draft NOT among `known` (the ids read just before the write) that is
-// the one we asked for — a create: the authored offer we sent; a repeat: repeated_from = the source (offers-core marketingOfferRepeat).
-// none → not_landed (a retry is safe) · exactly one → saved (continue THAT record) · more → unknown (never guess which).
-export function findCreated(attempt, offers) {
-  const known = new Set(attempt.known);
-  const authored = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
-  const fresh = offers.filter((o) => !known.has(o.id) && o.rev === 1 && o.state === 'draft');
-  const hits = attempt.op === 'repeat' ? fresh.filter((o) => o.repeated_from === attempt.sourceId) : fresh.filter((o) => same(authored(o), authored(attempt.sent)));
-  if (!hits.length) return { outcome: 'not_landed' };
-  return hits.length === 1 ? { outcome: 'saved', offer: hits[0] } : { outcome: 'unknown' };
-}
+// a server offer vs an authored one: the same authored offer? (a replayed create answers the FIRST attempt's record — Codex r2)
+export const authoredEqual = (o, sent) => {
+  const au = (x) => ({ name: x.name, type: x.type, params: pk(x), audience: x.audience, branches: [...x.branches].sort(), schedule: sched(x.schedule), caps: caps(x.caps) });
+  return same(au(o), au(sent));
+};
 const pk = (o) => (o.type === 'bogo' && Array.isArray(o.params.cats) ? { cats: o.params.cats, free_per_order: o.params.free_per_order } : o.params);
 const sched = (s) => ({ start: s.start ?? null, end: s.end ?? null, days: s.days, window: s.window ?? null });
 const caps = (c) => ({ redemptions: c.redemptions ?? null, spend_cents: c.spend_cents ?? null, weekly: c.weekly });

@@ -9,6 +9,7 @@ import { offerSetStateRaw, getMarketingRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
 import { focusKey, layered, trapTab } from './marketing-focus.js';
+import * as OPS from './marketing-ops.js';
 
 const BACK = 'M15 18l-6-6 6-6';
 const PAUSE = [{ tag: 'rect', x: 6, y: 5, width: 4, height: 14, rx: 1 }, { tag: 'rect', x: 14, y: 5, width: 4, height: 14, rx: 1 }];
@@ -63,6 +64,7 @@ export const detailOpen = () => !!D.host;
 // a fresh list read: the page follows the offer's new rev (never mid-write)
 export function refreshDetail(o) { if (D.host && !D.only && !D.busy && o && D.offer && o.id === D.offer.id) { D.offer = o; render(); } }
 document.addEventListener('keydown', (e) => {
+  if (D.host && D.sheet && !D.host.isConnected) { D.sheet = null; D.err = null; return; }   // the page lost the host under the sheet: let go (Codex r2)
   if (e.key === 'Tab' && D.host && D.sheet) { trapTab(e, D.host.querySelector('.mk5r-modal')); return; }   // Codex r1 P2-7
   if (e.key === 'Escape' && D.host && D.sheet && !D.busy) closeSheet();
 });
@@ -112,7 +114,7 @@ function paint() {
     const strip = el('div', 'mk5d-strip'); strip.setAttribute('role', 'status');
     strip.append(svg(...PAUSE));
     const tx = el('span', 'mk5d-stxt'); tx.append(el('b', null, 'Pausada por vos'));   // v5 «… el 9 nov»: the date is SOURCE_GATE paused-date
-    const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy; rb.addEventListener('click', () => move('resume'));
+    const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy || OPS.unsettled(o.id); rb.addEventListener('click', () => move('resume'));
     strip.append(tx, rb);
     out.push(strip);
   }
@@ -140,7 +142,7 @@ function actions(o) {
   const box = el('div', 'mk5d-acts');
   const acts = ML.actionsOf(o);
   if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.addEventListener('click', () => D.ctx.onEdit(o)); box.append(b); }
-  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); box.append(b); }
+  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy || OPS.unsettled(o.id); b.addEventListener('click', () => move('pause')); box.append(b); }
   const menu = [];
   if (acts.includes('repeat')) menu.push(['repeat', 'Repetir campaña']);
   if (acts.includes('end')) menu.push(['end', 'Terminar oferta']);
@@ -172,7 +174,7 @@ function errWord(c) {
 }
 // pause / resume / end: ONE state move through settleWrite
 export async function move(kind) {
-  if (D.busy) return;
+  if (D.busy || OPS.unsettled(D.offer.id)) return;
   const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token;
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
@@ -181,7 +183,7 @@ export async function move(kind) {
     .catch(() => ({ outcome: 'unknown' }));
   if (!D.host || D.gen !== g) { if (ctx.onChanged) ctx.onChanged(); return; }   // bound to the view it started in
   D.busy = false;
-  if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
+  if (r.outcome !== 'saved') { D.err = errWord(r); if (r.outcome === 'unknown') { OPS.markUnsettled(o.id, o.rev + 1); if (ctx.onChanged) ctx.onChanged(); } render(); return; }   // unsettled until a read reconciles it (Codex r2)
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
@@ -203,7 +205,7 @@ function endSheet(o) {
   if (D.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, D.err)); mb.append(e); }
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = D.busy; back.addEventListener('click', closeSheet);
-  const ok = el('button', 'mk5r-ok', 'Terminar oferta'); ok.type = 'button'; ok.disabled = D.busy; ok.addEventListener('click', () => move('end'));
+  const ok = el('button', 'mk5r-ok', 'Terminar oferta'); ok.type = 'button'; ok.disabled = D.busy || OPS.unsettled(o.id); ok.addEventListener('click', () => move('end'));
   mf.append(back, ok);
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;

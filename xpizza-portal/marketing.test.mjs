@@ -40,13 +40,14 @@ async function loadAll() {
   const files = [auth];
   const mods = {};
   try {
-    for (const name of ['app', 'ventas', 'shell', 'marketing-builder', 'marketing-detail', 'marketing']) {   // the builder + detail per page too: their state is module-level
+    for (const name of ['app', 'ventas', 'shell', 'marketing-ops', 'marketing-builder', 'marketing-detail', 'marketing']) {   // + the ops ledger: module state   // the builder + detail per page too: their state is module-level
       const src = readFileSync(join(DIR, `${name}.js`), 'utf8')
         .replace(/from '\.\/auth\.js'/g, `from './__mkt-auth-stub.${tag}.mjs'`)
         .replace(/from '\.\/app\.js'/g, `from '${url('app')}'`)
         .replace(/from '\.\/shell\.js'/g, `from '${url('shell')}'`)
         .replace(/from '\.\/marketing-builder\.js'/g, `from '${url('marketing-builder')}'`)
-        .replace(/from '\.\/marketing-detail\.js'/g, `from '${url('marketing-detail')}'`);
+        .replace(/from '\.\/marketing-detail\.js'/g, `from '${url('marketing-detail')}'`)
+        .replace(/from '\.\/marketing-ops\.js'/g, `from '${url('marketing-ops')}'`);
       writeFileSync(tmp(name), src); files.push(tmp(name));
       mods[name] = await import(pathToFileURL(tmp(name)).href);
     }
@@ -420,7 +421,7 @@ test('Editar on a running offer: v5\'s dialog — the lede, the locked rows (loc
   assert.deepEqual([...d.querySelectorAll('.mk5b-foot .mk5b-fine')].map((x) => x.textContent), ['Para cambiar el descuento, los clientes o las sucursales, terminá esta oferta y creá una nueva (o usá Repetir).', 'Los cambios aplican de inmediato en la app.']);
 });
 
-test('Editar: a cap may only go UP — a lower one blocks inline; a higher one saves through the REAL core («Cambios guardados»); a day change waits for 3a (the interim panel)', async () => {
+test('Editar: a cap may only go UP — a lower one blocks inline; a higher one saves through the REAL core («Cambios guardados»); a live day change saves too (3a widened)', async () => {
   const b = await world();
   await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' }));
   const p = await page({ b });
@@ -440,9 +441,11 @@ test('Editar: a cap may only go UP — a lower one blocks inline; a higher one s
   await openEdit(p, 'Almuerzo');
   rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
   [...rowEl(p, 'sch').querySelectorAll('.mk5b-chip')].find((c) => c.textContent.endsWith('Sáb')).click(); await settle();
-  p.btn('Guardar cambios', dlg(p)).click(); await settle(120);
-  assert.ok(dlg(p), 'the server refused: the dialog stays');
-  assert.equal(dlg(p).querySelector('.mk5b-err').textContent, 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.', 'the interim panel until 3a widens its allowlist');
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
+  assert.equal(dlg(p), null, '3a\'s widened core (REF c5bbce740) SAVES a live day change: the dialog closes');
+  assert.equal(p.d.getElementById('opstoast').textContent, 'Cambios guardados');
+  const after = Object.values(b.fake.get('marketing_offers/tb')).find((r) => r.name === 'Almuerzo');
+  assert.deepEqual([...after.schedule.days].sort(), [1, 2, 3, 4, 5, 6], 'the real core stored the new day');
 });
 
 // ═══ O3 · the detail (v5 5 / 5b / 5c) + the state moves + «Repetir» — every write through 3a's REAL cores ══════════════════════
@@ -596,58 +599,74 @@ const offersNamed = (b, name) => Object.values(b.fake.get('marketing_offers/tb')
 const LPS = 'L 50 en pedidos desde L 300';
 async function toReview(p) { dlg(p).querySelector('.mk5b-go').click(); await settle(); return p.host().querySelector('.mk5r-modal'); }
 
-test('R1 a create whose reply is LOST: the fresh read finds THE draft it made and publishes it — never a second offer', async () => {
-  const b = await world();
-  const p = await page({ b });
-  await p.signIn(); await p.open();
-  await openCard(p, 'lps');
-  const sh = await toReview(p);
-  b.net.lose = ['marketingOfferSave'];
-  p.btn('Programar oferta', sh).click(); await settle(200);
-  assert.equal(offersNamed(b, LPS).length, 1, 'ONE offer');
-  assert.equal(offersNamed(b, LPS)[0].state, 'active', 'the recovered draft was published');
-  assert.equal(dlg(p), null);
-  assert.equal(p.d.getElementById('opstoast').textContent, 'Oferta programada. Empieza hoy.');
-});
+const OPS_KEY = 'sherpa.portal.mkt.ops';
+const opsStored = (p) => { try { return JSON.parse(p.w.sessionStorage.getItem(OPS_KEY) || 'null'); } catch (_) { return null; } };
 
-test('R1 a create whose reply is lost AND whose re-read fails: UNKNOWN — the sheet says so and every create control is off (no second offer)', async () => {
+test('R1 a create whose reply is LOST: UNKNOWN, and the retry REUSES its op_id — 3a\'s idempotent create answers the SAME offer (one, published)', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
   const sh = await toReview(p);
-  b.net.lose = ['marketingOfferSave', 'getMarketing'];
+  b.net.lose = ['marketingOfferSave', 'getMarketing'];   // the reply and its re-read: nothing proves it
   p.btn('Programar oferta', sh).click(); await settle(200);
   const s2 = p.host().querySelector('.mk5r-modal');
-  assert.equal(s2.querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
-  assert.ok(p.btn('Programar oferta', s2).disabled, 'create blocked until resolved');
-  p.btn('Volver', s2).click(); await settle();
-  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, '«Revisar y programar» blocked too');
-  assert.ok(p.btn('Guardar borrador', dlg(p)).disabled, '«Guardar borrador» blocked too');
-  assert.equal(offersNamed(b, LPS).length, 1, 'still ONE offer');
+  assert.equal(s2.querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.', 'UNKNOWN, never a guess');
+  assert.ok((opsStored(p) || { ops: [] }).ops.some(([, op]) => op.unknown), 'the pending op survives a reload (sessionStorage)');
+  assert.equal(p.btn('Programar oferta', s2).disabled, false, 'idempotent server: the retry is safe by construction');
+  p.btn('Programar oferta', s2).click(); await settle(220);
+  const ids = b.calls.filter((c) => c.fn === 'marketingOfferSave' && c.body.expected_rev === 0).map((c) => c.body.op_id);
+  assert.equal(ids.length, 2, 'two create attempts');
+  assert.match(String(ids[0]), /^op_/, 'the create carries its op_id');
+  assert.equal(ids[1], ids[0], 'the retry REUSES the op_id');
+  assert.equal(offersNamed(b, LPS).length, 1, 'ONE offer');
+  assert.equal(offersNamed(b, LPS)[0].state, 'active', 'and it is the one published');
+  assert.equal(dlg(p), null);
 });
 
-test('R2 a repeat whose reply is LOST: the copy is found by repeated_from and published — never a second copy; lost + unreadable ⇒ blocked', async () => {
-  for (const lose of [['marketingOfferRepeat'], ['marketingOfferRepeat', 'getMarketing']]) {
-    const b = await world();
-    const o = await publish(b, LIVE());
-    await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
-    const p = await page({ b });
-    await p.signIn(); await p.open();
-    await openDetail(p, 'Almuerzo');
-    (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
-    b.net.lose = [...lose];
-    p.btn('Programar', sheet(p)).click(); await settle(220);
-    assert.equal(stored(b, 'Almuerzo').length, 2, `${lose.join('+')}: the original + ONE copy`);
-    if (lose.length === 1) {
-      assert.equal(sheet(p), null, 'the found copy went on: the sheet closes');
-      assert.equal(toastText(p), 'Campaña programada para el lun 16 nov');
-      assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'active').length, 1, 'the found copy is live');
-    } else {
-      assert.equal(sheet(p).querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
-      assert.ok(p.btn('Programar', sheet(p)).disabled, 'repeat blocked until resolved');
-    }
-  }
+test('R1 a lost create retried from a REOPENED dialog with a changed form: the same op_id, the same record — saved with the new form, then published', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  b.net.lose = ['marketingOfferSave', 'getMarketing'];
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(200);
+  const esc = () => p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  esc(); await settle(); esc(); await settle();
+  assert.equal(dlg(p), null, 'premise: closed');
+  await openCard(p, 'lps');
+  rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
+  [...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].find((x) => x.textContent === 'Clientes nuevos').closest('label, button, .mk5b-opt').click(); await settle();
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
+  const ids = b.calls.filter((c) => c.fn === 'marketingOfferSave' && c.body.expected_rev === 0).map((c) => c.body.op_id);
+  assert.equal(ids[1], ids[0], 'the reopened dialog retries the SAME operation');
+  const all = offersNamed(b, LPS);
+  assert.equal(all.length, 1, 'ONE offer');
+  assert.equal(all[0].audience, 'new', 'the merchant\'s changed form was saved onto it');
+  assert.equal(all[0].state, 'active');
+});
+
+test('R2 a repeat whose reply is LOST: UNKNOWN; the retry reuses the op_id and 3a answers the SAME copy — one copy, programmed', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  b.net.lose = ['marketingOfferRepeat', 'getMarketing'];
+  p.btn('Programar', sheet(p)).click(); await settle(220);
+  assert.equal(sheet(p).querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
+  assert.equal(p.btn('Programar', sheet(p)).disabled, false, 'the retry is safe');
+  p.btn('Volver', sheet(p)).click(); await settle();
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  p.btn('Programar', sheet(p)).click(); await settle(250);
+  const ids = b.calls.filter((c) => c.fn === 'marketingOfferRepeat').map((c) => c.body.op_id);
+  assert.equal(ids.length, 2);
+  assert.equal(ids[1], ids[0], 'the reopened sheet retries the SAME operation');
+  assert.equal(stored(b, 'Almuerzo').length, 2, 'the original + ONE copy');
+  assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'active').length, 1, 'the copy is programmed');
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov');
 });
 
 test('R3 an edit whose reply is LOST: recovery has what it needs (sent / prev) — «Cambios guardados», never a stuck «busy»', async () => {
@@ -755,4 +774,44 @@ test('R7 focus on the detail: the end sheet takes focus, traps it, and returns i
   assert.equal(p.d.activeElement, f[0], 'trapped');
   p.btn('Volver', m).click(); await settle();
   assert.ok(p.d.activeElement.classList.contains('mk5d-more1'), 'focus back on «Más acciones»');
+});
+
+// ═══ Codex r2 (1df9351c0..d2197fac7) — a known-id UNKNOWN blocks until a read reconciles; a detached sheet lets go of Tab ════════
+test('R8 an edit whose reply AND re-read are lost: «Guardar cambios» stays off; the offer stays unsettled until a successful read reconciles it', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  const capIn = () => rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
+  capIn().value = '150'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
+  b.net.lose = ['marketingOfferSave', 'getMarketing', 'getMarketing', 'getMarketing'];   // the reply, its re-read, the list's two reads
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
+  assert.equal(dlg(p).querySelector('.mk5b-err').textContent, 'No sabemos si se guardó. Revisá tu lista antes de intentar de nuevo.');
+  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, 'no resubmit before reconciliation');
+  const id = stored(b, 'Almuerzo')[0] && Object.keys(b.fake.get('marketing_offers/tb'))[0];
+  assert.ok(p.mods['marketing-ops']._opsState.unsettled.has(id), 'the offer is unsettled (survives the dialog)');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  p.btn('Reintentar').click(); await settle(150);
+  assert.equal(p.mods['marketing-ops']._opsState.unsettled.has(id), false, 'a successful read reconciled it');
+  await openEdit(p, 'Almuerzo');
+  assert.equal(capIn().value, '150', 'the editor opens from the reconciled read (the edit had landed)');
+  assert.ok(!dlg(p).querySelector('.mk5b-go').disabled);
+});
+
+test('R9 a detached detail sheet lets go of Tab (the page lost its host under it)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
+  assert.ok(sheet(p), 'premise: the end sheet is open');
+  b.net.down = true;
+  p.mods['marketing-detail']._detailState.ctx.onChanged(); await settle(120);   // a stale reply's refresh fails: the page redraws its error
+  assert.equal(sheet(p), null, 'premise: the sheet left the page');
+  const e = new p.w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  p.d.dispatchEvent(e);
+  assert.equal(e.defaultPrevented, false, 'Tab is not trapped by a sheet no one can see');
+  assert.equal(p.mods['marketing-detail']._detailState.sheet, null, 'the detached sheet is dropped');
 });

@@ -69,6 +69,7 @@
   "marketing-harness.mjs",
   "marketing-logic.js",
   "marketing-logic.test.mjs",
+  "marketing-ops.js",
   "marketing.js",
   "marketing.test.mjs",
   "mint-fold.mjs",

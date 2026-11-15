@@ -13,7 +13,8 @@ import { token } from './auth.js';
 import { getMyBranches, getMarketingRaw } from './api.js';
 import { el, svg, button, topBlock, errBox, skeleton, OFFLINE } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
-import { openBuilder, openEditor, openRepeater, closeBuilder, builderOpen } from './marketing-builder.js';
+import { openBuilder, openEditor, openRepeater, closeBuilder, builderOpen, refreshBuilder } from './marketing-builder.js';
+import * as OPS from './marketing-ops.js';
 import { mountDetail, unmountDetail, refreshDetail } from './marketing-detail.js';
 
 // ── what v5 draws that this build does NOT (advisor 11-14) ─────────────────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ document.addEventListener('portal:auth', (e) => {
   S.gen += 1;
   if (uid !== S.uid) { S.offers = []; S.reads = null; S.branches = []; S.status = 'idle'; S.menu = null; closeDetail(); if (S.body) S.body.replaceChildren(); }
   S.uid = uid;
+  OPS.forUser(uid);   // the pending-writes ledger is per user
 });
 
 // the brand's member branches the caller may read marketing for (getMyBranches), in the server's order
@@ -138,6 +140,7 @@ async function load() {
     S.reads = reads;
     S.offers = S.off ? [] : ML.unionOffers(reads.map((r) => r.offers));
     S.status = 'ready';
+    if (!S.off && OPS.reconcile(S.offers)) refreshBuilder();   // a successful read settles the pending writes it can prove (Codex r2)
     if (S.detail) { const o = S.offers.find((x) => x.id === S.detail); if (o) refreshDetail(o); else closeDetail(); }   // the page follows the fresh read
   } catch (err) {
     if (!g.alive() || (err && err.kind === 'obsolete')) return;

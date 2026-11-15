@@ -170,7 +170,8 @@ test('states: publish / pause / resume / end / repeat through the real core; the
   const pau = await move(pub.offer, 'paused_owner');
   assert.deepEqual([pau.outcome, pau.offer.status], ['saved', 'paused_owner']);
   assert.deepEqual(ML.actionsOf(pau.offer), ['resume', 'end']);
-  assert.equal(b.fake.get(`marketing_live/${RID}/${d.id}`), null, 'paused: out of the price path');
+  const lv = b.fake.get(`marketing_live/${RID}/${d.id}`);   // 3a's fence (d6997aff2 / 18d47c6fe): removal leaves a TOMBSTONE { removed, rev }
+  assert.ok(lv === null || (lv && lv.removed === true), 'paused: out of the price path (absent or a tombstone)');
   const res = await move(pau.offer, 'active');
   assert.equal(res.outcome, 'saved', 'resumed');
   const end = await move(res.offer, 'ended');
@@ -238,7 +239,7 @@ test('an unknown that DID land is recovered as saved; one moved by someone else 
   assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'saved', 'landed (the reply was lost) ⇒ saved');
   await offerSaveRaw({ rid: RID, offerId: d.id, expectedRev: 2, offer: authored(form({ name: 'De otra persona' })), token: b.token });
   assert.equal(ML.classifyRecovery(attempt, (await read(b)).body).outcome, 'conflict', 'someone else wrote it since ⇒ conflict');
-  assert.equal(ML.classifyRecovery({ op: 'create' }, (await read(b)).body).outcome, 'reread', 'a create has no id: the list is the truth');
+  assert.equal(ML.classifyRecovery({ op: 'create' }, (await read(b)).body).outcome, 'unknown', 'a create without a proven op_id stays UNKNOWN (Codex r2: never the list\'s guess)');
   assert.equal(ML.classifyRecovery(attempt, { ok: true }).outcome, 'unknown', 'an unreadable re-read stays unknown');
 });
 
@@ -386,31 +387,58 @@ test('O2a: the one-line block reason under «Revisar y programar» — the first
   assert.equal(block({ type: 'pct', pct: 15, max: '' }), 'Para revisar, poné el descuento máximo por pedido.', 'pct requires its maximum here (v2 item 3; stricter than the server)');
 });
 
-// Codex r1 P1-1 / P1-2 (advisor 11-14): the record a lost reply made is found by what was KNOWN before the write — never a lookalike
-test('findCreated: a KNOWN identical draft is never taken for the new one; two identical NEW drafts ⇒ UNKNOWN, never a continue', async () => {
+// Codex r2 (advisor ruling 11-14): a lost create / repeat is resolved by OPERATION IDENTITY, never by content — a lookalike is not ours
+test('recovery of a create / repeat: no record carrying OUR op_id ⇒ UNKNOWN (never not_landed, never a lookalike draft)', async () => {
   const b = await backend();
   const f = form({ name: 'Gemela' });
-  const old = await create(b, f);                      // already there before the write (the branch read saw it)
-  const made = await create(b, f);                     // the write whose reply was lost: the SAME authored offer
+  await create(b, f);                                   // an identical draft (another operator's, or ours — content can't tell)
   const body = (await read(b)).body;
-  const r = ML.classifyRecovery({ op: 'create', sent: authored(f), known: [old.id] }, body);
-  assert.equal(r.outcome, 'saved', 'the known draft is never taken for the new one');
-  assert.equal(r.offer.id, made.id, 'it continues THE record the write made');
-  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(f), known: [] }, body).outcome, 'unknown', 'two identical new drafts ⇒ UNKNOWN, never a continue');
-  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(form({ name: 'Otra' })), known: [] }, body).outcome, 'not_landed', 'nothing like it ⇒ not landed (a retry is safe)');
-  assert.equal(ML.classifyRecovery({ op: 'create', sent: authored(f) }, body).outcome, 'reread', 'without known ids the list alone decides nothing');
+  assert.equal(ML.classifyRecovery({ op: 'create', opId: 'op_mine', sent: authored(f) }, body).outcome, 'unknown', 'a lookalike draft is never taken as ours');
+  assert.equal(ML.classifyRecovery({ op: 'create', opId: 'op_mine', sent: authored(form({ name: 'Otra' })) }, body).outcome, 'unknown', 'no match is NOT «not landed» (the request may still be running)');
+  assert.equal(ML.classifyRecovery({ op: 'repeat', opId: 'op_mine', sourceId: 'o_x' }, body).outcome, 'unknown', 'the same for a repeat');
+  assert.equal(typeof ML.findCreated, 'undefined', 'content matching is retired');
 });
-test('findCreated (repeat): by repeated_from — a KNOWN earlier copy is never taken; two new copies ⇒ UNKNOWN', async () => {
+test('the ops ledger (marketing-ops.js): a retry REUSES its op_id; a settled op starts a new one; a read carrying our op_id releases the block; idempotency waits for 3a', async () => {
+  const OPS = await import('./marketing-ops.js');
+  OPS.forUser('u_ledger');
+  const k = OPS.opKey('tb_centro', 'create');
+  const a = OPS.beginOp(k);
+  assert.equal(OPS.beginOp(k), a, 'a retry of the same operation reuses its op_id');
+  assert.equal(OPS.opBlocked(k), false, 'pending is not blocked');
+  OPS.markUnknown(k);
+  assert.equal(OPS.opBlocked(k), !OPS.IDEMPOTENT_OPS, 'an UNKNOWN blocks the key only while the server is not idempotent');
+  assert.equal(OPS.pendingOpId(k), a, 'the UNKNOWN keeps its op_id for the retry');
+  assert.equal(OPS.reconcile([{ id: 'o1', op_id: 'op_someone_else' }]), false, 'another operation proves nothing');
+  assert.equal(OPS.reconcile([{ id: 'o2', op_id: a }]), true, 'a record carrying OUR op_id proves it');
+  assert.equal(OPS.pendingOpId(k), null, 'released');
+  assert.notEqual(OPS.beginOp(k), a, 'a settled operation is over: the next one is new');
+  OPS.markUnsettled('o9', 3);
+  assert.equal(OPS.unsettled('o9'), true);
+  OPS.reconcile([{ id: 'o8' }]);
+  assert.equal(OPS.unsettled('o9'), true, 'a read without the offer settles nothing');
+  OPS.reconcile([{ id: 'o9', rev: 2 }]);
+  assert.equal(OPS.unsettled('o9'), false, 'a read holding the offer settles it (the next write starts from that rev)');
+  OPS.forUser('u_other');
+  assert.equal(OPS.pendingOpId(k), null, 'another user never inherits the ledger');
+  assert.equal(OPS.IDEMPOTENT_OPS, true, 'retry-by-op_id is ON with 3a\'s idempotent create / repeat (REF c5bbce740; the cell below proves it on the real core)');
+});
+test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME offer, one record; a malformed op_id ⇒ 400', async () => {
   const b = await backend();
+  const f = form({ name: 'Una vez' });
+  const op = 'op_0123456789abcdef';
+  const one = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(f), opId: op, token: b.token });
+  const two = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(f), opId: op, token: b.token });
+  assert.equal(one.status, 200); assert.equal(two.status, 200);
+  assert.equal(two.body.offer.id, one.body.offer.id, 'the retry answers the SAME offer');
+  assert.equal(Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.name === 'Una vez').length, 1, 'ONE record');
+  assert.equal(ML.classifyWrite({ op: 'create', opId: op }, two).outcome, 'saved', 'an op_id reply is our record');
+  const bad = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(f), opId: 'short', token: b.token });
+  assert.equal(bad.status, 400, 'a malformed op_id is refused');
   const src = await publish(b, form({ name: 'Origen', start: NOW }));
-  const end = await offerSetStateRaw({ rid: RID, offerId: src.id, to: 'ended', expectedRev: src.rev, token: b.token });
-  assert.equal(end.status, 200, 'premise: ended');
-  const rep = async () => ML.classifyWrite({ op: 'repeat' }, await offerRepeatRaw({ rid: RID, offerId: src.id, token: b.token })).offer;
-  const first = await rep();
-  const second = await rep();
-  const body = (await read(b)).body;
-  const r = ML.classifyRecovery({ op: 'repeat', sourceId: src.id, known: [src.id, first.id] }, body);
-  assert.equal(r.outcome, 'saved', 'the known copy is never taken for the new one (repeat)');
-  assert.equal(r.offer.id, second.id);
-  assert.equal(ML.classifyRecovery({ op: 'repeat', sourceId: src.id, known: [src.id] }, body).outcome, 'unknown', 'two new copies ⇒ UNKNOWN');
+  await offerSetStateRaw({ rid: RID, offerId: src.id, to: 'ended', expectedRev: src.rev, token: b.token });
+  const rop = 'op_fedcba9876543210';
+  const r1 = await offerRepeatRaw({ rid: RID, offerId: src.id, opId: rop, token: b.token });
+  const r2 = await offerRepeatRaw({ rid: RID, offerId: src.id, opId: rop, token: b.token });
+  assert.equal(r2.body.offer.id, r1.body.offer.id, 'a repeat retry answers the SAME copy');
+  assert.equal(Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.repeated_from === src.id).length, 1, 'ONE copy');
 });

@@ -44,7 +44,7 @@ export function layered(state, root, key, levels, top) {
   state.levels = levels;
 }
 export function trapTab(e, dialog) {
-  if (e.key !== 'Tab' || !dialog) return;
+  if (e.key !== 'Tab' || !dialog || !dialog.isConnected) return;   // a sheet no one can see traps nothing (Codex r2)
   const f = focusables(dialog);
   if (!f.length) { e.preventDefault(); return; }
   const i = f.indexOf(document.activeElement);
