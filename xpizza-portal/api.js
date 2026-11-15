@@ -124,8 +124,8 @@ export const getMarketingRaw = ({ rid, token, assertLive }) => rawCall('getMarke
 // program: save AND program in ONE call (3a e3c5f7366: all or nothing; another identical programmed offer ⇒ 409 duplicate { offer_id })
 export const offerSaveRaw = ({ rid, offerId, expectedRev, offer, opId, program, token, assertLive }) =>
   rawCall('marketingOfferSave', { body: { rid, ...(offerId !== undefined ? { offer_id: offerId } : {}), expected_rev: expectedRev, offer, ...(opId ? { op_id: opId } : {}), ...(program ? { program: true } : {}) }, token, assertLive });
-export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, token, assertLive }) =>
-  rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev }, token, assertLive });
+export const offerSetStateRaw = ({ rid, offerId, to, expectedRev, opId, token, assertLive }) =>
+  rawCall('marketingOfferSetState', { body: { rid, offer_id: offerId, to, expected_rev: expectedRev, ...(opId ? { op_id: opId } : {}) }, token, assertLive });
 // the 2×1 product picker's menu (Ofertas O2b): the editable catalog of one branch, as a RAW outcome (a failed read ⇒ the picker says so)
 export const getEditableCatalogRaw = ({ rid, token, assertLive }) => rawCall('getEditableCatalog', { rid, token, assertLive });
 // «Repetir» in ONE call (3a e3c5f7366): copy + the new dates + program, under the op_id

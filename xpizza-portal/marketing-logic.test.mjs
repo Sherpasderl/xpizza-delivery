@@ -1,5 +1,5 @@
 // Portal «Marketing» «Ofertas», the non-drawing half — marketing-logic.js + the api.js raw calls, run against 3a's REAL offer cores at
-// the PINNED ref (the asm10 offers pin 20000624d — the Ofertas lane's ONE pin, advisor 11-15; git-archived by ref-tree.mjs): every server reply below is the real core's,
+// the PINNED ref (the asm10 OF pin 9462baf40 — the Ofertas lane's ONE pin, advisor 11-15; git-archived by ref-tree.mjs): every server reply below is the real core's,
 // over production's transaction semantics, with membership by the REAL roster writer, menus by the REAL catalog mirror writer, the
 // switches by the REAL config writer. No hand-built server reply.
 // Run: node --test marketing-logic.test.mjs
@@ -245,8 +245,27 @@ test('an incomplete 200 is UNKNOWN (never «Oferta programada»); only ALLOWLIST
   assert.equal(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, ok(real)).outcome, 'saved', 'the complete record is definite');
   for (const [status, error] of [[408, 'request_timeout'], [429, 'too_many_pending'], [405, 'method_not_allowed'], [409, 'something_new'], [400, 'something_new'], [418, 'teapot'], [403, 'something_else']])
     assert.deepEqual(ML.classifyWrite({ op: 'create' }, { status, body: { error } }), { outcome: 'unknown' }, `${status} ${error}: UNKNOWN`);
-  for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'op_id_conflict'], [409, 'type_not_supported'], [409, 'offers_disabled']])
+  for (const [status, error] of [[400, 'bad_request'], [400, 'bad_rid'], [401, 'invalid_credentials'], [403, 'not_authorized'], [404, 'not_found'], [409, 'duplicate'], [409, 'superseded'], [409, 'type_not_supported'], [409, 'offers_disabled']])
     assert.equal(ML.classifyWrite({ op: 'create' }, { status, body: { error } }).outcome, 'refused', `${status} ${error}: definite`);
+  // advisor 11-15: op_id_conflict is OUR bug — never a refusal word, never confirmed ⇒ the fallback
+  assert.deepEqual(ML.classifyWrite({ op: 'create', opId: 'op_0123456789abcdef' }, { status: 409, body: { error: 'op_id_conflict' } }), { outcome: 'unknown', conflict: true }, '409 op_id_conflict: UNKNOWN, flagged');
+});
+// 3a 9462baf40: an op_id resend of an EDIT replays the offer as it is NOW — a later edit by someone else moved its rev: still OUR edit
+test('an op_id edit replay at a NEWER rev is SAVED (it is our operation); without an op_id the same 200 stays UNKNOWN — through the REAL core', async () => {
+  const b = await backend();
+  const o = await publish(b, form({ name: 'Viva', start: NOW, end: NOW + 20 * DAY }));
+  const mine = { ...authored(form({ name: 'Viva', start: NOW, end: NOW + 20 * DAY })), schedule: { ...o.schedule, end: NOW + 22 * DAY } };
+  const opId = 'op_0123456789abcdef0123';
+  const first = await offerSaveRaw({ rid: RID, offerId: o.id, expectedRev: o.rev, offer: mine, opId, token: b.token });
+  assert.equal(first.status, 200, 'premise: our edit landed (its reply, say, lost)');
+  const theirs = { ...mine, schedule: { ...mine.schedule, end: NOW + 24 * DAY } };
+  assert.equal((await offerSaveRaw({ rid: RID, offerId: o.id, expectedRev: o.rev + 1, offer: theirs, token: b.token })).status, 200, 'premise: another edit landed after it');
+  const again = await offerSaveRaw({ rid: RID, offerId: o.id, expectedRev: o.rev, offer: mine, opId, token: b.token });
+  assert.deepEqual([again.status, again.body.offer.rev], [200, o.rev + 2], 'premise: the real core replays the CURRENT view (their rev)');
+  const a = { op: 'save', opId, offerId: o.id, expectedRev: o.rev };
+  assert.equal(ML.classifyWrite(a, again).outcome, 'saved', 'with the op_id: our edit is in');
+  assert.equal(ML.classifyWrite({ op: 'save', offerId: o.id, expectedRev: o.rev }, again).outcome, 'unknown', 'without one: rev + 2 is never taken as ours');
+  assert.equal(ML.classifyWrite({ ...a, offerId: 'o_aaaaaaaaaaaaaaaaaaaaaaaa' }, again).outcome, 'unknown', 'another offer\'s record: never ours');
 });
 // SHIP-GATE (owner 11-15, confirm every save): the ONE fallback string — shown only when a save could not be confirmed (MOCKUP v5b 1c)
 test('SHIP-GATE copy: an UNCONFIRMED outcome reads exactly «No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.»; no old unknown string ships anywhere in xpizza-portal/', () => {

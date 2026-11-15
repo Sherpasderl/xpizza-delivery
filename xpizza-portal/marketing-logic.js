@@ -3,7 +3,7 @@
 // params, whole-lempira money, the read model, every write's outcome, and the live_drift state. No DOM, no copy: every state is a
 // KEY the screens will word behind the SHIP GATE.
 //
-// THE SERVER (3a the asm10 offers pin 20000624d — marketing-logic.test.mjs runs these against the REAL cores at that ref):
+// THE SERVER (3a the asm10 OF pin 9462baf40 — marketing-logic.test.mjs runs these against the REAL cores at that ref):
 //   offer-model.js:10-21   TYPES pct | lps | bogo | envio | nuevos · AUDIENCES · STATES draft | active | paused_owner | ended · LIMITS
 //   offer-model.js:39-90   paramsOf — every money field is whole lempiras (a positive multiple of 100 centavos); ABSENT = none,
 //                          never a 0 sentinel. bogo: AUTHORED items XOR cats; a STORED category offer also carries its resolved items
@@ -189,7 +189,7 @@ export function actionsOf(o) {
 //   refused — a 4xx with the server's own code: NOTHING landed; { code, field?, reason?, with?, current_rev? } for the screen
 //   unknown — 503 / 500 / transport / a malformed 200: it MAY have landed (a failed unmirror or undo) ⇒ a create / repeat / draft is confirmed
 //             ONCE under its op_id (marketing-builder sendConfirmed); otherwise the LIST decides (UNKNOWN_WORD, owner 11-15). Never shown as success, never as a failure.
-// attempt: { op: 'create'|'save'|'state'|'repeat', offerId?, expectedRev?, to? }
+// attempt: { op: 'create'|'save'|'state'|'repeat', opId?, offerId?, expectedRev?, to?, program? }
 export function classifyWrite(attempt, res) {
   if (!res || res.transport || res.malformed) return { outcome: 'unknown' };
   const b = isObj(res.body) ? res.body : {};
@@ -200,11 +200,18 @@ export function classifyWrite(attempt, res) {
       if (attempt.opId) return { outcome: 'saved', offer: o };   // an op_id reply IS our operation's record — a replay answers it as it is NOW (any rev / state); the caller checks it is THIS form
       return o.rev === 1 && o.state === 'draft' ? { outcome: 'saved', offer: o } : { outcome: 'unknown' };
     }
+    if (attempt.opId) {   // 3a 9462baf40: an op_id reply to an edit / a move IS our operation — a replay answers the offer as it is NOW (a later
+      // edit by someone else may have moved its rev / state); a fresh run is exactly ours (rev + 1)
+      if (o.id !== attempt.offerId) return { outcome: 'unknown' };
+      return attempt.program && o.state !== 'active' ? { outcome: 'unknown' } : { outcome: 'saved', offer: o };
+    }
     if (o.id !== attempt.offerId || o.rev !== attempt.expectedRev + 1) return { outcome: 'unknown' };
     if (attempt.op === 'state' && o.state !== attempt.to) return { outcome: 'unknown' };
     if (attempt.program && o.state !== 'active') return { outcome: 'unknown' };   // save + program in ONE call: a 200 that isn't active isn't it
     return { outcome: 'saved', offer: o };
   }
+  // op_id_conflict is OUR bug (an op_id reused across operations — advisor 11-15): never a refusal word, never confirmed ⇒ the fallback
+  if (res.status === 409 && b.error === 'op_id_conflict') return { outcome: 'unknown', conflict: true };
   if (DEFINITE[res.status] && DEFINITE[res.status].includes(b.error)) return { outcome: 'refused', ...refusalOf(res.status, b) };
   return { outcome: 'unknown' };   // Codex r6.1-build P2-1: any other 4xx (408, 429 …) or 5xx is UNKNOWN — the list decides
 }

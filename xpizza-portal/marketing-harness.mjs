@@ -11,10 +11,10 @@ import { getMarketingRaw, offerSaveRaw, offerSetStateRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
 // ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export const REF = '20000624d2b3e71f1dc48b6288a10fd2780d5837';   // 3a 20000624d = the asm10 offers pin (advisor 11-15): 94e6b7ae9 (offers v1 — no caps, no «Envío gratis» authored or served) + offer-model's weeklyIntervals re-exported from the ONE offer-rules module (unchanged), the record + mirror + op claim in ONE brand txn (a txn error is 503), the replay settles its mirror
+export const REF = '9462baf409f69df2dd52a2a1b44eaee348f2173b';   // 3a 9462baf40 = the asm10 OF pin (advisor 11-15, Codex APPROVE 0 findings): 20000624d + an OPTIONAL op_id on the edit (marketingOfferSave with offer_id) and on marketingOfferSetState, claimed in the same brand txn — a same-kind resend replays the CURRENT view / the stored judgement 409; another kind, offer or `to` ⇒ op_id_conflict
 export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
   'offer-model.js': '23d86c7bbc2576cff65bde313ffcc1a384c30112',
-  'offers-core.js': 'f7fe3cc9473b7be4a1d7169103fd208d6717d096',
+  'offers-core.js': '55267ade52ce86526701fd4c228e8fae6c7b8afb',
   'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
   'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
 };

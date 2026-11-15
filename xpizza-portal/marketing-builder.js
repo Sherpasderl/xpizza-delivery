@@ -67,20 +67,20 @@ function unknownOut(ctx) { closeBuilder(); if (ctx.onUnknown) ctx.onUnknown(); e
 // within the account / brand it started in (the host checks); the dialog now on screen (another opening) is left alone. Anything else
 // only refreshes the list.
 function gone(ctx, out) { if (out && out.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else stale(ctx); }
-// owner 11-15 «confirm every save» (MOCKUP v5b 3d): an ambiguous create / repeat / draft is re-sent ONCE under the SAME op_id — 3a's claim
+// owner 11-15 «confirm every save» (MOCKUP v5b 3d): an ambiguous create / repeat / draft / edit (3a 9462baf40) is re-sent ONCE under the SAME op_id — 3a's claim
 // replays the first answer or lands it now, exactly once (offers-core claimCheck). Never a second resend, never a fresh id; only a second
 // ambiguous answer is UNKNOWN (the list + the fallback). While the confirmation is in flight the open dialog says «Confirmando…».
 async function sendConfirmed(attempt, send, g) {
   const s = await sendOnce(attempt, send);
-  if (s.outcome !== 'unknown') return s;
+  if (s.outcome !== 'unknown' || s.conflict) return s;   // a definite answer — or op_id_conflict (our bug): never confirmed
   if (B.gen === g) { B.confirming = true; render(); }
   return sendOnce(attempt, send);
 }
-const CFM_NOTE = 'La conexión tardó. Estamos confirmando que se guardó.';
+export const CFM_NOTE = 'La conexión tardó. Estamos confirmando que se guardó.';   // owner-approved 11-15 (final)
 // the busy primary: the idle label kept invisible in the same grid cell, so the button keeps its size (nothing moves)
-function busyLabel(b, idle) { b.classList.add('mk5-busy'); b.setAttribute('aria-busy', 'true'); b.replaceChildren(el('span', 'mk5-ghost', idle), el('span', null, 'Confirmando…')); b.firstChild.setAttribute('aria-hidden', 'true'); }
-// r6.1 P2: a NEW op_id for every user submission (a click of «Programar oferta» / «Programar»), never stored, never resent
-const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
+export function busyLabel(b, idle) { b.classList.add('mk5-busy'); b.setAttribute('aria-busy', 'true'); b.replaceChildren(el('span', 'mk5-ghost', idle), el('span', null, 'Confirmando…')); b.firstChild.setAttribute('aria-hidden', 'true'); }
+// r6.1 P2: a NEW op_id for every user submission (every save / move click — marketing-detail too), never stored; resent only as the ONE confirmation
+export const newOpId = () => `op_${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`}`;
 function opened(host, ctx) {   // the shared part of every opening
   B.gen += 1; B.fx = { levels: [], stack: [] };
   B.opener = typeof document !== 'undefined' ? document.activeElement : null;
@@ -576,8 +576,8 @@ async function program() {
   B.busy = true; B.err = null; render();
   let s;
   if (B.offer) {   // a draft being continued: its id + rev are its identity — update AND program it in ONE CAS
-    const o = B.offer;
-    s = await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev, program: true }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, program: true, token }));
+    const o = B.offer, opId = newOpId();
+    s = await sendConfirmed({ op: 'save', opId, offerId: o.id, expectedRev: o.rev, program: true }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, program: true, token }), g);
   } else {
     const opId = newOpId();
     s = await sendConfirmed({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token }), g);
@@ -593,16 +593,16 @@ async function program() {
   ctx.onDone && ctx.onDone();
 }
 // «Guardar borrador» — a separate draft write; a NEW draft carries an op_id and is confirmed once like every create (owner 11-15
-// «confirm every save»: drafts too — advisor 11-15, superseding 11-14's «no op_id»). A draft being continued is an edit (no op_id yet).
+// «confirm every save»: drafts too — advisor 11-15, superseding 11-14's «no op_id»). A draft being continued is an edit: confirmed the same way (3a 9462baf40).
 async function saveDraft() {
   if (B.busy) return;
   const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token;
   const r = authoredNow();
   if (!r.ok) { B.review = true; B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
   B.busy = true; render();
-  const o = B.offer, opId = o ? undefined : newOpId();
+  const o = B.offer, opId = newOpId();
   const s = o
-    ? await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }))
+    ? await sendConfirmed({ op: 'save', opId, offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token }), g)
     : await sendConfirmed({ op: 'create', opId }, () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, token }), g);
   if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
@@ -706,6 +706,7 @@ function editFoot() {
   const p = editProblem();
   const go = el('button', 'mk5b-go', 'Guardar cambios'); go.type = 'button'; go.disabled = !!p || B.busy;
   go.addEventListener('click', () => saveEdit());
+  if (B.confirming) { busyLabel(go, 'Guardar cambios'); ft.append(el('p', 'mk5r-cfm', CFM_NOTE)); }
   ft.append(go);
   if (B.err) { const e = el('div', 'mk5b-err'); e.setAttribute('role', 'alert'); e.append(el('span', null, B.err)); ft.append(e); }
   return ft;
@@ -714,11 +715,11 @@ async function saveEdit() {
   if (B.busy || editProblem()) return;
   const r = ML.offerFromForm(B.form);
   if (!r.ok) return;
-  const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token;
+  const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token, opId = newOpId();
   B.busy = true; B.err = null; render();
-  const s = await sendOnce({ op: 'save', offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, token }));
+  const s = await sendConfirmed({ op: 'save', opId, offerId: o.id, expectedRev: o.rev }, () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token }), g);
   if (B.gen !== g) { gone(ctx, s); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
-  B.busy = false;
+  B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
   closeBuilder();

@@ -10,6 +10,7 @@ import { offerSetStateRaw } from './api.js';
 import { el, svg } from './ops-dom.js';
 import * as ML from './marketing-logic.js';
 import { focusKey, layered, trapTab } from './marketing-focus.js';
+import { busyLabel, CFM_NOTE, newOpId } from './marketing-builder.js';
 
 const BACK = 'M15 18l-6-6 6-6';
 const PAUSE = [{ tag: 'rect', x: 6, y: 5, width: 4, height: 14, rx: 1 }, { tag: 'rect', x: 14, y: 5, width: 4, height: 14, rx: 1 }];
@@ -51,10 +52,10 @@ export function setup(o, ctx = {}) {
 // s-home: «Pausar» / «Reanudar» in place, «Terminar» opens the same sheet); the host empties when it is done. «Repetir» is the
 // builder's repeat sheet (marketing-builder.js openRepeater: it shares the portal calendar).
 
-const D = { host: null, ctx: null, offer: null, only: false, more: false, menu: false, sheet: null, busy: false, err: null, gen: 0, fx: { levels: [], stack: [] } };
+const D = { host: null, ctx: null, offer: null, only: false, more: false, menu: false, sheet: null, busy: false, confirming: false, err: null, gen: 0, fx: { levels: [], stack: [] } };
 export function mountDetail(host, ctx, opts = {}) {
   D.gen += 1; D.fx = { levels: [], stack: [] };
-  D.host = host; D.ctx = ctx; D.offer = ctx.offer; D.only = !!opts.act; D.more = false; D.menu = false; D.sheet = null; D.busy = false; D.err = null;
+  D.host = host; D.ctx = ctx; D.offer = ctx.offer; D.only = !!opts.act; D.more = false; D.menu = false; D.sheet = null; D.busy = false; D.confirming = false; D.err = null;
   if (opts.act === 'pause' || opts.act === 'resume') { move(opts.act); return; }   // busy first: an empty list-mode render would close the host
   if (opts.act === 'end') D.sheet = 'end';
   render();
@@ -115,6 +116,7 @@ function paint() {
     strip.append(svg(...PAUSE));
     const tx = el('span', 'mk5d-stxt'); tx.append(el('b', null, ML.pausedWord(o.paused_at, D.ctx.now ? D.ctx.now() : Date.now())));   // v5 5c «Pausada por vos el 9 nov» (3a's paused_at)
     const rb = el('button', 'mk5d-sbtn', 'Reanudar'); rb.type = 'button'; rb.disabled = D.busy; rb.addEventListener('click', () => move('resume'));
+    if (D.confirming) busyLabel(rb, 'Reanudar');
     strip.append(tx, rb);
     out.push(strip);
   }
@@ -142,7 +144,7 @@ function actions(o) {
   const box = el('div', 'mk5d-acts');
   const acts = ML.actionsOf(o);
   if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.addEventListener('click', () => D.ctx.onEdit(o)); box.append(b); }
-  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); box.append(b); }
+  if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); if (D.confirming) busyLabel(b, 'Pausar'); box.append(b); }
   const menu = [];
   if (acts.includes('repeat')) menu.push(['repeat', 'Repetir campaña']);
   if (acts.includes('end')) menu.push(['end', 'Terminar oferta']);
@@ -169,14 +171,19 @@ function errRow(closable) {
   return e;
 }
 const errWord = () => 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.';   // a DEFINITE refusal
-// pause / resume / end: ONE state move, classified ONCE (r6.1) — an UNKNOWN outcome hands over to the list (ctx.onUnknown)
+// pause / resume / end: ONE state move under a NEW op_id (3a 9462baf40); an ambiguous answer is re-sent ONCE as the SAME request
+// (owner 11-15 «confirm every save») — the claim replays it or lands it now; a second ambiguous answer (or op_id_conflict, our bug)
+// hands over to the list (ctx.onUnknown)
 export async function move(kind) {
   if (D.busy) return;
-  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token;
+  const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, opId = newOpId();
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
-  const a = { op: 'state', offerId: o.id, expectedRev: o.rev, to };
-  const r = await offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
+  const a = { op: 'state', opId, offerId: o.id, expectedRev: o.rev, to };
+  const send = () => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
+  let r = await send();
+  if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(); }
+  D.confirming = false;
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1)
     if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
     return;
@@ -206,6 +213,7 @@ function endSheet(o) {
   const mf = el('div', 'mk5r-mf');
   const back = el('button', 'mk5r-back', 'Volver'); back.type = 'button'; back.disabled = D.busy; back.addEventListener('click', closeSheet);
   const ok = el('button', 'mk5r-ok', 'Terminar oferta'); ok.type = 'button'; ok.disabled = D.busy; ok.addEventListener('click', () => move('end'));
+  if (D.confirming) { busyLabel(ok, 'Terminar oferta'); mf.append(el('p', 'mk5r-cfm', CFM_NOTE)); }
   mf.append(back, ok);
   m.append(mh, mb, mf); scrim.append(m);
   return scrim;

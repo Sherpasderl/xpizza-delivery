@@ -771,14 +771,14 @@ async function dropEnd(p) {   // an allowed live edit: «Sin fecha de fin»
   await openRow(p, 'sch');
   rowEl(p, 'sch').querySelector('.mk5b-tog').click(); await settle();
 }
-test('U1 an edit whose outcome is ambiguous (it never reached the server — the client can\'t tell; a CAS may still commit) ⇒ UNKNOWN: the dialog closes, «Campañas» re-reads, the banner — never «No pudimos guardar»', async () => {
+test('U1 an edit whose outcome is ambiguous TWICE — the call and its one confirmation (it never reached the server — the client can\'t tell; a CAS may still commit) ⇒ UNKNOWN: the dialog closes, «Campañas» re-reads, the banner — never «No pudimos guardar»', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
   await dropEnd(p);
-  b.net.drop = ['marketingOfferSave'];
+  b.net.drop = ['marketingOfferSave', 'marketingOfferSave'];
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev, 'premise: nothing landed (yet)');
   assert.equal(dlg(p), null, 'the dialog closed');
@@ -787,14 +787,14 @@ test('U1 an edit whose outcome is ambiguous (it never reached the server — the
   assert.notEqual(toastText(p), 'Cambios guardados');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read: the offer as the server has it');
 });
-test('U2 an edit whose reply is lost after it landed ⇒ UNKNOWN, never success: NO recovery read — the only reads are the list\'s own', async () => {
+test('U2 an edit whose reply AND its confirmation\'s reply are lost after it landed ⇒ UNKNOWN, never success: NO recovery read — the only reads are the list\'s own', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
   await dropEnd(p);
-  b.net.lose = ['marketingOfferSave'];
+  b.net.lose = ['marketingOfferSave', 'marketingOfferSave'];
   const from = b.calls.length;
   p.btn('Guardar cambios', dlg(p)).click(); await settle(250);
   assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'premise: it landed on the server');
@@ -802,8 +802,10 @@ test('U2 an edit whose reply is lost after it landed ⇒ UNKNOWN, never success:
   assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
   const after = b.calls.slice(from);
   assert.equal(after[0].fn, 'marketingOfferSave', 'premise: the write first');
-  assert.equal(reads(b, from).length, 2, 'exactly the list\'s two branch reads — zero recovery reads between the write and the navigation');
-  assert.ok(after.slice(1).every((c) => c.fn !== 'marketingOfferSave'), 'never resent');
+  assert.equal(reads(b, from).length, 2, 'exactly the list\'s two branch reads — zero recovery reads between the writes and the navigation');
+  assert.equal(after[1].fn, 'marketingOfferSave', 'then its ONE confirmation');
+  assert.equal(after[1].body.op_id, after[0].body.op_id, 'the SAME op_id');
+  assert.ok(after.slice(2).every((c) => c.fn !== 'marketingOfferSave'), 'never a third send');
 });
 test('U3 the newest list request wins: an OLDER answer that arrives after a newer one is dropped; no cached row paints while an UNKNOWN is pending, nor under a failed read', async () => {
   const b = await world();
@@ -830,7 +832,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   await q.signIn(); await q.open();
   await openEdit(q, 'Almuerzo');
   await dropEnd(q);
-  let go; b2.net.lose = ['marketingOfferSave']; b2.net.hold = { fn: 'getMarketing', until: new Promise((r) => { go = r; }) };
+  let go; b2.net.lose = ['marketingOfferSave', 'marketingOfferSave']; b2.net.hold = { fn: 'getMarketing', until: new Promise((r) => { go = r; }) };
   q.btn('Guardar cambios', dlg(q)).click(); await settle(150);
   assert.equal(dlg(q), null, 'the dialog closed');
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'no cached row while the UNKNOWN\'s read is pending');
@@ -840,7 +842,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   // … and a failed read paints the error box, never the old rows
   await openEdit(q, 'Almuerzo');
   await dropEnd(q);
-  b2.net.lose = ['marketingOfferSave', 'getMarketing'];
+  b2.net.lose = ['marketingOfferSave', 'marketingOfferSave', 'getMarketing'];
   q.btn('Guardar cambios', dlg(q)).click(); await settle(250);
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'a failed read: no old rows under the error');
   assert.ok(q.btn('Reintentar'), 'the error box');
@@ -866,7 +868,7 @@ test('U4 two distinct «Programar oferta» submissions ⇒ two distinct op_ids; 
   assert.notEqual(ops[2], ops[0], 'two submissions ⇒ two op_ids');
   assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer');
 });
-test('U5 op_id_conflict is a DEFINITE refusal: its word, the dialog stays, nothing resent; the next click mints a fresh op_id', async () => {
+test('U5 op_id_conflict is a CLIENT bug (advisor 11-15): never a refusal word — the fallback at once, NO confirmation; the next click mints a fresh op_id', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
@@ -882,22 +884,24 @@ test('U5 op_id_conflict is a DEFINITE refusal: its word, the dialog stays, nothi
     p.host().querySelector('.mk5d-back').click(); await settle();
     await openCard(p, 'lps');
     const n0 = saves(b).length;
-    p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
-    assert.equal(saves(b).length, n0 + 1, 'ONE call — never an automatic resend');
-    assert.equal(p.host().querySelector('.mk5r-modal .mk5b-err').textContent, 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.', 'the refusal\'s word');
+    p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+    assert.equal(saves(b).length, n0 + 1, 'U5: ONE call — a conflict is never confirmed');
+    assert.equal(dlg(p), null, 'U5: the dialog closed');
+    assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'U5: the fallback, never a refusal word');
   } finally { delete globalThis.crypto.randomUUID; }
-  p.btn('Programar oferta', p.host().querySelector('.mk5r-modal')).click(); await settle(250);
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
   const last = saves(b).slice(-2).map((c) => c.body.op_id);
   assert.notEqual(last[1], last[0], 'the next click: a fresh op_id');
-  assert.equal(dlg(p), null, 'programmed');
+  assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'programmed');
 });
-test('U6 «Pausar» from the detail, its outcome UNKNOWN ⇒ the detail closes, «Campañas» re-reads, the banner', async () => {
+test('U6 «Pausar» from the detail, its outcome UNKNOWN twice (the call + its one confirmation) ⇒ the detail closes, «Campañas» re-reads, the banner', async () => {
   const b = await world();
   await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openDetail(p, 'Almuerzo');
-  b.net.lose = ['marketingOfferSetState'];
+  b.net.lose = ['marketingOfferSetState', 'marketingOfferSetState'];
   p.btn('Pausar').click(); await settle(250);
   assert.equal(p.host().querySelector('.mk5d-head'), null, 'the detail closed');
   assert.equal(notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
@@ -1053,7 +1057,7 @@ test('L2 «Guardar borrador», the reply lost ⇒ ONE confirmation under the SAM
   assert.equal(dlg(p), null, 'the dialog closed');
   assert.equal(toastText(p), 'Borrador guardado', 'the same toast as a direct success');
 });
-test('L3 «Seguir editando» → «Programar oferta» on a draft, the reply lost ⇒ UNKNOWN', async () => {
+test('L3 «Seguir editando» → «Programar oferta» on a draft, both replies lost (the call + its one confirmation) ⇒ UNKNOWN', async () => {
   const b = await world();
   await create(b, form({ name: 'Borrador uno', max: '100' }));   // a complete draft (pct needs its maximum to review)
   const p = await page({ b });
@@ -1061,44 +1065,44 @@ test('L3 «Seguir editando» → «Programar oferta» on a draft, the reply lost
   p.mods.marketing.clock.now = () => NOW;
   p.btn('Acciones', rowNamed(p, 'Borrador uno')).click(); await settle();
   rowNamed(p, 'Borrador uno').querySelector('[data-act="continue"]').click(); await settle(80);
-  b.net.lose = ['marketingOfferSave'];
+  b.net.lose = ['marketingOfferSave', 'marketingOfferSave'];
   const rv = await toReview(p);
   assert.ok(rv, 'premise: the review opened');
   p.btn('Programar oferta', rv).click(); await settle(250);
   unknownLanded(p, 'draft-program');
   assert.notEqual(toastText(p), 'Oferta programada. Empieza hoy.');
 });
-test('L4 «Reanudar» on a paused offer, the reply lost ⇒ UNKNOWN', async () => {
+test('L4 «Reanudar» on a paused offer, both replies lost ⇒ UNKNOWN', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token });
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openDetail(p, 'Almuerzo');
-  b.net.lose = ['marketingOfferSetState'];
+  b.net.lose = ['marketingOfferSetState', 'marketingOfferSetState'];
   p.btn('Reanudar').click(); await settle(250);
   unknownLanded(p, 'resume');
   assert.equal(p.host().querySelector('.mk5d-head'), null, 'the detail closed');
 });
-test('L5 «Terminar oferta» (the 5b sheet), the reply lost ⇒ UNKNOWN', async () => {
+test('L5 «Terminar oferta» (the 5b sheet), both replies lost ⇒ UNKNOWN', async () => {
   const b = await world();
   await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openDetail(p, 'Almuerzo');
   (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
-  b.net.lose = ['marketingOfferSetState'];
+  b.net.lose = ['marketingOfferSetState', 'marketingOfferSetState'];
   p.btn('Terminar oferta', sheet(p)).click(); await settle(250);
   unknownLanded(p, 'end');
 });
-test('L6 DISMISS then lost (Codex P1-1): «Guardar cambios», Esc while pending, the reply lost ⇒ still UNKNOWN — the banner, NO cached rows during the re-read', async () => {
+test('L6 DISMISS then lost (Codex P1-1): «Guardar cambios», Esc while pending, both replies lost ⇒ still UNKNOWN — the banner, NO cached rows during the re-read', async () => {
   const b = await world();
   await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
   await dropEnd(p);
-  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave'];
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave', 'marketingOfferSave'];
   p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(dlg(p), null, 'premise: dismissed mid-write');
@@ -1137,7 +1141,7 @@ test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
   await dropEnd(p);
-  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave'];
+  let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) }; b.net.lose = ['marketingOfferSave', 'marketingOfferSave'];
   p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
   p.d.dispatchEvent(new p.w.CustomEvent('portal:auth', { detail: { uid: MGR } })); await settle();
   release(); await settle(200);
@@ -1242,6 +1246,142 @@ test('C6 a DEFINITE first answer is never confirmed: ONE call (a direct success,
   await b.setSwitch(false, 1);
   p.btn('Guardar borrador', dlg(p)).click(); await settle(250);
   assert.equal(saves(b).length, 2, 'C6: a 409 ⇒ one call');
+});
+
+// ═══ 3a 9462baf40 (advisor 11-15): an EDIT and a MOVE carry an op_id too — the same one confirmation under the SAME body. A judgement
+// refusal (overlap / duplicate / too_many_live) replays as stored; any other refusal is judged afresh; op_id_conflict ⇒ the fallback.
+const sameBody = (a, b2, label) => assert.deepEqual(b2.body, a.body, label);
+test('E1 «Guardar cambios», the reply lost (it LANDED) ⇒ ONE confirmation with the SAME body (op_id + the old expected_rev) ⇒ the replay: «Cambios guardados», ONE edit', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await dropEnd(p);
+  b.net.lose = ['marketingOfferSave'];
+  const n0 = saves(b).length;
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(300);
+  const sv = saves(b).slice(n0);
+  assert.equal(sv.length, 2, 'the call + ONE confirmation');
+  assert.ok(/^op_[A-Za-z0-9_-]{16,}$/.test(sv[0].body.op_id), 'E1: an edit carries an op_id');
+  sameBody(sv[0], sv[1], 'E1: the confirmation is the SAME request (op_id, offer_id, expected_rev, offer)');
+  assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'ONE edit — the confirmation replayed it');
+  assert.equal(notice(p), null, 'E1: confirmed ⇒ no fallback');
+  assert.equal(dlg(p), null);
+  assert.equal(toastText(p), 'Cambios guardados', 'the direct-success toast');
+});
+test('E2 «Guardar cambios», the call never reached the server ⇒ the confirmation LANDS it, exactly once', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await dropEnd(p);
+  b.net.drop = ['marketingOfferSave'];
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(300);
+  assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'E2: landed once');
+  assert.equal(toastText(p), 'Cambios guardados');
+  assert.equal(notice(p), null);
+});
+test('E3 a NON-judgement refusal is judged afresh: the call never landed, another edit landed meanwhile ⇒ the confirmation is refused (superseded) ⇒ the dialog stays with its word', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  await dropEnd(p);
+  b.net.drop = ['marketingOfferSave'];
+  const f0 = globalThis.fetch; let n = 0;
+  globalThis.fetch = async (url, opts) => {   // just before the confirmation: ANOTHER session's edit lands (the real writer)
+    if (String(url).endsWith('/marketingOfferSave') && ++n === 2) { globalThis.fetch = f0; const other = authored({ ...LIVE(), name: 'Almuerzo', end: NOW + 25 * DAY });
+      assert.equal((await offerSaveRaw({ rid: RID, offerId: o.id, expectedRev: o.rev, offer: other, token: b.token })).status, 200, 'premise: the other edit landed'); }
+    return f0(url, opts);
+  };
+  try { p.btn('Guardar cambios', dlg(p)).click(); await settle(300); } finally { globalThis.fetch = f0; }
+  assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'only the other edit landed');
+  assert.ok(dlg(p), 'E3: the dialog stays');
+  assert.equal(dlg(p).querySelector('.mk5b-err').textContent, 'Esta oferta cambió mientras la editabas. Cerrá y abrila de nuevo.', 'E3: the stale word');
+  assert.equal(notice(p), null, 'no fallback');
+});
+test('E4 «Pausar» from the detail, the reply lost ⇒ ONE confirmation with the SAME body (op_id, offer_id, to, expected_rev) ⇒ the replay: its toast, ONE move', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.lose = ['marketingOfferSetState'];
+  const from = b.calls.length;
+  p.btn('Pausar').click(); await settle(300);
+  const mv = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState');
+  assert.equal(mv.length, 2, 'the call + ONE confirmation');
+  assert.equal(mv[0].body.to, 'paused_owner', 'premise');
+  assert.ok(/^op_[A-Za-z0-9_-]{16,}$/.test(mv[0].body.op_id), 'E4: a move carries an op_id');
+  sameBody(mv[0], mv[1], 'E4: the confirmation is the SAME request (op_id, offer_id, to, expected_rev)');
+  assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1, 'ONE move');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner');
+  assert.equal(notice(p), null, 'E4: confirmed ⇒ no fallback');
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.');
+});
+test('E5 a JUDGEMENT refusal replays as stored: «Reanudar» refused (too_many_live), its reply lost, the blocker gone meanwhile ⇒ the confirmation answers the SAME 409 ⇒ the detail stays with its word', async () => {
+  const b = await world();
+  const a = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: a.id, to: 'paused_owner', expectedRev: a.rev, token: b.token });
+  const others = [];
+  for (let i = 0; i < 10; i += 1) others.push(await publish(b, form({ name: `Viva ${i}`, pct: 10 * (1 + (i % 5)), start: NOW, end: NOW + 20 * DAY, days: [i < 5 ? 6 : 0], window: null })));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };
+  const from = b.calls.length;
+  p.btn('Reanudar').click(); await settle(60);   // the real core judged it (too_many_live) and stored the refusal in its claim
+  const x = others[0];
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: x.id, to: 'ended', expectedRev: x.rev, token: b.token })).status, 200, 'premise: the blocker is gone');
+  b.net.lose = ['marketingOfferSetState'];
+  release(); await settle(300);
+  const mv = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState' && c.body.offer_id === a.id);
+  assert.equal(mv.length, 2, 'the call + ONE confirmation');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'E5: never resumed (the stored judgement answered)');
+  assert.ok(p.host().querySelector('.mk5d-head'), 'E5: the detail stays');
+  assert.equal(p.host().querySelector('.mk5b-err span').textContent, 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.', 'E5: the detail\'s refusal word');
+  assert.equal(notice(p), null, 'no fallback');
+});
+test('E6 «Terminar oferta» (5b) while its confirmation is in flight: «Confirmando…» + the quiet line in the sheet; then the replay closes it', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Terminar oferta').click(); await settle();
+  b.net.drop = ['marketingOfferSetState'];
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };
+  p.btn('Terminar oferta', sheet(p)).click(); await settle(100);
+  const m = sheet(p), ok = m.querySelector('.mk5r-ok'), ghost = ok.querySelector('.mk5-ghost');
+  assert.equal((m.querySelector('.mk5r-cfm') || {}).textContent, 'La conexión tardó. Estamos confirmando que se guardó.', 'E6: the quiet line');
+  assert.equal(ghost && ghost.nextElementSibling.textContent, 'Confirmando…', 'E6: the busy label');
+  assert.equal(ghost.textContent, 'Terminar oferta');
+  assert.equal(m.querySelector('.mk5r-back').disabled, true);
+  release(); await settle(300);
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'ended', 'landed once');
+  assert.equal(stored(b, 'Almuerzo')[0].rev, o.rev + 1);
+  assert.equal(toastText(p), 'Oferta terminada. Los resultados quedan guardados.');
+});
+test('E7 op_id_conflict on a MOVE ⇒ the fallback at once (a client bug, never a refusal word), no confirmation', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  // the op_id is already claimed by an EDIT of this offer (the real core) ⇒ a move under it is op_id_conflict
+  const edited = authored({ ...LIVE(), end: NOW + 25 * DAY });
+  assert.equal((await offerSaveRaw({ rid: RID, offerId: o.id, expectedRev: o.rev, offer: edited, opId: 'op_fixed-op-id-0002', token: b.token })).status, 200, 'premise: the edit claimed it');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  Object.defineProperty(globalThis.crypto, 'randomUUID', { value: () => 'fixed-op-id-0002', configurable: true, writable: true });
+  try {
+    await openDetail(p, 'Almuerzo');
+    const from = b.calls.length;
+    p.btn('Pausar').click(); await settle(300);
+    assert.equal(b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState').length, 1, 'E7: ONE call — never confirmed');
+    assert.equal(notice(p) && notice(p).textContent, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.', 'E7: the fallback');
+    assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'never a refusal word');
+  } finally { delete globalThis.crypto.randomUUID; }
 });
 
 // ═══ slot 11-15 defects (advisor rulings): build EXACT to the mockup; text never crammed at 390 (16b) ═══════════════════════════

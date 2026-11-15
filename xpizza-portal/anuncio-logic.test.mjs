@@ -12,7 +12,7 @@ import * as AL from './anuncio-logic.js';
 import { getAnuncioWeeksRaw, anuncioBookRaw, anuncioCancelRaw, getMarketingRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
-const REF = '20000624d2b3e71f1dc48b6288a10fd2780d5837';   // the Ofertas lane's ONE 3a pin (feat/offers-v1-no-caps-3a FINAL, advisor 11-15)
+const REF = '9462baf409f69df2dd52a2a1b44eaee348f2173b';   // the Ofertas lane's ONE 3a pin (the asm10 OF pin 9462baf40, advisor 11-15; the Anuncio files unchanged since 20000624d)
 const BLOBS = { 'anuncio-core.js': 'c33a0d96beab4860db795c80fa6bcfc80141c056', 'anuncio-model.js': '02241d0543105676b5c5aad7957ad4ba246168bb' };
 const DIR = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
