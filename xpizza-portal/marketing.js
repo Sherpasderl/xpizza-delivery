@@ -22,14 +22,18 @@ export const SOURCE_GATE = Object.freeze([
   ['fresh', '«Actualizado hace N h» — it states the freshness of the results read, which does not exist yet'],
   ['period', 'the period pill «Últimos 30 días» — it only drives the results figures'],
   ['ventas', 'the «Ventas» column — no per-offer attributed sales'],
-  ['tope', '«Pausada · tope» and every cap-pause banner — the server has no automatic cap pause: only paused_owner'],
   ['repeat-live', '«Repetir» on Activa / Pausada rows — the server repeats ENDED offers only — not_ended otherwise'],
   ['delete', '«Eliminar» on a draft / Programada — the server has no delete'],
   ['anuncios', 'the «Anuncios» section, the Anuncio hero and the eligibility line — the Anuncio stays dark — the ledger is unbuilt'],
   ['how-anuncios', 'the «Anuncios.» paragraph of «¿Cómo funcionan?» — the Anuncio stays dark'],
   ['sherpa-collections', '«Campañas de Sherpa» — no server for the collections yet'],
-  ['detail-results', 'the detail\'s headline, the three figures, the weekly chart, «Resultados», the Límites progress + help, the per-branch sales, the «not yet» reorder line and the end sheet\'s «Lleva» row — the per-offer results read, 5f'],
+  ['detail-results', 'the detail\'s headline, the three figures, the weekly chart, «Resultados», the per-branch sales, the «not yet» reorder line and the end sheet\'s «Lleva» row — the per-offer results read, 5f'],
   ['empty-results', 'the empty state\'s «acá vas a ver cuánto vendiste… cuántos pedidos trajo…» — it promises results the page cannot show until the per-offer results read lands, 5f'],
+]);
+// what v5 draws that offers v1 does NOT have at all (owner 11-15) — v2 brings them on the payout ledger
+export const NOT_IN_V1 = Object.freeze([
+  ['caps', 'every cap: the builder\'s and the editor\'s «Límites» row, the review line, «Pausada · tope», «Subir tope», the cap banners and the detail\'s Límites progress — a write never carries `caps`'],
+  ['envio', 'the «Envío gratis» offer type: its card is not shown — 3a refuses it with type_not_supported — until the payout ledger can charge the restaurant'],
 ]);
 // states the server produces that v5 does not draw (advisor 11-14: render nothing until a frame is approved)
 export const NOT_DRAWN = Object.freeze([
@@ -50,12 +54,11 @@ const DOWN = 'M6 9l6 6 6-6', CHECK = 'M5 12l5 5L20 7';
 const MEGAPHONE = 'M3 10v4h3l6 4V6L6 10H3zM15.5 9.5a3.6 3.6 0 0 1 0 5';   // v5's own nav icon (its two paths as one d)
 const ico = (k) => svg(...ICONS[k]);
 
-// the five offer cards (v5 tpl-ofertas, verbatim)
+// the offer cards (v5 tpl-ofertas, verbatim) — offers v1 (owner 11-15): the four V1_TYPES, a 2×2 grid; «Envío gratis» is held (NOT_IN_V1)
 const CARDS = Object.freeze([
   { type: 'pct', tone: 'mint', cat: 'Descuento', title: 'Porcentaje en todo el menú', line: 'Ej.: 15 % en cada pedido, hasta L 100 de descuento.', ben: 'Aparecés en la sección Ofertas de la app' },
   { type: 'lps', tone: 'sky', cat: 'Lempiras', title: 'Lempiras de descuento con mínimo', line: 'Ej.: L 50 en pedidos desde L 300.', ben: 'Sube el ticket: el cliente completa el mínimo' },
   { type: 'bogo', tone: 'rose', cat: '2 × 1', title: 'Comprá 1 y llevate otro gratis', line: 'El cliente paga un producto y se lleva otro de igual o menor valor.', ben: 'Se muestra con una etiqueta en tu menú' },
-  { type: 'envio', tone: 'teal', cat: 'Envío', title: 'Envío gratis', line: 'Solo donde el cliente de verdad lo recibe: en tu zona y con el mínimo de compra.', ben: 'Tu restaurante aparece con «Envío gratis»' },
   { type: 'nuevos', tone: 'lav', cat: 'Clientes nuevos', title: 'Para clientes nuevos', line: 'Un descuento solo en el primer pedido con tu restaurante.', ben: 'Solo la ven clientes que nunca te pidieron' },
 ]);
 const MENU_WORD = Object.freeze({ view: 'Ver', pause: 'Pausar', resume: 'Reanudar', edit: 'Editar', end: 'Terminar', repeat: 'Repetir', continue: 'Seguir editando' });

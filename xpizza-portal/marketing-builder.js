@@ -16,7 +16,7 @@ const X = 'M6 6l12 12M18 6L6 18', DOWN = 'M6 9l6 6 6-6', CHECK = 'M5 12l5 5L20 7
 const PREV = 'M15 18l-6-6 6-6', NEXT = 'M9 6l6 6-6 6', SPARK = 'M12 3v4M12 17v4M3 12h4M17 12h4', PLUS = 'M12 5v14M5 12h14', ARR = 'M5 12h14M13 6l6 6-6 6';
 const ROW_ICON = Object.freeze({   // v5's 1.85-stroke line icons per row (monochrome on the card circle)
   br: ['M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6'], typ: null, prod: ['M4 7h16M4 12h16M4 17h10'], aud: ['M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0'],
-  sch: [{ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 7v5l3 2'], caps: ['M4 20V10M10 20V4M16 20v-6M22 20H2'], name: ['M4 20h4L19 9l-4-4L4 16z'],
+  sch: [{ tag: 'circle', cx: 12, cy: 12, r: 9 }, 'M12 7v5l3 2'], name: ['M4 20h4L19 9l-4-4L4 16z'],
 });
 const SLOTS = Object.freeze([['Almuerzo', 660, 840], ['Tarde', 840, 1080], ['Cena', 1080, 1260], ['Noche', 1260, 0], ['Todo el día', null, null], ['Personalizado', 'custom', 'custom']]);
 const DAY_CHIPS = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
@@ -31,7 +31,7 @@ const longDate = (ms) => { const d = new Date(ms - HN); return `${WD3[d.getUTCDa
 // v5's suggested values per type (the cards' «Ej.» lines)
 const PV_NOTE = '(en la vista previa).';
 const OR_REPEAT = '(o usá Repetir).';   // v5 3c's fine print ends «…creá una nueva (o usá Repetir).» — held apart for the call scanner   // v5's Nombre help ends «…de la oferta (en la vista previa).» — held apart so the call scanner never reads «oferta (» as a call
-const SUGGEST = Object.freeze({ pct: { pct: 15, max: '100' }, lps: { off: '50', min: '300' }, bogo: { free_per_order: 1 }, envio: { min: '350' }, nuevos: { off: '50' } });
+const SUGGEST = Object.freeze({ pct: { pct: 15, max: '100' }, lps: { off: '50', min: '300' }, bogo: { free_per_order: 1 }, nuevos: { off: '50' } });   // v1: no «Envío gratis» (owner 11-15)
 // the refusal keys the server answers on a save / publish, worded plainly (no v5 frame draws them: minimal, flagged to the advisor)
 const REFUSAL_WORD = Object.freeze({
   overlap: (r) => `Se cruza con ${(r.with || []).map((n) => `«${n}»`).join(' y ') || 'otra oferta activa'} en esos días y horas. Un producto no puede llevar dos ofertas a la vez: cambiá el horario o los productos.`,
@@ -40,7 +40,7 @@ const REFUSAL_WORD = Object.freeze({
   unknown_dish: () => 'Un producto ya no está en el menú publicado de una sucursal. Quitalo y volvé a revisar.',
   menu_unavailable: () => 'No pudimos leer el menú de una sucursal. Probá de nuevo en un momento.',
   start_past: () => 'La fecha de inicio ya pasó. Elegí una fecha nueva en «Horario».',
-  schedule: () => 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá los topes o la fecha de fin, o terminá esta oferta y creá una nueva.',   // since 3a's widening: only a moved START (never sent by this UI)
+  schedule: () => 'Por ahora no se puede cambiar el horario de una oferta activa. Guardá la fecha de fin, o terminá esta oferta y creá una nueva.',   // derived from the owner's no-caps decision (advisor 11-15)   // since 3a's widening: only a moved START (never sent by this UI)
   live_edit: () => 'Por ahora no se puede cambiar eso en una oferta activa. Terminá esta oferta y creá una nueva.',   // a locked field the server refused (the UI never sends one)
   off: () => 'Las ofertas no están disponibles en este momento.',
   not_ended: () => 'Solo se puede repetir una oferta terminada.',
@@ -70,11 +70,12 @@ function opened(host, ctx) {   // the shared part of every opening
 // ── open / close ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // ctx: { branches: [{ rid, name, address }], brandName, token, toast(text), onDone() } · type: an offer type · offer: a draft to continue
 export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
+  if (!offer && !ML.V1_TYPES.includes(type)) return;   // offers v1: a NEW offer is one of V1_TYPES (no «Envío gratis», owner 11-15)
   opened(host, ctx);
   if (offer) { B.mode = 'draft'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.custom = isCustom(B.form.window); }
   else {
     B.mode = 'new'; B.offer = null;
-    B.form = { ...ML.emptyForm(type), ...SUGGEST[type], branches: ctx.branches.map((b) => b.rid), start: hnDay0(now()), end: null, weekly: true };
+    B.form = { ...ML.emptyForm(type), ...SUGGEST[type], branches: ctx.branches.map((b) => b.rid), start: hnDay0(now()), end: null };
     B.nameAuto = true;
   }
   B.layer = el('div', 'mk5b-layer');
@@ -175,7 +176,6 @@ function formCol(w) {
   if (B.form.type === 'bogo') rows.append(row('prod', 'Productos', w.prodSummary, productsBody(w)));
   if (B.form.type !== 'nuevos') rows.append(row('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''), audienceBody()));
   rows.append(row('sch', 'Horario', w.sumSched, scheduleBody(w)));
-  rows.append(row('caps', 'Límites', w.caps.summary, capsBody(w)));
   rows.append(row('name', 'Nombre', B.nameAuto ? `${w.name} · se armó solo` : w.name, nameBody()));
   f.append(typ, rows, foot(w));
   return f;
@@ -305,7 +305,7 @@ function scheduleBody(w) {
   const al = el('div', 'mk5b-albl'); al.append(el('b', null, 'Sin fecha de fin'), el('span', null, 'Queda activa hasta que la pausés o la termines'));
   const tog = el('button', `mk5b-tog${noEnd ? '' : ' mk5b-togoff'}`); tog.type = 'button'; tog.setAttribute('role', 'switch'); tog.setAttribute('aria-checked', noEnd ? 'true' : 'false'); tog.setAttribute('aria-label', 'Sin fecha de fin');
   tog.append(el('i', 'mk5b-knob'));
-  tog.addEventListener('click', () => upd(noEnd ? { end: hnDay0(Math.max(B.form.start || now(), now())) + 7 * DAY - 1, weekly: false } : { end: null, weekly: true }));
+  tog.addEventListener('click', () => upd(noEnd ? { end: hnDay0(Math.max(B.form.start || now(), now())) + 7 * DAY - 1 } : { end: null }));
   av.append(al, tog);
   out.push(av);
   out.push(...daysAndSlots());
@@ -360,12 +360,6 @@ function timeField(label, minutes, onChange) {
   i.addEventListener('change', () => { const [a, b] = String(i.value).split(':').map((x) => Number.parseInt(x, 10)); if (Number.isInteger(a) && Number.isInteger(b)) onChange(a * 60 + b); });
   fld.append(l, i);
   return fld;
-}
-function capsBody(w) {
-  const two = el('div', 'mk5b-two');
-  two.append(numField('Tope de canjes', null, B.form.cap_redemptions, (v) => upd({ cap_redemptions: Number.parseInt(String(v).replace(/\D/g, ''), 10) || null }), { unitAfter: 'canjes', cfg: false }));
-  two.append(numField(w.caps.spendLabel, 'L', B.form.cap_spend, (v) => upd({ cap_spend: v }), { cfg: false }));
-  return [two, el('p', 'mk5b-help', w.caps.help)];
 }
 function nameBody() {
   const fld = el('div', 'mk5b-fld');
@@ -518,7 +512,6 @@ function reviewSheet(w) {
   add('Sucursales', /^Las \d+ sucursales$/.test(w.branchText) ? w.branchText.slice(0, -' sucursales'.length) : w.branchText);   // v5's review: «Las 3»
   if (B.form.type !== 'nuevos') add('Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''));
   add('Horario', w.sumSched);
-  add('Límites', w.caps.summary);
   add('Nombre', w.name);
   const fine = el('p', 'mk5r-fine', `${w.cost.lead} `); if (w.cost.ceiling) fine.append(el('span', 'mk5b-nb', w.cost.ceiling));
   mb.append(rows, fine);
@@ -533,7 +526,7 @@ function reviewSheet(w) {
 }
 
 const rid0 = () => B.form.branches[0];
-function wordOf(c) {
+export function wordOf(c) {   // exported for the v1 refusal cells (caps_not_supported / type_not_supported ⇒ the generic word)
   if (c.outcome === 'unknown') return ML.UNKNOWN_WORD;   // never shown in a dialog (unknownOut closes it) — the one string, kept whole
   const f = REFUSAL_WORD[c.reason] || REFUSAL_WORD[c.field] || REFUSAL_WORD[c.code];   // a bad_request carries its reason (start_past …)
   return f ? f(c) : 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.';
@@ -602,15 +595,15 @@ export function programmedToast(o, at = now()) {
 export const _builderState = B;   // test-only
 
 // ── O2c · «Editar oferta activa» (v5 3c): the same dialog over a running offer — locked rows vs the editable ones ─────────────────
-// What may change is the SERVER's live-edit allowlist (3a offer-model liveEditProblem): a cap RAISED and the end moved LATER (or
-// removed). Everything else is a locked row (the lock in place of the chevron, «fijo mientras está activa», not expandable). The
-// day chips and the franja are EDITABLE as v5 draws them (advisor 11-14, ruling (a); 3a widened its allowlist to days + window at
-// c5bbce740 — the weekly flag stays locked, so «Sin fecha de fin» keeps it). The usage counters wait for 5f.
+// What may change is the SERVER's live-edit allowlist (3a offer-model liveEditProblem): the end moved LATER (or removed), the day chips
+// and the franja (EDITABLE as v5 draws them — advisor 11-14 ruling (a)). Everything else is a locked row (the lock in place of the
+// chevron, «fijo mientras está activa», not expandable). Offers v1 has no caps (owner 11-15): no «Límites» row; the dialog opens on
+// «Horario» and its lede is the advisor's derived wording (11-15).
 const LOCK = [{ tag: 'rect', x: 5, y: 11, width: 14, height: 10, rx: 2 }, 'M8 11V7a4 4 0 0 1 8 0v4'];
-const EDIT_LEDE = 'Mientras está activa podés subir los topes y cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.';
+const EDIT_LEDE = 'Mientras está activa podés cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.';
 const E = { prev: null };
 export function openEditor(host, ctx, offer) {
-  opened(host, ctx); B.row = 'caps';
+  opened(host, ctx); B.row = 'sch';
   B.mode = 'edit'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.menu = null; B.custom = isCustom(B.form.window);
   E.prev = ML.formFromOffer(offer);
   B.layer = el('div', 'mk5b-layer');
@@ -618,13 +611,11 @@ export function openEditor(host, ctx, offer) {
   render();
   const x = B.layer.querySelector('.mk5b-x'); if (x && x.focus) x.focus();
 }
-// what the dialog itself blocks: only what stays forbidden after 3a's widening — a cap LOWERED, the end moved EARLIER (v5 3c).
-// The days / franja are sent (3a allows them live); the weekly flag stays the offer's own; the server decides the rest.
+// what the dialog itself blocks: only what stays forbidden after 3a's widening — the end moved EARLIER (v5 3c).
+// The days / franja are sent (3a allows them live); the server decides the rest.
 function editProblem() {
   const a = ML.offerFromForm(E.prev), b = ML.offerFromForm(B.form);
   if (!a.ok || !b.ok) return 'invalid';
-  const up = (x, y) => y === null || (x !== null && y >= x);
-  if (!up(a.offer.caps.redemptions, b.offer.caps.redemptions) || !up(a.offer.caps.spend_cents, b.offer.caps.spend_cents)) return 'caps';
   const pe = a.offer.schedule.end, ne = b.offer.schedule.end;
   if (!(ne === null || (pe !== null && ne >= pe))) return 'end';
   return null;
@@ -652,18 +643,9 @@ export function editFormCol(w) {
   rows.append(lockedRow('br', 'Sucursales', w.branchText), lockedRow('typ', w.rowLabel, w.sumType, ICONS_OF(w.icon)));
   if (B.form.type === 'bogo') rows.append(lockedRow('prod', 'Productos', w.prodSummary));
   if (B.form.type !== 'nuevos') rows.append(lockedRow('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', '')));
-  rows.append(row('caps', 'Límites', w.caps.summary, editCapsBody(w)));
   rows.append(row('sch', 'Horario', w.sumSched, editScheduleBody(w)));
   f.append(typ, rows, editFoot());
   return f;
-}
-function editCapsBody(w) {
-  const two = el('div', 'mk5b-two');
-  two.append(numField('Tope de canjes', null, B.form.cap_redemptions, (v) => upd({ cap_redemptions: Number.parseInt(String(v).replace(/\D/g, ''), 10) || null }), { unitAfter: 'canjes', cfg: false }));
-  two.append(numField(w.caps.spendLabel, 'L', B.form.cap_spend, (v) => upd({ cap_spend: v }), { cfg: false }));
-  const out = [el('p', 'mk5b-help', 'Solo se pueden subir.'), two];   // v5's counters («Hoy lleva N canjes y L X…»): the 5f usage read, gated
-  if (editProblem() === 'caps') out.push(el('div', 'mk5b-block', 'Un tope solo puede subir: poné un valor mayor o igual al actual.'));   // v5: «a lower value is rejected inline (not drawn)»
-  return out;
 }
 function editScheduleBody(w) {
   const out = [el('p', 'mk5b-help', 'Hora de tu restaurante.')];
@@ -680,7 +662,7 @@ function editScheduleBody(w) {
   const al = el('div', 'mk5b-albl'); al.append(el('b', null, 'Sin fecha de fin'), el('span', null, 'Queda activa hasta que la pausés o la termines'));
   const tog = el('button', `mk5b-tog${noEnd ? '' : ' mk5b-togoff'}`); tog.type = 'button'; tog.setAttribute('role', 'switch'); tog.setAttribute('aria-checked', noEnd ? 'true' : 'false'); tog.setAttribute('aria-label', 'Sin fecha de fin');
   tog.append(el('i', 'mk5b-knob'));
-  tog.addEventListener('click', () => upd({ end: noEnd ? E.prev.end : null, weekly: E.prev.weekly }));   // Codex r1 P2-5: the weekly flag is server-LOCKED on a live offer (until asm10) — the end alone moves
+  tog.addEventListener('click', () => upd({ end: noEnd ? E.prev.end : null }));   // removing the end; turning it back on restores the offer's own end
   if (noEnd && E.prev.end === null) tog.disabled = true;   // an offer that never had an end cannot be given one (an EARLIER end)
   av.append(al, tog);
   out.push(av);

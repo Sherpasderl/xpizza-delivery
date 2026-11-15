@@ -1,5 +1,5 @@
 // Portal «Marketing» «Ofertas», the non-drawing half — marketing-logic.js + the api.js raw calls, run against 3a's REAL offer cores at
-// the PINNED ref (feat/marketing-offers-3a @ b62765981, git-archived by ref-tree.mjs): every server reply below is the real core's,
+// the PINNED ref (feat/offers-v1-no-caps-3a @ 94e6b7ae9 — the Ofertas lane's ONE pin, advisor 11-15; git-archived by ref-tree.mjs): every server reply below is the real core's,
 // over production's transaction semantics, with membership by the REAL roster writer, menus by the REAL catalog mirror writer, the
 // switches by the REAL config writer. No hand-built server reply.
 // Run: node --test marketing-logic.test.mjs
@@ -20,7 +20,8 @@ import { REF, BLOBS, DIR, git, rq, OM, C, CFG, NOW, DAY, OWNER, MGR, K1, K2, K3,
 test('the pin: the ref and each server file\'s blob are the ones this client was written against; the client\'s tables equal the server\'s', () => {
   assert.equal(git('rev-parse', `${REF}^{commit}`), REF, 'the pinned ref resolves');
   for (const [f, blob] of Object.entries(BLOBS)) assert.equal(git('rev-parse', `${REF}:xpizza-functions/marketing/${f}`), blob, `pinned blob ${f}`);
-  assert.deepEqual([...ML.TYPES], [...OM.TYPES], 'TYPES');
+  assert.deepEqual([...ML.TYPES], [...OM.TYPES], 'TYPES (every type a stored record may carry)');
+  assert.deepEqual([...ML.V1_TYPES], [...OM.V1_TYPES], 'V1_TYPES (a NEW offer: no «Envío gratis», owner 11-15)');
   assert.deepEqual([...ML.AUDIENCES], [...OM.AUDIENCES], 'AUDIENCES');
   assert.deepEqual(Object.keys(ML.MOVES).sort(), [...OM.STATES].sort(), 'one MOVES row per stored state');
   for (const s of OM.STATES) assert.deepEqual([...ML.MOVES[s]], [...C.MOVES[s]], `MOVES.${s}`);
@@ -45,21 +46,23 @@ test('«no maximum» / «no minimum» send the field ABSENT — the real core st
   const b = await backend();
   const pct = authored(form({ max: '' }));
   assert.deepEqual(pct.params, { pct: 20 }, 'pct with a blank maximum: no max_cents key at all');
-  const env = authored(form({ type: 'envio', min: '' }));
-  assert.deepEqual(env.params, {}, 'envío with a blank minimum: no min_cents key');
+  assert.deepEqual(ML.offerFromForm(form({ type: 'envio', min: '' })).errors, { type: 'type_not_supported' }, 'offers v1: the form never authors «Envío gratis»');
   assert.deepEqual(authored(form({ max: 'L 300' })).params, { pct: 20, max_cents: 30000 }, 'a maximum in whole lempiras → centavos');
   const saved = await create(b, form({ max: '' }));
   assert.equal('max_cents' in saved.params, false, 'the real core stored no maximum');
-  assert.equal(b.fake.get(`marketing_offers/tb/${saved.id}/params/max_cents`), null, 'nothing in the record either');
+  assert.equal(b.fake.get(`marketing_brand/tb/offers/${saved.id}/params/max_cents`), null, 'nothing in the record either');
   for (const [params, why] of [[{ pct: 20, max_cents: 0 }, 'a 0 «no max»'], [{ pct: 20, max_cents: 15050 }, 'centavos']]) {
     const res = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...pct, params }, token: b.token });
     assert.deepEqual(ML.classifyWrite({ op: 'create' }, res), { outcome: 'refused', code: 'invalid', server: 'bad_request', status: 400, field: 'params', reason: 'bad_params' }, `the server refuses ${why}`);
   }
   assert.deepEqual(ML.offerFromForm(form({ max: '150.50' })).errors, { max: 'whole_lempiras' }, 'the form never sends centavos');
   assert.deepEqual(ML.offerFromForm(form({ max: '0' })).errors, { max: 'positive' }, 'the form never sends a 0');
-  const caps = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...pct, caps: { redemptions: null, spend_cents: 0, weekly: false } }, token: b.token });
-  assert.equal(ML.classifyWrite({ op: 'create' }, caps).reason, 'bad_caps', 'a 0 spend cap is the server\'s bad_caps');
-  assert.equal(authored(form({ cap_spend: '' })).caps.spend_cents, null, 'a blank spend cap is none');
+  // offers v1 (owner 11-15): NO caps — the form sends no `caps` key; the server refuses ANY caps object (even an empty-looking one)
+  assert.equal('caps' in authored(form()), false, 'no caps key on the wire');
+  for (const caps of [{ redemptions: null, spend_cents: null, weekly: false }, { redemptions: 50, spend_cents: null, weekly: false }]) {
+    const res = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...pct, caps }, token: b.token });
+    assert.deepEqual(ML.classifyWrite({ op: 'create' }, res), { outcome: 'refused', code: 'invalid', server: 'bad_request', status: 400, field: 'caps', reason: 'caps_not_supported' }, `caps ${JSON.stringify(caps)}: refused`);
+  }
 });
 
 test('the form agrees with the REAL validator: valid ⇔ the core\'s validateAuthored accepts it, and the offer is the core\'s normal form', () => {
@@ -73,7 +76,6 @@ test('the form agrees with the REAL validator: valid ⇔ the core\'s validateAut
     form({ name: '' }), form({ name: 'x'.repeat(41) }), form({ name: '  Martes  ' }), form({ branches: [] }), form({ branches: ['tb_sur', RID] }),
     form({ start: null }), form({ end: null }), form({ end: NOW }), form({ days: [] }), form({ days: [7] }), form({ days: [6, 0, 3] }),
     form({ window: null }), form({ window: { from: 1260, to: 0 } }), form({ window: { from: 60, to: 60 } }), form({ window: { from: 0, to: 1440 } }),
-    form({ cap_redemptions: 50 }), form({ cap_redemptions: 0 }), form({ cap_spend: '2,000' }), form({ weekly: true }),
   ];
   for (const f of cases) {
     const mine = ML.offerFromForm(f);
@@ -91,15 +93,14 @@ function looseOffer(f) {
     bogo: f.by === 'cats' ? { cats: f.cats, free_per_order: f.free_per_order } : { items: f.items, free_per_order: f.free_per_order },
     envio: c(f.min) !== null ? { min_cents: c(f.min) } : {}, nuevos: f.nuevos_by === 'pct' ? { pct: f.pct } : { off_cents: c(f.off) } }[f.type];
   return { name: f.name, type: f.type, params, audience: f.audience, branches: f.branches,
-    schedule: { start: f.start, end: f.end, days: f.days, window: f.window }, caps: { redemptions: f.cap_redemptions, spend_cents: c(f.cap_spend), weekly: f.weekly } };
+    schedule: { start: f.start, end: f.end, days: f.days, window: f.window } };   // v1: no caps
 }
 
-test('every type round-trips through the REAL save + read: the form an offer reads back into re-authors exactly what was saved', async () => {
+test('every V1 type round-trips through the REAL save + read: the form an offer reads back into re-authors exactly what was saved', async () => {
   const b = await backend();
   const forms = [form({ name: 'Pct' }), form({ name: 'Pct tope', max: '300' }), form({ name: 'Lps', type: 'lps', off: '50', min: '250' }),
     form({ name: 'Bogo', type: 'bogo', items: [K1, K3], free_per_order: 2, days: [5, 6], window: { from: 1260, to: 0 } }),
-    form({ name: 'Envio', type: 'envio', min: '350', window: null }), form({ name: 'Envio libre', type: 'envio' }),
-    form({ name: 'Nuevos L', type: 'nuevos', off: '75' }), form({ name: 'Nuevos pct', type: 'nuevos', nuevos_by: 'pct', pct: 15, cap_redemptions: 100, cap_spend: '5,000', weekly: true })];
+    form({ name: 'Nuevos L', type: 'nuevos', off: '75' }), form({ name: 'Nuevos pct', type: 'nuevos', nuevos_by: 'pct', pct: 15 })];   // every V1 type
   for (const f of forms) {
     const sent = authored(f);
     const saved = await create(b, f);
@@ -132,15 +133,13 @@ test('a CATEGORY offer: «Aplica a» is the list the server froze; editing it se
 
 test('live edits: the client\'s answer is the REAL liveEditProblem\'s, and the real save refuses exactly that field', async () => {
   const b = await backend();
-  const live = await publish(b, form({ name: 'Viva', cap_redemptions: 50, cap_spend: '2,000' }));
-  assert.equal(ML.editable(live), 'caps_and_end');
+  const live = await publish(b, form({ name: 'Viva' }));
+  assert.equal(ML.editable(live), 'schedule');
   assert.equal(ML.editable({ state: 'draft', status: 'draft' }), 'all');
   assert.equal(ML.editable({ state: 'ended', status: 'ended' }), 'none');
   assert.equal(ML.editable({ state: 'active', status: 'ended' }), 'none', 'ended by schedule: nothing to edit');
   const edits = { same: {}, name: { name: 'Otra' }, pct: { pct: 25 }, branches: { branches: [RID, 'tb_sur'] }, days: { days: [2, 3] }, window: { window: null },
-    start: { start: NOW + 2 * DAY }, end_later: { end: NOW + 40 * DAY }, end_sooner: { end: NOW + 10 * DAY }, end_none: { end: null },
-    redemptions_up: { cap_redemptions: 80 }, redemptions_down: { cap_redemptions: 20 }, redemptions_none: { cap_redemptions: null },
-    spend_up: { cap_spend: '3,000' }, spend_down: { cap_spend: '1,000' }, weekly: { weekly: true } };
+    start: { start: NOW + 2 * DAY }, end_later: { end: NOW + 40 * DAY }, end_sooner: { end: NOW + 10 * DAY }, end_none: { end: null } };   // v1: no caps to edit
   let rev = live.rev;
   for (const [k, patch] of Object.entries(edits)) {
     const cur = await one(b, live.id);
@@ -170,7 +169,7 @@ test('states: publish / pause / resume / end / repeat through the real core; the
   const pau = await move(pub.offer, 'paused_owner');
   assert.deepEqual([pau.outcome, pau.offer.status], ['saved', 'paused_owner']);
   assert.deepEqual(ML.actionsOf(pau.offer), ['resume', 'end']);
-  const lv = b.fake.get(`marketing_live_b/tb/${RID}/${d.id}`);   // 3a's re-keyed mirror (marketing_live_b/{brand}/{rid}/{offer}): removal leaves a TOMBSTONE { removed, rev }
+  const lv = b.fake.get(`marketing_brand/tb/live/${RID}/${d.id}`);   // 3a 94e6b7ae9: ONE brand root (marketing_brand/{brand}/live/{rid}/{offer}); removal leaves a TOMBSTONE { removed, rev }
   assert.ok(lv && lv.removed === true, 'paused: out of the price path (a tombstone at the mirror\'s real path)');
   const res = await move(pau.offer, 'active');
   assert.equal(res.outcome, 'saved', 'resumed');
@@ -188,7 +187,7 @@ test('refusals map to honest keys: overlap (with the clashing names), stale + cu
   const b = await backend();
   const bogo = (name) => form({ name, type: 'bogo', items: [K1], days: [5, 6], window: { from: 1260, to: 0 } });
   await publish(b, bogo('Primera'));
-  const second = await create(b, bogo('Segunda'));
+  const second = await create(b, { ...bogo('Segunda'), free_per_order: 2 });   // not identical (an identical one is a 409 duplicate, judged FIRST — 3a 94e6b7ae9)
   const ov = ML.classifyWrite({ op: 'state', offerId: second.id, expectedRev: 1, to: 'active' },
     await offerSetStateRaw({ rid: RID, offerId: second.id, to: 'active', expectedRev: 1, token: b.token }));
   assert.deepEqual([ov.outcome, ov.code, ov.with, ov.rid], ['refused', 'overlap', ['Primera'], RID], 'overlap: names the offer it clashes with');
@@ -206,15 +205,17 @@ test('refusals map to honest keys: overlap (with the clashing names), stale + cu
   assert.equal(ML.refusalOf(409, { error: 'something_new' }).code, 'other', 'an unknown code is `other`, its code kept');
 });
 
-test('a 503 is NEVER success: a failed unmirror on pause is UNKNOWN — and the client classifies it no further (r6.1: the list decides)', async () => {
+test('a 503 is NEVER success: a failed brand transaction on pause is UNKNOWN — and the client classifies it no further (r6.1: the list decides)', async () => {
   const b = await backend();
   const live = await publish(b, form({ name: 'Firme' }));
-  b.fake.failReads.add('marketing_live_b/tb');   // the price-path mirror transaction fails (an outage) — 3a's ONE brand-node txn (applyMirror)
+  b.fake.failReads.add('marketing_brand/tb');   // 3a 94e6b7ae9: record + mirror + op claim are ONE brand transaction; it fails (an outage) ⇒ 503
   const attempt = { op: 'state', offerId: live.id, expectedRev: live.rev, to: 'paused_owner', from: 'active' };
   const raw = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev, token: b.token });
   assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
   assert.deepEqual(ML.classifyWrite(attempt, raw), { outcome: 'unknown' }, 'the 503 is unknown — never saved');
   b.fake.failReads.clear();
+  const still = await one(b, live.id);
+  assert.deepEqual([still.state, still.rev], ['active', live.rev], 'premise (one txn): nothing was written');
   assert.deepEqual(ML.classifyWrite(attempt, { transport: true }), { outcome: 'unknown' }, 'a transport failure is unknown');
   assert.deepEqual(ML.classifyWrite(attempt, { status: 200, body: null, malformed: true }), { outcome: 'unknown' }, 'a malformed 200 is unknown');
   assert.deepEqual(ML.classifyWrite(attempt, { status: 500, body: { error: 'error' } }), { outcome: 'unknown' }, 'a 500 is unknown');
@@ -238,17 +239,17 @@ test('SHIP-GATE copy: an UNKNOWN outcome reads exactly «No sabemos si se guard�
   for (const f of files) { const t = readFileSync(join(DIR, f), 'utf8'); for (const o of OLD) assert.ok(!t.includes(o), `${f}: the old unknown string «${o}» is gone`); }
 });
 
-test('live_drift: an active offer whose pause half-ran is NOT applied; a non-active one still in the price path IS still applied', async () => {
+// 3a 94e6b7ae9: the record and its mirror are written in ONE transaction, so drift «should never be set» (offers-core getMarketing) —
+// the read still flags it. Re-derived (advisor 11-15): the lost / stranded mirror is planted directly, the only way it can exist now.
+test('live_drift: an active offer missing from the price path is NOT applied; a draft still in it IS still applied (the read\'s flag)', async () => {
   const b = await backend();
   const live = await publish(b, form({ name: 'Deriva' }));
-  // the REAL half-run: the pause removes the mirror (offers-core.js:350), then its CAS loses to a stale expected_rev
-  const r = await offerSetStateRaw({ rid: RID, offerId: live.id, to: 'paused_owner', expectedRev: live.rev - 1, token: b.token });
-  assert.deepEqual([r.status, r.body.error], [409, 'superseded'], 'premise: refused after the mirror was removed');
+  b.fake.put(`marketing_brand/tb/live/${RID}/${live.id}`, { removed: true, rev: live.rev });   // the mirror lost (a tombstone at the record's rev)
   const o = await one(b, live.id);
   assert.deepEqual([o.state, o.live_drift, o.drift], ['active', true, 'not_applied'], 'active, out of the price path: NOT applied');
-  const p = await create(b, form({ name: 'Quieta' }));
-  const rec = b.fake.get(`marketing_offers/tb/${p.id}`);
-  b.fake.put(`marketing_live_b/tb/${RID}/${p.id}`, OM.liveProjection(rec, 'tb'));   // the real projection, stranded under a draft (the re-keyed mirror)
+  const p = await create(b, form({ name: 'Quieta', pct: 30 }));
+  const rec = b.fake.get(`marketing_brand/tb/offers/${p.id}`);
+  b.fake.put(`marketing_brand/tb/live/${RID}/${p.id}`, OM.liveProjection(rec, 'tb'));   // the real projection, stranded under a draft
   const q = await one(b, p.id);
   assert.deepEqual([q.state, q.drift], ['draft', 'still_applied'], 'a draft still in the price path: STILL applied');
   assert.equal(ML.driftOf({ state: 'active' }), null, 'no flag, no drift');
@@ -351,7 +352,7 @@ test('O2a words: each type\'s chip, title, auto name, Descuento row value and co
   assert.equal(ML.builderText(bform({ type: 'pct', pct: 15, max: '1500' }), ctx).cost.ceiling, 'Hasta L 1,500 por canje.', 'money as v5 writes it: comma thousands');
 });
 
-test('O2a words: Sucursales, Horario (days, franja, dates), the preview\'s «when», Límites — the drawn phrasings; the false cap promise is gone (Q4)', () => {
+test('O2a words: Sucursales, Horario (days, franja, dates), the preview\'s «when» — the drawn phrasings; offers v1 has no Límites (owner 11-15)', () => {
   const ctx = { branches: BR3, items: MENU3 };
   const t = ML.builderText(bform({ items: ['i_m'] }), ctx);
   assert.deepEqual([t.branchText, t.branchShort], ['Las 3 sucursales', '3 sucursales']);
@@ -364,12 +365,12 @@ test('O2a words: Sucursales, Horario (days, franja, dates), the preview\'s «whe
   assert.deepEqual([days([0, 1, 2, 3, 4, 5, 6]), days([1, 2, 3, 4, 5]), days([0, 6]), days([1, 3, 5]), days([])], ['Todos los días', 'Lun a Vie', 'Sáb y Dom', 'Lun, Mié, Vie', 'Elegí al menos un día']);
   const open = ML.builderText(bform({ end: null, window: null, days: [0, 1, 2, 3, 4, 5, 6] }), ctx);
   assert.deepEqual([open.slotText, open.when, open.schedSummary.rest, open.sumSched], ['todo el día', 'Todos los días, todo el día', 'desde el 12 nov, sin fecha de fin.', 'Todos los días · todo el día · desde el 12 nov, sin fecha de fin']);
-  const caps = (o) => ML.builderText(bform(o), ctx).caps;
-  assert.deepEqual(caps({ cap_redemptions: 60, cap_spend: '6000' }), { summary: '60 canjes o L 6,000', spendLabel: 'Tope de gasto', help: 'Al llegar a un tope, la oferta deja de aplicarse hasta que lo subas.' });
-  assert.deepEqual(caps({ end: null, weekly: true, cap_redemptions: 60, cap_spend: '6000' }), { summary: '60 canjes o L 6,000 por semana', spendLabel: 'Tope de gasto por semana',
-    help: 'La oferta no tiene fin, así que el tope de gasto es por semana y se reinicia cada lunes. Al llegar a un tope, la oferta deja de aplicarse hasta el lunes o hasta que lo subas.' });
-  assert.deepEqual([caps({ cap_redemptions: 60 }).summary, caps({ cap_spend: '750' }).summary, caps({}).summary], ['60 canjes', 'L 750', 'Sin tope']);
-  for (const v of [caps({ cap_redemptions: 60, cap_spend: '6000' }), caps({ end: null, weekly: true, cap_redemptions: 1 })]) assert.ok(!/se pausa sola|te avisamos/.test(JSON.stringify(v)), '🔴 no auto-pause / notification promise (Q4)');
+  // offers v1 (owner 11-15): no caps — the words carry no «Límites», «tope» or «canjes» at all
+  for (const o of [{}, { end: null }, { type: 'pct', pct: 15, max: '100' }]) {
+    const w = ML.builderText(bform(o), ctx);
+    assert.equal('caps' in w, false, 'no caps words');
+    assert.ok(!/Límites|[Tt]ope|canjes/.test(JSON.stringify(w)), `no cap copy: ${JSON.stringify(o)}`);
+  }
 });
 
 test('O2a: the one-line block reason under «Revisar y programar» — the first missing piece, as v5 words it; a valid form has none', () => {
@@ -390,7 +391,7 @@ test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME 
   const two = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(f), opId: op, token: b.token });
   assert.equal(one.status, 200); assert.equal(two.status, 200);
   assert.equal(two.body.offer.id, one.body.offer.id, 'the retry answers the SAME offer');
-  assert.equal(Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.name === 'Una vez').length, 1, 'ONE record');
+  assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers')).filter((r) => r.name === 'Una vez').length, 1, 'ONE record');
   assert.equal(ML.classifyWrite({ op: 'create', opId: op }, two).outcome, 'saved', 'an op_id reply is our record');
   const bad = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: authored(f), opId: 'short', token: b.token });
   assert.equal(bad.status, 400, 'a malformed op_id is refused');
@@ -400,5 +401,5 @@ test('3a\'s idempotent create / repeat (REF): the SAME op_id twice ⇒ the SAME 
   const r1 = await offerRepeatRaw({ rid: RID, sourceId: src.id, opId: rop, token: b.token });
   const r2 = await offerRepeatRaw({ rid: RID, sourceId: src.id, opId: rop, token: b.token });
   assert.equal(r2.body.offer.id, r1.body.offer.id, 'a repeat retry answers the SAME copy');
-  assert.equal(Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.repeated_from === src.id).length, 1, 'ONE copy');
+  assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers')).filter((r) => r.repeated_from === src.id).length, 1, 'ONE copy');
 });

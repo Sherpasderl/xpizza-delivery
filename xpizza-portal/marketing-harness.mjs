@@ -11,10 +11,10 @@ import { getMarketingRaw, offerSaveRaw, offerSetStateRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
 // ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export const REF = 'e3c5f7366b02b1248f70b00793b91cab6245673f';   // 3a feat/capp-offers-3a: the live-edit widening + idempotent op_id + program:true in ONE call + the 409 duplicate (advisor 11-14)
+export const REF = '94e6b7ae9c981e7597be59e054493538290f2934';   // 3a feat/offers-v1-no-caps-3a FINAL 94e6b7ae9 (advisor 11-15, APPROVED): offers v1 — no caps, no «Envío gratis» authored or served, the record + mirror + op claim in ONE brand txn (a txn error is 503), the replay settles its mirror
 export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
-  'offer-model.js': '1caffd20c193daa0dfdc34de15eaebd886e9abcb',
-  'offers-core.js': '2de480021d432df9b8f89a791151e405177940b0',
+  'offer-model.js': 'eb941262849c456bf998a8552c67e7f1acc81ad5',
+  'offers-core.js': 'f7fe3cc9473b7be4a1d7169103fd208d6717d096',
   'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
   'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
 };

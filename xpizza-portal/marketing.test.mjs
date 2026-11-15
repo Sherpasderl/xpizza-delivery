@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import { DIR, NOW, DAY, OWNER, MGR, RID, K1, K2, K3, backend, form, authored, create, publish } from './marketing-harness.mjs';
 import { offerSetStateRaw, offerSaveRaw } from './api.js';
 import * as ML from './marketing-logic.js';
@@ -104,7 +105,9 @@ test('SOURCE_GATE: the v5 blocks this build can\'t source are named, each with i
   const b = await world();
   const p = await page({ b });
   const ids = p.mods.marketing.SOURCE_GATE.map(([id]) => id);
-  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'tope', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'detail-results', 'empty-results']);
+  assert.deepEqual(ids, ['summary', 'fresh', 'period', 'ventas', 'repeat-live', 'delete', 'anuncios', 'how-anuncios', 'sherpa-collections', 'detail-results', 'empty-results']);
+  assert.deepEqual(p.mods.marketing.NOT_IN_V1.map(([id]) => id), ['caps', 'envio'], 'offers v1 (owner 11-15): no caps, no «Envío gratis» — not gated, ABSENT');
+  for (const [id, why] of p.mods.marketing.NOT_IN_V1) assert.ok(typeof why === 'string' && why.length > 20, `${id}: a reason`);
   for (const [id, why] of p.mods.marketing.SOURCE_GATE) assert.ok(typeof why === 'string' && why.length > 20, `${id}: a reason`);
   assert.deepEqual(p.mods.marketing.NOT_DRAWN.map(([id]) => id), ['switch-off', 'live-drift']);
 });
@@ -213,7 +216,7 @@ test('the empty state (no offers): one heading + one sentence, then the offer ca
   assert.equal(host.querySelector('.mk5-empty h2').textContent, 'Todavía no tenés campañas');
   assert.deepEqual([...host.querySelectorAll('.mk5-empty p')].map((x) => x.textContent), ['Empezá por acá:'], '🔴 the results sentence is ABSENT (SOURCE_GATE empty-results)');
   assert.ok(!/vas a ver cuánto vendiste|pedidos trajo/.test(p.text()));
-  assert.equal(host.querySelectorAll('.mk5-card').length, 5, 'the five offer cards');
+  assert.deepEqual([...host.querySelectorAll('.mk5-card')].map((c) => c.dataset.otype), ['pct', 'lps', 'bogo', 'nuevos'], 'the four v1 offer cards (no «Envío gratis», owner 11-15)');
   assert.equal(host.querySelector('.vh'), null, '🔴 no Anuncio hero (SOURCE_GATE anuncios)');
   const m = await page({ b, caps: MGR_CAPS, uid: MGR });
   await m.signIn(); await m.open();
@@ -223,7 +226,7 @@ test('the empty state (no offers): one heading + one sentence, then the offer ca
   assert.equal(m.host().querySelectorAll('.mk5-empty p').length, 0, 'a manager: no «Empezá por acá:» (nothing follows it)');
 });
 
-test('«Crear campaña»: the five cards verbatim, then «¿Cómo funcionan?» with the Ofertas paragraph only; no hero, no eligibility, no Campañas de Sherpa', async () => {
+test('«Crear campaña»: the four v1 cards verbatim (no «Envío gratis»), then «¿Cómo funcionan?» with the Ofertas paragraph only; no hero, no eligibility, no Campañas de Sherpa', async () => {
   const b = await world();
   await create(b, form({ name: 'Una' }));
   const p = await page({ b });
@@ -235,7 +238,6 @@ test('«Crear campaña»: the five cards verbatim, then «¿Cómo funcionan?» w
     ['pct', 'mint', 'Descuento', 'Porcentaje en todo el menú', 'Aparecés en la sección Ofertas de la app'],
     ['lps', 'sky', 'Lempiras', 'Lempiras de descuento con mínimo', 'Sube el ticket: el cliente completa el mínimo'],
     ['bogo', 'rose', '2 × 1', 'Comprá 1 y llevate otro gratis', 'Se muestra con una etiqueta en tu menú'],
-    ['envio', 'teal', 'Envío', 'Envío gratis', 'Tu restaurante aparece con «Envío gratis»'],
     ['nuevos', 'lav', 'Clientes nuevos', 'Para clientes nuevos', 'Solo la ven clientes que nunca te pidieron']]);
   assert.equal(host.querySelector('.mk5-howbox'), null, 'closed by default');
   p.btn('¿Cómo funcionan?').click(); await settle();
@@ -288,9 +290,9 @@ test('the builder opens from a card, preconfigured: v5\'s rows, the suggested va
   assert.equal(d.querySelector('h2').textContent, 'Nueva oferta');
   assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Porcentaje en todo el menú');
   assert.deepEqual([...d.querySelectorAll('.mk5b-row')].map((r) => [r.dataset.row, r.querySelector('.mk5b-rlbl').textContent]),
-    [['br', 'Sucursales'], ['typ', 'Descuento'], ['aud', 'Clientes'], ['sch', 'Horario'], ['caps', 'Límites'], ['name', 'Nombre']], 'no Productos row outside 2×1');
-  assert.deepEqual([rowVal(p, 'br'), rowVal(p, 'typ'), rowVal(p, 'aud'), rowVal(p, 'caps'), rowVal(p, 'name')],
-    ['Las 2 sucursales', '15 % · hasta L 100 por pedido', 'Todos', 'Sin tope', '15 % en todo el menú · se armó solo']);
+    [['br', 'Sucursales'], ['typ', 'Descuento'], ['aud', 'Clientes'], ['sch', 'Horario'], ['name', 'Nombre']], 'no Productos row outside 2×1; offers v1: no «Límites» row (owner 11-15)');
+  assert.deepEqual([rowVal(p, 'br'), rowVal(p, 'typ'), rowVal(p, 'aud'), rowVal(p, 'name')],
+    ['Las 2 sucursales', '15 % · hasta L 100 por pedido', 'Todos', '15 % en todo el menú · se armó solo']);
   assert.match(rowVal(p, 'sch'), /^Todos los días · todo el día · desde el \d+ [a-z]{3}, sin fecha de fin$/, 'defaults: all days, todo el día, start today, no end');
   assert.deepEqual([d.querySelector('.mk5b-pvchip').textContent, d.querySelector('.mk5b-pvoff').textContent], ['15 % menos', '15 % de descuento en todo el menú, hasta L 100']);
   assert.equal(d.querySelector('.mk5b-pvhd b').textContent, 'Tercera', 'the brand name (E1)');
@@ -301,9 +303,9 @@ test('the builder opens from a card, preconfigured: v5\'s rows, the suggested va
   assert.ok(!/condiciones de marketing|se pausa sola|te avisamos|Más pedido|25–35 min|Envío L 40|Mínimo de compra/.test(text), '🔴 Q4 / Q6 / gated words absent (pct has no minimum)');
   rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
   assert.deepEqual([...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].map((x) => x.textContent), ['Todos los clientes', 'Clientes nuevos', 'Clientes que vuelven'], '🔴 Q3: titles only, no sub-lines');
-  rowEl(p, 'caps').querySelector('.mk5b-rowh').click(); await settle();
+  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
   assert.equal(rowEl(p, 'aud').classList.contains('mk5b-open'), false, 'one row open at a time');
-  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-help').textContent, 'La oferta no tiene fin, así que el tope de gasto es por semana y se reinicia cada lunes. Al llegar a un tope, la oferta deja de aplicarse hasta el lunes o hasta que lo subas.');
+  assert.ok(rowEl(p, 'sch').classList.contains('mk5b-open'));
 });
 
 test('«Revisar y programar» → «Revisá tu oferta» (the rows mirror the builder) → «Programar oferta»: the REAL core creates + activates; the toast; the list shows it', async () => {
@@ -332,15 +334,15 @@ test('«Guardar borrador» saves a draft («Borrador guardado»); «Seguir edita
   await create(b, form({ name: 'Una' }));
   const p = await page({ b });
   await p.signIn(); await p.open();
-  await openCard(p, 'envio');
+  await openCard(p, 'lps');
   p.btn('Guardar borrador', dlg(p)).click(); await settle(120);
   assert.equal(p.d.getElementById('opstoast').textContent, 'Borrador guardado');
-  const row = [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === 'Envío gratis desde L 350');
+  const row = [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === 'L 50 en pedidos desde L 300');
   assert.equal(row.querySelector('.mk5-st').textContent, 'Borrador');
   p.btn('Acciones', row).click(); await settle();
   p.btn('Seguir editando', row).click(); await settle(60);
   assert.equal(dlg(p).querySelector('h2').textContent, 'Seguir editando');
-  assert.equal(rowVal(p, 'name'), 'Envío gratis desde L 350', 'its own name, not «se armó solo»');
+  assert.equal(rowVal(p, 'name'), 'L 50 en pedidos desde L 300', 'its own name, not «se armó solo»');
   await b.setSwitch(false, 1);   // the switch goes OFF on the server while the merchant edits
   dlg(p).querySelector('.mk5b-go').click(); await settle();
   p.btn('Programar oferta', p.host().querySelector('.mk5r-modal')).click(); await settle(120);
@@ -404,61 +406,52 @@ async function openEdit(p, name) {
   p.btn('Acciones', row).click(); await settle();
   p.btn('Editar', row).click(); await settle(60);
 }
-test('Editar on a running offer: v5\'s dialog — the lede, the locked rows (lock, «fijo mientras está activa»), Límites open, Horario editable', async () => {
+// open a setting row only if it is closed (the editor opens on «Horario»; a click on an open header closes it)
+async function openRow(p, id) { if (!rowEl(p, id).classList.contains('mk5b-open')) { rowEl(p, id).querySelector('.mk5b-rowh').click(); await settle(); } }
+test('Editar on a running offer: v5\'s dialog minus «Límites» (offers v1) — the derived lede, the locked rows (lock, «fijo mientras está activa»), Horario open and editable', async () => {
   const b = await world();
-  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' }));
+  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 } }));
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
   const d = dlg(p);
   assert.equal(d.querySelector('h2').textContent, 'Editar oferta activa');
-  assert.equal(d.querySelector('.mk5b-lede').textContent, 'Mientras está activa podés subir los topes y cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.');
+  assert.equal(d.querySelector('.mk5b-lede').textContent, 'Mientras está activa podés cambiar el horario. Lo demás queda fijo, para que ningún cliente vea una oferta distinta de la que le prometimos.', 'the advisor\'s derived lede (11-15, from the owner\'s no-caps decision)');
   assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Almuerzo');
   const locked = [...d.querySelectorAll('.mk5b-lock')].map((r) => [r.dataset.row, r.querySelector('.mk5b-val').textContent, r.querySelector('.mk5b-rowh').getAttribute('aria-label')]);
   assert.deepEqual(locked.map((x) => x[0]), ['br', 'typ', 'aud'], 'Sucursales · Descuento · Clientes locked');
   assert.equal(locked[1][1], '15 % · hasta L 100 por pedido · fijo mientras está activa');
   assert.equal(locked[0][2], 'Sucursales, fijo mientras está activa');
   assert.equal(d.querySelectorAll('.mk5b-lock button').length, 0, 'a locked row does not expand');
-  assert.ok(rowEl(p, 'caps').classList.contains('mk5b-open'), 'Límites opens first');
-  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-help').textContent, 'Solo se pueden subir.', '🔴 the counters wait for 5f (gated)');
-  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  assert.equal(rowEl(p, 'caps'), null, 'no «Límites» row (offers v1)');
+  assert.deepEqual([...d.querySelectorAll('.mk5b-row:not(.mk5b-lock)')].map((r) => r.dataset.row), ['sch'], 'the one editable row: Horario');
+  assert.ok(rowEl(p, 'sch').classList.contains('mk5b-open'), 'Horario opens first');
   assert.ok([...rowEl(p, 'sch').querySelectorAll('.mk5b-chip')].every((c) => !c.disabled), 'days + franja editable (ruling (a))');
   assert.match(rowEl(p, 'sch').querySelector('.mk5b-ro').textContent, /^Empezó el\d+ nov 2026$/, 'Inicio read-only');
   assert.deepEqual([...d.querySelectorAll('.mk5b-foot .mk5b-fine')].map((x) => x.textContent), ['Para cambiar el descuento, los clientes o las sucursales, terminá esta oferta y creá una nueva (o usá Repetir).', 'Los cambios aplican de inmediato en la app.']);
 });
 
-test('Editar: a cap may only go UP — a lower one blocks inline; a higher one saves through the REAL core («Cambios guardados»); a live day change saves too (3a widened)', async () => {
+test('Editar: a live day change saves through the REAL core («Cambios guardados»), and the write carries NO caps (offers v1)', async () => {
   const b = await world();
-  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' }));
+  await publish(b, form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * 86400000, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 } }));
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
-  const capIn = () => rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
-  capIn().value = '50'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
-  assert.equal(rowEl(p, 'caps').querySelector('.mk5b-block').textContent, 'Un tope solo puede subir: poné un valor mayor o igual al actual.');
-  assert.ok(dlg(p).querySelector('.mk5b-go').disabled, 'blocked');
-  capIn().value = '150'; capIn().dispatchEvent(new p.w.Event('change')); await settle();
-  assert.ok(!dlg(p).querySelector('.mk5b-go').disabled);
-  p.btn('Guardar cambios', dlg(p)).click(); await settle(120);
-  assert.equal(dlg(p), null);
-  assert.equal(p.d.getElementById('opstoast').textContent, 'Cambios guardados');
-  const saved = Object.values(b.fake.get('marketing_offers/tb')).find((r) => r.name === 'Almuerzo');
-  assert.equal(saved.caps.redemptions, 150, 'the real core stored the raised cap');
-  await openEdit(p, 'Almuerzo');
-  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+  await openRow(p, 'sch');
   [...rowEl(p, 'sch').querySelectorAll('.mk5b-chip')].find((c) => c.textContent.endsWith('Sáb')).click(); await settle();
   p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
-  assert.equal(dlg(p), null, '3a\'s widened core (REF c5bbce740) SAVES a live day change: the dialog closes');
+  assert.equal(dlg(p), null, 'the real core SAVES a live day change: the dialog closes');
   assert.equal(p.d.getElementById('opstoast').textContent, 'Cambios guardados');
-  const after = Object.values(b.fake.get('marketing_offers/tb')).find((r) => r.name === 'Almuerzo');
+  const after = Object.values(b.fake.get('marketing_brand/tb/offers')).find((r) => r.name === 'Almuerzo');
   assert.deepEqual([...after.schedule.days].sort(), [1, 2, 3, 4, 5, 6], 'the real core stored the new day');
+  assert.equal('caps' in saves(b).at(-1).body.offer, false, 'no caps key on the wire');
 });
 
 // ═══ O3 · the detail (v5 5 / 5b / 5c) + the state moves + «Repetir» — every write through 3a's REAL cores ══════════════════════
-const LIVE = () => form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * DAY, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 }, cap_redemptions: 100, cap_spend: '3000' });
+const LIVE = () => form({ name: 'Almuerzo', pct: 15, max: '100', start: NOW, end: NOW + 20 * DAY, days: [1, 2, 3, 4, 5], window: { from: 660, to: 840 } });
 const rowNamed = (p, name) => [...p.host().querySelectorAll('.mk5-row')].find((r) => r.querySelector('.mk5-lnk').textContent === name);
 const toastText = (p) => p.d.getElementById('opstoast').textContent;
-const stored = (b, name) => Object.values(b.fake.get('marketing_offers/tb')).filter((r) => r.name === name);
+const stored = (b, name) => Object.values(b.fake.get('marketing_brand/tb/offers')).filter((r) => r.name === name);
 const sheet = (p) => p.host().querySelector('.mk5r-modal');
 const detailMenu = async (p) => { p.host().querySelector('.mk5d-more1').click(); await settle(); return [...p.host().querySelectorAll('.mk5d-kebab [role="menuitem"]')]; };
 async function openDetail(p, name) {
@@ -602,7 +595,7 @@ test('O3 a manager (marketing.read only): the detail reads — no Editar, no Pau
 });
 
 // ═══ Codex r1 (0596ebae9..1df9351c0) — every write survives a lost reply, a closed dialog, a rerender ═════════════════════════════
-const offersNamed = (b, name) => Object.values(b.fake.get('marketing_offers/tb') || {}).filter((r) => r.name === name);
+const offersNamed = (b, name) => Object.values(b.fake.get('marketing_brand/tb/offers') || {}).filter((r) => r.name === name);
 const LPS = 'L 50 en pedidos desde L 300';
 async function toReview(p) { dlg(p).querySelector('.mk5b-go').click(); await settle(); return p.host().querySelector('.mk5r-modal'); }
 
@@ -649,19 +642,18 @@ test('R4 a write still in flight when its dialog closes never touches the NEXT d
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
-  const capIn = rowEl(p, 'caps').querySelectorAll('.mk5b-num')[0];
-  capIn.value = '150'; capIn.dispatchEvent(new p.w.Event('change')); await settle();
+  await dropEnd(p);
   let release; b.net.hold = { fn: 'marketingOfferSave', until: new Promise((r) => { release = r; }) };
   p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(dlg(p), null, 'premise: A closed mid-write');
-  await openCard(p, 'envio');
+  await openCard(p, 'nuevos');
   release(); await settle(250);
   const d = dlg(p);
   assert.ok(d, 'B is still open');
-  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Envío gratis', 'B keeps its own offer');
+  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Para clientes nuevos', 'B keeps its own offer');
   assert.equal(p.mods['marketing-builder']._builderState.offer, null, 'A\'s reply did not become B\'s offer');
-  assert.equal(stored(b, 'Almuerzo')[0].caps.redemptions, 150, 'A\'s write landed on the server');
+  assert.equal(stored(b, 'Almuerzo')[0].schedule.end ?? null, null, 'A\'s write landed on the server');
   assert.notEqual(toastText(p), 'Cambios guardados', 'no toast for a closed dialog');
 });
 
@@ -681,19 +673,18 @@ test('R6 the end calendar compares DAYS: a draft starting today 12:01 HN may end
   assert.equal([...p.host().querySelectorAll('.mk5b-dpop .mk5b-dpd')].find((x) => x.querySelector('.mk5b-dnum').textContent === '15').disabled, true, 'yesterday is not');
 });
 
-test('R5 Editar: «Sin fecha de fin» keeps the offer\'s weekly flag (a server-locked field) — removing the end SAVES through the real core', async () => {
+test('R5 Editar: «Sin fecha de fin» — removing the end SAVES through the real core, with no caps on the wire (offers v1)', async () => {
   const b = await world();
   await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openEdit(p, 'Almuerzo');
-  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
-  rowEl(p, 'sch').querySelector('.mk5b-tog').click(); await settle();
+  await dropEnd(p);
   p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
   assert.equal(dlg(p), null, 'saved');
   const r = stored(b, 'Almuerzo')[0];
   assert.equal(r.schedule.end ?? null, null, 'the end removed');
-  assert.equal(r.caps.weekly, false, 'weekly untouched');
+  assert.equal('caps' in saves(b).at(-1).body.offer, false, 'no caps key on the wire');
 });
 
 test('R7 focus: a rerender keeps it on the same control; a sheet takes it, traps Tab, and gives it back on close', async () => {
@@ -774,8 +765,8 @@ test('O3 «Pausada por vos el …»: the date is 3a\'s paused_at — an earlier 
 // ML.UNKNOWN_WORD. No client recovery read, no stored operation, a NEW op_id per click, the newest list request wins.
 const notice = (p) => p.host().querySelector('[data-notice="unknown"]');
 const reads = (b, from) => b.calls.slice(from).filter((c) => c.fn === 'getMarketing');
-async function dropEnd(p) {   // an allowed live edit with no caps involved: «Sin fecha de fin»
-  rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
+async function dropEnd(p) {   // an allowed live edit: «Sin fecha de fin»
+  await openRow(p, 'sch');
   rowEl(p, 'sch').querySelector('.mk5b-tog').click(); await settle();
 }
 test('U1 an edit whose outcome is ambiguous (it never reached the server — the client can\'t tell; a CAS may still commit) ⇒ UNKNOWN: the dialog closes, «Campañas» re-reads, the banner — never «No pudimos guardar»', async () => {
@@ -846,8 +837,7 @@ test('U3 the newest list request wins: an OLDER answer that arrives after a newe
   assert.ok(rowNamed(q, 'Almuerzo'), 'the fresh read paints');
   // … and a failed read paints the error box, never the old rows
   await openEdit(q, 'Almuerzo');
-  rowEl(q, 'sch').querySelector('.mk5b-rowh').click(); await settle();
-  rowEl(q, 'sch').querySelector('.mk5b-tog').click(); await settle();
+  await dropEnd(q);
   b2.net.lose = ['marketingOfferSave', 'getMarketing'];
   q.btn('Guardar cambios', dlg(q)).click(); await settle(250);
   assert.equal(q.host().querySelectorAll('.mk5-row').length, 0, 'a failed read: no old rows under the error');
@@ -910,4 +900,108 @@ test('U6 «Pausar» from the detail, its outcome UNKNOWN ⇒ the detail closes, 
   assert.equal(notice(p).textContent, 'No sabemos si se guardó. Revisá la lista.');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read');
   assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'never a failure word');
+});
+
+// ═══ offers v1 (owner 11-15): NO caps, NO «Envío gratis» — 3a 94e6b7ae9 refuses both; the portal never offers or sends them ═══════
+const CAP_WORDS = /Límites|[Tt]ope|canjes/;
+test('V1-i no write ever carries `caps`: «Programar oferta», «Guardar borrador», «Guardar cambios» and «Repetir» — through the REAL v1 core', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  await publish(b, form({ name: 'Viva', pct: 30, start: NOW, end: NOW + 20 * DAY, days: [6], window: null }));
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  const from = b.calls.length;   // the page's writes only (the set-up's own saves come before)
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(250);
+  await openCard(p, 'pct');
+  p.btn('Guardar borrador', dlg(p)).click(); await settle(150);
+  await openEdit(p, 'Viva');
+  await dropEnd(p);
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  p.btn('Programar', sheet(p)).click(); await settle(250);
+  const writes = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSave' || c.fn === 'marketingOfferRepeat');
+  assert.equal(writes.length, 4, 'premise: four writes from the page');
+  for (const w of writes) {
+    assert.equal(JSON.stringify(w.body).includes('"caps"'), false, `${w.fn}: no caps anywhere in the body`);
+  }
+  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov', 'premise: the last one (the repeat) landed');
+  assert.ok(stored(b, 'Viva')[0].schedule.end == null, 'premise: the edit landed');
+});
+test('V1-ii no cap copy anywhere: no «Límites», «tope» or «canjes» in the cards, the builder of each v1 type, its review, the editor, the list or the detail', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  assert.ok(!CAP_WORDS.test(p.text()), 'the list');
+  for (const t of ['pct', 'lps', 'bogo', 'nuevos']) {
+    await openCard(p, t);
+    assert.ok(!CAP_WORDS.test(p.text()), `the cards + the builder (${t})`);
+    assert.equal(rowEl(p, 'caps'), null, `${t}: no «Límites» row`);
+    dlg(p).querySelector('.mk5b-go').click(); await settle();
+    if (p.host().querySelector('.mk5r-modal')) assert.ok(!CAP_WORDS.test(p.host().querySelector('.mk5r-modal').textContent), `${t}: the review`);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    assert.equal(dlg(p), null, `premise: ${t} closed`);
+  }
+  p.btn('Campañas').click(); await settle();
+  await openEdit(p, 'Almuerzo');
+  assert.ok(!CAP_WORDS.test(dlg(p).textContent), 'the editor');
+  p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+  await openDetail(p, 'Almuerzo');
+  const vm = p.btn('Ver más'); if (vm) { vm.click(); await settle(); }
+  assert.ok(!CAP_WORDS.test(p.text()), 'the detail (+ «Ver más»)');
+});
+test('V1-iii the v1 refusals are DEFINITE and generic: the REAL core\'s 400 caps_not_supported and 400 type_not_supported ⇒ «No pudimos guardar la oferta…»', async () => {
+  const b = await world();
+  const p = await page({ b });
+  const offer = authored(form({ name: 'Con tope' }));
+  const capped = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...offer, caps: { redemptions: 50, spend_cents: null, weekly: false } }, token: b.token });
+  const envio = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: { ...offer, name: 'Envío', type: 'envio', params: {} }, token: b.token });
+  for (const [res, reason] of [[capped, 'caps_not_supported'], [envio, 'type_not_supported']]) {
+    const c = ML.classifyWrite({ op: 'create' }, res);
+    assert.deepEqual([c.outcome, c.status, c.reason], ['refused', 400, reason], `premise: the real core refuses (${reason})`);
+    assert.equal(p.mods['marketing-builder'].wordOf(c), 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.', `${reason}: the generic word`);
+  }
+  assert.equal(Object.keys(b.fake.get('marketing_brand/tb/offers') || {}).length, 0, 'nothing was written');
+});
+test('V1-iv an OLD record that still carries caps (pre-v1) edits CAPS-LESS: «Guardar cambios» saves through the REAL v1 core, with no caps on the wire', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  // the pre-v1 shape the old writer stored (3a e3c5f7366 capsOf: { redemptions, spend_cents, weekly }) — planted, as no v1 writer can make it
+  b.fake.put(`marketing_brand/tb/offers/${o.id}/caps`, { redemptions: 100, spend_cents: 300000, weekly: false });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openEdit(p, 'Almuerzo');
+  assert.ok(!CAP_WORDS.test(dlg(p).textContent), 'its caps are never shown');
+  await dropEnd(p);
+  p.btn('Guardar cambios', dlg(p)).click(); await settle(150);
+  assert.equal(dlg(p), null, 'saved: the dialog closes');
+  assert.equal(toastText(p), 'Cambios guardados');
+  assert.equal('caps' in saves(b).at(-1).body.offer, false, 'no caps key on the wire');
+  assert.equal(stored(b, 'Almuerzo')[0].schedule.end ?? null, null, 'the edit landed');
+});
+test('V1-v no «Envío gratis» option renders: no card, no text on «Crear campaña» or the empty state; the builder refuses to open as envío', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  assert.equal(p.host().querySelector('.mk5-card[data-otype="envio"]'), null, 'the empty state: no envío card');
+  assert.ok(!/Envío gratis/.test(p.text()), 'the empty state: no «Envío gratis»');
+  p.btn('Crear campaña').click(); await settle();
+  assert.equal(p.host().querySelector('.mk5-card[data-otype="envio"]'), null, '«Crear campaña»: no envío card');
+  assert.ok(!/Envío gratis|Tu restaurante aparece con/.test(p.text()), '«Crear campaña»: no envío copy');
+  p.mods['marketing-builder'].openBuilder(p.host(), { branches: [{ rid: RID, name: 'Centro', address: null }], brandId: 'tb', token: b.token, toast: () => {}, now: () => NOW }, { type: 'envio' });
+  assert.equal(dlg(p), null, 'openBuilder({ type: envio }) opens nothing');
+});
+// the 2×2 grid (advisor (A), 11-15): ONE rule moved, scoped to the offer-card grid; every other card / grid rule is byte-identical
+test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rules changed vs 89120edb2, every other .mk5-card / .mk5-ogrid rule is untouched', () => {
+  const rules = (css) => css.split('\n').map((l) => l.trim()).filter((l) => /\.mk5-(card|ogrid)\b/.test(l));
+  const before = rules(execFileSync('git', ['show', '89120edb2:xpizza-portal/styles.css'], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 }));
+  const after = rules(readFileSync(join(DIR, 'styles.css'), 'utf8'));
+  const gone = before.filter((l) => !after.includes(l)), added = after.filter((l) => !before.includes(l));
+  assert.deepEqual(gone, ['.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:span 3}', '.mk5-card,.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:auto;padding:20px 18px}']);
+  assert.deepEqual(added, ['.mk5-ogrid>.mk5-card{grid-column:span 3}', '.mk5-card,.mk5-ogrid>.mk5-card{grid-column:auto;padding:20px 18px}']);
+  assert.ok(after.includes('.mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}'), 'the 6-column grid itself unchanged');
 });

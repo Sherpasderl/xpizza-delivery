@@ -1331,7 +1331,7 @@
   .mk5-olede{color:var(--mute);font-size:14.5px;margin-top:6px;max-width:60ch;line-height:1.5;text-wrap:pretty}
   .mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}
   .mk5-card{position:relative;grid-column:span 2;display:flex;flex-direction:column;padding:22px;border-radius:22px;color:var(--ink);cursor:pointer;min-width:0;overflow:hidden;transition:transform .18s,box-shadow .18s;text-align:left}
-  .mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:span 3}
+  .mk5-ogrid>.mk5-card{grid-column:span 3}
   .mk5-card:hover{transform:translateY(-3px);box-shadow:0 28px 44px -30px rgba(11,27,43,.5)}
   .mk5-card:focus-visible{outline:none;box-shadow:var(--focus)}
   .mk5-glow{position:absolute;right:-56px;top:-56px;width:176px;height:176px;border-radius:50%;opacity:.16;pointer-events:none}
@@ -1372,7 +1372,7 @@
     .mk5-osect{margin-top:36px}
     .mk5-osect h2{font-size:22px}
     .mk5-ogrid{grid-template-columns:1fr;gap:14px;margin-top:18px}
-    .mk5-card,.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:auto;padding:20px 18px}
+    .mk5-card,.mk5-ogrid>.mk5-card{grid-column:auto;padding:20px 18px}
     .mk5-cbtn{width:100%;align-self:stretch;justify-content:center;min-height:46px}
   }
   .mk5-tab,.mk5-pill,.mk5-act,.mk5-how,.mk5-opt{cursor:pointer}   /* Marketing O1's clicked controls — the pointer guard reads single-compound rules */

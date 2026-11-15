@@ -12,8 +12,8 @@ import * as AL from './anuncio-logic.js';
 import { getAnuncioWeeksRaw, anuncioBookRaw, anuncioCancelRaw, getMarketingRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
-const REF = 'dad98ad422fcf2f31a1bd4b917a648d501fa34d0';
-const BLOBS = { 'anuncio-core.js': 'f34d713040cf89dcb608000a20fdacf213930d0d', 'anuncio-model.js': '63781716e9877df84c41690b01ac48f9c5678e34' };
+const REF = '94e6b7ae9c981e7597be59e054493538290f2934';   // the Ofertas lane's ONE 3a pin (feat/offers-v1-no-caps-3a FINAL, advisor 11-15)
+const BLOBS = { 'anuncio-core.js': 'c33a0d96beab4860db795c80fa6bcfc80141c056', 'anuncio-model.js': '02241d0543105676b5c5aad7957ad4ba246168bb' };
 const DIR = dirname(fileURLToPath(import.meta.url));
 const git = (...a) => execFileSync('git', a, { cwd: DIR, encoding: 'utf8' }).trim();
 process.env.OTP_SALT = process.env.OTP_SALT || 'anuncio-logic-test-salt-'.padEnd(40, 'x');
@@ -212,23 +212,33 @@ test('cancel: before the deadline it frees the week; twice is already_cancelled;
   assert.deepEqual([late.outcome, late.code], ['refused', 'past_deadline']);
 });
 
-test('a 503 book is NEVER success: a half-made reservation is `incomplete` (booking again completes it); one that never started is not_landed', async () => {
+// RE-DERIVED at 94e6b7ae9 (advisor 11-15): since 3a 60272a791 the weeks read RECONCILES this branch's orphan slot (void the booking id,
+// then release the slot) — so a half-made reservation is no longer seen «incomplete»: the fresh read finds nothing landed, and booking
+// again makes a NEW booking. (anuncio-logic's `incomplete` outcome is now unreachable from the real core — flagged to the advisor.)
+test('a 503 book is NEVER success: a half-made reservation is released by the fresh weeks read ⇒ not_landed (booking again lands a new one); one that never started is not_landed', async () => {
   const w = await world();
   await eligible(w.raw, 'tb_centro');
-  // the slot commits, the booking record does not, and releasing the slot fails too (anuncio-core.js:105-138 @ dad98ad42)
+  // the slot commits, the booking record does not, and releasing the slot fails too
   w.failTx.set('anuncio_bookings/tb_centro', 0); w.failTx.set('anuncio_slots/', 1);
   const raw = await w.api.book(W);
   assert.deepEqual([raw.status, raw.body.error], [503, 'unavailable'], 'premise: the real core answers 503');
   assert.deepEqual(AL.classifyBook({ week: W }, raw), { outcome: 'unknown' }, 'the 503 book is unknown');
   w.failTx.clear();
+  const orphan = w.raw.get(`anuncio_slots/${W}`);
+  assert.ok(orphan && orphan.rid === 'tb_centro', 'premise: an orphan slot of this branch');
   const r = AL.classifyBookRecovery({ week: W }, await w.api.weeks(), (await w.api.marketing()).body, BOOK_AT);
-  assert.equal(r.outcome, 'incomplete', 'a slot without a record is incomplete — never saved, never free');
+  assert.equal(r.outcome, 'not_landed', 'the weeks read released the orphan: nothing landed — never saved');
+  assert.equal(w.raw.get(`anuncio_slots/${W}`) ?? null, null, 'the orphan slot is gone (durably)');
   const k = await bookOk(w, W);
-  assert.equal(k.id, w.raw.get(`anuncio_slots/${W}`).booking_id, 'booking again completes it under the slot\'s own id');
-  w.failTx.set('anuncio_bookings/tb_centro', 0);   // the record fails, the core releases its own slot ⇒ nothing landed
+  assert.notEqual(k.id, orphan.booking_id, 'booking again lands a NEW booking (the orphan id is void)');
+  // the bookings node is OUT (every txn on it fails): the record fails, and the cleanup's void step (the SAME node) fails too ⇒ 503;
+  // the re-read's own reconcile needs that node as well ⇒ UNKNOWN (re-derived: 60272a791 never swallows a failed cleanup)
+  w.failTx.set('anuncio_bookings/tb_centro', 0);
   const rel = await AL.settleBook({ week: W2 }, () => w.api.book(W2), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
-  assert.equal(rel.outcome, 'not_landed', 'a released slot: not_landed');
+  assert.deepEqual(rel, { outcome: 'unknown' }, 'the outage holds: unknown — never saved, never «not landed» on a guess');
   w.failTx.clear();
+  const rel2 = AL.classifyBookRecovery({ week: W2 }, await w.api.weeks(), (await w.api.marketing()).body, BOOK_AT);
+  assert.equal(rel2.outcome, 'not_landed', 'the outage over: the weeks read releases the orphan ⇒ not_landed');
   w.failTx.set('anuncio_slots/', 0);
   const n = await AL.settleBook({ week: 'W2027-03-22' }, () => w.api.book('W2027-03-22'), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
   assert.equal(n.outcome, 'not_landed', 'the slot itself failed: nothing landed');
