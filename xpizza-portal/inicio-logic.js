@@ -3,9 +3,10 @@
 // sourced figures — the money / count formats are Ventas' own (ventas-logic.js), the figures are getSalesStats' (compare previous_week).
 import { lempiras, count } from './ventas-logic.js';
 import { clock12 } from './portal-time.js';   // THE portal clock («3:10 p. m.»; advisor 11-13)
+import { knownControl } from './control-state.js';   // THE known control states (one shared list)
 
-// the frames' words are literal; the greetings the frame does not draw are ⟦inicio.key⟧ until the owner approves them (SHIP GATE)
-export const INICIO_COPY = Object.freeze({ goodMorning: null, goodEvening: null });
+// the frames' words are literal; the two greetings the frame does not draw: owner-APPROVED 11-15 (05:00–11:59 / 19:00–04:59)
+export const INICIO_COPY = Object.freeze({ goodMorning: 'Buenos días', goodEvening: 'Buenas noches' });
 export const inicioCopy = (k) => (typeof INICIO_COPY[k] === 'string' ? INICIO_COPY[k] : `⟦inicio.${k}⟧`);
 
 const HN_OFFSET_MS = 6 * 3600 * 1000;   // America/Tegucigalpa, UTC-6 all year (no DST)
@@ -52,7 +53,7 @@ export const NO_FIGURES = Object.freeze({ sales: { value: '—' }, orders: { val
 // pending_count a number (S3; absent / null = unknown). `scopeRid` null = every branch the page shows.
 export function allKnown(branches, scopeRid) {
   const bs = (Array.isArray(branches) ? branches : []).filter((b) => b && (scopeRid == null || b.rid === scopeRid));
-  return bs.length > 0 && bs.every((b) => b.control && typeof b.control.state === 'string' && b.control.state !== 'unknown' && Number.isInteger(b.pending_count));
+  return bs.length > 0 && bs.every((b) => knownControl(b.control) && Number.isInteger(b.pending_count));   // r2: the server's enum, whitelisted
 }
 
 // ann 3: «Para revisar» — only REAL attention items with a source today: a paused branch (getMyBranches control), with since-when;

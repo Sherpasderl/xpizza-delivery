@@ -38,6 +38,7 @@
   "calificaciones2-view.test.mjs",
   "calificaciones2.test.mjs",
   "category-name.browser.test.mjs",
+  "control-state.js",
   "editor.js",
   "editor.test.mjs",
   "envio-field-focus.test.mjs",

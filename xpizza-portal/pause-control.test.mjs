@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { installDom, installFetch, loadModules, okJson, errJson, settle, textOf } from './ventas-harness.mjs';
 import { OFFLINE } from './ops-dom.js';
-import { pauseLanding } from './pause-control.js';
+import { pauseLanding, _resetPauseStore } from './pause-control.js';
 
 const MENU = () => okJson({ source: { restaurant_id: 'r_a', schema_version: 1, items: [], extras: [], structure: { schema_version: 2, item_order: [], categories: [] } }, sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
 const OWNER_CAPS = ['catalog.read_editor', 'catalog.edit', 'catalog.publish', 'stats.read', 'availability.set', 'location.prep', 'location.pause', 'location.hours'];
@@ -25,6 +25,7 @@ function storage() {
     key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } };
 }
 async function open(branches, setBranchPause) {
+  _resetPauseStore();   // a fresh page session per cell
   storage();
   const byId = installDom();
   globalThis.window.location = { reload: () => {} };

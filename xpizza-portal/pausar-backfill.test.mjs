@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { installDom, installFetch, loadModules, okJson, errJson, settle, textOf } from './ventas-harness.mjs';
 import { OFFLINE } from './ops-dom.js';
+import { _resetPauseStore } from './pause-control.js';
 
 const req = createRequire(new URL('../xpizza-functions/package.json', import.meta.url));
 const { createFakeDb } = req('./merchant/_fake-db');
@@ -33,12 +34,14 @@ async function world() {
   ok(await R.mutateRoster({ db: fake, now: () => 2 }, 'pv', { kind: 'cli', operator: 'test' }, { type: 'grant_manager', uid: MGR, rids: ['pv_norte'] }), 'a manager of Norte only');
   return fake;
 }
-// the page over the real cores. `fault`: a per-call hook (fn, body) → 'lost' | 'malformed' | 'unknown' | 'outage' | { hold: Promise } | undefined
-async function open(fake, { uid = OWNER, rid = 'pv_centro', scope, fault = () => undefined } = {}) {
+// the page over the real cores. `fault`: a per-call hook (fn, body) → 'lost' | 'drop' | 'malformed' | 'bogus' | 'unknown' | 'outage' |
+// { hold: Promise, kind? } (held BEFORE the core runs) | { holdAfter: Promise } (the core answers NOW, the answer is delivered later)
+async function open(fake, { uid = OWNER, rid = 'pv_centro', scope, fault = () => undefined, withInicio = false } = {}) {
   const m = new Map();
   globalThis.sessionStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k),
     key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } };
   if (scope) m.set(`sherpa.portal.sel.${uid}`, JSON.stringify({ brand_id: 'pv', scope }));   // the owner's GLOBAL scope (the shell's own store)
+  _resetPauseStore();   // a fresh page session per cell
   const byId = installDom();
   globalThis.window.location = { reload: () => {} };
   globalThis.window.scrollTo = () => {};
@@ -55,9 +58,12 @@ async function open(fake, { uid = OWNER, rid = 'pv_centro', scope, fault = () =>
     const body = calls.length ? calls[calls.length - 1].body : null;
     let f = fault(fn, body);
     if (f && f.hold) { await f.hold; f = f.kind; }   // a held call, then (optionally) its own fault
+    if (f === 'drop') throw new TypeError('Failed to fetch');   // never reached the server
     if (fn === 'getMyBranches') {
       if (f === 'lost') throw new TypeError('Failed to fetch');
-      return ans(await C.getMyBranchesCore(deps(), http('GET')));
+      const r = await C.getMyBranchesCore(deps(), http('GET'));
+      if (f && f.holdAfter) await f.holdAfter;   // a stale answer, delivered late
+      return ans(r);
     }
     if (fn === 'setBranchPause') {
       if (f === 'outage') txOut = 'order_control/';                      // the writer's own transaction fails ⇒ the core's 503
@@ -66,12 +72,13 @@ async function open(fake, { uid = OWNER, rid = 'pv_centro', scope, fault = () =>
       try { r = await C.setBranchPauseCore(deps(), http('POST', body)); } finally { txOut = null; readOut = null; }
       if (f === 'lost') throw new TypeError('Failed to fetch');                 // the real core ran; its reply never arrived
       if (f === 'malformed') return okJson({ ok: true, noop: false });          // the real 200, its control lost in delivery
+      if (f === 'bogus') return okJson({ ...r.body, control: { ...r.body.control, state: 'bogus' } });   // the real 200, an unrecognized state
       return ans(r);
     }
     if (fn === 'getEditableCatalog' || fn === 'getBranchAvailability') return errJson(404, { error: 'not_found' });
     return errJson(404, { error: 'not_found' });
   });
-  const mods = await loadModules();
+  const mods = await loadModules(withInicio ? ['app', 'ventas', 'shell', 'inicio'] : undefined);
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid } }));
   document.dispatchEvent(new CustomEvent('portal:signed-in'));
   await settle(30);
@@ -87,7 +94,7 @@ async function pauseCentro(P) {
 const enabled = (P, t) => { const b = btn(P.view, t); return !!b && !b.disabled; };
 
 // ═══ P1 · ambiguous outcomes never claim certainty (rule 17's spirit): no toast, the neutral box, the authoritative re-read first ═══
-for (const [kind, label] of [['lost', 'a transport failure after the pause LANDED'], ['malformed', 'a malformed 200 (no control)'], ['unknown', 'the core\'s own control.state «unknown»']]) {
+for (const [kind, label] of [['lost', 'a transport failure after the pause LANDED'], ['malformed', 'a malformed 200 (no control)'], ['unknown', 'the core\'s own control.state «unknown»'], ['bogus', 'a 200 whose control.state is NOT in the server\'s enum («bogus», Codex r2)']]) {
   test(`B-${kind} ${label} ⇒ NO success toast; «No pudimos confirmar el resultado» / «Recargá para ver cómo quedó.»; the actions disabled through the authoritative re-read; then the state AS READ`, async () => {
     const fake = await world();
     let release; const held = new Promise((r) => { release = r; });
@@ -142,4 +149,28 @@ test('P2b an owner whose GLOBAL scope is Centro opens Norte: «Pausar» on Norte
   btn(P.modal, 'Pausar').click(); await settle(30);
   assert.deepEqual(P.pauses().map((b) => b.rid), ['pv_norte'], 'P2b: the request for the branch on screen');
   assert.ok(enabled(P, 'Reanudar pedidos'), 'and its answer repaints it');
+});
+
+// Codex backfill r2 NEW P1: ONE pause state per page session — Inicio and Sucursales each make a controller; a branch's lock and its read
+// generation are shared, so an OLDER re-read in one view can never overwrite a NEWER state reached in another
+test('X1 the cross-view race: Inicio\'s ambiguous «Reanudar» holds a re-read (its answer computed while still paused); on Sucursales that branch\'s action stays DISABLED; the final state shown equals the newest server state', async () => {
+  const fake = await world();
+  const { writePause } = req('./merchant/merchant-control');
+  assert.equal((await writePause({ db: fake, now: () => Date.now(), timestamp: () => Date.now(), newOpId: () => 'oc_x1' }, 'pv_centro', { op: 'pause', forMs: 30 * 60e3, reason: 'Cocina llena', actor: 'portal:x', principal: 'x' })).ok, true, 'premise: Centro paused');
+  let release; const late = new Promise((r) => { release = r; });
+  let reads = 0;
+  const P2 = { resumedOnSuc: false };   // Inicio's write is DROPPED; a Sucursales write (if its button were enabled) reaches the real core
+  const P = await open(fake, { rid: null, withInicio: true, fault: (fn) => (fn === 'setBranchPause' && !P2.resumedOnSuc ? 'drop' : fn === 'getMyBranches' && ++reads === 2 ? { holdAfter: late } : undefined) });
+  const home = P.byId.get('viewinicio');
+  const reanudar = btn(home, 'Reanudar');
+  assert.ok(reanudar && !reanudar.disabled, 'premise: Inicio offers «Reanudar» on the paused Centro');
+  reanudar.click(); await settle(20);   // dropped ⇒ UNKNOWN ⇒ Inicio's re-read starts (its answer: paused, delivered late)
+  P.mods.shell.goto('suc', { rid: 'pv_centro' }); await settle(10);
+  const sucBtn = btn(P.view, 'Reanudar pedidos');
+  if (sucBtn && !sucBtn.disabled) { P2.resumedOnSuc = true; sucBtn.click(); await settle(30); }   // a person can only press an ENABLED button
+  assert.ok(!sucBtn || sucBtn.disabled, 'X1: Sucursales disables the branch while Inicio\'s recovery holds it');
+  release(); await settle(40);
+  const server = await P.state();
+  const shown = btn(P.view, 'Reanudar pedidos') ? 'paused' : btn(P.view, 'Pausar sucursal') ? 'open' : 'none';
+  assert.equal(shown, server, 'X1: the state shown equals the newest server state');
 });

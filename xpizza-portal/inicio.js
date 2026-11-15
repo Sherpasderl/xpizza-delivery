@@ -128,14 +128,15 @@ function reviewCol(rid) {
   if (S.err) { S.err.classList.add('in-err'); col.append(S.err); }
   if (!rows.length) {
     // Codex backfill item 6: the claim only over KNOWN results (every in-scope branch's control readable and its pending_count a number)
-    // and only as wide as the scope: «Todas» keeps the sentence; ONE branch shows the title alone (interim (b), advisor 11-15 — the owner
-    // decides «No hay nada pendiente en {Sucursal}.»). Unknown ⇒ no claim at all.
+    // and only as wide as the scope: «Todas» ⇒ «… en tus sucursales.»; ONE branch ⇒ «No hay nada pendiente en {Sucursal}.» (owner-APPROVED
+    // 11-15). Unknown ⇒ no claim at all.
     if (!IL.allKnown(branches(), rid === ALL ? null : rid)) return col;
     const ok = el('div', 'in-ok');
     const ic = el('span', 'in-okico'); ic.append(svg(OK_D));
     const t = el('div');
     t.append(el('b', null, 'Todo en orden'));
-    if (rid === ALL) t.append(el('span', null, 'No hay nada pendiente en tus sucursales.'));
+    const one = rid === ALL ? null : branches().find((b) => b.rid === rid);
+    t.append(el('span', null, one ? `No hay nada pendiente en ${one.name}.` : 'No hay nada pendiente en tus sucursales.'));
     ok.append(ic, t);
     col.append(ok);
     return col;
