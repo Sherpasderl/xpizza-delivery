@@ -200,7 +200,7 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.
-  try { await require('./customer-push').drainPushFor(db, uid); } catch (e) { console.error(`deleteAccountCore: push drain for ${uid} failed (${e && e.code ? e.code : 'error'}) — the sender refuses the tombstoned uid`); }
+  try { await require('./customer-push').drainPushFor(db, uid); } catch (e) { console.error(`deleteAccountCore: push drain failed (${e && e.code ? e.code : 'error'}) — the obligation stays open; the sender refuses the tombstoned uid`); }   // no identifier in the log (Codex push r3)
   try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);

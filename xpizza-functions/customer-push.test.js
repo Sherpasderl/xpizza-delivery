@@ -257,7 +257,12 @@ const deleteAcct = (db, uid, o = {}) => quietly(() => SE.deleteAccountCore(db, A
       const w3 = world();
       await w3.register(A, 1);
       w3.db.hooks[`${CP.TOKENS}/${CP.hashOf(DEV(1))}`] = async () => { throw new Error('rtdb unavailable'); };   // the deletion's drain txn fails
-      assert.strictEqual(await deleteAcct(w3.db, A), true, 'the account is deleted (the fence + tombstone are in)');
+      const logged = []; const e0 = console.error; console.error = (...x) => { logged.push(x.map(String).join(' ')); };
+      let gone;
+      try { gone = await SE.deleteAccountCore(w3.db, ACCOUNT, { uid: A, phoneHash: null, now: CLOCK, revoke: async () => {} }); } finally { console.error = e0; }
+      assert.strictEqual(gone, true, 'the account is deleted (the fence + tombstone are in)');
+      assert.ok(logged.some((l) => /push drain/.test(l)), 'premise: the failed drain is logged');
+      assert.ok(!logged.some((l) => l.includes(A)), `no account identifier in any log line (Codex push r3) (${JSON.stringify(logged)})`);
       assert.ok(w3.db.get(`${CP.DRAIN}/${A}`) != null, 'a failed drain surfaces as INCOMPLETE: the obligation stays open');
       w3.db.hooks[`${CP.TOKENS}/${CP.hashOf(DEV(1))}`] = async () => { throw new Error('rtdb unavailable'); };
       assert.deepStrictEqual((await quietly(() => CP.drainPending(w3.db, CLOCK + CP.DRAIN_GRACE_MS))), { drained: 0, pending: 1 }, 'a pass that cannot drain reports the obligation as pending');
