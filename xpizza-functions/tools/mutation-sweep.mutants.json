@@ -36622,5 +36622,185 @@
   "kills_with": [
    "PUSH-ROW: denied wins"
   ]
+ },
+ {
+  "id": "push-s01",
+  "slice": "capp-push",
+  "label": "the card on a guest's / any order (no member gate)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const pushUi = () => !!(S.member && pushCore() && push.available());",
+  "to": "    const pushUi = () => !!(pushCore() && push.available()) || !!S.member;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-GATE"
+  ]
+ },
+ {
+  "id": "push-s02",
+  "slice": "capp-push",
+  "label": "the card anywhere in the sheet (not under the status line)",
+  "file": "../customer-app/capp-order.js",
+  "from": "${segbar}${statusrow}${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}",
+  "to": "${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}${segbar}${statusrow}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: right under the status line"
+  ]
+ },
+ {
+  "id": "push-s03",
+  "slice": "capp-push",
+  "label": "the order line ignores push",
+  "file": "../customer-app/capp-order.js",
+  "from": "${typeof c.pushLine === 'string' && c.pushLine ? esc(c.pushLine) : 'Te avisamos por WhatsApp'}",
+  "to": "Te avisamos por WhatsApp",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: the order line once push is on"
+  ]
+ },
+ {
+  "id": "push-s04",
+  "slice": "capp-push",
+  "label": "a stale save overwrites blindly (no re-apply)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        keepPrefs({ ok: true, prefs: r.prefs }); cur = r.prefs;\n",
+  "to": "        return false;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-7"
+  ]
+ },
+ {
+  "id": "push-s05",
+  "slice": "capp-push",
+  "label": "a 503 read leaves the switches live",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "} else if (r && r.reason === 'unavailable') S.pushDown = true;",
+  "to": "}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-8: both inert"
+  ]
+ },
+ {
+  "id": "push-s06",
+  "slice": "capp-push",
+  "label": "an opt-in over existing prefs drops the person's choice",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true;",
+  "to": "void sp;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-9"
+  ]
+ },
+ {
+  "id": "push-s07",
+  "slice": "capp-push",
+  "label": "sign-out without forgetting the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      await pushForget();   // the server forgets",
+  "to": "      void 0;   // the server forgets",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-5: 3a forgot the token"
+  ]
+ },
+ {
+  "id": "push-s08",
+  "slice": "capp-push",
+  "label": "«Abrir Ajustes» raises no host event",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'push-settings') { emit('open-os-settings', {}); return; }",
+  "to": "if (a === 'push-settings') return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-4: the host opens Ajustes"
+  ]
+ },
+ {
+  "id": "push-s09",
+  "slice": "capp-push",
+  "label": "the Cuenta row placed before Direcciones",
+  "file": "../customer-app/capp-home.js",
+  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-3: right after Direcciones"
+  ]
+ },
+ {
+  "id": "push-s10",
+  "slice": "capp-push",
+  "label": "a tapped push opens nothing",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });",
+  "to": "      push.onTap(() => {});",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-6: the tap opens its live screen"
+  ]
  }
 ]
