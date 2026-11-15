@@ -187,9 +187,9 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     const items = [line('Pepperoni', 2)];
     const cdb = counting(w.db);
     const { q, dqo } = await quote(w, items, { db: cdb });
-    assert.strictEqual(q.components.offer_discount_cents, 8000, `${L}: the quote applies the best offer whatever its usage`);
+    assert.strictEqual(q.components.offer_discount_cents, 8000, `🔴 ${L}: the quote applies the best offer whatever its usage`);
     const p = await place(w, items, q.quote_token, { db: cdb });
-    assert.deepStrictEqual([p.gate.refuse, p.offer && p.offer.offer_id, p.recorded.total_cents], [null, best, 44000 - 8000], `${L}: the placement agrees`);
+    assert.deepStrictEqual([p.gate.refuse, p.offer && p.offer.offer_id, p.recorded.total_cents], [null, best, 44000 - 8000], `🔴 ${L}: the placement agrees`);
     assert.deepStrictEqual(cdb.reads.filter((r) => r.startsWith('marketing_usage')), [], `🔴 ${L}: no usage is ever read`);
     assert.ok(!('caps' in OW.offerOf(dqo)) && !('caps' in p.offer), `${L}: the offer ctx carries no caps`);
     const frozen = OP.frozenOf(p.offer);
