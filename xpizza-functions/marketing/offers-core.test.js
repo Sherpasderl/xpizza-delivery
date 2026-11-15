@@ -742,6 +742,37 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('Codex P2-3: a same-op retry replays before the dish preparation can fail (repeat and create)');
     }
 
+    // ── 5o. portal-ui (advisor): an offer past its schedule END is not live — it never holds a branch slot, and a txn tidies it ──
+    {
+      const { fake, deps } = await setup();
+      const ids = [];
+      for (let i = 0; i < 10; i++) ids.push((await save(deps, `t-${OWNER}`, { offer: offer({ name: `Corta ${i}`, type: 'pct', params: { pct: 5 + 5 * i }, schedule: { start: NOW + DAY, end: NOW + 2 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true })).body.offer.id);
+      assert.strictEqual(ids.filter(Boolean).length, 10, 'premise: ten offers programmed, each ending NOW + 2 days');
+      const T3 = NOW + 3 * DAY; const later = { ...deps, now: () => T3 };
+      assert.ok(ids.every((id) => { const e = fake.get(`marketing_brand/tb/live/tb_centro/${id}`); return e && e.removed !== true; }), 'premise: no job ended them — their entries are still projections');
+      const eleventh = await save(later, `t-${OWNER}`, { offer: offer({ name: 'Después', type: 'envio', params: {}, schedule: { start: T3 + DAY, end: T3 + 9 * DAY, days: [0, 1, 2, 3, 4, 5, 6], window: null } }), program: true });
+      assert.strictEqual(eleventh.status, 200, `entries past their schedule end never count toward live_max (${JSON.stringify(eleventh.body)})`);
+      assert.ok(ids.every((id) => fake.get(`marketing_brand/tb/live/tb_centro/${id}/removed`) === true), 'the brand txn tombstoned the expired entries it saw (the node stays tidy)');
+      const listed = (await get(later, `t-${OWNER}`, 'tb_centro')).body.offers.filter((o) => ids.includes(o.id));
+      assert.deepStrictEqual([listed.length, listed.every((o) => o.status === 'ended' && o.live_drift === undefined)], [10, true], 'the portal lists them «Terminada», never as drift');
+      ok('portal-ui: an offer past its end never holds a live slot; any brand txn tombstones it; the read shows it ended, no drift');
+    }
+    {
+      // the same for a REFUSAL-only txn (a claimed refusal writes; it tidies too) and for the duplicate judgement
+      const { fake, deps } = await setup();
+      const short = (o = {}) => offer({ name: 'Diez corta', type: 'pct', params: { pct: 10 }, schedule: { start: NOW + DAY, end: NOW + 2 * DAY, days: [5, 6], window: null }, ...o });
+      const a = await save(deps, `t-${OWNER}`, { offer: short(), program: true });
+      assert.strictEqual(a.status, 200, 'premise: programmed, ending NOW + 2 days');
+      const T3 = NOW + 3 * DAY;
+      const live = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Veinte', type: 'pct', params: { pct: 20 }, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: null } }), program: true });
+      assert.strictEqual(live.status, 200, 'premise: a long-running competitor (written BEFORE the short one expires: no later successful write)');
+      assert.ok((fake.get(`marketing_brand/tb/live/tb_centro/${a.body.offer.id}/removed`) ?? null) === null, 'premise: the short one is still a projection');
+      const ref = await save({ ...deps, now: () => T3 }, `t-${OWNER}`, { offer: offer({ name: 'Veinte', type: 'pct', params: { pct: 20 }, schedule: { start: T3 + DAY, end: NOW + 30 * DAY, days: [5, 6], window: null } }), op_id: 'op_' + 'x'.repeat(16) + 'tidy', program: true });
+      assert.deepStrictEqual([ref.status, ref.body.error, ref.body.offer_id], [409, 'duplicate', live.body.offer.id], 'premise: a claimed refusal (the live competitor, never the expired one)');
+      assert.strictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${a.body.offer.id}/removed`), true, 'a refusal-only txn tombstones the expired entry too');
+      ok('the expired-entry tidy runs on a refusal-only txn too');
+    }
+
     // ── 6. the overlap rule + MAX_LIVE ──
     {
       const { deps } = await setup();

@@ -94,8 +94,11 @@ async function resolveDishes(deps, value) {
 // THE live judgement — ONE rule, inside the brand transaction: this offer against one branch's CURRENT live
 // set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids). A tombstone is
 // never live; this offer's OWN entry is never judged (an edit may overlap itself).
-function liveJudgement(offerId, value, live) {
-  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isObj(r) && r.removed !== true);
+// LIVE = a projection (never a tombstone) whose schedule has not ENDED at server time `t`: nothing flips an offer past its end, so an
+// expired entry never holds a branch slot or clashes (portal-ui / advisor 11-14)
+const isLive = (e, t) => isObj(e) && e.removed !== true && !(isObj(e.schedule) && Number.isSafeInteger(e.schedule.end) && e.schedule.end <= t);
+function liveJudgement(offerId, value, live, t) {
+  const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isLive(r, t));
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesOf(value));
   if (!mine.size) return null;
@@ -111,11 +114,11 @@ const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array
    isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 // both sides through the STORED params rule (a «sin mínimo» envío is stored params-less: RTDB drops {}) — Codex brand-root r1 P2-1
 const paramsKey = (type, p) => canon(OM.paramsOf(type, p, true));
-function duplicateOf(all, offerId, proj, branches, schedule) {
+function duplicateOf(all, offerId, proj, branches, schedule, t) {
   const held = {};
   for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
     for (const [id, e] of Object.entries(isObj(m) ? m : {})) {
-      if (id === offerId || !isObj(e) || e.removed === true) continue;
+      if (id === offerId || !isLive(e, t)) continue;
       (held[id] = held[id] || { rids: new Set(), e }).rids.add(rid);
     }
   }
@@ -178,13 +181,13 @@ function claimCheck(node, opId, kind, sourceId, t) {
 const refusedReply = (r) => reply(409, { error: r.error, ...(r.rid ? { rid: r.rid } : {}), ...(r.with ? { with: r.with } : {}), ...(r.offer_id ? { offer_id: r.offer_id } : {}) });
 // the record `rec` of `offerId` going active — THE judgement on the whole brand's current live set: the DUPLICATE first (it needs the
 // branch set, visible only here), then each branch's overlap + MAX_LIVE → null | { verdict, rid }
-function judgeActive(node, brandId, offerId, rec) {
+function judgeActive(node, brandId, offerId, rec, t) {
   const value = OM.authoredOf(rec, opts);
   const proj = OM.liveProjection(rec, brandId);
   const all = isObj(node.live) ? node.live : {};
-  const dup = duplicateOf(all, offerId, proj, value.branches, value.schedule);
+  const dup = duplicateOf(all, offerId, proj, value.branches, value.schedule, t);
   if (dup) return { verdict: { error: 'duplicate', offer_id: dup }, rid: value.branches[0] };
-  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid]); if (v) return { verdict: v, rid }; }
+  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid], t); if (v) return { verdict: v, rid }; }
   return null;
 }
 // write the record AND its mirror into `next` (one step): active ⇒ the projection on its branches + a tombstone on every other branch it
@@ -200,6 +203,16 @@ function writeOffer(next, brandId, offerId, rec, t, keep = []) {
     for (const rid of Object.keys(next.live)) if (isObj(next.live[rid]) && next.live[rid][id] != null) { next.live[rid] = { ...next.live[rid] }; delete next.live[rid][id]; }
   }
   for (const [k, c] of Object.entries(next.ops)) if (!liveClaim(c, t)) delete next.ops[k];
+  tidyExpired(next, t);
+}
+// every committing brand txn tombstones the expired projections it sees (at their own rev; a later genuine edit is a higher rev)
+function tidyExpired(next, t) {
+  for (const [rid, m] of Object.entries(next.live)) {
+    if (!isObj(m)) continue;
+    for (const [id, e] of Object.entries(m)) {
+      if (isObj(e) && e.removed !== true && !isLive(e, t)) { next.live[rid] = { ...next.live[rid], [id]: { removed: true, rev: e.rev } }; }
+    }
+  }
 }
 const endedToPrune = (offers, t) => Object.entries(isObj(offers) ? offers : {})
   .filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
@@ -218,6 +231,7 @@ function refuse(node, opId, kind, sourceId, offerId, verdict, rid, t) {
   const next = draftNode(node);
   const full = putClaim(next, opId, { offer_id: offerId, kind, at: t, ...(kind === 'repeat' ? { source_id: sourceId } : {}), refused: why }, t);
   if (full) return { abort: full };
+  tidyExpired(next, t);
   return { next, result: refusedReply(why) };
 }
 
@@ -250,7 +264,7 @@ async function getMarketingCore(deps, req) {
     .map(([id, rec]) => {
       // a read-only consistency flag (the record and its mirror are written together, so it should never be set): an alert if it is
       const m = live[id];
-      const drift = rec.state === 'active' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isObj(m) && m.removed !== true;
+      const drift = rec.state === 'active' && OM.statusOf(rec, t) !== 'ended' ? !(isObj(m) && m.removed !== true && m.rev === rec.rev) : isLive(m, t);   // ended by schedule: no projection expected
       if (drift) console.warn('marketing_live_drift', JSON.stringify({ offer: id, rev: rec.rev, mirror_rev: isObj(m) ? m.rev : null }));
       return { ...offerView(id, rec, t), ...(drift ? { live_drift: true } : {}) };
     })
@@ -318,7 +332,7 @@ async function marketingOfferSaveCore(deps, req) {
     if (program && !(isObj(cur) && cur.state === 'active')) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return { abort: reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }) }; }
     rec = OM.stripNulls(rec);
     if (rec.state === 'active') {
-      const j = judgeActive(node, brandId, proposed, rec);
+      const j = judgeActive(node, brandId, proposed, rec, t);
       if (j) return creating ? refuse(node, body.op_id, 'create', null, proposed, j.verdict, j.rid, t) : { abort: judgementReply(j.verdict, j.rid) };
     }
     const next = draftNode(node);
@@ -367,7 +381,7 @@ async function marketingOfferSetStateCore(deps, req) {
     const rec = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') rec.ended_reason = 'owner'; else delete rec.ended_reason;
     if (body.to === 'paused_owner') rec.paused_at = t; else delete rec.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
-    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec); if (j) return { abort: judgementReply(j.verdict, j.rid) }; }
+    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t); if (j) return { abort: judgementReply(j.verdict, j.rid) }; }
     const next = draftNode(node);
     writeOffer(next, brandId, body.offer_id, rec, t);
     return { next, result: reply(200, { ok: true, offer: offerView(body.offer_id, rec, t) }) };
@@ -423,7 +437,7 @@ async function marketingOfferRepeatCore(deps, req) {
     const keep = endedToPrune(node.offers, t).filter((id) => id !== sourceId);   // never the offer being repeated
     if (Object.keys(isObj(node.offers) ? node.offers : {}).length - keep.length >= OM.LIMITS.offers_max) return { abort: reply(409, { error: 'too_many_offers' }) };
     const rec = OM.stripNulls({ v: 1, rev: 1, ...draft, state: program ? 'active' : 'draft', repeated_from: sourceId, created_by: ctx.uid, created_at: t, updated_at: t });
-    if (program) { const j = judgeActive(node, brandId, proposed, rec); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
+    if (program) { const j = judgeActive(node, brandId, proposed, rec, t); if (j) return refuse(node, body.op_id, 'repeat', sourceId, proposed, j.verdict, j.rid, t); }
     const next = draftNode(node);
     writeOffer(next, brandId, proposed, rec, t, [sourceId]);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }
