@@ -821,6 +821,36 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('MAX_LIVE: 10 scheduled+live offers per branch');
     }
 
+    // ── 5q. Codex (portal-ui Ofertas r6.1, against e3c5f7366): a create whose record txn COMMITTED but reported an error answered 200 from a
+    //        replay WITHOUT settling the mirror. Since the brand root (c4538460a) the record, its mirror and the claim are ONE transaction,
+    //        so a commit carries its mirror; an ambiguous outcome is a 503 (never 200), and the same-op retry replays with the mirror there ──
+    {
+      const { fake, db, deps } = await setup();
+      const wrap = (mode) => ({ ref: (p) => { const r = db.ref(p);
+        if (p !== 'marketing_brand/tb') return r;
+        return { ...r, transaction: async (fn) => { if (mode === 'pre') throw new Error('network: never sent'); await r.transaction(fn); throw new Error('ambiguous: committed, reply lost'); } }; } });
+      const OPC = 'op_' + 'q'.repeat(20);
+      const c1 = await save({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer: offer({ name: 'Ambigua' }), op_id: OPC, program: true });
+      assert.deepStrictEqual([c1.status, c1.body.error], [503, 'unavailable'], `a create + program whose txn committed but errored ⇒ 503, never 200 (${JSON.stringify(c1.body)})`);
+      const recs = Object.entries(fake.get('marketing_brand/tb/offers') || {});
+      assert.deepStrictEqual([recs.length, recs[0] && recs[0][1].state, mirrored(fake)], [1, 'active', [`tb_centro/${recs[0] && recs[0][0]}`]], 'premise: it DID commit — and the commit carries its mirror (one transaction)');
+      const c2 = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Ambigua' }), op_id: OPC, program: true });
+      assert.deepStrictEqual([c2.status, c2.body.offer && c2.body.offer.state], [200, 'active'], 'the same-op retry REPLAYS 200 …');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${c2.body.offer.id}`), OM.liveProjection(fake.get(`marketing_brand/tb/offers/${c2.body.offer.id}`), 'tb'), '… with the live mirror present BEFORE the 200');
+      ok('5q: a committed-but-errored create ⇒ 503; the replay answers 200 only with the mirror already live');
+      const id = c2.body.offer.id; const r0 = c2.body.offer.rev;
+      const e1 = await save({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer_id: id, expected_rev: r0, offer: offer({ name: 'Ambigua', schedule: { start: NOW + DAY, end: NOW + 45 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
+      assert.deepStrictEqual([e1.status, e1.body.error], [503, 'unavailable'], 'a committed-but-errored live EDIT ⇒ 503, never 200');
+      assert.deepStrictEqual([fake.get(`marketing_brand/tb/offers/${id}/rev`), fake.get(`marketing_brand/tb/live/tb_centro/${id}/rev`), fake.get(`marketing_brand/tb/live/tb_centro/${id}/schedule/end`)], [r0 + 1, r0 + 1, NOW + 45 * DAY], 'the edit committed WITH its mirror (record and mirror at the same rev)');
+      const p1 = await move({ ...deps, db: wrap('post') }, `t-${OWNER}`, { offer_id: id, to: 'paused_owner', expected_rev: r0 + 1 });
+      assert.deepStrictEqual([p1.status, fake.get(`marketing_brand/tb/offers/${id}/state`), mirrored(fake)], [503, 'paused_owner', []], 'a committed-but-errored pause ⇒ 503; record and mirror moved together');
+      ok('5q: a committed-but-errored edit / pause ⇒ 503; record and mirror always move together');
+      const n0 = JSON.stringify(fake.get('marketing_brand/tb'));
+      const x = await save({ ...deps, db: wrap('pre') }, `t-${OWNER}`, { offer: offer({ name: 'Nunca', params: { items: [K2], free_per_order: 1 } }), op_id: 'op_' + 'x'.repeat(20), program: true });
+      assert.deepStrictEqual([x.status, x.body.error, JSON.stringify(fake.get('marketing_brand/tb')) === n0], [503, 'unavailable', true], `a txn that errors WITHOUT committing ⇒ 503 and nothing written — never a 200 (${JSON.stringify(x.body)})`);
+      ok('5q: an uncommitted txn error ⇒ 503, nothing written, never 200');
+    }
+
     // ── 6a. an OLD envío record (stored by the pre-v1 writer, before envío was refused — RTDB drops its empty params): it still reads
     //        back and lists, it can be ended, but it can NEVER be activated, repeated or projected (owner 11-15) ──
     {
