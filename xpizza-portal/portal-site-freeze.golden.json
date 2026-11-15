@@ -202,8 +202,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "2b1873640e18df0802de98e3119411a627dc8d2113bc6b522952755b7a997b5e",
-   "bytes": 184179
+   "sha256": "5ad2a3d7bc3810b1c05146a5c6986bd68af0a9f6c2d82e203eeb66ea4576c207",
+   "bytes": 177286
   }
  },
  "diff_aid": {
@@ -5490,30 +5490,6 @@
    ],
    [
     "",
-    ".vcerr",
-    "color",
-    "var(--red-text)"
-   ],
-   [
-    "",
-    ".vcov",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vcsub",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vcsvnote",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
     ".vd-back",
     "background",
     "none"
@@ -5940,132 +5916,6 @@
    ],
    [
     "",
-    ".vdate",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vdate",
-    "color",
-    "var(--ink)"
-   ],
-   [
-    "",
-    ".vdl.vdn",
-    "background",
-    "var(--red-soft)"
-   ],
-   [
-    "",
-    ".vdl.vdn",
-    "border-color",
-    "var(--red-line)"
-   ],
-   [
-    "",
-    ".vdl.vdn",
-    "color",
-    "var(--red-text)"
-   ],
-   [
-    "",
-    ".vdl.vflat",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vdl.vflat",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vdl.vup",
-    "background",
-    "var(--green-soft)"
-   ],
-   [
-    "",
-    ".vdl.vup",
-    "border-color",
-    "var(--green-line)"
-   ],
-   [
-    "",
-    ".vdl.vup",
-    "color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".verr",
-    "color",
-    "var(--red-text)"
-   ],
-   [
-    "",
-    ".vfill",
-    "background",
-    "var(--green)"
-   ],
-   [
-    "",
-    ".vfoot",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vhc",
-    "background",
-    "var(--green)"
-   ],
-   [
-    "",
-    ".vimeta strong",
-    "color",
-    "var(--ink)"
-   ],
-   [
-    "",
-    ".vimeta",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vklabel",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vlegend",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vlgcur",
-    "background",
-    "var(--green)"
-   ],
-   [
-    "",
-    ".vmuted",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vnote",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
     ".vpill b",
     "color",
     "var(--ink)"
@@ -6079,54 +5929,6 @@
    [
     "",
     ".vpill",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vplabel",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vpre",
-    "background",
-    "var(--card)"
-   ],
-   [
-    "",
-    ".vpre",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "background",
-    "var(--tint2)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "border-color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".vpre.vpon",
-    "color",
-    "var(--accent)"
-   ],
-   [
-    "",
-    ".vrk",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vrl",
     "color",
     "var(--mute)"
    ],
@@ -6147,66 +5949,6 @@
     ".vs3",
     "background",
     "var(--mute2)"
-   ],
-   [
-    "",
-    ".vsel",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vsel",
-    "color",
-    "var(--ink)"
-   ],
-   [
-    "",
-    ".vsplit",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vsub",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vth",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vthr",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vtrack",
-    "background",
-    "var(--board-2)"
-   ],
-   [
-    "",
-    ".vvs",
-    "color",
-    "var(--mute)"
-   ],
-   [
-    "",
-    ".vwarn",
-    "color",
-    "var(--sand-text)"
-   ],
-   [
-    "",
-    ".vxl",
-    "color",
-    "var(--mute)"
    ],
    [
     "",
