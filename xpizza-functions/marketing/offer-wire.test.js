@@ -109,15 +109,15 @@ async function place(w, items, token, { ctx = null, db = w.db, nowMs = NOW + 360
     await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60001 }); await place(w, items, null, { db: cdb, nowMs: NOW + 3600000 + 60002 });
     assert.strictEqual(cdb.reads.filter((p) => isMirror(p)).length, before + 2, `${L}: placement fresh`);
   });
-  await cell('MW-ENVIO-FUNDER: a restaurant envío offer ⇒ promo_discount_cents = the fee, funder «restaurant», envío not charged; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
+  await cell('MW-ENVIO-FUNDER: v1 (owner 11-16: «envío gratis» held until the payout ledger) — an envío entry in the mirror is NEVER priced: the quote and the placement charge the full fee, no restaurant funder; Sherpa\'s promo ⇒ «sherpa»; none ⇒ no funder', async (L) => {
     const w = await xworld(); await w.plantEnvio({ min_cents: 20000 });
     const items = [line('Pepperoni', 2)];
-    const { q } = await quote(w, items, { ctx: envio() });
-    assert.strictEqual(q.net_total_cents, 44000, `${L}: quote waives the L 60`);
+    const { q, dqo } = await quote(w, items, { ctx: envio() });
+    assert.deepStrictEqual([OW.offerOf(dqo), q.net_total_cents], [null, 50000], `🔴 ${L}: the quote charges the L 60 (no offer)`);
+    assert.ok(!('offer_next' in dqo), `🔴 ${L}: an envío offer is never suggested`);
     const p = await place(w, items, q.quote_token, { ctx: envio() });
     assert.strictEqual(p.gate.refuse, null, L);
-    assert.deepStrictEqual([p.recorded.total_cents, p.recorded.delivery_cents, p.recorded.promo_discount_cents, p.recorded.delivery_discount_funder], [44000, 6000, 6000, 'restaurant'], `${L}: restaurant`);
-    assert.deepStrictEqual(DW.orderFields(p.recorded).delivery_discount_funder, 'restaurant', `${L}: the card record carries it too`);
+    assert.deepStrictEqual([p.offer, p.recorded.total_cents, p.recorded.delivery_cents, p.recorded.promo_discount_cents || 0, 'delivery_discount_funder' in p.recorded], [null, 50000, 6000, 0, false], `🔴 ${L}: the full fee, no restaurant funder`);
     const w2 = await xworld();
     const s = await place(w2, items, null, { ctx: envio({ free: true }) });
     assert.deepStrictEqual([s.recorded.promo_discount_cents, s.recorded.delivery_discount_funder], [6000, 'sherpa'], `${L}: sherpa`);

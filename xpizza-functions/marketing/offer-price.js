@@ -29,6 +29,7 @@ const floorL = (cents) => Math.floor(cents / L) * L;
 function entryOf(id, e) {
   if (!OM.OFFER_ID_RE.test(id) || !isObj(e)) return null;
   if (!Number.isSafeInteger(e.rev) || e.rev < 1 || !OM.TYPES.includes(e.type) || typeof e.name !== 'string' || !e.name) return null;
+  if (e.type === 'envio') return null;   // v1 (owner 11-16): «envío gratis» is held until the payout ledger — never priced, never waived (v2 reverts this)
   // RTDB never stores an empty object: a STORED «sin mínimo» envío reads back params-less — {} (the same rule as offer-model paramsOf(…, stored=true));
   // every other type still needs its params
   const s = e.schedule, p = e.type === 'envio' && e.params == null ? {} : e.params;
@@ -184,7 +185,7 @@ const frozenOf = (offer) => ({ offer_id: offer.offer_id, rev: offer.rev, type: o
   waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant' });
 
 // A STORED order's frozen offer re-entered as a server ctx (offer-wire storedOfferOf validates the record first) — the card retry path.
-const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'envio']);
+const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo']);   // v1: no envío (owner 11-16)
 const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
 
 // The customer's poll (paymentStatus) shows the STORED offer as what was saved, never how it is tracked: no offer id / rev / usage /

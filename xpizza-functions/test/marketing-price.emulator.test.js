@@ -224,8 +224,23 @@ const offerCaches = () => require('../marketing/offer-wire')._resetCaches();   /
   {
     const r = await C.marketingOfferSaveCore(offerDeps(), oreq(THIRD, { expected_rev: 0, offer: { name: 'Envío', audience: 'all', branches: [THIRD], schedule: { start: Date.now(), end: Date.now() + 30 * 86400000, days: [0, 1, 2, 3, 4, 5, 6] }, type: 'envio', params: {} } }));
     assert.deepStrictEqual([r.status, r.body && r.body.reason], [400, 'type_not_supported'], `E4: 3a's REAL v1 core refuses an envío offer (${JSON.stringify(r.body)})`);
+    // an envío entry that reaches the mirror anyway (PLANTED: a real pct projection turned into envío, no params = «sin mínimo») is never priced
+    for (const id of await liveIds(BRAND[THIRD], THIRD)) await pauseOffer(THIRD, BRAND[THIRD], id);
+    const pid = await publish(THIRD, { type: 'pct', params: { pct: 5 } });
+    const path = `marketing_brand/${BRAND[THIRD]}/live/${THIRD}/${pid}`;
+    const e = { ...(await rtdb.ref(path).get()).val(), type: 'envio' }; delete e.params;
+    await rtdb.ref(path).set(e);
+    const { cart, s } = cartOf(THIRD);
+    await clean(); offerCaches();
+    const q = await quote(THIRD, s.items);
+    assert.deepStrictEqual([q.json.offer || null, q.json.net_total_cents], [null, cart.subtotalCents() + FEE], `🔴 E4: a mirrored envío entry is not quoted — the full fee (${q.text.slice(0, 160)})`);
+    const cb = bodyOf(THIRD, 'cash', s, { quote_token: q.json.quote_token, expected_net_cents: q.json.net_total_cents });
+    await clean(); assert.strictEqual((await post(app.createOrder, cb)).status, 200, 'E4: placed');
+    const o = await order(cb.order_id);
+    assert.deepStrictEqual([o.offer || null, o.total_cents, o.delivery_cents, o.promo_discount_cents || 0, o.delivery_discount_funder || null], [null, cart.subtotalCents() + FEE, FEE, 0, null], '🔴 E4: the order charges the full fee, no offer, no restaurant funder');
+    await pauseOffer(THIRD, BRAND[THIRD], pid);
   }
-  ok('E4 envío: 3a\'s v1 core refuses the type (no v1 writer can mirror one)');
+  ok('E4 envío (v1): 3a\'s core refuses the type; an envío entry in the mirror anyway is never priced — the full fee charged');
 
   // ── E5. paused between quote and order ──
   {

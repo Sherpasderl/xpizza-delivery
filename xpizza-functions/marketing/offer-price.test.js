@@ -152,24 +152,20 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.ok(await pick(w, items), `${L}: premise — applies at the true base`);
     assert.strictEqual(await pick(w, items, { baseTotalL: food(items) + 1 }), null, L);
   });
-  await cell('OP-ENVIO: a delivery with no Sherpa promo and food ≥ min ⇒ the whole fee waived; pickup / Sherpa promo on / under min ⇒ nothing', async (L) => {
+  await cell('OP-ENVIO: v1 (owner 11-16: «envío gratis» held until the payout ledger) — an envío entry that reaches the mirror is NEVER priced: no waiver on a delivery, a pickup, under or over its minimum', async (L) => {
     const w = await world(); await w.plantEnvio({ min_cents: 30000 });
-    assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `${L}: waived`);
-    assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: envio({ mode: 'pickup' }) }), null, `${L}: pickup`);
-    assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: Sherpa's promo on (ruling 4757)`);
-    assert.strictEqual(await pick(w, [line(K2)], { deliveryContext: envio() }), null, `${L}: L 220 < L 300`);
-    assert.strictEqual(await pick(w, [line(K2, 2)], { deliveryContext: JSON.parse(JSON.stringify(envio())) }), null, `${L}: a request-shaped ctx is not the server's`);
+    for (const [k, items, ctx] of [['delivery ≥ min', [line(K2, 2)], envio()], ['pickup', [line(K2, 2)], envio({ mode: 'pickup' })], ['under min', [line(K2)], envio()]]) {
+      assert.strictEqual(await pick(w, items, { deliveryContext: ctx }), null, `🔴 ${L}: ${k}`);
+    }
   });
-  await cell('OP-ENVIO-NOMIN: a «sin mínimo» envío as RTDB STORES it — no params node (RTDB never stores an empty object; 3a 11-14) — is priced: the whole fee waived', async (L) => {
+  await cell('OP-ENVIO-NOMIN: v1 — a «sin mínimo» envío as RTDB stores it (no params node) is NEVER priced either; a params-less pct stays unpriced', async (L) => {
     const w = await world(); const id = await w.plantEnvio({});
-    const path = `marketing_brand/tb/live/tb_centro/${id}`;
-    assert.ok(w.fake.get(path), `${L}: premise — 3a's writer mirrored it`);
-    w.fake.put(`${path}/params`, null);   // the production shape: RTDB drops the empty params node (this fake keeps {})
-    assert.strictEqual(w.fake.get(`${path}/params`), null, `${L}: premise — no params node`);
-    assert.deepStrictEqual(brief(await pick(w, [line(K2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `🔴 ${L}: priced with no minimum`);
+    assert.strictEqual(w.fake.get(`marketing_brand/tb/live/tb_centro/${id}/params`), null, `${L}: premise — no params node`);
+    assert.strictEqual(await pick(w, [line(K2)], { deliveryContext: envio() }), null, `🔴 ${L}: never priced`);
     const pct = await world(); const pid = await pct.publish({ type: 'pct', params: { pct: 20 } });
     pct.fake.put(`marketing_brand/tb/live/tb_centro/${pid}/params`, null);
-    assert.strictEqual(await pick(pct, [line(K2, 2)]), null, `🔴 ${L}: only envío may lack params — a params-less pct stays unpriced`);
+    assert.strictEqual(await pick(pct, [line(K2, 2)]), null, `${L}: a params-less pct stays unpriced`);
+    assert.ok(!OP.TYPES_PRICED.includes('envio'), `🔴 ${L}: envío is not a priced type (the poll / stored-offer re-entry refuse it too)`);
   });
   await cell('OP-BEST: the largest saving wins; Sherpa promo + a FOOD offer combine; a tie ⇒ the smallest offer id', async (L) => {
     const w = await world();
@@ -253,7 +249,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.deepStrictEqual(Object.keys(stored).sort(), ['discount_cents', 'funded_by', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], `🔴 ${L}: the frozen fact carries no usage / caps`);
     assert.deepStrictEqual(OP.pollOfferOf(stored), { type: 'lps', discount_cents: 5000, waived_envio_cents: 0 }, L);
     assert.ok(typeof stored.name === 'string' && !('name' in OP.pollOfferOf(stored)), `${L}: the stored record has a name; the poll never carries it`);
-    for (const bad of [undefined, null, 'x', {}, { ...stored, discount_cents: -100 }, { ...stored, type: 'nope' }, { ...stored, waived_envio_cents: 1.5 }]) assert.strictEqual(OP.pollOfferOf(bad), null, `${L}: ${JSON.stringify(bad)}`);
+    for (const bad of [undefined, null, 'x', {}, { ...stored, discount_cents: -100 }, { ...stored, type: 'nope' }, { ...stored, type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, { ...stored, waived_envio_cents: 1.5 }]) assert.strictEqual(OP.pollOfferOf(bad), null, `${L}: ${JSON.stringify(bad)}`);
   });
 
   await cell('OP-QUOTE-SHAPE: the quote shows {type, pct?, min_cents?, discount_cents, waived_envio_cents} — pct for a pct offer, min_cents for an lps one; never a name, id or rev (advisor 11-14)', async (L) => {
@@ -263,7 +259,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const w2 = await world(); await w2.publish({ type: 'pct', params: { pct: 20, max_cents: 10000 } });
     assert.deepStrictEqual(OP.quoteOfferOf(await pick(w2, [line(K2, 2)])), { type: 'pct', pct: 20, discount_cents: 8800, waived_envio_cents: 0 }, `${L}: pct`);
     const w3 = await world(); await w3.plantEnvio({ min_cents: 20000 });
-    assert.deepStrictEqual(OP.quoteOfferOf(await pick(w3, [line(K2, 2)], { deliveryContext: envio() })), { type: 'envio', discount_cents: 0, waived_envio_cents: 6000 }, `${L}: envío`);
+    assert.strictEqual(await pick(w3, [line(K2, 2)], { deliveryContext: envio() }), null, `${L}: envío (v1) is never quoted`);
     assert.ok(typeof lps.name === 'string' && !('name' in OP.quoteOfferOf(lps)) && !('offer_id' in OP.quoteOfferOf(lps)) && !('rev' in OP.quoteOfferOf(lps)), `${L}: the minted offer has a name; the quote never carries it`);
   });
   await cell('OP-NEXT: offer_next names the best live offer whose ONLY unmet condition is its minimum — the SAME eligibility (savingOf at the minimum)', async (L) => {
@@ -275,9 +271,7 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     const two = await world(); await two.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }); await two.publish({ type: 'lps', params: { off_cents: 8000, min_cents: 60000 } });
     assert.deepStrictEqual(await next(two, [line(K2, 2)]), { type: 'lps', remaining_cents: 16000, off_cents: 8000 }, `${L}: two ⇒ the best saving`);
     const ev = await world(); await ev.plantEnvio({ min_cents: 50000 });
-    assert.deepStrictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio() }), { type: 'envio', remaining_cents: 6000, waived_envio_cents: 6000 }, `${L}: an envío offer`);
-    assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ mode: 'pickup' }) }), null, `${L}: envío on a pickup — another condition unmet ⇒ none`);
-    assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio({ free: true }) }), null, `${L}: envío already free (Sherpa's promo) ⇒ none`);
+    assert.strictEqual(await next(ev, [line(K2, 2)], { deliveryContext: envio() }), null, `🔴 ${L}: an envío offer is never suggested (v1)`);
     const pc = await world(); await pc.publish({ type: 'pct', params: { pct: 20 } });
     assert.strictEqual(await next(pc, [line(K1)]), null, `${L}: a pct offer has no minimum ⇒ never next`);
     const off = await world({ offers_enabled: false }); await off.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 50000 } }).catch(() => {});
