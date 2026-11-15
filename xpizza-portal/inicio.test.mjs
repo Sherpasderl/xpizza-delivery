@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as IL from './inicio-logic.js';
+import { _resetPauseStore } from './pause-control.js';
 import { clock12 } from './portal-time.js';
 
 // 5f's S2 server (getSalesStats over several branches, merged there): its functions tree at a PINNED ref, read-only (the S4_REF
@@ -46,14 +47,14 @@ const HN = 6 * 3600e3;
 const hn = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h, mi) + HN;   // a Honduras wall clock → epoch ms
 
 // ── pure ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-test('the greeting follows the Honduras clock: «Buenas tardes» as drawn; morning / night are ⟦inicio.*⟧ until approved; never a name', () => {
+test('the greeting follows the Honduras clock: «Buenas tardes» as drawn; «Buenos días» 05:00–11:59 / «Buenas noches» 19:00–04:59 (owner 11-15); never a name', () => {
   assert.equal(IL.greeting(hn(2026, 11, 12, 15)), 'Buenas tardes', '🔴 the drawn greeting, no name (Q-I2)');
   assert.equal(IL.greeting(hn(2026, 11, 12, 12)), 'Buenas tardes');
   assert.equal(IL.greeting(hn(2026, 11, 12, 18, 59)), 'Buenas tardes');
-  assert.equal(IL.greeting(hn(2026, 11, 12, 19)), P('goodEvening'));
-  assert.equal(IL.greeting(hn(2026, 11, 12, 4, 59)), P('goodEvening'));
-  assert.equal(IL.greeting(hn(2026, 11, 12, 5)), P('goodMorning'));
-  assert.equal(IL.greeting(hn(2026, 11, 12, 11, 59)), P('goodMorning'));
+  assert.equal(IL.greeting(hn(2026, 11, 12, 19)), 'Buenas noches');
+  assert.equal(IL.greeting(hn(2026, 11, 12, 4, 59)), 'Buenas noches');
+  assert.equal(IL.greeting(hn(2026, 11, 12, 5)), 'Buenos días');
+  assert.equal(IL.greeting(hn(2026, 11, 12, 11, 59)), 'Buenos días');
 });
 test('the date line, Honduras time, exact to the frame', () => {
   assert.equal(IL.dateLine(hn(2026, 11, 12, 15)), 'Resumen de hoy · jueves 12 de noviembre', '🔴 «Resumen de hoy · jueves 12 de noviembre»');
@@ -154,6 +155,7 @@ const has = (n, c) => String(n._class).split(/\s+/).includes(c);
 // opts (Codex backfill cells): `store` (a sessionStorage Map to reuse / preset), `hold` ({ getSalesStats, getMyBranches }: one-shot held
 // answers — a Promise each), branches may be a function (the fresh E1 changes between reads); `reloads` counts window.location.reload()
 async function page(branches, { withInicio = true, pause = null, statsFail = false, store, hold = {}, writes = false } = {}) {
+  _resetPauseStore();   // a fresh page session per cell
   const sess = storage(store);
   const byId = installDom();
   let reloads = 0;
@@ -215,12 +217,12 @@ test('s-inicio — the greeting, the date, the pill, the three REAL figures; one
   assert.deepEqual(figs, [['Ventas', truth.sales.value, truth.sales.vs], ['Pedidos', truth.orders.value, truth.orders.vs], ['Ticket promedio', truth.ticket.value, null]],
     '🔴 the page draws the server\'s figures, labels as drawn');
 });
-test('1b — nothing paused, every result KNOWN (Codex backfill item 6): «Todo en orden»; ONE branch ⇒ the title alone (interim (b), advisor 11-15); no count; «Editar producto» is the one quick action', async () => {
+test('1b — nothing paused, every result KNOWN (Codex backfill item 6): «Todo en orden»; ONE branch ⇒ «No hay nada pendiente en {Sucursal}.» (owner 11-15); no count; «Editar producto» is the one quick action', async () => {
   const p = await page([branch('r_a', 'Centro', { pending_count: 0 })]);
   const ok = p.view.querySelector('.in-ok');
   assert.ok(ok, '🔴 the calm empty state');
   assert.equal(textOf(ok.querySelector('b')), 'Todo en orden');
-  assert.equal(all(ok).find((n) => n.tag === 'span' && !has(n, 'in-okico')), undefined, 'ONE branch: no «… en tus sucursales» claim wider than the scope');
+  assert.equal(textOf(all(ok).find((n) => n.tag === 'span' && !has(n, 'in-okico'))), 'No hay nada pendiente en Centro.', 'ONE branch: the claim exactly as wide as the scope (owner 11-15)');
   assert.equal(cls(p.view, 'in-cnt').length, 0, 'no «N pendientes» on an empty list');
   assert.deepEqual(cls(p.view, 'in-quick').map(textOf), ['Editar producto'], '🔴 only the sourced quick action (Crear oferta / Editar horario / Ayuda wait)');
 });
@@ -453,4 +455,13 @@ test('N7b the landing marker is consumed EXACTLY ONCE: the next page opens on Pr
   assert.equal(store.has('sherpa.portal.land.uA'), false, 'N7b: consumed');
   const second = await page([branch('r_a', 'Centro')], { store });
   assert.ok(!has(second.view, 'hidden'), 'N7b: the next page lands on Inicio again');
+});
+
+test('N6r2 «Todo en orden» only for a control state in the SERVER\'s enum (control-state.js, Codex r2): «bogus» or «» ⇒ no claim', async () => {
+  for (const state of ['bogus', '']) {
+    const p = await page([branch('r_a', 'Centro', { pending_count: 0, control: { state, paused_until: null, pause_reason: null, pause_since: null } })]);
+    assert.equal(p.view.querySelector('.in-ok'), null, `N6r2: control.state «${state}» ⇒ no claim`);
+  }
+  const ok = await page([branch('r_a', 'Centro', { pending_count: 0 })]);
+  assert.ok(ok.view.querySelector('.in-ok'), 'premise: a known «open» + a known count ⇒ the claim');
 });

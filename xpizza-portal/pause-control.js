@@ -5,6 +5,27 @@
 import { setBranchPause, getMyBranches } from './api.js';
 import * as L from './branch-logic.js';
 import { $, el, button, errBox, OFFLINE } from './ops-dom.js';
+import { knownControl } from './control-state.js';   // THE known control states (one shared list)
+
+// Codex backfill r2 (advisor 11-15): ONE pause state per page session, shared by EVERY view's controller (Inicio and Sucursales each make
+// one): a branch's LOCK (a write or its recovery in flight — every view disables that branch's actions), the per-branch READ GENERATION
+// (any write or re-read anywhere invalidates the older re-reads of that branch), and the views to repaint when a lock moves.
+const STORE = { busy: new Set(), reads: new Map(), views: new Set() };
+const nextRead = (rid) => { const g = (STORE.reads.get(rid) || 0) + 1; STORE.reads.set(rid, g); return g; };
+// a NEW account / sign-in starts a new session: its locks and read generations never carry over (an in-flight recovery of the old
+// context is abandoned — its continuation sees ctx.alive() false); the views' repaints stay registered (the views outlive a sign-in)
+const hooked = new WeakSet();   // each document once (a page has one; a test harness swaps documents)
+function hookAuth() {
+  if (typeof document === 'undefined' || hooked.has(document)) return;
+  hooked.add(document);
+  document.addEventListener('portal:auth', () => { STORE.busy.clear(); STORE.reads.clear(); });
+}
+// test-only: a fresh page session (the suites share ONE module instance across cells; a real page starts with an empty store)
+export function _resetPauseStore() { STORE.busy.clear(); STORE.reads.clear(); STORE.views.clear(); }
+function lock(rid, on) {
+  if (on) STORE.busy.add(rid); else STORE.busy.delete(rid);
+  for (const repaint of STORE.views) { try { repaint(); } catch (_) { /* one view's repaint never blocks another's */ } }
+}
 
 // «Pausar pedidos» moves inside «Sucursales» (§2.4): where an old «pausas» entry lands — the branch's page when the selection is one
 // branch (or the brand has one), the list for «Todas»; an explicit rid in scope wins. Wired when the nav entry goes (§2.3).
@@ -17,14 +38,16 @@ export function pauseLanding(sel, opts = {}) {
 export function pauseControl(ctx, hooks) {
   const { candidates, repaint, showError } = hooks;
   const clearError = typeof hooks.clearError === 'function' ? hooks.clearError : () => {};
-  const V = { modal: null, busy: new Set(), reads: new Map() };
+  const V = { modal: null };
+  STORE.views.add(repaint);
+  hookAuth();
   const scrim = $('pausescrim');
   const modal = $('pausemodal');
 
   // the branch page's action (PLAN §2.2, MOCKUP-portal-pausar-in-sucursales F1/F2): «Pausar sucursal» on an OPEN branch, «Reanudar
   // pedidos» on a PAUSED one — today's card buttons; disabled while this branch's call is in flight. Closed / inactive: none.
   function actionFor(b, st) {
-    const busy = V.busy.has(b.rid);
+    const busy = STORE.busy.has(b.rid);
     if (st.state === 'open') { const p = button('btn danger', 'Pausar sucursal', () => openModal(b), { iconName: 'pause' }); p.disabled = busy; return p; }
     if (st.state === 'paused') { const r = button('btn accent', 'Reanudar pedidos', () => send(b, { op: 'resume' }, `${b.name} recibe pedidos otra vez`), { iconName: 'play' }); r.disabled = busy; return r; }
     return null;
@@ -78,12 +101,13 @@ export function pauseControl(ctx, hooks) {
   scrim.addEventListener('click', (e) => { if (e.target === scrim) closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && V.modal) closeModal(); });
 
-  // a control the page can paint as a FACT: an object whose state is a known one — never «unknown»
-  const definite = (c) => !!c && typeof c === 'object' && typeof c.state === 'string' && c.state !== '' && c.state !== 'unknown';
+  // a control the page can paint as a FACT: the server's enum only (control-state.js) — 'unknown', '' or 'bogus' never are
+  const definite = knownControl;
   async function send(b, body, okText) {
-    if (V.busy.has(b.rid)) return;
+    if (STORE.busy.has(b.rid)) return;
     const gen = ctx.gen();
-    V.busy.add(b.rid);
+    nextRead(b.rid);   // a write invalidates every older re-read of this branch, in every view
+    lock(b.rid, true);
     ctx.setBusy(`pause-${b.rid}`, true);
     clearError(b.rid);
     repaint();
@@ -95,12 +119,12 @@ export function pauseControl(ctx, hooks) {
       err = e;   // judged below: an ambiguous transport failure, or a definite refusal (a panel, never a toast)
     }
     ctx.setBusy(`pause-${b.rid}`, false);
-    if (!ctx.alive(gen)) { V.busy.delete(b.rid); return; }
+    if (!ctx.alive(gen)) { lock(b.rid, false); return; }
     // Codex backfill P1 (advisor 11-15, rule 17's spirit): an AMBIGUOUS outcome — the reply lost in transport (status 0), a malformed 200,
     // or the server's own control.state «unknown» — is UNKNOWN: no success toast, the neutral box, the actions kept disabled until the
     // AUTHORITATIVE control state is read back
     if (err ? (err.kind === 'Unavailable' && !err.status) : !(out && out.ok === true && definite(out.control))) { unconfirmed(b, gen); return; }
-    V.busy.delete(b.rid);
+    lock(b.rid, false);
     if (!err) { ctx.patchBranch(b.rid, { control: out.control }); ctx.toast(okText); return; }
     repaint();
     const box = (err.status === 409)
@@ -112,18 +136,17 @@ export function pauseControl(ctx, hooks) {
   // leaves the box and keeps the actions disabled (advisor 11-15). Copy: two approved strings (review.js + the Pausar 409 body), (a).
   async function unconfirmed(b, gen) {
     showError(errBox('No pudimos confirmar el resultado', 'Recargá para ver cómo quedó.'), b.rid);
-    const seq = (V.reads.get(b.rid) || 0) + 1;
-    V.reads.set(b.rid, seq);
+    const seq = nextRead(b.rid);   // the newest re-read of this branch, across every view
     let e1 = null;
     try {
       e1 = await getMyBranches({ token: ctx.token });
     } catch (_) {
       e1 = null;   // the re-read failed: still unknown
     }
-    if (!ctx.alive(gen) || V.reads.get(b.rid) !== seq) return;   // a newer re-read (or another context) decides
+    if (!ctx.alive(gen) || STORE.reads.get(b.rid) !== seq) return;   // a newer write / re-read (in any view) or another context decides
     const row = e1 && Array.isArray(e1.branches) ? e1.branches.find((x) => x && x.rid === b.rid) : null;
     if (!row || !definite(row.control)) { repaint(); return; }   // still unknown: the box stays, the actions stay disabled
-    V.busy.delete(b.rid);
+    lock(b.rid, false);
     clearError(b.rid);
     ctx.patchBranch(b.rid, { control: row.control });
   }
@@ -131,6 +154,6 @@ export function pauseControl(ctx, hooks) {
   // INICIO (PLAN-portal-inicio-r0 ann 3): «Reanudar» acts in place from the home — the SAME request, toast and failure boxes as the
   // branch page's «Reanudar pedidos»; busy(rid) lets that row disable itself while its call is in flight
   const resume = (b) => send(b, { op: 'resume' }, `${b.name} recibe pedidos otra vez`);
-  const busy = (rid) => V.busy.has(rid);
+  const busy = (rid) => STORE.busy.has(rid);
   return { actionFor, resume, busy };
 }
