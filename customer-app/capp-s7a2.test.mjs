@@ -699,7 +699,7 @@ const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false } = {}) {
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
@@ -707,7 +707,8 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToke
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
-    onAuthStateChanged: (a, next) => { listeners.push(next); Promise.resolve().then(() => next(user ? { uid: user } : null)); return () => { listeners = listeners.filter((x) => x !== next); }; },
+    // authGate: { q } — the first auth state waits until the test releases it (a slow SDK: auth still unresolved at startup)
+    onAuthStateChanged: (a, next) => { listeners.push(next); const first = () => next(user ? { uid: user } : null); if (authGate) authGate.q.push(first); else Promise.resolve().then(first); return () => { listeners = listeners.filter((x) => x !== next); }; },
     signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
     signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
@@ -5793,11 +5794,35 @@ test('PUSH-SHELL-13c (Codex r1 P2-6): a registered device whose prefs are missin
     assert.equal(sw('pedidos').getAttribute('aria-disabled'), 'true', '🔴 PUSH-SHELL-13c: registered with no prefs ⇒ inert (never a guess)');
   } finally { S.w.close(); }
 });
-test('PUSH-SHELL-14 (Codex r1 P2-7): the tap listener is up at STARTUP (a cold start from a tapped push lands on Inicio)', async () => {
-  const { S, f } = await pushBoot();
+test('PUSH-SHELL-14 (Codex r1 P2-7; r2: auth held): the tap listener is up at STARTUP while auth is still unresolved; a tap before admission opens its order once the member is admitted', async () => {
+  // Codex r2: the restored-member callback also installs the listener, so the cell holds auth UNRESOLVED — only startup can be listening
+  const db = { u_ana: {} }, orders = {}, gate = { q: [] };
+  placeReal(db, orders, 'u_ana', 'XP-T14', { display_number: 61 });
+  const { S, f } = await pushBoot({ db, orders, fbOpts: { authGate: gate } });
   try {
     await flushN(4);
+    assert.ok(gate.q.length >= 1, 'premise: auth is still unresolved');
     assert.equal(f.listenerCount('pushNotificationActionPerformed'), 1, '🔴 PUSH-SHELL-14: listening from startup, on Inicio, before any push screen');
+    f.tap({ order_id: 'XP-T14' });   // the cold start's tap, before admission
+    for (const go of gate.q.splice(0)) go();
+    await until(() => S.q('.mk-title'), 6000).catch(() => {});
+    assert.equal(S.q('.mk-title') ? txt(S.q('.mk-num')).startsWith('Orden #61') : null, true, '🔴 PUSH-SHELL-14: the queued tap opens ITS order once admitted');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13d (Codex r2 P2-6): only the CURRENT visit\'s reads count — visit 1\'s late read never frees visit 2\'s switches', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), inert = () => !!sw('pedidos') && sw('pedidos').getAttribute('aria-disabled') === 'true';
+    let open1; ctl.hold = new Promise((r) => { open1 = r; });
+    await toNotifs(S); await flushN(4);
+    assert.ok(inert(), 'premise: visit 1 is reading');
+    S.click('[data-act="notifs-back"]'); await flush();
+    let open2; ctl.hold = new Promise((r) => { open2 = r; });
+    S.click('[data-act="sub-notifs"]'); await flushN(4);
+    assert.ok(inert(), 'premise: visit 2 is reading');
+    open1(); await flushN();
+    assert.ok(inert(), '🔴 PUSH-SHELL-13d: visit 1\'s late read never frees visit 2\'s switches');
+    ctl.hold = null; open2(); await until(() => !inert());
   } finally { S.w.close(); }
 });
 test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Pedidos»\' cache opens ITS receipt by its own detail read; a refused read ⇒ «Pedidos»', async () => {

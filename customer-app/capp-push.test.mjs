@@ -340,3 +340,37 @@ test('PUSH-ACK-PENDING (Codex r1 P2-5): a register the server has not answered i
   const n = mk({ api: null }); await n.push.enable();
   assert.equal(n.push.state().registered, false, '🔴 PUSH-ACK-PENDING: no server ⇒ never registered');
 });
+const dfr = () => { let r; const p = new Promise((x) => { r = x; }); return { p, r }; };
+test('PUSH-OP-OWN (Codex r2 P1): a completion settles only ITS OWN op — A\'s late cleanup never settles B\'s record for the same FCM token', async () => {
+  // Codex's reproduction: one phone keeps ONE FCM token across accounts. A signs out (its phone delete + server delete are slow), B
+  // signs in on the same phone and gets the SAME token, B signs out: B's phone delete fails and 3a refuses B's server delete. Then A's
+  // cleanup lands — successfully. B's record must stay owed (else B's token outlives B's session, with no retry).
+  const nA = dfr(), sA = dfr(), api = fakeApi();
+  api.unregister = async (b, c) => (c && c.owner === 'u_a' ? sA.p : { ok: false, reason: 'forbidden' });
+  const a = mk({ api });
+  let nat = 0; a.f.plugin.unregister = () => (++nat === 1 ? nA.p : Promise.reject(new Error('native down')));
+  await a.push.enable({}, { owner: 'u_a' });
+  a.push.forget(); await drain();   // A's cleanup is out (never awaited)
+  await a.push.enable({}, { owner: 'u_b' });
+  const tokOf = (o) => JSON.parse(a.store.getItem(P.KEY)).pending.find((p) => p.owner === o).token;
+  a.push.forget(); await drain();   // B's cleanup: the phone refuses, the server refuses
+  assert.equal(tokOf('u_a'), tokOf('u_b'), 'premise: the SAME token, two owners');
+  nA.r(); sA.r({ ok: true }); await drain();
+  const left = JSON.parse(a.store.getItem(P.KEY)).pending || [];
+  assert.deepEqual(left.map((p) => [p.owner, p.native === true, p.server === true]), [['u_b', false, false]], '🔴 PUSH-OP-OWN: B\'s record stays owed (A\'s success is A\'s only)');
+  assert.equal(new Set(JSON.parse(a.store.getItem(P.KEY)).pending.map((p) => p.op)).size, left.length, 'one key per record');
+});
+test('PUSH-SIDE-DURABLE (Codex r2 P2): each side\'s success is durable the moment it lands — a hung phone never holds the server\'s', async () => {
+  const a = mk();
+  a.f.plugin.unregister = () => new Promise(() => {});   // the phone never answers (the app is then closed)
+  await a.push.enable({}, { owner: 'u_a' }); a.api.calls.length = 0;
+  a.push.forget(); await drain();
+  assert.equal(a.api.calls.filter((c) => c[0] === 'unregister').length, 1, 'premise: 3a confirmed the delete');
+  const rec = (JSON.parse(a.store.getItem(P.KEY)).pending || [])[0];
+  assert.equal(rec && rec.server, true, '🔴 PUSH-SIDE-DURABLE: the server\'s success is on disk while the phone hangs');
+  // the next boot: only the phone's step is owed — the server is never asked again
+  const b = mk({ store: a.store });
+  const r = await b.push.settle();
+  assert.equal(b.api.calls.filter((c) => c[0] === 'unregister').length, 0, 'never re-sent to the server');
+  assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'both done ⇒ gone');
+});

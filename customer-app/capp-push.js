@@ -104,32 +104,45 @@
     // Codex r1 P1-2: the live token moves into a DURABLE pending record (token + owner) BEFORE anything is sent, so an app closed
     // mid-way loses nothing; then the phone's invalidation (FCM delete / APNs unregister) and the server's run IN PARALLEL — the phone
     // never waits on the server. A record leaves only when the server confirms; settle() retries it (the next boot). ok = both done
+    // Codex r2 P1: every invalidation is its OWN op — a unique key «owner#seq» (seq: a device counter that only grows, kept with the
+    // record) — and a completion settles only the ops it was started for. One phone keeps one FCM token across accounts, so matching
+    // by token would let A's late cleanup settle B's record (B's delete failed, B's server refused) and B's token would outlive B
     const pendingOf = (s) => (Array.isArray(s.pending) ? s.pending.filter((p) => p && typeof p.token === 'string' && p.token) : []);
+    const opKey = (owner) => { const n = (Number.isSafeInteger(read().op_seq) ? read().op_seq : 0) + 1; write({ op_seq: n }); return `${owner || '-'}#${n}`; };
+    // records written before ops existed get theirs once (durably) — never two records under one key
+    function withOps() {
+      const pend = pendingOf(read()); let changed = false; const seen = new Set();
+      for (const p of pend) if (typeof p.op !== 'string' || !p.op || seen.has(p.op)) { p.op = opKey(p.owner); changed = true; } else seen.add(p.op);
+      if (changed) write({ pending: pend });
+      return pend;
+    }
+    // one side's result for THESE ops, durable the moment it lands (Codex r2 P2: never held for the other side); a record leaves
+    // only once both sides are done
+    const mark = (ops, side) => write({ pending: pendingOf(read()).map((p) => (ops.has(p.op) ? { ...p, [side]: true } : p)).filter((p) => !(p.native === true && p.server === true)) });
     async function forget() {
-      const s0 = read(), pend = pendingOf(s0);
-      if (s0.token) pend.push({ token: s0.token, owner: typeof s0.owner === 'string' ? s0.owner : null, native: false });
-      write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });
+      const s0 = read();
+      if (s0.token) {
+        const op = opKey(s0.owner), pend = pendingOf(read());
+        pend.push({ op, token: s0.token, owner: typeof s0.owner === 'string' ? s0.owner : null, native: false });
+        write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });
+      } else if (s0.state === 'granted') write({ state: null });
       return settle();
     }
     async function settle() {
-      const pend = pendingOf(read());
+      const pend = withOps();
       if (!pend.length) return { ok: true, server: null };
       // the phone holds ONE token: invalidate it only while no newer live token exists (never kill the next opt-in's)
-      const nativeOwed = pend.some((p) => p.native !== true), nativeP = !nativeOwed ? Promise.resolve(true)
+      const nOps = new Set(pend.filter((p) => p.native !== true).map((p) => p.op));
+      const nativeP = !nOps.size ? Promise.resolve(true)
         : !on || read().token ? Promise.resolve(false)
         : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);
-      const mine = new Set(pend.map((p) => p.token));
-      // the phone's result is durable the moment it lands — never held hostage by a server that may never answer
-      nativeP.then((ok) => { if (ok) write({ pending: pendingOf(read()).map((p) => (mine.has(p.token) ? { ...p, native: true } : p)) }); });
+      nativeP.then((ok) => { if (ok && nOps.size) mark(nOps, 'native'); });
       const owed = pend.filter((p) => p.server !== true);
-      const serverP = Promise.all(owed.map((p) => (api && typeof api.unregister === 'function'
-        ? Promise.resolve().then(() => api.unregister({ token: p.token }, { owner: p.owner })).then((r) => r, () => null) : Promise.resolve(null))));
-      const [nativeOk, rs] = await Promise.all([nativeP, serverP]);
-      const done = new Set(owed.filter((p, i) => rs[i] && rs[i].ok === true).map((p) => p.token));
-      const left = pendingOf(read()).map((p) => (mine.has(p.token) ? { ...p, native: p.native === true || nativeOk, server: p.server === true || done.has(p.token) } : p))
-        .filter((p) => !(p.native === true && p.server === true));
-      write({ pending: left });
-      return { ok: nativeOk && done.size === owed.length, native: nativeOk, server: rs.length ? rs[rs.length - 1] : null };
+      const rs = await Promise.all([nativeP, ...owed.map((p) => (api && typeof api.unregister === 'function'
+        ? Promise.resolve().then(() => api.unregister({ token: p.token }, { owner: p.owner })).then((r) => r, () => null) : Promise.resolve(null))
+        .then((r) => { if (r && r.ok === true) mark(new Set([p.op]), 'server'); return r; }))]);
+      const nativeOk = rs[0], srv = rs.slice(1);
+      return { ok: nativeOk && srv.every((r) => r && r.ok === true), native: nativeOk, server: srv.length ? srv[srv.length - 1] : null };
     }
 
     function onTap(cb) {

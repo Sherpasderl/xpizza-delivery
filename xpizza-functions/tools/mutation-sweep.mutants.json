@@ -38371,7 +38371,7 @@
   "slice": "capp-push",
   "label": "Codex r1 P1-2: a refused / failed invalidation reports success",
   "file": "../customer-app/capp-push.js",
-  "from": "return { ok: nativeOk && done.size === owed.length,",
+  "from": "return { ok: nativeOk && srv.every((r) => r && r.ok === true),",
   "to": "return { ok: true,",
   "command": [
    "node",
@@ -38412,6 +38412,38 @@
   ],
   "kills_with": [
    "🔴 PUSH-ACK-PENDING: in flight ⇒ not registered"
+  ]
+ },
+ {
+  "id": "push-25",
+  "slice": "capp-push",
+  "label": "Codex r2 P1: a server completion settles every record of the same token (not only its own op)",
+  "file": "../customer-app/capp-push.js",
+  "from": "mark(new Set([p.op]), 'server')",
+  "to": "mark(new Set(pendingOf(read()).filter((q) => q.token === p.token).map((q) => q.op)), 'server')",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-OP-OWN: B's record stays owed"
+  ]
+ },
+ {
+  "id": "push-26",
+  "slice": "capp-push",
+  "label": "Codex r2 P2: the server's success is persisted only after the phone answers",
+  "file": "../customer-app/capp-push.js",
+  "from": ".then((r) => { if (r && r.ok === true) mark(new Set([p.op]), 'server'); return r; })",
+  "to": ".then((r) => nativeP.then(() => { if (r && r.ok === true) mark(new Set([p.op]), 'server'); return r; }))",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SIDE-DURABLE: the server's success is on disk while the phone hangs"
   ]
  },
  {
@@ -38681,6 +38713,42 @@
   ],
   "kills_with": [
    "🔴 SETTINGS-BOOT: open-os-settings ⇒ AppSettings.open()"
+  ]
+ },
+ {
+  "id": "push-s16",
+  "slice": "capp-push",
+  "label": "Codex r2 P2-6: an earlier visit's late read counts for the current visit",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "|| visit !== pushVisit) return;",
+  "to": ") return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-13d: visit 1's late read never frees visit 2's switches"
+  ]
+ },
+ {
+  "id": "push-s17",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-7 / r2: the tap listener is installed only by the auth callback (not at startup)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (runtime.push === true) pushCore();",
+  "to": "      if (false) pushCore();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-14: listening from startup"
   ]
  }
 ]
