@@ -93,7 +93,7 @@ async function setup({ switches = { offers_enabled: true, anuncio_enabled: false
   const CATS = { tb_centro: ['pizzas', 'bebidas', 'vacia'], tb_sur: ['pizzas'] };
   const readCategoryMenu = async (rid) => versionMenu(CATALOG[rid], CATS[rid]);
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu };
-  return { fake, db, deps, CATALOG };
+  return { fake, db, deps, CATALOG, CATS };
 }
 const req = (tok, body, method = 'POST', query) => ({ method, body, query, get: (h) => (h === 'authorization' && tok ? `Bearer ${tok}` : undefined) });
 const get = (deps, tok, rid) => C.getMarketingCore(deps, req(tok, undefined, 'GET', { rid }));
@@ -210,7 +210,9 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const cat = (o = {}) => offer({ name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, ...o });
       const r = await save(deps, `t-${OWNER}`, { offer: cat({ branches: ['tb_centro', 'tb_sur'] }) });
       assert.strictEqual(r.status, 200, `premise: saved (${JSON.stringify(r.body)})`);
-      assert.deepStrictEqual(fake.get(`marketing_brand/tb/offers/${r.body.offer.id}/params`), { cats: ['pizzas'], items: [K1, K2].sort(), free_per_order: 1 }, 'saved: the category AND its resolved dishes (the union over the branches)');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/offers/${r.body.offer.id}/params`), { cats: ['pizzas'], items: [K1, K2].sort(), by_branch: { tb_centro: [K1, K2].sort(), tb_sur: [K1, K2].sort() }, free_per_order: 1 },
+        'saved: the category, the union of its dishes (the review list) AND each branch\'s own dishes (what that branch\'s mirror carries)');
+      assert.ok(!('by_branch' in r.body.offer.params), 'the view never carries the per-branch lists (the portal reads cats + items)');
       assert.deepStrictEqual(r.body.offer.params.items, [K1, K2].sort(), 'the review shows the resolved product list («Aplica a: …»)');
       ok('category save: dishes resolved from the active versions, stored with the category');
       for (const [cats, reason, rid] of [[['nada'], 'unknown_category', 'tb_centro'], [['vacia'], 'empty_category', 'tb_centro'], [['bebidas'], 'unknown_category', 'tb_sur']]) {
@@ -218,11 +220,12 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         assert.deepStrictEqual([x.status, x.body.reason, x.body.rid], [400, reason, rid], `${cats}: ${reason} on ${rid}`);
       }
       ok('an unknown or empty category on ANY branch is refused, naming the branch');
-      CATALOG.tb_centro.push(['i_dddddddddddd', 180, 'pizzas']);   // a dish added BEFORE publishing
+      CATALOG.tb_centro.push(['i_dddddddddddd', 180, 'pizzas']);   // a dish added BEFORE publishing (on tb_centro only)
       const p = await move(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, to: 'active', expected_rev: 1 });
       assert.strictEqual(p.status, 200);
       const want = [K1, K2, 'i_dddddddddddd'].sort();
-      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_sur/${r.body.offer.id}/params/items`), want, 'publish RE-RESOLVES: the new dish is in the mirror');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), want, 'publish RE-RESOLVES: the new dish is in its branch\'s mirror');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_sur/${r.body.offer.id}/params/items`), [K1, K2].sort(), '…and only there (tb_sur\'s category never had it)');
       CATALOG.tb_centro.push(['i_eeeeeeeeeeee', 200, 'pizzas']);   // a dish added AFTER publishing
       assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${r.body.offer.id}/params/items`), want, 'frozen: a dish added after publish is NOT covered');
       const re = await save(deps, `t-${OWNER}`, { offer_id: r.body.offer.id, expected_rev: 2, offer: cat({ branches: ['tb_centro', 'tb_sur'], schedule: { start: NOW + DAY, end: NOW + 40 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } }) });
@@ -233,6 +236,56 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const clash = await move(deps, `t-${OWNER}`, { offer_id: dish.id, to: 'active', expected_rev: 1 });
       assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['2 por 1 en pizzas']], 'a dish offer on a dish the category covers clashes by its resolved items');
       ok('the overlap rule sees a category offer through its resolved dishes');
+    }
+
+    // ── 3c. a category offer is resolved PER BRANCH (Codex #93 F1): each branch's mirror carries only THAT branch's members ──
+    {
+      const { fake, deps, CATALOG, CATS } = await setup();
+      // tb_centro: pizzas = K1 + K2. tb_sur: pizzas = K2 only — K1 is an «especiales» dish there
+      CATALOG.tb_sur = [[K1, 150, 'especiales'], [K2, 220, 'pizzas']]; CATS.tb_sur = ['pizzas', 'especiales'];
+      const cat = await published(deps, { name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] });
+      const at = (rid) => fake.get(`marketing_brand/tb/live/${rid}/${cat.id}/params/items`);
+      assert.deepStrictEqual(at('tb_centro'), [K1, K2].sort(), 'branch 1: its pizzas (K1 + K2)');
+      assert.deepStrictEqual(at('tb_sur'), [K2], 'branch 2: ONLY its own pizzas — K1 is not a pizza there, never discounted there');
+      ok('cross-branch: each branch\'s mirror carries only its own members of the category');
+      // the overlap rule judges each branch by ITS dishes: K1 at tb_sur is free; K1 at tb_centro clashes
+      const sur = await published(deps, { name: 'K1 en el sur', branches: ['tb_sur'] });
+      assert.strictEqual(sur.state, 'active', 'a K1 offer at tb_sur does not clash (the category does not cover K1 there)');
+      const centro = await created(deps, { name: 'K1 en el centro' });
+      const clash = await move(deps, `t-${OWNER}`, { offer_id: centro.id, to: 'active', expected_rev: 1 });
+      assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['2 por 1 en pizzas']], 'a K1 offer at tb_centro clashes (the category covers K1 there)');
+      ok('cross-branch overlap: judged per branch on that branch\'s dishes');
+      // a dish MOVING category after programming — the existing rule: FROZEN at save / publish, re-resolved on the next save / publish
+      CATALOG.tb_sur[0][2] = 'pizzas';   // K1 joins tb_sur's pizzas
+      assert.deepStrictEqual(at('tb_sur'), [K2], 'frozen: K1 moving into the category after publish is NOT covered at tb_sur');
+      const resave = (rev) => save(deps, `t-${OWNER}`, { offer_id: cat.id, expected_rev: rev, offer: offer({ name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }) });
+      const busy = await resave(2);
+      assert.deepStrictEqual([busy.status, busy.body.error, busy.body.rid, at('tb_sur')], [409, 'overlap', 'tb_sur', [K2]], 'the re-save re-resolves K1 into tb_sur, where the K1 offer is live ⇒ refused, nothing written');
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: sur.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: the K1 offer at tb_sur ended');
+      const re = await resave(2);
+      assert.strictEqual(re.status, 200, `the re-save goes through (${JSON.stringify(re.body)})`);
+      assert.deepStrictEqual([at('tb_centro'), at('tb_sur')], [[K1, K2].sort(), [K1, K2].sort()], 'the re-save covers K1 at tb_sur now that it is a pizza there');
+      ok('a dish moving into the category after publish: frozen until the next save / publish, then covered (judged per branch)');
+    }
+    // ── 3d. a single-branch category offer: unchanged (its mirror carries its category's dishes) ──
+    {
+      const { fake, deps } = await setup();
+      const one = await published(deps, { name: 'Pizzas centro', params: { cats: ['pizzas'], free_per_order: 1 } });
+      const rec = fake.get(`marketing_brand/tb/offers/${one.id}`);
+      assert.deepStrictEqual(rec.params, { cats: ['pizzas'], items: [K1, K2].sort(), by_branch: { tb_centro: [K1, K2].sort() }, free_per_order: 1 }, 'the record: the union = the one branch\'s list');
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${one.id}`), { rev: 2, brand_id: 'tb', name: 'Pizzas centro', type: 'bogo', params: { cats: ['pizzas'], items: [K1, K2].sort(), free_per_order: 1 }, audience: 'all', schedule: rec.schedule },
+        'the mirror: the same compact record as before (cats + items + free_per_order — never the per-branch map)');
+      ok('single-branch category offer: record and mirror unchanged in substance');
+      // the per-branch map is the SERVER's: one list per named branch, never authored
+      const opts = { isRid: require('../brands/brand-model').isBrandId };
+      assert.strictEqual(OM.recordOk(rec, opts), true, 'premise: the written record is well-formed');
+      for (const [by, why] of [[{}, 'empty'], [{ tb_sur: [K1] }, 'another branch'], [{ tb_centro: [K1], tb_sur: [K1] }, 'an extra branch'], [{ tb_centro: [] }, 'an empty list']]) {
+        assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, by_branch: by } }, opts), false, `a stored by_branch with ${why} is malformed`);
+      }
+      assert.strictEqual(OM.recordOk({ ...rec, params: { items: [K1], by_branch: { tb_centro: [K1] }, free_per_order: 1 } }, opts), false, 'a by-dish offer never carries by_branch');
+      const authored = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], by_branch: { tb_centro: [K1] }, free_per_order: 1 } }) });
+      assert.deepStrictEqual([authored.status, authored.body.reason], [400, 'bad_params'], 'the builder can never send by_branch');
+      ok('by_branch: exactly one non-empty list per named branch, server-written only');
     }
 
     // ── 4. publish → the live mirror; pause / resume / end; CAS ──

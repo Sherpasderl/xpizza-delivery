@@ -66,16 +66,24 @@ function paramsOf(type, p, stored = false) {
   if (type === 'bogo') {
     // AUTHORED (the builder): items XOR cats. STORED: a category offer also carries `items`, its dishes RESOLVED from each branch's
     // active catalog version at save / publish (advisor 11-14: frozen at publish; a dish added to the category later is covered only
-    // after a re-save). The price path and the overlap rule read `items` only.
+    // after a re-save), and `by_branch` { rid: [keys] } — EACH branch's own members of the category (Codex #93 F1: a branch's mirror
+    // carries only its own; `items` is their union, the review's list). The price path and the overlap rule read a mirror's `items` only.
     const hasItems = isObj(p) && 'items' in p, hasCats = isObj(p) && 'cats' in p;
     if (stored ? !(hasItems || hasCats) || (hasCats && !hasItems) : hasItems === hasCats) return null;
-    if (!exactKeys(p, ['free_per_order'], ['items', 'cats'])) return null;
+    if (!exactKeys(p, ['free_per_order'], ['items', 'cats', ...(stored ? ['by_branch'] : [])])) return null;
+    if ('by_branch' in p && !(hasCats && hasItems)) return null;
     if (!isInt(p.free_per_order, 1, LIMITS.free_per_order_max)) return null;
     const listOk = (list, max) => Array.isArray(list) && list.length >= 1 && list.length <= max && list.every(keyOk) && uniq(list);
     if (hasCats) {
       if (!listOk(p.cats, LIMITS.cats_max)) return null;
       if (hasItems && !listOk(p.items, LIMITS.cat_items_max)) return null;
-      return { cats: [...p.cats], ...(hasItems ? { items: [...p.items] } : {}), free_per_order: p.free_per_order };
+      let by = null;
+      if ('by_branch' in p) {   // its keys are judged against the branches by validateAuthored
+        const e = isObj(p.by_branch) ? Object.entries(p.by_branch) : [];
+        if (!e.length || !e.every(([, l]) => listOk(l, LIMITS.cat_items_max))) return null;
+        by = Object.fromEntries(e.map(([r, l]) => [r, [...l]]));
+      }
+      return { cats: [...p.cats], ...(hasItems ? { items: [...p.items] } : {}), ...(by ? { by_branch: by } : {}), free_per_order: p.free_per_order };
     }
     if (!listOk(p.items, LIMITS.items_max)) return null;
     return { items: [...p.items], free_per_order: p.free_per_order };
@@ -131,6 +139,8 @@ function validateAuthored(input, { isRid, stored = false }) {
   if (input.type === 'nuevos' && input.audience !== 'new') return fail('audience', 'nuevos_is_new');   // «Para clientes nuevos»
   const b = input.branches;
   if (!Array.isArray(b) || b.length < 1 || b.length > LIMITS.branches_max || !b.every((r) => isRid(r)) || !uniq(b)) return fail('branches', 'bad_branches');
+  // a stored category offer's per-branch dishes: exactly one list per branch it names
+  if (params.by_branch && !(Object.keys(params.by_branch).length === b.length && b.every((r) => Object.prototype.hasOwnProperty.call(params.by_branch, r)))) return fail('params', 'bad_params');
   const schedule = scheduleOf(input.schedule);
   if (schedule === null) return fail('schedule', 'bad_schedule');
   return { ok: true, value: { name, type: input.type, params, audience: input.audience, branches: [...b].sort(), schedule } };
@@ -197,7 +207,17 @@ function resolveCats(menu, cats) {
 
 // The compact record the PRICE PATH reads — present only while state === 'active', for a v1 type AND a v1 audience (else null ⇒ a
 // tombstone). `name` rides for the overlap refusal's wording.
-const liveProjection = (rec, brandId) => (!typeSupported(rec.type) || !audienceSupported(rec.audience) ? null : stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule }));
+// A category offer projects onto branch `rid` with THAT branch's own dishes only (Codex #93 F1) — never the union; no list for `rid` ⇒ null.
+function liveProjection(rec, brandId, rid) {
+  if (!typeSupported(rec.type) || !audienceSupported(rec.audience)) return null;
+  let params = rec.params;
+  if (usesCats(rec)) {
+    const own = isObj(rec.params.by_branch) ? rec.params.by_branch[rid] : undefined;
+    if (!Array.isArray(own) || !own.length) return null;
+    params = { cats: rec.params.cats, items: own, free_per_order: rec.params.free_per_order };
+  }
+  return stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params, audience: rec.audience, schedule: rec.schedule });
+}
 
 // ── the weekly overlap rule (mockup 3 «1 con cruce») ────────────────────────────────────────────────────────────────────────────
 // An offer's weekly minutes — the ONE definition now lives in marketing/offer-rules.js (shared with the capp; advisor 11-14, 5f moved it
@@ -216,6 +236,12 @@ function dishesOf(rec) {
   return [];   // a category offer without its resolved items covers nothing (never guessed)
 }
 const usesCats = (rec) => rec.type === 'bogo' && Array.isArray(rec.params.cats);
+// the dish keys an item-offer covers AT branch `rid` (a category offer: that branch's own resolved list; none ⇒ nothing, never the union)
+function dishesAt(rec, rid) {
+  if (!usesCats(rec)) return dishesOf(rec);
+  const own = isObj(rec.params.by_branch) ? rec.params.by_branch[rid] : null;
+  return Array.isArray(own) ? own : [];
+}
 
 // The status the portal shows, derived (no job): an active offer before its start is «scheduled», after its end «ended».
 function statusOf(rec, nowMs) {
@@ -231,6 +257,6 @@ const hnDow = (ms) => new Date(ms - HN_OFFSET_MS).getUTCDay();
 module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
   V1_TYPES, typeSupported, V1_AUDIENCES, audienceSupported, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
-  weeklyIntervals, schedulesOverlap, dishesOf, usesCats, resolveCats, statusOf, hnDow,
+  weeklyIntervals, schedulesOverlap, dishesOf, dishesAt, usesCats, resolveCats, statusOf, hnDow,
   paramsOf, scheduleOf,   // the ONE params / schedule rule, for the public offers read (catalog/offers-serve.js)
 };
