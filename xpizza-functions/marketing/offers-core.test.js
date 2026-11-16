@@ -204,6 +204,39 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('validation: dish on the live menu, pct 5..50 step 5, lps min ≥ off, nuevos ⇒ new, schedule, caps absent / null only (else caps_not_supported), exact keys, items xor cats; money in whole lempiras, absent = none, never 0');
     }
 
+    // ── 3c. a category offer is resolved PER BRANCH (Codex #93 F1): each branch's mirror carries only THAT branch's members ──
+    {
+      const { fake, deps, CATALOG, CATS } = await setup();
+      // tb_centro: pizzas = K1 + K2. tb_sur: pizzas = K2 only — K1 is an «especiales» dish there
+      CATALOG.tb_sur = [[K1, 150, 'especiales'], [K2, 220, 'pizzas']]; CATS.tb_sur = ['pizzas', 'especiales'];
+      const sur = await published(deps, { name: 'K1 en el sur', branches: ['tb_sur'] });   // a K1 offer at tb_sur, live FIRST
+      const draft = await created(deps, { name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] });
+      const pub = await move(deps, `t-${OWNER}`, { offer_id: draft.id, to: 'active', expected_rev: 1 });
+      const cat = pub.body.offer || {};
+      const at = (rid) => fake.get(`marketing_brand/tb/live/${rid}/${draft.id}/params/items`);
+      // the overlap rule judges each branch by ITS dishes: the category publishes beside the K1 offer at tb_sur
+      assert.deepStrictEqual([pub.status, cat.state], [200, 'active'], `the category publishes beside a K1 offer at tb_sur — it does not cover K1 there (${JSON.stringify(pub.body)})`);
+      assert.deepStrictEqual(at('tb_sur'), [K2], 'branch 2: ONLY its own pizzas — K1 is not a pizza there, never discounted there');
+      assert.deepStrictEqual(at('tb_centro'), [K1, K2].sort(), 'branch 1: its pizzas (K1 + K2)');
+      ok('cross-branch: each branch\'s mirror carries only its own members of the category');
+      // …and K1 at tb_centro clashes (the category covers K1 there)
+      assert.strictEqual(sur.state, 'active', 'premise: the K1 offer at tb_sur is live');
+      const centro = await created(deps, { name: 'K1 en el centro' });
+      const clash = await move(deps, `t-${OWNER}`, { offer_id: centro.id, to: 'active', expected_rev: 1 });
+      assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['2 por 1 en pizzas']], 'a K1 offer at tb_centro clashes (the category covers K1 there)');
+      ok('cross-branch overlap: judged per branch on that branch\'s dishes');
+      // a dish MOVING category after programming — the existing rule: FROZEN at save / publish, re-resolved on the next save / publish
+      CATALOG.tb_sur[0][2] = 'pizzas';   // K1 joins tb_sur's pizzas
+      assert.deepStrictEqual(at('tb_sur'), [K2], 'frozen: K1 moving into the category after publish is NOT covered at tb_sur');
+      const resave = (rev) => save(deps, `t-${OWNER}`, { offer_id: cat.id, expected_rev: rev, offer: offer({ name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }) });
+      const busy = await resave(2);
+      assert.deepStrictEqual([busy.status, busy.body.error, busy.body.rid, at('tb_sur')], [409, 'overlap', 'tb_sur', [K2]], 'the re-save re-resolves K1 into tb_sur, where the K1 offer is live ⇒ refused, nothing written');
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: sur.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: the K1 offer at tb_sur ended');
+      const re = await resave(2);
+      assert.strictEqual(re.status, 200, `the re-save goes through (${JSON.stringify(re.body)})`);
+      assert.deepStrictEqual([at('tb_centro'), at('tb_sur')], [[K1, K2].sort(), [K1, K2].sort()], 'the re-save covers K1 at tb_sur now that it is a pizza there');
+      ok('a dish moving into the category after publish: frozen until the next save / publish, then covered (judged per branch)');
+    }
     // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
     {
       const { fake, deps, CATALOG } = await setup();
@@ -238,35 +271,6 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('the overlap rule sees a category offer through its resolved dishes');
     }
 
-    // ── 3c. a category offer is resolved PER BRANCH (Codex #93 F1): each branch's mirror carries only THAT branch's members ──
-    {
-      const { fake, deps, CATALOG, CATS } = await setup();
-      // tb_centro: pizzas = K1 + K2. tb_sur: pizzas = K2 only — K1 is an «especiales» dish there
-      CATALOG.tb_sur = [[K1, 150, 'especiales'], [K2, 220, 'pizzas']]; CATS.tb_sur = ['pizzas', 'especiales'];
-      const cat = await published(deps, { name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] });
-      const at = (rid) => fake.get(`marketing_brand/tb/live/${rid}/${cat.id}/params/items`);
-      assert.deepStrictEqual(at('tb_centro'), [K1, K2].sort(), 'branch 1: its pizzas (K1 + K2)');
-      assert.deepStrictEqual(at('tb_sur'), [K2], 'branch 2: ONLY its own pizzas — K1 is not a pizza there, never discounted there');
-      ok('cross-branch: each branch\'s mirror carries only its own members of the category');
-      // the overlap rule judges each branch by ITS dishes: K1 at tb_sur is free; K1 at tb_centro clashes
-      const sur = await published(deps, { name: 'K1 en el sur', branches: ['tb_sur'] });
-      assert.strictEqual(sur.state, 'active', 'a K1 offer at tb_sur does not clash (the category does not cover K1 there)');
-      const centro = await created(deps, { name: 'K1 en el centro' });
-      const clash = await move(deps, `t-${OWNER}`, { offer_id: centro.id, to: 'active', expected_rev: 1 });
-      assert.deepStrictEqual([clash.status, clash.body.error, clash.body.with], [409, 'overlap', ['2 por 1 en pizzas']], 'a K1 offer at tb_centro clashes (the category covers K1 there)');
-      ok('cross-branch overlap: judged per branch on that branch\'s dishes');
-      // a dish MOVING category after programming — the existing rule: FROZEN at save / publish, re-resolved on the next save / publish
-      CATALOG.tb_sur[0][2] = 'pizzas';   // K1 joins tb_sur's pizzas
-      assert.deepStrictEqual(at('tb_sur'), [K2], 'frozen: K1 moving into the category after publish is NOT covered at tb_sur');
-      const resave = (rev) => save(deps, `t-${OWNER}`, { offer_id: cat.id, expected_rev: rev, offer: offer({ name: '2 por 1 en pizzas', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }) });
-      const busy = await resave(2);
-      assert.deepStrictEqual([busy.status, busy.body.error, busy.body.rid, at('tb_sur')], [409, 'overlap', 'tb_sur', [K2]], 'the re-save re-resolves K1 into tb_sur, where the K1 offer is live ⇒ refused, nothing written');
-      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: sur.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: the K1 offer at tb_sur ended');
-      const re = await resave(2);
-      assert.strictEqual(re.status, 200, `the re-save goes through (${JSON.stringify(re.body)})`);
-      assert.deepStrictEqual([at('tb_centro'), at('tb_sur')], [[K1, K2].sort(), [K1, K2].sort()], 'the re-save covers K1 at tb_sur now that it is a pizza there');
-      ok('a dish moving into the category after publish: frozen until the next save / publish, then covered (judged per branch)');
-    }
     // ── 3d. a single-branch category offer: unchanged (its mirror carries its category's dishes) ──
     {
       const { fake, deps } = await setup();
