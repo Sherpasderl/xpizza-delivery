@@ -33,11 +33,11 @@ const J = (x) => JSON.parse(JSON.stringify(x));
 // ── the contract fake ──
 // the 5f allowlist, in output order (directory.js ENTRY_FIELDS / BODY_FIELDS at the pinned commit)
 const ENTRY_FIELDS = ['restaurant_id', 'name', 'kicker', 'unit', 'cuisines', 'logo_url', 'logo_wide', 'hero_url', 'asset_base', 'branch', 'pickup_addr', 'coverage_km', 'hub_lat', 'hub_lng',
-  'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'degraded'];
+  'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'ratings', 'degraded'];
 const BODY_FIELDS = ['representation_version', 'complete', 'platform', 'restaurants', 'unavailable'];
 test('contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators', () => {
-  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419');
-  assert.equal(FX.source.blobs['directory/directory.js'], 'b462c1b21704e47565e5907e86b80fed8de9ed3a', 'the handler blob the fixture came from');
+  assert.equal(FX.source.commit, 'eb3d1cb9c9f06491b00d73c5477865775ef7b178');
+  assert.equal(FX.source.blobs['directory/directory.js'], '354bfc732ce6a5c9dbeaf7d3616e0173fec45ce0', 'the handler blob the fixture came from');
   // Codex s7a2 r1 #10: the CONTENTS are pinned — the generator's digest of every scenario, recomputed here and pinned literally (a hand
   // edit, e.g. a fee, fails; a regeneration from the real handler that changes anything must update this line on purpose)
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
@@ -45,7 +45,8 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
   // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
   // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
-  assert.equal(digest, 'a432b4a948ad18b04d7e6425e9b015d8051d21f69a4962eeb9e05aba048bffc9', '🔴 the fixture contents are the pinned generation');
+  // regenerated 2026-11-16 at the asm10 deploy (main eb3d1cb9c): directory-2 (+ `ratings` per entry); the 5f marker overlay stays (advisor-ruled re-anchor)
+  assert.equal(digest, '8df402203f7b364fb5c38a1bb4cea3925f8f296eab9361816e74b675f5d81b10', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -4917,10 +4918,11 @@ test('RULE 10: what the pinned directory writer emits TODAY (a promo without the
     } finally { S.w.close(); }
   }
 });
-test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself', () => {
+test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb3d1cb9c AND that writer still emits no marker itself', () => {
   const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
   if (!gen.includes('5f MARKER OVERLAY')) return;   // the bridge is gone: nothing left to expire
-  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
+  // re-anchored eb6d9558 → eb3d1cb9c (advisor ruling 11-16): the deployed writer still emits no marker; the next re-pin trips this again
+  assert.equal(FX.source.commit, 'eb3d1cb9c9f06491b00d73c5477865775ef7b178', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
   const rawPromos = SC.complete_writer_raw.body.restaurants.map((e) => e.promo).filter(Boolean);
   assert.ok(rawPromos.length > 0, 'premise: the raw writer emits a promo');
   assert.ok(rawPromos.every((p) => !('basis' in p)), '🔴 bridge EXPIRED: the pinned writer emits the marker itself — drop the overlay');
