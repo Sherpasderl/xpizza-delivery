@@ -28562,8 +28562,8 @@
   "slice": "formbake",
   "label": "PLAN 4 §8.1: the representation version is not advanced — a body with the new fields keeps the 1d.2 cache key",
   "file": "catalog/public-menu.js",
-  "from": "const REPRESENTATION_VERSION = '1d.3';",
-  "to": "const REPRESENTATION_VERSION = '1d.2';",
+  "from": "const REPRESENTATION_VERSION = '1d.4';",
+  "to": "const REPRESENTATION_VERSION = '1d.3';",
   "command": [
    "node",
    "catalog/plan4-display-fields.test.js"
