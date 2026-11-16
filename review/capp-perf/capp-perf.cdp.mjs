@@ -1,5 +1,6 @@
 // Customer app — the CDP performance harness (PLAN-capp-S7a r3.3 / PLAN-capp-S4 r5.3: ONE tool, both slices). Run at hand-back:
 //   node review/capp-perf/capp-perf.cdp.mjs            (CHROME_BIN overrides the browser; no emulator, no network beyond 127.0.0.1)
+//   node review/capp-perf/capp-perf.cdp.mjs --premise  (the headers premise only — no browser)
 // Cell F4 (this slice): the self-hosted fonts NEVER move layout. The REAL customer-app/index.html (its own <head>: preloads,
 // figtree-fonts.css, capp.css) is served with ONE host script appended that mounts the REAL CappUI on the REAL served envelope
 // (review/capp-s2b/envelopes.json), at 390×844 DPR 2. Layout shifts are read from the page's own PerformanceObserver.
@@ -63,10 +64,17 @@ function siteHeaders() {
     for (const m of vals.split(/^\s*\[/m)[0].matchAll(/^\s*([A-Za-z-]+)\s*=\s*"([^"]*)"/gm)) headers[m[1].toLowerCase()] = m[2];
     if (glob) rules.push({ re: new RegExp('^' + glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'), headers });
   }
-  if (!rules.some((r) => r.re.test('/fonts/x.woff2') && /immutable|max-age=[1-9]/.test(r.headers['cache-control'] || ''))) throw new Error('premise: netlify.toml serves no cacheable /fonts/* rule');
-  return (sitePath) => Object.assign({}, NETLIFY_DEFAULT, ...rules.filter((r) => r.re.test(sitePath)).map((r) => r.headers));
+  const resolve = (sitePath) => Object.assign({}, NETLIFY_DEFAULT, ...rules.filter((r) => r.re.test(sitePath)).map((r) => r.headers));
+  // premise: every font the page REALLY loads (each url() of customer-app/figtree-fonts.css, at its site path) is served cacheable by the
+  // site's merged rules — read from the stylesheet, never typed here, so a font move cannot leave the premise checking a dead path
+  const fonts = [...fs.readFileSync(path.join(ROOT, 'customer-app/figtree-fonts.css'), 'utf8').matchAll(/url\(\s*['"]?([^'")]+\.woff2)['"]?\s*\)/g)].map((m) => '/' + m[1].replace(/^\/+/, ''));
+  if (!fonts.length) throw new Error('premise: customer-app/figtree-fonts.css names no .woff2 font');
+  const uncached = fonts.filter((f) => !/immutable|max-age=[1-9]/.test(resolve(f)['cache-control'] || ''));
+  if (uncached.length) throw new Error(`premise: netlify.toml serves no cacheable rule for ${uncached.join(', ')}`);
+  return Object.assign(resolve, { fonts });
 }
 const HEADERS = siteHeaders();
+if (process.argv.includes('--premise')) { console.log(`premise OK: ${HEADERS.fonts.length} font(s) cacheable — ${HEADERS.fonts.map((f) => `${f} → ${HEADERS(f)['cache-control']}`).join('; ')}`); process.exit(0); }
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2' };
 function serve({ fontDelayMs, oldPolicy }) {
   const srv = http.createServer((req, res) => {
