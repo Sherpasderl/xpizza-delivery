@@ -1684,13 +1684,48 @@ test('A2 the audience flag ON (the restore path, live): v5\'s «Clientes» row (
     assert.ok(/Clientes/.test(sh.textContent), '«Revisá tu oferta» lists «Clientes»');
   } finally { ML.FLAGS.audience = false; }
 });
-test('A3 the 400 audience_not_supported (3a, offers v1) is a DEFINITE refusal — the generic «No pudimos guardar…», never confirmed, never UNKNOWN', () => {
-  // the reply shape of 3a's other v1 validation refusals (caps_not_supported / type_not_supported, V1-iii — from the real core); the real
-  // core's audience refusal is not in the pinned ref 9462baf40 yet: re-derive from it when the pin moves
-  const res = { status: 400, body: { error: 'bad_request', field: 'audience', reason: 'audience_not_supported' } };
-  for (const a of [{ op: 'create', opId: 'op_x' }, { op: 'save', opId: 'op_x', offerId: 'o_x', expectedRev: 1 }]) {
-    assert.equal(ML.classifyWrite(a, res).outcome, 'refused', `${a.op}: definite`);
-  }
+// 3a's OF pin 20325d019 (advisor 11-16) refuses every audience but 'all': a 400 on a save (offer-model validateAuthored), a 409 when a
+// STORED new / returning offer would go live (offers-core :399, AFTER its claim check at :388 ⇒ op-judged). Both from the REAL core.
+const AUD_REF = '20325d0190e419d506b7bca5781ad132a4bed635';
+test('A3a the REAL core (3a 20325d019): «Clientes nuevos» → «Programar oferta» ⇒ 400 audience_not_supported, DEFINITE — ONE call, the dialog stays with the generic word', async () => {
+  ML.FLAGS.audience = true;   // the only way the UI can author it (the restore path)
+  try {
+    const b = await world({ ref: AUD_REF });
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    await openCard(p, 'pct');
+    rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
+    [...rowEl(p, 'aud').querySelectorAll('.mk5b-opt')].find((x) => x.textContent.startsWith('Clientes nuevos')).querySelector('input').dispatchEvent(new p.w.Event('change')); await settle();
+    const sh = await toReview(p);
+    p.btn('Programar oferta', sh).click(); await settle(300);
+    const sv = saves(b);
+    assert.equal(sv.length, 1, 'A3a: definite ⇒ ONE call, never confirmed');
+    assert.equal(sv[0].body.offer.audience, 'new', 'premise: the UI sent audience «new»');
+    const direct = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: sv[0].body.offer, token: b.token });
+    assert.deepEqual([direct.status, direct.body.error, direct.body.reason], [400, 'bad_request', 'audience_not_supported'], 'premise: the real core at 20325d019');
+    const m = p.host().querySelector('.mk5r-modal');
+    assert.ok(m, 'A3a: the review stays');
+    assert.equal(m.querySelector('.mk5b-err').textContent, 'No pudimos guardar la oferta. Revisá los datos e intentá de nuevo.', 'A3a: the generic refusal word');
+    assert.equal(notice(p), null, 'never the fallback');
+  } finally { ML.FLAGS.audience = false; }
+});
+test('A3b the REAL core (3a 20325d019): «Reanudar» on a STORED «returning» offer ⇒ 409 audience_not_supported, DEFINITE (op-judged, after the claim check) — ONE call, the detail stays with its word', async () => {
+  const b = await world({ ref: AUD_REF });
+  const id = 'o_' + 'e'.repeat(12);   // 3a's own fixture (offers-core.test 6a'): a stored non-'all' offer — no v1 writer can make one
+  await b.fake.ref(`marketing_brand/tb/offers/${id}`).set({ v: 1, name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning', branches: ['tb_centro'], created_by: OWNER, created_at: NOW, updated_at: NOW,
+    rev: 2, state: 'paused_owner', paused_at: NOW, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Vuelve');
+  const from = b.calls.length;
+  p.btn('Reanudar').click(); await settle(300);
+  const mv = b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState');
+  assert.equal(mv.length, 1, 'A3b: definite ⇒ ONE call, never confirmed');
+  const direct = await offerSetStateRaw({ rid: RID, offerId: id, to: 'active', expectedRev: 2, token: b.token });
+  assert.deepEqual([direct.status, direct.body.error], [409, 'audience_not_supported'], 'premise: the real core at 20325d019');
+  assert.ok(p.host().querySelector('.mk5d-head'), 'A3b: the detail stays');
+  assert.equal(p.host().querySelector('.mk5b-err span').textContent, 'No pudimos hacer el cambio. Volvé a la lista e intentá de nuevo.', 'A3b: the detail\'s refusal word');
+  assert.equal(notice(p), null, 'never the fallback');
 });
 test('T1 16b (advisor 11-16): the Horario row header reads the same words, split in two parts — days · hours, then the dates — each its own line on a phone (no mid-phrase wrap); the builder and «Editar» both', async () => {
   const b = await world();
@@ -1711,4 +1746,29 @@ test('T1 16b (advisor 11-16): the Horario row header reads the same words, split
   assert.match(segs(er)[1], /^ · del \d{1,2} \w{3} al \d{1,2} \w{3}$/, '«Editar» part 2: the separator + the dates');
   const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
   assert.ok(css.includes('@media(max-width:920px){.mk5b-vseg{display:block}.mk5b-vsep{display:none}}'), 'a phone: one line per part, the separator hidden');
+});
+test('K5 «Guardar borrador» landed, reply lost; another session PUBLISHES the draft before the confirmation ⇒ the replay says ACTIVE ⇒ the programmed wording, never «Borrador guardado» (Codex #93 r2 F3)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'pct');
+  const undo = await landsThenBefore(b, 'marketingOfferSave', () => otherMoves(b, (r) => r.state === 'draft', 'active'));
+  try { p.btn('Guardar borrador', dlg(p)).click(); await settle(400); } finally { undo(); }
+  assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers'))[0].state, 'active', 'premise: our draft landed, then the other session published it');
+  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'K5: the toast follows the RETURNED state (active)');
+});
+test('A3c the same 409 on the ONE confirmation (the first reply lost) is op-judged — after the claim check ⇒ it SETTLES as a refusal, never UNKNOWN', async () => {
+  const b = await world({ ref: AUD_REF });
+  const id = 'o_' + 'e'.repeat(12);
+  await b.fake.ref(`marketing_brand/tb/offers/${id}`).set({ v: 1, name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning', branches: ['tb_centro'], created_by: OWNER, created_at: NOW, updated_at: NOW,
+    rev: 2, state: 'paused_owner', paused_at: NOW, schedule: { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Vuelve');
+  b.net.lose = ['marketingOfferSetState'];
+  const from = b.calls.length;
+  p.btn('Reanudar').click(); await settle(300);
+  assert.equal(b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState').length, 2, 'the call + ONE confirmation');
+  assert.ok(p.host().querySelector('.mk5d-head'), 'A3c: settled as a refusal — the detail stays');
+  assert.equal(notice(p), null, 'A3c: never the fallback');
 });
