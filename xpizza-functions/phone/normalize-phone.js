@@ -1,6 +1,7 @@
 'use strict';
-// The ONE phone normalisation (moved out of whatsapp.js, offer-audience PLAN r2 §6) — SILENT: it never prints its input, because
-// otp-lib phoneHash runs it on every login / guest / audience path. whatsapp.normalizePhone wraps it with its historical log line.
+// The SILENT twin of whatsapp.normalizePhone (offer-audience PLAN r2 §6): otp-lib phoneHash runs on every login / guest / audience path and
+// must never print a phone, while whatsapp.js (pinned byte-for-byte by older layers) keeps its logging normaliser. A synced copy (rule 4):
+// otp-lib.test NORM-SAME pins this core === whatsapp.normalizePhone over the phone corpus — any drift is RED.
 // → { digits, cleaned }: digits = full international digits (no '+'), or null when not 10–15 digits; cleaned = what was judged.
 const DEFAULT_COUNTRY_CODE = '504';
 

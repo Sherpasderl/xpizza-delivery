@@ -4148,9 +4148,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -4177,9 +4175,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "delivery/limits.js": {
    "pins": [],
@@ -7056,7 +7052,6 @@
     "xpizza-functions/intl-intake-wire-sync.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
-    "xpizza-functions/mktprice-wiring.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
@@ -7858,6 +7853,7 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
@@ -7867,6 +7863,7 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
@@ -7874,9 +7871,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "quote-token.js": {
    "pins": [],
@@ -8266,8 +8261,7 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/charge-inputs.test.js",
-    "xpizza-functions/charge-gate-placement.test.js",
-    "xpizza-functions/mktprice-wiring.guard.test.js"
+    "xpizza-functions/charge-gate-placement.test.js"
    ]
   },
   "tracking/claims-txn.js": {

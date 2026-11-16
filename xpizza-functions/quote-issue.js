@@ -87,7 +87,7 @@ function issueQuote(args) {
   }
 }
 
-function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now(), offer = null }) {
+function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now(), offer = null, aud = undefined }) {
   const net = computeServerNet({ items, reward, deliveryContext, rid, tables, offer });
   if (net.error) return { ok: false, error: net.error };
 
@@ -98,6 +98,8 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
   // it. The reward's identity comes from the resolved object, the same one the charge path resolves.
   const secret = quoteSecret();
   if (!secret) return result;                    // unprovisioned → price without a token
+  // offer-audience (PLAN r4.1 §3): an audience-exposed quote signs its aud block; a malformed one issues NO token (never a token without it)
+  if (aud !== undefined && !require('./marketing/audience-core').audShapeOk(aud)) return result;
 
   try {
     // Inside the try: normalization promises not to throw, and this is the belt for that braces — a
@@ -116,6 +118,7 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
       // not activated for envío, so every pre-S3 token payload is byte-identical.
       ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, ...(deliveryContext.promo_discount_cents > 0 && deliveryContext.delivery_discount_funder ? { delivery_discount_funder: deliveryContext.delivery_discount_funder } : {}), place: deliveryContext.place || null, customer: deliveryContext.customer || null,
         ...(tipCentsOf(deliveryContext) > 0 ? { tip_cents: tipCentsOf(deliveryContext) } : {}) } } : {}),   // S2: the SIGNED tip (> 0 only — every no-tip payload and pre-S2 token is byte-identical); the gate binds it (deliveryBindingMismatch)
+      ...(aud !== undefined ? { aud } : {}),   // offer-audience: the kind, the selected offer (or its signed absence) and the codes; absent ⇒ byte-identical
       issued_at: nowMs,
       expires_at: nowMs + EXPIRY_MS,
       quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes

@@ -63,4 +63,17 @@ function kindOf({ brandId, rows, brandOfRid, markers }) {
   return 'new';
 }
 
-module.exports = { KV, KEY_MIN, RETENTION_MONTHS, FULFILLED, idsOf, idsShapeOk, hnMonthOf, hnDayOf, cutoffMonth, dayBefore, kindOf };
+// the SIGNED audience block of a quote (PLAN r4.1 §3): { kind, sel, ids } exactly. sel = the SELECTED offer (any audience) or null = the
+// signed absence of one; ids = the codes for a new / returning member, null for kind 'none' (a guest / an unresolved member).
+const KINDS = Object.freeze(['new', 'returning', 'none']);
+function audShapeOk(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return false;
+  const ks = Object.keys(a).sort();
+  if (ks.join() !== 'ids,kind,sel' || !KINDS.includes(a.kind)) return false;
+  const s = a.sel;
+  if (s !== null && !(s && typeof s === 'object' && Object.keys(s).sort().join() === 'discount_cents,offer_id,rev' && str(s.offer_id)
+    && Number.isSafeInteger(s.rev) && s.rev >= 1 && Number.isSafeInteger(s.discount_cents) && s.discount_cents >= 0)) return false;
+  return a.kind === 'none' ? a.ids === null : idsShapeOk(a.ids);
+}
+
+module.exports = { KINDS, audShapeOk, KV, KEY_MIN, RETENTION_MONTHS, FULFILLED, idsOf, idsShapeOk, hnMonthOf, hnDayOf, cutoffMonth, dayBefore, kindOf };
