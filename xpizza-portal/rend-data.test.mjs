@@ -291,3 +291,24 @@ test('SH shares: each group sums to exactly 100 % (largest remainder) — the 99
     for (const [k, xs] of Object.entries(g)) if (xs) assert.ok(xs.every((x) => x === 0), `empty day ${k}: all 0 % (${JSON.stringify(xs)})`);
   }
 });
+test('SH2 shares (#92): exact INTEGER remainders — Codex 40000/10000/10000 of 60000 → 67·17·16, 12.5 % coverage → 4·9, a non-integral payment split, clamped customers, non-finite cents', async () => {
+  // the two Codex #92 r1 inputs, verbatim: a float remainder broke the tie (66·17·17) and a float sum rounded 12.5 down (4·8)
+  assert.deepEqual({ tie: RL.sharesOf([40000, 10000, 10000], 60000), cov: RL.sharesOf([10000, 20000], 240000) }, { tie: [67, 17, 16], cov: [4, 9] },
+    'CODEX: equal integer remainders tie → first in display order (67·17·16); 12.5 % covered → target 13 half-up (4·9)');
+  const p = F.onlinePending({ rid: 'r_a', now: at('2026-11-08', 14), phone: '88880044', totalCents: 10000 });
+  route({ serve: await world({ extra: [
+    F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-11-08', 12), phone: '88880022', totalCents: 40000, items: [{ name: 'Suprema 18″', qty: 1, unit: 400 }] }),
+    F.cashOrder({ rid: 'r_a', pm: 'card_delivery', now: at('2026-11-08', 13), phone: '88880033', totalCents: 10000, items: [{ name: 'Margherita 12″', qty: 1, unit: 100 }] }),
+    F.materialize({ ...p, payment_status: 'confirmed' }, at('2026-11-08', 14, 1)),
+  ] }) });
+  const b = await getSalesStats({ rid: 'r_a', from: '2026-11-08', to: '2026-11-08', granularity: 'day', compare: 'none', token });
+  assert.deepEqual([b.kpis.sales_cents, b.by_payment.cash.cents, b.by_payment.card_delivery.cents, b.by_payment.online.cents], [60000, 40000, 10000, 10000], 'premise: the real 4 : 1 : 1 payment split');
+  assert.deepEqual(groupsOf(RL.detailModel(b, NOW)).pay.slice(0, 3), [67, 17, 16], 'non-integral payment split (66.67 / 16.67 / 16.67): Efectivo 67 · Tarjeta al entregar 17 · En línea 16');
+  // defensive inputs the real core never writes — the body is the real one, only the poisoned cents differ
+  const neg = { ...b, kpis: { ...b.kpis, sales_cents: 100 }, customers: { ...b.customers, new: { ...b.customers.new, cents: -10 }, returning: { ...b.customers.returning, cents: 50 } } };
+  assert.deepEqual(groupsOf(RL.detailModel(neg, NOW)).customers, [0, 50, 50], 'customers: new −10 is clamped to 0 BEFORE the rest (0·50·50, not 0·50·60 = 110 %)');
+  const inf = { ...b, by_payment: { ...b.by_payment, cash: { ...b.by_payment.cash, cents: Infinity } } };
+  const ip = RL.detailModel(inf, NOW).pay.map((x) => x.width);   // the numbers, before any label is parsed
+  assert.ok(ip.every(Number.isInteger) && ip[0] === 0, `an Infinity row counts 0 — every share a whole number (${JSON.stringify(ip)})`);
+  assert.deepEqual(RL.sharesOf([10000, 20000], Infinity), [0, 0], 'a non-finite total: every share 0');
+});
