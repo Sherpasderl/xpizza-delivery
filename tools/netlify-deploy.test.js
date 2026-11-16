@@ -127,7 +127,7 @@ try {
     const r = run(sb, ['portal']);
     assert.strictEqual(r.code, 0, r.err); assert.strictEqual(r.ran, false, 'dry run must not invoke npx');
     assert.ok(r.out.includes(`HEAD ${head}`), `prints the HEAD sha: ${r.out}`);
-    assert.ok(r.out.includes('site sherpa-portal'), `prints the sites.json NAME: ${r.out}`);
+    assert.ok(/^site sherpa-portal$/m.test(r.out), `prints the sites.json NAME on its own line: ${r.out}`);
     assert.ok(r.out.includes(`dir ${dir}`), `prints the absolute dir: ${r.out}`);
     assert.ok(r.out.includes(`npx ${want.join(' ')}`), `prints the exact command: ${r.out}`);
     assert.ok(/DRY RUN/.test(r.out) && /--yes/.test(r.out), 'says it is a dry run and how to deploy');
