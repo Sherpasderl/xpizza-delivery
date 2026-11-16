@@ -190,14 +190,19 @@ export function updatedWords(body, nowMs) {
 }
 const FOOT = 'Una venta se cuenta cuando el pedido se registra \u0028efectivo o tarjeta al entregar) o cuando el pago en línea se confirma, en el día en que se sirve. Los últimos 7 días se recalculan cada noche.';   // the shipped footnote
 // ONE group's shares of the server's total, in whole percent, that add up EXACTLY (advisor 11-15): largest remainder — floor every
-// share, then the leftover points go to the largest remainders (a tie: the row shown first). The target is the rounded share of
-// what the rows cover (100 when they cover the total). A 0-cents row stays 0; total 0 ⇒ every share 0 (no division).
+// share, then the leftover points go to the largest remainders (a tie: the row shown first). The target is the share of what the
+// rows cover, rounded half-up (100 when they cover the total). All on WHOLE cents (Codex #92: float remainders broke ties, a float
+// sum rounded 12.5 down): every input is finite, ≥ 0 and rounded, else 0; a 0-cents row stays 0; total 0 ⇒ every share 0.
+const wholeCents = (c) => (Number.isFinite(c) && c > 0 ? Math.round(c) : 0);
 export function sharesOf(cents, total) {
-  if (!(total > 0)) return cents.map(() => 0);
-  const raw = cents.map((c) => (Math.max(0, c || 0) / total) * 100);
-  const out = raw.map((r) => Math.floor(r));
-  let left = Math.round(raw.reduce((a, r) => a + r, 0)) - out.reduce((a, x) => a + x, 0);
-  const order = raw.map((r, i) => [r - out[i], i]).filter(([f]) => f > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  const t = wholeCents(total);
+  if (!(t > 0)) return cents.map(() => 0);
+  const c = cents.map(wholeCents);
+  const rem = c.map((x) => (x * 100) % t);   // exact: whole cents ≪ 2^53
+  const out = c.map((x, i) => (x * 100 - rem[i]) / t);
+  const num = 200 * c.reduce((a, x) => a + x, 0) + t, den = 2 * t;
+  let left = (num - (num % den)) / den - out.reduce((a, x) => a + x, 0);
+  const order = rem.map((r, i) => [r, i]).filter(([r]) => r > 0).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
   for (const [, i] of order) { if (left <= 0) break; out[i] += 1; left -= 1; }
   return out;
 }
@@ -221,8 +226,9 @@ export function detailModel(body, nowMs) {
   let customers = null;
   if (b.customers) {
     const nw = b.customers.new || {}, rt = b.customers.returning || {};
-    const rest = Math.max(0, total - (nw.cents || 0) - (rt.cents || 0)), anon = b.customers.anonymous_orders || 0;
-    const [sNew, sRet, sRest] = sharesOf([nw.cents || 0, rt.cents || 0, rest], total);   // ONE group: the three add up
+    const nc = wholeCents(nw.cents), rc = wholeCents(rt.cents);   // clamped BEFORE the rest (Codex #92 P3)
+    const rest = Math.max(0, wholeCents(total) - nc - rc), anon = b.customers.anonymous_orders || 0;
+    const [sNew, sRet, sRest] = sharesOf([nc, rc, rest], total);   // ONE group: the three add up
     customers = { rows: [{ label: 'Nuevos', value: count(nw.customers || 0), small: `${pct0Sp(sNew)} de las ventas` }, { label: 'Recurrentes', value: count(rt.customers || 0), small: `${pct0Sp(sRet)} de las ventas` }],
       note: rest > 0 ? `Sin clasificar: ${pct0Sp(sRest)} de las ventas${anon > 0 ? ` · ${count(anon)} ${anon === 1 ? 'pedido' : 'pedidos'} sin teléfono` : ''}.` : '' };
   }
