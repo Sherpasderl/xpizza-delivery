@@ -7809,7 +7809,8 @@ exports.stampRatingFulfilment = onValueWritten(
   { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60 },
   async (event) => {
     // Codex S-A1 r1 P2: a failure PROPAGATES (retry on) — the stamp is set-once and idempotent, so a retried event is safe
-    try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), now: Date.now() }); }
+    // r3 §4 (reviews v2): the stamp's clock is the EVENT's time (identical across retries), never this instance's wall clock
+    try { await require('./ratings/rating-fulfilment').stampRatingFulfilment(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), eventTime: Date.parse(event.time) }); }
     catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }
   },
 );
@@ -7829,6 +7830,17 @@ exports.getMerchantRatingComments = onRequest(
   { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
   require('./ratings/merchant-comments').makeMerchantRatingComments({ getDatabase, getAuth, checkRateLimit }).getMerchantRatingComments,
 );
+// reviews v2 S3 (PLAN-3a-merchant-reviews-v2 r1/r2/r3/r4.2/r5): getMerchantReviews — the portal's NAMED reviews list (disclosed ratings
+// only, every rid re-authorized, a k-way merge over rating_index under one read budget); dish names through the ONE resolver; the
+// sealed cursor and the avatar tone keyed from OTP_SALT under their own HKDF labels
+exports.getMerchantReviews = onRequest(
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, secrets: [OTP_SALT_SECRET] },
+  require('./ratings/merchant-reviews').makeMerchantReviews({ getDatabase, getAuth, checkRateLimit, resolveContext: async (rid) => contextOfTables(await resolvePricingTables(rid)) }).getMerchantReviews,
+);
+// reviews v2 (PLAN-3a-merchant-reviews-v2 r3 §3): setMyName — the later edit of the STRUCTURED name (given_name + family_name), written
+// only in the fenced user_private transaction (signup-core.setMyName); the signup family's handler + options, kept OUT of the signup
+// blocks (signup-inverse pins them byte-for-byte)
+exports.setMyName = onRequest(SIGNUP_OPTS, SIGNUP_H.setMyName);
 // S-A (d) customer read: getMyRating — the C-2 sheet's read of the caller's OWN rating, the writer's predicate (customerUidOf + the
 // order's customer_uid), the payload only through rating-v2.readCountable
 exports.getMyRating = onRequest(

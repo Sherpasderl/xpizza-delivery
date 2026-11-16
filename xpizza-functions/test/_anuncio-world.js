@@ -52,7 +52,7 @@ async function rated(db, rid, day, stars) {
     attachCustomerAttribution(u, id, uid, { now: t, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: [{ name: 'x', qty: 1 }] });
     await db.ref().update(u);
     db.set(`orders/${id}/status`, 'delivered');
-    await stampRatingFulfilment(db, { orderId: id, status: 'delivered', now: t });
+    await stampRatingFulfilment(db, { orderId: id, status: 'delivered', eventTime: t });   // reviews v2 S3: the stamp takes the EVENT's time
     const r = await rateOrderCore(db, { body: { order_id: id, store }, idToken: `tok-${uid}`, now: t + 2 * HOUR, verifyIdToken });
     assert.ok(r && r.ok !== false, `premise: rateOrderCore accepted (${JSON.stringify(r)})`);
   }

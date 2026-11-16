@@ -32494,8 +32494,8 @@
   "slice": "sa",
   "label": "S-A1 ratings v2 (r2): no post-commit fence on the v2 path",
   "file": "ratings/rate-order.js",
-  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n",
-  "to": "  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));\n",
+  "from": "  await ref.transaction(V2.v2Updater({ fields, uid, now, disclose: gate.disclose && req.disclosure === 1, postCutover: gate.postCutover }, out));\n  if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;\n",
+  "to": "  await ref.transaction(V2.v2Updater({ fields, uid, now, disclose: gate.disclose && req.disclosure === 1, postCutover: gate.postCutover }, out));\n",
   "command": [
    "node",
    "ratings/rating-v2.test.js"
@@ -36221,6 +36221,21 @@
   ],
   "kills_with": [
    "R11-HOME"
+  ]
+ },
+ {
+  "id": "signup-35",
+  "slice": "signup",
+  "label": "reviews v2 S3 (advisor 11-15): setMyName is not rate-limited",
+  "file": "signup-endpoints.js",
+  "from": "      if (await limited(db, 'profile', req, res)) return;   // the profile family's per-IP limit, as completeProfile / setPromos\n",
+  "to": "",
+  "kills_with": [
+   "setMyName is rate-limited"
+  ],
+  "command": [
+   "node",
+   "signup-name.test.js"
   ]
  }
 ]

@@ -2063,6 +2063,7 @@
     "xpizza-functions/delivery/envio-consumers.test.mjs",
     "xpizza-functions/delivery/tip-consumers.test.mjs",
     "xpizza-functions/pay-rate.test.js",
+    "xpizza-functions/ratings/rating-v2.test.js",
     "xpizza-functions/sequencing/tracker-parity.test.js",
     "xpizza-functions/test/brands-rules.emulator.test.js",
     "xpizza-functions/test/driver-assignment-parity.emulator.test.js",
@@ -3006,11 +3007,16 @@
   "ratings/aggregate.js",
   "ratings/dish-qty.js",
   "ratings/merchant-comments.js",
+  "ratings/merchant-reviews.js",
   "ratings/my-rating.js",
   "ratings/rate-order.js",
   "ratings/rating-core.js",
   "ratings/rating-fulfilment.js",
   "ratings/rating-v2.js",
+  "ratings/ratings-config.js",
+  "ratings/review-buckets.js",
+  "ratings/review-window.js",
+  "ratings/sealed-cursor.js",
   "reorder-normalize.js",
   "resolve-manual.js",
   "retention-sweep.js",
@@ -7683,6 +7689,10 @@
    "pins": [],
    "lifts": []
   },
+  "ratings/merchant-reviews.js": {
+   "pins": [],
+   "lifts": []
+  },
   "ratings/my-rating.js": {
    "pins": [],
    "lifts": []
@@ -7704,6 +7714,22 @@
    "lifts": [
     "customer-app/capp-s7a2.test.mjs"
    ]
+  },
+  "ratings/ratings-config.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/review-buckets.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/review-window.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ratings/sealed-cursor.js": {
+   "pins": [],
+   "lifts": []
   },
   "reorder-normalize.js": {
    "pins": [

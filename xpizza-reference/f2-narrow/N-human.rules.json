@@ -381,6 +381,10 @@
       ".read": false,
       ".write": false
     },
+    "rating_buckets": {
+      ".read": false,
+      ".write": false
+    },
     "stats_buckets": {
       ".read": false,
       ".write": false
