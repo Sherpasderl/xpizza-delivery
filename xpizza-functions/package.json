@@ -167,6 +167,7 @@
     "test:s5-backend": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/s5-backend.emulator.test.js\"",
     "test:portal": "node tools/portal-preflight.js && node --test \"../xpizza-portal/*.test.mjs\"",
     "test:apps": "node tools/app-suites.js",
+    "test:driver-browser": "node ../xpizza-driver/fa4400-render.browser.test.js",
     "test:emulators:all": "node tools/gate-all.js --emulators",
     "test:gate": "node tools/gate-all.js",
     "test:paid-after-close-notify": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\"",
