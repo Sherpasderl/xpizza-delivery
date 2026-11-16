@@ -1454,6 +1454,9 @@
   "xpizza-functions/claim-order.js#claimOrderCore@xpizza-functions/index.js#claimOrder": {
    "status": "pending"
   },
+  "xpizza-functions/customer-push.js#handle>anon@self": {
+   "status": "pending"
+  },
   "xpizza-functions/my-orders.js#getMyOrders@self": {
    "status": "pending"
   },
