@@ -206008,6 +206008,120 @@
    },
    "exercised": []
   },
+  "xpizza-functions/stats/stats-api.js#salesStatsMulti#status#0": {
+   "planned": {
+    "S13": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S14-bitcoin": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S14-efectivo": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S14-empty": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S14-omitted": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S17d": {
+     "r3_synth": [
+      "cuadre",
+      "delivered"
+     ]
+    },
+    "S17p": {
+     "r3_synth": [
+      "completed"
+     ]
+    },
+    "S1t-a": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S1t-b": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S1t-c": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S1": {
+     "la_musa": [
+      "cuadre",
+      "delivered"
+     ],
+     "x_pizza": [
+      "cuadre",
+      "delivered"
+     ]
+    },
+    "S2": {
+     "la_musa": [
+      "completed"
+     ],
+     "x_pizza": [
+      "completed"
+     ]
+    },
+    "S3": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    },
+    "S4": {
+     "la_musa": [
+      "delivered"
+     ],
+     "x_pizza": [
+      "delivered"
+     ]
+    }
+   },
+   "exercised": []
+  },
   "xpizza-functions/stats/stats-api.js#shapePeriod#items#0": {
    "planned": {
     "S13": {
@@ -235394,120 +235508,6 @@
     "S4": {
      "x_pizza": [
       "new"
-     ]
-    }
-   },
-   "exercised": []
-  },
-  "xpizza-portal/ventas-logic.js#viewModel#items#0": {
-   "planned": {
-    "S13": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S14-bitcoin": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S14-efectivo": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S14-empty": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S14-omitted": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S17d": {
-     "r3_synth": [
-      "cuadre",
-      "delivered"
-     ]
-    },
-    "S17p": {
-     "r3_synth": [
-      "completed"
-     ]
-    },
-    "S1t-a": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S1t-b": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S1t-c": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S1": {
-     "la_musa": [
-      "cuadre",
-      "delivered"
-     ],
-     "x_pizza": [
-      "cuadre",
-      "delivered"
-     ]
-    },
-    "S2": {
-     "la_musa": [
-      "completed"
-     ],
-     "x_pizza": [
-      "completed"
-     ]
-    },
-    "S3": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
-     ]
-    },
-    "S4": {
-     "la_musa": [
-      "delivered"
-     ],
-     "x_pizza": [
-      "delivered"
      ]
     }
    },

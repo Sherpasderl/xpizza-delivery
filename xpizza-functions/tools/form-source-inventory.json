@@ -511,11 +511,16 @@
     "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/inicio.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -899,11 +904,15 @@
     "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
-    "xpizza-portal/marketing.test.mjs"
+    "xpizza-portal/marketing.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
   "la-musa-orders": {
@@ -1405,11 +1414,16 @@
     "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
+    "xpizza-portal/inicio.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
     "xpizza-portal/marketing.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs",
     "xpizza-track/status-view-forms.test.js"
    ],
    "via_helper": [
@@ -1803,11 +1817,15 @@
     "xpizza-portal/anuncio-logic.test.mjs",
     "xpizza-portal/branch-1b-logic.test.mjs",
     "xpizza-portal/branches-1b-life.test.mjs",
+    "xpizza-portal/calificaciones2-view.test.mjs",
+    "xpizza-portal/calificaciones2.test.mjs",
     "xpizza-portal/envio-limit.test.mjs",
     "xpizza-portal/envio-server-parity.test.mjs",
     "xpizza-portal/envio-view.test.mjs",
     "xpizza-portal/marketing-logic.test.mjs",
-    "xpizza-portal/marketing.test.mjs"
+    "xpizza-portal/marketing.test.mjs",
+    "xpizza-portal/rend-data.test.mjs",
+    "xpizza-portal/ventas-tab.test.mjs"
    ]
   },
   "xpizza-kitchen": {
@@ -2363,8 +2381,10 @@
   "xpizza-functions/tools/seed-source-store.js",
   "xpizza-functions/tools/splice-form-bundle.js",
   "xpizza-functions/tools/verify-first-group-core.js",
+  "xpizza-portal/calificaciones2-harness.mjs",
   "xpizza-portal/marketing-harness.mjs",
-  "xpizza-portal/ref-tree.mjs"
+  "xpizza-portal/ref-tree.mjs",
+  "xpizza-portal/stats-harness.mjs"
  ],
  "seed": [
   {
@@ -2878,6 +2898,7 @@
   "compute-server-net.js",
   "create-order-build.js",
   "createorder-classify.js",
+  "customer-push.js",
   "delivery/delivery-pricing.js",
   "delivery/delivery-wire.js",
   "delivery/limits.js",
@@ -2919,6 +2940,7 @@
   "marketing/offer-usage.js",
   "marketing/offer-wire.js",
   "marketing/offers-core.js",
+  "marketing/push-policy.js",
   "marketing/sponsored-serve.js",
   "marketing/switch-memo.js",
   "materialize.js",
@@ -4107,6 +4129,10 @@
    "lifts": [
     "xpizza-functions/secfp-wiring.guard.test.js"
    ]
+  },
+  "customer-push.js": {
+   "pins": [],
+   "lifts": []
   },
   "delivery/delivery-pricing.js": {
    "pins": [
@@ -7111,24 +7137,42 @@
    "lifts": []
   },
   "marketing/offer-price.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": [
     "xpizza-functions/marketing/offer-rules-sync.guard.test.js"
    ]
   },
   "marketing/offer-rules.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "customer-app/capp-ui.test.mjs"
+   ]
   },
   "marketing/offer-usage.js": {
    "pins": [],
    "lifts": []
   },
   "marketing/offer-wire.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "marketing/offers-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/push-policy.js": {
    "pins": [],
    "lifts": []
   },
@@ -8156,6 +8200,7 @@
   "signup-endpoints.js": {
    "pins": [],
    "lifts": [
+    "xpizza-functions/customer-push.test.js",
     "xpizza-functions/signup-wiring.guard.test.js"
    ]
   },
@@ -8453,6 +8498,24 @@
    "status": "ok",
    "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
    "blob": "272d3f65fcd3d2039d9233e6bb4962baa7fa4d1f",
+   "consumer": "customer-app/capp-checkout.test.mjs",
+   "live_differs": false
+  },
+  {
+   "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+   "module": "marketing/offer-price.js",
+   "status": "ok",
+   "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
+   "blob": "ec630c2408b08041c4938f2d6943f1386d3b21dc",
+   "consumer": "customer-app/capp-checkout.test.mjs",
+   "live_differs": true
+  },
+  {
+   "site": "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
+   "module": "marketing/offer-wire.js",
+   "status": "ok",
+   "sha": "f992c28a7c611272ca571f2bbc3af304c5a0a5a3",
+   "blob": "120bf12fcc20fa2232269775d0aed07d49a577f5",
    "consumer": "customer-app/capp-checkout.test.mjs",
    "live_differs": true
   },
