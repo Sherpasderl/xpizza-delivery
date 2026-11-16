@@ -1288,8 +1288,9 @@
  },
  "writtenFields": {
   "offer_reconcile": {
-   "class": "claim",
-   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §4): the fulfilment writer's CREATE-IF-ABSENT payout decision { funded_by: restaurant | sherpa, reason, at } for an audience-'new' offer (a transaction that writes only when absent — never overwritten); read ONLY through marketing/offer-price offerFunder (absent ⇒ 'sherpa'), never shown to the customer; the frozen offer itself is never edited"
+   "class": "fact",
+   "facts": ["MONEY"],
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §4; Codex #103 ruling: a MONEY fact): WHO absorbs an audience-'new' discount — the fulfilment writer's create-if-absent decision { funded_by: restaurant | sherpa, reason, at } (the deadline sweep's 'sherpa'/'ids_expired'), never overwritten; the payout / settlement input, read ONLY through marketing/offer-price offerFunder (absent ⇒ 'sherpa'; marketing/offer-funder.guard pins the single reader); dispatcher writes cannot touch it (rules + audience-rules.guard)"
   },
   "audience_ids": {
    "class": "identity",

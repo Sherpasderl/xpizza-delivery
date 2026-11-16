@@ -127,6 +127,28 @@ const payload = (t) => JSON.parse(Buffer.from(t.split('.')[0], 'base64url').toSt
       assert.deepStrictEqual(await place(w, q.quote_token, { nowMs: NOW + 3600000 + 16 * 60000 }), { refusal: 'offer_changed', httpStatus: 409 }, `🔴 ${L}: expired (audience ${off ? 'OFF' : 'ON'})`);
     }
   });
+  await cell('AW-GRANDFATHERED: a FULL-PRICE live checkout retried after its aud token expired (minute 16) is resumed, never refused — audience ON, and offers OFF', async (L) => {
+    const DW = require('../delivery/delivery-wire');
+    for (const offersOff of [false, true]) {
+      const w = await aworld(); profile(w, 'u1');
+      await w.publish({ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' });
+      w.fake.put(`customer_seen/tb/${AC.idsOf({ key: KEY, brandId: 'tb', phoneHash: OTP.phoneHash('+504 8888-4444') }).p}`, { m: '2026-11' });   // RETURNING: the quote is full price
+      const { q } = await quote(w);
+      assert.deepStrictEqual([payload(q.quote_token).aud.kind, payload(q.quote_token).aud.sel], ['returning', null], 'premise: a full-price audience-exposed quote');
+      // the card checkout that quote opened, still live (the REAL chargeContext grandfathers it)
+      w.fake.put('orders/ordG', { restaurant_id: RID, order_type: 'pickup', payment_status: 'pending', active_attempt_id: 'attG', total_cents: q.net_total_cents });
+      w.fake.put('payment_attempts/attG', { hosted_state: 'created', hosted_expires_at: Date.now() + 600000, hosted_checkout_url: 'https://x' });
+      const dq0 = await DW.chargeContext(w.db, 'ordG', { ctx: null }, { order_type: 'pickup' }, Date.now(), Promise.resolve({ pricing: null }));
+      assert.strictEqual(dq0 && dq0.grandfathered, true, 'premise: the REAL chargeContext grandfathers the live checkout');
+      if (offersOff) await w.setOffers(false);
+      const late = NOW + 3600000 + 16 * 60000;   // the token expired at minute 15
+      const pa = OW.placementAudOf(q.quote_token, SEC, late);
+      assert.strictEqual(pa.state, 'expired', 'premise: the expired aud token');
+      const dq = await OW.withOffer({ db: w.db, rid: RID, items: ITEMS, tables: TABLES, baseTotalL: foodL(ITEMS), dq: dq0, reward: null, app: true, orderId: 'ordG', nowMs: late, placement: true, log: quiet, placementAud: pa, placingUid: 'u1' });
+      assert.ok(!(dq && dq.refusal), `🔴 ${L}: offers ${offersOff ? 'OFF' : 'ON'} — the full-price retry is resumed (${JSON.stringify(dq)})`);
+      assert.strictEqual(dq, dq0, `${L}: the grandfathered dq, untouched`);
+    }
+  });
   await cell('AW-NOTOKEN: no token / a malformed one ⇒ kind none — no audience discount is ever applied (the ceiling gate then refuses the increase)', async (L) => {
     const w = await aworld(); profile(w, 'u1'); await w.publish({ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' });
     for (const t of [null, 'garbage', 'a.b']) {

@@ -21,8 +21,15 @@ for (const node of ['customer_seen', 'customer_seen_m', 'audience_ids_by_day', '
 ok('customer_seen / customer_seen_m / audience_ids_by_day / audience_alerts: no rule, no root grant, no root wildcard ⇒ every client denied');
 
 const w = R.orders.$order_id['.write'];
-for (const leaf of ['offer_reconcile/funded_by', 'offer_reconcile/reason', 'offer_reconcile/at']) {
+// Codex #103 P1: the frozen offer (every frozenOf leaf, incl. audience / audience_kind — flipping audience new → all would move the funder) and
+// the frozen codes are pinned too, against change, delete, add and whole-order replace (leaf compares: null === null when absent)
+const LEAVES = ['offer_reconcile/funded_by', 'offer_reconcile/reason', 'offer_reconcile/at',
+  ...['offer_id', 'rev', 'type', 'name', 'discount_cents', 'waived_envio_cents', 'funded_by', 'audience', 'audience_kind'].map((k) => `offer/${k}`),
+  ...['p', 'e', 'kv'].map((k) => `audience_ids/${k}`)];
+for (const leaf of LEAVES) {
   assert.ok(w.includes(`newData.child('${leaf}').val() === data.child('${leaf}').val()`), `AUD-RULES: 🔴 the dispatcher order write must keep ${leaf}`);
 }
-ok('the dispatcher\'s order write keeps the payout decision (offer_reconcile funded_by / reason / at) unchanged');
+assert.deepStrictEqual(Object.keys(require('./marketing/offer-price').frozenOf({ offer_id: 'x', rev: 1, type: 'nuevos', name: 'n', discount_cents: 100, waived_envio_cents: 0, audience: 'new', audience_kind: 'new' })).sort(),
+  ['audience', 'audience_kind', 'discount_cents', 'funded_by', 'name', 'offer_id', 'rev', 'type', 'waived_envio_cents'], 'AUD-RULES: 🔴 frozenOf gained a leaf — pin it here and in the rules');
+ok(`the dispatcher's order write keeps the payout decision, every frozen offer leaf and the frozen codes unchanged (${LEAVES.length} leaves)`);
 console.log(`audience-rules.guard: OK (${n})`);

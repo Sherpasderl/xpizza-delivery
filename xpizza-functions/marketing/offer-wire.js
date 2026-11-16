@@ -98,7 +98,7 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
   if (dq && dq.grandfathered && dq.ctx && dq.ctx.delivery_discount_funder === 'restaurant') return { refusal: 'offer_changed', httpStatus: 409 };
   try {
     const cfg = await configOf(db, nowMs);
-    if (!cfg || cfg.offers_enabled !== true) return stale ? OFFER_CHANGED : dq;
+    if (!cfg || cfg.offers_enabled !== true) return stale && !(dq && dq.grandfathered) ? OFFER_CHANGED : dq;   // a LIVE checkout keeps its economics (Codex #103 #5): only a fresh placement is judged stale
     const ctx = dq && dq.ctx ? dq.ctx : null;
     let offer = null;
     if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());

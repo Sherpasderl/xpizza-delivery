@@ -17,6 +17,10 @@ const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@fir
 const RULES = fs.readFileSync(process.env.RULES_FILE || path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
 const U = 'u_' + 'a'.repeat(24), DISP = 'd_' + 'b'.repeat(24), COOK = 'k_' + 'c'.repeat(24), OWN = 'o_' + 'd'.repeat(24);
 const H = 'f'.repeat(64);
+// the frozen offer exactly as offer-price frozenOf writes it for a nuevos, + the frozen codes (audience-core idsOf shape)
+const OFFER = { offer_id: 'of_x', rev: 2, type: 'nuevos', name: 'Bienvenida', discount_cents: 5000, waived_envio_cents: 0, funded_by: 'restaurant', audience: 'new', audience_kind: 'new' };
+const IDS = { p: H, e: 'e'.repeat(64), kv: 'v1' };
+const XPZ1 = { customer_uid: U, restaurant_id: 'x_pizza', status: 'delivered', notes: 'a', offer: OFFER, audience_ids: IDS, offer_reconcile: { funded_by: 'sherpa', reason: 'seen_before', at: 1 } };
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const NODES = [
   ['customer_seen/x_pizza', `customer_seen/x_pizza/${H}`, { m: '2026-11' }],
@@ -32,7 +36,7 @@ const NODES = [
       const db = ctx.database();
       await db.ref('/').set(null);
       for (const [, leaf, v] of NODES) await db.ref(leaf).set(v);
-      await db.ref('orders/XPZ-1').set({ customer_uid: U, restaurant_id: 'x_pizza', status: 'delivered', notes: 'a', offer: { offer_id: 'of_x', audience: 'new' }, offer_reconcile: { funded_by: 'sherpa', reason: 'seen_before', at: 1 } });
+      await db.ref('orders/XPZ-1').set(XPZ1);
       await db.ref('orders/XPZ-2').set({ customer_uid: U, restaurant_id: 'x_pizza', status: 'preparing', notes: 'b', offer: { offer_id: 'of_x', audience: 'new' } });
       await db.ref(`dispatchers/${DISP}`).set(true);
       await db.ref(`restaurants/x_pizza/kitchen_staff/${COOK}`).set(true);
@@ -58,6 +62,18 @@ const NODES = [
     await assertFails(d.ref('orders/XPZ-1').update({ offer_reconcile: null }));
     await assertFails(d.ref('orders/XPZ-2').update({ offer_reconcile: { funded_by: 'restaurant', reason: 'first', at: 2 } }));
     ok('a dispatcher still edits an order, but never creates, edits or deletes its payout decision (offer_reconcile)');
+
+    // Codex #103 P1: the frozen offer (flipping audience new → all would move the funder) and the frozen codes — change / delete / add / replace
+    for (const [k, v] of [['offer/audience', 'all'], ['offer/funded_by', 'sherpa'], ['offer/discount_cents', 9000], ['offer/audience_kind', 'returning'], ['audience_ids/p', 'a'.repeat(64)], ['audience_ids/kv', 'v2']]) {
+      await assertFails(d.ref('orders/XPZ-1').update({ [k]: v }));
+    }
+    for (const k of ['offer', 'offer/audience', 'audience_ids', 'audience_ids/e']) await assertFails(d.ref('orders/XPZ-1').update({ [k]: null }));
+    await assertFails(d.ref('orders/XPZ-2').update({ 'offer/audience': 'returning' }));   // ADDING a leaf the frozen offer did not carry
+    await assertFails(d.ref('orders/XPZ-1').set({ ...XPZ1, notes: 'replaced', offer: { ...OFFER, audience: 'all' } }));   // whole-order REPLACE with a flipped audience
+    await assertFails(d.ref('orders/XPZ-1').set({ ...XPZ1, notes: 'replaced', audience_ids: null }));                       // … or without the codes
+    await assertSucceeds(d.ref('orders/XPZ-1').set({ ...XPZ1, notes: 'replaced' }));                                       // a replace that keeps them is fine
+    await assertSucceeds(d.ref('orders/XPZ-1').update({ notes: 'again' }));
+    ok('a dispatcher never changes, deletes, adds to or replaces away the frozen offer (incl. audience / audience_kind) or the frozen codes');
   } finally { await env.cleanup(); }
   console.log(`\naudience-rules.emulator: OK (${n})`);
   process.exit(0);

@@ -63486,7 +63486,7 @@
   },
   {
    "field": "offer_reconcile",
-   "class": "claim"
+   "class": "fact"
   },
   {
    "field": "order_id",
