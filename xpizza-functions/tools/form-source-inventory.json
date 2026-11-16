@@ -3009,6 +3009,7 @@
   "phone/intl.js",
   "phone/login-gate.js",
   "phone/match.js",
+  "phone/normalize-phone.js",
   "phone/wire.js",
   "photos/branch-photos.js",
   "photos/buckets.js",
@@ -7526,6 +7527,10 @@
    "lifts": []
   },
   "phone/match.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone/normalize-phone.js": {
    "pins": [],
    "lifts": []
   },
