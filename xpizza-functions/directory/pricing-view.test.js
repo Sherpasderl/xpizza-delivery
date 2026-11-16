@@ -73,6 +73,22 @@ const entryOf = async (pricingView) => (await D.buildDirectory(deps(pricingView)
     }
     assert.strictEqual((await entryOf(PV.makePricingView({ rtdb: rtdb(FREE_ON) }))).promo.basis, 'pricing', `${L}: priced ⇒ basis pricing`);
   });
+  // Codex #104 P2: the SAME refusals checkout applies — a malformed branch limit (LIMIT_INVALID) and invalid no-delivery zones — make the
+  // directory's fee invalid with no promo (never «Envío desde L x» + basis pricing for a delivery checkout refuses)
+  const memberQuote = async (db) => { const lp = await DW.loadPricing(db, 'x_pizza'); const max = P.effectiveMaxKm(lp.pricing, 'x_pizza'); return P.quoteDelivery({ pricing: lp.pricing, hub: HUB, mode: 'delivery', pin: PIN, customerUid: 'u1', maxKm: max }); };
+  await cell('PB-LIMIT-INVALID: a malformed branch Envío limit ({ max_km: "3" }) ⇒ checkout refuses delivery_pricing_invalid AND the directory serves fee invalid, no promo', async (L) => {
+    const db = rtdb({ ...FREE_ON, restaurants: { ...FREE_ON.restaurants, x_pizza: { max_km: '3' } } });
+    assert.strictEqual((await memberQuote(db)).refusal, 'delivery_pricing_invalid', 'premise: the real quote refuses');
+    const e = await entryOf(PV.makePricingView({ rtdb: db }));
+    assert.deepStrictEqual([e.fee, e.promo], [{ state: 'invalid' }, null], `🔴 ${L} (${JSON.stringify([e.fee, e.promo])})`);
+  });
+  await cell('PB-ZONES-INVALID: invalid no-delivery zones ⇒ checkout refuses delivery_zones_invalid AND the directory serves fee invalid, no promo', async (L) => {
+    const db = rtdb({ ...FREE_ON, no_delivery_zones: 'junk' });
+    assert.strictEqual((await DW.loadPricing(db, 'x_pizza')).pricing.zonesInvalid, true, 'premise: the stored zones are invalid');
+    assert.strictEqual((await memberQuote(db)).refusal, 'delivery_zones_invalid', 'premise: the real quote refuses');
+    const e = await entryOf(PV.makePricingView({ rtdb: db }));
+    assert.deepStrictEqual([e.fee, e.promo], [{ state: 'invalid' }, null], `🔴 ${L} (${JSON.stringify([e.fee, e.promo])})`);
+  });
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`pricing-view: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

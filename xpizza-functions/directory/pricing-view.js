@@ -28,6 +28,9 @@ function makePricingView({ rtdb, now = Date.now }) {
     if (!pr) return { fee: { state: 'none' }, promo: null, coverage_km: null };
     if (pr.invalid) return { fee: { state: 'invalid' }, promo: null, coverage_km: null };
     const max = P.effectiveMaxKm(pr, rid);
+    // Codex #104 P2: the SAME refusals the quote applies (delivery-pricing quoteDelivery — a malformed branch limit ⇒ delivery_pricing_invalid,
+    // invalid stored zones ⇒ delivery_zones_invalid): no fee, no promo, never a «desde» or a basis-pricing claim for a refused delivery
+    if (max === P.LIMIT_INVALID || pr.zonesInvalid) return { fee: { state: 'invalid' }, promo: null, coverage_km: null };
     return {
       fee: { state: 'priced', from_cents: Math.min(...pr.bands.map((b) => b.cents)) },
       promo: { free_delivery: pr.free_delivery === true, label: null, basis: 'pricing' },
