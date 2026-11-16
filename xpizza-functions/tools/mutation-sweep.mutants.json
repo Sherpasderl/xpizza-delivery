@@ -30933,9 +30933,9 @@
   "id": "g7-07",
   "slice": "g7",
   "label": "no served promotions value ⇒ an active switch with an invented value",
-  "file": "../customer-app/capp-home.js",
-  "from": "const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';",
-  "to": "const a = vm.acct || {}, inert = false;",
+  "file": "../customer-app/capp-push.js",
+  "from": "const inert = typeof x.promos !== 'boolean';",
+  "to": "const inert = false;",
   "command": [
    "node",
    "--test",
@@ -31526,9 +31526,9 @@
   "id": "g7-26",
   "slice": "g7",
   "label": "a settled member with no stored consent draws the switch «ON»",
-  "file": "../customer-app/capp-home.js",
-  "from": "aria-checked=\"${inert ? !a.settled : a.promos}\"",
-  "to": "aria-checked=\"${inert ? true : a.promos}\"",
+  "file": "../customer-app/capp-push.js",
+  "from": "aria-checked=\"${!x.settled}\" aria-disabled=\"true\"",
+  "to": "aria-checked=\"true\" aria-disabled=\"true\"",
   "command": [
    "node",
    "--test",
@@ -38427,15 +38427,15 @@
   "slice": "capp-push",
   "label": "the denied rows are not inert",
   "file": "../customer-app/capp-push.js",
-  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ic}",
-  "to": "      ? `<div class=\"rowbtn\">${ic}",
+  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ICON.phone}",
+  "to": "      ? `<div class=\"rowbtn\">${ICON.phone}",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-push.test.mjs"
   ],
   "kills_with": [
-   "PUSH-UI: F2c"
+   "NOTIFS-DENIED: the two phone rows inert"
   ]
  },
  {
@@ -38699,8 +38699,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
   "command": [
    "node",
    "--test",
@@ -38941,6 +38941,106 @@
   ],
   "kills_with": [
    "🔴 NB-1:"
+  ]
+ },
+ {
+  "id": "notifs-01",
+  "slice": "capp-notifs",
+  "label": "the Cuenta keeps a separate «Promociones» row beside «Notificaciones»",
+  "file": "../customer-app/capp-home.js",
+  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7 frame 1 / 4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-ONE-ROW: the web member"
+  ]
+ },
+ {
+  "id": "notifs-02",
+  "slice": "capp-notifs",
+  "label": "«Por correo y WhatsApp» writes the push prefs instead of the email + WhatsApp consent",
+  "file": "../customer-app/capp-push.js",
+  "from": "aria-label=\"${COPY.promosTitle}\" data-act=\"promos\"></button>",
+  "to": "aria-label=\"${COPY.promosTitle}\" data-act=\"push-pref\" data-k=\"promociones\"></button>",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-PROMOS: «Por correo y WhatsApp» is the promos switch"
+  ]
+ },
+ {
+  "id": "notifs-03",
+  "slice": "capp-notifs",
+  "label": "the phone permission off dims the email + WhatsApp consent too",
+  "file": "../customer-app/capp-push.js",
+  "from": "const inert = typeof x.promos !== 'boolean';",
+  "to": "const inert = dn || typeof x.promos !== 'boolean';",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-DENIED: the email + WhatsApp consent is NOT dimmed"
+  ]
+ },
+ {
+  "id": "notifs-04",
+  "slice": "capp-notifs",
+  "label": "the web screen draws the phone rows (no app push)",
+  "file": "../customer-app/capp-push.js",
+  "from": "const x = v || {}, app = x.app === true,",
+  "to": "const x = v || {}, app = x.app !== false,",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-WEB: no phone rows"
+  ]
+ },
+ {
+  "id": "notifs-05",
+  "slice": "capp-notifs",
+  "label": "the «Notificaciones» row opens only with the native push (the web member loses the consent)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'sub-notifs') { if (notifsOk()) nav.go({ name: 'notifs' }); return; }",
+  "to": "if (a === 'sub-notifs') { if (pushUi()) nav.go({ name: 'notifs' }); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7 frame 1 / 4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-WEB-SHELL: the web member opens the screen"
+  ]
+ },
+ {
+  "id": "notifs-06",
+  "slice": "capp-notifs",
+  "label": "the Cuenta row's subtitle ignores the email + WhatsApp consent",
+  "file": "../customer-app/capp-push.js",
+  "from": "(x.granted && x.promociones === true) || x.promos === true ?",
+  "to": "(x.granted && x.promociones === true) ?",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-ROW: the email + WhatsApp consent counts"
   ]
  }
 ]

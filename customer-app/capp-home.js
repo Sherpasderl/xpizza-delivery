@@ -452,10 +452,11 @@
     <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
-  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
-  // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
-  // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
-  // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
+  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
+  // email on three lines; the initial in the avatar), Pedidos / Direcciones / Notificaciones / Ayuda, the session group, the muted version.
+  // MOCKUP-capp-notificaciones 2b (owner 11-16): ONE «Notificaciones» row (vm.notifRow { title, sub }) where «Promociones» was — the
+  // email + WhatsApp consent switch (and its frame 4b inert states) now lives on that screen (CappPush.screenHtml).
+  // vm.acct = { placeholder, name, phone, email, promos, settled, version }
   // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in every Inicio state.
   // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
   // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
@@ -489,7 +490,7 @@
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
   function accountMemberHtml(vm) {
-    const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
+    const a = vm.acct || {};
     const hero = a.placeholder
       ? '<div class="acct-hero"><span class="av ph" aria-hidden="true"></span><div class="t"><span class="bar n"></span><span class="bar s"></span><span class="bar e"></span></div></div>'
       : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
@@ -497,8 +498,7 @@
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
-      ${vm.pushRow && vm.pushRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}
-      <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
+      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
