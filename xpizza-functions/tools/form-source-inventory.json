@@ -2931,6 +2931,7 @@
   "manual-resolve.js",
   "marketing/anuncio-core.js",
   "marketing/anuncio-model.js",
+  "marketing/audience-core.js",
   "marketing/brand-of.js",
   "marketing/config.js",
   "marketing/functions.js",
@@ -7118,6 +7119,10 @@
    "lifts": []
   },
   "marketing/anuncio-model.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-core.js": {
    "pins": [],
    "lifts": []
   },

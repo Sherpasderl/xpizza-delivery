@@ -870,6 +870,7 @@
   "marketing/offers-core.js#resolveDishes": "marketing",
   "marketing/config.js#exactKeys": "marketing",
   "marketing/offer-model.js#exactKeys": "marketing",
+  "marketing/audience-core.js#kindOf": "marketing_price",
   "marketing/offer-price.js#discountOf": "marketing_price",
   "marketing/offer-price.js#dishUnitsOf": "marketing_price",
   "marketing/offer-price.js#entryOf": "marketing_price",
