@@ -31,6 +31,7 @@
   "branches-view.js",
   "calificaciones-harness.mjs",
   "calificaciones-logic.js",
+  "calificaciones-skeleton-fit.browser.test.mjs",
   "calificaciones-view.js",
   "calificaciones.js",
   "calificaciones.test.mjs",
@@ -206,8 +207,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "7eb8f5e6114d58f8e2a2e7f36056fc43bf447cf399ca71f1c187c717a4a3a6c3",
-   "bytes": 185294
+   "sha256": "0410b1a9dc740a4083e7b3ff68769c787872a092549950c610a150bcd65d7260",
+   "bytes": 185403
   }
  },
  "diff_aid": {
