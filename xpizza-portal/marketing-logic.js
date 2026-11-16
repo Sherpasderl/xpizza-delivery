@@ -241,7 +241,8 @@ export function stateToast(o, activeWord) {
 // menu_unavailable / category_too_large past it. (3a item, advisor 11-16: the server will mark op-judged replies itself.)
 const OP_JUDGED = Object.freeze({
   409: Object.freeze(['superseded', 'too_many_offers', 'ended', 'live_edit_not_allowed', 'bad_transition', 'type_not_supported', 'not_ended',
-    'duplicate', 'overlap', 'too_many_live', 'menu_unavailable', 'category_too_large']),
+    'duplicate', 'overlap', 'too_many_live', 'menu_unavailable', 'category_too_large',
+    'audience_not_supported']),   // 3a 20325d019 offers-core :399 — after SetState's claim check (:388)
   429: Object.freeze(['too_many_pending']),
 });
 export function classifyConfirmation(attempt, res) {
@@ -260,7 +261,7 @@ const DEFINITE = Object.freeze({
   429: Object.freeze(['too_many_pending']),   // offers-core putClaim: the brand's live op claims are full — the txn aborts, NOTHING written (Codex 11-15 P2-2)
   409: Object.freeze(['superseded', 'bad_transition', 'offers_disabled', 'current_malformed', 'overlap', 'too_many_live', 'too_many_offers',
     'live_edit_not_allowed', 'ended', 'not_ended', 'branch_not_live', 'menu_unavailable', 'category_too_large', 'duplicate', 'op_id_conflict',
-    'type_not_supported']),
+    'type_not_supported', 'audience_not_supported']),   // 3a 20325d019: a STORED new / returning offer never goes live (owner 11-16)
 });
 // a 200's record is complete: what every screen reads (id, rev, state, type, name, branches, schedule, the type's own params)
 const PARAMS_OK = Object.freeze({

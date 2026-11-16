@@ -611,7 +611,8 @@ async function saveDraft() {
   if (s.outcome === 'unknown') { unknownOut(ctx); return; }
   if (s.outcome !== 'saved') { B.err = wordOf(s); B.review = true; render(); return; }
   closeBuilder();
-  ctx.toast('Borrador guardado');
+  const word = s.offer && s.offer.state === 'draft' ? 'Borrador guardado' : ML.stateToast(s.offer, programmedToast(s.offer));   // a replay: the RETURNED state (Codex #93 r2 F3)
+  if (word) ctx.toast(word);
   ctx.onDone && ctx.onDone();
 }
 // v5's «Oferta programada. Empieza hoy a las 21:00.» — worded from the SAVED offer's own schedule (today / another day; a window or not)
