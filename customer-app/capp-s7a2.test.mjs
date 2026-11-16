@@ -4707,7 +4707,7 @@ test('S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart wit
 const DIRM = FN_REQ('./directory/directory.js'), AGG = FN_REQ('./ratings/aggregate.js'), RV2 = FN_REQ('./ratings/rating-v2.js');
 const DAY = 86400e3;
 function c1Stats(rid, { stars = [], firstServedAt = null } = {}) {
-  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, now: T0 - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: T0 - 4 * DAY + i }, o)(n); });
+  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, fulfilledAt: T0 - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: T0 - 4 * DAY + i }, o)(n); });
   return AGG.buildPublicStats({ rid, nowMs: T0, orders: [], ratings: nodes, priceOf: () => null, firstServedAt });
 }
 // a directory-2 body: the pinned complete generation, every entry rebuilt in the real ENTRY_FIELDS order with `ratings` = ratingsOf(stats)
