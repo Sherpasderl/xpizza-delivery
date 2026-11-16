@@ -1148,7 +1148,7 @@ createOrderApp.all('*', async (req, res) => {
     if (rd.textVersion === TV.TEXT_A8) cashTextVersion = TV.TEXT_A8;   // a retained 'a8' reservation → the order carries its binding
     /* a1:end cash-selected-version */
   }
-  const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dqOffer = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dqAdmit, reward: redemptionPriced, app: DW.isApp(body), nowMs: Date.now(), placement: true }); const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : OFP.foodLempiras(total, OFW.offerOf(dqOffer));   // discounted total (== total when no redeem / no offer) · MARKETING (PLAN-5f-marketing-price): the app order's restaurant offer, read FRESH at placement
+  const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dqOffer = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dqAdmit, reward: redemptionPriced, app: DW.isApp(body), nowMs: Date.now(), placement: true, placementAud: OFW.placementAudOf(body.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), placingUid: customer_uid }); const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : OFP.foodLempiras(total, OFW.offerOf(dqOffer));   // discounted total (== total when no redeem / no offer) · MARKETING (PLAN-5f-marketing-price): the app order's restaurant offer, read FRESH at placement
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
@@ -1288,6 +1288,7 @@ createOrderApp.all('*', async (req, res) => {
        confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
        reason: bind what the order was agreed against to the order itself. */
     if (quoteProvenance) heldUpdates[`orders/${orderId}`].quote = quoteProvenance;
+    require('./marketing/audience-place').stampCash(heldUpdates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
@@ -1335,6 +1336,7 @@ createOrderApp.all('*', async (req, res) => {
      confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
      reason: bind what the order was agreed against to the order itself. */
   if (quoteProvenance) updates[`orders/${orderId}`].quote = quoteProvenance;
+  require('./marketing/audience-place').stampCash(updates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update
 
   try {
     await db.ref().update(updates);
@@ -1697,7 +1699,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const dq0 = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq0 && dq0.refusal) return res.status(dq0.httpStatus).json({ error: dq0.refusal, ...(dq0.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dq = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dq0, reward: redemptionPriced, app: DW.isApp(body), orderId, nowMs: Date.now(), placement: true }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, order_id: orderId });   /* v1: a stored envío waiver is never resumed (offer-wire) */ const effBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq0 = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq0 && dq0.refusal) return res.status(dq0.httpStatus).json({ error: dq0.refusal, ...(dq0.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dq = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dq0, reward: redemptionPriced, app: DW.isApp(body), orderId, nowMs: Date.now(), placement: true, placementAud: OFW.placementAudOf(body.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), placingUid: customer_uid }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, order_id: orderId });   /* v1: a stored envío waiver is never resumed (offer-wire) */ const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
     : OFP.foodBreakdown(total, restaurantId, OFW.offerOf(dq))); if (!redemptionPriced && OFW.offerOf(dq)) effTotal = OFP.foodLempiras(total, OFW.offerOf(dq));   // marketing: no offer ⇒ exactly orderBreakdownCents(total, restaurantId)
@@ -2046,6 +2048,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* checkout:begin gate-verified */
   if (cappGuest && cappGuest.guest) pendingOrderRecord.guest_verified = { phone: cappGuest.guest.phone, phone_hash: cappGuest.guest.phone_hash };   // §2.3: in the SAME CAS write, capp guests only
   /* checkout:end gate-verified */
+  await require('./marketing/audience-place').stampCard(db, pendingOrderRecord, orderId, dq, Date.now());   // offer-audience: the deadline index FIRST, then the signed codes on the record
   // Read-only reuse probe (#3): config is read ONLY when creating a fresh pending order, so a
   // customer reusing a live hosted checkout during a config outage is NOT failed closed. The CAS
   // in acquireHostedAttempt stays authoritative; on a probe-fresh/CAS-reuse race the only cost is
@@ -7351,8 +7354,10 @@ exports.verifyOtp = onRequest(
 // re-price at order time, and that remains the binding total. A spoofed or stale quote can only affect
 // what is DISPLAYED. Correspondingly it fails SOFT: a bad cart returns ok:false with HTTP 200 so the
 // client can silently fall back to its own total rather than blocking checkout.
+const AUDIENCE_KEY_V1 = defineSecret('AUDIENCE_KEY_V1');   // offer-audience (PLAN r4.1 §2, owner 5013): the brand-scoped identity-code HMAC key — owner hidden-prompt secret
+const audienceKey = () => { try { return AUDIENCE_KEY_V1.value() || ''; } catch (_) { return ''; } };   // unset ⇒ '' ⇒ no codes ⇒ kind none (fail closed)
 exports.quoteOrder = onRequest(
-  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10 },
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10, secrets: [AUDIENCE_KEY_V1] },
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
@@ -7403,8 +7408,8 @@ exports.quoteOrder = onRequest(
          unchanged (byte-identical response for every existing client); the token and net_total_cents
          are additive. Issued through the shared issuer so this endpoint and the redemption quote
          cannot develop divergent issuance math — the thing 1C exists to prevent, one layer up. */
-      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const OFW = require('./marketing/offer-wire'); const dqo = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables, baseTotalL: total, dq, reward: null, app: DW.isApp(body), nowMs: Date.now() }); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo),
-        customerId: dq.uid, nowMs: Date.now() });
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const OFW = require('./marketing/offer-wire'); const dqo = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables, baseTotalL: total, dq, reward: null, app: DW.isApp(body), nowMs: Date.now(), audience: { member: require('./marketing/audience-place').memberOf(req, db, { knownUid: dq.uid, getAuth, attributionUid }), key: audienceKey } }); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo),
+        customerId: dqo.aud ? dqo.aud_uid : dq.uid, nowMs: Date.now(), ...(dqo.aud ? { aud: dqo.aud } : {}) });   // offer-audience: an audience-exposed quote signs aud + its verified member
       return res.status(200).json({
         ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
         ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),

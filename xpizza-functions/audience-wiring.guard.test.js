@@ -9,6 +9,23 @@ const { execFileSync } = require('child_process');
 const { BASE, HUNKS, FILES, unapplyAudienceModule } = require('./tools/audience-module-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+{
+  // the handlers' audience hooks (PLAN r4.1 §2 / §3 / §5) — every site, exactly once each; the live handlers end to end run in the emulator suite
+  const idx = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const count = (needle) => idx.split(needle).length - 1;
+  const want = [
+    ['placementAud: OFW.placementAudOf(body.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), placingUid: customer_uid', 2, 'both placements (cash createOrder + card chargeOnlineOrder / placeSdkApp) read the token\'s audience evidence, bound to the placing customer'],
+    ["require('./marketing/audience-place').stampCash(heldUpdates, orderId, dq, Date.now());", 1, 'the held cash order freezes the codes + the deadline index'],
+    ["require('./marketing/audience-place').stampCash(updates, orderId, dq, Date.now());", 1, 'the cash order freezes the codes + the deadline index'],
+    ["await require('./marketing/audience-place').stampCard(db, pendingOrderRecord, orderId, dq, Date.now());", 1, 'the card pending record: the index first, then the codes'],
+    ["audience: { member: require('./marketing/audience-place').memberOf(req, db, { knownUid: dq.uid, getAuth, attributionUid }), key: audienceKey }", 1, 'the quote resolves the member lazily, with the key'],
+    ['customerId: dqo.aud ? dqo.aud_uid : dq.uid, nowMs: Date.now(), ...(dqo.aud ? { aud: dqo.aud } : {})', 1, 'the quote signs aud + its member'],
+    ["secrets: [AUDIENCE_KEY_V1]", 1, 'the key is bound to quoteOrder ONLY'],
+    ["defineSecret('AUDIENCE_KEY_V1')", 1, 'one secret definition'],
+  ];
+  for (const [needle, k, why] of want) assert.strictEqual(count(needle), k, `AUDIENCE: 🔴 AUD-SITES ${why} (${count(needle)} × ${needle.slice(0, 60)})`);
+  ok(`the handler hooks: ${want.length} sites, each exactly where it belongs`);
+}
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'AUDIENCE: non-vacuity — the layer owns files');
 for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');

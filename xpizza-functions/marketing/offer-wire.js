@@ -112,7 +112,7 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
     if (!placement && audience && CFG.audienceEnabled(cfg) && exposedOf(live)) {
       const uid = await audience.member();
       const r = uid ? await AR.resolveAudience(db, { uid, rid, key: audience.key(), nowMs, log }) : { kind: 'none', ids: null };
-      kind = r.kind; aud = { kind, sel: null, ids: kind === 'none' ? null : r.ids }; audUid = kind === 'none' ? null : uid;
+      kind = r.kind; aud = { kind, sel: null, ids: kind === 'none' ? null : r.ids }; audUid = uid || null;   // the verified member whatever the kind: their own placement binds
     }
     if (pa.state === 'valid') {
       if (pa.customer_id !== (placingUid || null)) return OFFER_CHANGED;   // r4 P1: the signed customer must be the placing one (A → B, member → guest)

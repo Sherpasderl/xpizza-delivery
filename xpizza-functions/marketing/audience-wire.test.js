@@ -82,6 +82,16 @@ const payload = (t) => JSON.parse(Buffer.from(t.split('.')[0], 'base64url').toSt
     assert.strictEqual(OW.offerOf(dqo), null, `${L}: no offer`);
     assert.deepStrictEqual([payload(q.quote_token).aud, payload(q.quote_token).customer_id], [{ kind: 'none', sel: null, ids: null }, null], `🔴 ${L}: the signed absence`);
   });
+  await cell('AW-KIND-NONE-MEMBER: a member whose eligibility read FAILS signs kind none but stays bound to themself — their own placement is never refused', async (L) => {
+    const w = await aworld(); profile(w, 'u1'); await w.publish({ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' });
+    w.fake.failReads.add('user_orders/u1');
+    const { q } = await quote(w);
+    assert.deepStrictEqual([payload(q.quote_token).aud, payload(q.quote_token).customer_id], [{ kind: 'none', sel: null, ids: null }, 'u1'], `🔴 ${L}: kind none, still the member`);
+    w.fake.failReads.clear();
+    const r = await place(w, q.quote_token);
+    assert.strictEqual(r.refusal, undefined, `🔴 ${L}: the member's own placement is not refused (${JSON.stringify(r)})`);
+    assert.strictEqual(r.offer, null, `${L}: and never an audience price`);
+  });
   await cell('AW-PLACE: the same member places ⇒ charged EXACTLY the signed economics; the codes come back for the order (audience_ids)', async (L) => {
     const w = await aworld(); profile(w, 'u1'); await w.publish({ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' });
     const { q } = await quote(w);

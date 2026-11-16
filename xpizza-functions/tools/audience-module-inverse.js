@@ -24,6 +24,46 @@ const HUNKS = Object.freeze([
   "file": "quote-issue.js",
   "now": "      ...(aud !== undefined ? { aud } : {}),   // offer-audience: the kind, the selected offer (or its signed absence) and the codes; absent ⇒ byte-identical\n",
   "was": ""
+ },
+ {
+  "file": "index.js",
+  "now": "  const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dqOffer = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dqAdmit, reward: redemptionPriced, app: DW.isApp(body), nowMs: Date.now(), placement: true, placementAud: OFW.placementAudOf(body.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), placingUid: customer_uid }); const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : OFP.foodLempiras(total, OFW.offerOf(dqOffer));   // discounted total (== total when no redeem / no offer) · MARKETING (PLAN-5f-marketing-price): the app order's restaurant offer, read FRESH at placement\n",
+  "was": "  const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dqOffer = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dqAdmit, reward: redemptionPriced, app: DW.isApp(body), nowMs: Date.now(), placement: true }); const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : OFP.foodLempiras(total, OFW.offerOf(dqOffer));   // discounted total (== total when no redeem / no offer) · MARKETING (PLAN-5f-marketing-price): the app order's restaurant offer, read FRESH at placement\n"
+ },
+ {
+  "file": "index.js",
+  "now": "    require('./marketing/audience-place').stampCash(heldUpdates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update\n",
+  "was": ""
+ },
+ {
+  "file": "index.js",
+  "now": "  require('./marketing/audience-place').stampCash(updates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update\n",
+  "was": ""
+ },
+ {
+  "file": "index.js",
+  "now": "  const dq0 = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq0 && dq0.refusal) return res.status(dq0.httpStatus).json({ error: dq0.refusal, ...(dq0.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dq = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dq0, reward: redemptionPriced, app: DW.isApp(body), orderId, nowMs: Date.now(), placement: true, placementAud: OFW.placementAudOf(body.quote_token, process.env.QUOTE_TOKEN_SECRET, Date.now()), placingUid: customer_uid }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, order_id: orderId });   /* v1: a stored envío waiver is never resumed (offer-wire) */ const effBreakdown = DW.withDelivery(dq, redemptionPriced\n",
+  "was": "  const dq0 = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq0 && dq0.refusal) return res.status(dq0.httpStatus).json({ error: dq0.refusal, ...(dq0.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dq = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dq0, reward: redemptionPriced, app: DW.isApp(body), orderId, nowMs: Date.now(), placement: true }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, order_id: orderId });   /* v1: a stored envío waiver is never resumed (offer-wire) */ const effBreakdown = DW.withDelivery(dq, redemptionPriced\n"
+ },
+ {
+  "file": "index.js",
+  "now": "  await require('./marketing/audience-place').stampCard(db, pendingOrderRecord, orderId, dq, Date.now());   // offer-audience: the deadline index FIRST, then the signed codes on the record\n",
+  "was": ""
+ },
+ {
+  "file": "index.js",
+  "now": "const AUDIENCE_KEY_V1 = defineSecret('AUDIENCE_KEY_V1');   // offer-audience (PLAN r4.1 §2, owner 5013): the brand-scoped identity-code HMAC key — owner hidden-prompt secret\nconst audienceKey = () => { try { return AUDIENCE_KEY_V1.value() || ''; } catch (_) { return ''; } };   // unset ⇒ '' ⇒ no codes ⇒ kind none (fail closed)\n",
+  "was": ""
+ },
+ {
+  "file": "index.js",
+  "now": "  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10, secrets: [AUDIENCE_KEY_V1] },\n",
+  "was": "  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 10 },\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const OFW = require('./marketing/offer-wire'); const dqo = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables, baseTotalL: total, dq, reward: null, app: DW.isApp(body), nowMs: Date.now(), audience: { member: require('./marketing/audience-place').memberOf(req, db, { knownUid: dq.uid, getAuth, attributionUid }), key: audienceKey } }); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo),\n        customerId: dqo.aud ? dqo.aud_uid : dq.uid, nowMs: Date.now(), ...(dqo.aud ? { aud: dqo.aud } : {}) });   // offer-audience: an audience-exposed quote signs aud + its verified member\n",
+  "was": "      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const OFW = require('./marketing/offer-wire'); const dqo = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables, baseTotalL: total, dq, reward: null, app: DW.isApp(body), nowMs: Date.now() }); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo),\n        customerId: dq.uid, nowMs: Date.now() });\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
