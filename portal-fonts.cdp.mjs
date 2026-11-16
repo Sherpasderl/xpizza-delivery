@@ -151,37 +151,38 @@ const STATES = {
   'I-reset-sent':    { page: 'aceptar', invite: { pwRecent: true }, container: '#reset-sent', drive: seq(at("__type('correo', 'jorge@ejemplo.test')", 50), at("__submit('emailform')", 700), at("__type('pw', 'unaclave-segura')", 50), at("__submit('pwform')", 700)) },
   'I-error':         { page: 'aceptar', invite: { previewFail: true }, container: '#st-error', drive: async () => {} },
   'I-invalid':       { page: 'aceptar', noInvite: true, container: '#st-invalid', drive: async () => {} },
-  'P-editor':        { page: 'index', container: '#detail', drive: async () => {} },
-  'P-drawer':        { page: 'index', container: '#drawer', drive: rowChev(1) },
-  'P-review':        { page: 'index', container: '#scrim .modal', edit: { diff: DIFF }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800)) },
-  'P-receipt':       { page: 'index', container: '#mbody .receipt', edit: { diff: DIFF }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800), at("(document.getElementById('pubbtn').click(), true)", 900)) },
-  'P-conflict':      { page: 'index', container: '#mbody .conflict', edit: { status: 409, body: { error: 'stale_edit' } }, drive: seq(editPrice, at("(document.getElementById('review').click(), true)", 800)) },
-  'P-readonly':      { page: 'index', role: 'manager', caps: MGR_RO, container: '#detail', drive: async () => {} },
-  'A-drawer':        { page: 'index', role: 'manager', caps: MGR_RO, container: '#availdrawer', drive: rowChev(0) },
+  'P-editor':        { page: 'index', container: '#detail', drive: nav('navprod') },
+  'P-drawer':        { page: 'index', container: '#drawer', drive: seq(nav('navprod'), rowChev(1)) },
+  'P-review':        { page: 'index', container: '#scrim .modal', edit: { diff: DIFF }, drive: seq(nav('navprod'), editPrice, at("(document.getElementById('review').click(), true)", 800)) },
+  'P-receipt':       { page: 'index', container: '#mbody .receipt', edit: { diff: DIFF }, drive: seq(nav('navprod'), editPrice, at("(document.getElementById('review').click(), true)", 800), at("(document.getElementById('pubbtn').click(), true)", 900)) },
+  'P-conflict':      { page: 'index', container: '#mbody .conflict', edit: { status: 409, body: { error: 'stale_edit' } }, drive: seq(nav('navprod'), editPrice, at("(document.getElementById('review').click(), true)", 800)) },
+  'P-readonly':      { page: 'index', role: 'manager', caps: MGR_RO, container: '#detail', drive: nav('navprod') },
+  'A-drawer':        { page: 'index', role: 'manager', caps: MGR_RO, container: '#availdrawer', drive: seq(nav('navprod'), rowChev(0)) },
   'S-list':          { page: 'index', container: '#viewsuc', drive: nav('navsuc') },
   'S-detail':        { page: 'index', container: '#viewsuc', drive: seq(nav('navsuc'), at("(__q('#viewsuc .card.clk')[0].click(), true)", 600)) },
-  'Z-pause':         { page: 'index', container: '#pausemodal', drive: seq(nav('navpausas'), at("__click('Pausar sucursal')", 500)) },
+  'Z-pause':         { page: 'index', container: '#pausemodal', drive: seq(nav('navsuc'), at("(__q('#viewsuc .card.clk')[0].click(), true)", 600), at("__click('Pausar sucursal')", 500)) },
   'E-devices':       { page: 'index', container: '#viewequipos', drive: nav('navequipos') },
   'E-unlink':        { page: 'index', container: '#devmodal', drive: seq(nav('navequipos'), at("__click('Desvincular')", 500)) },
   'V-ventas':        { page: 'index', container: '#viewventas', drive: nav('navventas') },
   'T-team':          { page: 'index', container: '.main:not(.hidden)', drive: navLabel('Equipo de trabajo') },
-  'T-invite':        { page: 'index', container: '.modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Invitar gerente')", 500)) },
-  'T-edit':          { page: 'index', container: '.modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Editar')", 500)) },
+  'T-invite':        { page: 'index', container: '.scrim.show .modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Invitar gerente')", 500)) },
+  'T-edit':          { page: 'index', container: '.scrim.show .modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Editar')", 500)) },
   'T-sent':          { page: 'index', container: '.modal .tsent', drive: seq(navLabel('Equipo de trabajo'), at("__click('Invitar gerente')", 500),
-    async (c) => { await c.ev(`(() => { const m = document.querySelector('.modal[role=dialog]'); const ins = [...m.querySelectorAll('input')];
+    async (c) => { await c.ev(`(() => { const m = document.querySelector('.scrim.show .modal[role=dialog]'); const ins = [...m.querySelectorAll('input')];
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       for (const i of ins) { if (i.type === 'email') { set.call(i, 'luis@ejemplo.test'); i.dispatchEvent(new Event('input', { bubbles: true })); }
         else if (i.type === 'text') { set.call(i, 'Luis Mejía'); i.dispatchEvent(new Event('input', { bubbles: true })); }
       }
       const pick = m.querySelector('.tpick'); if (!pick) throw new Error('premise: no branch pick in the invite modal'); pick.click();   // the branch picks are .tpick buttons (team.js)
       return true; })()`); await sleep(200); }, at("__click('Enviar invitación')", 900)) },
-  'T-remove':        { page: 'index', container: '.modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Quitar acceso')", 500)) },
+  'T-remove':        { page: 'index', container: '.scrim.show .modal[role=dialog]', drive: seq(navLabel('Equipo de trabajo'), at("__click('Quitar acceso')", 500)) },
   // P-crop (dish photos B §3, P3 «Ajustar foto»): only when the photos B slice is in the build tip; listed, then skipped with its reason.
   // Uploads ON for this state only; the row camera opens the drawer WITH the picker, and the picker gets a REAL JPEG (photos B's own
   // mockup fixture) through DOM.setFileInputFiles, so the crop step is reached by the shipped decode path — never a hand-built DOM.
   'P-crop':          { page: 'index', requires: 'xpizza-portal/photo.js', photos: true, container: '#drawer',   // the crop STEP of the drawer: its text (title, frames, the order-page previews); .phcrop itself is image-only
-    drive: seq(at(`(() => { const r = __q('#detail .irow').find((x) => x.querySelector('.nm') && x.querySelector('.nm').firstChild.textContent === 'Pepperoni');
+    drive: seq(nav('navprod'), at(`(() => { const r = __q('#detail .irow').find((x) => x.querySelector('.nm') && x.querySelector('.nm').firstChild.textContent === 'Pepperoni');
       if (!r || !r.querySelector('button.thumb')) throw new Error('premise: no row camera on Pepperoni (uploads on?)'); r.querySelector('button.thumb').click(); return true; })()`, 500),
+    at("(document.querySelector('input[type=file]') || __click('Elegir de la galería', document.getElementById('drawer')), true)", 400),   // 390: the camera opens the drawer's «Tomar foto» / «Elegir de la galería» first (photo.js:105)
     async (c) => {
       const jpg = path.join(ROOT, 'review/portal-photos-b/mockup/mockup-dish-photo/09-pepperoni.jpg');
       if (!fs.existsSync(jpg)) throw new Error(`premise: the photos B fixture ${jpg} is not in this tip`);
