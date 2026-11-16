@@ -274,7 +274,7 @@ function offerCards() {
   sect.append(el('h2', null, 'Creá tu propia oferta'),
     el('p', 'mk5-olede', 'Elegí un tipo. Todo viene con valores sugeridos que podés cambiar, y el descuento lo cubre tu restaurante.'));
   const grid = el('div', 'mk5-ogrid');
-  for (const c of CARDS) {
+  for (const c of CARDS.filter((x) => ML.offerTypesShown().includes(x.type))) {   // the audience flag (owner 11-16) holds the nuevos card
     const t = c.tone;
     const card = el('div', `mk5-card mk5-bg-${t}`); card.setAttribute('role', 'button'); card.tabIndex = 0; card.dataset.otype = c.type; card.dataset.tone = t;
     const i = el('span', `mk5-cico mk5-vv-${t}`); i.append(ico(ML.TYPE_ICON[c.type]));

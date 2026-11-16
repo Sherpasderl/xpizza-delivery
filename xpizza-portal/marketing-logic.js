@@ -23,6 +23,13 @@ export const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);  
 // offers v1 (owner 11-15): the types a NEW offer may be — «Envío gratis» is held until the payout ledger can charge the restaurant
 // (3a 94e6b7ae9 V1_TYPES; an envío write ⇒ 400 type_not_supported, worded generically)
 export const V1_TYPES = Object.freeze(['pct', 'lps', 'bogo', 'nuevos']);
+// owner 11-16 (offers v1): the audience choice is HIDDEN — the price path applies «Todos los clientes» only (3a: any other audience ⇒
+// 400 audience_not_supported). ONE flag brings it all back when audience eligibility ships (the owner wants it soon after v1): the
+// builder's «Clientes» row, the review's line and the «Para clientes nuevos» card. The code path stays live behind it (A2 renders it).
+export const FLAGS = { audience: false };
+export const offerTypesShown = () => V1_TYPES.filter((t) => t !== 'nuevos' || FLAGS.audience);
+// the «Clientes» row: with the flag, or for a form that already targets another audience (an older draft — shown so it can be seen and set back)
+export const audienceShown = (f) => f.type !== 'nuevos' && (FLAGS.audience || (f.audience !== undefined && f.audience !== 'all'));
 export const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
 export const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
@@ -215,6 +222,34 @@ export function classifyWrite(attempt, res) {
   if (DEFINITE[res.status] && DEFINITE[res.status].includes(b.error)) return { outcome: 'refused', ...refusalOf(res.status, b) };   // never confirmed
   return { outcome: 'unknown' };   // Codex r6.1-build P2-1: any other 4xx (408, 429 …) or 5xx is UNKNOWN — the list decides
 }
+// the state moves' toasts (v5, owner-approved) — ONE source for the detail and the builder
+export const MOVE_TOAST = Object.freeze({ pause: 'Oferta pausada. Reanudala cuando querás.', resume: 'Oferta activa de nuevo', end: 'Oferta terminada. Los resultados quedan guardados.' });
+// Codex #93 F3: a replay answers the offer as it is NOW (another session may have moved it since our call landed) — the toast follows
+// the RETURNED record: ended (by state or by its end date) ⇒ «Oferta terminada…», paused ⇒ «Oferta pausada…», active ⇒ the action's own
+// word (`activeWord`); anything else ⇒ null (no toast — the list shows it as it is)
+export function stateToast(o, activeWord) {
+  if (!isObj(o)) return null;
+  if (o.state === 'ended' || o.status === 'ended') return MOVE_TOAST.end;
+  if (o.state === 'paused_owner') return MOVE_TOAST.pause;
+  return o.state === 'active' ? activeWord : null;
+}
+// Codex #93 F2: the ONE confirmation (the same op_id) settles only on an answer the server gives AT / AFTER its op_id claim check — the
+// replay (200), a stored judgement, or a refusal the core can only reach once no claim exists (so the first call never landed). A refusal
+// it can give BEFORE the claim check (the token, the access, the switch — and the codes it also gives there: bad_request, not_found,
+// current_malformed) says nothing about the first call, which may have landed with its reply lost ⇒ UNKNOWN (the fallback), never «refused».
+// Derived from 3a 9462baf40 offers-core: claimCheck at marketingOfferSaveCore :318, SetState :380, Repeat :444; a claimed request defers
+// menu_unavailable / category_too_large past it. (3a item, advisor 11-16: the server will mark op-judged replies itself.)
+const OP_JUDGED = Object.freeze({
+  409: Object.freeze(['superseded', 'too_many_offers', 'ended', 'live_edit_not_allowed', 'bad_transition', 'type_not_supported', 'not_ended',
+    'duplicate', 'overlap', 'too_many_live', 'menu_unavailable', 'category_too_large']),
+  429: Object.freeze(['too_many_pending']),
+});
+export function classifyConfirmation(attempt, res) {
+  const c = classifyWrite(attempt, res);
+  if (c.outcome !== 'refused') return c;
+  const err = isObj(res.body) ? res.body.error : undefined;
+  return OP_JUDGED[res.status] && OP_JUDGED[res.status].includes(err) ? c : { outcome: 'unknown' };
+}
 // the DEFINITE refusals (3a offers-core + portal/ops-core @ 94e6b7ae9): nothing was written, the screen may word it. An ALLOWLIST by
 // status and code — a 400 bad_request carries its reason (validation: caps_not_supported, type_not_supported, start_past …).
 const DEFINITE = Object.freeze({
@@ -391,6 +426,7 @@ export function builderText(f, ctx = {}) {
     chip, title, autoName, sumType, prodSummary, branchText, branchShort, daysText, slotText,
     when: whenRaw.charAt(0).toUpperCase() + whenRaw.slice(1), schedSummary: { strong: `${daysText} · ${slotText}`, rest: dates ? `${dates}.` : '' },
     sumSched: `${daysText} · ${slotText}${dates ? ` · ${dates}` : ''}`,
+    sumSchedParts: [`${daysText} · ${slotText}`, ...(dates ? [dates] : [])],   // the same words, split where a phone breaks the line (16b)
     cost: { lead: `${t === 'envio' ? 'El envío' : 'El descuento'} lo cubre tu restaurante. Sherpa no te cobra.`, ceiling: ceiling ? `Hasta ${ceiling} por canje.` : null },
     block, name,
   };

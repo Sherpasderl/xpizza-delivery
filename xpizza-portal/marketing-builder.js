@@ -58,7 +58,7 @@ const B = { open: false, host: null, ctx: null, mode: 'new', offer: null, form: 
 // context it captured — a reply that comes back to another opening only refreshes the list (stale()), never the dialog on screen.
 const stale = (ctx) => { if (ctx && ctx.onChanged) ctx.onChanged(); };
 // ONE call, classified ONCE (r6.1): a thrown call is an UNKNOWN, never a stuck «busy»; there is no recovery read
-const sendOnce = (attempt, send) => send().then((res) => ML.classifyWrite(attempt, res), () => ({ outcome: 'unknown' }));
+const sendOnce = (attempt, send, classify = ML.classifyWrite) => send().then((res) => classify(attempt, res), () => ({ outcome: 'unknown' }));
 // r6.1 (owner 11-15): an UNKNOWN outcome closes the dialog; the host goes to «Campañas», re-reads it and says so (ML.UNKNOWN_WORD, the
 // fallback — for a create / repeat / draft only after its one confirmation was ambiguous too)
 function unknownOut(ctx) { closeBuilder(); if (ctx.onUnknown) ctx.onUnknown(); else stale(ctx); }
@@ -73,7 +73,7 @@ async function sendConfirmed(attempt, send, g) {
   const s = await sendOnce(attempt, send);
   if (s.outcome !== 'unknown' || s.conflict) return s;   // a definite answer — or op_id_conflict (our bug): never confirmed
   if (B.gen === g) { B.confirming = true; render(); }
-  return sendOnce(attempt, send);
+  return sendOnce(attempt, send, ML.classifyConfirmation);   // Codex #93 F2: only an op_id-judged answer settles it
 }
 export const CFM_NOTE = 'La conexión tardó. Estamos confirmando que se guardó.';   // owner-approved 11-15 (final)
 // the busy primary: the idle label kept invisible in the same grid cell, so the button keeps its size (nothing moves)
@@ -89,7 +89,7 @@ function opened(host, ctx) {   // the shared part of every opening
 // ── open / close ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // ctx: { branches: [{ rid, name, address }], brandName, token, toast(text), onDone() } · type: an offer type · offer: a draft to continue
 export function openBuilder(host, ctx, { type = 'pct', offer = null } = {}) {
-  if (!offer && !ML.V1_TYPES.includes(type)) return;   // offers v1: a NEW offer is one of V1_TYPES (no «Envío gratis», owner 11-15)
+  if (!offer && !ML.offerTypesShown().includes(type)) return;   // offers v1: a NEW offer is one of the SHOWN V1_TYPES (no «Envío gratis», owner 11-15; nuevos behind the audience flag, owner 11-16)
   opened(host, ctx);
   if (offer) { B.mode = 'draft'; B.offer = offer; B.form = ML.formFromOffer(offer); B.nameAuto = false; B.custom = isCustom(B.form.window); }
   else {
@@ -193,8 +193,8 @@ function formCol(w) {
   rows.append(row('br', 'Sucursales', w.branchText, branchesBody()));
   rows.append(row('typ', w.rowLabel, w.sumType, typeBody()));
   if (B.form.type === 'bogo') rows.append(row('prod', 'Productos', w.prodSummary, productsBody(w)));
-  if (B.form.type !== 'nuevos') rows.append(row('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''), audienceBody()));
-  rows.append(row('sch', 'Horario', w.sumSched, scheduleBody(w)));
+  if (ML.audienceShown(B.form)) rows.append(row('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''), audienceBody()));
+  rows.append(row('sch', 'Horario', w.sumSchedParts, scheduleBody(w)));
   rows.append(row('name', 'Nombre', B.nameAuto ? `${w.name} · se armó solo` : w.name, nameBody()));
   f.append(typ, rows, foot(w));
   return f;
@@ -213,7 +213,9 @@ function row(id, label, value, bodyNode, icon = null) {
   const r = el('div', `mk5b-row${open ? ' mk5b-open' : ''}`); r.dataset.row = id;
   const h = el('button', 'mk5b-rowh'); h.type = 'button'; h.setAttribute('aria-expanded', open ? 'true' : 'false');
   const ic = el('span', 'mk5b-ico'); ic.append(svg(...(icon || ROW_ICON[id] || [SPARK])));
-  const val = el('span', 'mk5b-val'); val.append(...dateSafe(value));
+  const val = el('span', 'mk5b-val');
+  if (Array.isArray(value)) value.forEach((part, i) => { const sg = el('span', 'mk5b-vseg'); if (i) sg.append(el('span', 'mk5b-vsep', ' · ')); sg.append(...dateSafe(part)); val.append(sg); });   // 16b: one line per part on a phone
+  else val.append(...dateSafe(value));
   const tx = el('span', 'mk5b-txt'); tx.append(el('span', 'mk5b-rlbl', label), val);
   const ch = el('span', 'mk5b-chev'); ch.append(svg(DOWN));
   h.append(ic, tx, ch);
@@ -534,7 +536,7 @@ function reviewSheet(w) {
   add('Oferta', `${w.typeLabel} · ${/^L \d/.test(w.sumType) ? w.sumType : `${w.sumType.charAt(0).toLowerCase()}${w.sumType.slice(1)}`}`);   // v5 lower-cases the first word — never the currency «L»
   if (B.form.type === 'bogo') add('Productos', w.prodSummary);
   add('Sucursales', /^Las \d+ sucursales$/.test(w.branchText) ? w.branchText.slice(0, -' sucursales'.length) : w.branchText);   // v5's review: «Las 3»
-  if (B.form.type !== 'nuevos') add('Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''));
+  if (ML.audienceShown(B.form)) add('Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''));
   add('Horario', w.sumSched);
   add('Nombre', w.name);
   const fine = el('p', 'mk5r-fine', `${w.cost.lead} `); if (w.cost.ceiling) fine.append(el('span', 'mk5b-nb', w.cost.ceiling));
@@ -588,7 +590,8 @@ async function program() {
   if (s.outcome === 'refused' && s.code === 'duplicate') { closeBuilder(); if (ctx.onDuplicate) ctx.onDuplicate(s.offer_id); return; }   // never an error: the existing offer
   if (s.outcome !== 'saved') { B.err = wordOf(s); render(); return; }
   closeBuilder();
-  ctx.toast(programmedToast(s.offer));   // from the RETURNED offer
+  const word = ML.stateToast(s.offer, programmedToast(s.offer));   // from the RETURNED offer — its state too (Codex #93 F3)
+  if (word) ctx.toast(word);
   ctx.onDone && ctx.onDone();
 }
 // «Guardar borrador» — a separate draft write; a NEW draft carries an op_id and is confirmed once like every create (owner 11-15
@@ -669,7 +672,7 @@ export function editFormCol(w) {
   rows.append(lockedRow('br', 'Sucursales', w.branchText), lockedRow('typ', w.rowLabel, w.sumType));
   if (B.form.type === 'bogo') rows.append(lockedRow('prod', 'Productos', w.prodSummary));
   if (B.form.type !== 'nuevos') rows.append(lockedRow('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', '')));
-  rows.append(row('sch', 'Horario', w.sumSched, editScheduleBody(w)));
+  rows.append(row('sch', 'Horario', w.sumSchedParts, editScheduleBody(w)));
   f.append(typ, rows, editFoot());
   return f;
 }
@@ -785,6 +788,7 @@ async function repeatGo() {
   if (r.outcome !== 'saved') { B.err = wordOf(r); render(); stale(ctx); return; }
   closeBuilder();
   const st = r.offer.schedule && r.offer.schedule.start;
-  ctx.toast(`Campaña programada para el ${longDate(st).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov» — the RETURNED copy's start
+  const word = ML.stateToast(r.offer, `Campaña programada para el ${longDate(st).replace(/ \d{4}$/, '')}`);   // v5 «… para el sáb 14 nov» — the RETURNED copy's start and state (Codex #93 F3)
+  if (word) ctx.toast(word);
   if (ctx.onDone) ctx.onDone();
 }
