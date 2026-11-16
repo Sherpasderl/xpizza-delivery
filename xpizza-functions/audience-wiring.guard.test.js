@@ -20,7 +20,9 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
     ["await require('./marketing/audience-place').stampCard(db, pendingOrderRecord, orderId, dq, Date.now());", 1, 'the card pending record: the index first, then the codes'],
     ["audience: { member: require('./marketing/audience-place').memberOf(req, db, { knownUid: dq.uid, getAuth, attributionUid }), key: audienceKey }", 1, 'the quote resolves the member lazily, with the key'],
     ['customerId: dqo.aud ? dqo.aud_uid : dq.uid, nowMs: Date.now(), ...(dqo.aud ? { aud: dqo.aud } : {})', 1, 'the quote signs aud + its member'],
-    ["secrets: [AUDIENCE_KEY_V1]", 1, 'the key is bound to quoteOrder ONLY'],
+    ["secrets: [AUDIENCE_KEY_V1]", 2, 'the key is bound to quoteOrder and the fulfilment writer ONLY'],
+    ["exports.markAudienceOnStatus = onValueWritten(\n  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60, secrets: [AUDIENCE_KEY_V1] },", 1, 'the writer: its own status trigger, retried'],
+    ["catch (e) { console.error('markAudienceOnStatus', e && e.code ? String(e.code).slice(0, 40) : 'error'); throw e; }", 1, 'the writer\'s failures propagate (retry) and log a code only'],
     ["defineSecret('AUDIENCE_KEY_V1')", 1, 'one secret definition'],
   ];
   for (const [needle, k, why] of want) assert.strictEqual(count(needle), k, `AUDIENCE: 🔴 AUD-SITES ${why} (${count(needle)} × ${needle.slice(0, 60)})`);

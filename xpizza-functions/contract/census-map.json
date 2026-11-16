@@ -872,6 +872,8 @@
   "marketing/config.js#exactKeys": "marketing",
   "marketing/offer-model.js#exactKeys": "marketing",
   "marketing/audience-core.js#kindOf": "marketing_price",
+  "marketing/audience-writer.js#onOrderStatus": "marketing_price",
+  "index.js#markAudienceOnStatus": "marketing_price",
   "marketing/offer-wire.js#selOf": "marketing_price",
   "marketing/offer-wire.js#sameSel": "marketing_price",
   "marketing/audience-core.js#audShapeOk": "marketing_price",
@@ -1285,6 +1287,10 @@
   "xpizza-portal/shell.js#showBootError": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders"
  },
  "writtenFields": {
+  "offer_reconcile": {
+   "class": "claim",
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §4): the fulfilment writer's CREATE-IF-ABSENT payout decision { funded_by: restaurant | sherpa, reason, at } for an audience-'new' offer (a transaction that writes only when absent — never overwritten); read ONLY through marketing/offer-price offerFunder (absent ⇒ 'sherpa'), never shown to the customer; the frozen offer itself is never edited"
+  },
   "audience_ids": {
    "class": "identity",
    "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §2): the SIGNED brand-scoped identity codes { p?, e?, kv } (HMACs of the verified phone hash / verified email under the owner's AUDIENCE_KEY_V1 — no phone, email or uid) frozen on an audience-exposed app order at placement, read only by the fulfilment writer to set the brand's markers, and deleted by it (or by the 30-day deadline sweep / account deletion) — never shown, never a money fact"

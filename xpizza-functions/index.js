@@ -7819,6 +7819,16 @@ exports.stampRatingFulfilment = onValueWritten(
     catch (e) { console.error('stampRatingFulfilment', e && e.message); throw e; }
   },
 );
+// offer-audience (PLAN-5f-offer-audience r4.1 §4 / §5): the FULFILMENT writer — the payout decision (create-if-absent), the brand markers,
+// then the order's codes deleted; a cancel deletes the codes. Its OWN trigger, retried (a failure THROWS — every step is idempotent).
+// The marker month is the EVENT's time (identical across retries); the retention cutoff is the wall clock. Logs a code only (no PII).
+exports.markAudienceOnStatus = onValueWritten(
+  { ref: '/orders/{orderId}/status', region: 'us-central1', retry: true, timeoutSeconds: 60, secrets: [AUDIENCE_KEY_V1] },
+  async (event) => {
+    try { await require('./marketing/audience-writer').onOrderStatus(getDatabase(), { orderId: event.params.orderId, status: event.data.after.val(), eventTime: Date.parse(event.time), nowMs: Date.now(), key: audienceKey() }); }
+    catch (e) { console.error('markAudienceOnStatus', e && e.code ? String(e.code).slice(0, 40) : 'error'); throw e; }
+  },
+);
 // S-A1 r4 (Codex r3 P2): the durable rating-redaction journal has its OWN small schedule — the daily account sweep's budget can never
 // starve it (pruneResidual also runs it first, isolated)
 exports.drainRatingRedactions = onSchedule(

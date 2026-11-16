@@ -282,6 +282,7 @@
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -711,6 +712,7 @@
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -1195,6 +1197,7 @@
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -1625,6 +1628,7 @@
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -2938,6 +2942,7 @@
   "marketing/audience-core.js",
   "marketing/audience-place.js",
   "marketing/audience-read.js",
+  "marketing/audience-writer.js",
   "marketing/brand-of.js",
   "marketing/config.js",
   "marketing/functions.js",
@@ -7196,6 +7201,10 @@
    "lifts": []
   },
   "marketing/audience-read.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-writer.js": {
    "pins": [],
    "lifts": []
   },
