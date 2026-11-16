@@ -80,9 +80,9 @@ const capRange = () => {
 // differs from EVERY parent's: equal to parent 2 = the merged-in line's own change, equal to parent 1 = untouched). ONE helper, shared
 // with the evil-merge cell below. A plain BASE..CAPP_TIP diff would count all of main's merged-in work as this lane's.
 const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
-const resolutionEdits = (upTo, scopes) => {
+const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`]) => {
   const out = [];
-  for (const m of git('rev-list', '--first-parent', '--merges', `${BASE}..${upTo}`).trim().split('\n').filter(Boolean)) {
+  for (const m of git('rev-list', '--merges', ...range).trim().split('\n').filter(Boolean)) {
     const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
     for (const f of paths(git('diff', '--no-renames', '--name-only', '-z', `${m}^1`, m, '--', ...scopes))) {
       const b = blobAt(m, f);
@@ -237,6 +237,10 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
+// The walk is the LANE's first-parent line BASE..CAPP_TIP (like every other range cell), plus every merge AFTER the pin that descends
+// from it (--ancestry-path CAPP_TIP..HEAD: the assembly merges that bring the lane in). Walking BASE..HEAD's first-parent line (asm10
+// RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
+// 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
   // feat/capp-offers-r20 (advisor 11-15): every hit proven line by line — the merge's `git show --cc` lines that come from NO parent are
   // listed in each reason (none, or exactly the ruled lines); PROVISIONAL with the merges until Codex/advisor approve capp-push r2
@@ -266,11 +270,11 @@ const MERGE_ALLOW = {
   '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
   '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
 };
-test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
-  const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
+test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
+  const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} differs from (or is missing beside) ${src} — the merge exemption no longer holds`);
-  const hits = resolutionEdits('HEAD', ['customer-app/']).filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
+  const hits = [...resolutionEdits(tip, ['customer-app/']), ...resolutionEdits('HEAD', ['customer-app/'], ['--ancestry-path', `${tip}..HEAD`])].filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
