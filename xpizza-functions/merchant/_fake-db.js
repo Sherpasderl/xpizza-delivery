@@ -35,7 +35,31 @@ function createFakeDb(initial = {}) {
         guard(path); const all = get(path) || {};
         const hit = Object.fromEntries(Object.entries(all).filter(([, c]) => c !== null && typeof c === 'object' && c[k] === v));
         const out = Object.keys(hit).length ? hit : null; return { val: () => out, exists: () => out !== null };
+      } }; },
+      // offer-audience (additive): the LAST n children ordered by child `k` (the SDK's order: absent / non-number values first, then
+      // numbers ascending; ties by key) — orderByChild('ts').limitToLast(n), as my-orders reads user_orders
+      limitToLast(nLast) { return { async once() {
+        guard(path); const all = get(path) || {};
+        const rank = (c) => (c !== null && typeof c === 'object' && typeof c[k] === 'number' ? [1, c[k]] : [0, 0]);
+        const ents = Object.entries(all).sort(([ka, a], [kb, b]) => { const x = rank(a), y = rank(b); return x[0] - y[0] || x[1] - y[1] || (ka < kb ? -1 : ka > kb ? 1 : 0); }).slice(-nLast);
+        const out = ents.length ? Object.fromEntries(ents) : null; return { val: () => out, exists: () => out !== null };
       } }; } }; },
+      // offer-audience (additive): key-ordered range reads — orderByKey().endBefore(k).limitToFirst(n) (the bounded sweeps) and
+      // orderByKey().limitToFirst(n); keys compared as the SDK compares string keys
+      orderByKey() {
+        const q = (endBefore, nFirst) => ({
+          endBefore(kk) { return q(kk, nFirst); },
+          limitToFirst(nn) { return q(endBefore, nn); },
+          async once() {
+            guard(path); const all = get(path) || {};
+            let ents = Object.entries(all).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+            if (endBefore !== undefined) ents = ents.filter(([kk]) => kk < endBefore);
+            if (nFirst !== undefined) ents = ents.slice(0, nFirst);
+            const out = ents.length ? Object.fromEntries(ents) : null; return { val: () => out, exists: () => out !== null };
+          },
+        });
+        return q(undefined, undefined);
+      },
       async set(v) { put(path, v); },
       async remove() { put(path, null); },
       async update(obj) { for (const [k, v] of Object.entries(obj)) put(`${path}/${k}`, v); },

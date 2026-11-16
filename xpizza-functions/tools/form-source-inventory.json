@@ -2932,6 +2932,7 @@
   "marketing/anuncio-core.js",
   "marketing/anuncio-model.js",
   "marketing/audience-core.js",
+  "marketing/audience-read.js",
   "marketing/brand-of.js",
   "marketing/config.js",
   "marketing/functions.js",
@@ -7123,6 +7124,10 @@
    "lifts": []
   },
   "marketing/audience-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-read.js": {
    "pins": [],
    "lifts": []
   },
