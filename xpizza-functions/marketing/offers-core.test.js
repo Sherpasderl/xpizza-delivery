@@ -1374,6 +1374,12 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual(OM.liveProjection(r1, 'tb', 'tb_centro', true), fake.get(`marketing_brand/tb/live/tb_centro/${n1.body.offer.id}`), 'AUDSW-PROJECTION-ON = the stored mirror');
       assert.strictEqual(OM.liveProjection(r1, 'tb', 'tb_centro', false), null, '🔴 AUDSW-PROJECTION-OFF (non-\'all\' never projected while OFF)');
       assert.strictEqual(OM.liveProjection(r1, 'tb', 'tb_centro'), null, 'AUDSW-PROJECTION-DEFAULT-OFF');
+      // Codex #101 P2: every writer's mirror entry is the EXACT ON projection of the stored record (never a tombstone)
+      const mirrorOf = (id) => fake.get(`marketing_brand/tb/live/tb_centro/${id}`);
+      const projOn = (id) => { const p = OM.liveProjection(fake.get(`marketing_brand/tb/offers/${id}`), 'tb', 'tb_centro', true); assert.ok(p && p.audience !== 'all' && p.removed === undefined, `premise: an ON projection of ${id}`); return p; };
+      // Codex #101 P2c: the SAME audience with the same params is still a duplicate (the backstop projects ON)
+      const dupNew = await save(deps, O, { offer: pctA({ name: 'Bienvenida otra vez' }), program: true });
+      assert.deepStrictEqual([dupNew.status, dupNew.body.error, dupNew.body.offer_id], [409, 'duplicate', n1.body.offer.id], `🔴 AUDSW-SAME-AUDIENCE-DUPLICATE (${JSON.stringify(dupNew.body)})`);
       // (c) disjoint audiences: the identical offer for RETURNING customers is neither a duplicate nor an overlap; for 'all' it is
       const rt = await save(deps, O, { offer: pctA({ name: 'Vuelve 10', audience: 'returning' }), program: true });
       assert.deepStrictEqual([rt.status, rt.body.error], [200, undefined], `🔴 AUDSW-DISJOINT-NOT-DUPLICATE (${JSON.stringify(rt.body)})`);
@@ -1387,11 +1393,19 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([bAll.status, bAll.body.error], [409, 'overlap'], `🔴 AUDSW-ALL-OVERLAPS (${JSON.stringify(bAll.body)})`);
       // (d) resume while ON; then the switch goes OFF: publish / resume / repeat / re-save refused, the existing projections stay (5f's
       //     pricing drops them while OFF — rollback = OFF), and pause / end still work
+      const pd = await save(deps, O, { offer: pctA({ name: 'Publicar nuevo', params: { pct: 15 } }) });
+      assert.strictEqual(pd.status, 200, 'premise: a new-audience draft while ON');
+      assert.strictEqual((await move(deps, O, { offer_id: pd.body.offer.id, to: 'active', expected_rev: 1 })).status, 200, 'premise: published while ON');
+      assert.deepStrictEqual(mirrorOf(pd.body.offer.id), projOn(pd.body.offer.id), '🔴 AUDSW-ON-PUBLISH-MIRROR (SetState publish writes the ON projection)');
       assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'paused_owner', expected_rev: 1 })).status, 200, 'premise: paused (a programmed create is rev 1)');
       assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'active', expected_rev: 2 })).status, 200, 'AUDSW-ON-RESUME');
+      assert.deepStrictEqual(mirrorOf(n1.body.offer.id), projOn(n1.body.offer.id), '🔴 AUDSW-ON-RESUME-MIRROR (SetState resume writes the ON projection)');
       const draft = await save(deps, O, { offer: pctA({ name: 'Borrador nuevo', params: { pct: 20 } }) });
       assert.strictEqual(draft.status, 200, 'premise: a new-audience draft while ON');
       assert.strictEqual((await move(deps, O, { offer_id: nv.body.offer.id, to: 'ended', expected_rev: 1 })).status, 200, 'premise: a nuevos ended while ON');
+      const rpn = await C.marketingOfferRepeatCore(deps, req(O, { rid: 'tb_centro', source_id: nv.body.offer.id, program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 20 * DAY } }));
+      assert.deepStrictEqual([rpn.status, rpn.body.offer && rpn.body.offer.state, rpn.body.offer && rpn.body.offer.type], [200, 'active', 'nuevos'], `premise: a programmed nuevos repeat while ON (${JSON.stringify(rpn.body)})`);
+      assert.deepStrictEqual(mirrorOf(rpn.body.offer.id), projOn(rpn.body.offer.id), '🔴 AUDSW-ON-REPEAT-MIRROR (a programmed Repeat writes the ON projection)');
       assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'paused_owner', expected_rev: 3 })).status, 200, 'premise: paused again');
       const w = await CFG.writeMarketingConfig(db, { expected: 1, config: { ...ON, audience_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 });
       assert.strictEqual(w.ok, true, 'premise: the switch turned OFF by the real writer');
@@ -1403,7 +1417,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.strictEqual((await move(deps, O, { offer_id: rt.body.offer.id, to: 'paused_owner', expected_rev: 1 })).status, 200, 'AUDSW-OFF-PAUSE-STILL-WORKS');
       assert.ok(tombs(fake).includes(`tb_centro/${rt.body.offer.id}`), 'AUDSW-OFF-PAUSE-TOMBSTONES');
       assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'ended', expected_rev: 4 })).status, 200, 'AUDSW-OFF-END-STILL-WORKS');
-      ok('audience_enabled: OFF refuses new / returning / nuevos on save, program, publish, resume, repeat and re-save (400 audience_not_enabled, op-judged) and never projects; ON authors and projects them through the same path (the real mirror entries); new vs returning are disjoint (no duplicate, no overlap), \'all\' duplicates / overlaps both; OFF later keeps the existing projections and still pauses / ends');
+      ok('audience_enabled: OFF refuses new / returning / nuevos on save, program, publish, resume, repeat and re-save (400 audience_not_enabled, op-judged) and never projects; ON authors and projects them through the same path — create, publish, resume and a programmed repeat each write the EXACT ON projection; the same audience still duplicates; new vs returning are disjoint (no duplicate, no overlap), \'all\' duplicates / overlaps both; OFF later keeps the existing projections and still pauses / ends');
     }
 
     FINISHED = true;
