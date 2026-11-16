@@ -89,10 +89,10 @@ const keysOf = (b) => Object.keys(b.restaurants[0]);
   {
     const { db, odeps } = await world({ on: true });
     await live(odeps, { type: 'pct', params: { pct: 20, max_cents: 10000 } });
-    await live(odeps, { type: 'envio', params: { min_cents: 20000 } });
+    await live(odeps, { type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });   // v1 cannot author envío (3a b1ca178f7); an authorable lps (advisor 11-16 RC ruling (A))
     const on = await settled(db); const without = await D.buildDirectory(depsOf(db, { flag: false }).deps);
     const e = on.body.restaurants[0];
-    assert.deepStrictEqual(e.offer, { offers: [{ min_cents: 20000, type: 'envio' }, { pct: 20, type: 'pct' }].map((o) => o).sort((a, b) => (D.canonicalJson(a) < D.canonicalJson(b) ? -1 : 1)) }, `🔴 DO-ON: the store's offers (${JSON.stringify(e.offer)})`);
+    assert.deepStrictEqual(e.offer, { offers: [{ min_cents: 20000, off_cents: 5000, type: 'lps' }, { pct: 20, type: 'pct' }].map((o) => o).sort((a, b) => (D.canonicalJson(a) < D.canonicalJson(b) ? -1 : 1)) }, `🔴 DO-ON: the store's offers (${JSON.stringify(e.offer)})`);
     assert.deepStrictEqual(keysOf(on.body), [...D.ENTRY_FIELDS, 'offer'], 'DO-ON: the one schema + the offer key, last');
     const { offer, ...rest } = e; void offer;
     assert.deepStrictEqual(rest, without.body.restaurants[0], 'DO-ON: every other field unchanged');
