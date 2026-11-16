@@ -117,6 +117,7 @@
   "ventas-logic.test.mjs",
   "ventas.js",
   "ventas.test.mjs",
+  "whoami-fit.test.mjs",
   "wiring-ast.mjs"
  ],
  "bytes": {
@@ -181,8 +182,8 @@
    "bytes": 35199
   },
   "styles.css": {
-   "sha256": "e8cf21ae2e288b2e661b20ac07e009c11021311c5432924990f4bee3b91a961c",
-   "bytes": 153702
+   "sha256": "9f15e6c799e221bfd19501eaf7c49065489fb99d95a7a862c695378b80f764eb",
+   "bytes": 153819
   }
  },
  "diff_aid": {
