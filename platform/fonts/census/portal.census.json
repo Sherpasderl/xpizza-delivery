@@ -1,7 +1,7 @@
 {
  "plan": "PLAN-portal-fonts r1.1 §4 (+ PLAN-font-figtree-portal-r0)",
  "harness": "portal-fonts.cdp.mjs",
- "runAt": "tree f43f706481b1 on a941ccbbd (feat/portal-fonts-census-gaps, uncommitted)",
+ "runAt": "tree b2d35b2834ce on 864cc166a (feat/portal-fonts-census-gaps, Codex #105 r2, uncommitted)",
  "repeats": 3,
  "repeatsAgree": true,
  "view": 1280,
@@ -42,6 +42,740 @@
    "raw": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
    "weight": 800,
    "verdict": "covered"
+  }
+ ],
+ "threw": {
+  "L-login": [],
+  "L-error": [],
+  "I-email": [],
+  "I-busy": [],
+  "I-busy-retry": [],
+  "I-busy-fallback": [],
+  "I-password": [],
+  "I-reset-sent": [],
+  "I-error": [],
+  "I-invalid": [],
+  "P-editor": [],
+  "P-drawer": [],
+  "P-review": [],
+  "P-receipt": [],
+  "P-conflict": [],
+  "P-readonly": [],
+  "A-drawer": [],
+  "S-list": [],
+  "S-detail": [],
+  "Z-pause": [],
+  "E-devices": [],
+  "E-unlink": [],
+  "V-ventas": [],
+  "T-team": [],
+  "T-invite": [],
+  "T-edit": [],
+  "T-sent": [],
+  "T-remove": [],
+  "P-crop": [],
+  "IN-inicio": [],
+  "V-rend": [],
+  "V-detail": [],
+  "C-calif": [],
+  "C-filters": [],
+  "C-earlier": [],
+  "M-ofertas": [],
+  "M-builder": [],
+  "M-review": [],
+  "M-detail": [],
+  "N-envio": []
+ },
+ "unserved": {
+  "L-login": [],
+  "L-error": [],
+  "I-email": [],
+  "I-busy": [],
+  "I-busy-retry": [],
+  "I-busy-fallback": [],
+  "I-password": [],
+  "I-reset-sent": [],
+  "I-error": [],
+  "I-invalid": [],
+  "P-editor": [],
+  "P-drawer": [],
+  "P-review": [],
+  "P-receipt": [],
+  "P-conflict": [],
+  "P-readonly": [],
+  "A-drawer": [],
+  "S-list": [],
+  "S-detail": [],
+  "Z-pause": [],
+  "E-devices": [],
+  "E-unlink": [],
+  "V-ventas": [],
+  "T-team": [],
+  "T-invite": [],
+  "T-edit": [],
+  "T-sent": [],
+  "T-remove": [],
+  "P-crop": [],
+  "IN-inicio": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getMarketing"
+  ],
+  "V-rend": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getMarketing"
+  ],
+  "V-detail": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getMarketing"
+  ],
+  "C-calif": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "C-filters": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "C-earlier": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-ofertas": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-builder": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-review": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-detail": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "N-envio": [
+   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats",
+   "getMarketing"
+  ]
+ },
+ "data": {
+  "L-login": null,
+  "L-error": null,
+  "I-email": null,
+  "I-busy": null,
+  "I-busy-retry": null,
+  "I-busy-fallback": null,
+  "I-password": null,
+  "I-reset-sent": null,
+  "I-error": null,
+  "I-invalid": null,
+  "P-editor": null,
+  "P-drawer": null,
+  "P-review": null,
+  "P-receipt": null,
+  "P-conflict": null,
+  "P-readonly": null,
+  "A-drawer": null,
+  "S-list": null,
+  "S-detail": null,
+  "Z-pause": null,
+  "E-devices": null,
+  "E-unlink": null,
+  "V-ventas": null,
+  "T-team": null,
+  "T-invite": null,
+  "T-edit": null,
+  "T-sent": null,
+  "T-remove": null,
+  "P-crop": null,
+  "IN-inicio": {
+   "fn": "getSalesStats",
+   "shown": "L 4,020",
+   "shownByRepeat": [
+    "L 4,020",
+    "L 4,120",
+    "L 4,090"
+   ]
+  },
+  "V-rend": {
+   "fn": "getSalesStats",
+   "shown": "L 95,450",
+   "shownByRepeat": [
+    "L 95,450",
+    "L 95,450",
+    "L 95,450"
+   ]
+  },
+  "V-detail": {
+   "fn": "getSalesStats",
+   "shown": "L 95,165",
+   "shownByRepeat": [
+    "L 95,165",
+    "L 95,155",
+    "L 95,495"
+   ]
+  },
+  "C-calif": {
+   "fn": "getMerchantReviews",
+   "shown": "Ana P.",
+   "shownByRepeat": [
+    "Ana P.",
+    "Ana P.",
+    "Ana P."
+   ]
+  },
+  "C-filters": {
+   "fn": "getMerchantReviews",
+   "shown": "Ana P.",
+   "shownByRepeat": [
+    "Ana P.",
+    "Ana P.",
+    "Ana P."
+   ]
+  },
+  "C-earlier": {
+   "fn": "getMerchantRatingComments",
+   "shown": "Siempre bien. El postre es un 10.",
+   "shownByRepeat": [
+    "Siempre bien. El postre es un 10.",
+    "Siempre bien. El postre es un 10.",
+    "Siempre bien. El postre es un 10."
+   ]
+  },
+  "M-ofertas": {
+   "fn": "getMarketing",
+   "shown": "2 por 1 en pizzas clásicas",
+   "shownByRepeat": [
+    "2 por 1 en pizzas clásicas",
+    "2 por 1 en pizzas clásicas",
+    "2 por 1 en pizzas clásicas"
+   ]
+  },
+  "M-builder": {
+   "fn": "getMyBranches",
+   "shown": "Las 3 sucursales",
+   "shownByRepeat": [
+    "Las 3 sucursales",
+    "Las 3 sucursales",
+    "Las 3 sucursales"
+   ]
+  },
+  "M-review": {
+   "fn": "getMyBranches",
+   "shown": "Las 3",
+   "shownByRepeat": [
+    "Las 3",
+    "Las 3",
+    "Las 3"
+   ]
+  },
+  "M-detail": {
+   "fn": "getMarketing",
+   "shown": "Almuerzo: 15 % en todo el menú",
+   "shownByRepeat": [
+    "Almuerzo: 15 % en todo el menú",
+    "Almuerzo: 15 % en todo el menú",
+    "Almuerzo: 15 % en todo el menú"
+   ]
+  },
+  "N-envio": {
+   "fn": "getDeliveryPricing",
+   "shown": "3 40 6 60 10 80",
+   "shownByRepeat": [
+    "3 40 6 60 10 80",
+    "3 40 6 60 10 80",
+    "3 40 6 60 10 80"
+   ]
+  }
+ },
+ "unservedSections": {
+  "L-login": [],
+  "L-error": [],
+  "I-email": [],
+  "I-busy": [],
+  "I-busy-retry": [],
+  "I-busy-fallback": [],
+  "I-password": [],
+  "I-reset-sent": [],
+  "I-error": [],
+  "I-invalid": [],
+  "P-editor": [],
+  "P-drawer": [],
+  "P-review": [],
+  "P-receipt": [],
+  "P-conflict": [],
+  "P-readonly": [],
+  "A-drawer": [],
+  "S-list": [],
+  "S-detail": [],
+  "Z-pause": [],
+  "E-devices": [],
+  "E-unlink": [],
+  "V-ventas": [],
+  "T-team": [],
+  "T-invite": [],
+  "T-edit": [],
+  "T-sent": [],
+  "T-remove": [],
+  "P-crop": [],
+  "IN-inicio": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getMarketing",
+    "section": "Marketing · Ofertas",
+    "measuredIn": "M-ofertas",
+    "onPane": false
+   }
+  ],
+  "V-rend": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getMarketing",
+    "section": "Marketing · Ofertas",
+    "measuredIn": "M-ofertas",
+    "onPane": false
+   }
+  ],
+  "V-detail": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getMarketing",
+    "section": "Marketing · Ofertas",
+    "measuredIn": "M-ofertas",
+    "onPane": false
+   }
+  ],
+  "C-calif": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "C-filters": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "C-earlier": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-ofertas": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-builder": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": true
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-review": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": true
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-detail": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "N-envio": [
+   {
+    "fn": "getEditableCatalog",
+    "section": "Productos · el menú (rail + detalle)",
+    "measuredIn": "P-editor",
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · builder: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getEditableCatalog",
+    "section": "Marketing · revisión: los platos de la oferta",
+    "measuredIn": null,
+    "onPane": false
+   },
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   },
+   {
+    "fn": "getMarketing",
+    "section": "Marketing · Ofertas",
+    "measuredIn": "M-ofertas",
+    "onPane": false
+   }
+  ]
+ },
+ "owed": [
+  {
+   "fn": "getEditableCatalog",
+   "section": "Marketing · builder: los platos de la oferta",
+   "why": "measured nowhere",
+   "states": [
+    "C-calif",
+    "C-earlier",
+    "C-filters",
+    "IN-inicio",
+    "M-builder",
+    "M-detail",
+    "M-ofertas",
+    "M-review",
+    "N-envio",
+    "V-detail",
+    "V-rend"
+   ]
+  },
+  {
+   "fn": "getEditableCatalog",
+   "section": "Marketing · revisión: los platos de la oferta",
+   "why": "measured nowhere",
+   "states": [
+    "C-calif",
+    "C-earlier",
+    "C-filters",
+    "IN-inicio",
+    "M-builder",
+    "M-detail",
+    "M-ofertas",
+    "M-review",
+    "N-envio",
+    "V-detail",
+    "V-rend"
+   ]
   }
  ],
  "states": {

@@ -244,14 +244,15 @@ function decideFor(st) {
     if (fn === 'getBranchDevices') return ok(DEVICES);
     if (fn === 'getSalesStats') return ok(STATS);
     if (fn === 'reportClientVersion') return 'fail';
+    if (!st.unserved.includes(fn)) st.unserved.push(fn);   // advisor 11-16 (#105 r2): recorded, never silent
     return { status: 404, body: JSON.stringify({ error: 'not_found' }) };
   };
   d.peek = (url, req) => (coreFn(url) ? 'core' : d(url, req));   // a second listener's look: never a second call into a core
   return d;
 }
 // ── census-gaps (PLAN-portal-fonts-census-gaps-r0 §2): the newer panes answer from the lanes' REAL cores — review/portal-cores, the SBS
-// backends moved in-repo (each loads the harnesses of THIS tree). Never canned: a call a backend does not serve is a 404 GAP, recorded; a
-// core that throws is a 500, recorded — an async decide must never reject (the router would leave the request hanging).
+// backends moved in-repo (each loads the harnesses of THIS tree). Never canned: a call a backend does not serve is a 404, recorded in
+// `unserved`; a core that throws is a 500, recorded in `threw` — an async decide must never reject (the router would leave the request hanging).
 const CORES = new Map();
 async function coreBackend(name) {
   if (!CORES.has(name)) { const { backend } = await import(pathToFileURL(path.join(ROOT, 'review/portal-cores', `${name}.mjs`)).href); CORES.set(name, await backend(ROOT)); }
@@ -263,9 +264,10 @@ async function answerCore(st, fn, url, req) {
     const headers = Object.fromEntries(Object.entries(req.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
     let body; try { body = req.postData ? JSON.parse(req.postData) : undefined; } catch (_) { body = undefined; }
     const r = await st.backend.call({ fn, method: req.method, query: queryOf(url), headers, body });
-    if (!r) { st.gaps.push(`${fn}: not served (404)`); return { status: 404, body: JSON.stringify({ error: 'not_found' }) }; }
+    if (!r) { if (!st.unserved.includes(fn)) st.unserved.push(fn); return { status: 404, body: JSON.stringify({ error: 'not_found' }) }; }
+    if (r.status >= 200 && r.status < 300 && !r.contentType) (st.answers[fn] ||= []).push({ query: queryOf(url), body: typeof r.body === 'string' ? JSON.parse(r.body) : r.body });   // what the page was served (the data premise reads it)
     return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body), headers: { ...(r.contentType ? { 'content-type': r.contentType } : {}), ...(r.headers || {}) } };
-  } catch (e) { st.gaps.push(`${fn}: the core threw (${String(e && e.message).slice(0, 120)})`); return { status: 500, body: JSON.stringify({ error: 'core_threw' }) }; }
+  } catch (e) { st.threw.push(`${fn}: the core threw (${String(e && e.message).slice(0, 120)})`); return { status: 500, body: JSON.stringify({ error: 'core_threw' }) }; }
 }
 const PINNED = new Map();
 function pinnedBytes(f) {   // the baseline's bytes: the PINNED files, found by full sha256 + length among the committed copies
@@ -343,6 +345,90 @@ async function premisePane(cdp, sel, text, gaps = []) {
   if (ok !== 'ok') throw new Error(`premise: ${sel} is ${ok}${gaps.length ? ` — core gaps: ${gaps.join('; ')}` : ''}`);
 }
 
+// ── Codex #105 (P2) r2 (advisor ruling 11-16): a core state passes only on its REAL data. A core that THROWS (500) during the capture
+// fails the state, naming the fn; so does a 404 for the state's OWN data function; and each core state shows a value taken from the
+// answer the page was actually served (a static label can survive a failed core on fallback content). `any`: strings, or [module,
+// export, arg] formatted IN THE PAGE by the portal's own code. Every other 404 is recorded per state in `unserved` (below).
+const served = (A, fn, pick) => { const v = (A[fn] || []).map(pick).find((x) => x !== undefined && x !== null && x !== '');
+  if (v === undefined) throw new Error(`premise: ${A[fn] ? `no ${fn} answer carries the value` : `no 2xx answer from ${fn}`}`); return v; };
+const today = (a) => !!(a.query && a.query.from && a.query.from === a.query.to);
+const salesAny = (A, wantToday) => { const a = (A.getSalesStats || []).find((x) => today(x) === wantToday);
+  const cents = served({ getSalesStats: a ? [a] : undefined }, 'getSalesStats', (x) => x.body.kpis && x.body.kpis.sales_cents);
+  return [cents, ...(a.body.branches || []).map((b) => b.kpis && b.kpis.sales_cents).filter(Number.isFinite)].map((c) => ['ventas-logic.js', 'lempiras', c]); };
+const activeOffer = (A) => served(A, 'getMarketing', (x) => ((x.body.offers || []).find((o) => o.state === 'active') || {}).name);
+const offerNames = (A) => served(A, 'getMarketing', (x) => { const n = (x.body.offers || []).map((o) => o.name).filter(Boolean); return n.length ? n : undefined; });
+// the builder / review show the served branches (getMyBranches, via marketing.js ctx.branches) as builderText's branchText — every
+// branch is chosen by default (marketing-builder.js:97) ⇒ «Las N sucursales» (marketing-logic.js:380), or a single branch's name; the
+// review row shortens it to «Las N» (marketing-builder.js:538, v5's review)
+const branchAny = (A, review) => served(A, 'getMyBranches', (x) => { const b = (x.body.branches || []).filter((r) => r && r.name);
+  return b.length ? [review ? `Las ${b.length}` : `Las ${b.length} sucursales`, `Solo ${b[0].name}`, ...b.map((r) => r.name)] : undefined; });
+const CORE_DATA = {
+  'IN-inicio': { fn: 'getSalesStats', at: (A) => ({ scope: '#viewinicio', any: salesAny(A, true) }) },
+  'V-rend':    { fn: 'getSalesStats', at: (A) => ({ scope: '#viewventas', any: salesAny(A, false) }) },
+  'V-detail':  { fn: 'getSalesStats', at: (A) => ({ scope: '.main:not(.hidden)', any: salesAny(A, false) }) },
+  'C-calif':   { fn: 'getMerchantReviews', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantReviews', (x) => (x.body.reviews || []).map((r) => r.customer).find(Boolean))] }) },
+  'C-filters': { fn: 'getMerchantReviews', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantReviews', (x) => (x.body.reviews || []).map((r) => r.customer).find(Boolean))] }) },
+  'C-earlier': { fn: 'getMerchantRatingComments', at: (A) => ({ scope: '.calif', any: [served(A, 'getMerchantRatingComments', (x) => (x.body.comments || []).map((c) => c.comment).find(Boolean))] }) },
+  'M-ofertas': { fn: 'getMarketing', at: (A) => ({ scope: '.main:not(.hidden)', any: [activeOffer(A)] }) },
+  'M-builder': { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5b-dlg', any: branchAny(A) }) },
+  'M-review':  { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5r-modal', any: branchAny(A, true) }) },
+  'M-detail':  { fn: 'getMarketing', at: (A) => ({ scope: '.mk5d-head', any: offerNames(A) }) },
+  // the zone names draw inside the map iframe (its own origin, not in the pane's text); the fee table is the pane's own: every served band
+  // as the portal's rowsFromBands writes it into the km / fee inputs, in order (envio.js:634-635)
+  'N-envio':   { fn: 'getDeliveryPricing', at: (A) => ({ scope: '.envio', any: [['envio-logic.js', 'rowsFromBands', served(A, 'getDeliveryPricing', (x) => (Array.isArray(x.body.bands) && x.body.bands.length ? x.body.bands : undefined))]] }) },
+};
+// ── #105 r2 (advisor ruling 11-16, item 3): an unserved call is not a silent hole. Per function the page may call: the pane sections that
+// draw from it (their root, as the portal builds it) and the census state that renders that section WITH data. At the pane check each
+// unserved section is MEASURED: is its root on the captured pane (visible, inside or around the state's container)? A section measured
+// nowhere (`measuredIn: null`) — or a function no section declares — goes in the record's «owed» list. Sources: inicio.js:5-8,
+// ventas.js, app.js:483, availability.js:34, marketing.js:106/222, calificaciones.js:334, envio.js:936, team.js:417, equipos.js.
+const UNSERVED = {
+  getSalesStats:             [{ section: 'Inicio · Ventas / Pedidos / Ticket promedio', root: '#viewinicio', measuredIn: 'IN-inicio' },
+                              { section: 'Ventas · rendimiento', root: '#viewventas', measuredIn: 'V-rend' }],
+  getEditableCatalog:        [{ section: 'Productos · el menú (rail + detalle)', root: '#viewmenu', measuredIn: 'P-editor' },
+                              // marketing-builder.js:138 reads the dishes for «Productos» in the builder and its review: no census state
+                              // renders the builder with a served catalog (the ofertas core serves none) ⇒ owed
+                              { section: 'Marketing · builder: los platos de la oferta', root: '.mk5b-dlg', measuredIn: null },
+                              { section: 'Marketing · revisión: los platos de la oferta', root: '.mk5r-modal', measuredIn: null }],
+  getBranchAvailability:     [{ section: 'Productos · agotados por sucursal', root: '#availdrawer', measuredIn: 'A-drawer' }],
+  getMarketing:              [{ section: 'Marketing · Ofertas', root: '.mk5-sect', measuredIn: 'M-ofertas' }],
+  getMerchantReviews:        [{ section: 'Calificaciones · reseñas', root: '.calif', measuredIn: 'C-calif' }],
+  getMerchantRatingComments: [{ section: 'Calificaciones · comentarios anteriores', root: '.calif', measuredIn: 'C-earlier' }],
+  getDeliveryPricing:        [{ section: 'Envío · tarifas y zonas', root: '.envio', measuredIn: 'N-envio' }],
+  memberList:                [{ section: 'Equipo de trabajo', root: '.teamv', measuredIn: 'T-team' }],
+  getBranchDevices:          [{ section: 'Equipos', root: '#viewequipos', measuredIn: 'E-devices' }],
+};
+for (const [fn, xs] of Object.entries(UNSERVED)) for (const x of xs) if (x.measuredIn !== null && !STATES[x.measuredIn]) throw new Error(`premise: UNSERVED ${fn}: measuredIn ${x.measuredIn} is no census state`);
+async function unservedSections(cdp, def, st) {   // measured on the captured pane; an undeclared function is listed with section null
+  const out = [];
+  for (const fn of st.unserved) {
+    if (!UNSERVED[fn]) { out.push({ fn, section: null, onPane: null, measuredIn: null }); continue; }
+    for (const x of UNSERVED[fn]) out.push({ fn, section: x.section, measuredIn: x.measuredIn, onPane: await cdp.ev(`(() => { const c = document.querySelector(${JSON.stringify(def.container)}), r = document.querySelector(${JSON.stringify(x.root)});
+      if (!c || !r) return false; const b = r.getBoundingClientRect(), cs = getComputedStyle(r);
+      return !(cs.display === 'none' || cs.visibility === 'hidden' || b.width === 0 || b.height === 0) && (c.contains(r) || r.contains(c)); })()`) });
+  }
+  return out;
+}
+for (const [n, d] of Object.entries(STATES)) if (d.cores && !CORE_DATA[n]) throw new Error(`premise: core state ${n} has no data premise (CORE_DATA)`);   // refused before any launch
+async function corePremise(cdp, name, def, st, when) {
+  if (!def.cores) return;
+  if (st.threw.length) throw new Error(`premise: ${name}: a core threw during the capture (${when}) — ${st.threw.join('; ')}`);
+  const own = CORE_DATA[name].fn;
+  if (st.unserved.includes(own)) throw new Error(`premise: ${name}: its own data function ${own} was not served (404) during the capture (${when})`);
+  if (when !== 'pane') return;
+  const d = { fn: own, ...CORE_DATA[name].at(st.answers) };
+  const r = await cdp.ev(`(async () => { const root = document.querySelector(${JSON.stringify(d.scope)}); if (!root) return { ok: false, want: [], why: 'no ${d.scope}' };
+    const text = (root.innerText || '') + ' ' + [...root.querySelectorAll('input, textarea')].map((i) => i.value).join(' ');
+    const want = []; for (const w of ${JSON.stringify(d.any)}) { const v = typeof w === 'string' ? w : (await import(new URL(w[0], location.href).href))[w[1]](w[2]);
+      want.push(Array.isArray(v) ? v.map((o) => Object.values(o).join(' ')).join(' ') : v); }   // a list of rows: its values in order, as the inputs hold them
+    return { ok: want.some((x) => x && text.includes(x)), want, shown: want.find((x) => x && text.includes(x)) }; })()`);
+  if (!r.ok) throw new Error(`premise: ${name}: the served ${d.fn} answer is not on the page — wanted ${r.want.join(' | ') || r.why} in ${d.scope}`);
+  st.data = { fn: d.fn, shown: r.shown };   // recorded: the served value the page showed
+}
+
+// #105 r2: every state's threw / unserved / data / unserved sections, written unconditionally (an empty array, never an absent field)
+const recordOf = (byState) => { const m = (k) => Object.fromEntries(Object.entries(byState).map(([n, r]) => [n, r.after[k]]));
+  return { threw: m('threw'), unserved: m('unserved'), data: m('data'), unservedSections: m('sections') }; };
 // ── one run: boot an entry page in a state under a font policy ──
 async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'P-editor', deterministic = false, holdMs = 6000, faceChange = false,
   view = 1280, theme = 'light', typing = false }) {
@@ -350,7 +436,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
   const load1 = os.loadavg()[0];   // the slot rule: load1 > 45 ⇒ UNTRUSTED STOP (checked before EVERY run, not only at launch)
   LOAD_MAX = Math.max(LOAD_MAX, load1);
   if (load1 > 45) { console.log(`\nUNTRUSTED STOP: 1-min load ${load1.toFixed(2)} > 45 before ${side} ${stateName} @${view}px`); process.exit(3); }
-  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, gaps: [] };
+  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, threw: [], unserved: [], answers: {}, data: null };
   if (def.cores) { st.backend = await coreBackend(def.cores); await st.backend.reset(def.scn); }   // census-gaps: a fresh REAL world per run
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
@@ -419,16 +505,20 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     for (let i = 0; ; i++) { const open = fontUrls().filter((u) => !rt.finished.has(u)); if (!open.length) break; if (i > 1200) throw new Error(`font requests never completed: ${open.join(', ')}`); await sleep(25); }
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
-    await premisePane(cdp, def.container, def.text, st.gaps);
+    await premisePane(cdp, def.container, def.text, [...st.threw, ...st.unserved.map((f) => `${f}: not served (404)`)]);
+    await corePremise(cdp, stateName, def, st, 'pane');
+    const sections = await unservedSections(cdp, def, st);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
     const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
-      fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue, gaps: [...st.gaps] };
+      fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
     if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
     const png = deterministic ? await shot() : null;
     const probe = await attribute(cdp, after.nodes);
+    await corePremise(cdp, stateName, def, st, 'end');   // a core call that failed AFTER the pane check still fails the state
+    Object.assign(after, { threw: [...st.threw], unserved: [...st.unserved], sections, data: st.data });   // #105 r2: recorded UNCONDITIONALLY
     return { before, after, probe, png, raw };
   } finally {
     try { if (rtRef) await rtRef.failHeld(() => true); } catch (_) {}
@@ -643,6 +733,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       const named = gateB(byState, decls, reqW, painters).filter((v) => /^FAIL/.test(v.verdict) && `${v.family}|${v.weight}|${v.style}` === pick);
       check(!!pick && named.length > 0, `FB-ctrl: removing ${painters.size} state(s) that paint ${pick} makes gate (b) FAIL, naming it (${named.length} declaration·weight)`);
       if (view === VIEWS[0] && theme === THEMES[0]) fs.writeFileSync(path.join(OUT, `portal.census.${rep}.json`), JSON.stringify({ rep, view, theme, gateB: vb.map(({ range, ...x }) => x),
+        ...recordOf(byState),
         states: Object.fromEntries(Object.entries(byState).map(([s, r]) => [s, r.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, r.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) }))])) }, null, 1));
     }
   }
@@ -671,6 +762,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       const named = gateB(byState, decls, reqW, painters).filter((v) => /^FAIL/.test(v.verdict) && `${v.family}|${v.weight}|${v.style}` === pick);
       check(!!pick && named.length > 0, `FB-ctrl: removing ${painters.size} state(s) that paint ${pick} makes gate (b) FAIL, naming it (${named.length} declaration·weight)`);
       if (view === VIEWS[0] && theme === THEMES[0]) fs.writeFileSync(path.join(OUT, `portal.census.${rep}.json`), JSON.stringify({ rep, view, theme, gateB: vb.map(({ range, ...x }) => x),
+        ...recordOf(byState),
         states: Object.fromEntries(Object.entries(byState).map(([s, r]) => [s, r.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, r.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) }))])) }, null, 1));
     }
   }
