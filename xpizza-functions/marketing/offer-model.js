@@ -81,6 +81,8 @@ function paramsOf(type, p, stored = false) {
       if ('by_branch' in p) {   // its keys are judged against the branches by validateAuthored
         const e = isObj(p.by_branch) ? Object.entries(p.by_branch) : [];
         if (!e.length || !e.every(([, l]) => listOk(l, LIMITS.cat_items_max))) return null;
+        const union = new Set(e.flatMap(([, l]) => l));   // `items` IS their union (Codex #93 r2 P3)
+        if (union.size !== p.items.length || !p.items.every((k) => union.has(k))) return null;
         by = Object.fromEntries(e.map(([r, l]) => [r, [...l]]));
       }
       return { cats: [...p.cats], ...(hasItems ? { items: [...p.items] } : {}), ...(by ? { by_branch: by } : {}), free_per_order: p.free_per_order };

@@ -113,8 +113,9 @@ function liveJudgement(offerId, value, live, t, rid) {
 }
 // THE duplicate backstop (advisor 11-14, the portal's single-call Ofertas): another offer of the restaurant already programmed or active with
 // the SAME kind, params and branch set and an OVERLAPPING schedule ⇒ { error: 'duplicate', offer_id }. Judged on the WHOLE brand node (the
-// branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. The params are compared as PROJECTED on the
-// first shared branch (`projAt(rid)`: a category offer's mirror carries that branch's own dishes). → the other offer's id | null
+// branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. The params are compared as PROJECTED on
+// EVERY branch (`projAt(rid)`: a category offer's mirror carries that branch's own dishes — Codex #93 r2 P2); a difference on any branch is
+// not a duplicate (the overlap rule judges it). → the other offer's id | null
 const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array.isArray(x)) ? [...v].sort() : v).map(canon).join(',')}]` :   // set-valued params (items, cats) normalised: order never matters
    isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 // both sides through the STORED params rule (a «sin mínimo» envío is stored params-less: RTDB drops {}) — Codex brand-root r1 P2-1
@@ -129,11 +130,11 @@ function duplicateOf(all, offerId, projAt, branches, schedule, t) {
     }
   }
   const mine = new Set(branches);
-  const proj = projAt(branches[0]);
-  if (!proj) return null;
+  const sameAt = (h, rid) => { const p = projAt(rid), e = h.at[rid]; return !!p && isObj(e) && e.type === p.type && paramsKey(e.type, e.params) === paramsKey(p.type, p.params); };
   for (const [id, h] of Object.entries(held)) {
+    if (h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r))) continue;
     const e = h.at[branches[0]];
-    if (!e || e.type !== proj.type || paramsKey(e.type, e.params) !== paramsKey(proj.type, proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
+    if (!branches.every((rid) => sameAt(h, rid)) || !isObj(e.schedule)) continue;
     if (OM.schedulesOverlap(schedule, { start: e.schedule.start ?? null, end: e.schedule.end ?? null, days: e.schedule.days || [], window: e.schedule.window ?? null })) return id;
   }
   return null;

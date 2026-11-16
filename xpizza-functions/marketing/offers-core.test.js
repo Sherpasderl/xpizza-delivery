@@ -237,6 +237,26 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual([at('tb_centro'), at('tb_sur')], [[K1, K2].sort(), [K1, K2].sort()], 'the re-save covers K1 at tb_sur now that it is a pizza there');
       ok('a dish moving into the category after publish: frozen until the next save / publish, then covered (judged per branch)');
     }
+    // ── 3c'. the DUPLICATE judges EVERY branch's projection (Codex #93 r2 P2): equal at branch 1, different at branch 2 ⇒ not a
+    //        duplicate — it falls through to the overlap rule (and an op_id claim carries THAT refusal) ──
+    {
+      const { fake, deps, CATALOG, CATS } = await setup();
+      CATALOG.tb_sur = [[K1, 150, 'especiales'], [K2, 220, 'pizzas']]; CATS.tb_sur = ['pizzas', 'especiales'];
+      const x = await published(deps, { name: 'Pizzas X', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] });   // [K1,K2]@centro / [K2]@sur
+      const KC = 'i_ffffffffffff';
+      CATALOG.tb_sur.push([KC, 180, 'pizzas']);   // C joins tb_sur's pizzas after X was programmed (X stays frozen)
+      const opId = 'op_' + 'w'.repeat(20);
+      const y = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Pizzas Y', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }), op_id: opId, program: true });   // [K1,K2]@centro / [K2,C]@sur
+      assert.deepStrictEqual([y.status, y.body.error, y.body.with], [409, 'overlap', ['Pizzas X']], `different at tb_sur ⇒ NOT a duplicate; the overlap rule refuses it (${JSON.stringify(y.body)})`);
+      assert.strictEqual((fake.get(`marketing_brand/tb/ops/${opId}`) || {}).refused && fake.get(`marketing_brand/tb/ops/${opId}`).refused.error, 'overlap', 'the claim carries the overlap refusal, never a duplicate');
+      ok('duplicate: every branch\'s projection must match; a difference on any branch falls through to the overlap rule');
+      const z = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Pizzas Z', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }), program: true });
+      assert.ok(z.status === 409, 'premise: refused');
+      CATALOG.tb_sur.pop();   // back to X's lists on both branches ⇒ the same offer
+      const d = await save(deps, `t-${OWNER}`, { offer: offer({ name: 'Pizzas D', params: { cats: ['pizzas'], free_per_order: 1 }, branches: ['tb_centro', 'tb_sur'] }), program: true });
+      assert.deepStrictEqual([d.status, d.body.error, d.body.offer_id], [409, 'duplicate', x.id], 'equal on EVERY branch ⇒ still the duplicate');
+      ok('duplicate: equal projections on every branch ⇒ 409 duplicate (unchanged)');
+    }
     // ── 3b. bogo by CATEGORY (advisor 11-14): resolved from each branch's active version at save AND publish, frozen in between ──
     {
       const { fake, deps, CATALOG } = await setup();
@@ -287,9 +307,13 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, by_branch: by } }, opts), false, `a stored by_branch with ${why} is malformed`);
       }
       assert.strictEqual(OM.recordOk({ ...rec, params: { items: [K1], by_branch: { tb_centro: [K1] }, free_per_order: 1 } }, opts), false, 'a by-dish offer never carries by_branch');
+      // Codex #93 r2 P3: the union `items` IS the union of the per-branch lists
+      assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, items: [K1], by_branch: { tb_centro: [K2] } } }, opts), false, 'items [A] with by_branch → [B] is refused');
+      assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, items: [K1, K2].sort(), by_branch: { tb_centro: [K1] } } }, opts), false, 'items wider than the union is refused');
+      assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, items: [K1], by_branch: { tb_centro: [K1, K2].sort() } } }, opts), false, 'items narrower than the union is refused');
       const authored = await save(deps, `t-${OWNER}`, { offer: offer({ params: { cats: ['pizzas'], by_branch: { tb_centro: [K1] }, free_per_order: 1 } }) });
       assert.deepStrictEqual([authored.status, authored.body.reason], [400, 'bad_params'], 'the builder can never send by_branch');
-      ok('by_branch: exactly one non-empty list per named branch, server-written only');
+      ok('by_branch: exactly one non-empty list per named branch, its union = items, server-written only');
     }
 
     // ── 4. publish → the live mirror; pause / resume / end; CAS ──
