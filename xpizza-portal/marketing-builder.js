@@ -195,7 +195,7 @@ function formCol(w) {
   if (B.form.type === 'bogo') rows.append(row('prod', 'Productos', w.prodSummary, productsBody(w)));
   if (ML.audienceShown(B.form)) rows.append(row('aud', 'Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''), audienceBody()));
   rows.append(row('sch', 'Horario', w.sumSchedParts, scheduleBody(w)));
-  rows.append(row('name', 'Nombre', B.nameAuto ? `${w.name} · se armó solo` : w.name, nameBody()));
+  rows.append(row('name', 'Nombre', B.nameAuto ? [w.name, 'se armó solo'] : w.name, nameBody()));   // 16b: two parts on a phone (slot 11-16)
   f.append(typ, rows, foot(w));
   return f;
 }

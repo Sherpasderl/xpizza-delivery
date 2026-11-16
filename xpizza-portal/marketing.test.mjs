@@ -1772,3 +1772,30 @@ test('A3c the same 409 on the ONE confirmation (the first reply lost) is op-judg
   assert.ok(p.host().querySelector('.mk5d-head'), 'A3c: settled as a refusal — the detail stays');
   assert.equal(notice(p), null, 'A3c: never the fallback');
 });
+// slot 11-16 re-shoot: two 16b rows still red at 390 — the «Queda activa…» help line (text-wrap on an INLINE span does nothing) and the
+// auto «Nombre» value wrapping mid-phrase. COMPUTED over the REAL builder DOM with the SHIPPED stylesheet injected (jsdom has no media queries:
+// the phone split is asserted as the two parts + the existing ≤ 920 px rule, as T1).
+const withSheet = (p) => { const st = p.d.createElement('style'); st.textContent = readFileSync(join(DIR, 'styles.css'), 'utf8'); p.d.head.append(st); };
+test('T2 16b: «Queda activa hasta que la pausés o la termines» is a BLOCK, so its text-wrap:balance takes effect (computed, the real «Editar» row)', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  withSheet(p);
+  await openEdit(p, 'Almuerzo');
+  const sp = [...p.host().querySelectorAll('.mk5b-albl span')].find((x) => x.textContent === 'Queda activa hasta que la pausés o la termines');
+  assert.ok(sp, 'premise: the help line rendered');
+  const cs = p.w.getComputedStyle(sp);
+  assert.equal(cs.display, 'block', 'T2: a block container — text-wrap applies');
+});
+test('T3 16b: the auto «Nombre» value reads the same words in two parts — the name | «· se armó solo» — one line each on a phone (no mid-phrase wrap)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const r = p.host().querySelector('.mk5b-row[data-row="name"]');
+  const segs = [...r.querySelectorAll('.mk5b-val > .mk5b-vseg')].map((x) => x.textContent);
+  assert.deepEqual(segs, ['L 50 en pedidos desde L 300', ' · se armó solo'], 'T3: two parts (the separator hidden on a phone)');
+  assert.equal(r.querySelector('.mk5b-val').textContent, 'L 50 en pedidos desde L 300 · se armó solo', 'the same words as before');
+  assert.ok(readFileSync(join(DIR, 'styles.css'), 'utf8').includes('@media(max-width:920px){.mk5b-vseg{display:block}.mk5b-vsep{display:none}}'), 'a phone: one line per part');
+});
