@@ -246,6 +246,7 @@
     "test:sdk-pay-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/sdk-pay-rules.emulator.test.js\"",
     "test:sdk-pay-legacy": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/sdk-pay-legacy.emulator.test.js\"",
     "test:push-rules": "node tools/emulator-run.js --only database --project demo-xpizza-push \"node test/customer-push-rules.emulator.test.js\"",
+    "test:push-wiring": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza-push \"node test/customer-push-wiring.emulator.test.js\"",
     "test:marketing-off-golden": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/marketing-off.golden.emulator.test.js\"",
     "test:marketing-price": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/marketing-price.emulator.test.js\""
   }

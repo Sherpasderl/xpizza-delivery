@@ -12,7 +12,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8'); const disk = require('./tools/memberreads-module-inverse').unapplyAfter(F, raw, BASE);   // 3a capp push wiring (after aaeb8f277; 5f OK 11-16)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `MKTPRICE: non-vacuity — ${F} carries the marketing hunks`);
   assert.strictEqual(unapplyMktPriceModule(F, disk), base, `MKTPRICE: 🔴 ${F} minus the marketing hunks is not ${BASE}:${F}`);
