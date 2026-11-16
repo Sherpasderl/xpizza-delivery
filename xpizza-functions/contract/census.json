@@ -54,7 +54,7 @@
   },
   "sendSites": 24,
   "fieldsWritten": 123,
-  "opaqueWrites": 28,
+  "opaqueWrites": 29,
   "opaque": 176,
   "projections": 154,
   "sentinel": 38,
@@ -60475,7 +60475,7 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:withDeadline>anon:setTimeout",
-   "line": 276,
+   "line": 279,
    "delay": "ms",
    "class": "io-deadline"
   },
@@ -62150,12 +62150,12 @@
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:drainRatingRedactions:Date.now()",
-   "line": 252,
+   "line": 255,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/signup-endpoints.js:pruneResidual:Date.now()",
-   "line": 326,
+   "line": 329,
    "class": "business-sample"
   },
   {
@@ -63261,6 +63261,9 @@
    "key": "xpizza-functions/payments/sdk/materialize-sdk.js#clear#sdk_live_pending#resolved:dynamic-field-segment"
   },
   {
+   "key": "xpizza-functions/signup-endpoints.js#deleteAccountCore#audience_ids#resolved:spread-at-root"
+  },
+  {
    "key": "xpizza-functions/index.js#chargeOnlineApp.all#payment_fingerprint_text_version#resolved:dynamic-field-segment"
   }
  ],
@@ -63975,6 +63978,16 @@
    "line": 201,
    "detail": "*/*/*",
    "resolved": []
+  },
+  {
+   "file": "xpizza-functions/signup-endpoints.js",
+   "fn": "deleteAccountCore",
+   "how": "spread-at-root",
+   "line": 218,
+   "detail": "audienceIdsGone",
+   "resolved": [
+    "audience_ids"
+   ]
   },
   {
    "file": "xpizza-functions/pixelpay-charge.js",
