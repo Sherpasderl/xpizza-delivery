@@ -19,7 +19,7 @@
     --sand-text:#7A4A24; --sand-soft:#F7EEE5; --sand-line:#E6D2BE; --sky-text:#1E4E99; --sky-soft:#E6F0FB; --sky-line:#B7D2F3; --star:#FFD60A; --star-line:#B38400;
     --rose-soft:#FCEBF1; --rose-line:#F0C3D3; --rose-text:#9A2D55; --bar-pos:#1F8A6B; --bar-neu:#7E7E83; --bar-neg:#C25578; --bar-track:#E7E7E1;
     --mint-soft:#DFF4ED; --mint-line:#A9E0D0; --mint-text:#0E6A55; --lav-soft:#F0EDFB; --lav-line:#C9C1F0; --lav-text:#4E3DA6;   /* mint = Sherpa-only · lavender = Recomendada (owner-approved pastel chips 11-12) */
-    --v-teal:#0E8C86; --v-mint:#10AD82; --v-sky:#2F7BE6; --v-lav:#7C5CF0; --v-rose:#E8407A; --on-vivid:#000000; --tog-off:#CFCFC9; --knob:#FFFFFF; --rose-soft:#FCEBF1; --rose-line:#F0C3D3; --rose-text:#9A2D55;   /* MOCKUP-portal-marketing v5 (owner 11-14): the offer cards' SATURATED pastels — «Crear campaña» + the empty state only (scoped override of calm UI) */
+    --v-teal:#0E8C86; --v-mint:#10AD82; --v-sky:#2F7BE6; --v-lav:#7C5CF0; --v-rose:#E8407A; --on-vivid:#000000; --tog-off:#CFCFC9; --knob:#FFFFFF;   /* MOCKUP-portal-marketing v5 (owner 11-14): the offer cards' SATURATED pastels — «Crear campaña» + the empty state only (scoped override of calm UI) */
     --vt-mint:#D3F5E8; --vt-mint-ink:#075C45; --vt-sky:#DBE9FF; --vt-sky-ink:#153F9E; --vt-lav:#E7E0FF; --vt-lav-ink:#4A2FB3; --vt-rose:#FFE0EA; --vt-rose-ink:#A3214E; --vt-teal:#D1F0F2; --vt-teal-ink:#0A5E5B;
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
     /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
@@ -42,7 +42,7 @@
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C; --star:#FFD60A; --star-line:#FFD60A;
     --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF; --bar-pos:#4FBF9C; --bar-neu:#8A8A90; --bar-neg:#C96E8E; --bar-track:#26262A;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
-    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B; --tog-off:var(--line); --knob:#FFFFFF; --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF;   /* v5 offer cards, dark */
+    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B; --tog-off:var(--line); --knob:#FFFFFF;   /* v5 offer cards, dark */
     --vt-mint:#0E3A30; --vt-mint-ink:#8FF0CF; --vt-sky:#122A52; --vt-sky-ink:#9DC3FF; --vt-lav:#271C55; --vt-lav-ink:#C6B6FF; --vt-rose:#3F1529; --vt-rose-ink:#FFA9C4; --vt-teal:#0C3537; --vt-teal-ink:#8EE6E2;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
@@ -59,7 +59,7 @@
     --sand-text:#E6BC93; --sand-soft:#2B2119; --sand-line:#51402F; --sky-text:#95BFF6; --sky-soft:#13213A; --sky-line:#24406C; --star:#FFD60A; --star-line:#FFD60A;
     --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF; --bar-pos:#4FBF9C; --bar-neu:#8A8A90; --bar-neg:#C96E8E; --bar-track:#26262A;
     --mint-soft:#102A23; --mint-line:#1E4D40; --mint-text:#7FDCBF; --lav-soft:#1E1A38; --lav-line:#3A316C; --lav-text:#BBB0F6;
-    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B; --tog-off:var(--line); --knob:#FFFFFF; --rose-soft:#2F1620; --rose-line:#5C2A3E; --rose-text:#F2A6BF;   /* v5 offer cards, dark */
+    --v-teal:#19A69F; --v-mint:#2BD39F; --v-sky:#4F93F2; --v-lav:#9A7FF7; --v-rose:#FF6F94; --on-vivid:#0B1B2B; --tog-off:var(--line); --knob:#FFFFFF;   /* v5 offer cards, dark */
     --vt-mint:#0E3A30; --vt-mint-ink:#8FF0CF; --vt-sky:#122A52; --vt-sky-ink:#9DC3FF; --vt-lav:#271C55; --vt-lav-ink:#C6B6FF; --vt-rose:#3F1529; --vt-rose-ink:#FFA9C4; --vt-teal:#0C3537; --vt-teal-ink:#8EE6E2;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
     --green-text:#3FD98A; --red-text:#F0685A;
