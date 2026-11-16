@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { stateViolations, writerFunctions, MUTATING_IMPORTS } from './wiring-ast.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js']);   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
+const OPS_TOAST_OK = new Set(['shell.js', 'branches-view.js', 'pausas.js', 'availability.js', 'team.js', 'pubreq.js', 'equipos.js', 'envio.js', 'marketing-builder.js', 'marketing-detail.js']);   // + Ofertas O3: «Oferta pausada…» / «Oferta activa de nuevo» / «Oferta terminada…» (v5's toasts; failures are panels)   // + Ofertas O2: «Oferta programada…» / «Borrador guardado» (v5's success toasts; failures are panels)   // ENVÍO: «Tarifas guardadas» (the mockup's success toast)
 // PORTAL-UI 1a: success toasts only (see the write-path rule)
 const JS = readdirSync(DIR).filter((f) => f.endsWith('.js'));
 const codeOf = (f) => readFileSync(join(DIR, f), 'utf8')
@@ -91,8 +91,21 @@ test('every module the portal ships is reachable from an entry page (index.html,
   // the shell loads its boot script via <script src>, not an import
   for (const m of html.matchAll(/<script[^>]*src="\.\/([\w-]+\.js)"/g)) walk(m[1]);
   for (const f of JS) {
+    if (AWAITING_SCREENS[f]) continue;
     assert.ok(seen.has(f), `${f} ships but nothing imports it — dead code on a money surface, or a missing wire`);
   }
+  // a pinned module is EXACTLY the not-yet-wired one: present, still unreachable — wiring it (or deleting it) makes the entry stale
+  for (const f of Object.keys(AWAITING_SCREENS)) {
+    assert.ok(JS.includes(f), `AWAITING_SCREENS.${f} no longer exists — drop the entry`);
+    assert.ok(!seen.has(f), `AWAITING_SCREENS.${f} is wired now — drop the entry`);
+  }
+});
+// The NON-DRAWING half of a feature whose screens wait for an owner-approved mockup (the S3 / S4 split): the logic lands, tested
+// against the real server, before anything imports it. Each entry names its gate; nothing else may ship unreachable.
+// APPROVED by the advisor 11-14 on one condition: the DRAWING commit that wires a module removes its entry here.
+const AWAITING_SCREENS = Object.freeze({
+  // 'marketing-logic.js' left 11-14: MOCKUP-portal-marketing v5 owner-approved; marketing.js (O1) wires it
+  'anuncio-logic.js': 'Marketing «Anuncio» (advisor 11-14): DARK — no charge exists until the restaurant ledger + the Pagos statement do; screens wait for MOCKUP-portal-marketing v5',
 });
 
 test('the CSP allows exactly the hosts the code actually talks to', () => {

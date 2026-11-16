@@ -476,6 +476,11 @@ function markNav(view) {
     if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   }
 }
+// A registered view whose visibility input changed in the BACKGROUND (Marketing's cached switch, revalidated after load — advisor
+// 11-14): re-judged on the NEXT navigation, never under the user (no nav pop-in). Applied at the end of goto() and leaveOps().
+let navRefreshDue = false;
+export function requestNavRefresh() { navRefreshDue = true; }
+function applyNavRefresh() { if (!navRefreshDue || !navRendered) return; navRefreshDue = false; renderRegistered(); }
 export function goto(view, opts = {}) {
   if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
   const reg = REG.find((r) => r.id === view);
@@ -499,6 +504,7 @@ export function goto(view, opts = {}) {
   if (view === 'pausas') S.views.pausas && S.views.pausas.show(opts);
   if (view === 'equipos') S.views.equipos && S.views.equipos.show(opts);
   if (typeof window !== 'undefined' && window.scrollTo) { try { window.scrollTo(0, 0); } catch (_) { /* jsdom-free harness */ } }
+  applyNavRefresh();
 }
 // ventas.js's own nav handlers run first (they were registered at import); these hide the ops views behind them
 function leaveOps(v) {
@@ -508,6 +514,7 @@ function leaveOps(v) {
   $('app').classList.remove('opsview');
   $('sucbar').classList.remove('show');
   markNav(v);
+  applyNavRefresh();
 }
 $('navsuc').addEventListener('click', () => goto('suc'));
 $('navpausas').addEventListener('click', () => goto('pausas'));
