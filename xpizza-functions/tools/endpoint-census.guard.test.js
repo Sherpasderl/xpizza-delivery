@@ -87,7 +87,7 @@ const D = {
     // PLATFORM F2 Q1 — the access census + kitchen roster owner CLIs: requireProject({ requireFlag: true }) before any client
     'access-census', 'kitchen-roster',
     // BRAND-AGNOSTIC SERVER — the B1 factura-flag projection owner CLI: requireProject({ requireFlag: true }) before any client
-    'identity-factura-flag', 'driver-return-backfill',
+    'identity-factura-flag', 'driver-return-backfill', 'audience-backfill',
     // PAY RATE — the owner's append-only driver pay-rate CLI: parseArgs, then requireProject({ requireFlag: true }) before any client
     'set-driver-rate',
     // Calificaciones v2 r6.1 §1 — the owner's ratings-disclosure CLI (dry run unless --apply): requireProject({ requireFlag: true }) before any client
@@ -169,6 +169,7 @@ const D = {
   [F('tools/branches-admin.test.js')]: 'unit: drives the branches CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/audience-backfill.test.js')]: 'unit: offer-audience — drives the marker-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/set-driver-rate.test.js')]: 'unit: drives the set-driver-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',

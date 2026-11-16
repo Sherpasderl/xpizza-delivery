@@ -45,20 +45,22 @@ function createFakeDb(initial = {}) {
         const out = ents.length ? Object.fromEntries(ents) : null; return { val: () => out, exists: () => out !== null };
       } }; } }; },
       // offer-audience (additive): key-ordered range reads — orderByKey().endBefore(k).limitToFirst(n) (the bounded sweeps) and
-      // orderByKey().limitToFirst(n); keys compared as the SDK compares string keys
+      // orderByKey().limitToFirst(n) / .startAfter(k) (the backfill's pages); keys compared as the SDK compares string keys
       orderByKey() {
-        const q = (endBefore, nFirst) => ({
-          endBefore(kk) { return q(kk, nFirst); },
-          limitToFirst(nn) { return q(endBefore, nn); },
+        const q = (endBefore, nFirst, after) => ({
+          endBefore(kk) { return q(kk, nFirst, after); },
+          limitToFirst(nn) { return q(endBefore, nn, after); },
+          startAfter(kk) { return q(endBefore, nFirst, kk); },
           async once() {
             guard(path); const all = get(path) || {};
             let ents = Object.entries(all).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
             if (endBefore !== undefined) ents = ents.filter(([kk]) => kk < endBefore);
+            if (after !== undefined) ents = ents.filter(([kk]) => kk > after);
             if (nFirst !== undefined) ents = ents.slice(0, nFirst);
             const out = ents.length ? Object.fromEntries(ents) : null; return { val: () => out, exists: () => out !== null };
           },
         });
-        return q(undefined, undefined);
+        return q(undefined, undefined, undefined);
       },
       async set(v) { put(path, v); },
       async remove() { put(path, null); },

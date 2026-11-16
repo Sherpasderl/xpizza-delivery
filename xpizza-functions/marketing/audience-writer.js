@@ -95,4 +95,4 @@ async function onOrderStatus(db, { orderId, status, eventTime, nowMs = eventTime
   return { action: 'marked' };
 }
 
-module.exports = { onOrderStatus };
+module.exports = { onOrderStatus, codesOf, mark };   // codesOf + mark: the SAME identity / marking rules for the owner backfill
