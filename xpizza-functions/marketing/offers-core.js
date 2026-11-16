@@ -158,7 +158,12 @@ function putClaim(next, opId, claim, t) {
   next.ops[opId] = claim;
   return null;
 }
-async function brandTxn(db, brandId, step) {
+// PLAN-3a-op-judged-marker r0: every step's FIRST statement is its claimCheck, so a reply the step gives to a request carrying an
+// op_id was judged AT / AFTER that claim — it says so (`op: 'judged'`; the portal's one confirmation settles only on it). Never on
+// op_id_conflict (the client's own bug), on any 503 (retryable — it settles nothing: brandTxn's own, or a claimed request's deferred
+// menu-read failure), on a pre-txn reply, or without an op_id (that reply is unchanged).
+const judged = (r, opId) => (opId === undefined || r.status === 503 || r.body.error === 'op_id_conflict' ? r : reply(r.status, { ...r.body, op: 'judged' }));
+async function brandTxn(db, brandId, step, opId) {
   let out = null;
   let tx;
   try {
@@ -169,9 +174,9 @@ async function brandTxn(db, brandId, step) {
     });
   } catch (_) { return UNAVAILABLE(); }
   if (!out) return UNAVAILABLE();
-  if (out.abort) return out.abort;
+  if (out.abort) return judged(out.abort, opId);
   if (!(tx && tx.committed)) return UNAVAILABLE();
-  return out.result;
+  return judged(out.result, opId);
 }
 // a copy of the node the step may change (never the transaction's own input)
 const draftNode = (node) => ({ ...node, offers: { ...(isObj(node.offers) ? node.offers : {}) }, live: { ...(isObj(node.live) ? node.live : {}) }, ops: { ...(isObj(node.ops) ? node.ops : {}) } });
@@ -354,7 +359,7 @@ async function marketingOfferSaveCore(deps, req) {
     writeOffer(next, brandId, proposed, rec, t);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: creating ? 'create' : 'edit', at: t }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 // ── marketingOfferSetState ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -408,7 +413,7 @@ async function marketingOfferSetStateCore(deps, req) {
     writeOffer(next, brandId, body.offer_id, rec, t);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: body.offer_id, kind: 'state', at: t, to: body.to }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(body.offer_id, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 // ── marketingOfferRepeat («Repetir») ────────────────────────────────────────────────────────────────────────────────────────
@@ -467,7 +472,7 @@ async function marketingOfferRepeatCore(deps, req) {
     writeOffer(next, brandId, proposed, rec, t, [sourceId]);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX, writeOffer };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)

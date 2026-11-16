@@ -1226,6 +1226,98 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       ok('readers skip a tombstone: it never clashes and never counts toward MAX_LIVE');
     }
 
+    // ── 9. PLAN-3a-op-judged-marker r0 (advisor 11-16): a reply the brand txn's step gave (claimCheck is its FIRST statement) to a
+    //       request carrying an op_id says so — `op: 'judged'`; every pre-txn reply, op_id_conflict, a 503 and a request without an
+    //       op_id carry none. The portal's ONE confirmation settles only on the marker (no copy of the server's ordering).
+    {
+      const J = (r) => !!(r && r.body && r.body.op === 'judged');
+      let k = 0; const op = () => `oj_${String(++k).padStart(20, '0')}`;
+      const { fake, deps } = await setup();
+      const O = `t-${OWNER}`;
+      // (a) the replay family: a 200 and its replay; a stored judgement and its replay — all marked
+      const OPA = op();
+      const a1 = await save(deps, O, { offer: offer(), op_id: OPA });
+      assert.deepStrictEqual([a1.status, J(a1)], [200, true], `🔴 OPJ-RESULT-MARKED (${JSON.stringify(a1.body)})`);
+      const a2 = await save(deps, O, { offer: offer(), op_id: OPA });
+      assert.deepStrictEqual([a2.status, a2.body.offer.id, J(a2)], [200, a1.body.offer.id, true], '🔴 OPJ-REPLAY-MARKED');
+      const pct = (o = {}) => offer({ name: 'Diez', type: 'pct', params: { pct: 10 }, ...o });
+      assert.strictEqual((await save(deps, O, { offer: pct(), op_id: op(), program: true })).status, 200, 'premise: programmed');
+      const OPD = op();
+      const d1 = await save(deps, O, { offer: pct(), op_id: OPD, program: true });
+      assert.deepStrictEqual([d1.status, d1.body.error, J(d1)], [409, 'duplicate', true], '🔴 OPJ-JUDGEMENT-MARKED');
+      const d2 = await save(deps, O, { offer: pct(), op_id: OPD, program: true });
+      assert.deepStrictEqual([d2.status, d2.body.error, J(d2)], [409, 'duplicate', true], '🔴 OPJ-STORED-REFUSAL-REPLAY-MARKED');
+      // (b) in-step refusals after a claim check that found nothing — marked (incl. the ones the portal's list leaves unknown today)
+      const draft = await created(deps, { name: 'Borrador' });
+      const sup = await save(deps, O, { offer_id: draft.id, expected_rev: 5, offer: offer({ name: 'Borrador' }), op_id: op() });
+      assert.deepStrictEqual([sup.status, sup.body.error, J(sup)], [409, 'superseded', true], '🔴 OPJ-SUPERSEDED-MARKED');
+      const ghost = 'o_' + 'z'.repeat(12);
+      const nf = await save(deps, O, { offer_id: ghost, expected_rev: 1, offer: offer(), op_id: op() });
+      assert.deepStrictEqual([nf.status, nf.body.error, J(nf)], [404, 'not_found', true], '🔴 OPJ-INTXN-404-MARKED (Save has no pre-read)');
+      const past = { start: NOW - 2 * DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } };
+      const pub = await save(deps, O, { offer: offer({ name: 'Pasada', schedule: past }), op_id: op(), program: true });
+      assert.deepStrictEqual([pub.status, pub.body.reason, J(pub)], [400, 'start_past', true], `🔴 OPJ-INTXN-400-MARKED (${JSON.stringify(pub.body)})`);
+      const dish = await save(deps, O, { offer: offer({ name: 'Plato', params: { items: ['i_zzzzzzzzzzzz'], free_per_order: 1 } }), op_id: op() });
+      assert.deepStrictEqual([dish.status, dish.body.reason, J(dish)], [400, 'unknown_dish', true], '🔴 OPJ-DEFERRED-PREP-MARKED (a claimed request\'s preparation failure is answered after the claim check)');
+      const ended = await created(deps, { name: 'Terminada' });
+      assert.strictEqual((await move(deps, O, { offer_id: ended.id, to: 'ended', expected_rev: 1 })).status, 200, 'premise: ended');
+      const bt = await move(deps, O, { offer_id: ended.id, to: 'active', expected_rev: 2, op_id: op() });
+      assert.deepStrictEqual([bt.status, bt.body.error, J(bt)], [409, 'bad_transition', true], '🔴 OPJ-SETSTATE-INSTEP-MARKED');
+      // (c) the claim cap: 429 too_many_pending is answered inside the step — marked
+      { const { fake: f2, deps: d2s } = await setup();
+        for (let i = 0; i < 200; i++) f2.put(`marketing_brand/tb/ops/cap_${String(i).padStart(16, '0')}`, { offer_id: 'o_' + 'a'.repeat(12), kind: 'create', at: NOW });
+        const full = await save(d2s, O, { offer: offer(), op_id: op() });
+        assert.deepStrictEqual([full.status, full.body.error, J(full)], [429, 'too_many_pending', true], '🔴 OPJ-TOO-MANY-PENDING-MARKED'); }
+      // (d) NOT marked: op_id_conflict (the portal's own bug), every pre-txn reply, a 503
+      const conf = await move(deps, O, { offer_id: draft.id, to: 'active', expected_rev: 1, op_id: OPA });
+      assert.deepStrictEqual([conf.status, conf.body.error, J(conf)], [409, 'op_id_conflict', false], '🔴 OPJ-CONFLICT-UNMARKED');
+      const pre404 = await move(deps, O, { offer_id: ghost, to: 'active', expected_rev: 1, op_id: op() });
+      assert.deepStrictEqual([pre404.status, pre404.body.error, J(pre404)], [404, 'not_found', false], '🔴 OPJ-PRETXN-UNMARKED (SetState\'s pre-read 404)');
+      for (const [r, want] of [[await save(deps, O, { offer: offer({ name: '' }), op_id: op() }), 400], [await save(deps, `t-${MGR}`, { offer: offer(), op_id: op() }), 403],
+        [await save(deps, undefined, { offer: offer(), op_id: op() }), 401]]) assert.deepStrictEqual([r.status, J(r)], [want, false], `🔴 OPJ-PRETXN-UNMARKED ${want}`);
+      { const { deps: d3 } = await setup({ switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false } });
+        const off = await save(d3, O, { offer: offer(), op_id: op() });
+        assert.deepStrictEqual([off.status, off.body.error, J(off)], [409, 'offers_disabled', false], '🔴 OPJ-PRETXN-UNMARKED (the switch)'); }
+      { const { fake: f4, deps: d4 } = await setup(); f4.failReads.add('marketing_brand');
+        const down = await save(d4, O, { offer: offer(), op_id: op() });
+        assert.deepStrictEqual([down.status, J(down)], [503, false], '🔴 OPJ-503-THROW-UNMARKED'); }
+      { const { deps: d5 } = await setup();
+        // the txn ran the step on the real node (a result, not an abort) but did not commit ⇒ brandTxn's own 503, never marked
+        const lost = { ...d5, db: { ...d5.db, ref: (p) => { const r = d5.db.ref(p); return String(p).startsWith('marketing_brand/') ? { ...r, transaction: async (fn) => { fn({}); return { committed: false, snapshot: { val: () => null, exists: () => false } }; } } : r; } } };
+        const nc = await save(lost, O, { offer: offer(), op_id: op() });
+        assert.deepStrictEqual([nc.status, J(nc)], [503, false], '🔴 OPJ-503-UNCOMMITTED-UNMARKED'); }
+      { const { deps: d7 } = await setup();
+        const flaky = { ...d7, readMirror: async () => { throw new Error('mirror down'); } };
+        const dm = await save(flaky, O, { offer: offer(), op_id: op() });
+        assert.deepStrictEqual([dm.status, J(dm)], [503, false], '🔴 OPJ-503-DEFERRED-UNMARKED (a claimed request\'s deferred menu-read failure is retryable — never settled)'); }
+      // (e) NO op_id ⇒ no marker, on every family (the first call's reply keeps its exact shape)
+      { const { deps: d6 } = await setup();
+        const plain = [await save(d6, O, { offer: offer() })];
+        plain.push(await save(d6, O, { offer_id: plain[0].body.offer.id, expected_rev: 9, offer: offer() }));
+        plain.push(await save(d6, O, { offer_id: ghost, expected_rev: 1, offer: offer() }));
+        plain.push(await move(d6, O, { offer_id: plain[0].body.offer.id, to: 'ended', expected_rev: 1 }));
+        assert.deepStrictEqual(plain.map((r) => r.status), [200, 409, 404, 200], 'premise: the plain families');
+        assert.deepStrictEqual(plain.map((r) => Object.prototype.hasOwnProperty.call(r.body, 'op')), [false, false, false, false], '🔴 OPJ-NO-OPID-UNMARKED'); }
+      ok("op:'judged': the result, its replay, a stored judgement and its replay, every in-step refusal (superseded, in-txn 404 / 400, the deferred dish failure, bad_transition, too_many_pending) are marked; op_id_conflict, every pre-txn reply (400/401/403, SetState's pre-read 404, the switch), every 503 (thrown / uncommitted / deferred) and every reply without an op_id are not");
+      // (f) the premise the marker rests on, read from the syntax tree: in each owner action's brand txn step, the claim check is the
+      //     FIRST statement and its replay the second — no refusal can ever be judged ahead of the claim
+      const acorn = require('acorn');
+      const src = require('fs').readFileSync(require('path').join(__dirname, 'offers-core.js'), 'utf8');
+      const steps = [];
+      (function walk(nd) {
+        if (!nd || typeof nd.type !== 'string') return;
+        if (nd.type === 'CallExpression' && nd.callee.type === 'Identifier' && nd.callee.name === 'brandTxn' && nd.arguments[2]) steps.push(nd.arguments[2]);
+        for (const v of Object.values(nd)) { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v.type === 'string') walk(v); }
+      })(acorn.parse(src, { ecmaVersion: 2022 }));
+      assert.strictEqual(steps.length, 3, 'premise: three owner actions call brandTxn');
+      for (const st of steps) {
+        const [s0, s1] = st.body.body; const text = (x) => src.slice(x.start, x.end);
+        assert.ok(s0 && /^const c = .*claimCheck\(node, body\.op_id, /.test(text(s0)), `🔴 OPJ-CLAIMCHECK-FIRST: ${text(s0 || st).slice(0, 80)}`);
+        assert.strictEqual(s1 && text(s1).replace(/\s*\/\/.*$/, ''), 'if (c) return c;', '🔴 OPJ-REPLAY-SECOND');
+      }
+      ok('the premise, from the syntax tree: in each of the three brand-txn steps claimCheck is the first statement and its replay the second');
+    }
+
     FINISHED = true;
     console.log(`offers-core: ${n}/${n} ok`);
   } catch (e) {

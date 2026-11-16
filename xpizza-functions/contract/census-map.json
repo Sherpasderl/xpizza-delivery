@@ -868,6 +868,7 @@
   "ratings/_rtdb-fake.js#get>anon": "fixtures",
   "ratings/_rtdb-fake.js#set": "fixtures",
   "marketing/offers-core.js#resolveDishes": "marketing",
+  "marketing/offers-core.js#judged": "marketing",
   "marketing/config.js#exactKeys": "marketing",
   "marketing/offer-model.js#exactKeys": "marketing",
   "marketing/offer-price.js#discountOf": "marketing_price",
