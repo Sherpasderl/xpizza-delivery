@@ -303,7 +303,8 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       // the per-branch map is the SERVER's: one list per named branch, never authored
       const opts = { isRid: require('../brands/brand-model').isBrandId };
       assert.strictEqual(OM.recordOk(rec, opts), true, 'premise: the written record is well-formed');
-      for (const [by, why] of [[{}, 'empty'], [{ tb_sur: [K1] }, 'another branch'], [{ tb_centro: [K1], tb_sur: [K1] }, 'an extra branch'], [{ tb_centro: [] }, 'an empty list']]) {
+      // the wrong-branch rows keep the union = items, so ONLY the branch rule (validateAuthored) can refuse them
+      for (const [by, why] of [[{}, 'empty'], [{ tb_sur: [K1, K2].sort() }, 'another branch'], [{ tb_centro: [K1, K2].sort(), tb_sur: [K1, K2].sort() }, 'an extra branch'], [{ tb_centro: [] }, 'an empty list']]) {
         assert.strictEqual(OM.recordOk({ ...rec, params: { ...rec.params, by_branch: by } }, opts), false, `a stored by_branch with ${why} is malformed`);
       }
       assert.strictEqual(OM.recordOk({ ...rec, params: { items: [K1], by_branch: { tb_centro: [K1] }, free_per_order: 1 } }, opts), false, 'a by-dish offer never carries by_branch');
