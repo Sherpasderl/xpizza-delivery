@@ -1263,6 +1263,23 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.strictEqual((await move(deps, O, { offer_id: ended.id, to: 'ended', expected_rev: 1 })).status, 200, 'premise: ended');
       const bt = await move(deps, O, { offer_id: ended.id, to: 'active', expected_rev: 2, op_id: op() });
       assert.deepStrictEqual([bt.status, bt.body.error, J(bt)], [409, 'bad_transition', true], '🔴 OPJ-SETSTATE-INSTEP-MARKED');
+      // Codex #99 P2: REPEAT through the real core — its refusal and the stored refusal's replay are marked; without an op_id it is
+      // unmarked and otherwise the same reply
+      const rsrc = await published(deps, { name: 'Repetible OJ', type: 'pct', params: { pct: 35 } });
+      assert.strictEqual((await move(deps, O, { offer_id: rsrc.id, to: 'ended', expected_rev: 2 })).status, 200, 'premise: ended');
+      const rep = (o) => C.marketingOfferRepeatCore(deps, req(O, { rid: 'tb_centro', source_id: rsrc.id, program: true, schedule: { start: NOW + 2 * DAY, end: NOW + 20 * DAY }, ...o }));
+      const rp1 = await rep({ op_id: op() });
+      assert.deepStrictEqual([rp1.status, J(rp1)], [200, true], `🔴 OPJ-REPEAT-RESULT-MARKED (${JSON.stringify(rp1.body)})`);
+      const OPR = op();
+      const rd1 = await rep({ op_id: OPR });
+      assert.deepStrictEqual([rd1.status, rd1.body.error, rd1.body.offer_id, J(rd1)], [409, 'duplicate', rp1.body.offer.id, true], `🔴 OPJ-REPEAT-DUP-MARKED (${JSON.stringify(rd1.body)})`);
+      const rd2 = await rep({ op_id: OPR });
+      assert.deepStrictEqual([rd2.status, rd2.body, J(rd2)], [409, rd1.body, true], '🔴 OPJ-REPEAT-STORED-REFUSAL-REPLAY-MARKED');
+      const rd0 = await rep({});
+      const { op: _m, ...bare } = rd1.body;
+      assert.deepStrictEqual([rd0.status, Object.prototype.hasOwnProperty.call(rd0.body, 'op'), rd0.body], [409, false, bare], '🔴 OPJ-REPEAT-NO-OPID-UNMARKED (the same refusal, no marker)');
+      const rp0 = await C.marketingOfferRepeatCore(deps, req(O, { rid: 'tb_centro', source_id: rsrc.id }));
+      assert.deepStrictEqual([rp0.status, Object.prototype.hasOwnProperty.call(rp0.body, 'op')], [200, false], '🔴 OPJ-REPEAT-NO-OPID-UNMARKED (a plain draft copy)');
       // (c) the claim cap: 429 too_many_pending is answered inside the step — marked
       { const { fake: f2, deps: d2s } = await setup();
         for (let i = 0; i < 200; i++) f2.put(`marketing_brand/tb/ops/cap_${String(i).padStart(16, '0')}`, { offer_id: 'o_' + 'a'.repeat(12), kind: 'create', at: NOW });
@@ -1298,7 +1315,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         plain.push(await move(d6, O, { offer_id: plain[0].body.offer.id, to: 'ended', expected_rev: 1 }));
         assert.deepStrictEqual(plain.map((r) => r.status), [200, 409, 404, 200], 'premise: the plain families');
         assert.deepStrictEqual(plain.map((r) => Object.prototype.hasOwnProperty.call(r.body, 'op')), [false, false, false, false], '🔴 OPJ-NO-OPID-UNMARKED'); }
-      ok("op:'judged': the result, its replay, a stored judgement and its replay, every in-step refusal (superseded, in-txn 404 / 400, the deferred dish failure, bad_transition, too_many_pending) are marked; op_id_conflict, every pre-txn reply (400/401/403, SetState's pre-read 404, the switch), every 503 (thrown / uncommitted / deferred) and every reply without an op_id are not");
+      ok("op:'judged': the result, its replay, a stored judgement and its replay, every in-step refusal (superseded, in-txn 404 / 400, the deferred dish failure, bad_transition, a Repeat's result / duplicate / its stored replay, too_many_pending) are marked; op_id_conflict, every pre-txn reply (400/401/403, SetState's pre-read 404, the switch), every 503 (thrown / uncommitted / deferred) and every reply without an op_id are not");
       // (f) the premise the marker rests on, read from the syntax tree: in each owner action's brand txn step, the claim check is the
       //     FIRST statement and its replay the second — no refusal can ever be judged ahead of the claim
       const acorn = require('acorn');
