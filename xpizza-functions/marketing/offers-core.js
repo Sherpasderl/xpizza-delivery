@@ -388,6 +388,7 @@ async function marketingOfferSetStateCore(deps, req) {
     if (!MOVES[cur.state].includes(body.to)) return { abort: reply(409, { error: 'bad_transition' }) };
     if (body.to === 'active') {   // publish / resume: the schedule is still ahead (a draft), a paused offer not past its end
       if (!OM.typeSupported(cur.type)) return { abort: reply(409, { error: 'type_not_supported' }) };   // an old envío record (owner 11-15)
+      if (!OM.audienceSupported(cur.audience)) return { abort: reply(409, { error: 'audience_not_supported' }) };   // a stored new / returning (Codex #93 F4)
       if (cur.state === 'draft') { const p = OM.validatePublishable(OM.authoredOf(cur, opts), t); if (!p.ok) return { abort: reply(400, { error: 'bad_request', field: p.field, reason: p.reason }) }; }
       if (cur.state === 'paused_owner' && cur.schedule.end != null && cur.schedule.end <= t) return { abort: reply(409, { error: 'ended' }) };
     }
@@ -427,6 +428,7 @@ async function marketingOfferRepeatCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
   if (!OM.typeSupported(value.type)) return reply(400, { error: 'bad_request', field: 'type', reason: 'type_not_supported' });   // never repeat an old envío
+  if (!OM.audienceSupported(value.audience)) return reply(400, { error: 'bad_request', field: 'audience', reason: 'audience_not_supported' });
   // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, the max timestamp) — before anything is written
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   let prepFail = null;

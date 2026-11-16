@@ -13,7 +13,11 @@ const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);   // eve
 // fee from the restaurant yet) — an old envío record still READS (it can be listed and ended), never goes live.
 const V1_TYPES = Object.freeze(['pct', 'lps', 'bogo', 'nuevos']);
 const typeSupported = (type) => V1_TYPES.includes(type);
-const AUDIENCES = Object.freeze(['all', 'new', 'returning']);
+const AUDIENCES = Object.freeze(['all', 'new', 'returning']);   // every audience a STORED record may carry (the field is kept)
+// THE v1 audience gate (Codex #93 F4, owner 11-15): the price path applies 'all' only, so v1 may author, activate and project only
+// these. New / returning come very close to v1 ship (5f's eligibility plan): widening is this one list.
+const V1_AUDIENCES = Object.freeze(['all']);
+const audienceSupported = (audience) => V1_AUDIENCES.includes(audience);
 const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);   // (r3: a refused program is never a record — its claim carries the refusal)
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
@@ -123,6 +127,7 @@ function validateAuthored(input, { isRid, stored = false }) {
   const params = paramsOf(input.type, input.params, stored);
   if (params === null) return fail('params', 'bad_params');
   if (!AUDIENCES.includes(input.audience)) return fail('audience', 'bad_audience');
+  if (!stored && !audienceSupported(input.audience)) return fail('audience', 'audience_not_supported');
   if (input.type === 'nuevos' && input.audience !== 'new') return fail('audience', 'nuevos_is_new');   // «Para clientes nuevos»
   const b = input.branches;
   if (!Array.isArray(b) || b.length < 1 || b.length > LIMITS.branches_max || !b.every((r) => isRid(r)) || !uniq(b)) return fail('branches', 'bad_branches');
@@ -190,8 +195,9 @@ function resolveCats(menu, cats) {
   return { ok: true, items: [...new Set(out)].sort() };
 }
 
-// The compact record the PRICE PATH reads — present only while state === 'active'. `name` rides for the overlap refusal's wording.
-const liveProjection = (rec, brandId) => (!typeSupported(rec.type) ? null : stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule }));
+// The compact record the PRICE PATH reads — present only while state === 'active', for a v1 type AND a v1 audience (else null ⇒ a
+// tombstone). `name` rides for the overlap refusal's wording.
+const liveProjection = (rec, brandId) => (!typeSupported(rec.type) || !audienceSupported(rec.audience) ? null : stripNulls({ rev: rec.rev, brand_id: brandId, name: rec.name, type: rec.type, params: rec.params, audience: rec.audience, schedule: rec.schedule }));
 
 // ── the weekly overlap rule (mockup 3 «1 con cruce») ────────────────────────────────────────────────────────────────────────────
 // An offer's weekly minutes — the ONE definition now lives in marketing/offer-rules.js (shared with the capp; advisor 11-14, 5f moved it
@@ -224,7 +230,7 @@ const hnDow = (ms) => new Date(ms - HN_OFFSET_MS).getUTCDay();
 
 module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
-  V1_TYPES, typeSupported, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
+  V1_TYPES, typeSupported, V1_AUDIENCES, audienceSupported, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
   weeklyIntervals, schedulesOverlap, dishesOf, usesCats, resolveCats, statusOf, hnDow,
   paramsOf, scheduleOf,   // the ONE params / schedule rule, for the public offers read (catalog/offers-serve.js)
 };

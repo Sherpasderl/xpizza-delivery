@@ -182,6 +182,11 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ caps: { redemptions: 50, spend_cents: null, weekly: false } }, 'caps_not_supported'],
         [{ caps: {} }, 'caps_not_supported'],
         [{ caps: 0 }, 'caps_not_supported'],
+        // v1 audiences (Codex #93 F4, owner 11-15): only 'all' — the price path applies no other yet; never stored, never projected
+        [{ audience: 'new' }, 'audience_not_supported'],
+        [{ audience: 'returning' }, 'audience_not_supported'],
+        [{ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' }, 'audience_not_supported'],
+        [{ audience: 'vip' }, 'bad_audience'],
         [{ extra: 1 }, 'bad_shape'],
       ];
       for (const [o, reason] of bad) {
@@ -997,6 +1002,29 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       C.writeOffer(next, 'tb', draftId, { ...base, rev: 7, state: 'active', schedule: sched }, NOW);
       assert.deepStrictEqual(next.live.tb_centro && next.live.tb_centro[draftId], { removed: true, rev: 7 }, 'an active envío record is tombstoned, never projected or nulled');
       ok('writeOffer: an active record with a null projection ⇒ a tombstone');
+    }
+    // ── 6a'. an audience other than 'all' (Codex #93 F4): a STORED one (no v1 writer can make it) reads and ends, never goes live ──
+    {
+      const { fake, deps } = await setup();
+      const draftId = 'o_' + 'd'.repeat(12), pausedId = 'o_' + 'e'.repeat(12), endedId = 'o_' + 'f'.repeat(12);
+      const base = { v: 1, name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning', branches: ['tb_centro'], created_by: OWNER, created_at: NOW, updated_at: NOW };
+      const sched = { start: NOW + DAY, end: NOW + 30 * DAY, days: [5, 6], window: { from: 1260, to: 0 } };
+      await fake.ref(`marketing_brand/tb/offers/${draftId}`).set({ ...base, rev: 1, state: 'draft', schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${pausedId}`).set({ ...base, type: 'nuevos', params: { off_cents: 5000 }, audience: 'new', rev: 2, state: 'paused_owner', paused_at: NOW, schedule: sched });
+      await fake.ref(`marketing_brand/tb/offers/${endedId}`).set({ ...base, rev: 3, state: 'ended', ended_reason: 'owner', schedule: { ...sched, start: NOW - 30 * DAY, end: NOW - DAY } });
+      assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.map((o) => [o.id, o.audience]).sort(), [[draftId, 'returning'], [pausedId, 'new'], [endedId, 'returning']], 'a stored audience reads back and lists (the field is kept)');
+      for (const [id, rev] of [[draftId, 1], [pausedId, 2]]) {
+        const a = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: rev });
+        assert.deepStrictEqual([a.status, a.body.error], [409, 'audience_not_supported'], `a stored non-'all' offer can never be activated (${JSON.stringify(a.body)})`);
+      }
+      const rp = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: endedId, program: true, schedule: { start: NOW + 2 * DAY } }));
+      assert.deepStrictEqual([rp.status, rp.body.reason], [400, 'audience_not_supported'], `…never repeated (${JSON.stringify(rp.body)})`);
+      const ed = await save(deps, `t-${OWNER}`, { offer_id: draftId, expected_rev: 1, offer: offer({ name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning' }) });
+      assert.deepStrictEqual([ed.status, ed.body.reason], [400, 'audience_not_supported'], '…never re-saved with its audience');
+      assert.deepStrictEqual(mirrored(fake), [], 'no non-\'all\' offer ever reaches the live mirror');
+      assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: pausedId, to: 'ended', expected_rev: 2 })).status, 200, 'it can still be ENDED');
+      assert.strictEqual(OM.liveProjection({ ...base, rev: 9, state: 'active', schedule: sched }, 'tb', 'tb_centro'), null, 'liveProjection never projects a non-\'all\' audience');
+      ok('a stored non-\'all\' audience: listed, endable, never activated / repeated / re-saved / projected');
     }
 
     // ── 6b. the race (advisor 11-14, rule 5): two clashing publishes at once — the per-branch transaction lets exactly one through ──
