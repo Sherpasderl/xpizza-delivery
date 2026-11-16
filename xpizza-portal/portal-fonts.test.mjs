@@ -131,7 +131,10 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
   for (const w of weights) assert.ok(c.gateB.some((x) => x.weight === w && x.verdict === 'covered' && /^U\+0000-00FF/.test(x.raw)), `latin × ${w} is covered by a painted codepoint`);
   const want = ['L-login', 'L-error', 'I-email', 'I-busy', 'I-busy-retry', 'I-busy-fallback', 'I-password', 'I-reset-sent', 'I-error', 'I-invalid',
     'P-editor', 'P-drawer', 'P-review', 'P-receipt', 'P-conflict', 'P-readonly', 'A-drawer', 'S-list', 'S-detail', 'Z-pause', 'E-devices', 'E-unlink',
-    'V-ventas', 'T-team', 'T-invite', 'T-edit', 'T-sent', 'T-remove', ...(existsSync(join(DIR, 'photo.js')) ? ['P-crop'] : [])];
+    'V-ventas', 'T-team', 'T-invite', 'T-edit', 'T-sent', 'T-remove', ...(existsSync(join(DIR, 'photo.js')) ? ['P-crop'] : []),
+    // the newer panes (PLAN-portal-fonts-census-gaps-r0 §1, advisor 11-16), answered by the lanes' REAL cores. Extras is NOT here: it is dark
+    // (catalog/platform-structure.js EXTRAS_CATALOG = false) — its state joins with the commit that turns the page on
+    'IN-inicio', 'V-rend', 'V-detail', 'C-calif', 'C-filters', 'C-earlier', 'M-ofertas', 'M-builder', 'M-review', 'M-detail', 'N-envio'];
   assert.deepEqual(Object.keys(c.states).sort(), want.sort(), 'every §4 state is in the census');
 });
 

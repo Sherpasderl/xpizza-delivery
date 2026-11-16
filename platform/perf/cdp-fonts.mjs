@@ -118,7 +118,7 @@ export async function router(cdp, decide) {
   on('Network.loadingFinished', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'ok'); });
   on('Network.loadingFailed', (p) => { const u = byReq.get(p.requestId); if (u) finished.set(u, 'failed'); });
   on('Fetch.requestPaused', async (p) => {
-    const url = p.request.url; const d = decide(url, p.request);
+    const url = p.request.url; const d = await decide(url, p.request);
     try {
       if (d === 'continue') return await s('Fetch.continueRequest', { requestId: p.requestId });
       if (d === 'fail') { refused.add(url); return await s('Fetch.failRequest', { requestId: p.requestId, errorReason: 'Failed' }); }   // recorded: the fixture's OWN refusals

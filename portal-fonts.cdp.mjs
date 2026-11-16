@@ -27,7 +27,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { launch, serveDir, router, census, attribute, runsOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -139,6 +139,15 @@ const navLabel = (t) => at(`(() => { const b = [...document.querySelectorAll('.s
 const rowChev = (n = 0) => at(`(__q('#detail .irow .rowchev')[${n}].click(), true)`, 500);
 // P-review / P-receipt: one real edit (Margarita 280 → 290, the list-row price input) so «Revisar cambios» has a diff
 const editPrice = async (c) => { await c.ev(`(() => { const i = __q('#detail .price input')[1]; const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '290'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`); await sleep(150); };
+// census-gaps helpers (the SBS harness's own proven verbs: its nav matcher `button.nav, button.mn`; click a selector; click the element
+// under a selector whose text contains a string) — the existing states keep navLabel unchanged
+const navAny = (t) => at(`(() => { const b = [...document.querySelectorAll('button.nav, button.mn')].find((x) => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(t)})); if (!b) throw new Error('no nav ' + ${JSON.stringify(t)}); b.click(); return true; })()`, 1500);
+const clickSel = (sel, n = 0, ms = 700) => at(`(() => { const e = __q(${JSON.stringify(sel)})[${n}]; if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' #' + ${n}); e.click(); return true; })()`, ms);
+const clickHas = (sel, t, ms = 900) => at(`(() => { const e = __q(${JSON.stringify(sel)}).find((x) => x.offsetParent !== null && x.textContent.includes(${JSON.stringify(t)})); if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' with ' + ${JSON.stringify(t)}); e.click(); return true; })()`, ms);
+const waitFor = (sel, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`!!document.querySelector(${JSON.stringify(sel)})`)) return; await sleep(100); } throw new Error(`premise: ${sel} never appeared`); };
+const OFERTAS = seq(nav('navsuc'), navAny('Marketing'), waitFor('.mk5-row'));
+const CALIF = seq(navAny('Calificaciones'), waitFor('.calif .dist'));
+const VENTAS = seq(nav('navventas'), waitFor('.vd-fig'));
 const STATES = {
   'L-login':         { page: 'index', signedOut: true, container: '#loginform', drive: async () => {} },
   'L-error':         { page: 'index', signedOut: true, container: '#loginform', drive: seq(at("__type('email', 'duena@ejemplo.test')", 50), at("__type('pass', 'x1')", 50), at("__submit('loginform')", 600)) },
@@ -193,12 +202,28 @@ const STATES = {
       await sleep(900);
       if (!(await c.ev("!!document.querySelector('#drawer .phcrop img')"))) throw new Error('premise: the crop step did not open on the picked photo');
     }) },
+  // ── census-gaps (PLAN-portal-fonts-census-gaps-r0 §1): the newer panes, each answered by its lane's REAL cores (`cores` = review/portal-cores/<name>.mjs,
+  // `scn` = its scenario), the page on that backend's clock; routes are the SBS manifest's proven ones; `text` = the pane premise's known string
+  'IN-inicio':       { page: 'index', cores: 'ventas', scn: 'populated', container: '#viewinicio', text: 'Buen', drive: seq(nav('navinicio'), at('true', 1500)) },
+  'V-rend':          { page: 'index', cores: 'ventas', scn: 'populated', container: '#viewventas', text: 'Últimos 14 días', drive: VENTAS },
+  'V-detail':        { page: 'index', cores: 'ventas', scn: 'populated', container: '.main:not(.hidden)', text: 'Descargar', drive: seq(VENTAS, clickHas('button', 'Ver más detalle', 1500)) },
+  'C-calif':         { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.calif', text: 'Ana P.', drive: CALIF },
+  'C-filters':       { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.cf-filt.cf-sub .cf-menu.cf-show', text: '1 estrella', drive: seq(CALIF, clickSel('.cf-filt.cf-sub .cf-pill', 0)) },
+  'C-earlier':       { page: 'index', cores: 'calificaciones2', scn: 'list', container: '.calif .cf-seg', text: 'Centro',
+    drive: seq(CALIF, clickSel('.cf-filt:not(.cf-sub) .cf-pill', 1), clickHas('.cf-menu.cf-show [role=option], .cf-menu.cf-show button', 'Todas las sucursales', 1500), waitFor('.calif .cf-seg')) },
+  'M-ofertas':       { page: 'index', cores: 'ofertas', scn: 'populated', container: '.main:not(.hidden)', text: 'Almuerzo: 15 % en todo el menú', drive: OFERTAS },
+  'M-builder':       { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5b-dlg', text: 'Nueva oferta', drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]')) },
+  'M-review':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
+    drive: seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="pct"]'), clickSel('.mk5b-go')) },
+  'M-detail':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5d-head', text: 'Almuerzo: 15 % en todo el menú', drive: seq(OFERTAS, clickHas('.mk5-lnk', 'Almuerzo: 15 %')) },
+  'N-envio':         { page: 'index', cores: 'zones', scn: 'closed', container: '.envio', text: 'Tarifas de envío', drive: seq(navAny('Envío'), waitFor('.envio')) },
 };
 
 // ── the router: every external https request answered per state ──
 function decideFor(st) {
   const ok = (body) => ({ body: JSON.stringify(body) });
-  return (url, req) => {
+  const coreFn = (url) => { const fn = fnOf(url); return st.backend && fn && fn !== 'reportClientVersion' ? fn : null; };
+  const d = (url, req) => {
     if (/fonts\.googleapis\.com\/css2/.test(url)) return st.baseline ? { body: BASELINE_CSS, headers: { 'content-type': 'text/css' } } : 'fail';
     if (/fonts\.gstatic\.com\/s\//.test(url)) {
       const f = st.baseline && PIN.files.find((x) => x.url === url.split('?')[0]);
@@ -208,6 +233,7 @@ function decideFor(st) {
     }
     const fn = fnOf(url);
     if (!fn) return 'fail';                                                        // the SDK host, the heartbeat, anything else
+    if (coreFn(url)) return answerCore(st, fn, url, req);                           // census-gaps §2: a REAL core (a promise; router awaits it)
     if (fn === 'getMyBranches') return ok(E1(st.role || 'owner', st.caps || OWNER));
     if (fn === 'getEditableCatalog') return ok(st.photos ? { ...MENU(), photosEnabled: true, photos: {}, photoPreviews: {}, legacyPreviews: {} } : MENU());   // P-crop: uploads on
     if (fn === 'getBranchAvailability') return ok(AVAIL());
@@ -220,6 +246,26 @@ function decideFor(st) {
     if (fn === 'reportClientVersion') return 'fail';
     return { status: 404, body: JSON.stringify({ error: 'not_found' }) };
   };
+  d.peek = (url, req) => (coreFn(url) ? 'core' : d(url, req));   // a second listener's look: never a second call into a core
+  return d;
+}
+// ── census-gaps (PLAN-portal-fonts-census-gaps-r0 §2): the newer panes answer from the lanes' REAL cores — review/portal-cores, the SBS
+// backends moved in-repo (each loads the harnesses of THIS tree). Never canned: a call a backend does not serve is a 404 GAP, recorded; a
+// core that throws is a 500, recorded — an async decide must never reject (the router would leave the request hanging).
+const CORES = new Map();
+async function coreBackend(name) {
+  if (!CORES.has(name)) { const { backend } = await import(pathToFileURL(path.join(ROOT, 'review/portal-cores', `${name}.mjs`)).href); CORES.set(name, await backend(ROOT)); }
+  return CORES.get(name);
+}
+async function answerCore(st, fn, url, req) {
+  if (req.method === 'OPTIONS') return { body: '' };   // the router answers a preflight itself (CORS 204); the core never sees it
+  try {
+    const headers = Object.fromEntries(Object.entries(req.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    let body; try { body = req.postData ? JSON.parse(req.postData) : undefined; } catch (_) { body = undefined; }
+    const r = await st.backend.call({ fn, method: req.method, query: queryOf(url), headers, body });
+    if (!r) { st.gaps.push(`${fn}: not served (404)`); return { status: 404, body: JSON.stringify({ error: 'not_found' }) }; }
+    return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body), headers: { ...(r.contentType ? { 'content-type': r.contentType } : {}), ...(r.headers || {}) } };
+  } catch (e) { st.gaps.push(`${fn}: the core threw (${String(e && e.message).slice(0, 120)})`); return { status: 500, body: JSON.stringify({ error: 'core_threw' }) }; }
 }
 const PINNED = new Map();
 function pinnedBytes(f) {   // the baseline's bytes: the PINNED files, found by full sha256 + length among the committed copies
@@ -283,16 +329,18 @@ export function classifyShifts(shifts, fontEv, fontRes) {
   });
 }
 const showShifts = (cls) => { for (const x of cls) console.log(`      ${x.font ? 'FONT ' : 'shell'} shift @${Math.round(x.t)} ms ${+x.v.toPrecision(4)} [${x.why}] ${x.sources.slice(0, 4).map((s) => s.desc).join(' | ')}`); };
-const FREEZE = `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
+const freezeAt = (T0) => `(() => { const T = ${T0}; const D = Date; class FD extends D { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } } window.Date = FD; })();`;
+const FREEZE = freezeAt(T0);
 const QUIET = `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}'; document.head.appendChild(s); });`;
 const THEME = (t) => `document.addEventListener('DOMContentLoaded', () => document.documentElement.setAttribute('data-theme', ${JSON.stringify(t)}));`;
 const settle = async (cdp) => { await cdp.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))'); };
-async function premisePane(cdp, sel) {
+async function premisePane(cdp, sel, text, gaps = []) {
   const ok = await cdp.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return 'missing';
     const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
     if (cs.display === 'none' || cs.visibility === 'hidden' || r.width === 0 || r.height === 0) return 'hidden';
-    return (e.innerText || '').trim() ? 'ok' : 'empty'; })()`);
-  if (ok !== 'ok') throw new Error(`premise: ${sel} is ${ok}`);
+    const t = (e.innerText || '').trim(); if (!t) return 'empty';
+    return ${JSON.stringify(text || '')} && !t.includes(${JSON.stringify(text || '')}) ? 'without «' + ${JSON.stringify(text || '')} + '»' : 'ok'; })()`);
+  if (ok !== 'ok') throw new Error(`premise: ${sel} is ${ok}${gaps.length ? ` — core gaps: ${gaps.join('; ')}` : ''}`);
 }
 
 // ── one run: boot an entry page in a state under a font policy ──
@@ -302,7 +350,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
   const load1 = os.loadavg()[0];   // the slot rule: load1 > 45 ⇒ UNTRUSTED STOP (checked before EVERY run, not only at launch)
   LOAD_MAX = Math.max(LOAD_MAX, load1);
   if (load1 > 45) { console.log(`\nUNTRUSTED STOP: 1-min load ${load1.toFixed(2)} > 45 before ${side} ${stateName} @${view}px`); process.exit(3); }
-  const st = { ...def, baseline: side === 'baseline', fontGate };
+  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, gaps: [] };
+  if (def.cores) { st.backend = await coreBackend(def.cores); await st.backend.reset(def.scn); }   // census-gaps: a fresh REAL world per run
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
     gate: (rel) => (new RegExp(`^${SITE}/fonts/.*\\.woff2$`).test(rel) ? fontGate : undefined),
@@ -323,7 +372,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     const errs = [];
     const decide = decideFor(st);
     const rt = await router(cdp, decide); rtRef = rt;
-    cdp.on('Fetch.requestPaused', (p) => { const u = p.request.url; if (decide(u, p.request) === 'hold' && !isFontUrl(u)) errs.push(`unexpected hold: ${u}`); });
+    cdp.on('Fetch.requestPaused', (p) => { const u = p.request.url; if (decide.peek(u, p.request) === 'hold' && !isFontUrl(u)) errs.push(`unexpected hold: ${u}`); });
     await cdp.s('Log.enable');
     cdp.on('Runtime.exceptionThrown', (p) => errs.push(`exception: ${(p.exceptionDetails.exception && p.exceptionDetails.exception.description) || p.exceptionDetails.text}`.slice(0, 200)));
     cdp.on('Runtime.consoleAPICalled', (p) => { if (p.type === 'error') errs.push(`console.error: ${p.args.map((a) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 200)); });
@@ -336,7 +385,10 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
       const afterFcp = () => new Promise((r) => (fcpAt !== null ? r() : waiters.push(r))).then(() => new Promise((r) => setTimeout(r, Math.max(0, fcpAt + ${Number(ms)} - performance.now()))));
       if (${JSON.stringify(fn)} === 'auth') { window.__authGate = afterFcp(); return; }   // FONTS_DELAY=auth:<ms>: the session resolves <ms> after FCP
       const f = window.fetch.bind(window); window.fetch = async (u, o) => { const res = await f(u, o); if (String(u).includes('/${fn}')) await afterFcp(); return res; }; })();` }); }
-    if (deterministic) for (const src of [FREEZE, QUIET]) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
+    // the page's clock: a core state runs on its backend's clock (the REAL world's «now»), deterministic or not; else T0 when deterministic
+    const clock = st.backend && Number.isFinite(st.backend.clock) ? st.backend.clock : null;
+    if (clock !== null) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: freezeAt(clock) });
+    if (deterministic) for (const src of [clock === null ? FREEZE : null, QUIET].filter(Boolean)) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: src });
     const t0 = Date.now();
     const page = def.page === 'aceptar' ? `aceptar.html${def.noInvite ? '' : `?invite=${INVITE_ID}&mode=signIn&oobCode=fx&apiKey=fx`}` : 'index.html';
     await cdp.s('Page.navigate', { url: `${srv.base}/${SITE}/${page}` });
@@ -367,11 +419,11 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     for (let i = 0; ; i++) { const open = fontUrls().filter((u) => !rt.finished.has(u)); if (!open.length) break; if (i > 1200) throw new Error(`font requests never completed: ${open.join(', ')}`); await sleep(25); }
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
-    await premisePane(cdp, def.container);
+    await premisePane(cdp, def.container, def.text, st.gaps);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
     const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
-      fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
+      fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue, gaps: [...st.gaps] };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
     if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
