@@ -140,4 +140,55 @@ ok('EXECUTABLE per-file measurement: an empty file, an exit-only file, a skip/to
 }
 ok(`zero-cell excuses: excused-zero green, excuse-that-asserts RED, orphan RED; child env drops only the count-marks preload; ${Object.keys(A.ZERO_CELL_OK).length} ZERO_CELL_OK entries`);
 
+// 10. 🔴 A CANCELLED FILE IS RED (portal light chain r0). A folder's --test-timeout caps the WHOLE file under this
+//     runner (node --test wraps the file as one test), so an over-the-cap file is CANCELLED, not failed — and must
+//     still score RED. EXECUTABLE: a real file over a 1 s cap, through the runner's own runFile + classify.
+{
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'app-suites-cancel-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'slow.test.js'), "const t = require('node:test'); t.test('fast', () => {}); t.test('slow', () => new Promise((r) => setTimeout(r, 3000)));\n");
+    const r = A.runFile({ file: 'fx/slow.test.js', cwd: '.', rel: 'slow.test.js', env: {}, flags: ['--test-timeout=1000'] }, dir, process.env);
+    assert.ok(r.cancelled >= 1, FAIL(`the over-the-cap file was not reported CANCELLED (cancelled=${r.cancelled}): ${r.out.slice(-300)}`));
+    assert.strictEqual(r.ok, false, FAIL('a CANCELLED (timed-out) file scored as a pass'));
+    const cv = A.classify([r], {}, ['fx/slow.test.js'], {});
+    assert.ok(cv.rows[0].state === 'fail' && cv.exitCode === 1, FAIL(`a cancelled file must fail the run: ${JSON.stringify(cv.rows[0])}`));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+ok('EXECUTABLE: a file over its folder\'s --test-timeout is CANCELLED, reported as such, and scored RED (never a pass)');
+
+// 11. 🔴 NO BROWSER IN THE LIGHT CHAIN (rule 32: Chrome only at a slot turn). A file a light npm test step names (side
+//     'test') or test:apps plans (side 'apps') whose own source launches a browser is a plan PROBLEM unless KNOWN_BROWSER
+//     excuses it on that side with a reason, an owner and a date; an excuse whose file is gone, is on the other side or
+//     no longer launches one is RED too. POSITIVE CONTROLS on BOTH sides, through the real chainFiles/lightSides. (The markers below are built by
+//     concatenation so this guard's own source is not a browser launcher.) Browser files are named
+//     *.browser.test.* and reached by a heavy script (portal: test:portal, narrowed to exactly those).
+{
+  const LAUNCH = `spawn(process.env.${'CHROME'}_BIN || 'chrome')`, PLAIN = "test('plain', () => {})";
+  const script = 'node a.test.js && node ../d/t.test.js && node tools/emulator-ports.guard.test.js && node contract/census.negative.test.js';
+  const sides = A.lightSides([{ file: 'p/x.test.js' }, { file: 'p/y.test.js' }, { file: 'k/z.test.js' }], script);
+  assert.deepStrictEqual(sides, { 'xpizza-functions/a.test.js': 'test', 'd/t.test.js': 'test', 'p/x.test.js': 'apps', 'p/y.test.js': 'apps', 'k/z.test.js': 'apps' }, FAIL(`light sides (the two heavy steps dropped): ${JSON.stringify(sides)}`));
+  const SRC = { 'd/t.test.js': LAUNCH, 'p/x.test.js': LAUNCH, 'p/y.test.js': PLAIN, 'k/z.test.js': `'chrome-${'headless'}-shell'`, 'xpizza-functions/a.test.js': PLAIN, 'xpizza-functions/tools/emulator-ports.guard.test.js': LAUNCH };
+  const e = (side) => ({ side, reason: 'r', owner: 'o', since: '2026-11-16' });
+  const got = A.browserProblems(sides, (f) => SRC[f], { 'k/z.test.js': e('apps'), 'k/gone.test.js': e('apps'), 'p/y.test.js': e('apps') });
+  assert.ok(got.some((x) => x.startsWith("d/t.test.js: launches a browser") && x.includes("'test' side")), FAIL(`an unexcused browser file on the npm test side was not flagged: ${JSON.stringify(got)}`));
+  assert.ok(got.some((x) => x.startsWith("p/x.test.js: launches a browser") && x.includes("'apps' side")), FAIL(`an unexcused browser file on the test:apps side was not flagged: ${JSON.stringify(got)}`));
+  assert.ok(got.some((x) => x.startsWith('KNOWN_BROWSER k/gone.test.js')) && got.some((x) => x.startsWith('KNOWN_BROWSER p/y.test.js')), FAIL(`a stale KNOWN_BROWSER excuse was not flagged: ${JSON.stringify(got)}`));
+  assert.strictEqual(got.length, 4, FAIL(`browser problems (a heavy step's launcher is out of the light chain; an excused one is quiet): ${JSON.stringify(got)}`));
+  const wrong = A.browserProblems({ 'd/t.test.js': 'test' }, (f) => SRC[f], { 'd/t.test.js': e('apps') });
+  assert.ok(wrong.length === 1 && wrong[0].includes("entry is for 'apps'"), FAIL(`an excuse for the other side must not cover a file: ${JSON.stringify(wrong)}`));
+  const realSides = A.lightSides(real.entries, pkg.scripts.test);
+  const light = new Set(Object.keys(realSides));
+  assert.ok(realSides['xpizza-functions/tools/app-suites.guard.test.js'] === 'test' && realSides['xpizza-portal/marketing.test.mjs'] === 'apps' && !light.has('xpizza-functions/tools/emulator-ports.guard.test.js'), FAIL('premise: the real light chain has both sides and drops the heavy steps'));
+  for (const [f, e] of Object.entries(A.KNOWN_BROWSER)) assert.ok(realSides[f] === e.side && String(e.reason || '').trim() && String(e.owner || '').trim() && /^\d{4}-\d{2}-\d{2}$/.test(e.since || ''), FAIL(`KNOWN_BROWSER ${f} needs a light-chain file on its side + reason + owner + since`));
+  // the portal split, computed from git: test:portal reaches exactly the *.browser.test.mjs files, test:apps every other one
+  const portal = real.tests.filter((f) => f.startsWith('xpizza-portal/'));
+  const browser = portal.filter((f) => /\.browser\.test\.mjs$/.test(f));
+  assert.ok(browser.length >= 1 && portal.length > browser.length, FAIL(`premise: ${portal.length} portal files, ${browser.length} browser`));
+  assert.deepStrictEqual([portal.filter((f) => reached.has(f)), portal.filter((f) => planned.has(f)).length], [browser, portal.length - browser.length], FAIL('test:portal must reach ONLY the portal *.browser.test.mjs files, and test:apps must plan every other portal file'));
+  const pm = A.parseManifest(JSON.parse(fs.readFileSync(path.join(FUNCTIONS, '..', 'xpizza-portal', 'package.json'), 'utf8')).scripts.test);
+  assert.ok(pm && pm.flags.includes('--test-timeout=180000'), FAIL('the portal test contract must carry --test-timeout=180000 (a whole-file cap under test:apps; marketing ≈ 54 s)'));
+  ok(`no browser in the light chain (${light.size} files): an unexcused browser file on the npm test side AND on the test:apps side, a wrong-side excuse and a stale excuse are RED; ${Object.keys(A.KNOWN_BROWSER).length} KNOWN_BROWSER (${Object.values(A.KNOWN_BROWSER).map((e) => e.side).join('/')}); portal: ${browser.length} browser file(s) by test:portal, ${portal.length - browser.length} by test:apps at 180 s`);
+}
+
 console.log(`app-suites.guard: OK (${n} groups)`);

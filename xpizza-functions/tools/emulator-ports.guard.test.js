@@ -1042,7 +1042,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
      test:portal — eight test files — sat in no chain and no aggregate at all. So the runner covers
      every test script including `npm test`, and the emulator-only view is a FLAG over the same list
      rather than a second list. Both counts are derived from package.json here, so neither can drift
-     into a hand-kept set again. */
+     into a hand-kept set again. (Since portal light chain r0, test:portal is the portal's BROWSER group only —
+     *.browser.test.mjs; the other portal files run per file in test:apps, proven by app-suites.guard cell 11.) */
   {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     const SELF = new Set(['test:gate', 'test:emulators:all']);

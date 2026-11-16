@@ -165,7 +165,7 @@
     "test:membership-cutover-rules": "npm run sync:rules && node tools/emulator-run.js --only database \"node test/membership-cutover-rules.emulator.test.js\"",
     "test:s5-rules": "node tools/emulator-run.js --only database \"node test/s5-rules.emulator.test.js\"",
     "test:s5-backend": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/s5-backend.emulator.test.js\"",
-    "test:portal": "node tools/portal-preflight.js && node --test \"../xpizza-portal/*.test.mjs\"",
+    "test:portal": "node tools/portal-preflight.js && node --test \"../xpizza-portal/*.browser.test.mjs\"",
     "test:apps": "node tools/app-suites.js",
     "test:emulators:all": "node tools/gate-all.js --emulators",
     "test:gate": "node tools/gate-all.js",

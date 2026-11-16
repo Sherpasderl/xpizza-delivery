@@ -1929,6 +1929,7 @@
     "xpizza-dispatch/dispatch-unassign-confirm.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/catalog/identity-sweep.test.js",
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -1956,6 +1957,7 @@
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/superseded-capture.emulator.test.js",
     "xpizza-functions/test/unassign.emulator.test.js",
+    "xpizza-functions/tools/app-suites.guard.test.js",
     "xpizza-functions/tools/registry-writers.test.js",
     "xpizza-track/tracker-glide.guard.test.js"
    ],
@@ -1963,6 +1965,7 @@
     "xpizza-dispatch/dispatch-alert-nav.test.js",
     "xpizza-dispatch/dispatch-maps-perf-gate.test.mjs",
     "xpizza-functions/catalog/identity-sweep.test.js",
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/census.negative.test.js",
@@ -1978,6 +1981,7 @@
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
     "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/app-suites.guard.test.js",
     "xpizza-functions/tools/registry-writers.test.js"
    ]
   },
@@ -2093,6 +2097,7 @@
     "xpizza-driver/statusbar-disp-header.test.js",
     "xpizza-driver/tab-bar-mount.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
@@ -2124,6 +2129,7 @@
     "xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js",
     "xpizza-functions/test/rules-driver-terminal.emulator.test.mjs",
     "xpizza-functions/test/web-sdk-loader.emulator.test.mjs",
+    "xpizza-functions/tools/app-suites.guard.test.js",
     "xpizza-functions/tracking/driver-orders.guard.test.js",
     "xpizza-functions/tracking/stacked-pickup-pointer-parity.test.js"
    ],
@@ -2131,6 +2137,7 @@
     "xpizza-driver/oferta-offer.test.js",
     "xpizza-driver/overview-map.test.js",
     "xpizza-driver/single-order-view.test.js",
+    "xpizza-functions/catalog/no-code-authority.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
     "xpizza-functions/contract/census.guard.test.js",
     "xpizza-functions/contract/execution.guard.test.js",
@@ -2143,7 +2150,8 @@
     "xpizza-functions/contract/scenario-state.guard.test.js",
     "xpizza-functions/contract/timer-bounds.guard.test.js",
     "xpizza-functions/contract/token.guard.test.js",
-    "xpizza-functions/contract/tracer.test.js"
+    "xpizza-functions/contract/tracer.test.js",
+    "xpizza-functions/tools/app-suites.guard.test.js"
    ]
   },
   "xpizza-track": {

@@ -38,6 +38,18 @@
  * which gate-all sums with the runner's own (0: the echoed child output is prefixed so nothing in it
  * reads as a mark). The gate's number is therefore exactly the per-file measurement below.
  *
+ * 🔴 A CANCELLED FILE IS RED. A folder's --test-timeout caps the WHOLE file here (node --test runs the file as one
+ * wrapper test), so a file over the cap is CANCELLED: node exits 1, the file scores `fail`, and the summary tags it
+ * «cancelled: timeout» from the TAP `# cancelled N` line. The portal's contract is 180 s (marketing ≈ 54 s at load 10).
+ *
+ * 🔴 NO BROWSER IN THE LIGHT CHAIN (rule 32). The light chain = every functions `npm test` step minus the two heavy
+ * guards (HEAVY_STEP, as light-chain.sh drops them) — side 'test' — plus every file this runner plans — side 'apps'. A
+ * file on either side whose own source launches a browser (BROWSER_RE) is a plan PROBLEM unless KNOWN_BROWSER excuses
+ * it on THAT side with a reason, an owner and a date. Browser
+ * files are named *.browser.test.* and run from a heavy script at a slot turn (the portal's: test:portal, whose glob
+ * is exactly ../xpizza-portal/*.browser.test.mjs, so the other portal files are planned here, one verdict each).
+ * Lexical, on the file's own source: a browser launched through an imported helper is not seen.
+ *
  * 🔴 xpizza-handheld/guards.test.js resolves 'acorn' through createRequire(xpizza-functions/package.json)
  * — a deliberate borrow of the functions install (handheld declares no dependencies and has no
  * lockfile). This runner therefore needs xpizza-functions to be npm ci'd first, which is the gate's
@@ -53,6 +65,16 @@ const ROOT = path.join(FUNCTIONS, '..');
 /* Each entry RUNS; its failure is reported and excused. Passing, or naming a file that is not in the
    plan, fails the run. */
 const KNOWN_RED = {};   // the rule-20 url-token guard's entry expired with the getMyLastTip swap (advisor 11-13)
+
+/* A light-chain file that launches a browser, excused until its owner moves it to a heavy script. An entry whose file
+   the light chain no longer runs, or that no longer launches one, fails the plan. */
+const KNOWN_BROWSER = {
+  'xpizza-driver/fa4400-render.browser.test.js': { side: 'apps', reason: 'headless Chrome (computed --accent) planned by test:apps; routed to 2f for a heavy test:*-browser script (advisor 11-16)', owner: '2f', since: '2026-11-16' },
+  'xpizza-dispatch/dispatch-cashbar-layout.test.js': { side: 'test', reason: 'Google Chrome layout gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
+  'xpizza-dispatch/dispatch-driver-admin-panel.test.js': { side: 'test', reason: 'Google Chrome panel gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
+};
+const HEAVY_STEP = /emulator-ports\.guard|census\.negative/;   // the two npm test steps the light chain drops (light-chain.sh)
+const BROWSER_RE = /CHROME_BIN|CHROME_HEADLESS_SHELL|chrome-headless-shell|remote-debugging-port|Google Chrome\.app|puppeteer|playwright/;
 
 /* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
    asserts something fails the run, as does one naming no planned file. */
@@ -115,7 +137,8 @@ function childEnv(base, extra) {
 function runFile(e, root = ROOT, base = process.env) {
   const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), out };
+  const c = /^# cancelled (\d+)$/m.exec(r.stdout || '');
+  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), cancelled: c ? Number(c[1]) : 0, out };
 }
 
 function trackedFiles(root = ROOT) {
@@ -203,6 +226,42 @@ function plan({ files, manifests, reached, glob = (cwd, pattern) => globIn(cwd, 
   return { tests, entries, problems };
 }
 
+/* repo paths the LIGHT steps of the functions `npm test` chain name (exact paths and globs, relative to xpizza-functions) */
+function chainFiles(testScript, root = ROOT) {
+  const out = new Set();
+  const light = String(testScript || '').split('&&').filter((c) => !HEAVY_STEP.test(c)).join(' ');
+  for (const tok of light.split(/\s+/)) {
+    const t = tok.replace(/^["']|["';)]+$/g, '');
+    if (!TEST_RE.test(t)) continue;
+    const rel = path.posix.normalize(path.posix.join('xpizza-functions', t));
+    if (GLOB_CHARS.test(rel)) for (const m of fs.globSync(rel, { cwd: root })) out.add(m.split(path.sep).join('/'));
+    else out.add(rel);
+  }
+  return [...out].sort();
+}
+
+/* the light chain as { file: side }: 'test' = a light npm test step names it, 'apps' = this runner plans it */
+function lightSides(entries, testScript, root = ROOT) {
+  const sides = {};
+  for (const f of chainFiles(testScript, root)) sides[f] = 'test';
+  for (const e of entries) sides[e.file] = sides[e.file] ? `${sides[e.file]}+apps` : 'apps';
+  return sides;
+}
+
+/* light-chain files that launch a browser (see the header) + stale KNOWN_BROWSER entries → problems. Pure over `read`. */
+function browserProblems(sides, read, known = KNOWN_BROWSER) {
+  const out = [];
+  for (const [f, side] of Object.entries(sides)) {
+    if (!BROWSER_RE.test(String(read(f) || ''))) continue;
+    if (!known[f] || known[f].side !== side) out.push(`${f}: launches a browser (${BROWSER_RE.exec(read(f))[0]}) on the LIGHT chain's '${side}' side${known[f] ? ` (its KNOWN_BROWSER entry is for '${known[f].side}')` : ''} — name it *.browser.test.* and run it from a heavy script, or excuse it in KNOWN_BROWSER`);
+  }
+  for (const f of Object.keys(known)) {
+    if (!sides[f]) out.push(`KNOWN_BROWSER ${f} names no light-chain file — delete the entry`);
+    else if (!BROWSER_RE.test(String(read(f) || ''))) out.push(`KNOWN_BROWSER ${f} no longer launches a browser — delete the entry`);
+  }
+  return out;
+}
+
 /* THE VERDICT — pure. pass | fail | excused | stale-excuse | zero-cell | zero-excused | zero-stale, plus
    excuses (either list) naming a file that is not planned. A failing file is judged by KNOWN_RED whatever its
    count; a passing file must ALSO have measured at least one cell, unless ZERO_CELL_OK names it. */
@@ -222,8 +281,11 @@ function classify(results, knownRed, plannedFiles, zeroOk = ZERO_CELL_OK) {
 function currentPlan() {
   const files = trackedFiles();
   const tests = testFiles(files);
-  const reached = functionsReach(JSON.parse(fs.readFileSync(path.join(FUNCTIONS, 'package.json'), 'utf8')).scripts);
-  return plan({ files, manifests: readManifests(ROOT, [...new Set(tests.map(topOf))]), reached });
+  const scripts = JSON.parse(fs.readFileSync(path.join(FUNCTIONS, 'package.json'), 'utf8')).scripts;
+  const reached = functionsReach(scripts);
+  const p = plan({ files, manifests: readManifests(ROOT, [...new Set(tests.map(topOf))]), reached });
+  p.problems.push(...browserProblems(lightSides(p.entries, scripts.test), (f) => fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  return p;
 }
 
 function main() {
@@ -250,7 +312,8 @@ function main() {
   const v = classify(results, KNOWN_RED, p.entries.map((e) => e.file));
   const TAG = { pass: 'pass', fail: '🔴 FAIL', excused: 'KNOWN-RED (excused)', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS', 'zero-excused': 'ZERO-CELL (excused)', 'zero-stale': '🔴 ZERO-CELL-OK BUT ASSERTS' };
   console.log('');
-  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${TAG[r.state].padEnd(26)} ${r.file}`);
+  const cancelled = new Set(results.filter((r) => r.cancelled).map((r) => r.file));
+  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${(TAG[r.state] + (cancelled.has(r.file) ? ' (cancelled: timeout)' : '')).padEnd(26)} ${r.file}`);
   for (const f of v.orphans) console.log(`  ${'🔴 EXCUSE WITHOUT A FILE'.padEnd(26)} ${f}`);
   if (v.excused) {
     console.log('\nEXCUSED — these RAN and FAILED:');
@@ -262,5 +325,5 @@ function main() {
   process.exit(v.exitCode);
 }
 
-module.exports = { KNOWN_RED, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
+module.exports = { KNOWN_RED, KNOWN_BROWSER, BROWSER_RE, browserProblems, chainFiles, lightSides, HEAVY_STEP, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
 if (require.main === module) main();
