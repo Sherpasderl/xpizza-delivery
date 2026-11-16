@@ -16,6 +16,9 @@
  *    cells but NO census site must be dispositioned in spec.unsitedFacts ('output' / 'not-in-source', named outputs
  *    checked to exist); its cells carry `outputs` instead. coverage(doc, executed) is the rule P1 enforces dynamically.
  * `node contract/matrix-build.js --write` regenerates matrix.json.
+ * REGEN ORDER (this file reads census.json; branch-coverage.js reads matrix.json): census → matrix → regions →
+ * p1-branch-coverage / registry → inventory, repeated until nothing changes. Regenerating the matrix without the files
+ * downstream of it leaves contract/branch-coverage.guard red (sales-multi 5c8670e62, salesStatsMulti#status#0).
  */
 const fs = require('fs');
 const path = require('path');

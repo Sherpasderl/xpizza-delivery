@@ -52,12 +52,12 @@ const prCells = ga.cells.filter((c) => c.output === 'xpizza-driver/cash-helpers.
 assert.deepStrictEqual([...new Set(prCells.map((c) => c.region))].sort(), PR_CONSUMERS.map((c, i) => `xpizza-driver/cash-helpers.js#paymentRowHtml@${c}${i === 3 ? '~2' : ''}`), FAIL('gate A does not hold one cell per paymentRowHtml region'));
 ok(`codex's example: paymentRowHtml → 4 regions (renderActiveCard, renderQueueDetail, stacked-view activeCardHtml ×2), each its own gate A cell (${prCells.length} at S1 / x_pizza / assigned)`);
 
-// codex P1-a r1 P1-8: every CALL SITE is a region — getSalesStatsCore calls shapePeriod for the current AND the comparison
-// period: two regions, never folded by caller
-const sp = doc.regions.filter((r) => r.output === 'xpizza-functions/stats/stats-api.js#shapePeriod' && r.consumer === 'xpizza-functions/stats/stats-api.js#getSalesStatsCore');
+// codex P1-a r1 P1-8: every CALL SITE is a region — the per-branch view (ridView; S2 moved getSalesStatsCore's body there verbatim)
+// calls shapePeriod for the current AND the comparison period: two regions, never folded by caller
+const sp = doc.regions.filter((r) => r.output === 'xpizza-functions/stats/stats-api.js#shapePeriod' && r.consumer === 'xpizza-functions/stats/stats-api.js#ridView');
 assert.ok(sp.length === 2 && sp[0].line !== sp[1].line && sp.every((r) => r.callSites === 2), FAIL(`shapePeriod call sites: ${JSON.stringify(sp)}`));
 const multi = doc.regions.filter((r) => r.callSites > 1).length;
-ok(`every call site is its own region (codex's shapePeriod × 2 in getSalesStatsCore → 2 regions, lines ${sp.map((r) => r.line).join(' / ')}); ${multi} regions come from callers with several call sites`);
+ok(`every call site is its own region (codex's shapePeriod × 2 in ridView → 2 regions, lines ${sp.map((r) => r.line).join(' / ')}); ${multi} regions come from callers with several call sites`);
 
 // negatives (in memory)
 const clone = () => JSON.parse(JSON.stringify(reg));
