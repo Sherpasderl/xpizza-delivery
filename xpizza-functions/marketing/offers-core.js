@@ -36,6 +36,9 @@ const AM = require('./anuncio-model');
 
 const reply = (status, body) => ({ status, body });
 const UNAVAILABLE = () => reply(503, { error: 'unavailable', retryable: true });
+// the audience_enabled switch is OFF (PLAN-5f-offer-audience r2 §5): new / returning (and `nuevos`) are refused — inside the brand txn
+// step, after its claim check, so a lost reply's resend replays first and the refusal is op-judged
+const AUDIENCE_OFF = () => reply(400, { error: 'bad_request', field: 'audience', reason: 'audience_not_enabled' });
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const val = async (db, p) => (await db.ref(p).once('value')).val();
 const opts = { isRid: isBrandId };
@@ -107,7 +110,7 @@ function liveJudgement(offerId, value, live, t, rid) {
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
   const mine = new Set(OM.dishesAt(value, rid));
   if (!mine.size) return null;
-  const clash = others.filter(([, r]) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
+  const clash = others.filter(([, r]) => !OM.audiencesDisjoint(value.audience, r.audience || 'all') && OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
     && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
   return clash.length ? { error: 'overlap', with: clash.map(([, r]) => r.name).filter((n) => typeof n === 'string').sort() } : null;
 }
@@ -130,7 +133,7 @@ function duplicateOf(all, offerId, projAt, branches, schedule, t) {
     }
   }
   const mine = new Set(branches);
-  const sameAt = (h, rid) => { const p = projAt(rid), e = h.at[rid]; return !!p && isObj(e) && e.type === p.type && paramsKey(e.type, e.params) === paramsKey(p.type, p.params); };
+  const sameAt = (h, rid) => { const p = projAt(rid), e = h.at[rid]; return !!p && isObj(e) && !OM.audiencesDisjoint(e.audience || 'all', p.audience) && e.type === p.type && paramsKey(e.type, e.params) === paramsKey(p.type, p.params); };
   for (const [id, h] of Object.entries(held)) {
     if (h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r))) continue;
     const e = h.at[branches[0]];
@@ -158,7 +161,12 @@ function putClaim(next, opId, claim, t) {
   next.ops[opId] = claim;
   return null;
 }
-async function brandTxn(db, brandId, step) {
+// PLAN-3a-op-judged-marker r0: every step's FIRST statement is its claimCheck, so a reply the step gives to a request carrying an
+// op_id was judged AT / AFTER that claim — it says so (`op: 'judged'`; the portal's one confirmation settles only on it). Never on
+// op_id_conflict (the client's own bug), on any 503 (retryable — it settles nothing: brandTxn's own, or a claimed request's deferred
+// menu-read failure), on a pre-txn reply, or without an op_id (that reply is unchanged).
+const judged = (r, opId) => (opId === undefined || r.status === 503 || r.body.error === 'op_id_conflict' ? r : reply(r.status, { ...r.body, op: 'judged' }));
+async function brandTxn(db, brandId, step, opId) {
   let out = null;
   let tx;
   try {
@@ -169,9 +177,9 @@ async function brandTxn(db, brandId, step) {
     });
   } catch (_) { return UNAVAILABLE(); }
   if (!out) return UNAVAILABLE();
-  if (out.abort) return out.abort;
+  if (out.abort) return judged(out.abort, opId);
   if (!(tx && tx.committed)) return UNAVAILABLE();
-  return out.result;
+  return judged(out.result, opId);
 }
 // a copy of the node the step may change (never the transaction's own input)
 const draftNode = (node) => ({ ...node, offers: { ...(isObj(node.offers) ? node.offers : {}) }, live: { ...(isObj(node.live) ? node.live : {}) }, ops: { ...(isObj(node.ops) ? node.ops : {}) } });
@@ -191,24 +199,24 @@ function claimCheck(node, opId, kind, bind, t) {
 const refusedReply = (r) => reply(409, { error: r.error, ...(r.rid ? { rid: r.rid } : {}), ...(r.with ? { with: r.with } : {}), ...(r.offer_id ? { offer_id: r.offer_id } : {}) });
 // the record `rec` of `offerId` going active — THE judgement on the whole brand's current live set: the DUPLICATE first (it needs the
 // branch set, visible only here), then each branch's overlap + MAX_LIVE → null | { verdict, rid }
-function judgeActive(node, brandId, offerId, rec, t) {
+function judgeActive(node, brandId, offerId, rec, t, audienceOn) {
   const value = OM.authoredOf(rec, opts);
   const all = isObj(node.live) ? node.live : {};
-  const dup = duplicateOf(all, offerId, (rid) => OM.liveProjection(rec, brandId, rid), value.branches, value.schedule, t);
+  const dup = duplicateOf(all, offerId, (rid) => OM.liveProjection(rec, brandId, rid, audienceOn), value.branches, value.schedule, t);
   if (dup) return { verdict: { error: 'duplicate', offer_id: dup }, rid: value.branches[0] };
   for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid], t, rid); if (v) return { verdict: v, rid }; }
   return null;
 }
 // write the record AND its mirror into `next` (one step): active ⇒ the projection on its branches + a tombstone on every other branch it
 // held; otherwise a tombstone on every branch it names or held. Expired claims and pruned offers (ended > 180 days, with their entries) leave.
-function writeOffer(next, brandId, offerId, rec, t, keep = []) {
+function writeOffer(next, brandId, offerId, rec, t, keep, audienceOn) {
   next.offers[offerId] = OM.stripNulls(rec);
   const held = Object.keys(next.live).filter((rid) => isObj(next.live[rid]) && next.live[rid][offerId] != null);
   for (const rid of new Set([...rec.branches, ...held])) {
-    const proj = rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId, rid) : null;   // null for a v1-unsupported type / audience
+    const proj = rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId, rid, audienceOn) : null;   // null for a v1-unsupported type / an audience the switch refuses
     next.live[rid] = { ...(isObj(next.live[rid]) ? next.live[rid] : {}), [offerId]: proj || { removed: true, rev: rec.rev } };
   }
-  for (const id of endedToPrune(next.offers, t).filter((x) => x !== offerId && !keep.includes(x))) {
+  for (const id of endedToPrune(next.offers, t).filter((x) => x !== offerId && !(keep || []).includes(x))) {
     delete next.offers[id];
     for (const rid of Object.keys(next.live)) if (isObj(next.live[rid]) && next.live[rid][id] != null) { next.live[rid] = { ...next.live[rid] }; delete next.live[rid][id]; }
   }
@@ -295,7 +303,7 @@ async function writeHead(deps, req) {
   const cfg = await CFG.readMarketingConfig(deps.db);
   if (cfg.unavailable) return { fail: UNAVAILABLE() };
   if (cfg.offers_enabled !== true) return { fail: reply(409, { error: 'offers_disabled' }) };
-  return { ctx: a.ctx, access: a.access, body };
+  return { ctx: a.ctx, access: a.access, body, audienceOn: CFG.audienceEnabled(cfg) };
 }
 
 // ── marketingOfferSave ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -326,6 +334,7 @@ async function marketingOfferSaveCore(deps, req) {
     const c = creating ? claimCheck(node, body.op_id, 'create', {}, t) : claimCheck(node, body.op_id, 'edit', { offer_id: proposed }, t);
     if (c) return c;   // the replay FIRST (before any validation, the expected_rev included: a lost reply's resend carries the old one)
     if (dish.fail) return { abort: dish.fail };   // no replay: the deferred preparation failure
+    if (!OM.audienceSupported(value.audience, h.audienceOn)) return { abort: AUDIENCE_OFF() };   // after the claim check: op-judged
     const cur = isObj(node.offers) ? node.offers[proposed] : null;
     let rec;
     if (creating) {
@@ -347,14 +356,14 @@ async function marketingOfferSaveCore(deps, req) {
     if (program && !(isObj(cur) && cur.state === 'active')) { const pub = OM.validatePublishable(value, t); if (!pub.ok) return { abort: reply(400, { error: 'bad_request', field: pub.field, reason: pub.reason }) }; }
     rec = OM.stripNulls(rec);
     if (rec.state === 'active') {
-      const j = judgeActive(node, brandId, proposed, rec, t);
+      const j = judgeActive(node, brandId, proposed, rec, t, h.audienceOn);
       if (j) return refuse(node, body.op_id, creating ? 'create' : 'edit', {}, proposed, j.verdict, j.rid, t);
     }
     const next = draftNode(node);
-    writeOffer(next, brandId, proposed, rec, t);
+    writeOffer(next, brandId, proposed, rec, t, [], h.audienceOn);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: creating ? 'create' : 'edit', at: t }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 // ── marketingOfferSetState ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -396,19 +405,20 @@ async function marketingOfferSetStateCore(deps, req) {
     if (!MOVES[cur.state].includes(body.to)) return { abort: reply(409, { error: 'bad_transition' }) };
     if (body.to === 'active') {   // publish / resume: the schedule is still ahead (a draft), a paused offer not past its end
       if (!OM.typeSupported(cur.type)) return { abort: reply(409, { error: 'type_not_supported' }) };   // an old envío record (owner 11-15)
-      if (!OM.audienceSupported(cur.audience)) return { abort: reply(409, { error: 'audience_not_supported' }) };   // a stored new / returning (Codex #93 F4)
+      if (!OM.AUDIENCES.includes(cur.audience)) return { abort: reply(409, { error: 'audience_not_supported' }) };   // outside the known set (Codex #93 F4)
+      if (!OM.audienceSupported(cur.audience, h.audienceOn)) return { abort: AUDIENCE_OFF() };   // a stored new / returning while the switch is OFF
       if (cur.state === 'draft') { const p = OM.validatePublishable(OM.authoredOf(cur, opts), t); if (!p.ok) return { abort: reply(400, { error: 'bad_request', field: p.field, reason: p.reason }) }; }
       if (cur.state === 'paused_owner' && cur.schedule.end != null && cur.schedule.end <= t) return { abort: reply(409, { error: 'ended' }) };
     }
     const rec = { ...cur, state: body.to, rev: cur.rev + 1, updated_at: t, ...(body.to === 'active' ? { params: value.params } : {}) };
     if (body.to === 'ended') rec.ended_reason = 'owner'; else delete rec.ended_reason;
     if (body.to === 'paused_owner') rec.paused_at = t; else delete rec.paused_at;   // «Pausada por vos el …» (server time); resume / end clear it
-    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t); if (j) return refuse(node, body.op_id, 'state', { to: body.to }, body.offer_id, j.verdict, j.rid, t); }
+    if (rec.state === 'active') { const j = judgeActive(node, brandId, body.offer_id, rec, t, h.audienceOn); if (j) return refuse(node, body.op_id, 'state', { to: body.to }, body.offer_id, j.verdict, j.rid, t); }
     const next = draftNode(node);
-    writeOffer(next, brandId, body.offer_id, rec, t);
+    writeOffer(next, brandId, body.offer_id, rec, t, [], h.audienceOn);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: body.offer_id, kind: 'state', at: t, to: body.to }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(body.offer_id, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 // ── marketingOfferRepeat («Repetir») ────────────────────────────────────────────────────────────────────────────────────────
@@ -436,7 +446,6 @@ async function marketingOfferRepeatCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
   if (!OM.typeSupported(value.type)) return reply(400, { error: 'bad_request', field: 'type', reason: 'type_not_supported' });   // never repeat an old envío
-  if (!OM.audienceSupported(value.audience)) return reply(400, { error: 'bad_request', field: 'audience', reason: 'audience_not_supported' });
   // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, the max timestamp) — before anything is written
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   let prepFail = null;
@@ -454,6 +463,7 @@ async function marketingOfferRepeatCore(deps, req) {
     const c = claimCheck(node, body.op_id, 'repeat', { source_id: sourceId }, t);   // the replay FIRST (before any validation or capacity)
     if (c) return c;
     if (prepFail) return { abort: prepFail };   // no replay: the deferred preparation failure
+    if (!OM.audienceSupported(value.audience, h.audienceOn)) return { abort: AUDIENCE_OFF() };   // after the claim check: op-judged
     const s = isObj(node.offers) ? node.offers[sourceId] : null;
     if (!(isObj(s) && OM.recordOk(s, opts))) return { abort: reply(404, { error: 'not_found' }) };
     if (s.rev !== src.rev) return { abort: reply(409, { error: 'superseded', current_rev: s.rev }) };
@@ -462,12 +472,12 @@ async function marketingOfferRepeatCore(deps, req) {
     const keep = endedToPrune(node.offers, t).filter((id) => id !== sourceId);   // never the offer being repeated
     if (Object.keys(isObj(node.offers) ? node.offers : {}).length - keep.length >= OM.LIMITS.offers_max) return { abort: reply(409, { error: 'too_many_offers' }) };
     const rec = OM.stripNulls({ v: 1, rev: 1, ...draft, state: program ? 'active' : 'draft', repeated_from: sourceId, created_by: ctx.uid, created_at: t, updated_at: t });
-    if (program) { const j = judgeActive(node, brandId, proposed, rec, t); if (j) return refuse(node, body.op_id, 'repeat', { source_id: sourceId }, proposed, j.verdict, j.rid, t); }
+    if (program) { const j = judgeActive(node, brandId, proposed, rec, t, h.audienceOn); if (j) return refuse(node, body.op_id, 'repeat', { source_id: sourceId }, proposed, j.verdict, j.rid, t); }
     const next = draftNode(node);
-    writeOffer(next, brandId, proposed, rec, t, [sourceId]);
+    writeOffer(next, brandId, proposed, rec, t, [sourceId], h.audienceOn);
     if (body.op_id !== undefined) { const full = putClaim(next, body.op_id, { offer_id: proposed, kind: 'repeat', at: t, source_id: sourceId }, t); if (full) return { abort: full }; }
     return { next, result: reply(200, { ok: true, offer: offerView(proposed, rec, t) }) };
-  });
+  }, body.op_id);
 }
 
 module.exports = { getMarketingCore, marketingOfferSaveCore, marketingOfferSetStateCore, marketingOfferRepeatCore, MOVES, newOfferId, admit, brandPath, OPS_MAX, writeOffer };   // admit: the marketing endpoints' ONE token → rid → capability check (anuncio-core)

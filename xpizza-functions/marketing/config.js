@@ -2,16 +2,20 @@
 // PLAN-3a-marketing-server r0 §2.6 / §5 (advisor APPROVED 2026-11-14) — platform_config/marketing: the three server-stated switches
 // and the Sherpa-set Anuncio price + thresholds. ONE reader, FAIL-CLOSED: a missing, malformed or unreadable node means every
 // switch OFF (never a guessed «on»). Sherpa-set data (owner 4673): merchants read it through the portal read, never write it.
-//   { policy_version ≥ 1, offers_enabled, anuncio_enabled, collections_enabled, anuncio_price_cents, thresholds: { rating_min,
-//     min_ratings }, history[≤ 10], updated_at, updated_by }
+//   { policy_version ≥ 1, offers_enabled, anuncio_enabled, collections_enabled, audience_enabled?, anuncio_price_cents, thresholds: {
+//     rating_min, min_ratings }, history[≤ 10], updated_at, updated_by }
+// audience_enabled (PLAN-5f-offer-audience r2 §5, advisor 11-16): OPTIONAL — absent = false; a present non-boolean is a malformed node
+// (every switch OFF). Offers for new / returning customers (and the `nuevos` type) are authored, projected and priced only while
+// audienceEnabled(cfg) — offers_enabled AND audience_enabled.
 // The ONE writer is writeMarketingConfig (version CAS, the pricing-admin pattern), run by the owner's CLI
 // (tools/marketing-config-admin.js) — a Sherpa-admin portal editor waits for its mockup (r1 §5.7).
 
 const PATH = 'platform_config/marketing';
 const EXIT_MARKER = 'platform_config/pending_sweep_exit';   // written by the owner after the pending-sweep exit deploy (the go-live gate)
 const HISTORY_MAX = 10;
-const SWITCHES = Object.freeze(['offers_enabled', 'anuncio_enabled', 'collections_enabled']);
-const OFF = Object.freeze({ policy_version: 0, offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: null, thresholds: null });
+const REQUIRED = Object.freeze(['offers_enabled', 'anuncio_enabled', 'collections_enabled']);
+const SWITCHES = Object.freeze([...REQUIRED, 'audience_enabled']);   // every switch a read STATES
+const OFF = Object.freeze({ policy_version: 0, offers_enabled: false, anuncio_enabled: false, collections_enabled: false, audience_enabled: false, anuncio_price_cents: null, thresholds: null });
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isInt = (v, lo, hi) => Number.isSafeInteger(v) && v >= lo && v <= hi;
@@ -19,14 +23,15 @@ const exactKeys = (o, req, opt = []) => isObj(o) && req.every((k) => k in o) && 
 
 // the settable fields (the CLI's --set JSON, and each history entry's `new`)
 function settableOf(c) {
-  if (!exactKeys(c, [...SWITCHES, 'anuncio_price_cents', 'thresholds'])) return null;
-  if (!SWITCHES.every((k) => typeof c[k] === 'boolean')) return null;
+  if (!exactKeys(c, [...REQUIRED, 'anuncio_price_cents', 'thresholds'], ['audience_enabled'])) return null;
+  if (!REQUIRED.every((k) => typeof c[k] === 'boolean')) return null;
+  if (c.audience_enabled !== undefined && typeof c.audience_enabled !== 'boolean') return null;   // optional: absent = false, never coerced
   if (!isInt(c.anuncio_price_cents, 100, 10_000_000)) return null;
   const t = c.thresholds;
   if (!exactKeys(t, ['rating_min', 'min_ratings'], ['paused_max_h_30d']) || typeof t.rating_min !== 'number' || !(t.rating_min >= 1 && t.rating_min <= 5) || !isInt(t.min_ratings, 1, 1000)) return null;
   if ('paused_max_h_30d' in t && !(typeof t.paused_max_h_30d === 'number' && t.paused_max_h_30d >= 0 && t.paused_max_h_30d <= 720)) return null;
   // paused_max_h_30d (advisor 11-14, «not paused-heavy»): paused-while-open hours over the last 30 HN days; default 4 (the merit bar)
-  return { offers_enabled: c.offers_enabled, anuncio_enabled: c.anuncio_enabled, collections_enabled: c.collections_enabled,
+  return { offers_enabled: c.offers_enabled, anuncio_enabled: c.anuncio_enabled, collections_enabled: c.collections_enabled, audience_enabled: c.audience_enabled === true,
     anuncio_price_cents: c.anuncio_price_cents, thresholds: { rating_min: t.rating_min, min_ratings: t.min_ratings, paused_max_h_30d: 'paused_max_h_30d' in t ? t.paused_max_h_30d : 4 } };
 }
 
@@ -34,7 +39,8 @@ function settableOf(c) {
 function parseConfig(v) {
   if (!isObj(v) || !isInt(v.policy_version, 1, 1e15)) return { ...OFF };
   const pick = {};
-  for (const k of [...SWITCHES, 'anuncio_price_cents', 'thresholds']) pick[k] = v[k];
+  for (const k of [...REQUIRED, 'anuncio_price_cents', 'thresholds']) pick[k] = v[k];
+  if ('audience_enabled' in v) pick.audience_enabled = v.audience_enabled;   // present (whatever its value) ⇒ judged; absent ⇒ false
   const s = settableOf(pick);
   return s ? { policy_version: v.policy_version, ...s } : { ...OFF };
 }
@@ -101,5 +107,7 @@ async function writeMarketingConfig(db, { expected, config, actor, now, dryRun =
 
 // what every portal read STATES (rule: always stated, each === true)
 const switchesOf = (cfg) => Object.fromEntries(SWITCHES.map((k) => [k, cfg[k] === true]));
+// the audience program (plan r2 §5): ON ⇔ offers_enabled ∧ audience_enabled — the ONE test 3a's offers server and 5f's pricing use
+const audienceEnabled = (cfg) => !!cfg && cfg.offers_enabled === true && cfg.audience_enabled === true;
 
-module.exports = { PATH, EXIT_MARKER, HISTORY_MAX, SWITCHES, OFF, settableOf, parseConfig, readMarketingConfig, writeMarketingConfig, switchesOf };
+module.exports = { PATH, EXIT_MARKER, HISTORY_MAX, SWITCHES, OFF, settableOf, parseConfig, readMarketingConfig, writeMarketingConfig, switchesOf, audienceEnabled };
