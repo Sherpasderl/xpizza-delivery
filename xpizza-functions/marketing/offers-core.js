@@ -67,21 +67,23 @@ async function authorizeBranches(deps, ctx, brandId, branches) {
 // An item-offer's dishes → { value } (a category offer with its dishes RESOLVED) | { fail }.
 //  · by dish: every key on EVERY listed branch's live menu (the catalog mirror, through its one reader);
 //  · by category (advisor 11-14): each category resolved on EVERY branch from its ACTIVE catalog version (deps.readCategoryMenu — one
-//    version read per branch, only on a portal save / publish, never on the price path or the read); the union of the dishes is
-//    stored as params.items, FROZEN until the next save / publish.
+//    version read per branch, only on a portal save / publish, never on the price path or the read); EACH branch's dishes are stored
+//    as params.by_branch[rid] (its mirror carries only those — Codex #93 F1) and their union as params.items (the review's list),
+//    FROZEN until the next save / publish.
 async function resolveDishes(deps, value) {
   if (value.type !== 'bogo') return { value };
   if (OM.usesCats(value)) {
-    const all = new Set();
+    const all = new Set(); const byBranch = {};
     for (const rid of value.branches) {
       let menu;
       try { menu = await deps.readCategoryMenu(rid); } catch (_) { return { fail: UNAVAILABLE() }; }
       const r = OM.resolveCats(menu, value.params.cats);
       if (!r.ok) return { fail: reply(400, { error: 'bad_request', field: 'params', reason: r.reason, rid }) };
+      byBranch[rid] = r.items;
       for (const k of r.items) all.add(k);
     }
     if (all.size > OM.LIMITS.cat_items_max) return { fail: reply(409, { error: 'category_too_large' }) };
-    return { value: { ...value, params: { cats: value.params.cats, items: [...all].sort(), free_per_order: value.params.free_per_order } } };
+    return { value: { ...value, params: { cats: value.params.cats, items: [...all].sort(), by_branch: byBranch, free_per_order: value.params.free_per_order } } };
   }
   for (const rid of value.branches) {
     let m;
@@ -94,16 +96,16 @@ async function resolveDishes(deps, value) {
   return { value };
 }
 
-// THE live judgement — ONE rule, inside the brand transaction: this offer against one branch's CURRENT live
+// THE live judgement — ONE rule, inside the brand transaction: this offer (its dishes AT `rid`) against branch `rid`'s CURRENT live
 // set → null | { error: 'too_many_live' } | { error: 'overlap', with: [names] } (names of the clashing offers, no ids). A tombstone is
 // never live; this offer's OWN entry is never judged (an edit may overlap itself).
 // LIVE = a projection (never a tombstone) whose schedule has not ENDED at server time `t`: nothing flips an offer past its end, so an
 // expired entry never holds a branch slot or clashes (portal-ui / advisor 11-14)
 const isLive = (e, t) => isObj(e) && e.removed !== true && !(isObj(e.schedule) && Number.isSafeInteger(e.schedule.end) && e.schedule.end <= t);
-function liveJudgement(offerId, value, live, t) {
+function liveJudgement(offerId, value, live, t, rid) {
   const others = Object.entries(isObj(live) ? live : {}).filter(([id, r]) => id !== offerId && isLive(r, t));
   if (others.length >= OM.LIMITS.live_max) return { error: 'too_many_live' };
-  const mine = new Set(OM.dishesOf(value));
+  const mine = new Set(OM.dishesAt(value, rid));
   if (!mine.size) return null;
   const clash = others.filter(([, r]) => OM.dishesOf(r).some((k) => mine.has(k)) && isObj(r.schedule)
     && OM.schedulesOverlap(value.schedule, { start: r.schedule.start ?? null, end: r.schedule.end ?? null, days: r.schedule.days || [], window: r.schedule.window ?? null }));
@@ -111,23 +113,28 @@ function liveJudgement(offerId, value, live, t) {
 }
 // THE duplicate backstop (advisor 11-14, the portal's single-call Ofertas): another offer of the restaurant already programmed or active with
 // the SAME kind, params and branch set and an OVERLAPPING schedule ⇒ { error: 'duplicate', offer_id }. Judged on the WHOLE brand node (the
-// branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. → the other offer's id | null
+// branch set is only visible there), inside the brand txn — two racing tabs cannot both pass. The params are compared as PROJECTED on
+// EVERY branch (`projAt(rid)`: a category offer's mirror carries that branch's own dishes — Codex #93 r2 P2); a difference on any branch is
+// not a duplicate (the overlap rule judges it). → the other offer's id | null
 const canon = (v) => (Array.isArray(v) ? `[${(v.every((x) => !isObj(x) && !Array.isArray(x)) ? [...v].sort() : v).map(canon).join(',')}]` :   // set-valued params (items, cats) normalised: order never matters
    isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 // both sides through the STORED params rule (a «sin mínimo» envío is stored params-less: RTDB drops {}) — Codex brand-root r1 P2-1
 const paramsKey = (type, p) => canon(OM.paramsOf(type, p, true));
-function duplicateOf(all, offerId, proj, branches, schedule, t) {
+function duplicateOf(all, offerId, projAt, branches, schedule, t) {
   const held = {};
   for (const [rid, m] of Object.entries(isObj(all) ? all : {})) {
     for (const [id, e] of Object.entries(isObj(m) ? m : {})) {
       if (id === offerId || !isLive(e, t)) continue;
-      (held[id] = held[id] || { rids: new Set(), e }).rids.add(rid);
+      (held[id] = held[id] || { rids: new Set(), at: {} }).rids.add(rid);
+      held[id].at[rid] = e;
     }
   }
   const mine = new Set(branches);
+  const sameAt = (h, rid) => { const p = projAt(rid), e = h.at[rid]; return !!p && isObj(e) && e.type === p.type && paramsKey(e.type, e.params) === paramsKey(p.type, p.params); };
   for (const [id, h] of Object.entries(held)) {
-    const e = h.e;
-    if (e.type !== proj.type || paramsKey(e.type, e.params) !== paramsKey(proj.type, proj.params) || h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r)) || !isObj(e.schedule)) continue;
+    if (h.rids.size !== mine.size || ![...mine].every((r) => h.rids.has(r))) continue;
+    const e = h.at[branches[0]];
+    if (!branches.every((rid) => sameAt(h, rid)) || !isObj(e.schedule)) continue;
     if (OM.schedulesOverlap(schedule, { start: e.schedule.start ?? null, end: e.schedule.end ?? null, days: e.schedule.days || [], window: e.schedule.window ?? null })) return id;
   }
   return null;
@@ -186,11 +193,10 @@ const refusedReply = (r) => reply(409, { error: r.error, ...(r.rid ? { rid: r.ri
 // branch set, visible only here), then each branch's overlap + MAX_LIVE → null | { verdict, rid }
 function judgeActive(node, brandId, offerId, rec, t) {
   const value = OM.authoredOf(rec, opts);
-  const proj = OM.liveProjection(rec, brandId);
   const all = isObj(node.live) ? node.live : {};
-  const dup = duplicateOf(all, offerId, proj, value.branches, value.schedule, t);
+  const dup = duplicateOf(all, offerId, (rid) => OM.liveProjection(rec, brandId, rid), value.branches, value.schedule, t);
   if (dup) return { verdict: { error: 'duplicate', offer_id: dup }, rid: value.branches[0] };
-  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid], t); if (v) return { verdict: v, rid }; }
+  for (const rid of value.branches) { const v = liveJudgement(offerId, value, all[rid], t, rid); if (v) return { verdict: v, rid }; }
   return null;
 }
 // write the record AND its mirror into `next` (one step): active ⇒ the projection on its branches + a tombstone on every other branch it
@@ -199,7 +205,7 @@ function writeOffer(next, brandId, offerId, rec, t, keep = []) {
   next.offers[offerId] = OM.stripNulls(rec);
   const held = Object.keys(next.live).filter((rid) => isObj(next.live[rid]) && next.live[rid][offerId] != null);
   for (const rid of new Set([...rec.branches, ...held])) {
-    const proj = rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId) : null;   // null for a v1-unsupported type
+    const proj = rec.state === 'active' && rec.branches.includes(rid) ? OM.liveProjection(rec, brandId, rid) : null;   // null for a v1-unsupported type / audience
     next.live[rid] = { ...(isObj(next.live[rid]) ? next.live[rid] : {}), [offerId]: proj || { removed: true, rev: rec.rev } };
   }
   for (const id of endedToPrune(next.offers, t).filter((x) => x !== offerId && !keep.includes(x))) {
@@ -221,9 +227,11 @@ function tidyExpired(next, t) {
 const endedToPrune = (offers, t) => Object.entries(isObj(offers) ? offers : {})
   .filter(([, r]) => isObj(r) && r.state === 'ended' && Number.isSafeInteger(r.updated_at) && t - r.updated_at > OM.LIMITS.ended_retain_ms).map(([id]) => id);
 const bodyOf = (req) => (isObj(req && req.body) ? req.body : {});
+// the portal's view: the authored fields; a category offer shows its cats + the union `items`, never the per-branch map
+const viewOf = (v) => (v && isObj(v.params) && v.params.by_branch ? { ...v, params: Object.fromEntries(Object.entries(v.params).filter(([k]) => k !== 'by_branch')) } : v);
 const offerView = (id, rec, nowMs) => ({
   id, rev: rec.rev, state: rec.state, status: OM.statusOf(rec, nowMs),
-  ...OM.authoredOf(rec, opts),
+  ...viewOf(OM.authoredOf(rec, opts)),
   created_at: rec.created_at, updated_at: rec.updated_at,
   ...(rec.ended_reason ? { ended_reason: rec.ended_reason } : {}), ...(rec.repeated_from ? { repeated_from: rec.repeated_from } : {}),
   ...(rec.state === 'paused_owner' && Number.isSafeInteger(rec.paused_at) ? { paused_at: rec.paused_at } : {}),
@@ -388,6 +396,7 @@ async function marketingOfferSetStateCore(deps, req) {
     if (!MOVES[cur.state].includes(body.to)) return { abort: reply(409, { error: 'bad_transition' }) };
     if (body.to === 'active') {   // publish / resume: the schedule is still ahead (a draft), a paused offer not past its end
       if (!OM.typeSupported(cur.type)) return { abort: reply(409, { error: 'type_not_supported' }) };   // an old envío record (owner 11-15)
+      if (!OM.audienceSupported(cur.audience)) return { abort: reply(409, { error: 'audience_not_supported' }) };   // a stored new / returning (Codex #93 F4)
       if (cur.state === 'draft') { const p = OM.validatePublishable(OM.authoredOf(cur, opts), t); if (!p.ok) return { abort: reply(400, { error: 'bad_request', field: p.field, reason: p.reason }) }; }
       if (cur.state === 'paused_owner' && cur.schedule.end != null && cur.schedule.end <= t) return { abort: reply(409, { error: 'ended' }) };
     }
@@ -427,6 +436,7 @@ async function marketingOfferRepeatCore(deps, req) {
   const denied = await authorizeBranches(deps, ctx, brandId, value.branches);
   if (denied) return denied;
   if (!OM.typeSupported(value.type)) return reply(400, { error: 'bad_request', field: 'type', reason: 'type_not_supported' });   // never repeat an old envío
+  if (!OM.audienceSupported(value.audience)) return reply(400, { error: 'bad_request', field: 'audience', reason: 'audience_not_supported' });
   // program: the FULL new schedule through the shared model (OM.scheduleOf: bounds, the max timestamp) — before anything is written
   let draft = { ...value, schedule: { ...value.schedule, start: null, end: null } };
   let prepFail = null;

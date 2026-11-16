@@ -193,8 +193,11 @@ function canonical(v) { if (Array.isArray(v)) return `[${v.map(canonical).join('
       await live(deps, { name: 'Diez por ciento', params: { pct: 10, max_cents: 15000 } });
       await live(deps, { name: '2x1', type: 'bogo', params: { items: [k0], free_per_order: 1 } });
       await live(deps, { name: 'Pizzas', type: 'bogo', params: { cats: [otherCat], free_per_order: 1 }, schedule: { start: NOW + 2 * DAY, days: [5, 6], window: { from: 1260, to: 0 } } });
-      await live(deps, { name: 'Bienvenida', type: 'nuevos', audience: 'new', params: { off_cents: 5000 } });
-      await live(deps, { name: 'Vuelve', type: 'pct', audience: 'returning', params: { pct: 15 } });
+      // new / returning (Codex #93 F4): no v1 writer can make one (audience_not_supported) — STORED-shape mirror entries prove the read
+      // still refuses them on its own (defence in depth, as the envío entry below)
+      const aud = { start: NOW + DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] };
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'n'.repeat(12)}`).set({ rev: 2, brand_id: 'xb', name: 'Bienvenida', type: 'nuevos', params: { off_cents: 5000 }, audience: 'new', schedule: aud });
+      await db.ref(`marketing_brand/xb/live/${RID}/o_${'r'.repeat(12)}`).set({ rev: 2, brand_id: 'xb', name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning', schedule: aud });
       const paused = await live(deps, { name: 'Pausada', type: 'lps', params: { off_cents: 5000, min_cents: 30000 } });
       assert.strictEqual((await C.marketingOfferSetStateCore(deps, req({ rid: RID, offer_id: paused, to: 'paused_owner', expected_rev: 2 }))).status, 200, 'premise: paused');
       const on = await served(fs, db);
