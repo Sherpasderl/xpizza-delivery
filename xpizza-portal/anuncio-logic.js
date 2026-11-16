@@ -118,25 +118,20 @@ export function classifyCancel(attempt, res) {
   return refusal(res) || { outcome: 'unknown' };
 }
 
-// After an UNKNOWN booking: the booking list first (a reserved booking for that week ⇒ saved), then the week's slot: `free` or `capped`
-// (the slot is free) ⇒ not_landed, `taken` ⇒ conflict (another restaurant got it). `mine` with no LISTED booking ⇒ UNKNOWN: 3a's weeks
-// read releases this branch's orphan slots before it reports (anuncio-core getAnuncioWeeksCore → releaseOrphan, 60272a791), so `mine`
-// is backed by a REAL record and the two reads (not atomic) simply disagree — never a guess (slot 11-15 follow-up, advisor).
+// After an UNKNOWN booking: ONLY positive proof settles (Codex #93 F5) — a booking for that week in the list ⇒ saved. Everything else
+// stays UNKNOWN: a `free` / `capped` / `taken` week is a read, not our operation's answer (the write may still be in flight, or
+// committed after the read — reads are not op-correlated), and `mine` with no LISTED booking means the two reads (not atomic) disagree.
+// The weeks read stays part of the recovery: 3a's getAnuncioWeeksCore releases this branch's orphan slots (60272a791).
 export function classifyBookRecovery(attempt, weeksRes, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);
   if (list && list.some((x) => x.week === attempt.week && x.status !== 'cancelled')) return { outcome: 'saved' };
-  const m = weeksModel(weeksRes);
-  if (m.kind !== 'ok' || !list) return { outcome: 'unknown' };
-  const w = m.weeks.find((x) => x.week === attempt.week);
-  if (!w) return { outcome: 'unknown' };
-  return { outcome: { free: 'not_landed', capped: 'not_landed', taken: 'conflict' }[w.state] || 'unknown' };
+  return { outcome: 'unknown' };
 }
+// After an UNKNOWN cancel: the booking LISTED as cancelled ⇒ saved; missing from the list or still reserved ⇒ UNKNOWN (Codex #93 F5)
 export function classifyCancelRecovery(attempt, marketingBody, nowMs) {
   const list = bookingsView(marketingBody, nowMs);
-  if (!list) return { outcome: 'unknown' };
-  const k = list.find((x) => x.id === attempt.bookingId);
-  if (!k) return { outcome: 'conflict' };
-  return { outcome: k.status === 'cancelled' ? 'saved' : 'not_landed' };
+  const k = list ? list.find((x) => x.id === attempt.bookingId) : null;
+  return { outcome: k && k.status === 'cancelled' ? 'saved' : 'unknown' };
 }
 
 // ONE write, settled — an UNKNOWN re-reads ONCE (calls injected: api.js anuncioBookRaw / anuncioCancelRaw, getAnuncioWeeksRaw,

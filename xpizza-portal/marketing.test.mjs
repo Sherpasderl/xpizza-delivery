@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { DIR, NOW, DAY, OWNER, MGR, RID, K1, K2, K3, backend, form, authored, create, publish } from './marketing-harness.mjs';
+import { DIR, NOW, DAY, OWNER, MGR, RID, K1, K2, K3, backend, form, authored, create, publish, rq } from './marketing-harness.mjs';
 import { offerSetStateRaw, offerSaveRaw } from './api.js';
 import * as ML from './marketing-logic.js';
 
@@ -216,7 +216,7 @@ test('the empty state (no offers): one heading + one sentence, then the offer ca
   assert.equal(host.querySelector('.mk5-empty h2').textContent, 'Todavía no tenés campañas');
   assert.deepEqual([...host.querySelectorAll('.mk5-empty p')].map((x) => x.textContent), ['Empezá por acá:'], '🔴 the results sentence is ABSENT (SOURCE_GATE empty-results)');
   assert.ok(!/vas a ver cuánto vendiste|pedidos trajo/.test(p.text()));
-  assert.deepEqual([...host.querySelectorAll('.mk5-card')].map((c) => c.dataset.otype), ['pct', 'lps', 'bogo', 'nuevos'], 'the four v1 offer cards (no «Envío gratis», owner 11-15)');
+  assert.deepEqual([...host.querySelectorAll('.mk5-card')].map((c) => c.dataset.otype), ['pct', 'lps', 'bogo'], 'the v1 offer cards (no «Envío gratis», owner 11-15; no nuevos while the audience flag is off, owner 11-16)');
   assert.equal(host.querySelector('.vh'), null, '🔴 no Anuncio hero (SOURCE_GATE anuncios)');
   const m = await page({ b, caps: MGR_CAPS, uid: MGR });
   await m.signIn(); await m.open();
@@ -226,7 +226,7 @@ test('the empty state (no offers): one heading + one sentence, then the offer ca
   assert.equal(m.host().querySelectorAll('.mk5-empty p').length, 0, 'a manager: no «Empezá por acá:» (nothing follows it)');
 });
 
-test('«Crear campaña»: the four v1 cards verbatim (no «Envío gratis»), then «¿Cómo funcionan?» with the Ofertas paragraph only; no hero, no eligibility, no Campañas de Sherpa', async () => {
+test('«Crear campaña»: the v1 cards verbatim (no «Envío gratis»; no «Para clientes nuevos» while the audience flag is off, owner 11-16), then «¿Cómo funcionan?» with the Ofertas paragraph only; no hero, no eligibility, no Campañas de Sherpa', async () => {
   const b = await world();
   await create(b, form({ name: 'Una' }));
   const p = await page({ b });
@@ -237,8 +237,7 @@ test('«Crear campaña»: the four v1 cards verbatim (no «Envío gratis»), the
   assert.deepEqual([...host.querySelectorAll('.mk5-card')].map((c) => [c.dataset.otype, c.dataset.tone, c.querySelector('.mk5-ccat').textContent, c.querySelector('h3').textContent, c.querySelector('.mk5-ben span').textContent]), [
     ['pct', 'mint', 'Descuento', 'Porcentaje en todo el menú', 'Aparecés en la sección Ofertas de la app'],
     ['lps', 'sky', 'Lempiras', 'Lempiras de descuento con mínimo', 'Sube el ticket: el cliente completa el mínimo'],
-    ['bogo', 'rose', '2 × 1', 'Comprá 1 y llevate otro gratis', 'Se muestra con una etiqueta en tu menú'],
-    ['nuevos', 'lav', 'Clientes nuevos', 'Para clientes nuevos', 'Solo la ven clientes que nunca te pidieron']]);
+    ['bogo', 'rose', '2 × 1', 'Comprá 1 y llevate otro gratis', 'Se muestra con una etiqueta en tu menú']]);
   assert.equal(host.querySelector('.mk5-howbox'), null, 'closed by default');
   p.btn('¿Cómo funcionan?').click(); await settle();
   assert.deepEqual([...host.querySelectorAll('.mk5-howbox p')].map((x) => x.textContent), ['Ofertas. Un descuento que cubre tu restaurante. Aparece en la sección «Ofertas» de la app y con una etiqueta en tu menú, solo en los días y horas que elijás. Sherpa no te cobra.'],
@@ -290,9 +289,9 @@ test('the builder opens from a card, preconfigured: v5\'s rows, the suggested va
   assert.equal(d.querySelector('h2').textContent, 'Nueva oferta');
   assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Porcentaje en todo el menú');
   assert.deepEqual([...d.querySelectorAll('.mk5b-row')].map((r) => [r.dataset.row, r.querySelector('.mk5b-rlbl').textContent]),
-    [['br', 'Sucursales'], ['typ', 'Descuento'], ['aud', 'Clientes'], ['sch', 'Horario'], ['name', 'Nombre']], 'no Productos row outside 2×1; offers v1: no «Límites» row (owner 11-15)');
-  assert.deepEqual([rowVal(p, 'br'), rowVal(p, 'typ'), rowVal(p, 'aud'), rowVal(p, 'name')],
-    ['Las 2 sucursales', '15 % · hasta L 100 por pedido', 'Todos', '15 % en todo el menú · se armó solo']);
+    [['br', 'Sucursales'], ['typ', 'Descuento'], ['sch', 'Horario'], ['name', 'Nombre']], 'no Productos row outside 2×1; offers v1: no «Límites» row (owner 11-15), no «Clientes» row (the audience flag, owner 11-16 — its Q3 titles: A2)');
+  assert.deepEqual([rowVal(p, 'br'), rowVal(p, 'typ'), rowVal(p, 'name')],
+    ['Las 2 sucursales', '15 % · hasta L 100 por pedido', '15 % en todo el menú · se armó solo']);   // «Clientes · Todos»: behind the audience flag (A2)
   assert.match(rowVal(p, 'sch'), /^Todos los días · todo el día · desde el \d+ [a-z]{3}, sin fecha de fin$/, 'defaults: all days, todo el día, start today, no end');
   assert.deepEqual([d.querySelector('.mk5b-pvchip').textContent, d.querySelector('.mk5b-pvoff').textContent], ['15 % menos', '15 % de descuento en todo el menú, hasta L 100']);
   assert.equal(d.querySelector('.mk5b-pvhd b').textContent, 'Tercera', 'the brand name (E1)');
@@ -301,10 +300,10 @@ test('the builder opens from a card, preconfigured: v5\'s rows, the suggested va
   assert.ok(!d.querySelector('.mk5b-go').disabled && !d.querySelector('.mk5b-block'), 'a valid form: «Revisar y programar» enabled, no block line');
   const text = d.textContent;
   assert.ok(!/condiciones de marketing|se pausa sola|te avisamos|Más pedido|25–35 min|Envío L 40|Mínimo de compra/.test(text), '🔴 Q4 / Q6 / gated words absent (pct has no minimum)');
-  rowEl(p, 'aud').querySelector('.mk5b-rowh').click(); await settle();
-  assert.deepEqual([...rowEl(p, 'aud').querySelectorAll('.mk5b-oname')].map((x) => x.textContent), ['Todos los clientes', 'Clientes nuevos', 'Clientes que vuelven'], '🔴 Q3: titles only, no sub-lines');
+  rowEl(p, 'br').querySelector('.mk5b-rowh').click(); await settle();
+  assert.ok(rowEl(p, 'br').classList.contains('mk5b-open'), 'premise: «Sucursales» open');
   rowEl(p, 'sch').querySelector('.mk5b-rowh').click(); await settle();
-  assert.equal(rowEl(p, 'aud').classList.contains('mk5b-open'), false, 'one row open at a time');
+  assert.equal(rowEl(p, 'br').classList.contains('mk5b-open'), false, 'one row open at a time');
   assert.ok(rowEl(p, 'sch').classList.contains('mk5b-open'));
 });
 
@@ -317,8 +316,8 @@ test('«Revisar y programar» → «Revisá tu oferta» (the rows mirror the bui
   dlg(p).querySelector('.mk5b-go').click(); await settle();
   const sheet = p.host().querySelector('.mk5r-modal');
   assert.equal(sheet.querySelector('.mk5r-mt').textContent, 'Revisá tu oferta');
-  assert.deepEqual([...sheet.querySelectorAll('.mk5r-row')].map((r) => [r.querySelector('.mk5r-sl').textContent, r.querySelector('.mk5r-sv').textContent]).slice(0, 4),
-    [['Oferta', 'Lempiras de descuento con mínimo · L 50 · mínimo L 300'], ['Sucursales', 'Las 2'], ['Clientes', 'Todos'], ['Horario', rowVal(p, 'sch')]]);
+  assert.deepEqual([...sheet.querySelectorAll('.mk5r-row')].map((r) => [r.querySelector('.mk5r-sl').textContent, r.querySelector('.mk5r-sv').textContent]).slice(0, 3),
+    [['Oferta', 'Lempiras de descuento con mínimo · L 50 · mínimo L 300'], ['Sucursales', 'Las 2'], ['Horario', rowVal(p, 'sch')]]);   // no «Clientes» line: the audience flag (owner 11-16)
   assert.ok(!/condiciones de marketing/.test(sheet.textContent), '🔴 Q6: no terms sentence on the review either');
   p.btn('Programar oferta', sheet).click(); await settle(120);
   assert.equal(dlg(p), null, 'the dialog closes');
@@ -649,11 +648,11 @@ test('R4 a write still in flight when its dialog closes never touches the NEXT d
   p.btn('Guardar cambios', dlg(p)).click(); await settle(40);
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(dlg(p), null, 'premise: A closed mid-write');
-  await openCard(p, 'nuevos');
+  await openCard(p, 'bogo');
   release(); await settle(250);
   const d = dlg(p);
   assert.ok(d, 'B is still open');
-  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Para clientes nuevos', 'B keeps its own offer');
+  assert.equal(d.querySelector('.mk5b-type .mk5b-lbl').textContent, 'Comprá 1 y llevate otro gratis', 'B keeps its own offer');
   assert.equal(p.mods['marketing-builder']._builderState.offer, null, 'A\'s reply did not become B\'s offer');
   assert.equal(stored(b, 'Almuerzo')[0].schedule.end ?? null, null, 'A\'s write landed on the server');
   assert.notEqual(toastText(p), 'Cambios guardados', 'no toast for a closed dialog');
@@ -694,9 +693,9 @@ test('R7 focus: a rerender keeps it on the same control; a sheet takes it, traps
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
-  const hdr = rowEl(p, 'aud').querySelector('.mk5b-rowh');
+  const hdr = rowEl(p, 'br').querySelector('.mk5b-rowh');
   hdr.focus(); hdr.click(); await settle();
-  assert.equal(p.d.activeElement.closest('.mk5b-row') && p.d.activeElement.closest('.mk5b-row').dataset.row, 'aud', 'still on «Clientes» after the rerender (not BODY)');
+  assert.equal(p.d.activeElement.closest('.mk5b-row') && p.d.activeElement.closest('.mk5b-row').dataset.row, 'br', 'still on «Sucursales» after the rerender (not BODY)');
   const go = dlg(p).querySelector('.mk5b-go');
   go.focus(); go.click(); await settle();
   const m = p.host().querySelector('.mk5r-modal');
@@ -943,7 +942,7 @@ test('V1-ii no cap copy anywhere: no «Límites», «tope» or «canjes» in the
   const p = await page({ b });
   await p.signIn(); await p.open();
   assert.ok(!CAP_WORDS.test(p.text()), 'the list');
-  for (const t of ['pct', 'lps', 'bogo', 'nuevos']) {
+  for (const t of ML.offerTypesShown()) {   // the types v1 offers (nuevos behind the audience flag, owner 11-16)
     await openCard(p, t);
     assert.ok(!CAP_WORDS.test(p.text()), `the cards + the builder (${t})`);
     assert.equal(rowEl(p, 'caps'), null, `${t}: no «Límites» row`);
@@ -1003,13 +1002,13 @@ test('V1-v no «Envío gratis» option renders: no card, no text on «Crear camp
   assert.equal(dlg(p), null, 'openBuilder({ type: envio }) opens nothing');
 });
 // the 2×2 grid (advisor (A), 11-15): ONE rule moved, scoped to the offer-card grid; every other card / grid rule is byte-identical
-test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rules changed vs 89120edb2, every other .mk5-card / .mk5-ogrid rule is untouched', () => {
+test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rules (+ the card title\'s line-height, 16b advisor 11-16) changed vs 89120edb2, every other .mk5-card / .mk5-ogrid rule is untouched', () => {
   const rules = (css) => css.split('\n').map((l) => l.trim()).filter((l) => /\.mk5-(card|ogrid)\b/.test(l));
   const before = rules(execFileSync('git', ['show', '89120edb2:xpizza-portal/styles.css'], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 }));
   const after = rules(readFileSync(join(DIR, 'styles.css'), 'utf8'));
   const gone = before.filter((l) => !after.includes(l)), added = after.filter((l) => !before.includes(l));
-  assert.deepEqual(gone, ['.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:span 3}', '.mk5-card,.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:auto;padding:20px 18px}']);
-  assert.deepEqual(added, ['.mk5-ogrid>.mk5-card{grid-column:span 3}', '.mk5-card,.mk5-ogrid>.mk5-card{grid-column:auto;padding:20px 18px}']);
+  assert.deepEqual(gone, ['.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:span 3}', '.mk5-card h3{font-family:var(--disp);font-size:21px;font-weight:800;letter-spacing:-.03em;line-height:1.15;margin-top:6px;text-wrap:balance}', '.mk5-card,.mk5-card:nth-child(1),.mk5-card:nth-child(2){grid-column:auto;padding:20px 18px}']);
+  assert.deepEqual(added, ['.mk5-ogrid>.mk5-card{grid-column:span 3}', '.mk5-card h3{font-family:var(--disp);font-size:21px;font-weight:800;letter-spacing:-.03em;line-height:1.22;margin-top:6px;text-wrap:balance}', '.mk5-card,.mk5-ogrid>.mk5-card{grid-column:auto;padding:20px 18px}']);   // 16b: the 2-line title at 390 was «tight» (1.15 < 1.2)
   assert.ok(after.includes('.mk5-ogrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;margin-top:22px}'), 'the 6-column grid itself unchanged');
 });
 
@@ -1124,7 +1123,7 @@ test('L7 DISMISS then lost on «Programar oferta» ⇒ the ONE confirmation stil
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
   assert.equal(dlg(p), null, 'premise: dismissed mid-write');
-  await openCard(p, 'nuevos');
+  await openCard(p, 'bogo');
   release(); await settle(300);
   const ops = saves(b).map((c) => c.body.op_id);
   assert.equal(ops.length, 2, 'the call + ONE confirmation');
@@ -1132,7 +1131,7 @@ test('L7 DISMISS then lost on «Programar oferta» ⇒ the ONE confirmation stil
   assert.equal(offersNamed(b, LPS).filter((r) => r.state === 'active').length, 1, 'ONE live offer');
   assert.equal(notice(p), null, 'confirmed: no banner');
   assert.ok(dlg(p), 'the dialog opened meanwhile stays');
-  assert.equal(dlg(p).querySelector('.mk5b-type .mk5b-lbl').textContent, 'Para clientes nuevos', 'untouched');
+  assert.equal(dlg(p).querySelector('.mk5b-type .mk5b-lbl').textContent, 'Comprá 1 y llevate otro gratis', 'untouched');
 });
 test('L8 a dismissed write whose account changed meanwhile is DROPPED (no banner for another user)', async () => {
   const b = await world();
@@ -1219,19 +1218,20 @@ test('C4 BOTH ambiguous ⇒ NEVER a second resend; the list re-reads with the NE
   assert.ok(n.nextElementSibling && n.nextElementSibling.classList.contains('mk5-sect'), 'before «Ofertas»');
   assert.ok(rowNamed(p, 'Almuerzo'), 'the list, re-read');
 });
-test('C5 the confirmation returns a DEFINITE refusal (the first call ran and was refused, its reply lost) ⇒ the dialog stays with the refusal\'s word (v5b 3f)', async () => {
+test('C5 the confirmation returns an OP-JUDGED refusal (the first call ran and was judged too_many_live — stored in its op_id claim — its reply lost) ⇒ the dialog stays with the refusal\'s word (v5b 3f)', async () => {
   const b = await world();
+  for (let i = 0; i < 10; i += 1) await publish(b, form({ name: `Viva ${i}`, pct: 10 * (1 + (i % 5)), start: NOW, end: NOW + 20 * DAY, days: [i < 5 ? 6 : 0], window: null }));   // the branch's live slots, full
   const p = await page({ b });
   await p.signIn(); await p.open();
   await openCard(p, 'lps');
   const sh = await toReview(p);
-  await b.setSwitch(false, 1);   // the switch goes OFF on the server: the call is refused (409 offers_disabled) — and that reply is lost
-  b.net.lose = ['marketingOfferSave'];
+  b.net.lose = ['marketingOfferSave'];   // the call is JUDGED (409 too_many_live, stored in the claim) — and that reply is lost
+  const n0 = saves(b).length;
   p.btn('Programar oferta', sh).click(); await settle(300);
-  assert.equal(saves(b).length, 2, 'the call + ONE confirmation');
+  assert.equal(saves(b).length - n0, 2, 'the call + ONE confirmation');
   const m = p.host().querySelector('.mk5r-modal');
   assert.ok(m, 'C5: the review stays open');
-  assert.equal(m.querySelector('.mk5b-err').textContent, 'Las ofertas no están disponibles en este momento.', 'C5: the refusal\'s own word');
+  assert.equal(m.querySelector('.mk5b-err').textContent, 'Ya tenés el máximo de ofertas activas en una sucursal. Terminá una para programar esta.', 'C5: the stored judgement\'s own word');
   assert.equal(notice(p), null, 'no fallback');
   assert.equal(m.querySelector('.mk5r-ok').disabled, false, 'idle again');
 });
@@ -1393,7 +1393,7 @@ function beforeConfirm(fn, act) {
 }
 const moveRaw = async (b, rec, to) => assert.equal((await offerSetStateRaw({ rid: RID, offerId: rec.id, to, expectedRev: rec.rev, token: b.token })).status, 200, `premise: another session moved it to ${to}`);
 const recOf = (b, pred) => { const [id, r] = Object.entries(b.fake.get('marketing_brand/tb/offers')).find(([, x]) => pred(x)); return { ...r, id }; };
-test('F1a «Programar oferta»: our create LANDED (reply lost), another session PAUSED it before the confirmation ⇒ the replay is CONFIRMED: the success toast, never «Quedó como borrador», never the fallback', async () => {
+test('F1a «Programar oferta»: our create LANDED (reply lost), another session PAUSED it before the confirmation ⇒ the replay is CONFIRMED: the RETURNED state\'s toast (Codex #93 F3), never «Quedó como borrador», never the fallback', async () => {
   const b = await world();
   const p = await page({ b });
   await p.signIn(); await p.open();
@@ -1405,9 +1405,9 @@ test('F1a «Programar oferta»: our create LANDED (reply lost), another session 
   assert.ok(!p.text().includes('Quedó como borrador'), 'F1a: never the invented «Quedó como borrador»');
   assert.equal(notice(p), null, 'no fallback');
   assert.equal(dlg(p), null, 'F1a: the dialog closed');
-  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'the success toast');
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.', 'F1a: confirmed — the toast says what the returned offer IS (paused), not «Oferta programada…»');
 });
-test('F1b «Programar oferta» on a continued DRAFT: our edit LANDED (reply lost), another session ENDED it before the confirmation ⇒ CONFIRMED (never the fallback)', async () => {
+test('F1b «Programar oferta» on a continued DRAFT: our edit LANDED (reply lost), another session ENDED it before the confirmation ⇒ CONFIRMED (never the fallback), the RETURNED state\'s toast (Codex #93 F3)', async () => {
   const b = await world();
   await create(b, form({ name: 'Borrador uno', max: '100' }));
   const p = await page({ b });
@@ -1422,9 +1422,9 @@ test('F1b «Programar oferta» on a continued DRAFT: our edit LANDED (reply lost
   assert.equal(stored(b, 'Borrador uno')[0].state, 'ended', 'premise: ended by the other session');
   assert.equal(notice(p), null, 'F1b: confirmed ⇒ no fallback');
   assert.equal(dlg(p), null, 'the dialog closed');
-  assert.match(toastText(p), /^Oferta programada\. Empieza /, 'the success toast');
+  assert.equal(toastText(p), 'Oferta terminada. Los resultados quedan guardados.', 'F1b: confirmed — the toast says what the returned offer IS (ended)');
 });
-test('F1c «Repetir» → «Programar»: the copy LANDED (reply lost), another session PAUSED it before the confirmation ⇒ CONFIRMED: its toast, never «Quedó como borrador»', async () => {
+test('F1c «Repetir» → «Programar»: the copy LANDED (reply lost), another session PAUSED it before the confirmation ⇒ CONFIRMED: the RETURNED state\'s toast (Codex #93 F3), never «Quedó como borrador»', async () => {
   const b = await world();
   const o = await publish(b, LIVE());
   await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
@@ -1438,7 +1438,7 @@ test('F1c «Repetir» → «Programar»: the copy LANDED (reply lost), another s
   assert.equal(stored(b, 'Almuerzo').filter((r) => r.state === 'paused_owner').length, 1, 'premise: the copy, paused by the other session');
   assert.ok(!p.text().includes('Quedó como borrador'), 'F1c: never the invented «Quedó como borrador»');
   assert.equal(notice(p), null, 'no fallback');
-  assert.equal(toastText(p), 'Campaña programada para el lun 16 nov', 'F1c: the success toast');
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.', 'F1c: confirmed — the toast says what the returned copy IS (paused), not «Campaña programada…»');
 });
 test('F2 the REAL core\'s 429 too_many_pending (the brand\'s op claims are full) is DEFINITE: nothing written, ONE call — never confirmed', async () => {
   const b = await world();
@@ -1490,7 +1490,8 @@ test('D1 the row icons are the mockup\'s: Descuento = tag, Clientes = group, Pro
   await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
-  await openCard(p, 'bogo');
+  ML.FLAGS.audience = true;   // the builder's «Clientes» row lives behind the audience flag (owner 11-16)
+  try { await openCard(p, 'bogo'); } finally { ML.FLAGS.audience = false; }
   assert.ok(rowIconPaths(p, 'typ').includes(I_TAG), 'builder: Descuento row = #i-tag');
   assert.ok(rowIconPaths(p, 'aud').includes(I_USERS), 'builder: Clientes row = #i-users');
   assert.ok(rowIconPaths(p, 'prod').includes(I_BOX), 'builder: Productos row = #i-box');
@@ -1512,7 +1513,7 @@ test('D2 a date never breaks across lines: each «27 nov» in the Horario summar
   assert.match(val.textContent, /del \d+ [a-z]{3} al \d+ [a-z]{3}/, 'the text itself is unchanged');
   const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
   assert.match(css, /\.mk5b-nw\{white-space:nowrap\}/, 'the token rule');
-  assert.match(css, /\.mk5b-albl span\{[^}]*text-wrap:pretty/, '«Queda activa hasta que la pausés o la termines» wraps balanced (no orphan «termines»)');
+  assert.match(css, /\.mk5b-albl span\{[^}]*text-wrap:balance/, '«Queda activa hasta que la pausés o la termines» wraps balanced (no orphan «termines»; pretty still left it, slot 11-15)');
 });
 // (iii) A — advisor 11-15 (derived from owner rule 16c: one line per list item): at phone width the NAME gets the row's full width
 // (line 1) and the status joins the horario on line 2; the desktop row is untouched. jsdom has no layout: this pins the RULES; the
@@ -1527,4 +1528,187 @@ test('D3 phone list row: the name spans the full width (line 1), status + horari
   assert.ok(phone.some((l) => /^\.mk5-c1\{grid-column:2\/-1;/.test(l)), 'the name spans the full width');
   assert.ok(phone.some((l) => /^\.mk5-c2\{grid-column:2;grid-row:2;/.test(l)), 'the status on line 2');
   assert.ok(phone.some((l) => /^\.mk5-c3\{grid-column:3;grid-row:2;/.test(l)), 'the horario beside it on line 2');
+});
+
+// ═══ Codex #93 F2: on the ONE confirmation, only an answer the server gives AT / AFTER its op_id claim check settles (3a 9462baf40: the
+// replay, a stored judgement, a fresh post-claim refusal). A refusal the server can give BEFORE it looks at the op_id — the switch, the
+// token, the access — says nothing about the first call, which may have LANDED: the operation stays UNKNOWN (the fallback), never «refused».
+async function landsThenBefore(b, fn, change) {   // the first call LANDS in the real core and its reply is lost; `change` runs just before the confirmation
+  b.net.lose = [fn];
+  const f0 = globalThis.fetch; let n = 0;
+  globalThis.fetch = async (url, opts) => { if (String(url).endsWith(`/${fn}`) && ++n === 2) { globalThis.fetch = f0; await change(); } return f0(url, opts); };
+  return () => { globalThis.fetch = f0; };
+}
+const F2_CHANGES = {
+  offers_disabled: async (b) => b.setSwitch(false, 1),
+  invalid_credentials: async (b) => { b.deps.verifyIdToken = async () => { throw new Error('auth/id-token-revoked'); }; },
+  not_authorized: async (b) => { const R = rq('./access/roster'); assert.equal((await R.mutateRoster({ db: b.fake, now: () => 2 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'transfer_owner', uid: MGR, profile: { name: 'Gerente', email: 'g@tb.hn' } })).ok, true, 'premise: the ownership moved (the real roster writer)'); },
+};
+for (const [code, change] of Object.entries(F2_CHANGES)) {
+  test(`J1 «Programar oferta» LANDED, its reply lost; the confirmation is refused BEFORE the claim check (${code}) ⇒ UNKNOWN: the dialog closes, never the refusal's word; the offer IS live`, async () => {
+    const b = await world();
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    await openCard(p, 'lps');
+    const sh = await toReview(p);
+    const undo = await landsThenBefore(b, 'marketingOfferSave', () => change(b));
+    try { p.btn('Programar oferta', sh).click(); await settle(400); } finally { undo(); }
+    const sv = saves(b);
+    assert.equal(sv.length, 2, 'the call + ONE confirmation');
+    const direct = await offerSaveRaw({ rid: RID, expectedRev: 0, offer: sv[1].body.offer, opId: sv[1].body.op_id, program: true, token: b.token });
+    assert.equal(direct.body.error, code, `premise: the real core now answers ${code} before its claim check`);
+    const st = Object.values(b.fake.get('marketing_brand/tb/offers') || {});
+    assert.equal(st.length, 1, 'premise: the first call LANDED — one offer on the server');
+    assert.equal(st[0].state, 'active', 'premise: it is live');
+    assert.equal(p.host().querySelector('.mk5r-modal'), null, `F2 ${code}: UNKNOWN ⇒ the review closed, never a refusal on the sheet`);
+    assert.ok(!/no están disponibles|No pudimos guardar|permiso|sesión/i.test(p.text()), `F2 ${code}: no refusal word anywhere (${p.text().slice(0, 160)})`);
+  });
+}
+test('J2 «Pausar» from the detail LANDED, its reply lost; the confirmation is refused BEFORE the claim check (offers_disabled) ⇒ UNKNOWN: the detail closes, never «No pudimos hacer el cambio»; the offer IS paused', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  const undo = await landsThenBefore(b, 'marketingOfferSetState', () => b.setSwitch(false, 1));
+  const from = b.calls.length;
+  try { p.btn('Pausar').click(); await settle(300); } finally { undo(); }
+  assert.equal(b.calls.slice(from).filter((c) => c.fn === 'marketingOfferSetState').length, 2, 'the call + ONE confirmation');
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'premise: the first call LANDED — paused on the server');
+  assert.equal(p.host().querySelector('.mk5d-head'), null, 'F2: UNKNOWN ⇒ the detail closed');
+  assert.ok(!p.text().includes('No pudimos hacer el cambio'), 'F2: never a failure word');
+});
+
+// ═══ Codex #93 F3: a replay answers the offer as it is NOW — ANOTHER session may have moved it between our landed call and its one
+// confirmation. The toast follows the RETURNED record, in the approved words only (DETAIL_TOAST · programmedToast · the repeat's toast).
+async function otherMoves(b, pick, to) {   // another session's move, through the real core
+  const [id, rec] = Object.entries(b.fake.get('marketing_brand/tb/offers')).find(([, r]) => pick(r));
+  const res = await offerSetStateRaw({ rid: RID, offerId: id, to, expectedRev: rec.rev, token: b.token });
+  assert.equal(res.status, 200, `premise: the other session's move to ${to} landed (${JSON.stringify(res.body)})`);
+}
+const PAUSED = 'Oferta pausada. Reanudala cuando querás.', RESUMED = 'Oferta activa de nuevo', ENDED = 'Oferta terminada. Los resultados quedan guardados.';
+test('K1 «Pausar» landed, reply lost; another session resumes it (rev 3) before the confirmation ⇒ the replay says ACTIVE ⇒ «Oferta activa de nuevo», never «Oferta pausada…»', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  const undo = await landsThenBefore(b, 'marketingOfferSetState', () => otherMoves(b, (r) => r.name === 'Almuerzo', 'active'));
+  try { p.btn('Pausar').click(); await settle(300); } finally { undo(); }
+  assert.deepEqual([stored(b, 'Almuerzo')[0].state, stored(b, 'Almuerzo')[0].rev], ['active', 4], 'premise: paused by us, resumed by the other session');
+  assert.equal(toastText(p), RESUMED, 'K1: the toast follows the RETURNED state');
+});
+test('K2 «Reanudar» landed, reply lost; another session pauses it again before the confirmation ⇒ «Oferta pausada…», never «Oferta activa de nuevo»', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  const undo = await landsThenBefore(b, 'marketingOfferSetState', () => otherMoves(b, (r) => r.name === 'Almuerzo', 'paused_owner'));
+  try { p.btn('Reanudar').click(); await settle(300); } finally { undo(); }
+  assert.equal(stored(b, 'Almuerzo')[0].state, 'paused_owner', 'premise: paused again by the other session');
+  assert.equal(toastText(p), PAUSED, 'K2: the toast follows the RETURNED state');
+});
+for (const [to, word] of [['paused_owner', PAUSED], ['ended', ENDED]]) {
+  test(`K3 «Programar oferta» landed, reply lost; another session moves it to ${to} before the confirmation ⇒ «${word.slice(0, 15)}…», never «Oferta programada…»`, async () => {
+    const b = await world();
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    await openCard(p, 'lps');
+    const sh = await toReview(p);
+    const undo = await landsThenBefore(b, 'marketingOfferSave', () => otherMoves(b, (r) => r.type === 'lps', to));
+    try { p.btn('Programar oferta', sh).click(); await settle(400); } finally { undo(); }
+    assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers'))[0].state, to, `premise: ${to} by the other session`);
+    assert.equal(toastText(p), word, 'K3: the toast follows the RETURNED state');
+  });
+}
+test('K4 «Repetir» → «Programar» landed, reply lost; another session ends the copy before the confirmation ⇒ «Oferta terminada…», never «Campaña programada…»', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'ended', expectedRev: o.rev, token: b.token });
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  (await detailMenu(p)).find((x) => x.textContent === 'Repetir campaña').click(); await settle();
+  const undo = await landsThenBefore(b, 'marketingOfferRepeat', () => otherMoves(b, (r) => r.name === 'Almuerzo' && r.state === 'active', 'ended'));
+  try { p.btn('Programar', sheet(p)).click(); await settle(300); } finally { undo(); }
+  assert.deepEqual(stored(b, 'Almuerzo').map((r) => r.state), ['ended', 'ended'], 'premise: the copy landed, then the other session ended it');
+  assert.equal(toastText(p), ENDED, 'K4: the toast follows the RETURNED state');
+});
+
+// ═══ F4 (owner 11-16, offers v1): the audience choice is HIDDEN behind ONE flag (ML.FLAGS.audience) — the price path applies «Todos los
+// clientes» only (3a: any other audience ⇒ 400 audience_not_supported). The flag-on path stays live: it renders v5's audience control.
+const AUD_ROW = (p) => p.host().querySelector('.mk5b-row[data-row="aud"]');
+const reviewLabels = (p) => [...p.host().querySelectorAll('.mk5r-modal .mk5r-row, .mk5r-modal [class*="mk5r-r"]')].map((x) => x.textContent);
+test('A1 the audience flag OFF (v1): no «Para clientes nuevos» card (3 cards, the third starting the second row), no «Clientes» row in the builder or the review; a NEW nuevos offer never opens; the write says audience «all»', async () => {
+  assert.equal(ML.FLAGS.audience, false, 'v1 ships with the flag OFF');
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  assert.deepEqual([...p.host().querySelectorAll('.mk5-card')].map((c) => c.dataset.otype), ['pct', 'lps', 'bogo'], 'the empty state: three cards');
+  p.btn('Crear campaña').click(); await settle();
+  assert.deepEqual([...p.host().querySelectorAll('.mk5-card')].map((c) => c.dataset.otype), ['pct', 'lps', 'bogo'], '«Crear campaña»: three cards');
+  assert.ok(!/Para clientes nuevos|Solo la ven clientes que nunca te pidieron/.test(p.text()), 'no nuevos copy');
+  for (const t of ['pct', 'lps', 'bogo']) {
+    await openCard(p, t);
+    assert.equal(AUD_ROW(p), null, `${t}: no «Clientes» row in the builder`);
+    if (t === 'bogo') { p.mods['marketing-builder'].closeBuilder(); await settle(); continue; }   // 2×1 reaches the review only once a product is picked
+    const sh = await toReview(p);
+    assert.ok(sh && !/Clientes/.test(sh.textContent), `${t}: no «Clientes» line in «Revisá tu oferta»`);
+    p.btn('Volver', sh).click(); await settle();
+    p.mods['marketing-builder'].closeBuilder(); await settle();
+  }
+  p.mods['marketing-builder'].openBuilder(p.host(), { branches: [{ rid: RID, name: 'Centro', address: null }], brandId: 'tb', token: b.token, toast: () => {}, now: () => NOW }, { type: 'nuevos' });
+  assert.equal(dlg(p), null, 'openBuilder({ type: nuevos }) opens nothing');
+  await openCard(p, 'lps');
+  p.btn('Programar oferta', await toReview(p)).click(); await settle(300);
+  assert.equal(saves(b).at(-1).body.offer.audience, 'all', 'the write: audience «all»');
+});
+test('A2 the audience flag ON (the restore path, live): v5\'s «Clientes» row (Todos los clientes · Clientes nuevos · Clientes que vuelven), the review line, and the four cards in the 2×2 grid', async () => {
+  ML.FLAGS.audience = true;
+  try {
+    const b = await world();
+    const p = await page({ b });
+    await p.signIn(); await p.open();
+    p.btn('Crear campaña').click(); await settle();
+    assert.deepEqual([...p.host().querySelectorAll('.mk5-card')].map((c) => [c.dataset.otype, c.querySelector('h3').textContent]),
+      [['pct', 'Porcentaje en todo el menú'], ['lps', 'Lempiras de descuento con mínimo'], ['bogo', 'Comprá 1 y llevate otro gratis'], ['nuevos', 'Para clientes nuevos']], 'the four cards');
+    await openCard(p, 'pct');
+    const r = AUD_ROW(p);
+    assert.ok(r, 'the «Clientes» row');
+    assert.deepEqual([r.querySelector('.mk5b-rlbl').textContent, r.querySelector('.mk5b-val').textContent], ['Clientes', 'Todos'], 'v5: «Clientes» · «Todos»');
+    r.querySelector('.mk5b-rowh').click(); await settle();
+    assert.deepEqual([...AUD_ROW(p).querySelectorAll('.mk5b-opt .mk5b-oname')].map((x) => x.textContent), ['Todos los clientes', 'Clientes nuevos', 'Clientes que vuelven'], 'v5: the three audiences (titles only, Q3)');
+    const sh = await toReview(p);
+    assert.ok(/Clientes/.test(sh.textContent), '«Revisá tu oferta» lists «Clientes»');
+  } finally { ML.FLAGS.audience = false; }
+});
+test('A3 the 400 audience_not_supported (3a, offers v1) is a DEFINITE refusal — the generic «No pudimos guardar…», never confirmed, never UNKNOWN', () => {
+  // the reply shape of 3a's other v1 validation refusals (caps_not_supported / type_not_supported, V1-iii — from the real core); the real
+  // core's audience refusal is not in the pinned ref 9462baf40 yet: re-derive from it when the pin moves
+  const res = { status: 400, body: { error: 'bad_request', field: 'audience', reason: 'audience_not_supported' } };
+  for (const a of [{ op: 'create', opId: 'op_x' }, { op: 'save', opId: 'op_x', offerId: 'o_x', expectedRev: 1 }]) {
+    assert.equal(ML.classifyWrite(a, res).outcome, 'refused', `${a.op}: definite`);
+  }
+});
+test('T1 16b (advisor 11-16): the Horario row header reads the same words, split in two parts — days · hours, then the dates — each its own line on a phone (no mid-phrase wrap); the builder and «Editar» both', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'pct');
+  const segs = (r) => [...r.querySelectorAll('.mk5b-val > .mk5b-vseg')].map((x) => x.textContent);
+  const nr = p.host().querySelector('.mk5b-row[data-row="sch"]');
+  assert.equal(segs(nr).length, 2, 'the builder: two parts');
+  assert.equal(segs(nr).join(''), nr.querySelector('.mk5b-val').textContent, 'nothing else in the value');
+  assert.match(segs(nr)[1], /^ · desde el \d{1,2} \w{3}, sin fecha de fin$/, 'part 2: the separator (hidden on a phone) + the dates');
+  p.mods['marketing-builder'].closeBuilder(); await settle();
+  p.btn('Campañas').click(); await settle();
+  await openEdit(p, 'Almuerzo');
+  const er = p.host().querySelector('.mk5b-row[data-row="sch"]');
+  assert.equal(segs(er)[0], 'Lun a Vie · 11:00–14:00', '«Editar» part 1: days · hours');
+  assert.match(segs(er)[1], /^ · del \d{1,2} \w{3} al \d{1,2} \w{3}$/, '«Editar» part 2: the separator + the dates');
+  const css = readFileSync(join(DIR, 'styles.css'), 'utf8');
+  assert.ok(css.includes('@media(max-width:920px){.mk5b-vseg{display:block}.mk5b-vsep{display:none}}'), 'a phone: one line per part, the separator hidden');
 });

@@ -215,7 +215,7 @@ test('cancel: before the deadline it frees the week; twice is already_cancelled;
 // RE-DERIVED at 94e6b7ae9 (advisor 11-15): since 3a 60272a791 the weeks read RECONCILES this branch's orphan slot (void the booking id,
 // then release the slot) — so a half-made reservation is no longer seen «incomplete»: the fresh read finds nothing landed, and booking
 // again makes a NEW booking. (anuncio-logic's `incomplete` outcome is now unreachable from the real core — flagged to the advisor.)
-test('a 503 book is NEVER success: a half-made reservation is released by the fresh weeks read ⇒ not_landed (booking again lands a new one); one that never started is not_landed', async () => {
+test('a 503 book is NEVER success: a half-made reservation is released by the fresh weeks read — still UNKNOWN (Codex #93 F5: a read is not op-correlated proof); booking again lands a new one', async () => {
   const w = await world();
   await eligible(w.raw, 'tb_centro');
   // the slot commits, the booking record does not, and releasing the slot fails too
@@ -227,7 +227,7 @@ test('a 503 book is NEVER success: a half-made reservation is released by the fr
   const orphan = w.raw.get(`anuncio_slots/${W}`);
   assert.ok(orphan && orphan.rid === 'tb_centro', 'premise: an orphan slot of this branch');
   const r = AL.classifyBookRecovery({ week: W }, await w.api.weeks(), (await w.api.marketing()).body, BOOK_AT);
-  assert.equal(r.outcome, 'not_landed', 'the weeks read released the orphan: nothing landed — never saved');
+  assert.equal(r.outcome, 'unknown', 'the weeks read released the orphan — never saved, and never «not landed» on a read (Codex #93 F5)');
   assert.equal(w.raw.get(`anuncio_slots/${W}`) ?? null, null, 'the orphan slot is gone (durably)');
   const k = await bookOk(w, W);
   assert.notEqual(k.id, orphan.booking_id, 'booking again lands a NEW booking (the orphan id is void)');
@@ -238,10 +238,10 @@ test('a 503 book is NEVER success: a half-made reservation is released by the fr
   assert.deepEqual(rel, { outcome: 'unknown' }, 'the outage holds: unknown — never saved, never «not landed» on a guess');
   w.failTx.clear();
   const rel2 = AL.classifyBookRecovery({ week: W2 }, await w.api.weeks(), (await w.api.marketing()).body, BOOK_AT);
-  assert.equal(rel2.outcome, 'not_landed', 'the outage over: the weeks read releases the orphan ⇒ not_landed');
+  assert.equal(rel2.outcome, 'unknown', 'the outage over: the weeks read releases the orphan — still UNKNOWN (no op-correlated proof)');
   w.failTx.set('anuncio_slots/', 0);
   const n = await AL.settleBook({ week: 'W2027-03-22' }, () => w.api.book('W2027-03-22'), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
-  assert.equal(n.outcome, 'not_landed', 'the slot itself failed: nothing landed');
+  assert.equal(n.outcome, 'unknown', 'the slot itself failed: a free week on the re-read is no proof ⇒ UNKNOWN');
   w.failTx.clear();
   w.net.down = true;
   const t = await AL.settleBook({ week: W }, () => w.api.book(W), () => w.api.weeks(), () => w.api.marketing(), BOOK_AT);
@@ -250,7 +250,7 @@ test('a 503 book is NEVER success: a half-made reservation is released by the fr
   assert.deepEqual(AL.classifyBook({ week: W }, { status: 200, body: null, malformed: true }), { outcome: 'unknown' }, 'a malformed 200 is unknown');
 });
 
-test('a 503 cancel after the booking moved is recovered as saved by the fresh read', async () => {
+test('a 503 cancel after the booking moved is recovered as saved by the fresh read; a booking the read lacks is UNKNOWN', async () => {
   const w = await world();
   await eligible(w.raw, 'tb_centro');
   const k = await bookOk(w);
@@ -260,7 +260,7 @@ test('a 503 cancel after the booking moved is recovered as saved by the fresh re
   assert.deepEqual(AL.classifyCancel({ bookingId: k.id }, raw), { outcome: 'unknown' }, 'the 503 cancel is unknown');
   w.failTx.clear();
   assert.equal(AL.classifyCancelRecovery({ bookingId: k.id }, (await w.api.marketing()).body, BOOK_AT).outcome, 'saved', 'the fresh read: cancelled');
-  assert.equal(AL.classifyCancelRecovery({ bookingId: 'b_aaaaaaaaaaaa' }, (await w.api.marketing()).body, BOOK_AT).outcome, 'conflict', 'a booking that is gone: conflict');
+  assert.equal(AL.classifyCancelRecovery({ bookingId: 'b_aaaaaaaaaaaa' }, (await w.api.marketing()).body, BOOK_AT).outcome, 'unknown', 'a booking the read lacks: UNKNOWN, never «conflict» (Codex #93 F5)');
 });
 
 // ── the booking cap (owner 11-14: ≤ 2 weeks in any rolling 4; 3a dad98ad42 anuncio-model.js capProblem / nextCapWeek) ──────────
@@ -292,7 +292,7 @@ test('the cap with no week left: next_week null is passed as null; every other w
   assert.deepEqual([c.outcome, c.code, c.next_week], ['refused', 'cap_reached', null], 'no next week: null, never a guess');
 });
 
-test('the cap is NEVER computed here: the weeks\' states are the server\'s verbatim; a malformed hint is dropped; a capped week after an unknown book is not_landed', () => {
+test('the cap is NEVER computed here: the weeks\' states are the server\'s verbatim; a malformed hint is dropped; a capped week after an unknown book is UNKNOWN', () => {
   const weeks = WK.slice(0, 4).map((week, i) => ({ week, state: ['mine', 'mine', 'free', 'free'][i] }));
   const m = AL.weeksModel({ status: 200, body: { ok: true, price_cents: 45000, eligibility: { eligible: true, rating: 4.8, rating_count: 40, reasons: [] }, weeks } });
   assert.deepEqual(m.weeks.map((x) => [x.state, x.bookable]), [['mine', false], ['mine', false], ['free', true], ['free', true]], 'the server\'s states verbatim — no client cap');
@@ -302,7 +302,7 @@ test('the cap is NEVER computed here: the weeks\' states are the server\'s verba
   assert.equal(AL.classifyBook({ week: WK[3] }, { status: 409, body: { error: 'week_taken', next_week: WK[4] } }).next_week, undefined, 'a hint rides only on cap_reached');
   const g = { ok: true, switches: {}, bookings: [] };
   const rec = AL.classifyBookRecovery({ week: WK[3] }, { status: 200, body: { ok: true, price_cents: 45000, eligibility: {}, weeks: [{ week: WK[3], state: 'capped' }] } }, g, BOOK_AT);
-  assert.equal(rec.outcome, 'not_landed', 'a capped week after an unknown book: nothing landed');
+  assert.equal(rec.outcome, 'unknown', 'a capped week after an unknown book: no proof either way ⇒ UNKNOWN (Codex #93 F5)');
 });
 
 test('the cap copy is the owner\'s, verbatim (approved 11-14, PLAN-portal-marketing-r1 §8)', () => {
@@ -329,4 +329,19 @@ test('book recovery: the week reads `mine` but the booking list (read BEFORE the
   assert.ok(k && k.id, 'premise: a real booking');
   assert.deepEqual(AL.classifyBookRecovery({ week: W }, weeks, stale, BOOK_AT), { outcome: 'unknown' }, 'the reads disagree ⇒ UNKNOWN');
   assert.deepEqual(AL.classifyBookRecovery({ week: W }, weeks, (await w.api.marketing()).body, BOOK_AT), { outcome: 'saved' }, 'a fresh list shows it ⇒ saved');
+});
+
+// Codex #93 F5: a recovery read settles only on POSITIVE proof of the outcome asked for (the booking listed / the booking listed as
+// cancelled); every other read — a free / capped / taken week, a booking the list lacks, a booking still reserved — stays UNKNOWN
+test('F5 recovery never turns a read into a definite outcome: free / capped / taken ⇒ UNKNOWN for a book; missing / still reserved ⇒ UNKNOWN for a cancel', async () => {
+  const w = await world();
+  await eligible(w.raw, 'tb_centro');
+  const k = await bookOk(w, W);
+  const g = (await w.api.marketing()).body;
+  const weeksOf = (state) => ({ status: 200, body: { ok: true, price_cents: 45000, eligibility: {}, weeks: [{ week: W2, state }] } });
+  const got = { book: Object.fromEntries(['free', 'capped', 'taken', 'mine'].map((st) => [st, AL.classifyBookRecovery({ week: W2 }, weeksOf(st), g, BOOK_AT).outcome])),
+    listed: AL.classifyBookRecovery({ week: W }, weeksOf('mine'), g, BOOK_AT).outcome,
+    cancel: { reserved: AL.classifyCancelRecovery({ bookingId: k.id }, g, BOOK_AT).outcome, missing: AL.classifyCancelRecovery({ bookingId: 'b_aaaaaaaaaaaa' }, g, BOOK_AT).outcome } };
+  assert.deepEqual(got, { book: { free: 'unknown', capped: 'unknown', taken: 'unknown', mine: 'unknown' }, listed: 'saved', cancel: { reserved: 'unknown', missing: 'unknown' } },
+    'F5: only a LISTED booking settles a book; a cancel settles only on a listed «cancelled» — every other read stays UNKNOWN');
 });

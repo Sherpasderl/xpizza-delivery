@@ -29,7 +29,7 @@ function span(a, z, year) {
 }
 const AUD_WORD = Object.freeze({ all: 'Todos', new: 'Nuevos', returning: 'Que vuelven' });
 // the toasts v5 draws (the list's and the detail's moves)
-export const DETAIL_TOAST = Object.freeze({ pause: 'Oferta pausada. Reanudala cuando querás.', resume: 'Oferta activa de nuevo', end: 'Oferta terminada. Los resultados quedan guardados.' });
+export const DETAIL_TOAST = ML.MOVE_TOAST;   // v5's words, one source (marketing-logic)
 
 // ── the pure words of the detail (tested) ─────────────────────────────────────────────────────────────────────────────────────
 // the meta line: «● Activa · Oferta · Lun–Vie · 11:00–14:00 · del 2 al 27 nov» (v5 5) / «… · desde el 15 oct» (5c)
@@ -180,9 +180,9 @@ export async function move(kind) {
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
   D.busy = true; D.err = null; render();
   const a = { op: 'state', opId, offerId: o.id, expectedRev: o.rev, to };
-  const send = () => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => ML.classifyWrite(a, res), () => ({ outcome: 'unknown' }));
-  let r = await send();
-  if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(); }
+  const send = (classify) => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
+  let r = await send(ML.classifyWrite);
+  if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(ML.classifyConfirmation); }   // Codex #93 F2
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
     // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
     if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
@@ -194,7 +194,8 @@ export async function move(kind) {
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
-  c.toast(DETAIL_TOAST[kind]);
+  const word = ML.stateToast(D.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
+  if (word) c.toast(word);
   render();
   c.onChanged && c.onChanged();
 }
