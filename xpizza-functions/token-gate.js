@@ -54,10 +54,10 @@ function gateInputFromRequest(body, ctx) {
    and both must be answered the same way — the server charges its own recompute, only ever up to the
    stated ceiling. Returns null when there is no usable ceiling, so the caller can fall through to its
    own no-ceiling behaviour. */
-function unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables }) {
+const offerChanged = (signed, offer) => !!signed && typeof signed === 'object' && !(offer && signed.offer_id === offer.offer_id && signed.rev === offer.rev); function unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables, offer = null }) {   // marketing: offerChanged = a signed offer that is absent / another / another rev at the charge
   const expected = expectedNetCents;
   if (!(typeof expected === 'number' && Number.isSafeInteger(expected) && expected >= 0)) return null;
-  const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables });
+  const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables, offer });
   if (net.error) {
     return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: null, degraded: true };
   }
@@ -67,7 +67,7 @@ function unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContex
   return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: expected, reason: 'confirmed_unsigned', quoteId: null, degraded: true };
 }
 
-function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, reward = null, deliveryContext = null, rid, tables = null, secret, enforce = false, nowMs = Date.now() }) {
+function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, reward = null, deliveryContext = null, rid, tables = null, secret, enforce = false, nowMs = Date.now(), offer = null }) {
   // ── NO TOKEN ────────────────────────────────────────────────────────────────────────────────
   if (!token) {
     /* 🔴 THE DEGRADED FLOOR. A client that cannot produce a signed token can still say what number it
@@ -90,7 +90,7 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
        Each of those would become a CEILING of one lempira or zero and refuse a legitimate order. The
        strict type is also the money-safe direction — the worst case is falling to the no-token row,
        which under grace is exactly today's behaviour. */
-    const floor = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });
+    const floor = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables, offer });
     if (floor) return floor;
 
     /* Junk falls through to here ON PURPOSE rather than refusing: a non-integer, negative, or absent
@@ -130,7 +130,7 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
        forged signature is handled above and is a different thing entirely; that still refuses.
        With no ceiling to fall back to there is genuinely nothing to compare, and the old behaviour is
        the only honest one: grace defers, enforcement refuses. */
-    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables });
+    const stale = unsignedFloor(expectedNetCents, { submittedCart, reward, deliveryContext, rid, tables, offer });
     if (stale) return { ...stale, reason: `${stale.reason}_stale_token` };
     if (enforce) return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: v.reason, quoteId: null, degraded: false };
     return { action: 'charge', chargeNet: null, confirmedNet: null, reason: `grace_${v.reason}`, quoteId: null, degraded: false };
@@ -140,7 +140,7 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
 
   // The server's own number, recomputed now from the cart actually submitted. This is what will be
   // charged in every accepting branch below.
-  const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables });
+  const net = computeServerNet({ items: submittedCart, reward, deliveryContext, rid, tables, offer });
   if (net.error) {
     return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'bad_cart', quoteId: payload.quote_id || null, degraded: false };
   }
@@ -199,7 +199,7 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
      dispute or a chargeback, "we charged 249" is not the claim that matters; "they confirmed 299 and
      we charged them less" is. Two numbers, because there are two facts. */
   if (net.net_total_cents > confirmed) {
-    return { action: 'refuse_increase', chargeNet: net.net_total_cents, confirmedNet: confirmed, reason: 'price_increased', quoteId: payload.quote_id || null, degraded: false };
+    return { action: 'refuse_increase', chargeNet: net.net_total_cents, confirmedNet: confirmed, reason: offerChanged(payload.offer, offer) ? 'offer_changed' : 'price_increased', quoteId: payload.quote_id || null, degraded: false };   // marketing: the quoted offer is gone / changed ⇒ its own code (the capp says why and re-quotes)
   }
   return { action: 'charge', chargeNet: net.net_total_cents, confirmedNet: confirmed, reason: 'confirmed', quoteId: payload.quote_id || null, degraded: false };
 }
@@ -219,9 +219,9 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
  * strand a customer's loyalty points; an order that IS created must keep the hold, because completion
  * is what consumes it. Those are opposite mistakes and both are tested.
  */
-async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console, deliveryContext = null }) {
+async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHold, orderId, log = console, deliveryContext = null, offer = null }) {
   // S3a: the SERVER's envío for this order (delivery/delivery-wire.js gateExtra) joins the recompute; absent → as before S3.
-  const result = gateConfirmedNet(deliveryContext ? { ...gateInput, deliveryContext } : gateInput);
+  const result = gateConfirmedNet(deliveryContext || offer ? { ...gateInput, ...(deliveryContext ? { deliveryContext } : {}), ...(offer ? { offer } : {}) } : gateInput);
   const refuse = async (status, body, event, detail) => {
     await releaseHold();
     try { log.warn(event, JSON.stringify({ orderId, ...detail })); } catch (_) {}
@@ -229,7 +229,7 @@ async function applyConfirmedNetGate({ gateInput, recordedTotalCents, releaseHol
   };
 
   if (result.action === 'refuse_increase') {
-    return refuse(409, { error: 'price_increased', net_total_cents: result.chargeNet },
+    return refuse(409, { error: result.reason === 'offer_changed' ? 'offer_changed' : 'price_increased', net_total_cents: result.chargeNet },
       'quote_gate_price_increased', { rid: gateInput.rid, quote_id: result.quoteId, net_total_cents: result.chargeNet, confirmation: result.degraded ? 'unsigned' : 'signed' });
   }
   if (result.action === 'refuse_no_token') {

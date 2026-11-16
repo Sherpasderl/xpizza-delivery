@@ -23,6 +23,7 @@ const SET = { offers_enabled: true, anuncio_enabled: false, collections_enabled:
   try {
     const fake = createFakeDb({}); const db = prodDb(fake);
     assert.deepStrictEqual(await CFG.readMarketingConfig(db), { ...CFG.OFF }, 'an absent node is OFF');
+    await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
     const dry = await CFG.writeMarketingConfig(db, { expected: 0, config: SET, actor: 'cli:op', now: 5, dryRun: true });
     assert.deepStrictEqual([dry.ok, dry.dry_run, fake.get(CFG.PATH)], [true, true, null], 'a dry run writes nothing');
     const w1 = await CFG.writeMarketingConfig(db, { expected: 0, config: SET, actor: 'cli:op', now: 5 });

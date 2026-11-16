@@ -37,6 +37,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('  
       await db.ref('restaurants/tb_centro/identity').set({ brand_id: 'tb', name: 'Centro', active: true, version: 1 });
       assert.strictEqual((await R.mutateRoster({ db, now: () => 1 }, 'tb', { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'D', email: 'd@tb.hn' } })).ok, true, 'premise: roster');
       await makeRtdbMirror(db)('tb_centro', { version: 'v1', seq: 1, rid: 'tb_centro', menu: { [K1]: 150 }, extras: {} });
+      await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
       assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
       const deps = { db, verifyIdToken: async () => ({ uid: OWNER }), now: () => NOW, readMirror: makeRtdbMirrorReader(db) };
       const rq = (body) => ({ method: 'POST', body, get: (h) => (h === 'authorization' ? 'Bearer t' : undefined) });

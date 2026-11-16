@@ -1148,18 +1148,18 @@ createOrderApp.all('*', async (req, res) => {
     if (rd.textVersion === TV.TEXT_A8) cashTextVersion = TV.TEXT_A8;   // a retained 'a8' reservation → the order carries its binding
     /* a1:end cash-selected-version */
   }
-  const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
+  const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dqOffer = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dqAdmit, reward: redemptionPriced, app: DW.isApp(body), nowMs: Date.now(), placement: true }); const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : OFP.foodLempiras(total, OFW.offerOf(dqOffer));   // discounted total (== total when no redeem / no offer) · MARKETING (PLAN-5f-marketing-price): the app order's restaurant offer, read FRESH at placement
 
   const trackingToken = generateTrackingToken();
   // Redeemed → the discounted breakdown + split factura lines (Task 4); else today's pricing, byte-identical.
-  const dq = dqAdmit; const priceBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq = dqOffer; const priceBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId));  // platform → ISV 15% incl.; non-platform → no split
+    : OFP.foodBreakdown(total, restaurantId, OFW.offerOf(dq)));  // platform → ISV 15% incl.; non-platform → no split · marketing: no offer ⇒ exactly orderBreakdownCents(total, restaurantId)
 
   // Reward-card display fields (earn_preview + summary_lines) — stamped for ALL orders on the order record +
   // order_tracking. summary_lines uses the DISCOUNTED subtotal-driven footing so it matches the charged total.
-  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
+  const rewardStamp = buildRewardStamp(body.items, restaurantId, priceBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables); if (OFP.discountOf(OFW.offerOf(dq)) > 0 && Array.isArray(rewardStamp.summary_lines)) rewardStamp.summary_lines.push({ name: 'Descuento', qty: 1, cents: -OFW.offerOf(dq).discount_cents });   // marketing: the summary foots to the charged food
 
   // ── A1: free-order intake. The forms grey out both payment methods + submit `free_order:true` ONLY when
   // the server quote zeroed the total (a fully-comping redemption). We RE-DERIVE it here from the
@@ -1281,7 +1281,7 @@ createOrderApp.all('*', async (req, res) => {
     Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
     /* a1:end cash-marker-held */
     /* serial3:begin cash-reward-provenance-held */
-    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) heldUpdates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
     /* serial3:end cash-reward-provenance-held */
     /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
        grace one afterwards: absent means no token was presented, present means this exact net was
@@ -1293,7 +1293,7 @@ createOrderApp.all('*', async (req, res) => {
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
     } catch (e) {
       console.error('createOrder: scheduled write failed', e);
-      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
+      if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)
       return res.status(500).json({ error: 'Database write failed', detail: e.message });
     }
     /* tippref:begin cash-held */
@@ -1328,7 +1328,7 @@ createOrderApp.all('*', async (req, res) => {
   Object.assign(updates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
   /* a1:end cash-marker */
   /* serial3:begin cash-reward-provenance */
-  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text); if (OFW.offerOf(dq)) updates[`orders/${orderId}`].offer = OFP.frozenOf(OFW.offerOf(dq));   // §3 r5: what the server appended (provenance) · marketing: the frozen order fact (PLAN §1.9)
   /* serial3:end cash-reward-provenance */
   /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
      grace one afterwards: absent means no token was presented, present means this exact net was
@@ -1341,7 +1341,7 @@ createOrderApp.all('*', async (req, res) => {
     console.log(`createOrder: wrote ${orderType} order ${orderId}`);
   } catch (e) {
     console.error('createOrder: write failed', e);
-    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order
+    if (redemptionReserved) await releaseRedemption(db, { ...redemptionReserved, now: Date.now() }).catch(() => {});   // all-or-nothing: never leave a hold with no order (the reward's)
     return res.status(500).json({ error: 'Database write failed', detail: e.message });
   }
   /* tippref:begin cash-live */
@@ -1697,13 +1697,13 @@ chargeOnlineApp.all('*', async (req, res) => {
     fields.items_text = prep.itemsText;   // free-item display line → flows into BOTH fingerprints + the pending order
   }
   // Effective (discounted) breakdown used by both fingerprint sites, the pending record, and the charge amount.
-  const dq = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, ...(dq.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const effBreakdown = DW.withDelivery(dq, redemptionPriced
+  const dq0 = await DW.chargeContext(db, orderId, await DW.deliveryFor(db, { rid: restaurantId, mode: orderType, pin: DW.orderPin(body), customerUid: customer_uid, getIdentity: getRestaurantIdentity, pricingP: dpP, tip: body.tip_cents, app: DW.isApp(body) }), body, Date.now(), dpP); if (dq0 && dq0.refusal) return res.status(dq0.httpStatus).json({ error: dq0.refusal, ...(dq0.httpStatus === 503 ? { retryable: true } : {}), order_id: orderId }); const OFW = require('./marketing/offer-wire'), OFP = require('./marketing/offer-price'); const dq = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables: pricingTables, baseTotalL: total, dq: dq0, reward: redemptionPriced, app: DW.isApp(body), orderId, nowMs: Date.now(), placement: true }); if (dq && dq.refusal) return res.status(dq.httpStatus).json({ error: dq.refusal, order_id: orderId });   /* v1: a stored envío waiver is never resumed (offer-wire) */ const effBreakdown = DW.withDelivery(dq, redemptionPriced
     ? { total_cents: redemptionPriced.total_cents, subtotal_cents: redemptionPriced.subtotal_cents, tax_cents: redemptionPriced.tax_cents,
         ...(redemptionPriced.desc_rebaja_cents ? { desc_rebaja_cents: redemptionPriced.desc_rebaja_cents } : {}) }  // A-F: factura comp rebaja (x_pizza only)
-    : orderBreakdownCents(total, restaurantId));
+    : OFP.foodBreakdown(total, restaurantId, OFW.offerOf(dq))); if (!redemptionPriced && OFW.offerOf(dq)) effTotal = OFP.foodLempiras(total, OFW.offerOf(dq));   // marketing: no offer ⇒ exactly orderBreakdownCents(total, restaurantId)
 
   // Reward-card display fields — stamped on the pending order (materialize copies them onto order_tracking at confirm/release).
-  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables);
+  const onlineRewardStamp = buildRewardStamp(body.items, restaurantId, effBreakdown.subtotal_cents, redemptionCanonical, redemptionFreeName, redemptionFreeItems, pricingTables); if (OFP.discountOf(OFW.offerOf(dq)) > 0 && Array.isArray(onlineRewardStamp.summary_lines)) onlineRewardStamp.summary_lines.push({ name: 'Descuento', qty: 1, cents: -OFW.offerOf(dq).discount_cents });
 
   // ── A1 (#2, R7): a $0 order is NOT chargeable online. The forms route a fully-comped ($0) order to
   // createOrder (the free path); this is the DEFENSIVE server guard for a stale/direct $0 request. Return a
@@ -1983,7 +1983,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     items_text: fields.items_text,            // includes the La Musa free-item display line when redeemed
     total: DW.totalLempiras(dq, effTotal),    // discounted total (== total when no redeem); + net envío when active (S3a)
     total_cents, subtotal_cents, tax_cents,   // discounted breakdown when redeemed; else x_pizza ISV 15% incl. / la_musa no split
-    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown),   // A-F: factura comp rebaja (x_pizza only)
+    ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}), ...DW.orderFields(effBreakdown), ...(OFW.offerOf(dq) ? { offer: OFP.frozenOf(OFW.offerOf(dq)) } : {}),   // A-F: factura comp rebaja (x_pizza only)
     ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
     // 1D add-product B (codex PB-1 r1 P1-3): the CHARGE-INPUT fingerprint this reward order is bound to (render capability only)
@@ -2692,12 +2692,12 @@ exports.paymentStatus = onRequest(
           // v2: La Musa is a multiset (no single free_item_key) → carry the redeemed unit count so the success screen shows "N premios".
           free_count: Array.isArray(order.redemption.items) ? order.redemption.items.reduce((s, it) => s + (Number(it && it.qty) || 0), 0) : (order.redemption.free_item_key ? 1 : 0) }
       : null;
-    const state = paymentPollState(order);   // pure state machine (payment-poll-state.js, unit-tested)
+    const state = paymentPollState(order); const offerShown = require('./marketing/offer-price').pollOfferOf(order.offer);   // marketing (Q5): the order screen's «Descuento», never the offer id · pure state machine (payment-poll-state.js, unit-tested)
     // Scheduled Orders (§B.4 / R2-#4): a paid-and-HELD order (or one mid-release) is confirmed but NOT
     // cooking. Distinct scheduled_paid carrying scheduled_for (no token) → "programado para <slot>".
     if (state === 'scheduled_paid') {
       return res.status(200).json({ ok: true, state: 'scheduled_paid', scheduled_for: order.scheduled_for || null, tracking_token: null,
-        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary });
+        total_cents: Number.isFinite(order.total_cents) ? order.total_cents : null, redemption: redeemSummary, ...(offerShown ? { offer: offerShown } : {}) });
     }
     // Paid-after-close AUTO-REFUND: distinct terminal state so the return page shows the honest
     // "te reembolsamos L{total}" screen (not the generic "cancelled"). blocked_reason is the guard's sentinel.
@@ -2707,7 +2707,7 @@ exports.paymentStatus = onRequest(
 
     return res.status(200).json({ ok: true, state, tracking_token: state === 'paid' ? (order.tracking_token || null) : null,
       total_cents: state === 'paid' ? (Number.isFinite(order.total_cents) ? order.total_cents : null) : null,
-      redemption: state === 'paid' ? redeemSummary : null });
+      redemption: state === 'paid' ? redeemSummary : null, ...(state === 'paid' && offerShown ? { offer: offerShown } : {}) });
   }
 );
 
@@ -7403,12 +7403,12 @@ exports.quoteOrder = onRequest(
          unchanged (byte-identical response for every existing client); the token and net_total_cents
          are additive. Issued through the shared issuer so this endpoint and the redemption quote
          cannot develop divergent issuance math — the thing 1C exists to prevent, one layer up. */
-      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dq.ctx,
+      const dq = await DW.quoteDeliveryFor(req, db, restaurantId, body, { getIdentity: getRestaurantIdentity, getAuth, attributionUid, pricingP: dpP }); if (dq.refuse) return res.status(dq.httpStatus || 200).json(dq.refuse); const OFW = require('./marketing/offer-wire'); const dqo = await OFW.withOffer({ db, rid: restaurantId, items: body.items, tables, baseTotalL: total, dq, reward: null, app: DW.isApp(body), nowMs: Date.now() }); const issued = issueQuote({ items: body.items, reward: null, rid: restaurantId, tables, deliveryContext: dqo.ctx, offer: OFW.offerOf(dqo),
         customerId: dq.uid, nowMs: Date.now() });
       return res.status(200).json({
         ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
         ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}),
-        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx),
+        ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dqo.ctx), ...(issued.ok && OFW.offerOf(dqo) ? { offer: require('./marketing/offer-price').quoteOfferOf(OFW.offerOf(dqo)) } : {}), ...(issued.ok && !OFW.offerOf(dqo) && dqo.offer_next ? { offer_next: dqo.offer_next } : {}),   // marketing: total_cents stays the GROSS food (the capp's subtotal compare, promo §10); the discount is its own block; net_total_cents is discounted (Q9: no offer id to the customer)
       });
     } catch (e) {
       console.error('quoteOrder', e && e.message);

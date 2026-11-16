@@ -8,6 +8,7 @@
 // (tools/marketing-config-admin.js) — a Sherpa-admin portal editor waits for its mockup (r1 §5.7).
 
 const PATH = 'platform_config/marketing';
+const EXIT_MARKER = 'platform_config/pending_sweep_exit';   // written by the owner after the pending-sweep exit deploy (the go-live gate)
 const HISTORY_MAX = 10;
 const SWITCHES = Object.freeze(['offers_enabled', 'anuncio_enabled', 'collections_enabled']);
 const OFF = Object.freeze({ policy_version: 0, offers_enabled: false, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: null, thresholds: null });
@@ -51,6 +52,14 @@ async function writeMarketingConfig(db, { expected, config, actor, now, dryRun =
   const next = settableOf(config);
   if (!next) return { ok: false, code: 'bad_config' };
   if (!isInt(expected, 0, 1e15 - 2) || typeof actor !== 'string' || !actor) return { ok: false, code: 'bad_config' };
+  /* GO-LIVE GATE (PLAN-5f-pending-sweep r1 §4, advisor 11-14): offers may be switched ON only once the owner has recorded that the
+     pending-sweep exit is deployed (platform_config/pending_sweep_exit = { at, by }) — the price path's offer_changed refusals retire
+     hosted attempts down the path that used to orphan pending orders. Switching off is never gated; an unreadable marker fails closed. */
+  if (next.offers_enabled === true) {
+    let m;
+    try { m = (await db.ref(EXIT_MARKER).once('value')).val(); } catch (_) { return { ok: false, code: 'unavailable' }; }
+    if (!isObj(m) || !Number.isSafeInteger(m.at) || m.at <= 0 || typeof m.by !== 'string' || !m.by) return { ok: false, code: 'pending_sweep_exit_required' };
+  }
   if (dryRun) {
     let cur;
     try { cur = (await db.ref(PATH).once('value')).val(); } catch (_) { return { ok: false, code: 'unavailable' }; }
@@ -93,4 +102,4 @@ async function writeMarketingConfig(db, { expected, config, actor, now, dryRun =
 // what every portal read STATES (rule: always stated, each === true)
 const switchesOf = (cfg) => Object.fromEntries(SWITCHES.map((k) => [k, cfg[k] === true]));
 
-module.exports = { PATH, HISTORY_MAX, SWITCHES, OFF, settableOf, parseConfig, readMarketingConfig, writeMarketingConfig, switchesOf };
+module.exports = { PATH, EXIT_MARKER, HISTORY_MAX, SWITCHES, OFF, settableOf, parseConfig, readMarketingConfig, writeMarketingConfig, switchesOf };
