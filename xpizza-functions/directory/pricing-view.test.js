@@ -66,6 +66,13 @@ const entryOf = async (pricingView) => (await D.buildDirectory(deps(pricingView)
       if (want) assert.strictEqual(e.promo.basis, 'pricing', L);
     }
   });
+  await cell('PB-BASIS-PRICED-ONLY: basis:\'pricing\' only when the fee is PRICED from the real pricing read — an invalid or absent (dark) config serves no promo, so no basis (advisor 11-16)', async (L) => {
+    for (const [k, raw] of [['invalid', { policy_version: 2, bands: [] }], ['absent', undefined]]) {
+      const e = await entryOf(PV.makePricingView({ rtdb: rtdb(raw) }));
+      assert.strictEqual(e.promo, null, `🔴 ${L}: ${k} ⇒ no promo, no basis (${JSON.stringify(e.promo)})`);
+    }
+    assert.strictEqual((await entryOf(PV.makePricingView({ rtdb: rtdb(FREE_ON) }))).promo.basis, 'pricing', `${L}: priced ⇒ basis pricing`);
+  });
   if (fails.length) { console.log(`FAIL(${fails.length}): ${fails.join(' | ')}`); process.exit(1); }
   console.log(`pricing-view: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -7153,6 +7153,7 @@ const sendJson = (res, status, payload) => {
   return res.status(status).end(JSON.stringify(payload));
 };
 
+exports.getRestaurantDirectory = onRequest({ region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10, minInstances: 0 }, require('./directory/directory-endpoint').makeDirectoryEndpoint({ getDatabase, restaurantRegistry }));   // PLAN-directory-endpoint-r0 (advisor GO 11-13): the capp's public directory — active restaurants only, ETag'd when complete, no-store when partial; minInstances 0 (the capp paints from its stored body)
 exports.getPublicMenu = onRequest(
   { region: 'us-central1', cors: PUBLIC_MENU_ORIGINS, timeoutSeconds: 20, memory: '512MiB', maxInstances: 20, minInstances: 1 },   // PLAN 2: one warm instance — the live menu must not wait on a cold start
   async (req, res) => {
