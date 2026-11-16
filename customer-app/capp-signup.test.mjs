@@ -85,7 +85,7 @@ function sheet(o = {}) {
   const w = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true }).window;
   const host = w.document.getElementById('h'); const api = fakeApi(o); const auth = fakeAuth(); const events = [];
   if (o.holdSignIn) { const real = auth.signInWithCustomToken; auth.signInWithCustomToken = (t) => new Promise((r) => { o.holdSignIn.release = () => r(real(t)); }); }
-  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, onEvent: (n, d) => events.push([n, d]) });
+  const su = createSignup({ doc: w.document, host, api, auth, google: o.google || null, ...(o.intl ? { intlPhone: true, CappPhone: require('./capp-phone.js') } : {}), timers: o.timers || { setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {} }, ...(o.now ? { now: o.now } : {}), onEvent: (n, d) => events.push([n, d]) });
   const q = (s) => host.querySelector(s), qa = (s) => [...host.querySelectorAll(s)];
   const txt = (s) => { const el = q(s); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
   const click = async (s) => { const el = q(s); assert.ok(el, `premise: ${s}`); assert.ok(!el.disabled, `premise: ${s} enabled`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
@@ -365,6 +365,8 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
   await a.getMyFavorites({ idToken: 't' }); await a.setFavorite({ idToken: 't', rid: 'x_pizza', on: true });   // C-1b
+  await a.pushRegister({ idToken: 't', token: 'fcm_t', platform: 'ios', app_build: '1', install_id: 'install-census-0001', pedidos: true, promociones: false }); await a.pushUnregister({ idToken: 't', token: 'fcm_t' });   // PLAN-capp-push §6b
+  await a.pushSetPrefs({ idToken: 't', pedidos: true, promociones: false, expected_rev: 0 }); await a.pushGetPrefs({ idToken: 't' });
   assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });
 // ── C-2 (PLAN §C-2; 3a's getMyRating 1958b8ed + the S-A1 writer rateOrder): the member transport's two rating calls, against the REAL
@@ -418,7 +420,7 @@ test('C-2 rateOrder: POST { order_id, …fields } with the token; 3a\'s every an
 
 // ── C-3r G1 (advisor 11-13): S-D's v1 price_snapshot reaches the reorder ONLY aligned 1:1 with the row's items. The row comes from the
 // REAL writers: attachCustomerAttribution (user_orders entry + reorderPriceSnapshot) → my-orders.js projectRow (the served Row) ──
-test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-version or non-integer snapshot is DROPPED (never a guessed past price)', async () => {
+test('C-3r v2 rowOf (R3.2, receipt-only): a list row NEVER carries price_snapshot — the real writer\'s snapshot rides the row on the wire, the capp drops it (the reorder reads the receipt)', async () => {
   const FN = createRequire(join(ROOT, 'xpizza-functions/x.js'));
   const CB = FN('./create-order-build.js'), MO = FN('./my-orders.js');
   const u = { 'orders/XP-1': { status: 'new' } };
@@ -428,14 +430,53 @@ test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-
   const { createSignupApi } = require('./capp-signup-api.js');
   const served = (e) => createSignupApi({ endpoints: { getMyOrders: 'https://ep.test/getMyOrders' }, fetch: async () => ({ status: 200, json: async () => JSON.parse(JSON.stringify({ ok: true, active: [], past: [MO.projectRow('XP-1', e)], next_cursor: null })) }) })
     .getMyOrders({ idToken: 't' }).then((r) => r.past[0]);
-  assert.deepEqual((await served(entry)).price_snapshot, { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, '🔴 G1-row: the aligned v1 snapshot is kept');
+  const row = await served(entry);
+  assert.ok(row && row.order_id === 'XP-1', 'premise: the row itself survives');
+  assert.equal(row.price_snapshot, undefined, '🔴 C3R-V2-LIST: the list row carries no price_snapshot (receipt-only)');
+});
+
+// ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / §4.3; advisor 11-14): the receipt carries 3a's price_snapshot v2 — the fixture is
+// 3a's REAL writer + getMyOrders handler (fixtures/c3r-v2/gen-c3r-v2.mjs at feat/snapshot-v2-3a): { v:2, lines:[{ unit_cents,
+// line_cents, extras?:[{ k, c }] }] }. receiptOf keeps a well-formed v1 / v2 snapshot; snapshotOf(ps, items) keeps it only ALIGNED 1:1
+// with the row's items. Anything else ⇒ dropped (the reorder then shows live prices without a historical note) ──
+const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8')).scenarios['XP-V1'];
+test('C-3r v2 receipt: 3a\'s real v2 receipt keeps its price_snapshot exactly; v1 still reads; a malformed snapshot is dropped; snapshotOf keeps it only aligned with the row\'s items', async () => {
+  const { createSignupApi, snapshotOf } = require('./capp-signup-api.js');
+  const rcpt = (ps) => createSignupApi({ endpoints: { getMyOrders: 'https://ep.test/getMyOrders' }, fetch: async () => ({ status: 200, json: async () => JSON.parse(JSON.stringify({ ...C3V2.receipt.body, receipt: { ...C3V2.receipt.body.receipt, price_snapshot: ps } })) }) })
+    .getReceipt({ idToken: 't', orderId: 'XP-V1' }).then((r) => r.receipt);
+  assert.deepEqual(C3V2.receipt.body.receipt.price_snapshot, C3V2.price_snapshot, 'premise: the handler served the writer\'s snapshot verbatim');
+  assert.deepEqual((await rcpt(C3V2.price_snapshot)).price_snapshot, C3V2.price_snapshot, '🔴 C3R-V2-RCPT: the v2 snapshot survives the receipt');
+  const v1 = { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] };
+  assert.deepEqual((await rcpt(v1)).price_snapshot, v1, 'an order written before v2: its v1 snapshot still reads');
+  const L = C3V2.price_snapshot.lines[0];
   const bad = {
-    misaligned: { v: 1, lines: [...entry.price_snapshot.lines, { unit_cents: 100, line_cents: 100 }] },
-    v2: { ...entry.price_snapshot, v: 2 },
-    fractional: { v: 1, lines: [{ unit_cents: 299.5, line_cents: 64800 }] },
+    'k not a string': { v: 2, lines: [{ ...L, extras: [{ k: 5, c: 5000 }] }] },
+    'c fractional': { v: 2, lines: [{ ...L, extras: [{ k: 'Mozzarella', c: 50.5 }] }] },
+    'c negative': { v: 2, lines: [{ ...L, extras: [{ k: 'Mozzarella', c: -1 }] }] },
+    'extras an object (never the RTDB-keyed shape)': { v: 2, lines: [{ ...L, extras: { Mozzarella: 5000 } }] },
+    'another version': { ...C3V2.price_snapshot, v: 3 },
+    'a fractional unit': { v: 2, lines: [{ ...L, unit_cents: 299.5 }] },
   };
-  for (const [k, ps] of Object.entries(bad)) assert.equal((await served({ ...entry, price_snapshot: ps })).price_snapshot, undefined, `🔴 G1-row ${k}: dropped`);
-  assert.equal((await served({ ...entry, price_snapshot: undefined })).price_snapshot, undefined, 'no snapshot ⇒ none');
+  for (const [k, ps] of Object.entries(bad)) assert.equal((await rcpt(ps)).price_snapshot, undefined, `🔴 C3R-V2-RCPT ${k}: dropped`);
+  assert.equal(typeof snapshotOf, 'function', '🔴 C3R-V2-ALIGN: the module exposes the alignment check');
+  assert.deepEqual(snapshotOf(C3V2.price_snapshot, C3V2.items), C3V2.price_snapshot, '🔴 C3R-V2-ALIGN: aligned 1:1 ⇒ kept');
+  assert.equal(snapshotOf(C3V2.price_snapshot, [...C3V2.items, C3V2.items[0]]), null, '🔴 C3R-V2-ALIGN: misaligned ⇒ null');
+  const noEx = { v: 2, lines: [{ unit_cents: L.unit_cents, line_cents: L.line_cents }] };
+  assert.deepEqual(snapshotOf(noEx, C3V2.items), noEx, 'absent extras = none (RTDB drops an empty array) — kept as no extras, never invented');
+});
+
+// PLAN-capp-virtual-clock r0 step 0, P2 (advisor 11-13): the resend countdown reads the INJECTED now() (the shell's clock), never
+// Date.now — exact under a virtual clock: 0:29 at the send, 0:09 twenty seconds later, the button at 29 s
+test('VC-P2 the resend countdown follows the injected now(): «Reenviar en 0:29» → 0:09 after 20 s → «Reenviar código» at 29 s', async () => {
+  let t = 5e6; const ticks = [];
+  const b = sheet({ now: () => t, timers: { setTimeout: () => 0, clearTimeout: () => {}, setInterval: (f) => { ticks.push(f); return ticks.length; }, clearInterval: () => {} } });
+  b.su.open({ ctx: 'checkout' }); await settle();
+  await b.type('#su-phone', '9999 0000'); await b.click('[data-su="phone-go"]');
+  assert.equal(b.txt('[data-su-left]'), 'Reenviar en 0:29', '🔴 VC-P2: the countdown starts from the injected now');
+  t += 20000; ticks.at(-1)(); await settle();
+  assert.equal(b.txt('[data-su-left]'), 'Reenviar en 0:09', '🔴 VC-P2: the tick reads the injected now');
+  t += 9000; ticks.at(-1)(); await settle();
+  assert.ok(b.q('[data-su="resend"]'), '🔴 VC-P2: at 29 s the resend button');
 });
 
 // ── C-1b (3a's getMyFavorites + setFavorite, my-favorites.js @990cf8c4): the member transport, against the REAL handler's bodies

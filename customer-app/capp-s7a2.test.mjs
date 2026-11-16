@@ -2,7 +2,11 @@
 // (pinned to the REAL 5f handler's output), the client directory store, Inicio / Buscar from the real served envelopes, and the
 // shell driven through the REAL shell.html + modules in jsdom.
 // Run: node --test customer-app/capp-s7a2.test.mjs
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
+import { createClock } from './test-clock.mjs';
+import { placeRealWith } from './test/place-real.mjs';
+import { refLoader } from './test/ref-require.mjs';
+import { fakeRtdb } from './test/fake-rtdb.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -39,7 +43,9 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
   const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
-  assert.equal(digest, 'df09576342a0aa0fe0d2bbd591630e265bcfdf89366388cf4f4ec6a424446621', '🔴 the fixture contents are the pinned generation');
+  // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
+  // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
+  assert.equal(digest, 'a432b4a948ad18b04d7e6425e9b015d8051d21f69a4962eeb9e05aba048bffc9', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -240,14 +246,29 @@ test('Buscar: «No encontramos» ONLY when every menu answered; a partial shows 
 
 // ── the shell, through the REAL shell.html ──
 function deferred() { let resolve; const p = new Promise((r) => { resolve = r; }); return { p, resolve }; }
-const flush = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+// PLAN-capp-virtual-clock r0 (step 9): EVERY cell's shell runs on the VIRTUAL clock VC — flush(ms) = drain, advance ms virtual, drain;
+// until() spends a virtual budget — except the REAL_BY_DESIGN cells below. A cell with no clock (it booted no shell, or it is real by
+// design) flushes on a fresh EMPTY clock: drain only (microtasks, setImmediate turns, the environment's real 0 ms tasks) — never a
+// fixed sleep. The migration list (chunks 1–6) is gone: VC-M proves the default instead
+let VC = null, CLOCK_DEFAULT = false, CUR = null;
+const VC_BOOTED = new Set(), BOOTED_REAL = new Set(), RAN = new Set(), SHELLS = [];   // SHELLS: every shell window a cell booted (the leak guard)   // the cells that booted the shell on the virtual / the REAL clock, that ran (VC-M's evidence)
+// the cells that stay on the REAL clock by design (advisor 11-13): they prove the harness's paint frames themselves — 266 that a
+// frame the shell requests lands before a 0 ms timer, 269 the app under jsdom's own timer-driven frames. VC-M names them.
+const REAL_BY_DESIGN = new Set([
+  'harness (2e: test 35 flaky under load): a paint frame the shell requests runs BEFORE any timer — the home list is drawn by the time a fixed flush ends, at any load',
+  'harness · REAL frames (advisor 11-08): with jsdom\'s own timer-driven requestAnimationFrame, the home list paints and a tap opens the store — awaited on the paint itself (a MutationObserver), never a sleep',
+]);
+beforeEach((t) => { CUR = t.name; RAN.add(t.name); CLOCK_DEFAULT = !REAL_BY_DESIGN.has(t.name); });
+// a shell window the cell left open is CLOSED when the cell ends (the leak hunt: its late responses would render into later cells)
+afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try { x.w.close(); } catch (_) {} } VC = null; CLOCK_DEFAULT = false; });
+const flush = (ms = 30) => (VC || createClock(T0)).flush(ms);
 // stampedDir: a copy of customer-app/ stamped by the REAL platform/stamp-version.js — the page's own sherpa-client.js runs on its
 // stamped identity and capp-api.js runs in the page realm (its SherpaClient.fetch arm), the network = pageFetch (window.fetch)
-function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null } = {}) {
+function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'ok', storage, auth = 'guest', now, geolocation = null, search = '', fetchLog = [], apiFetch = null, runtime = RUNTIME, stampedDir = null, pageFetch = null, mountExtra = {}, media = null, url = null, readPublic = null, preMount = null, clock: vclock = CLOCK_DEFAULT } = {}) {
   const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
   const html = readFileSync(join(stampedDir || HERE, 'shell.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: url || 'https://app.test/' });
-  const w = dom.window;
+  const w = dom.window; { const rec = { w, cell: CUR, closed: false }; SHELLS.push(rec); const cl = w.close.bind(w); w.close = () => { rec.closed = true; return cl(); }; }
   if (media) w.matchMedia = media.matchMedia;   // D-2: the viewport the shell reads at mount (a controllable matchMedia)
   // the paint frame is a MICROTASK (2e: test 35 flaky under load — a fixed flush raced jsdom's timer-driven frame): a render the shell
   // schedules lands in the same microtask drain as the data it paints, before any timer, whatever the load (no sleep, no timeout)
@@ -256,7 +277,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -266,9 +287,16 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
     if (mode === 'fail') return Promise.resolve({ status: 500 });
     return Promise.resolve({ status: 200, body: J(PROV[rid].envelope), etag: PROV[rid].etag });
   };
-  const clock = now || { t: T0 };
+  // clock: true ⇒ the shell's timers AND its app time are the virtual clock (a cell moving S.clock.t forward is a wall-clock jump)
+  // the cell's OWN clock instance is captured (vc): work a cell leaves running past its end reads that clock, never the next cell's
+  // a LATER boot in the same cell (a relaunch) continues from the previous boot's virtual time — time never runs backwards
+  const vc = vclock ? createClock(now ? now.t : (VC ? VC.now() : T0)) : null;
+  if (vc) { VC = vc; VC_BOOTED.add(CUR); } else BOOTED_REAL.add(CUR);
+  // a cell that brings its OWN app-time object (now: { t }) owns app time — it stays manual, as on the real harness (the virtual
+  // clock drives the timers and flush only); otherwise the app's time IS the virtual clock (S.clock.t forward = a jump)
+  const clock = vc ? (now || { get t() { return vc.now(); }, set t(v) { vc.jump(v); } }) : (now || { t: T0 });
   const ui = w.CappShellUI.mount(w.document, { CappCheckout: require('./capp-checkout.js'), ...(readPublic ? { readPublic } : {}), fetchDirectory, fetchEnvelope, readAvailability: async () => [], onEvent: (n, d) => events.push([n, J(d)]), runtime, storage: storage || memStorage(), now: () => clock.t,
-    auth: { state: () => auth }, geolocation, search, timers: { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
+    auth: { state: () => auth }, geolocation, search, timers: vc || { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && typeof h.unref === 'function') h.unref(); return h; }, clearTimeout: (t) => clearTimeout(t), setInterval: () => 0, clearInterval: () => {} }, uiOpts: { CappCheckout: require('./capp-checkout.js'), CappApi: stampedDir ? w.CappApi : require('./capp-api.js'), apiOpts: { ...(vc ? { timeout: (ms) => new Promise((r) => vc.setTimeout(r, ms)) } : {}), ...(stampedDir ? {} : { fetch: (u, i) => { fetchLog.push(String(u)); return apiFetch ? apiFetch(String(u), i) : new Promise(() => {}); } }), now: () => clock.t, sleep: async () => {} } }, ...mountExtra });
   const q = (s) => w.document.querySelector(s), qa = (s) => [...w.document.querySelectorAll(s)];
   const click = (s) => { const el = typeof s === 'string' ? q(s) : s; assert.ok(el, `premise: ${s} exists`); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); };
   const release = (rid, body) => { const d = (pend[rid] || []).shift(); d.resolve({ status: 200, body: body || J(PROV[rid].envelope), etag: body ? '"changed"' : PROV[rid].etag }); };
@@ -671,7 +699,7 @@ const TOK = (uid, expMs = T0 + 3600e3) => `${b64u({ alg: 'RS256', typ: 'JWT' })}
 const WARNINGS = []; process.on('warning', (w) => WARNINGS.push(w));   // Codex promo r4 #5: no TimeoutOverflowWarning (asserted last)
 // failToken: the next N getIdToken() calls REJECT; failFrom: every call from index N on rejects; tokExp: the issued tokens' exp (ms)
 // rotate: each getIdToken() issues a NEW token (exp + n s) — a fresh token that really changes ⇒ the setter's notifier fires
-function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false } = {}) {
+function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToken = 0, failFrom = Infinity, tokExp, rotate = false, authGate = null } = {}) {
   const calls = { load: 0, ct: [], out: 0 }; let listeners = [], user = persisted;
   // hold: { on, q } — while on, every token read waits for the test to release it (a slow SDK)
   let tokN = 0; const rot = (n) => (rotate ? (tokExp ?? T0 + 3600e3) + n * 1000 : tokExp);
@@ -679,7 +707,8 @@ function fakeFirebase({ persisted = null, hold = null, failSignOut = 0, failToke
   const auth = { get currentUser() { const u = user; return u ? { uid: u, getIdToken: () => tok(u) } : null; } };
   const emitU = () => { for (const l of listeners) l(user ? { uid: user } : null); };
   const authMod = { browserLocalPersistence: 'LOCAL', getAuth: () => auth, setPersistence: async () => {},
-    onAuthStateChanged: (a, next) => { listeners.push(next); Promise.resolve().then(() => next(user ? { uid: user } : null)); return () => { listeners = listeners.filter((x) => x !== next); }; },
+    // authGate: { q } — the first auth state waits until the test releases it (a slow SDK: auth still unresolved at startup)
+    onAuthStateChanged: (a, next) => { listeners.push(next); const first = () => next(user ? { uid: user } : null); if (authGate) authGate.q.push(first); else Promise.resolve().then(first); return () => { listeners = listeners.filter((x) => x !== next); }; },
     signInWithCustomToken: async (a, t) => { calls.ct.push(t); user = t.replace(/^ct:/, ''); emitU(); return { user: { uid: user } }; },
     signOut: async () => { calls.out++; if (failSignOut > 0) { failSignOut--; throw new Error('network'); } user = null; emitU(); } };
   return { calls, loadSdk: async () => { calls.load++; return { initializeApp: () => ({}), authMod }; } };
@@ -1183,10 +1212,11 @@ const pedidoCount = (S) => S.qa('section[aria-label="Resumen del pedido"]').leng
 test('D-2 view: ONE breakpoint (≥1024) read synchronously; a crossing notifies once after the debounce; no matchMedia ⇒ phone', async () => {
   const CappView = require('./capp-view.js');
   assert.equal(CappView.BREAKPOINT, 1024); assert.equal(CappView.QUERY, '(min-width: 1024px)');
-  const m = fakeMedia(true), v = CappView.createView({ matchMedia: m.matchMedia });
+  // the view's timers are the virtual clock, as the shell hands it its ONE timers (capp-shell-ui.js createView(win, { timers: T }))
+  const vc = createClock(T0), m = fakeMedia(true), v = CappView.createView({ matchMedia: m.matchMedia }, { timers: vc });
   assert.equal(v.desk(), true, 'synchronous at creation');
   const seen = []; v.subscribe((d) => seen.push(d));
-  m.set(false); m.set(true); m.set(false); await flush(DESK_SETTLE);
+  m.set(false); m.set(true); m.set(false); await vc.flush(DESK_SETTLE);
   assert.deepEqual(seen, [false], 'a burst of crossings settles to ONE notification with the final value');
   assert.equal(v.desk(), false);
   assert.equal(CappView.createView({}).desk(), false, 'no matchMedia ⇒ the phone layout');
@@ -1570,7 +1600,7 @@ test('D-4a r2: an in-store action during a LOCKED dish hydration cancels it — 
 // no pop-in), the ⓘ only when fee + zone are finite, the feeinfo sheet falling back to the DIRECTORY values (never «undefined km»)
 const liveAuth = (st) => { const fns = new Set(); return { a: { state: () => st, onChange: (f) => { fns.add(f); return () => fns.delete(f); } }, set(v) { st = v; for (const f of [...fns]) f(v); } }; };
 // bounded wait for a boot condition (load-robust: a fixed flush count flaked at load1 ≈ 12); the cell's own asserts still decide
-const until = async (f, ms = 4000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 >= ms) throw new Error(`until: timed out after ${ms} ms — ${String(f).slice(0, 120)}`); await flush(); } };
+const until = async (f, ms = 4000) => { const vc = VC, now = () => (vc ? vc.now() : Date.now()), t0 = now(); if (vc) await vc.drain(); while (!f()) { if (now() - t0 >= ms) throw new Error(`until: timed out after ${ms} ${vc ? 'virtual ' : ''}ms — ${String(f).slice(0, 120)}`); await flush(); } };
 async function promoStore(opts = {}, rid = 'x_pizza') { const S = bootShell(opts); await until(() => S.q(`.rlist .rcard[data-rid="${rid}"]`)); S.click(`.rlist .rcard[data-rid="${rid}"]`); await flush(); assert.ok(S.q('.info'), `premise: the ${rid} store header`); return S; }
 const bare = (html) => html.replace(/<span class="pill deal" style="visibility:hidden" aria-hidden="true">/g, '<span class="pill deal">');   // the reserved pill's two attributes only
 
@@ -1681,10 +1711,10 @@ test('store promo r1 #2: an ADMITTED member arriving (a restored complete sessio
 
 // advisor ruling (promo r1 follow-up): HOME follows the same ADMITTED identity — no «Envío gratis» unless the checkout would send as
 // that member. Through the REAL Firebase callback path
-async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null } = {}) {
+async function realAuthHome({ persisted = null, failSignOut = 0, complete = null, prof = null, dirScript = ['complete'] } = {}) {
   const fb = fakeFirebase({ persisted, failSignOut });
   const st = memStorage({ ...(complete ? { 'capp:member_complete': JSON.stringify({ v: 1, uid: complete }) } : {}), ...(prof ? { 'capp:member_profile': JSON.stringify(prof) } : {}) });
-  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  const S = bootShell({ auth: 'unresolved', storage: st, runtime: SU_RUNTIME, dirScript, mountExtra: { loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
   await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]') && (!persisted || fb.calls.out > 0 || S.ui.state.member)); await flush();
   assert.ok(S.q('.rlist .rcard[data-rid="x_pizza"]'), 'premise: Inicio with the x_pizza card');
   return { S, fb };
@@ -2234,42 +2264,28 @@ test('store-update r2 (round trip): «Abrir App Store» records the store; the N
 // (else 400); one bounded page (limit 1–50, default 20) newest first with an opaque base64url {ts,id} cursor; the Row WHITELIST; active =
 // a status outside {cancelled, delivered, completed}. Entries come from the REAL writer (create-order-build.attachCustomerAttribution) ──
 const { attachCustomerAttribution } = FN_REQ('./create-order-build');
-const TERMINAL = new Set(['cancelled', 'delivered', 'completed']);
-const MO_ID_RE = /^[A-Za-z0-9_-]{4,64}$/;
 function userOrderEntry(uid, orderId, { ts, total, orderType = 'delivery', items_text = '1x Margherita (L250)', items = [{ name: 'Margherita', qty: 1 }], restaurantId = 'x_pizza', status = 'new' }) {
   const u = { [`orders/${orderId}`]: { status } };
   attachCustomerAttribution(u, orderId, uid, { now: ts, total, orderType, items_text, restaurantId, items, tables: null });   // the REAL writer
   return u[`user_orders/${uid}/${orderId}`];
 }
-// the RECEIPT detail mode, as 3a's my-orders.js@75eed212 (APPROVED) projects it — verbatim logic: priced lines only when every one is
-// well-formed, present integer totals only, the tender cash / card (never a reference), the address for a delivery only
-const RCPT_TOTALS = ['subtotal_cents', 'tax_cents', 'delivery_cents', 'promo_discount_cents', 'tip_cents', 'total_cents'];
-const RCPT_TENDER = { cash: 'cash', card_delivery: 'card', online: 'card' };
-function projectReceipt(id, entry, o) {
-  const isInt = (v) => Number.isSafeInteger(v), str = (v) => (typeof v === 'string' ? v : null), num = (v) => (Number.isFinite(v) ? v : null);
-  let lines = null;
-  if (Array.isArray(o.items) && o.items.length) { lines = []; for (const l of o.items) { if (!l || typeof l !== 'object' || !isInt(l.qty) || l.qty < 1 || typeof l.description !== 'string' || !isInt(l.line_gross_cents)) { lines = null; break; } lines.push({ qty: l.qty, description: l.description, line_cents: l.line_gross_cents }); } }
-  const totals = {}; for (const k of RCPT_TOTALS) if (isInt(o[k])) totals[k] = o[k];
-  const method = RCPT_TENDER[o.payment_method] || null, type = str(o.order_type);
-  return { order_id: id, ...(Number.isFinite(o.display_number) ? { display_number: o.display_number } : {}), ts: num(entry.ts), restaurant: str(entry.restaurant), order_type: type, status: str(o.status),
-    lines, items_text: str(o.items_text), totals, tender: { method, ...(method === 'cash' && isInt(o.cash_tendered_cents) ? { cash_tendered_cents: o.cash_tendered_cents } : {}) },
-    ...(type === 'delivery' ? { address: { detected: str(o.address_detected), details: str(o.address_details), area: str(o.address_area) } } : {}) };
-}
+// the RECEIPT detail mode = 3a's REAL projector (advisor 11-14): my-orders.js projectReceipt, loaded from the PINNED 3a ref with every
+// file it requires from that same commit (test/ref-require.mjs) — not yet in this base. The ref is the ONE 3a ref that also produced
+// fixtures/c3r-v2 (its handler's receipts) — feat/my-orders-3a = snapshot-v2-3a + rider-first-name-3a: the pin cell («C-3r v2 RCPT-PIN») holds both to the same blob. Replaces the hand-copied replica
+const MO3A_REF = '544732baa6ab200cd70892d4f3ffe0dc6948278a', MO3A_BLOB = '534c0b1b5785a9179605ba6ff07e2692a1d26aa5';
+const MO3A = refLoader(ROOT, MO3A_REF);
+const MOL = MO3A.require('xpizza-functions/my-orders.js'), { projectReceipt } = MOL;   // ONE 3a ref (feat/my-orders-3a): the receipt AND the list handler
 // «Volver a pedir» (getMyOrders' approved delta): each recipe line gains dish_id = the store's canonical dish id for its stored key,
 // from the REAL resolver (canonical-binding identityMap) over a D4-a context — here built from the SERVED menu (each dish's legacy key
 // by the real itemPricingKey → its served dish_id); no context ⇒ null on every line (the server's own rule)
-const CBND = FN_REQ('./catalog/canonical-binding'), MPRC = FN_REQ('./menu-pricing');
+const MPRC = FN_REQ('./menu-pricing');
 function servedCtx(rid, { drop = [] } = {}) {
   const m = PROV[rid].envelope.menu;
   return { availability: 'available', attached: true, usableAsIdentity: true,
     objects: m.dishes.filter((d) => d.dish_id && !drop.includes(MPRC.itemPricingKey(d, rid))).map((d) => ({ kind: 'dish', legacyKey: MPRC.itemPricingKey(d, rid), canonicalId: String(d.dish_id) })) };
 }
-const MO_REAL = FN_REQ('./my-orders.js');   // the real Pedidos row projector (C-3r G1)
-const withDishIds = (items, ctx) => { const map = ctx ? CBND.identityMap(ctx) : null;   // my-orders.js@75eed212 withDishIds, verbatim
-  return items.map((l) => (l && typeof l === 'object' && !Array.isArray(l) ? { ...l, dish_id: (map && typeof l.key === 'string' && map.dish.get(l.key)) || null } : l)); };
-function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false } = {}) {
+function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rgate = null, rdelay = 0, contextFor = () => null, claimless = false, receipts = {} } = {}) {
   const calls = [], rx = { inflight: 0, max: 0 };
-  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const handler = (u, i = {}) => {
     const url = new URL(u, 'https://fn.test'); calls.push({ url: url.toString(), headers: i.headers || {}, method: i.method || 'GET', body: i.body });
     const out = (status, json) => ({ status, json: async () => json });
@@ -2287,22 +2303,22 @@ function myOrdersServer(db, { deleted = new Set(), gate = null, orders = {}, rga
       const id = url.searchParams.get('order_id');
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || url.searchParams.has('limit') || url.searchParams.has('cursor')) return out(400, { ok: false, reason: 'bad_request' });
       const entry = (db[uid] || {})[id], order = orders[id];
-      const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
-      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency
+      // C-3r v2: a receipt PRODUCED by 3a's real handler (fixtures/c3r-v2) is served verbatim for its own order id (still owner-gated)
+      const res = !entry || typeof entry !== 'object' || !order || typeof order !== 'object' || order.customer_uid !== uid ? out(404, { ok: false, reason: 'not_found' }) : receipts[id] ? out(receipts[id].status, JSON.parse(JSON.stringify(receipts[id].body))) : out(200, { ok: true, receipt: projectReceipt(id, entry, order) });
+      if (rdelay) { rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); return new Promise((ok) => VC.setTimeout(() => { rx.inflight--; ok(res); }, rdelay)); }   // a SLOW server: the prefetch cells count concurrency (on the cell's virtual clock — step 9: every shell cell has one)
       const g = typeof rgate === 'function' ? rgate(id) : rgate;   // a function ⇒ one gate per call (the overlapping-read cells)
       return g ? g.then(() => res) : res;
     }
-    let limit = 20; if (url.searchParams.has('limit')) { const n = Number(url.searchParams.get('limit')); if (!Number.isInteger(n) || n < 1 || n > 50) return out(400, { ok: false, reason: 'bad_request' }); limit = n; }
-    let cur = null; if (url.searchParams.has('cursor')) { try { cur = JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url').toString()); } catch (_) { cur = null; } if (!cur || !Number.isFinite(cur.ts) || typeof cur.id !== 'string' || !MO_ID_RE.test(cur.id)) return out(400, { ok: false, reason: 'bad_request' }); }
-    const all = Object.entries(db[uid] || {}).map(([id, e]) => ({ id, e })).sort((a, b) => (a.e.ts - b.e.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));   // orderByChild('ts'), key tie-break
-    const before = cur ? all.filter((x) => x.e.ts < cur.ts || (x.e.ts === cur.ts && x.id < cur.id)) : all;   // endBefore(ts, id)
-    const page = before.slice(-(limit + 1)), more = page.length > limit, rows = (more ? page.slice(1) : page).reverse();   // limitToLast(limit + 1), newest first
-    // C-3r G1: the REAL row projector (my-orders.js projectRow — S-D's price_snapshot passes through verbatim) composed exactly as
-    // makeMyOrders composes it (my-orders.js:143): + the dish-id delta over its items, + display_number from orders/{id} when stamped
-    const proj = ({ id, e }) => { const row = MO_REAL.projectRow(id, e); return { ...row, items: withDishIds(row.items, contextFor(e.restaurant)),
-      ...(orders[id] && Number.isFinite(orders[id].display_number) ? { display_number: orders[id].display_number } : {}) }; };
-    const R = rows.map(proj), oldest = rows[rows.length - 1];
-    const res = out(200, { ok: true, active: R.filter((r) => typeof r.status === 'string' && !TERMINAL.has(r.status)), past: R.filter((r) => typeof r.status !== 'string' || TERMINAL.has(r.status)), next_cursor: more ? b64({ ts: oldest.e.ts, id: oldest.id }) : null });
+    // the LIST mode = 3a's REAL getMyOrders handler (advisor 11-14, C-2 rider name, source (a)): makeMyOrders from the pinned 3a ref, on
+    // an RTDB holding THIS fake's stores (user_orders = db, orders = orders) — its query (orderByChild ts / endBefore / limitToLast), its
+    // projectRow + dish ids + display_number + the rider's first name (fnOf: owner re-checked) — no hand-composed copy. The checks above
+    // stay in front (the contract's 400 / 401 / 403); the stand-ins are the token check (verifyIdToken → the claims decoded above) and
+    // the rate limiter (always allowed)
+    const r = { status: null, body: null };
+    const resx = { set() { return resx; }, status(c) { r.status = c; return resx; }, json(b) { r.body = JSON.parse(JSON.stringify(b)); return resx; } };
+    const { getMyOrders } = MOL.makeMyOrders({ getDatabase: () => fakeRtdb({ user_orders: db, orders }), getAuth: () => ({ verifyIdToken: async () => ({ uid, customer: true }) }),
+      checkRateLimit: async () => ({ allowed: true }), resolveContext: async (rid) => contextFor(rid) });
+    const res = getMyOrders({ method: 'GET', query: Object.fromEntries(url.searchParams), body: {}, get: (h) => (String(h).toLowerCase() === 'x-firebase-id-token' ? tok : undefined) }, resx).then(() => out(r.status, r.body));
     return gate ? gate.then(() => res) : res;   // a DELAYED answer (the identity-switch cells)
   };
   return { handler, calls, rx };
@@ -2326,6 +2342,7 @@ async function pedidosBoot(db, opts = {}) {
   const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
     if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
     if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
+    if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
   const fb = fakeFirebase({ persisted: 'u_ana', tokExp: T0 + 3600e3, ...(opts.fbOpts || {}) });
   const S = bootShell({ auth: 'unresolved', storage: opts.storage || g7Store(G7_PROFILE({ promos: true })), runtime: opts.runtime || G7_RUNTIME, now: opts.now, url: opts.url, readPublic: opts.readPublic, mountExtra: { loadSdk: fb.loadSdk, signupFetch: fetch, ...(opts.routing ? { routing: true } : {}), ...(opts.mountExtra || {}) }, apiFetch: opts.apiFetch, geolocation: opts.geolocation, ...(opts.envelope ? { envelope: opts.envelope } : {}), ...(opts.preMount ? { preMount: opts.preMount } : {}), ...(opts.dirScript ? { dirScript: opts.dirScript } : {}), ...(opts.media ? { media: opts.media } : {}) });
@@ -2663,27 +2680,8 @@ test('Pedidos r3 P2 (Codex r3): the deferred /r/{rid}/pago is a held intent — 
 // from the REAL intake chain, as 3a's own cells build them: storedCtx (a minted envío ctx) → DW.withDelivery → pricedLineItems (x_pizza's
 // factura lines) → buildCreateOrderUpdates → attachCustomerAttribution
 const RC = { P: FN_REQ('./delivery/delivery-pricing'), DW: FN_REQ('./delivery/delivery-wire'), FP: FN_REQ('./factura/pricing'), MP: FN_REQ('./menu-pricing'), CB: FN_REQ('./create-order-build'), MZ: FN_REQ('./materialize') };
-function placeReal(db, orders, uid, id, { rid = 'x_pizza', type = 'delivery', pay = 'cash', tip = 0, promo = 0, ts = T0 - 86400e3, items_text = '2x Margherita (L324) [+ 1x Mozzarella]', status = 'delivered', display_number } = {}) {
-  const ctx = type === 'delivery' ? RC.P.storedCtx({ delivery_snapshot: { mode: 'delivery', policy_version: 1, km: 3.2, band: 1, promo: null }, delivery_cents: 4000, promo_discount_cents: promo, ...(tip ? { tip_cents: tip } : {}) }) : null;   // Codex rcpt r1 #2: promo EXPLICIT (an absent key ⇒ storedCtx null ⇒ no envío / tip)
-  const bd = RC.DW.withDelivery({ ctx }, { total_cents: 64800, subtotal_cents: 56348, tax_cents: 8452 });
-  const body = rid === 'x_pizza' ? [{ name: 'Margherita', qty: 2, extras: [{ name: 'Mozzarella' }] }] : [{ id: Object.keys(RC.MP.MENU_BY_RESTAURANT.la_musa)[0], name: 'x', qty: 1 }];
-  const fp = rid === 'x_pizza' ? RC.FP.pricedLineItems(body, RC.MP.MENU_BY_RESTAURANT.x_pizza, RC.MP.EXTRAS_BY_RESTAURANT.x_pizza) : { items: null, error: null };
-  const u = RC.CB.buildCreateOrderUpdates({ orderId: id, orderType: type, now: ts, trackingToken: 'tk_' + id, total: bd.total_cents / 100, lat: type === 'delivery' ? 14.07 : null, lng: type === 'delivery' ? -87.19 : null,
-    fields: { customer_name: 'Ana', customer_phone: '50499990000', items_text, notes: 'sin cebolla', payment_method: pay, ...(type === 'delivery' ? { address_detected: 'Col. Palmira, Tegucigalpa', address_details: 'casa azul', address_area: 'Palmira' } : { pickup_time: 'asap' }) },
-    hubSnap: { hub_lat: 1, hub_lng: 2, restaurant_name: 'R', restaurant_phone: '1' }, restaurantId: rid, priceBreakdown: bd, facturaPriced: fp, cashTenderedCents: pay === 'cash' ? 100000 : null });
-  RC.CB.attachCustomerAttribution(u, id, uid, { now: ts, total: bd.total_cents / 100, orderType: type, items_text, restaurantId: rid, items: body });
-  // Codex rcpt r1 #2: the fixture's economics, asserted BEFORE anything renders (the base 648.00 + envío 40 + tip − promo)
-  if (type === 'delivery') assert.deepEqual([bd.subtotal_cents, bd.delivery_cents, bd.tip_cents || 0, bd.promo_discount_cents, bd.total_cents], [56348, 4000, tip, promo, 64800 + 4000 + tip - promo], 'premise: the real breakdown');
-  else assert.equal(bd.total_cents, 64800, 'premise: a pickup carries no envío');
-  // the ONLINE card charge: the same pending record + the REAL confirm patch (buildMaterializeUpdates), field paths applied in place
-  if (pay === 'online') { const mz = RC.MZ.buildMaterializeUpdates({ orderId: id, order: { ...u[`orders/${id}`] }, trackingToken: 'tk_' + id, now: ts + 1, restaurant: rid, paymentMethod: 'online' });
-    for (const [k, v] of Object.entries(mz)) { const m = k.match(/^orders\/([^/]+)\/([^/]+)$/); if (m && m[1] === id) u[`orders/${id}`][m[2]] = v; else if (k === `user_orders/${uid}/${id}`) u[k] = v; } }
-  const o = u[`orders/${id}`], e = u[`user_orders/${uid}/${id}`];
-  o.status = status; e.status = status;   // the status trigger keeps the entry in step (P3)
-  if (display_number) o.display_number = display_number;
-  (db[uid] = db[uid] || {})[id] = e; orders[id] = o;
-  return { o, e, bd };
-}
+// the real placement — test/place-real.mjs (one source with the C-3r v2 fixture generator); this file's functions tree
+function placeReal(db, orders, uid, id, o) { return placeRealWith(RC, T0, db, orders, uid, id, o); }
 const rrows = (R) => R.qa('.receipt .rbody .rrow, .receipt2 .rrow').map(txt);
 async function openPastReceipt(S, oid) {
   S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
@@ -2807,7 +2805,7 @@ test('Receipt PREFETCH (advisor 11-01, 3a): after «Pedidos» paints, at idle, t
   const { S, mo } = await pedidosBoot(db, { orders, rdelay: 20 });
   try {
     S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
-    await new Promise((r) => setTimeout(r, 600)); await flush();
+    await flush(600); await flush();
     const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).map((c) => new URL(c.url).searchParams.get('order_id'));
     assert.deepEqual(rq(), ['XP-P0', 'XP-P1', 'XP-P2', 'XP-P3', 'XP-P4'], '🔴 RC-13: exactly the first 5 visible past rows, in order');
     assert.equal(mo.rx.max, 1, '🔴 RC-13: ONE at a time (never a fan-out)');
@@ -2828,11 +2826,11 @@ test('Receipt PREFETCH stops on an identity change: an SDK switch Ana → Bob mi
   try {
     S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
     const rq = () => mo.calls.filter((c) => c.url.includes('order_id=')).length;
-    for (let i = 0; i < 40 && rq() < 1; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 40 && rq() < 1; i++) await flush(20);
     assert.ok(rq() >= 1, 'premise: the prefetch started');
     st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));
     const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bob'); await flush();
-    const at = rq(); await new Promise((r) => setTimeout(r, 500)); await flush();
+    const at = rq(); await flush(500); await flush();
     assert.ok(at < 5, 'premise: switched before the end');
     assert.equal(rq(), at, '🔴 RC-14: no receipt of Ana\'s requested after the switch');
   } finally { S.w.close(); }
@@ -2887,7 +2885,7 @@ async function againBoot(extra = {}) {
   placeReal(db, orders, 'u_ana', 'LM-V2', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: '1x Pad Thai (L210)' });
   const st = extra.storage || g7Store(G7_PROFILE({ promos: true }));
   if (extra.seed) extra.seed(st);
-  const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}) });
+  const { S, mo, fb } = await pedidosBoot(db, { orders, storage: st, contextFor: extra.contextFor || AGAIN_CTX, ...(extra.envelope ? { envelope: extra.envelope } : {}), ...(extra.preMount ? { preMount: extra.preMount } : {}), ...(extra.receipts ? { receipts: extra.receipts } : {}), ...(extra.rgate ? { rgate: extra.rgate } : {}) });
   return { S, mo, fb, st, orders, db };
 }
 test('Volver a pedir — by data: the eligible store\'s row has the pill, the all-null store\'s has none; the tabs appear; «Volver a pedir» lists ONLY the eligible store with its past dish (live menu)', async () => {
@@ -3111,15 +3109,15 @@ test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON
 // change ⇒ no note (extras are compared at the live price — the v1 rule; v2 extras_cents upgrades it); no snapshot ⇒ no note.
 // The cart always shows and charges the live price; the note is the courtesy disclosure, never an invented past price.
 const G1_PRICE = (patch) => { const env = J(PROV.x_pizza.envelope); patch(env.menu); return env; };
-async function g1Reorder(patch, { dropSnapshot = false } = {}) {
-  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+async function g1Reorder(patch, { dropSnapshot = false, receipts } = {}) {
+  const { S, st, db } = await againBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok'), ...(receipts ? { receipts } : {}) });
   const e = db.u_ana['XP-V1'];
   assert.deepEqual(J(e.price_snapshot), { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, 'premise: the real writer\'s v1 snapshot (2× Margherita L 299, Mozzarella once)');
   if (dropSnapshot) delete e.price_snapshot;   // an entry written before S-D (the base writer) — the row carries no snapshot
   S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
   S.click('.orow [data-act="reorder"][data-oid="XP-V1"]'); await flush();
   S.release('x_pizza', G1_PRICE(patch)); await flush(); await flush(); await flush();
-  return { S, st };
+  return { S, st, db };
 }
 const g1Changes = (S) => JSON.parse(JSON.stringify(S.ui.store().ui.cart.priceChanges())).map((c) => [c.name, c.sig ? 'extra' : 'plain', c.fromCents, c.toCents]);
 test('C-3r G1 v1 RULE (advisor 11-13, after Codex C-3r r1 P2): a dish price changed since the order ⇒ the frame-13 note ONLY for the OPTION-LESS configuration (unit = unit_cents exactly; struck old subtotal = unit_cents × n); the configuration WITH an extra gets NO note under v1', async () => {
@@ -3459,20 +3457,20 @@ test('C-6b r2 crossing: the shell\'s desk-only DOM follows the breakpoint BOTH w
     const page = () => S.qa('.hsec[aria-label="Destacados"] .rcard').map((c) => c.dataset.rid);
     assert.ok(S.q('.h1row') && S.q('.rgrid4'), 'premise: the desk Inicio');
     S.click(S.q('.hsec[aria-label="Destacados"] [data-act="feat-next"]')); await flush(); const p2 = page(); assert.equal(p2.length, 2, 'premise: page 2');
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.ok(!S.q('.app').classList.contains('desk'), 'premise: the phone now');
     assert.equal(S.q('.h1row'), null, '🔴 XB-1: desk→phone drops the H1 row');
     assert.equal(S.q('.rgrid'), null, '🔴 XB-1: desk→phone drops the desk grids');
     assert.equal(S.q('[data-act="seeall"]'), null, '🔴 XB-1: … and «Ver todo»');
     assert.equal(S.q('footer.dfoot'), null, 'and the desk footer');
     assert.ok(S.q('.home-head .addr-btn') && S.q('.hrow'), '🔴 XB-1: the phone\'s own head and rows');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.h1row') && S.q('.rgrid4'), '🔴 XB-2: phone→desk gains the H1 row and the grids');
     assert.deepEqual(page(), p2, '🔴 XB-2: the paging survives the round trip');
     S.click('.desknav .dn-search'); await flush(); const i = S.q('#gq'); i.value = 'pizza'; i.dispatchEvent(new S.w.Event('input', { bubbles: true })); await flush();
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.equal(S.q('#gq') && S.q('#gq').value, 'pizza', '🔴 XB-3: Buscar keeps its query across the crossing');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(/pizza/.test(S.q('.desknav .dn-search').textContent), '🔴 XB-3: … and the bar shows it again on the desk');
   } finally { S.w.close(); }
 });
@@ -3661,11 +3659,11 @@ test('C-6c crossing: desk→phone the store re-renders as the phone page (its ow
   const { S, media } = await deskStoreAt();
   try {
     S.click('.qty-add-btn'); await flush();
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     assert.equal(S.q('.sinfo'), null, '🔴 SX-1: no desk page on the phone'); assert.ok(S.q('#top') && S.q('#stick'), '🔴 SX-1: the phone header');
     assert.equal(S.q('.screen > .desknav'), null, 'no top bar on the phone store');
     assert.ok(/1/.test(S.q('#cart-bar').textContent), 'the cart kept');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.sinfo') && S.q('.screen > .desknav'), '🔴 SX-2: back to the desk page');
   } finally { S.w.close(); }
 });
@@ -3716,7 +3714,7 @@ test('C-6c r2 crossing with the dish dialog open: focus stays IN the dialog (the
     const a = ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && d.img);
     S.click(`#dish-${a.key} .txt`); await flush();
     assert.equal(S.w.document.activeElement, S.q('#detail-name'), 'premise: the heading has focus');
-    media.set(false); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(false); await flush(DESK_SETTLE); await flush();
     const ae = S.w.document.activeElement;
     assert.ok(S.q('#detail-modal').classList.contains('open') && !S.q('#detail-modal').classList.contains('wide'), 'premise: the phone sheet, still open');
     assert.ok(ae && ae !== S.w.document.body && S.q('#detail-modal').contains(ae), `🔴 XF-1: focus inside the sheet (${ae && (ae.id || ae.tagName)})`);
@@ -3843,6 +3841,18 @@ test('C-6d checkout: the guest\'s next step is ONLY the true sentence (never «N
   const { S: N } = await deskCheckout();
   try { assert.equal(N.q('.col-b .guestline'), null, 'guest rules off ⇒ no guest line'); } finally { N.w.close(); }
 });
+// LF-1 (the offers SBS 11-15, defect A): the checkout's logo chip (capp-ui logoChip — the store card, «Tu pedido», the receipt) is the
+// D6 plate too: a logo that fails to load becomes the initials, through the shell's ONE listener — never an empty disc
+test('LF-1 (D6 on the checkout): a store-card logo that FAILS to load becomes the initials plate', async () => {
+  const { S } = await deskCheckout();
+  try {
+    const img = S.q('.col-b .storecard .lg img');
+    assert.ok(img, 'premise: the directory\'s logo is drawn as an image');
+    img.dispatchEvent(new S.w.Event('error'));
+    const chip = S.q('.col-b .storecard .lg');
+    assert.ok(chip.classList.contains('txt') && chip.textContent === 'XP' && !chip.querySelector('img'), `🔴 LF-1: a failed checkout logo ⇒ the «XP» plate (${chip.outerHTML.slice(0, 160)})`);
+  } finally { S.w.close(); }
+});
 test('C-6d order panel (frame 5): on the desk «Orden #N» moves after the receipt (before the share line); the phone / no desk flag is byte-identical; a past receipt keeps its order', () => {
   const CappOrder = require('./capp-order.js');
   const o = { mode: 'delivery', status: 'out', storeName: 'Tienda', display_number: 12, driver: 'Marvin', addr: 'Col. Centro', windowText: '7:40 – 7:55 p. m.', lines: [{ n: 1, name: 'Plato', total: 100 }], fee: 45, pay: 'cash' };
@@ -3863,7 +3873,7 @@ test('C-6d order panel through the SHELL: a placed order\'s screen on the desk c
     await flush(); await placeShellCash(S); await until(() => S.q('.mk-num'), 6000);
     const kids = () => [...S.q('.mk-sheet').children].map((x) => x.className.split(' ')[0]);
     assert.ok(kids().indexOf('mk-num') < kids().indexOf('segbar'), 'premise: the phone order');
-    media.set(true); await new Promise((r) => setTimeout(r, DESK_SETTLE)); await flush();
+    media.set(true); await flush(DESK_SETTLE); await flush();
     assert.ok(S.q('.app').classList.contains('desk') && S.q('.screen > .desknav'), 'premise: the desk, with its top bar');
     const k = kids(); assert.ok(k.indexOf('mk-num') > k.indexOf('segbar'), `🔴 OD-3: the shell draws the desk order (${k.join(', ')})`);
   } finally { S.w.close(); }
@@ -3915,7 +3925,7 @@ function ratingServer({ now = () => T0, delay = 5 } = {}) {
   async function handler(u, i = {}) {
     const url = new URL(u, 'https://fn.test'), pth = url.pathname, method = i.method || 'GET';
     calls.push({ path: pth.split('/').pop(), url: url.toString(), method, headers: i.headers || {}, body: i.body == null ? null : JSON.parse(i.body) });
-    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); await new Promise((r) => setTimeout(r, delay)); rx.inflight--;
+    rx.inflight++; rx.max = Math.max(rx.max, rx.inflight); if (delay) await new Promise((r) => VC.setTimeout(r, delay)); rx.inflight--;   // the latency runs on the cell's virtual clock; delay 0 = no clock needed (a direct handler call)
     const uid = uidOf((i.headers || {})['x-firebase-id-token']);
     if (pth.endsWith('/getMyRating')) {
       if (method !== 'GET') return out(405, { ok: false, error: 'method_not_allowed' });
@@ -4123,6 +4133,66 @@ test('C-2 the send diff (capp-rate): a first rating sends only what is set; an e
   assert.deepEqual(R.fieldsToSend(ini, { ...R.fromRating(ini), delivery: null, comment: ' Riquísima ' }, ['a']), { delivery: null, comment: 'Riquísima' }, 'a cleared thumb ⇒ null; the comment trimmed');
   assert.deepEqual(R.dishesOf(['a', 'a', 'b', 'c', 'z'], (id) => ({ a: 'Pizza', c: 'Pan' })[id] || null), [{ id: 'a', name: 'Pizza' }, { id: 'c', name: 'Pan' }], '🔴 RD-2: distinct, nameable only');
 });
+// ── C-2 rider name (advisor 11-14; owner-approved copy «Tu repartidor, {Nombre}»): the rider's FIRST name from the order's Pedidos ROW
+// (source (a): no extra read, no pop-in). Real pieces end to end: the order (place-real), the name SNAPSHOTTED by 3a's REAL
+// writeDeliveryAttribution (the delivery CAS winner copies driver_accounts/<uid>/first_name, normalized) and served by 3a's REAL
+// getMyOrders list handler (non-null ONLY for a fulfilled delivery whose order is the caller's) — both from feat/my-orders-3a ──
+const DATTR = MO3A.require('xpizza-functions/driver-attribution.js');
+async function stampRider(orders, id, driverUid, firstName) {   // driver_accounts/<uid>/first_name = what Central typed (server-written)
+  const accts = firstName === undefined ? {} : { [driverUid]: { first_name: firstName } };
+  const w = await DATTR.writeDeliveryAttribution(fakeRtdb({ orders, driver_accounts: accts }), id, driverUid);
+  assert.equal(w.written, true, 'premise: the delivery CAS winner wrote the attribution');
+  return w;
+}
+async function riderSheet(id, setup) {
+  const rate = ratingServer(), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', id, { ts: T0 - 3600e3 });
+  await setup({ db, orders });
+  rate.own(id, 'u_ana', []); rate.fulfil(id, T0 - 3600e3);
+  const { S } = await pedidosBoot(db, { orders, rate, runtime: RATE_RT(), contextFor: AGAIN_CTX });
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await until(() => S.q(`.orow .rate-go[data-oid="${id}"]`));
+  S.click(`.orow .rate-go[data-oid="${id}"]`); await until(() => S.q('#layer .rate'));
+  const del = S.q('#layer [data-act="rate-del"]'), row = del && del.closest('.rrow2');
+  return { S, line: row ? txt(row.querySelector('.t')) : null, orders };
+}
+test('C-2 rider name: a delivered DELIVERY whose rider has a first name ⇒ «Tu repartidor, María José» (the snapshot, never the cascade\'s display name)', async () => {
+  const { S, line, orders } = await riderSheet('XP-N1', async ({ orders }) => { const w = await stampRider(orders, 'XP-N1', 'drv_1', '  María   José '); assert.equal(w.first, 'María José', 'premise: the writer\'s normalized snapshot'); });
+  try {
+    assert.equal(orders['XP-N1'].delivered_by_first_name, 'María José', 'premise: stamped on the order');
+    assert.equal(line, 'Tu repartidor, María José', '🔴 RN-1: the rider\'s first name, as served');
+  } finally { S.w.close(); }
+});
+test('C-2 rider name: no first name on the rider\'s account (the writer stamps none) ⇒ the fallback «Tu repartidor de Sherpa»', async () => {
+  const { S, line, orders } = await riderSheet('XP-N2', async ({ orders }) => { await stampRider(orders, 'XP-N2', 'drv_2', undefined); });
+  try {
+    assert.equal(orders['XP-N2'].delivered_by_first_name, undefined, 'premise: nothing stamped');
+    assert.equal(line, 'Tu repartidor de Sherpa', '🔴 RN-FALLBACK: null ⇒ the fallback, never «Tu repartidor, »');
+  } finally { S.w.close(); }
+});
+test('C-2 rider name: only a FULFILLED DELIVERY row carries a name — a cancelled delivery and a pickup that were stamped come back without one (the real list handler + the client\'s rowOf), the delivered control keeps it', async () => {
+  // a cancelled order has no «Valorar» (the sheet is unreachable), so this cell reads the list as the app parses it
+  const A = require('./capp-signup-api.js'), db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-N3', { ts: T0 - 3 * 3600e3 }); placeReal(db, orders, 'u_ana', 'XP-N5', { ts: T0 - 2 * 3600e3, type: 'pickup' }); placeReal(db, orders, 'u_ana', 'XP-N6', { ts: T0 - 3600e3 });
+  for (const [id, drv, n] of [['XP-N3', 'drv_3', 'Luis'], ['XP-N5', 'drv_5', 'Rosa'], ['XP-N6', 'drv_6', 'Ana']]) await stampRider(orders, id, drv, n);
+  orders['XP-N3'].status = 'cancelled'; db.u_ana['XP-N3'].status = 'cancelled';
+  const r = await myOrdersServer(db, { orders, contextFor: AGAIN_CTX }).handler('https://fn.test/getMyOrders?context=platform', { method: 'GET', headers: { 'x-firebase-id-token': TOK('u_ana') } });
+  const j = await r.json(); assert.equal(r.status, 200);
+  const rows = Object.fromEntries(j.past.map(A.rowOf).filter(Boolean).map((x) => [x.order_id, x.driver_first_name === undefined ? null : x.driver_first_name]));
+  assert.deepEqual(rows, { 'XP-N6': 'Ana', 'XP-N5': null, 'XP-N3': null }, '🔴 RN-NOTDELIVERED: the name rides a fulfilled delivery row only');
+});
+test('C-2 rider name: ANOTHER member\'s order (the history entry points at an order whose customer_uid is not the caller\'s) never leaks its rider\'s name', async () => {
+  const { S, line } = await riderSheet('XP-N4', async ({ orders }) => { await stampRider(orders, 'XP-N4', 'drv_4', 'Carla'); orders['XP-N4'].customer_uid = 'u_bea'; });
+  try { assert.equal(line, 'Tu repartidor de Sherpa', '🔴 RN-OWNER: no other member\'s rider name'); } finally { S.w.close(); }
+});
+test('C-2 rider name (presenter): the name is HTML-escaped (the sheet never renders markup from the row), and a pickup has no rider line at all', () => {
+  const R = require('./capp-rate.js'), d = new JSDOM('<!doctype html><div id="x"></div>').window.document;
+  const vm = (o) => ({ storeName: 'S', num: null, dishes: [], delivery: true, driverName: null, value: R.fromRating(null), initial: null, editable: true, sending: false, error: null, ...o });
+  d.getElementById('x').innerHTML = R.sheetHtml(vm({ driverName: '<img src=x onerror=alert(1)>Ana' }));
+  assert.equal(d.querySelector('#x img'), null, '🔴 RN-ESC: no markup from the name');
+  assert.ok([...d.querySelectorAll('.rrow2 .t')].some((t) => t.textContent === 'Tu repartidor, <img src=x onerror=alert(1)>Ana'), '🔴 RN-ESC: shown as text');
+  d.getElementById('x').innerHTML = R.sheetHtml(vm({ delivery: false, driverName: 'Ana' }));
+  assert.ok(!/Tu repartidor/.test(d.getElementById('x').textContent), 'a pickup: no rider line');
+});
 test('C-2 pickup: a PICKUP order\'s sheet has no «La entrega» row (the delivery thumbs exist only for a delivery)', async () => {
   const rate = ratingServer(), db = {}, orders = {};
   placeReal(db, orders, 'u_ana', 'XP-P1', { ts: T0 - 3600e3, type: 'pickup' });
@@ -4248,7 +4318,7 @@ test('C-2 r2 dish ids: the client\'s rule IS the server\'s (rating-v2.dishIdOk =
   for (const id of corpus) { assert.equal(A.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the transport answers like the server`); assert.equal(R.dishIdOk(id), server(id), `🔴 R2-3: «${id.slice(0, 24)}» — the sheet too`); }
 });
 test('C-2 r2 the fake is contract-strict (rule 29): a HANDHELD customer token and a TOMBSTONED caller get the generic 403; a tombstoned owner\'s node is never shown', async () => {
-  const rate = ratingServer(); rate.own('XP-F1', 'u_ana'); rate.fulfil('XP-F1'); rate.nodes['XP-F1'] = { ...rate.nodes['XP-F1'], store: 4, rated_at: T0, owner_uid: 'u_ana' };
+  const rate = ratingServer({ delay: 0 }); rate.own('XP-F1', 'u_ana'); rate.fulfil('XP-F1'); rate.nodes['XP-F1'] = { ...rate.nodes['XP-F1'], store: 4, rated_at: T0, owner_uid: 'u_ana' };   // no shell, no clock: the handler is called directly
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url'), tok = (pl) => `${b64({ alg: 'RS256' })}.${b64(pl)}.sig`;
   const get = async (t) => { const r = await rate.handler('https://fn.test/getMyRating?order_id=XP-F1', { method: 'GET', headers: { 'x-firebase-id-token': t } }); return [r.status, await r.json()]; };
   assert.deepEqual(await get(tok({ user_id: 'u_ana', customer: true, handheld: true })), [403, { ok: false, error: 'not_allowed' }], '🔴 R2-4: a handheld token is never a customer');
@@ -4784,6 +4854,342 @@ test('WAKE-6b: the directory failing (frame 7) is a settled first screen ⇒ REA
   try { await until(() => E.q('[data-act="dir-retry"]')); await flush(); assert.equal(readyOf(E), '1', '🔴 WAKE-6b: the error frame ⇒ READY'); } finally { E.w.close(); }
 });
 
+// SBS asm9 D1 (16b): the DESKTOP Inicio card's meta is the frame's ONE line «● Abierto · Envío desde L 45» (D-3 r3 f1a — no closing
+// time, which wrapped it onto three lines with a dangling «·»); the PHONE keeps v6's «Abierto · cierra … · Envío desde …»
+test('D1 (C-6b desk, 16b): the open card meta on the desk = «Abierto · Envío desde L 45» (no «cierra»); the phone unchanged', async () => {
+  const D = bootShell({ media: fakeMedia(true) });
+  try {
+    await until(() => D.q('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')); await flush();
+    assert.equal(txt(D.q('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')), 'Abierto · Envío desde L 45', '🔴 D1: the desk card meta, exact to f1a');
+  } finally { D.w.close(); }
+  const P = bootShell({}); try { await until(() => P.q('.rlist .rcard[data-rid="x_pizza"] .meta')); await flush(); assert.ok(/cierra/.test(txt(P.q('.rlist .rcard[data-rid="x_pizza"] .meta'))), 'the phone keeps its closing time (v6)'); } finally { P.w.close(); }
+});
+
+// ── G-B (NOTE-capp-3-gaps-vs-frames; advisor 11-13: the aside's notes → the checkout's notes field): D-3 r3 frame 2a draws, in the
+// desk cart aside between the lines and the card-only note, «Agregar notas al restaurante · Sin cebolla, bien cocida…» ──
+test('G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» after the lines; a tap opens the checkout with its notes field OPEN and focused; the phone sheet and an empty aside carry none', async () => {
+  const { S, ui } = await deskStore(true, 1);
+  try {
+    const row = S.q('.deskcart [data-act="cartnotes"]');
+    assert.ok(row, '🔴 G-B: the aside row');
+    assert.equal(txt(row), 'Agregar notas al restaurante Sin cebolla, bien cocida…', '🔴 G-B: frame 2a\'s copy');
+    const kids = [...S.q('.deskcart').children], at = kids.indexOf(row), lastLine = kids.map((k, i) => (k.classList.contains('cline') && k !== row ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+    assert.ok(at === lastLine + 1 && kids.slice(at + 1).some((k) => k.classList.contains('ctot')), '🔴 G-B: right after the lines, before the totals');
+    S.click('.deskcart [data-act="cartnotes"]'); await flush();
+    assert.equal(ui.state.screen, 'checkout', '🔴 G-B: the tap goes to the checkout');
+    const notes = S.q('#f-notes');
+    assert.ok(notes, '🔴 G-B: the checkout\'s notes field is OPEN (no extra «Agregar notas» tap)');
+    assert.equal(S.w.document.activeElement, notes, '🔴 G-B: and focused');
+  } finally { S.w.close(); }
+  const P = await deskStore(false, 1);
+  try { P.S.click('.cart-bar'); await flush(); assert.equal(P.S.qa('[data-act="cartnotes"]').length, 0, 'the phone sheet: no row (frame 2a is the desk)'); } finally { P.S.w.close(); }
+  const E = await deskStore(true, 0);
+  try { assert.equal(E.S.qa('.deskcart [data-act="cartnotes"]').length, 0, 'an empty aside: no row'); } finally { E.S.w.close(); }
+});
+
+// ── RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — the ONE predicate (CappShell.configFor
+// promoFree) requires 5f's `basis: 'pricing'` marker. complete_writer_raw is what the pinned 5f directory writer emits TODAY ──
+const RAWDIR = { status: SC.complete_writer_raw.status, body: SC.complete_writer_raw.body, etag: SC.complete_writer_raw.headers.ETag };
+const CLAIM = /Envío gratis|envío es gratis|Gratis/;
+test('RULE 10: what the pinned directory writer emits TODAY (a promo without the pricing marker) ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', async () => {
+  const rawX = SC.complete_writer_raw.body.restaurants.find((e) => e.restaurant_id === 'x_pizza'), markX = SC.complete.body.restaurants.find((e) => e.restaurant_id === 'x_pizza');
+  assert.ok(rawX.promo && rawX.promo.free_delivery === true && !('basis' in rawX.promo), 'premise: the writer\'s own promo — free_delivery, no marker');
+  assert.equal(CappShell.configFor(markX, RUNTIME).promoFree, true, 'premise: the marked promo is a claim (the cell is not vacuous)');
+  assert.equal(CappShell.configFor(rawX, RUNTIME).promoFree, false, '🔴 RULE 10: the raw writer promo is NOT a claim (the one predicate)');
+  for (const [dir, raw] of [[RAWDIR, true], ['complete', false]]) {
+    const G = bootShell({ auth: 'guest', dirScript: [dir] });
+    try {
+      await until(() => G.q('.rlist .rcard[data-rid="x_pizza"]')); await flush();
+      const home = G.w.document.body.textContent;
+      G.click('.rlist .rcard[data-rid="x_pizza"]'); await flush(); assert.ok(G.q('.info'), 'premise: the store');
+      const store = G.w.document.body.textContent;
+      if (raw) assert.ok(!CLAIM.test(home) && !CLAIM.test(store), `🔴 RULE 10: the raw writer — no claim for a GUEST (Inicio + store, even hidden): ${(home + store).match(CLAIM)}`);
+      else assert.ok(/Envío gratis con tu cuenta/.test(store), 'premise: the marked promo shows the guest pill');
+    } finally { G.w.close(); }
+    const { S } = await realAuthHome({ persisted: 'u_ana', complete: 'u_ana', prof: ANA_PROF, dirScript: [dir] });
+    try {
+      assert.ok(S.ui.state.member, 'premise: an admitted member');
+      const home = S.w.document.body.textContent;
+      S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+      const store = S.w.document.body.textContent;
+      if (raw) assert.ok(!CLAIM.test(home) && !CLAIM.test(store), `🔴 RULE 10: the raw writer — no claim for a MEMBER (Inicio + store): ${(home + store).match(CLAIM)}`);
+      else assert.ok(/Envío gratis/.test(home), 'premise: the marked promo shows the member\'s «Envío gratis»');
+    } finally { S.w.close(); }
+  }
+});
+test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself', () => {
+  const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
+  if (!gen.includes('5f MARKER OVERLAY')) return;   // the bridge is gone: nothing left to expire
+  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
+  const rawPromos = SC.complete_writer_raw.body.restaurants.map((e) => e.promo).filter(Boolean);
+  assert.ok(rawPromos.length > 0, 'premise: the raw writer emits a promo');
+  assert.ok(rawPromos.every((p) => !('basis' in p)), '🔴 bridge EXPIRED: the pinned writer emits the marker itself — drop the overlay');
+});
+
+// ── G-C (NOTE-capp-3-gaps-vs-frames; advisor 11-13): the DESK filter row is the phone's set in D-3 r3 f1a's order — «Abierto ahora ·
+// Pickup · Menos de 30 min» + a 4th chip whose label follows the viewer: a member's «Envío gratis» (the rule-10 predicate — never
+// today), else «Envío desde L {the LOWEST priced fee}» filtering to the stores at that floor. The phone keeps v6's chips exactly ──
+const chipLabels = (html) => [...dom(html).querySelectorAll('.fchip')].map((b) => b.textContent.trim());
+const withFees = (fees) => { const b = J(SC.complete.body); for (const e of b.restaurants) if (fees[e.restaurant_id] !== undefined) e.fee = fees[e.restaurant_id]; return b; };
+test('G-C1 (f1a): the desk guest\'s filter row — Abierto ahora · Pickup · Menos de 30 min · «Envío desde L 45» (the lowest priced fee); the phone keeps v6\'s three', () => {
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: true, auth: 'guest' }))), ['Abierto ahora', 'Pickup', 'Menos de 30 min', 'Envío desde L 45'], '🔴 G-C1: the desk row (f1a)');
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: false, auth: 'guest' }))), ['Abierto ahora', 'Pickup', 'Menos de 30 min'], 'the phone: v6 exactly (no fee chip for a guest)');
+});
+test('G-C2: the fee chip is COMPUTED — the lowest priced fee labels it, and pressing it keeps only the stores at that floor; no priced fee ⇒ no chip', () => {
+  const rows = rowsOf(withFees({ la_musa: { state: 'priced', from_cents: 3500 } }));
+  assert.deepEqual(chipLabels(CappHome.homeHtml(VM({ desk: true, rows }))).at(-1), 'Envío desde L 35', '🔴 G-C2: the label is the real minimum');
+  const d = dom(CappHome.homeHtml(VM({ desk: true, rows, filters: new Set(['fee']) })));
+  assert.equal(d.querySelector('.fchip[data-val="fee"]').getAttribute('aria-pressed'), 'true', 'premise: pressed');
+  assert.deepEqual([...d.querySelectorAll('.hsec[aria-label="Todos los restaurantes"] .rcard')].map((c) => c.dataset.rid), ['la_musa'], '🔴 G-C2: only the store at the floor');
+  const ph = dom(CappHome.homeHtml(VM({ desk: false, rows, filters: new Set(['fee']) })));   // pressed on the desk, then the window narrowed
+  assert.deepEqual([...ph.querySelectorAll('.hsec[aria-label="Todos los restaurantes"] .rcard')].map((c) => c.dataset.rid).sort(), ['la_musa', 'x_pizza'], '🔴 G-C2: no HIDDEN filter — the phone has no fee chip, so it filters nothing there');
+  const none = rowsOf(withFees({ x_pizza: { state: 'none' }, la_musa: { state: 'none' } }));
+  assert.ok(!chipLabels(CappHome.homeHtml(VM({ desk: true, rows: none }))).some((l) => /Envío/.test(l)), '🔴 G-C2: no priced fee ⇒ no fee chip');
+});
+
+// ── PLAN-capp-virtual-clock r0 step 0 (advisor 11-13): P1/P2 — ONE clock in production. The shell hands its timers to the store UI
+// (CappUI.mount) and the signup transport, and its now() to the signup sheet (the resend countdown) — never a second, real clock ──
+function spyGlobals(seen) {
+  return (w) => {
+    const trap = (name, wrap) => { let v; Object.defineProperty(w, name, { configurable: true, get: () => v, set: (x) => { v = wrap(x); } }); };
+    trap('CappUI', (x) => ({ ...x, mount: (d, o) => { seen.ui = o.timers; return x.mount(d, o); } }));
+    trap('CappSignupApi', (x) => ({ ...x, createSignupApi: (o) => { seen.suApi = o.timers; return x.createSignupApi(o); } }));
+    trap('CappSignup', (x) => ({ ...x, createSignup: (o) => { seen.suNow = o.now; seen.suTimers = o.timers; return x.createSignup(o); } }));
+  };
+}
+test('VC-P1/P2 (production): the shell\'s ONE timers reach the store UI and the signup transport; its now() reaches the signup sheet', async () => {
+  const seen = {}, mine = { setTimeout: (f, ms) => { const h = setTimeout(f, ms); if (h && h.unref) h.unref(); return h; }, clearTimeout: (h) => clearTimeout(h), setInterval: (f, ms) => { const h = setInterval(f, ms); if (h && h.unref) h.unref(); return h; }, clearInterval: (h) => clearInterval(h) };
+  const myNow = () => T0, fb = fakeFirebase({});
+  const S = bootShell({ runtime: SU_RUNTIME, preMount: spyGlobals(seen), mountExtra: { timers: mine, now: myNow, loadSdk: fb.loadSdk, signupFetch: signupServer(ANA).fetch } });
+  try {
+    await until(() => S.q('.rlist .rcard[data-rid="x_pizza"]')); S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    assert.ok(S.q('.info'), 'premise: the store mounted');
+    assert.equal(seen.ui, mine, '🔴 P1: CappUI.mount gets the shell\'s timers');
+    assert.equal(seen.suApi, mine, '🔴 P1: the signup transport gets the shell\'s timers');
+    assert.equal(seen.suTimers, mine, 'premise: the sheet already did');
+    assert.equal(seen.suNow, myNow, '🔴 P2: the signup sheet reads the shell\'s now()');
+  } finally { S.w.close(); }
+});
+// step 0's opt-in: bootShell({ clock: true }) runs the shell on the VIRTUAL clock — the view's 120 ms settle fires at exactly +120
+// virtual, whatever the machine does meanwhile (a 350 ms real stall moves nothing)
+test('VC-H1 bootShell({ clock: true }): the desk→phone switch fires at EXACTLY the view\'s settle (+120 virtual ms) — a real 350 ms stall moves nothing', async () => {
+  const media = fakeMedia(true), S = bootShell({ media, clock: true }), SET = require('./capp-view.js').SETTLE_MS;
+  assert.equal(SET, 120, 'premise: the view settles in 120 ms');
+  try {
+    await flush(); assert.ok(S.q('#app').classList.contains('desk'), 'premise: the desk');
+    media.set(false);
+    const t0 = Date.now(); while (Date.now() - t0 < 350) { /* a real stall (load) */ }
+    await flush(0);
+    assert.ok(S.q('#app').classList.contains('desk'), '🔴 VC-H1: no virtual time passed ⇒ the debounce has not fired');
+    await flush(SET - 1); assert.ok(S.q('#app').classList.contains('desk'), '🔴 VC-H1: settle − 1 ⇒ still the desk');
+    await flush(1); assert.ok(!S.q('#app').classList.contains('desk'), '🔴 VC-H1: at the settle ⇒ the phone, exactly');
+  } finally { S.w.close(); }
+});
+// step 9: the clock is virtual BY DEFAULT — the real-by-design names are real cells (a typo or a rename would silently move a paint-frame
+// cell onto the virtual clock), those cells boot REAL, and every other cell that ran booted its shells on the virtual clock
+test('VC-M the virtual clock is the default: every shell a cell boots is virtual, except the REAL_BY_DESIGN cells (each exactly one cell, booted real)', () => {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const names = [...src.matchAll(/^test\('((?:[^'\\]|\\.)*)'/gm)].map((m) => m[1].replace(/\\(.)/g, '$1'));
+  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => names.filter((x) => x === n).length !== 1), [], '🔴 VC-M: a real-by-design name that is not exactly one cell');
+  assert.deepEqual([...REAL_BY_DESIGN].filter((n) => RAN.has(n) && VC_BOOTED.has(n)), [], '🔴 VC-M: a real-by-design cell booted on the virtual clock');   // the cells that ran this run (a filtered run checks its own)
+  assert.deepEqual([...BOOTED_REAL].filter((n) => !REAL_BY_DESIGN.has(n)), [], '🔴 VC-M: a cell booted a shell on the REAL clock');
+});
+
+// the leak hunt (advisor 11-13): a cell that leaves its shell window OPEN keeps it rendering on late responses after the cell ended
+// (100 cells did — «D-2 mount» and «G7 decision 7» were seen re-rendering during later cells). Runs LAST: no earlier cell's shell
+// is still open
+test('VC-L no shell window outlives the cell that booted it (late responses never render into a later cell)', () => {
+  const open = SHELLS.filter((x) => !x.closed).map((x) => x.cell);
+  assert.ok(SHELLS.length > 0, 'premise: shells were booted');
+  assert.deepEqual([...new Set(open)].filter((c) => c !== CUR), [], '🔴 VC-L: a shell left open by an earlier cell');
+});
+
+// ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / R4.3 / §4.3; advisor 11-14): the reorder reads the snapshot from the RECEIPT through
+// readReceipt (cached + de-duplicated; prefetched rows make the tap request-free) under a 1.5 s deadline; ONE owner / generation /
+// navigation check runs before applying EITHER outcome (a late success and a late fallback are both dropped). A v2 snapshot carries the
+// committed per-extra prices: the frame-13 note is exact for a configuration WITH extras too (component-wise, §4.3). The receipt here is
+// 3a's REAL handler's (fixtures/c3r-v2/gen-c3r-v2.mjs at feat/snapshot-v2-3a), served verbatim for its own order ──
+const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8')).scenarios['XP-V1'];
+const V2R = { 'XP-V1': C3V2.receipt };
+const pvNotes = (S) => S.qa('.cartnote[role="status"] .cn-l').map((x) => x.textContent);
+const recipeOfEntry = (e) => J(e.items).map((l) => ({ key: l.key, qty: l.qty, ...(l.options ? { options: l.options } : {}) }));
+// PROVENANCE-PIN:BEGIN c3r-v2
+const C3J = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8'));
+test('C-3r v2 RCPT-PIN: the receipt projector the fakes serve is 3a\'s REAL one, from the SAME 3a ref + blob that produced fixtures/c3r-v2', () => {
+  assert.equal(MO3A.blob('xpizza-functions/my-orders.js'), MO3A_BLOB, '🔴 RCPT-PIN: the composed my-orders.js is the pinned blob');
+  assert.equal(C3J.source.commit, MO3A_REF, '🔴 RCPT-PIN: the fixture was generated at the same 3a ref');
+  assert.equal(C3J.source.blobs['my-orders.js'], MO3A_BLOB, '🔴 RCPT-PIN: the fixture\'s handler ran the same my-orders.js');
+  const r = J(projectReceipt('P1', { ts: 1, restaurant: 'la_musa', price_snapshot: { v: 2, lines: [] } }, { order_type: 'pickup', status: 'delivered', payment_method: 'card_delivery' }));
+  assert.deepEqual(r.price_snapshot, { v: 2, lines: [] }, 'premise: 3a step 1\'s passthrough is in the composed projector');
+});
+// PROVENANCE-PIN:END c3r-v2
+// the la_musa gap (advisor 11-14): an ID-keyed order (k = the extra's ID) through the REAL writer (place-real, LM-V1's body) and 3a's
+// REAL receipt (LM-V1, served verbatim); the reorder is eligible through the store's own D4-a context (servedCtx)
+const LMV1 = C3J.scenarios['LM-V1'];
+async function lmReorder(patch) {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'LM-V1', { rid: 'la_musa', type: 'pickup', pay: 'card_delivery', ts: T0 - 2 * 86400e3, items_text: LMV1.receipt.body.receipt.items_text, body: LMV1.body });
+  const { S } = await pedidosBoot(db, { orders, contextFor: (rid) => servedCtx(rid), envelope: (rid) => (rid === 'la_musa' ? 'hold' : 'ok'), receipts: { 'LM-V1': LMV1.receipt } });
+  assert.deepEqual(recipeOfEntry(db.u_ana['LM-V1']), recipeOfEntry(LMV1), 'premise: the receipt\'s snapshot is aligned with THIS row\'s recipe (id-keyed: dimsum_01 + rice_white, dimsum_02)');
+  S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  assert.ok(S.q('.orow [data-act="reorder"][data-oid="LM-V1"]'), 'premise: the la_musa row is reorderable (its dish_ids from the context)');
+  S.click('.orow [data-act="reorder"][data-oid="LM-V1"]'); await flush();
+  const env = J(PROV.la_musa.envelope); patch(env.menu); S.release('la_musa', env); await flush(); await flush(); await flush();
+  return { S, db };
+}
+test('C-3r v2 la_musa (id-keyed k): the EXTRA rice_white 50→60 ⇒ the frame-13 note for the configuration WITH it, exact (249 + 50 → 249 + 60), from 3a\'s real receipt; the plain lines unchanged', async () => {
+  const { S } = await lmReorder((m) => { m.extras.find((x) => x.id === 'rice_white').price = 60; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Sichuan Spicy Wonton', 'extra', 29900, 30900]], '🔴 C3R-V2-LM: the configured unit from the receipt\'s committed prices, by the extra\'s ID');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Sichuan Spicy Wonton + Arroz Blanco: antes L 299, ahora L 309.'], '🔴 C3R-V2-LM: the one frame-13 line, exact');
+    assert.equal(S.ui.store().ui.cart.count(), 3, 'the whole order is back: 2 + 1');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 la_musa (id-keyed k): the DISH dimsum_02 248→258 and the extra unchanged ⇒ only the plain line\'s note, exact', async () => {
+  const { S } = await lmReorder((m) => { m.dishes.find((d) => d.id === 'dimsum_02').price = 258; });
+  try {
+    assert.deepEqual(g1Changes(S), [['Pork Belly Buns', 'plain', 24800, 25800]], '🔴 C3R-V2-LM dish: only the changed dish, exact');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Pork Belly Buns: antes L 248, ahora L 258.'], '🔴 C3R-V2-LM dish: the one frame-13 line');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 §4.3 (3a\'s real v2 receipt): an EXTRA\'s price changed since the order ⇒ the frame-13 note for the configuration WITH it, exact (299 + 50 → 299 + 60); the plain one unchanged', async () => {
+  const { S } = await g1Reorder((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; }, { receipts: V2R });
+  try {
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 35900]], '🔴 C3R-V2-EXTRA: the configured unit from the receipt\'s committed prices');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 359.'], '🔴 C3R-V2-EXTRA: the one frame-13 line, exact');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 §4.3 — the Codex C-3r r1 P2 case, now PROVABLE: Margherita 299→309 AND Mozzarella 50→60 ⇒ BOTH configurations noted, each exact (L 349 → L 369; L 299 → L 309)', async () => {
+  const { S, db } = await g1Reorder((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; m.extras.find((x) => x.name === 'Mozzarella').price = 60; }, { receipts: V2R });
+  try {
+    assert.deepEqual(recipeOfEntry(db.u_ana['XP-V1']), recipeOfEntry(C3V2), 'premise: the receipt\'s snapshot is aligned with THIS row\'s recipe (same order, same lines)');
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 36900], ['Margherita', 'plain', 29900, 30900]], '🔴 C3R-V2-BOTH: both configurations, each from its committed components');
+    assert.deepEqual(pvNotes(S), ['Cambió el precio de Margherita + Mozzarella: antes L 349, ahora L 369.', 'Cambió el precio de Margherita: antes L 299, ahora L 309.'], '🔴 C3R-V2-BOTH: the two frame-13 lines');
+  } finally { S.w.close(); }
+});
+// R4.3's race cells: the receipt is HELD (one gate per order id — the prefetch and the tap share the in-flight read)
+async function raceBoot(extra = {}) {
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  const b = await againBoot({ rgate: (id) => gate(id).p, ...extra });
+  b.S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+  return { ...b, gate };
+}
+const tapReorder = async (S, oid) => { S.click(`.orow [data-act="reorder"][data-oid="${oid}"]`); await flush(); };
+test('C-3r v2 R4.3 race — SIGN-OUT during the receipt await ⇒ nothing applied: no store entered, no cart written', async () => {
+  const { S, fb, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    assert.equal(S.ui.store(), null, 'premise: the tap waits on the receipt');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE sign-out: no store entered');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE sign-out: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — an ACCOUNT SWITCH (A → B) during the await ⇒ A\'s order never reaches B', async () => {
+  const { S, fb, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    const { authMod } = await fb.loadSdk(); await authMod.signInWithCustomToken(null, 'ct:u_bea'); await flush(); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE switch: no store entered for B');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE switch: A\'s order is not in any cart');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — NAVIGATION away during the await ⇒ no forced store entry', async () => {
+  const { S, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE navigation: the customer stays where they went');
+    assert.ok(S.q('.tabbar [data-tab="home"][aria-current="page"], .tabbar [data-tab="home"].on, .tabbar [data-tab="home"][aria-selected="true"]') || S.q('.rlist, .hsec'), 'premise: on Inicio');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y ⇒ only Y applies, even when X\'s receipt resolves LAST', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });
+  placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 3 * 86400e3 });
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  const { S } = await pedidosBoot(db, { orders, storage: g7Store(G7_PROFILE({ promos: true })), contextFor: AGAIN_CTX, envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok'), receipts: V2R, rgate: (id) => gate(id).p });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await tapReorder(S, 'XP-V3');   // X: a v1 receipt (no extra prices)
+    await tapReorder(S, 'XP-V1');   // Y: 3a's v2 receipt
+    gate('XP-V1').resolve(); await flush(); await flush();
+    S.release('x_pizza', G1_PRICE((m) => { m.extras.find((x) => x.name === 'Mozzarella').price = 60; })); await flush(); await flush(); await flush();
+    gate('XP-V3').resolve(); await flush(); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', 'premise: Y entered its store');
+    assert.deepEqual(g1Changes(S), [['Margherita', 'extra', 34900, 35900]], '🔴 C3R-V2-RACE second: Y\'s v2 snapshot stands — X\'s late receipt changed nothing');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 — TIMEOUT (1.5 s): the reorder proceeds at live prices WITHOUT a historical note (never blocked)', async () => {
+  const { S } = await raceBoot({ envelope: (rid) => (rid === 'x_pizza' ? 'hold' : 'ok') });
+  try {
+    await tapReorder(S, 'XP-V1');
+    assert.equal(S.ui.store(), null, 'premise: waiting');
+    await flush(1600);
+    S.release('x_pizza', G1_PRICE((m) => { m.dishes.find((d) => d.name === 'Margherita').price = 309; })); await flush(); await flush(); await flush();   // the store's menu lands
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-TIMEOUT: the deadline releases the reorder');
+    assert.deepEqual(pvNotes(S), [], '🔴 C3R-V2-TIMEOUT: no snapshot ⇒ no historical note');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 — SIGN-OUT during the TIMEOUT ⇒ the fallback is dropped too (the check guards BOTH outcomes)', async () => {
+  const { S, fb, st } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush();
+    await flush(1600); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-TIMEOUT-SIGNOUT: no store entered after the deadline');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-TIMEOUT-SIGNOUT: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a SECOND reorder: tap X, then Y; X\'s receipt resolves FIRST (Y still pending) ⇒ X is dropped (an older tap) — no store opens for it; Y then enters', async () => {
+  const db = {}, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-V1', { ts: T0 - 86400e3 });
+  placeReal(db, orders, 'u_ana', 'XP-V3', { ts: T0 - 3 * 86400e3 });
+  const gates = {}; const gate = (id) => (gates[id] = gates[id] || deferred());
+  // the store's menu is AVAILABLE (as a cached menu usually is): an applied continuation mounts the store at once — nothing masks it
+  const { S } = await pedidosBoot(db, { orders, storage: g7Store(G7_PROFILE({ promos: true })), contextFor: AGAIN_CTX, receipts: V2R, rgate: (id) => gate(id).p });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    await tapReorder(S, 'XP-V3');   // X
+    await tapReorder(S, 'XP-V1');   // Y
+    gate('XP-V3').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE older: X (an older tap) never enters, though its receipt landed first');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 C3R-V2-RACE older: Y (the latest tap) enters');
+  } finally { S.w.close(); }
+});
+// Codex backfill (asm10 reconciliation, P2 on fa9cbc169): the tap generation advanced only on ANOTHER reorder — a round trip back to the
+// same tab passed the «still where they tapped» check, and a dish added meanwhile was replaced by the late reorder. ANY navigation and
+// ANY cart action now void the pending tap
+test('C-3r v2 R4.3 race — a ROUND TRIP (Pedidos → Inicio → Pedidos) during the await ⇒ the old tap is void: no store opens', async () => {
+  const { S, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.tabbar [data-tab="home"]'); await flush(); await flush();
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.pagehead h1')), 'Pedidos', 'premise: back on «Pedidos» (the tab the tap was made on)');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE round trip: a newer navigation voids the pending reorder');
+    assert.equal(st.getItem('capp:x_pizza:cart'), null, '🔴 C3R-V2-RACE round trip: no cart written');
+  } finally { S.w.close(); }
+});
+test('C-3r v2 R4.3 race — a CART ACTION («+» on a past dish) during the await ⇒ the old tap is void: the added dish stays, no store opens', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const { S, st, gate } = await raceBoot();
+  try {
+    await tapReorder(S, 'XP-V1');
+    S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 1]], 'premise: the «+» landed in the cart');
+    gate('XP-V1').resolve(); await flush(); await flush();
+    assert.equal(S.ui.store(), null, '🔴 C3R-V2-RACE cart action: a newer cart action voids the pending reorder');
+    assert.deepEqual(cartOfSt(st, 'x_pizza').lines.map((l) => [l.key, l.qty]), [[String(marg.dish_id), 1]], '🔴 C3R-V2-RACE cart action: the dish added meanwhile is never replaced');
+  } finally { S.w.close(); }
+});
+
 // ── C-1b (PLAN-capp-c1-build r0 §5 option C; D-3 r3 9.4 «Para vos» + the store heart): the member's favorites through 3a's
 // getMyFavorites / setFavorite. The fake answers in the REAL handler's bodies (fixtures/c1b/favorites-contract.json, generated
 // from my-favorites.js @990cf8c4) and keeps the book's state so a toggle is read back like the server's ──
@@ -4851,7 +5257,7 @@ test('C-1b F3: a card\'s heart toggles IN PLACE (optimistic) through setFavorite
   try {
     await flush(); await reEnterHome(R.S); R.S.click('.hsec[aria-label="Para vos"] [data-act="fav-card"][data-rid="x_pizza"]'); await flush(); await flush();
     assert.equal(pvCards(R.S)[0][1], false, '🔴 C1B-F3: a refusal reverts the heart');
-    assert.ok(txt(R.S.q('#toast')).length > 0, '🔴 C1B-F3: and says so');
+    assert.equal(txt(R.S.q('#toast')), 'Llegaste a 50 favoritos. Quitá uno para guardar otro.', '🔴 C1B-F3: and says so — the owner-approved cap copy (11-14), exact');
   } finally { R.S.w.close(); }
 });
 test('C-1b F4 (9.1): a MEMBER\'s store heart is shown, pressed for a favorite; a tap unsaves it through setFavorite', async () => {
@@ -5044,8 +5450,25 @@ test('C1b-P2 (9.4, 16b): a «Para vos» card\'s meta = «● Abierto · Pediste 
     const metas = [...pv.querySelectorAll('.rcard')].map((c) => [c.dataset.rid, txt(c.querySelector('.meta'))]);
     assert.deepEqual(metas, [['x_pizza', 'Abierto · Pediste el 11 nov'], ['la_musa', 'Abierto']], `🔴 C1B-P2: 9.4's one line (${desk ? 'desk' : 'phone'})`);
     const other = [...d.querySelectorAll('.hsec:not(.paravos) .rcard[data-rid="x_pizza"] .meta')].map(txt);
-    assert.ok(other.length && other.every((t) => /cierra/.test(t)), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
+    // the other rows keep THEIR line: «cierra» on the phone; the desk's one line has none (offers' SBS asm9 D1 — CH-ABIERTO-3 pins both)
+    assert.ok(other.length && other.every((t) => (desk ? /^Abierto · \S/.test(t) && !/cierra/.test(t) : /cierra/.test(t))), `the other rows keep their meta (${desk ? 'desk' : 'phone'}): ${other}`);
   }
+});
+// CH-ABIERTO-3 (advisor 11-15): the «Abierto» meta line was HAND-RESOLVED in the offers ⨯ push merge 8839193d (offers: the desk hides
+// «cierra»; push: a «Para vos» card hides «cierra» AND the fee, and adds «Pediste el …»). Each intent pinned on the real renderer
+test('CH-ABIERTO-3 (the 8839193d resolution): «Para vos» ⇒ no «cierra», no fee, «Pediste el»; desk ⇒ the fee, no «cierra»; phone ⇒ both', () => {
+  const x = rowsOf(SC.complete.body).find((r) => r.rid === 'x_pizza');
+  const fee = txt(dom(`<b>${CappHome.feeHtml(CappHome.storeOf(x), 'member')}</b>`).querySelector('b'));
+  assert.ok(fee, 'premise: x_pizza shows a fee to a member');
+  const metas = (desk) => { const d = dom(CappHome.homeHtml(pvVm(desk)));
+    return { pv: txt(d.querySelector('.hsec[aria-label="Para vos"] .rcard[data-rid="x_pizza"] .meta')), all: txt(d.querySelector('.hsec[aria-label="Todos los restaurantes"] .rcard[data-rid="x_pizza"] .meta')) }; };
+  for (const desk of [false, true]) {
+    const m = metas(desk);
+    assert.ok(!/cierra/.test(m.pv) && !m.pv.includes(fee) && /Pediste el 11 nov/.test(m.pv), `🔴 CH-ABIERTO-3 (a): «Para vos» (${desk ? 'desk' : 'phone'}) = no «cierra», no fee, «Pediste el»: ${m.pv}`);
+  }
+  const dk = metas(true), ph = metas(false);
+  assert.ok(dk.all.includes(fee) && !/cierra/.test(dk.all), `🔴 CH-ABIERTO-3 (b): the desk, not «Para vos» = the fee, no «cierra»: ${dk.all}`);
+  assert.ok(/cierra/.test(ph.all) && ph.all.includes(fee), `🔴 CH-ABIERTO-3 (c): the phone, not «Para vos» = «cierra» and the fee: ${ph.all}`);
 });
 test('C1b-P3 (9.4): the PHONE «Para vos» header carries the row\'s «›» (rownext — the same control as every phone row)', () => {
   const pv = dom(CappHome.homeHtml(pvVm(false))).querySelector('.hsec[aria-label="Para vos"]');
@@ -5106,5 +5529,370 @@ test('rule 11 guard (Inicio): every store card\'s time is a window — delivery 
     assert.equal(S.q('.fchip[data-val="pickup"]').getAttribute('aria-pressed'), 'true', 'premise: the Pickup filter is on');
     assert.deepEqual(all().flatMap(lone), [], '🔴 R11-HOME: pickup');
     assert.ok(cards().some((c) => /Listo en \d+–\d+ min/.test(c)), `the pickup window shows: ${cards().join(' | ')}`);
+  } finally { S.w.close(); }
+});
+
+// ── push stage 2 (MOCKUP-capp-push r1, owner-approved 11-14): the shell's wiring. The server is 3a's REAL customer-push.js at
+// 472177443 (APPROVED: install_id, the prefs rev CAS, a register never consents; refLoader: the module + its require closure from ONE sha) over 3a's strict RTDB double; the phone is the fake of
+// @capacitor/push-notifications 8.1.1 (capp-push.test PUSH-PIN) behind a Capacitor bridge present before the shell mounts ──
+const { refLoader: pushRef } = await import('./test/ref-require.mjs');
+const { createFakePushPlugin } = await import('./test/fake-push-plugin.mjs');
+const PUSH_3A = refLoader3a();
+function refLoader3a() { const R = pushRef(join(HERE, '..'), '4721774431f6c93dd51b7bf3d523e4ac791dc126'); return { CP: R.require('xpizza-functions/customer-push.js'), fakeRtdb: R.require('xpizza-functions/test/_fake-rtdb-sdk.js').fakeRtdb }; }
+function pushServer3a({ failSet = false, policy = null } = {}) {
+  const db = PUSH_3A.fakeRtdb({ ...(policy ? { platform_config: { push: policy } } : {}), user_profiles: { u_ana: { phone: '50496123344', phone_hash: 'ph_a', created_at: 1, last_login: 1 } } }, { strict: true });
+  const sub = (t) => { try { return JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')).sub; } catch (_) { return null; } };
+  const auth = { verifyIdToken: async (t) => { const u = sub(t); if (!u) throw new Error('bad token'); return { uid: u, customer: true }; } };
+  const h = PUSH_3A.CP.makeCustomerPush({ getDatabase: () => db, getAuth: () => auth, now: () => T0, checkRateLimit: async () => ({ allowed: true }) });
+  const calls = [];
+  const handler = async (url, init = {}) => {
+    const u = new URL(url), name = u.pathname.split('/').pop(), headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    const body = init.body ? JSON.parse(init.body) : undefined; calls.push({ name, url, headers, body });
+    if (failSet && name === 'setCustomerPushPrefs') return { status: 503, json: async () => ({ ok: false, reason: 'unavailable' }) };
+    const req = { method: init.method || 'GET', query: Object.fromEntries(u.searchParams), body, headers, get: (x) => headers[String(x).toLowerCase()] };
+    const res = { code: 200, body: null, set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
+    const e = console.error; console.error = () => {}; try { await h[name](req, res); } finally { console.error = e; }
+    return { status: res.code, json: async () => res.body };
+  };
+  // another of the person's devices, straight to 3a (same session identity)
+  const other = async (name, body) => { const r = await handler(`https://fn.test/${name}?context=platform`, { method: 'POST', headers: { 'x-firebase-id-token': TOK('u_ana') }, body: JSON.stringify(body) }); calls.pop(); return r.json(); };
+  return { db, calls, handler, other, prefs: () => { const p = db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}; return [p.pedidos, p.promociones, p.rev]; }, tokens: () => Object.keys(db.get(PUSH_3A.CP.TOKENS) || {}).length };
+}
+const PUSH_RT = { ...G7_RUNTIME, guestCardOnly: undefined, push: true, rtdbBase: 'https://rtdb.test' };
+async function pushBoot({ fake = {}, platform = 'android', runtime = PUSH_RT, storage, srv = pushServer3a(), noBridge = false, fbOpts, db = { u_ana: {} }, orders } = {}) {
+  const f = createFakePushPlugin(fake);
+  const { ES, made } = fakeES();
+  const pre = noBridge ? null : (w) => { w.Capacitor = { getPlatform: () => platform, Plugins: { PushNotifications: f.plugin } }; };
+  const r = await pedidosBoot(db, { ...(orders ? { orders } : {}), storage: storage || g7Store(G7_PROFILE({ promos: true })), runtime, push: srv, apiFetch: ORDER_FETCH((b) => ({ ok: true, order_id: b.order_id, tracking_token: 'tok_abcdefgh56' })), geolocation: GEO_OK2,
+    readPublic: async (u) => ({ ok: true, json: async () => (u.includes('/display_number') ? 47 : null) }), mountExtra: { EventSource: ES }, ...(pre ? { preMount: pre } : {}), ...(fbOpts ? { fbOpts } : {}) });
+  return { ...r, f, srv, made };
+}
+const pushTxt = (S) => txt(S.q('.mk-num span'));
+const osAsks = (f) => f.of('checkPermissions').length + f.of('requestPermissions').length + f.of('register').length;   // the tap listener is not an ask
+test('PUSH-SHELL-1 (frames 1 → 1d): a member\'s «Pedido recibido» shows the soft card under the status line; «Activar avisos» ⇒ the system prompt, the token to 3a under the member\'s ID token, the toast only, the card gone, the order line', async () => {
+  const { S, f, srv } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', 'premise');
+    const card = S.q('.mk-sheet .px-ask'); assert.ok(card, '🔴 PUSH-SHELL-1: the soft card');
+    assert.ok(card.previousElementSibling && card.previousElementSibling.classList.contains('mk-status'), '🔴 PUSH-SHELL-1: right under the status line (frame 1)');
+    assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', 'before opt-in: v6\'s line');
+    assert.equal(osAsks(f), 0, '🔴 PUSH-SHELL-1: nothing asks the OS before the tap');
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask'));
+    assert.equal(f.of('requestPermissions').length, 1, 'the system prompt, once');
+    const reg = srv.calls.find((c) => c.name === 'registerCustomerPushToken');
+    assert.deepEqual(reg.body, { token: 'fcm_tok_test_0001', platform: 'android', app_build: reg.body.app_build, install_id: reg.body.install_id, pedidos: true, promociones: false }, '🔴 PUSH-SHELL-1: §6b — pedidos on, ofertas off');
+    assert.match(reg.body.install_id, /^[A-Za-z0-9_-]{16,64}$/, '🔴 PUSH-SHELL-1: this installation\'s id');
+    assert.equal(JSON.parse(Buffer.from(reg.headers['x-firebase-id-token'].split('.')[1], 'base64url').toString()).sub, 'u_ana', '🔴 PUSH-SHELL-1: under the member\'s ID token');
+    assert.equal(srv.tokens(), 1, '3a stored the token');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados', '🔴 PUSH-SHELL-1: the toast only (frame 1d)');
+    assert.equal(pushTxt(S), '· Te avisamos con una notificación', '🔴 PUSH-SHELL-1: the order line once push is on');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-2: «Ahora no» ⇒ the card goes, nothing asks the OS, the snooze is kept; an OS denial ⇒ the card goes and the line stays WhatsApp', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f } = await pushBoot({ storage: st });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-later"]'); await flush();
+    assert.equal(S.q('.px-ask'), null, '🔴 PUSH-SHELL-2: «Ahora no» ⇒ gone'); assert.equal(osAsks(f), 0, 'the OS never asked');
+    assert.equal(JSON.parse(st.getItem('capp:push:v1')).snoozes, 1, '🔴 PUSH-SHELL-2: the snooze is kept (30 days, owner Q2)');
+  } finally { S.w.close(); }
+  const D = await pushBoot({ fake: { onRequest: 'denied' } });
+  try {
+    await shellPlaceTolerant(D.S); await until(() => D.S.q('.px-ask') && D.S.q('.mk-num'));
+    D.S.click('.px-ask [data-act="push-on"]'); await until(() => !D.S.q('.px-ask'));
+    assert.equal(D.srv.calls.length, 0, 'denied ⇒ nothing sent'); assert.equal(pushTxt(D.S), '· Te avisamos por WhatsApp', '🔴 PUSH-SHELL-2: denied ⇒ the WhatsApp line stays');
+    assert.notEqual(txt(D.S.q('#toast')), 'Avisos activados');
+  } finally { D.S.w.close(); }
+});
+test('PUSH-SHELL-3 (frames 2 + 4): ONE «Notificaciones» row right after Direcciones (frame 4\'s subtitles); its screen — the switches are the consent (setPrefs under the member\'s token); a refused save reverts', async () => {
+  const { S, srv } = await pushBoot();
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush();
+    const rows = g7Rows(S); assert.equal(rows[rows.indexOf(rows.find((r) => r.startsWith('Direcciones'))) + 1], 'Notificaciones Estado del pedido por WhatsApp', '🔴 PUSH-SHELL-3: right after Direcciones, v6\'s subtitle before push');
+    assert.equal(rows.filter((r) => r.startsWith('Notificaciones')).length, 1, 'ONE row'); assert.ok(rows.some((r) => r.startsWith('Promociones')), 'G7\'s «Promociones» untouched');
+    S.click('[data-act="sub-notifs"]'); await flush(); await flush();
+    assert.equal(txt(S.q('.topbar h1')), 'Notificaciones'); assert.equal(S.w.document.title, 'Notificaciones · Sherpa');
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`);
+    assert.deepEqual([sw('pedidos').getAttribute('aria-checked'), sw('promociones').getAttribute('aria-checked')], ['false', 'false'], 'not registered ⇒ both off');
+    S.click(sw('pedidos')); await until(() => srv.calls.some((c) => c.name === 'registerCustomerPushToken'));
+    await until(() => sw('pedidos') && sw('pedidos').getAttribute('aria-checked') === 'true');
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.pedidos, true, '🔴 PUSH-SHELL-3: «Mis pedidos» on = the opt-in');
+    S.click(sw('promociones')); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'setCustomerPushPrefs').body, { pedidos: true, promociones: true, expected_rev: 1 }, '🔴 PUSH-SHELL-3: «Ofertas de Sherpa» on = setPrefs (consent per channel), on the rev it was drawn from');
+    assert.deepEqual([(srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent].map((o) => o && [o.channel, o.value]), [['push', true]], '3a recorded the push-offers consent');
+    assert.equal(sw('promociones').getAttribute('aria-checked'), 'true');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Mis pedidos · Ofertas de Sherpa'), '🔴 PUSH-SHELL-3: F4b\'s subtitle');
+  } finally { S.w.close(); }
+  const F = await pushBoot({ srv: pushServer3a({ failSet: true }), fake: { permission: 'granted' } });
+  try {
+    F.S.click('.tabbar [data-tab="account"]'); await flush(); F.S.click('[data-act="sub-notifs"]'); await flush();
+    F.S.click('.switch[data-k="pedidos"]'); await until(() => F.S.q('.switch[data-k="pedidos"]').getAttribute('aria-checked') === 'true');
+    F.S.click('.switch[data-k="promociones"]'); await until(() => F.srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.equal(F.S.q('.switch[data-k="promociones"]').getAttribute('aria-checked'), 'false', '🔴 PUSH-SHELL-3: refused ⇒ back to its value');
+    assert.equal(txt(F.S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { F.S.w.close(); }
+});
+test('PUSH-SHELL-4 (frame 2 denied, owner Q5): the OS denied ⇒ the quiet card, both switches off + inert; «Abrir Ajustes» is the host event open-os-settings; the row reads «Apagadas en tu teléfono»', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'denied' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => S.q('.px-quiet'));
+    assert.equal(txt(S.q('.px-quiet .t b')), 'Avisos apagados');
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2); assert.equal(S.q('[data-act="push-pref"]'), null, '🔴 PUSH-SHELL-4: no live switch');
+    S.click('.px-quiet [data-act="push-settings"]'); await flush();
+    assert.deepEqual(S.events.filter((e) => e[0] === 'open-os-settings'), [['open-os-settings', {}]], '🔴 PUSH-SHELL-4: the host opens Ajustes');
+    S.click('[data-act="notifs-back"]'); await flush();
+    assert.ok(g7Rows(S).includes('Notificaciones Apagadas en tu teléfono'), '🔴 PUSH-SHELL-4: the denied subtitle');
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, 'nothing registered');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — flag off, the web, a guest or no bridge ⇒ no card, no row, no screen, no denied card, not one plugin call', async () => {
+  for (const [what, o] of [['flag off', { runtime: { ...PUSH_RT, push: undefined } }], ['web', { platform: 'web' }], ['no bridge', { noBridge: true }], ['denied, flag off', { runtime: { ...PUSH_RT, push: undefined }, fake: { permission: 'denied' } }]]) {
+    const { S, f, srv } = await pushBoot(o);
+    try {
+      await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+      assert.equal(S.q('.px-ask'), null, `🔴 PUSH-GATE ${what}: no card`); assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', `${what}: v6's line`);
+      S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="account"]'); await flush();
+      assert.ok(!g7Rows(S).some((r) => r.startsWith('Notificaciones')), `🔴 PUSH-GATE ${what}: no row`);
+      assert.equal(S.q('.px-quiet'), null, `🔴 PUSH-GATE ${what}: no denied card`);
+      assert.equal(f.calls.length + srv.calls.length, 0, `🔴 PUSH-GATE ${what}: no plugin / server call`);
+    } finally { S.w.close(); }
+  }
+  // a guest: the SAME native boot as a member's (flag on, the signup runtime, the bridge) signed out — only the member gate stands
+  // (the token is a member's); the slot-11-14 sweep showed the old guest boot (no signup runtime) could never draw the card at all
+  const { S: G, f } = await pushBoot({ fbOpts: { persisted: null }, storage: memStorage({}) });
+  try {
+    await shellPlaceTolerant(G); await until(() => G.q('.mk-num'));
+    assert.equal(G.q('.px-ask'), null, '🔴 PUSH-GATE: a guest ⇒ no card'); assert.equal(osAsks(f), 0, 'a guest ⇒ nothing asks the OS');
+  } finally { G.w.close(); }
+});
+test('PUSH-SHELL-5 (rule 20): «Cerrar sesión» ⇒ 3a forgets THIS token under the still-valid session, the phone deletes it, THEN the SDK signs out', async () => {
+  const { S, f, srv, fb } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1);
+    S.click('[data-act="notifs-back"]'); await flush();
+    const order = []; const un = f.plugin.unregister; f.plugin.unregister = async () => { order.push('plugin'); return un(); };
+    const outs = fb.calls.out;
+    S.click('[data-act="signout"]'); await until(() => fb.calls.out > outs);
+    assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-5: 3a forgot the token');
+    const unr = srv.calls.find((c) => c.name === 'unregisterCustomerPushToken'); assert.deepEqual(unr.body, { token: 'fcm_tok_test_0001' });
+    assert.deepEqual(order, ['plugin'], '🔴 PUSH-SHELL-5: the phone deleted it');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-6: a tapped order push opens THAT order — the device\'s live one ⇒ its screen', async () => {
+  const { S, f } = await pushBoot();
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
+    S.click('[data-act="order-close"]'); await flush();
+    assert.equal(S.q('.mk-title'), null, 'premise: off the order');
+    const id = S.q('.ocard.active [data-act="go-order"]').dataset.oid;
+    f.tap({ order_id: id }); await flush();
+    assert.equal(txt(S.q('.mk-title')), 'Pedido recibido', '🔴 PUSH-SHELL-6: the tap opens its live screen');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-7 (3a e73a605a2): a STALE save re-reads and re-applies the person\'s own switch on what another device set — never a blind overwrite', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 1], 'premise: rev 1');
+    assert.equal((await srv.other('setCustomerPushPrefs', { pedidos: false, promociones: false, expected_rev: 1 })).ok, true, 'premise: another device turned «Mis pedidos» off (rev 2)');
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.prefs()[2] === 3); await flush(); await flush();
+    assert.deepEqual(srv.prefs(), [false, true, 3], '🔴 PUSH-SHELL-7: the other device\'s «Mis pedidos» off is KEPT; the person\'s «Ofertas» on is applied');
+    assert.deepEqual(srv.calls.filter((c) => c.name === 'setCustomerPushPrefs').map((c) => c.body.expected_rev), [1, 2], '🔴 PUSH-SHELL-7: stale ⇒ re-applied once on the current rev');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true'], 'the switches show the server\'s truth');
+    assert.notEqual(txt(S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-8 (3a e73a605a2): GET prefs 503 (an unreadable policy) ⇒ the switches stay as last known and INERT, with no error copy', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' }, srv: pushServer3a({ policy: { v: 1, promo_daily_max: -5, promo_weekly_max: 1, quiet_from: 0, quiet_to: 0 } }) });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => srv.calls.some((c) => c.name === 'getCustomerPushPrefs')); await flush();
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2, '🔴 PUSH-SHELL-8: both inert');
+    S.click('.switch[data-k="pedidos"]'); await flush();
+    assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, '🔴 PUSH-SHELL-8: an inert switch sends nothing');
+    assert.equal(S.q('.px-quiet'), null, 'no denied card'); assert.ok(!/No se guard|error/i.test(txt(S.q('.scroller'))), '🔴 PUSH-SHELL-8: no error copy');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-9 (3a e73a605a2): «Activar avisos» when the person\'s prefs already say «Mis pedidos» off (another device) ⇒ the register leaves them, the shell applies the person\'s choice — then the toast and the line', async () => {
+  const srv = pushServer3a();
+  await srv.other('registerCustomerPushToken', { token: 'fcm_other_device', platform: 'ios', app_build: '1', install_id: 'other-install-000001', pedidos: false, promociones: false });
+  const { S } = await pushBoot({ srv });
+  try {
+    await shellPlaceTolerant(S); await until(() => S.q('.px-ask') && S.q('.mk-num'));
+    S.click('.px-ask [data-act="push-on"]'); await until(() => !S.q('.px-ask')); await flush();
+    assert.deepEqual(srv.prefs(), [true, false, 2], '🔴 PUSH-SHELL-9: the person\'s «Activar avisos» is applied (rev CAS)');
+    assert.equal(txt(S.q('#toast')), 'Avisos activados'); assert.equal(pushTxt(S), '· Te avisamos con una notificación');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-10 (3a 472177443: a register never consents): «Ofertas de Sherpa» turned on BEFORE push is on ⇒ the opt-in, then setPrefs applies the person\'s switch — the push-offers consent recorded, «Mis pedidos» as they chose (off)', async () => {
+  const { S, srv } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush();
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.promociones, true, 'the register carries the choice (the server ignores it)');
+    assert.deepEqual(srv.prefs(), [false, true, 2], '🔴 PUSH-SHELL-10: the person\'s «Ofertas» applied by setPrefs (rev 1 → 2)');
+    const oc = (srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent;
+    assert.deepEqual(oc && [oc.channel, oc.value], ['push', true], '🔴 PUSH-SHELL-10: the consent comes from the switch\'s setPrefs');
+    assert.deepEqual(['pedidos', 'promociones'].map((k) => S.q(`.switch[data-k="${k}"]`).getAttribute('aria-checked')), ['false', 'true']);
+    assert.equal(txt(S.q('#toast')), 'Avisos activados');
+  } finally { S.w.close(); }
+});
+
+// ── Codex r1 (REVISE #1, 11-15) — the shell items; RED at 9ecfb0982 (proven in the slot) ──
+const pushHeld = (st) => JSON.parse(st.getItem('capp:push:v1') || '{}');
+const flushN = async (n = 8) => { for (let i = 0; i < n; i++) await flush(); };
+const toNotifs = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush(); await flush(); };
+const optIn = async (S, srv) => { await toNotifs(S); S.click('.switch[data-k="pedidos"]'); await until(() => srv.tokens() === 1); };
+test('PUSH-SHELL-11 (Codex r1 P1-1): the uid switches WHILE an opt-in waits on the OS ⇒ nothing is sent under the new person\'s token (no register, no consent, no prefs of theirs); the token minted for A meanwhile is invalidated', async () => {
+  const st = g7Store(G7_PROFILE({ promos: true }));
+  const { S, f, srv, fb } = await pushBoot({ storage: st });
+  try {
+    await toNotifs(S);
+    let release; const gate = new Promise((r) => { release = r; }); const asked = []; const rq = f.plugin.requestPermissions;
+    f.plugin.requestPermissions = async () => { asked.push(1); await gate; return rq(); };
+    S.click('.switch[data-k="promociones"]'); await until(() => asked.length === 1);
+    st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));   // B is a COMPLETED member: admitted on the switch
+    const sdk = await fb.loadSdk(); await sdk.authMod.signInWithCustomToken(null, 'ct:u_bob'); await flushN(4);
+    release(); await until(() => f.of('register').length === 1); await flushN();
+    const bob = srv.calls.filter((c) => /CustomerPush/.test(c.name) && subOf(c.headers['x-firebase-id-token']) === 'u_bob').map((c) => c.name);
+    assert.deepEqual(bob, [], '🔴 PUSH-SHELL-11: nothing of A\'s action is sent under B\'s token');
+    assert.equal(srv.db.get(`${PUSH_3A.CP.PREFS}/u_bob`) == null, true, 'B\'s prefs / consent untouched');
+    assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-11: the token minted for A while B is here is invalidated on the phone');
+    const h = pushHeld(st); assert.equal(h.token == null, true, 'no live token'); assert.deepEqual((h.pending || []).map((p) => p.owner), ['u_ana'], 'held for A\'s own session');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-12a (Codex r1 P1-4): the SDK signs out by itself (guest) ⇒ the token is invalidated on the phone at once; the server step waits for A\'s own session, then runs', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ promos: true }));
+    const { S, f, srv, fb } = await pushBoot({ storage: st, fake: { permission: 'granted' } });
+    try {
+      await optIn(S, srv);
+      const sdk = await fb.loadSdk(); await sdk.authMod.signOut(); await flushN();
+      assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12 (guest): the SDK\'s own sign-out invalidates the token on the phone');
+      assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for A');
+      assert.equal(srv.calls.filter((c) => c.name === 'unregisterCustomerPushToken').length, 0, 'never without A\'s session');
+      st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_ana' })); await sdk.authMod.signInWithCustomToken(null, 'ct:u_ana');
+      await until(() => srv.tokens() === 0, 6000);
+      const un = srv.calls.find((c) => c.name === 'unregisterCustomerPushToken'); assert.equal(subOf(un.headers['x-firebase-id-token']), 'u_ana', '🔴 PUSH-SHELL-12 (guest): retried under A\'s OWN session');
+    } finally { S.w.close(); }
+  }
+});
+test('PUSH-SHELL-12b (Codex r1 P1-4): a restored session WITHOUT its completion mark ⇒ the token is forgotten while that session is still valid, THEN signed out', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ promos: true }));
+    const { S, f, srv, fb } = await pushBoot({ storage: st, fake: { permission: 'granted' } });
+    try {
+      await optIn(S, srv);
+      st.removeItem('capp:member_complete');
+      const outs = fb.calls.out; const sdk = await fb.loadSdk(); await sdk.authMod.signInWithCustomToken(null, 'ct:u_ana'); await flushN();
+      assert.equal(srv.tokens(), 0, '🔴 PUSH-SHELL-12 (marker): 3a forgot the token under the still-valid session');
+      assert.equal(f.of('unregister').length, 1, 'and the phone');
+      assert.ok(fb.calls.out > outs, 'then signed out');
+    } finally { S.w.close(); }
+  }
+});
+test('PUSH-SHELL-12c (Codex r1 P1-4): a COLD restore as another person (B\'s session; the device holds A\'s registered token) ⇒ A\'s token is invalidated, never under B\'s token', async () => {
+  {
+    const st = g7Store(G7_PROFILE({ uid: 'u_bob' })); st.setItem('capp:member_complete', JSON.stringify({ v: 1, uid: 'u_bob' }));
+    const srv = pushServer3a();
+    assert.equal((await srv.other('registerCustomerPushToken', { token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: 'BwcHBwcHBwcHBwcHBwcHBw', pedidos: true, promociones: false })).ok, true, 'premise: A registered it');
+    st.setItem('capp:push:v1', JSON.stringify({ v: 1, state: 'granted', token: 'fcm_tok_test_0001', owner: 'u_ana', server: true, install_id: 'BwcHBwcHBwcHBwcHBwcHBw' }));
+    const { S, f } = await pushBoot({ storage: st, srv, fake: { permission: 'granted' }, fbOpts: { persisted: 'u_bob' } });
+    try {
+      await flushN();
+      assert.equal(f.of('unregister').length, 1, '🔴 PUSH-SHELL-12 (cold): A\'s token is invalidated when B\'s session is restored');
+      assert.deepEqual(srv.calls.filter((c) => /CustomerPush/.test(c.name) && subOf(c.headers['x-firebase-id-token']) === 'u_bob').map((c) => c.name), [], 'never under B\'s token');
+      assert.deepEqual((pushHeld(st).pending || []).map((p) => p.owner), ['u_ana'], 'the server step held for A');
+    } finally { S.w.close(); }
+  }
+});
+const p26 = () => {   // 3a's REAL handlers; the prefs read can be HELD (its answer computed first — a late, older read) or answered prefs: null
+  const srv = pushServer3a(), h0 = srv.handler, ctl = { hold: null, nullPrefs: false };
+  srv.handler = async (u, i) => { const r = await h0(u, i); if (/getCustomerPushPrefs/.test(u)) { if (ctl.nullPrefs) { const b = await r.json(); return { status: r.status, json: async () => ({ ...b, prefs: null }) }; } if (ctl.hold) await ctl.hold; } return r; };
+  return { srv, ctl };
+};
+test('PUSH-SHELL-13a (Codex r1 P2-6): the switches are INERT until this visit\'s permission and prefs reads succeed', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`);
+    let open; ctl.hold = new Promise((r) => { open = r; });
+    await toNotifs(S);
+    assert.equal(sw('pedidos').getAttribute('aria-disabled'), 'true', '🔴 PUSH-SHELL-13a: inert while the reads are out');
+    ctl.hold = null; open(); await until(() => sw('pedidos').getAttribute('aria-disabled') !== 'true');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13b (Codex r1 P2-6): a LATE, older prefs read never replaces newer prefs', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), live = (k) => sw(k) && sw(k).getAttribute('aria-disabled') !== 'true';
+    await toNotifs(S); await until(() => live('pedidos'));
+    S.click(sw('pedidos')); await until(() => srv.tokens() === 1); await until(() => sw('pedidos').getAttribute('aria-checked') === 'true' && live('pedidos'));
+    // visit 2's read (rev 1) is held; another device commits rev 2; visit 3 reads rev 2; THEN visit 2's lands
+    S.click('[data-act="notifs-back"]'); await flush();
+    let open2; ctl.hold = new Promise((r) => { open2 = r; });
+    S.click('[data-act="sub-notifs"]'); await flush();
+    ctl.hold = null; assert.equal((await srv.other('setCustomerPushPrefs', { pedidos: true, promociones: true, expected_rev: 1 })).ok, true, 'premise: rev 2 elsewhere');
+    S.click('[data-act="notifs-back"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => sw('promociones') && sw('promociones').getAttribute('aria-checked') === 'true');
+    open2(); await flushN();
+    assert.equal(sw('promociones').getAttribute('aria-checked'), 'true', '🔴 PUSH-SHELL-13b: a late older read never replaces the newer prefs');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13c (Codex r1 P2-6): a registered device whose prefs are missing stays INERT (never a guess)', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), live = (k) => sw(k) && sw(k).getAttribute('aria-disabled') !== 'true';
+    await toNotifs(S); await until(() => live('pedidos'));
+    S.click(sw('pedidos')); await until(() => srv.tokens() === 1); await until(() => sw('pedidos').getAttribute('aria-checked') === 'true' && live('pedidos'));
+    ctl.nullPrefs = true; S.click('[data-act="notifs-back"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flushN(4);
+    assert.equal(sw('pedidos').getAttribute('aria-disabled'), 'true', '🔴 PUSH-SHELL-13c: registered with no prefs ⇒ inert (never a guess)');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-14 (Codex r1 P2-7; r2: auth held): the tap listener is up at STARTUP while auth is still unresolved; a tap before admission opens its order once the member is admitted', async () => {
+  // Codex r2: the restored-member callback also installs the listener, so the cell holds auth UNRESOLVED — only startup can be listening
+  const db = { u_ana: {} }, orders = {}, gate = { q: [] };
+  placeReal(db, orders, 'u_ana', 'XP-T14', { display_number: 61 });
+  const { S, f } = await pushBoot({ db, orders, fbOpts: { authGate: gate } });
+  try {
+    await flushN(4);
+    assert.ok(gate.q.length >= 1, 'premise: auth is still unresolved');
+    assert.equal(f.listenerCount('pushNotificationActionPerformed'), 1, '🔴 PUSH-SHELL-14: listening from startup, on Inicio, before any push screen');
+    f.tap({ order_id: 'XP-T14' });   // the cold start's tap, before admission
+    for (const go of gate.q.splice(0)) go();
+    await until(() => S.q('.mk-title'), 6000).catch(() => {});
+    assert.equal(S.q('.mk-title') ? txt(S.q('.mk-num')).startsWith('Orden #61') : null, true, '🔴 PUSH-SHELL-14: the queued tap opens ITS order once admitted');
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-13d (Codex r2 P2-6): only the CURRENT visit\'s reads count — visit 1\'s late read never frees visit 2\'s switches', async () => {
+  const { srv, ctl } = p26(); const { S } = await pushBoot({ srv, fake: { permission: 'granted' } });
+  try {
+    const sw = (k) => S.q(`.switch[data-k="${k}"]`), inert = () => !!sw('pedidos') && sw('pedidos').getAttribute('aria-disabled') === 'true';
+    let open1; ctl.hold = new Promise((r) => { open1 = r; });
+    await toNotifs(S); await flushN(4);
+    assert.ok(inert(), 'premise: visit 1 is reading');
+    S.click('[data-act="notifs-back"]'); await flush();
+    let open2; ctl.hold = new Promise((r) => { open2 = r; });
+    S.click('[data-act="sub-notifs"]'); await flushN(4);
+    assert.ok(inert(), 'premise: visit 2 is reading');
+    open1(); await flushN();
+    assert.ok(inert(), '🔴 PUSH-SHELL-13d: visit 1\'s late read never frees visit 2\'s switches');
+    ctl.hold = null; open2(); await until(() => !inert());
+  } finally { S.w.close(); }
+});
+test('PUSH-SHELL-15 (Codex r1 P2-8): a tapped push for a past order NOT in «Pedidos»\' cache opens ITS receipt by its own detail read; a refused read ⇒ «Pedidos»', async () => {
+  const db = { u_ana: {} }, orders = {};
+  placeReal(db, orders, 'u_ana', 'XP-T9', { display_number: 52 });
+  const { S, f } = await pushBoot({ db, orders });
+  try {
+    await flushN(4);
+    // a tree without the fix ignores the tap: the wait ends quietly so the cell dies at ITS 🔴 (condition 2), never on the wait
+    f.tap({ order_id: 'XP-T9' }); await until(() => S.q('.mk-title') || (S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos'), 6000).catch(() => {});
+    assert.equal(S.q('.mk-title') ? txt(S.q('.mk-title')) : null, '¡Pedido entregado!', '🔴 PUSH-SHELL-15: the tapped order\'s own receipt');
+    assert.ok(txt(S.q('.mk-num')).startsWith('Orden #52'), 'its number');
+    S.click('[data-act="order-close"]'); await flush();
+    f.tap({ order_id: 'XP-NONE1' }); await until(() => S.q('.pagehead h1') && txt(S.q('.pagehead h1')) === 'Pedidos', 6000);
   } finally { S.w.close(); }
 });

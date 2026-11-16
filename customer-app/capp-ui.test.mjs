@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
+import { createClock } from './test-clock.mjs';
 import { namespaceRefusal } from './test/fake-sdk-checkout.mjs';
 
 const require = createRequire(import.meta.url);
@@ -472,7 +473,15 @@ function scripted(script) {
   };
   return { fetch, calls, of: (ep) => calls.filter((c) => c.ep === ep) };
 }
-function fakeTimers() { let id = 0; const q = new Map(); const ms = new Map(); return { ms, setTimeout: (f, d) => { q.set(++id, f); ms.set(id, d); return id; }, clearTimeout: (h) => q.delete(h), setInterval: () => ++id, clearInterval: () => {}, flush() { const fs = [...q.values()]; q.clear(); for (const f of fs) f(); }, get size() { return q.size; } }; }
+// the app's timers on the VIRTUAL clock (PLAN-capp-virtual-clock step 8b, advisor 11-14 (a)): flush() fires everything pending, in
+// (due, arming) order — the arms it chains and the intervals it re-arms included, up to the latest due — never a snapshot fired in
+// arming order with the intervals dead. advance(ms): only what is due within the next ms. ms: every setTimeout's delay (the cells read
+// the armed bounds)
+function fakeTimers() {
+  const c = createClock(0), ms = new Map();
+  return { ms, setTimeout: (f, d) => { const id = c.setTimeout(f, d); ms.set(id, d); return id; }, clearTimeout: c.clearTimeout, setInterval: c.setInterval, clearInterval: c.clearInterval,
+    flush() { const t = c.lastDue; if (t != null) c.fireThrough(t); }, advance(ms) { c.fireThrough(c.now() + ms); }, get size() { return c.pending; } };
+}
 const tick = () => new Promise((r) => setImmediate(r));
 // a fixed tick count races WebCrypto (libuv's threadpool) under load — settle() also waits for the digests in flight (capp-test-digests)
 trackDigests();
@@ -488,17 +497,19 @@ const GEO_OK = { getCurrentPosition: (ok) => ok({ coords: { latitude: 15.52, lon
 const GEO_NO = { getCurrentPosition: (_ok, no) => no({ code: 1 }) };
 let RB = 0;
 const INTAKE = 'k_intake_test';   // a test value; production's is deploy-time config, never committed
-function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null } = {}) {
-  const css = readFileSync(join(HERE, 'capp.css'), 'utf8');
-  const html = readFileSync(join(HERE, 'index.html'), 'utf8').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
+function bootCo({ script = {}, config = {}, member = null, geo = GEO_OK, search = '', storage = memStore(), priceSheet, rid = 'x_pizza', pre, realSheet = false, mountOpts = {}, rng = null, src = null, CK: CKo = CK, CA: CAo = CA, envelope = null, noRules = false, now: nowFn = NOON } = {}) {
+  const rd = src || ((f) => readFileSync(join(HERE, f), 'utf8'));
+  const hasFile = (f) => { try { rd(f); return true; } catch (_) { return false; } };   // src: another commit's files (the offers OFF golden)
+  const css = rd('capp.css');
+  const html = rd('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link [^>]+>/g, '').replace('</head>', () => `<style>${css}</style></head>`);
   const w = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true }).window;
-  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) w.eval(readFileSync(join(HERE, f), 'utf8'));
+  for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'offer-rules.js', 'capp-ui.js', ...(realSheet ? ['capp-confirm-quote.js'] : [])]) { if (f === 'offer-rules.js' && (noRules || !hasFile(f))) continue; w.eval(rd(f)); }   // offer-rules.js: as the pages load it (index/shell.html); absent at the OFF golden's base
   if (pre) pre(w);   // window stubs the page has before the app boots (google.maps, console)
   const srv = scripted({ quoteOrder: [QUOTE], ...script });
   const events = []; const nav = []; const timers = fakeTimers(); const sheets = [];
-  const ui = w.CappUI.mount(w.document, { envelope: PROV[rid].envelope, now: NOON, onEvent: (n, d) => events.push([n, d]),
+  const ui = w.CappUI.mount(w.document, { envelope: envelope || PROV[rid].envelope, now: nowFn, onEvent: (n, d) => events.push([n, d]),
     config: { ...CONFIG[rid], restaurantId: 'rid_a', orderIdPrefix: 'TA', pendingPayKey: 'ta_pending_pay', endpoints: EP, branch: 'Centro', intakeKey: INTAKE, ...config },
-    CappCheckout: CK, CappApi: CA, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
+    CappCheckout: CKo, CappApi: CAo, member, geolocation: geo, navigate: (u) => nav.push(u), search, timers,
     priceSheet: realSheet ? undefined : priceSheet || ((o) => { sheets.push(o); return Promise.resolve(false); }),   // realSheet: the ported confirmPriceSheet
     apiOpts: { fetch: srv.fetch, storage, now: () => NOON().getTime(), sleep: async () => {}, randomBytes: rng || ((k) => Uint8Array.from({ length: k }, () => (RB++ * 7) % 256)), setInterval: () => 0, clearInterval: () => {} }, ...mountOpts });
   const q = (sel) => w.document.querySelector(sel); const qa = (sel) => [...w.document.querySelectorAll(sel)];
@@ -1012,7 +1023,10 @@ test('S2b r2: the pin toast lives the prototype\'s 2.2 s (P toast() :1377) and i
   assert.ok(!b.q('#toast').classList.contains('on'), '🔴 no toast over the open sheet');
 });
 
-const popped = async () => { await new Promise((r) => setTimeout(r, 30)); await settle(); };   // jsdom fires popstate from a timer task
+// jsdom delivers a history traversal and its popstate on its own real 0 ms tasks: the virtual clock's drain() yields to them until
+// QUIET (two empty rounds, so a skipped popstate ends too) — never a fixed sleep that races them (PLAN-capp-virtual-clock step 8)
+const POP = createClock(0);
+const popped = async () => { await POP.drain(); await settle(); };
 test('S2b r2: device back (history) — tip → «Entrega & Pago» → the cart → the menu; the tip «←» walks the same history', async () => {
   const b = bootCo(); const H = b.w.history;
   b.ui.cart.inc(b.plain.key); b.ui.render();
@@ -1475,6 +1489,19 @@ test('S2b-geo r1 P2: the coordinates are captured WITH the version; work made ob
   assert.deepEqual(gc.map((r) => r.at), [{ lat: 15.5, lng: -88.0 }], '🔴 one geocode, for B — A\'s obsolete request never left');
   gc[0].reply(GEO.street); await settle();
   assert.equal(bold(b), 'Calle 10');
+});
+
+// vclock step 8b (advisor 11-14 (a)): the fake's intervals are REAL now — the «Realizando pedido…» countdown ticks once a second
+// (capp-ui.js placeTap: a 1 s interval beside the 2 s send), exactly as on the device; the old fake never fired it
+test('vclock 8b: «Realizando pedido…» counts down 0:02 → 0:01 on its 1 s interval — and sends nothing before the 2 s', async () => {
+  const b = bootCo({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  await filled(b); await b.click('#cta');
+  assert.equal(b.q('#layer [data-act="placing-go"] .cd').textContent, '0:02', 'premise: the countdown opens at 0:02');
+  b.timers.advance(1000); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 VC-UI1: nothing is sent before the 2 s');
+  assert.equal(b.q('#layer [data-act="placing-go"] .cd')?.textContent, '0:01', '🔴 VC-UI1: the countdown ticks at 1 s (the interval fires)');
+  b.timers.advance(1000); await settle();
+  assert.equal(b.srv.of('createOrder').length, 1, 'the 2 s send');
 });
 
 test('S2b-geo r1 P3: a reply during «Enviando»\'s completion (the green check) patches the address in place — the check stays; during «Realizando» the countdown node survives', async () => {
@@ -3494,6 +3521,36 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
   assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
 });
 
+// vclock step-8a F-1 (advisor 11-14): the two cells above cannot tell the switch's stored inputs from the card order's own (sdkRestore
+// rebuilds the same checkout from sdkInputs). Here they DIFFER: the customer edits the recipient and notes AFTER the decline, then
+// switches to cash — after a reload the completed switch places what the customer last saw (advisor r3 C: the switch's inputs win)
+test('vclock F-1: the recipient and notes edited AFTER the decline ride the cash switch through a reload — never the card order\'s inputs', async () => {
+  const storage = memStore(), HOST = HOSTED_KEYS;
+  const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
+    cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
+  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
+  await b1.click('[data-act="type"][data-val="pickup"]'); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
+  await b1.click('[data-act="more"]'); await b1.type('#f-notes', 'Sin cebolla'); await settle();
+  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
+  const old = b1.srv.of('placeSdkOrder')[0].body.order_id;
+  assert.deepEqual([b1.srv.of('placeSdkOrder')[0].body.customer_name, b1.srv.of('placeSdkOrder')[0].body.notes], ['Otra persona', 'Sin cebolla'], 'premise: the card order carries the first inputs');
+  // «Probar otra tarjeta» → the chooser, closed → the checkout: the customer changes the recipient and the notes, then picks cash
+  await b1.click('#layer [data-act="decl-other_card"]'); await b1.click('#layer [data-act="paysheet-close"]'); await settle();
+  assert.ok(b1.q('#f-name') && b1.q('#f-notes'), 'premise: back on the checkout, the recipient and notes fields still open');
+  await b1.type('#f-name', 'Tercera persona');
+  await b1.type('#f-notes', 'Sin tomate'); await settle();
+  await b1.click('[data-act="paysheet"]'); await b1.click('#layer [data-act="paypick"][data-card="cash"]'); await settle();
+  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  assert.ok(b1.srv.of('cancelSdkPending').length >= 1 && !b1.srv.of('createOrder').length, 'premise: the switch is pending (not yet safe), nothing placed');
+  const b2 = bootSdk({ storage, config: HOST, script: { cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
+  b2.ui.restore(JSON.parse(storage.getItem(HOSTED_KEYS.cartKey)));
+  await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
+  const co = b2.srv.of('createOrder')[0];
+  assert.ok(co && co.body.replaces_order_id === old && co.body.payment_method === 'cash', 'premise: the completed switch placed the NEW cash order');
+  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Tercera persona', 'Sin tomate'], '🔴 SDKUI-F1: the switch\'s stored inputs (edited after the decline) win over the card order\'s');
+});
+
 
 // ── PLAN-capp-tip-step r6 (owner-approved MOCKUP-capp-tip-step-r2, 11-09): the step opens WITH a choice — the member's last tip
 // (server-side, user_private/{uid}/last_tip, one authenticated leaf read started at checkout open) else L 20; resolved BEFORE the
@@ -3820,6 +3877,465 @@ test('S3 Codex r1 P1-1: menu_changed / extra_not_allowed / pickup_only_item rele
       assert.equal(b.events.filter(([n]) => n === 'menu_reload').length, 1, `${pay}: «Recargar» asks the shell (its adoption needs the unfrozen cart — the A2 cell)`);
     }
   }
+});
+
+// ── G-A (NOTE-capp-3-gaps-vs-frames; advisor 11-13 option (b)): the cart carries v6's fee rows (cartInner → feeRows, V6:1736-1745) —
+// Subtotal · Envío · Total — from the SAME quote as the checkout (the same requote(), debounced, only once an address exists); a
+// stale or pending quote reads «—» in the reserved amount slots: never a guessed number ──
+const cartRows = (b) => b.qa('#layer .ctot .sumrow').map((r) => b.text(r));
+// the device back from the checkout (the phone draws no back control there), then the cart sheet if the back did not land on it
+const backToCart = async (b) => { b.w.history.back(); await popped(); assert.equal(b.ui.state.screen, 'store', 'premise: back on the store'); if (!b.q('#layer .ctot')) await b.click('#cart-bar'); };
+const revIn = (b, i, d) => b.click(b.qa('#layer .cline')[i].querySelector(`[data-rev="${d}"]`));
+test('G-A1 v6 before an address: delivery ⇒ Subtotal · «Envío · según tu dirección» · Total = the subtotal; pickup ⇒ Subtotal · Total; nothing quoted', async () => {
+  const b = bootCo(); b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
+  const food = b.plain.price * 100;
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, 'Envío · según tu dirección', `Total ${L_(food)}`], '🔴 G-A1: v6 feeRows before an address');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, '🔴 G-A1: no address ⇒ no quote');
+  await b.click('#layer [data-act="cartclose"]'); await b.click('[data-act="mode"][data-val="pickup"]'); await b.click('#cart-bar');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Total ${L_(food)}`], '🔴 G-A1: pickup ⇒ no Envío row');
+});
+test('G-A2 the cart after the checkout priced it: Envío = the quote\'s, Total = the CHECKOUT\'s Total (one quote, one number)', async () => {
+  const b = bootCo(); await toCheckout(b); await settle();
+  const coTot = b.text('.ostot .sumrow.tot'), food = b.plain.price * 100;
+  assert.equal(coTot, `Total ${L_(food + FEE + 7)}`, 'premise: the checkout is priced by the quote');
+  await backToCart(b);
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, coTot], '🔴 G-A2: the cart shows the checkout\'s Total');
+});
+test('G-A3 a cart edit makes the quote stale ⇒ «—» at once (no guess), rapid edits collapse to ONE quote, the amounts land in the same slots', async () => {
+  const b = bootCo(); await toCheckout(b); await settle(); await backToCart(b);
+  const food = b.plain.price * 100, n0 = b.srv.of('quoteOrder').length, shape0 = b.qa('#layer .ctot > *').length;
+  await revIn(b, 0, 1); await revIn(b, 0, 1);
+  assert.equal(b.srv.of('quoteOrder').length, n0, '🔴 G-A3: debounced — nothing asked while the customer is still tapping');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, 'Envío —', 'Total —'], '🔴 G-A3: a stale quote ⇒ «—», never the old amount');
+  assert.equal(b.qa('#layer .ctot > *').length, shape0, '🔴 G-A3: the pending rows hold the same slots (no reflow)');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, n0 + 1, '🔴 G-A3: two edits ⇒ ONE quote');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], '🔴 G-A3: the matching quote lands in place');
+  assert.equal(b.qa('#layer .ctot > *').length, shape0, '🔴 G-A3: the landed rows keep the slots (no reflow)');
+});
+test('G-A4 newer wins: an older cart quote answering AFTER a newer one never paints its numbers', async () => {
+  let release = null, n = 0;
+  const late = (body) => { n++; return n === 2 ? new Promise((r) => { release = () => r(QUOTE(body)); }) : QUOTE(body); };
+  const b = bootCo({ script: { quoteOrder: [late] } }); await toCheckout(b); await settle(); await backToCart(b);
+  const food = b.plain.price * 100;
+  await revIn(b, 0, 1); b.timers.flush(); await settle();
+  assert.ok(release, 'premise: the 2-dish quote is held');
+  await revIn(b, 0, 1); b.timers.flush(); await settle();
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], 'premise: the 3-dish quote landed');
+  release(); await settle();
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(3 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(3 * food + FEE + 7)}`], '🔴 G-A4: the older answer never paints');
+});
+test('G-A5 (rule 10) the guest line «Creá tu cuenta y tu envío es gratis»: ONLY with the store\'s free-delivery promo AND a priced quote for this address — cart and checkout alike; its slot reserved while pending', async () => {
+  const LINE = 'Creá tu cuenta y tu envío es gratis';
+  const b = bootCo({ config: { promoFree: true }, mountOpts: { authState: () => 'guest' } }); await toCheckout(b); await settle();
+  const co = b.q('.ostot .feelnk');
+  assert.ok(co && b.text(co) === LINE && co.dataset.act === 'signin' && co.dataset.ctx === 'checkout' && !co.hasAttribute('aria-hidden'), '🔴 G-A5: the checkout line (v6 ctx checkout)');
+  await backToCart(b);
+  const ca = b.q('#layer .ctot .feelnk');
+  assert.ok(ca && b.text(ca) === LINE && ca.dataset.ctx === 'cart' && !ca.hasAttribute('aria-hidden'), '🔴 G-A5: the cart line (v6 ctx cart)');
+  await revIn(b, 0, 1);
+  const pend = b.q('#layer .ctot .feelnk');
+  assert.ok(pend && pend.getAttribute('aria-hidden') === 'true' && /visibility:hidden/.test(pend.getAttribute('style') || ''), '🔴 G-A5: pending ⇒ the slot reserved, not shown (no pop-in, no claim before the price)');
+  await b.click(pend); assert.ok(!b.events.some(([nm, d]) => nm === 'signin' && d && d.ctx === 'cart'), '🔴 G-A5: a hidden line is not a control');
+  for (const [config, auth, why] of [[{ promoFree: false }, 'guest', 'no promo'], [{ promoFree: true }, 'unresolved', 'not a guest']]) {
+    const c = bootCo({ config, mountOpts: { authState: () => auth } }); await toCheckout(c); await settle();
+    assert.equal(c.qa('.feelnk').length, 0, `🔴 G-A5: ${why} ⇒ no line in the checkout`);
+    await backToCart(c);
+    assert.equal(c.qa('.feelnk').length, 0, `🔴 G-A5: ${why} ⇒ no line in the cart`);
+  }
+});
+test('G-A6 a chosen tip stays out of the cart (v6 draws no Propina row there): the cart Total = the quote\'s net MINUS its tip', async () => {
+  const b = bootCo(); await filled(b, 'online'); await b.click('#cta'); await b.click('[data-act="tipc"][data-val="40"]');
+  await b.click('[data-act="back"]');
+  const food = b.plain.price * 100;
+  assert.equal(b.text('.ostot .sumrow.tot'), `Total ${L_(food + FEE + 4000 + 7)}`, 'premise: the checkout Total carries the tip');
+  await backToCart(b);
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A6: the cart Total leaves the tip out');
+});
+// Codex backfill (asm10 reconciliation, P2 on ee6dedd6a): a store WITHOUT offers ignored an already-confirmed address — no flow before the
+// checkout ⇒ cartAddr() false ⇒ zero quotes, «· según tu dirección» and a Total that silently left delivery out. The confirmed seed pin
+// now prices the cart (the flow seeded exactly as openCheckout seeds it); an UNCONFIRMED seed is still «no address yet» (v6, G-A1)
+test('G-A7 (Codex backfill P2): a CONFIRMED address prices the cart before the checkout — «—» for Envío AND Total until the quote lands; never the subtotal as Total', async () => {
+  const b = bootCo({ mountOpts: { seedPin: { lat: 15.52, lng: -88.04, confirmed: true } } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await b.click('#cart-bar');
+  const food = b.plain.price * 100;
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, 'Envío —', 'Total —'], '🔴 G-A7: a confirmed address ⇒ pending «—», never a Total without delivery');
+  b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 1, '🔴 G-A7: ONE quote for the confirmed address');
+  assert.deepEqual(cartRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, `Total ${L_(food + FEE + 7)}`], '🔴 G-A7: priced in place');
+  const u = bootCo({ mountOpts: { seedPin: { lat: 15.52, lng: -88.04, confirmed: false } } }); u.ui.cart.inc(u.plain.key); u.ui.render(); await u.click('#cart-bar');
+  u.timers.flush(); await settle();
+  assert.deepEqual(cartRows(u), [`Subtotal ${L_(food)}`, 'Envío · según tu dirección', `Total ${L_(food)}`], '🔴 G-A7: an unconfirmed seed is no address yet (v6)');
+  assert.equal(u.srv.of('quoteOrder').length, 0, '🔴 G-A7: nothing asked without a confirmed address');
+});
+
+// ── the DESK aside's totals (advisor 11-13 option (a), exact to D-3 r3 frame 2a): «Envío desde L {fee floor}» before a quote (the
+// store fee cell's fact), the quote's amount once priced, Total as the cart; the member's struck «Gratis» only through the rule-10
+// predicate; no guest line (frame 2a draws the card-only note there instead) ──
+const DESK = { view: { desk: () => true } };
+const asideRows = (b) => b.qa('.deskcart .ctot .sumrow').map((r) => b.text(r));
+test('DA1 frame 2a, before a quote: the aside reads Subtotal · «Envío desde L 45» · Total = the subtotal; nothing quoted', async () => {
+  const b = bootCo({ config: { feeFromCents: 4500 }, mountOpts: { ...DESK, authState: () => 'guest' } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await settle();
+  const food = b.plain.price * 100;
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(food)}`, 'Envío Envío desde L 45', `Total ${L_(food)}`], '🔴 DA1: frame 2a\'s rows before a quote');
+  b.timers.flush(); await settle(); assert.equal(b.srv.of('quoteOrder').length, 0, 'no address ⇒ no quote');
+});
+test('DA2 frame 2a once priced: the quote\'s Envío and the checkout\'s Total; an edit ⇒ the floor again + «—», then the new quote in place', async () => {
+  const b = bootCo({ config: { feeFromCents: 4500 }, mountOpts: { ...DESK, authState: () => 'guest' } });
+  await toCheckout(b); await settle(); const coTot = b.text('.ostot .sumrow.tot'), food = b.plain.price * 100;
+  b.w.history.back(); await popped(); assert.equal(b.ui.state.screen, 'store', 'premise: back on the store');
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(food)}`, `Envío ${L_(FEE)}`, coTot], '🔴 DA2: priced — the quote\'s Envío, the checkout\'s Total');
+  await b.click(b.q('.deskcart .cline [data-rev="1"]'));
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(2 * food)}`, 'Envío Envío desde L 45', 'Total —'], '🔴 DA2: stale ⇒ the floor (a fact) and «—» (never a guessed total)');
+  b.timers.flush(); await settle();
+  assert.deepEqual(asideRows(b), [`Subtotal ${L_(2 * food)}`, `Envío ${L_(FEE)}`, `Total ${L_(2 * food + FEE + 7)}`], '🔴 DA2: the new quote lands in the aside');
+});
+test('DA3 rule 10 in the aside: no free-delivery claim without the predicate (guest or member), and never the guest line', async () => {
+  for (const [promoFree, auth] of [[false, 'guest'], [true, 'guest'], [false, 'unresolved']]) {
+    const b = bootCo({ config: { feeFromCents: 4500, promoFree }, mountOpts: { ...DESK, authState: () => auth } }); b.ui.cart.inc(b.plain.key); b.ui.render(); await settle();
+    const t = b.text('.deskcart .ctot');
+    assert.ok(!/Gratis|envío es gratis/.test(t) && !b.q('.deskcart .feelnk'), `🔴 DA3 (${promoFree}, ${auth}): no claim, no guest line: ${t}`);
+  }
+  const p = bootCo({ config: { feeFromCents: 4500, promoFree: true }, mountOpts: { ...DESK, authState: () => 'guest' } });   // PRICED, promo, guest
+  await toCheckout(p); await settle(); assert.ok(p.q('.ostot .feelnk'), 'premise: the checkout carries the guest line (v6)');
+  p.w.history.back(); await popped();
+  assert.ok(/Envío L /.test(p.text('.deskcart .ctot')) && !p.q('.deskcart .feelnk'), `🔴 DA3: priced — the aside never carries the guest line (frame 2a): ${p.text('.deskcart .ctot')}`);
+});
+
+// ── PLAN-capp-marketing-offers Slice A (advisor 11-14; owner-approved MOCKUP-capp-offers-calm-vs-loud 5 A + MOCKUP-capp-marketing-offers
+// frames 1 / 2 / 4; copy approved 11-14): the quotes are 5f's REAL quoteOrder responses for THIS cart (fixtures/offer-quote) ──
+const OQ = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-quote/offer-quote.json'), 'utf8'));
+const OQ_CART = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-quote/cart.json'), 'utf8'));
+const OCX2 = JSON.parse(readFileSync(join(HERE, 'fixtures/offer-changed/offer-changed.json'), 'utf8'));
+const CAPP_OFF_BASE = 'ca2b4415c39da8a3968df4f9db49161b85a50345';   // feat/capp-offer-changed: the capp before Slice A (the OFF golden's «today»)
+const { refLoader } = await import('./test/ref-require.mjs');
+const { execFileSync } = await import('node:child_process');
+// the quote answers ONLY the fixture's cart (the real body the capp sends), with the scenario for the body's mode
+const oqServer = (pick) => (body) => {
+  assert.deepEqual(body.items.map(({ name, qty, price, subtotal }) => ({ name, qty, price, subtotal })), OQ_CART.items.map(({ name, qty, price, subtotal }) => ({ name, qty, price, subtotal })), 'premise: the quoted cart is the fixture\'s');
+  return { status: 200, json: OQ.scenarios[pick(body)] };
+};
+async function oqCheckout(b) { b.ui.cart.inc(OQ_CART.key); b.ui.cart.inc(OQ_CART.key); b.ui.render(); await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle(); }
+const rowsOf = (b, sel) => b.qa(`${sel} .sumrow`).map((r) => b.text(r));
+test('offers 5 A: the checkout\'s «Descuento · 2 por 1 − L 340» row between Envío and Total, from the quote; Subtotal GROSS; Total = the quote\'s net', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  assert.equal(b.plain.key, OQ_CART.key, 'premise: the fixture\'s dish is the harness\'s plain dish');
+  await oqCheckout(b);
+  assert.deepEqual(rowsOf(b, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 2 por 1 − L 340', 'Total L 400'], '🔴 OF-UI-ROW: the drawn rows, in order');
+  const row = b.qa('.ostot .sumrow')[2];
+  assert.deepEqual([row.querySelector('.lbl').firstChild.nodeValue, row.querySelector('.lbl .ty').textContent, row.lastElementChild.className], ['Descuento', ' · 2 por 1', 'free'], 'the word in ink, the type muted, the amount in the «Gratis» green');
+  assert.ok(!b.text('.ostot').includes(OQ.scenarios.BOGO_DEL.offer.name), 'never the merchant-typed name');
+});
+test('offers 5 A: the lps / pct labels from the quote\'s own amounts (5f f992c28a7); the envío offer ⇒ no row, the v6 struck fee + «Gratis»', async () => {
+  const l = bootCo({ script: { quoteOrder: [oqServer(() => 'LPS_DEL')] } }); await oqCheckout(l);
+  assert.deepEqual(rowsOf(l, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · Pedido desde L 600 − L 50', 'Total L 690'], '🔴 OF-UI-LPS');
+  const p = bootCo({ script: { quoteOrder: [oqServer(() => 'PCT_DEL')] } }); await oqCheckout(p);
+  assert.deepEqual(rowsOf(p, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 15 % − L 102', 'Total L 638'], '🔴 OF-UI-PCT');
+  const e = bootCo({ script: { quoteOrder: [oqServer(() => 'ENVIO_DEL')] } }); await oqCheckout(e);
+  assert.deepEqual(rowsOf(e, '.ostot'), ['Subtotal L 680', 'Envío L 60 Gratis', 'Total L 680'], '🔴 OF-UI-ENVIO: the envío offer is the Envío row, never a Descuento row');
+  assert.ok(e.q('.ostot .strike') && !e.q('.ostot .lbl'), 'struck fee, no Descuento row');
+});
+test('offers 5 A: the cart sheet reads the SAME quote — the same Descuento row, Total = the quote\'s net', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  await oqCheckout(b); b.w.history.back(); await popped();   // device back: «Entrega & Pago» → the cart sheet (S2b r2), the flow + its quote kept
+  assert.deepEqual(rowsOf(b, '#layer .ctot'), ['Subtotal L 680', 'Envío L 60', 'Descuento · 2 por 1 − L 340', 'Total L 400'], '🔴 OF-UI-CART');
+});
+// THE OFF GOLDEN: with no offer in the quote (offers off, or none applying) every money surface is BYTE-IDENTICAL to the capp before
+// Slice A — the base commit's own files (index.html, capp.css, capp-ui.js …, capp-checkout.js, capp-api.js), same script, same steps
+test('offers OFF golden: no offer ⇒ the checkout and the cart sheet are byte-identical to the base commit\'s', async () => {
+  const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const R = refLoader(ROOT, CAPP_OFF_BASE);
+  const run = async (o) => {
+    const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] }, ...o });
+    const store0 = b.q('#app').innerHTML; await b.click(`.qty-add-btn[data-id="${OQ_CART.key}"]`); b.timers.flush(); await settle(); const store1 = b.q('#app').innerHTML;
+    const pq = b.srv.of('quoteOrder').length;
+    await b.click('[data-act="mode"][data-val="pickup"]'); await b.click('#cart-bar'); const pick = b.q('#layer').innerHTML; b.w.history.back(); await popped();
+    await b.click('[data-act="mode"][data-val="delivery"]'); b.ui.cart.inc(OQ_CART.key); b.ui.render(); await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+    const co = b.q('.screen').innerHTML; b.w.history.back(); await popped();
+    return { store0, store1, pq, pick, co, cart: b.q('#layer').innerHTML };
+  };
+  for (const k of ['OFF_DEL', 'UNDER_DEL']) assert.ok(!('offer' in OQ.scenarios[k]), `premise: ${k} carries no offer`);
+  const tip = await run({}), raw = await run({ src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') });
+  assert.ok(raw.co.includes('Total') && raw.cart.includes('Total'), 'premise: both surfaces drawn');
+  // rule 11 (aeb489237, merged in at 8839193d9) is the ONE proven difference from the base (advisor 11-15, the full-output diff): the
+  // base's lone «≈ 30 min» is mapped to the tip's window, and the per-surface counts pin that nothing else can hide behind the mapping
+  const ETA_WAS = '<span>≈ 30 min', ETA_NOW = '<span>30–45 min', SURF = ['store0', 'store1', 'pick', 'co', 'cart'];
+  const cnt = (s, x) => s.split(x).length - 1;
+  assert.deepEqual([SURF.map((k) => cnt(raw[k], ETA_WAS)), SURF.map((k) => cnt(tip[k], ETA_NOW))], [[1, 1, 0, 1, 0], [1, 1, 0, 1, 0]], '🔴 OF-OFF-ETA: the rule-11 window is the only mapped span, once per surface that draws it');
+  // the offers-SBS follow-up NB-1 (advisor 11-15) is the other mapped difference: «3D Secure»'s no-break space, once, on the checkout
+  // (LF-1 changes nothing here: this world has no logo, so its chip is already the initials plate)
+  const NB_WAS = '3D Secure', NB_NOW = '3D&nbsp;Secure';
+  assert.deepEqual([SURF.map((k) => cnt(raw[k], NB_WAS)), SURF.map((k) => cnt(tip[k], NB_NOW))], [[0, 0, 0, 1, 0], [0, 0, 0, 1, 0]], '🔴 OF-OFF-NB: NB-1 is the only other mapped span');
+  const was = { ...raw, ...Object.fromEntries(SURF.map((k) => [k, raw[k].replace(ETA_WAS, ETA_NOW).replace(NB_WAS, NB_NOW)])) };
+  assert.equal(tip.store0, was.store0, '🔴 OF-OFF-GOLDEN: the store page');
+  assert.equal(tip.store1, was.store1, '🔴 OF-OFF-GOLDEN: the store page after an add');
+  assert.deepEqual([tip.pq, was.pq], [0, 0], '🔴 OF-OFF-NOQUOTE: a store without offers asks nothing on the store page');
+  assert.equal(tip.pick, was.pick, '🔴 OF-OFF-GOLDEN: the pickup cart sheet');
+  assert.equal(tip.co, was.co, '🔴 OF-OFF-GOLDEN: the checkout');
+  assert.equal(tip.cart, was.cart, '🔴 OF-OFF-GOLDEN: the cart sheet');
+});
+// NB-1 (the offers SBS 11-15, defect B, rule 16b): at 390 the card option broke as «PixelPay (3D / Secure).» — the name is ONE unit
+test('NB-1 (16b): «3D Secure» never breaks across lines — the checkout joins it with a no-break space', async () => {
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => 'OFF_DEL')] } });
+  await oqCheckout(b);
+  const t = b.q('.screen').textContent;
+  assert.ok(t.includes('PixelPay (3D'), 'premise: the card option is drawn');
+  assert.ok(t.includes('(3D Secure).') && !t.includes('3D Secure'), '🔴 NB-1: the card option joins «3D Secure» with a no-break space');
+  assert.ok(!readFileSync(join(HERE, 'capp-ui.js'), 'utf8').includes('3D Secure'), '🔴 NB-1: no breakable «3D Secure» left in capp-ui.js (the saved-tender row too)');
+});
+// Q3 (frame 4): the order refused offer_changed (5f's REAL bodies) ⇒ the checkout re-quotes; a HIGHER Total asks «Confirmar» / «Volver»
+async function ocFilled(b) {
+  await oqCheckout(b);
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000');
+  await b.click('[data-act="pay"][data-val="cash"]');
+}
+for (const form of ['cash_cap', 'gate']) test(`offers Q3 (${form}): offer_changed ⇒ re-quote ⇒ «La oferta ya no está disponible · Tu total ahora es L 740.»; «Confirmar» places at THAT Total; a second one is the generic sheet`, async () => {
+  let phase = 'BOGO_DEL';
+  const refusal = { status: OCX2.scenarios[form].status || 409, json: OCX2.scenarios[form].body };
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => phase)], createOrder: [refusal, refusal] } });
+  await ocFilled(b);
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 400', 'premise: priced with the offer');
+  phase = 'UNDER_DEL';   // the offer is gone: the server's next quote has none
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('createOrder')[0].body.expected_net_cents, 40000, 'premise: sent at the offer\'s Total');
+  const { clock: _alertIcon, ...sh } = sheetOf(b);   // the warn icon (v6 .errsheet, #i-alert)
+  assert.deepEqual(sh, { label: 'La oferta ya no está disponible', h2: 'La oferta ya no está disponible', p: 'Tu total ahora es L 740.', icon: 'icon warn',
+    acts: [['primary', 'Confirmar', 'oc-confirm'], ['btn2 wide', 'Volver', 'lclose']] }, '🔴 OF-SHEET: frame 4, the re-quoted Total');
+  assert.deepEqual(rowsOf(b, '.ostot'), ['Subtotal L 680', 'Envío L 60', 'Total L 740'], 'under the sheet: the checkout re-rendered without the Descuento row');
+  assert.equal(b.srv.of('createOrder').length, 1, '🔴 OF-NORESEND: nothing re-sent before «Confirmar»');
+  await b.click('#layer [data-act="oc-confirm"]'); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('createOrder').length, 2, 'Confirmar places');
+  assert.equal(b.srv.of('createOrder')[1].body.expected_net_cents, 74000, '🔴 OF-CONFIRM: at the re-quoted Total, never the old one');
+  assert.equal(b.text('#layer .errsheet h2'), 'No pudimos enviar tu pedido', '🔴 OF-NOLOOP: a second offer_changed for the same order is the generic sheet');
+});
+test('offers Q3: «Volver» closes the sheet over the re-priced checkout; an equal-or-lower re-quote shows no sheet at all', async () => {
+  let phase = 'BOGO_DEL';
+  const refusal = { status: 409, json: OCX2.scenarios.cash_cap.body };
+  const b = bootCo({ script: { quoteOrder: [oqServer(() => phase)], createOrder: [refusal] } });
+  await ocFilled(b); phase = 'UNDER_DEL';
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  await b.click('#layer [data-act="lclose"]');
+  assert.equal(b.q('#layer').innerHTML, '', 'Volver closes the sheet');
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 740', 'the checkout shows the re-quoted Total');
+  const s = bootCo({ script: { quoteOrder: [oqServer(() => 'BOGO_DEL')], createOrder: [refusal] } });
+  await ocFilled(s); await ctaPlace(s); await s.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(s.q('#layer .errsheet'), null, '🔴 OF-LOWER: the same (or a lower) Total ⇒ no sheet, just the checkout');
+  assert.equal(s.text('.ostot .sumrow.tot'), 'Total L 400');
+});
+test('offers fixture cart: cart.json is still the capp\'s REAL quote-body items for 2× the plain dish (re-derived, no drift)', async () => {
+  const { cartOf } = await import('./fixtures/offer-quote/cart-of.mjs');
+  assert.deepEqual(await cartOf(), OQ_CART, '🔴 OQ-CART: regenerate cart.json and the offer-quote fixture');
+});
+
+// ── Slice A part 2: the store page of a store WITH offers — the menu's `offers` are 3a's REAL selectOffers (capp-offers-3a 9a6d4a78d,
+// loaded from its ref) over the marketing_live mirror 5f's world left (fixtures/offer-quote `live`) ──
+const A3 = execFileSync('git', ['rev-parse', '9a6d4a78d'], { cwd: ROOT, encoding: 'utf8' }).trim();
+const SERVE = refLoader(ROOT, A3).require('xpizza-functions/catalog/offers-serve.js');
+const offersEnv = (live) => { const L = OQ.live[live]; const offers = SERVE.selectOffers({ on: true, live: L.raw }, L.now_ms); assert.ok(Array.isArray(offers) && offers.length, `premise: 3a serves ${live}`);
+  const e = PROV.x_pizza.envelope; return { ...e, menu: { ...e.menu, offers } }; };
+const OF_SEED = { lat: 15.52, lng: -88.04, confirmed: true };
+const addTwo = async (b) => { await b.click(`.qty-add-btn[data-id="${OQ_CART.key}"]`); await b.click(`.qty-ctrl-btn[data-act="inc"][data-id="${OQ_CART.key}"]`); };
+const nudge = (b) => { const el = b.q('#offer-nudge'); return el ? { on: el.classList.contains('on'), text: b.text(el), tag: !!el.querySelector('path[d^="M3 11V4"]') } : null; };
+const quoteLand = async (b) => { b.timers.flush(); await settle(); };
+test('offers part 2: the served `offers` pin — 3a\'s offers-serve.js blob at its ref; the capp reads the key, never 3a\'s files', () => {
+  assert.equal(A3, execFileSync('git', ['rev-parse', '9a6d4a78d^{commit}'], { cwd: ROOT, encoding: 'utf8' }).trim());
+  assert.equal(refLoader(ROOT, A3).blob('xpizza-functions/catalog/offers-serve.js'), '8f907530763cfda3ac60b650317d59be4405dce0', '🔴 OF-3A-PIN: offers-serve.js at 9a6d4a78d');
+  const m = require('./capp-menu.js').adaptMenu(offersEnv('BOGO'));
+  assert.deepEqual(m.offers.map((o) => o.type), ['bogo'], 'the adapted menu carries the served offers');
+  assert.deepEqual(require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope).offers, [], 'no key ⇒ none');
+});
+test('offers 3 A met: a store with an offer quotes its cart on the store page (debounced) ⇒ «Ahorrás L 340 · 2 por 1» above the pill, the slot reserved', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, 'the reserved slot, empty (no reflow when it fills)');
+  assert.ok(b.q('.storewrap').classList.contains('offers'), 'the content keeps its padding for the line');
+  await addTwo(b);
+  assert.equal(b.srv.of('quoteOrder').length, 0, '🔴 OF-DEBOUNCE: nothing asked before the timer');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 1, 'ONE request for the burst');
+  assert.deepEqual(nudge(b), { on: true, text: 'Ahorrás L 340 · 2 por 1', tag: false }, '🔴 OF-NUDGE-MET');
+  assert.equal(b.qa('#cart-bar .cart-pill-text')[1].textContent, 'L 680', '🔴 OF-PILL-GROSS: the pill stays the cart\'s GROSS subtotal in the met state (advisor 11-14 (i), rule 7)');
+});
+test('offers 3 A under the minimum: «Agregá L 320 para L 50 menos» from the quote\'s offer_next (the tag icon)', async () => {
+  const b = bootCo({ envelope: offersEnv('LPS_UNDER'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'UNDER_DEL')] } });
+  await addTwo(b); await quoteLand(b);
+  assert.deepEqual(nudge(b), { on: true, text: 'Agregá L 320 para L 50 menos', tag: true }, '🔴 OF-NUDGE-NEXT');
+});
+test('offers 3 A perf: the previous line stays ONLY while the newer quote is in flight; a settled newer quote (failed) leaves no stale line', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL'), async () => { await held; return { status: 503, json: { ok: false } }; }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('[data-act="mode"][data-val="pickup"]'); await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 2, 'premise: the newer quote is in flight');
+  assert.deepEqual(nudge(b), { on: true, text: 'Ahorrás L 340 · 2 por 1', tag: false }, 'in flight: the previous text holds (no blink)');
+  release(); await settle(); b.timers.flush(); await settle();
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-NUDGE-STALE: a stale line never survives a settled newer quote');
+});
+test('offers (b): a pickup cart of a store with an offer quotes like delivery — «—» until it lands, then the cart Total = the checkout Total (BOGO pickup)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), script: { quoteOrder: [oqServer((body) => (body.mode === 'pickup' ? 'BOGO_PICK' : 'BOGO_DEL'))] } });
+  await b.click('[data-act="mode"][data-val="pickup"]');
+  await addTwo(b); await b.click('#cart-bar');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-PICK-CART: the Total reserved «—» until the quote lands');
+  await quoteLand(b);
+  assert.deepEqual(rowsOf(b, '#layer .ctot'), ['Subtotal L 680', 'Descuento · 2 por 1 − L 340', 'Total L 340'], '🔴 OF-PICK-CART');
+  await b.click('[data-act="checkout"]'); await settle();
+  assert.equal(b.text('.ostot .sumrow.tot'), 'Total L 340', '🔴 OF-PICK-EQ: the pickup cart Total = the checkout Total');
+});
+test('offers part 2: the menu fingerprint leaves out `offers` (an offers-only refresh is the SAME menu); no key ⇒ the same bytes as before', async () => {
+  const base = PROV.x_pizza.envelope, on = offersEnv('BOGO');
+  const fp = (e) => CK.menuFingerprint(e);
+  assert.equal(await fp(on), await fp(base), '🔴 OF-FP: offers never change the menu content');
+  const R = refLoader(ROOT, CAPP_OFF_BASE).require('customer-app/capp-checkout.js');
+  assert.equal(await fp(base), await R.menuFingerprint(base), 'no offers ⇒ the base commit\'s fingerprint');
+  assert.notEqual(await fp({ ...base, menu: { ...base.menu, categories: [] } }), await fp(base), 'premise: content still counts');
+});
+// ── 4 B3 (advisor 11-14 scope): the strike needs the SERVER's own rules (OfferRules = 5f's marketing/offer-rules.js, synced) — until
+// that module is on the page the sheet is today's, byte for byte; the strike cells follow the module's SHA ──
+const OR = require('./offer-rules.js');   // the synced copy of 5f's marketing/offer-rules.js (fed4eb9ce)
+const B3_NOW = () => new Date(OQ.live.BOGO.now_ms);   // inside the fixture offer's window (5f's world clock)
+const sheetAt2 = async (b) => { await b.click(`.txtbtn[data-id="${OQ_CART.key}"]`); await b.click('#detail-step [data-delta="1"]'); return { body: b.q('#detail-scroll').innerHTML, cta: b.text('#detail-cta') }; };
+test('offers 4 B3: no OfferRules on the page ⇒ no pill, no strike — the offered dish\'s sheet at 2 is today\'s (never a guessed price)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), noRules: true, now: B3_NOW }), s = await sheetAt2(b);
+  assert.equal(b.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-NORULES: no price row without the server\'s rules');
+  assert.equal(s.cta, `Agregar · L ${2 * OQ_CART.items[0].price}`, 'the button: today\'s gross pair');
+  const base = (f) => execFileSync('git', ['cat-file', 'blob', `${CAPP_OFF_BASE}:customer-app/${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
+  const R = refLoader(ROOT, CAPP_OFF_BASE);
+  const was = await sheetAt2(bootCo({ envelope: offersEnv('BOGO'), now: B3_NOW, src: base, CK: R.require('customer-app/capp-checkout.js'), CA: R.require('customer-app/capp-api.js') }));
+  assert.deepEqual(s, was, '🔴 B3-NORULES: byte-identical to the base commit\'s sheet');
+});
+test('offers 4 B3 model: bogoPreview without rules / with several offers / not offered ⇒ null (the provable case only)', () => {
+  const offers = offersEnv('BOGO').menu.offers, key = OQ_CART.items[0].item_key, base = { offers, key, priceCents: 34000, n: 2, cartUnits: [], nowMs: OQ.live.BOGO.now_ms };
+  assert.equal(CK.bogoPreview({ ...base, rules: null }), null, '🔴 B3-NORULES-MODEL');
+  assert.ok(CK.bogoPreview({ ...base, rules: OR }).strike, 'premise: the provable case strikes');
+  assert.equal(CK.bogoPreview({ ...base, rules: OR, offers: [...offers, ...offers] }), null, '🔴 B3-ONE: two served offers ⇒ no strike');
+  assert.equal(CK.bogoPreview({ ...base, rules: OR, key: 'Otra' }), null, 'a dish outside the offer');
+  assert.equal(CK.pricingKeyOf({ item_key: 'K', name: 'N', id: 7 }, 'id'), 'K', 'item_key wins');
+  assert.deepEqual([CK.pricingKeyOf({ name: 'N', id: 7 }, 'id'), CK.pricingKeyOf({ name: 'N', id: 7 }, 'name'), CK.pricingKeyOf({ name: 'N', id: 7 }, null)], ['7', 'N', null], 'else the availIdentity field; unknown ⇒ none');
+});
+test('offers 4 B3: offer-rules.js is 5f\'s server module BYTE-IDENTICAL (fed4eb9ce, blob pinned) — rule 4, never a client copy', () => {
+  const F5 = 'fed4eb9ce7ba2e28d48f9812ab3d968006b0f40e', blob = execFileSync('git', ['hash-object', join(HERE, 'offer-rules.js')], { cwd: ROOT, encoding: 'utf8' }).trim();
+  assert.equal(blob, 'd496d1f456e74ba75659039db3bec786c72a8d7d', '🔴 OR-PIN: the synced copy\'s blob');
+  assert.equal(blob, execFileSync('git', ['rev-parse', `${F5}:xpizza-functions/marketing/offer-rules.js`], { cwd: ROOT, encoding: 'utf8' }).trim(), '🔴 OR-PIN: = the server module at 5f');
+  for (const f of ['index.html', 'shell.html']) assert.ok(readFileSync(join(HERE, f), 'utf8').includes('<script src="offer-rules.js"></script>'), `${f} loads it`);
+});
+test('offers 4 B3 parity: the sheet\'s saving = what 5f\'s REAL offerFor discounts for the cart + n units minus the cart alone (fixture live offer)', () => {
+  const F5 = 'fed4eb9ce7ba2e28d48f9812ab3d968006b0f40e', OP = refLoader(ROOT, F5).require('xpizza-functions/marketing/offer-price.js');
+  const L = OQ.live.BOGO, line = OQ_CART.items[0], price = Math.round(line.price * 100), tables = { restaurantId: 'x_pizza', menu: OQ_CART.menu, extras: {} };
+  const server = (k) => { if (!k) return 0; const items = Array.from({ length: k }, () => ({ ...line })); const o = OP.offerFor({ cfg: { offers_enabled: true }, live: L.raw, nowMs: L.now_ms, items, rid: 'x_pizza', tables, baseTotalL: k * line.price }); return o ? o.discount_cents : 0; };
+  const offers = offersEnv('BOGO').menu.offers; let checked = 0;
+  for (let k = 0; k <= 3; k++) for (let n = 1; n <= 6; n++) {
+    const p = CK.bogoPreview({ rules: OR, offers, key: line.item_key, priceCents: price, n, cartUnits: Array.from({ length: k }, () => ({ key: line.item_key, unit: price })), nowMs: L.now_ms });
+    const marginal = server(k + n) - server(k);
+    const want = n % 2 === 0 && marginal > 0 ? { pay: n * price - marginal, was: n * price } : null;
+    assert.deepEqual(p && p.strike, want, `🔴 B3-PARITY: cart ${k} + staged ${n}`); checked++;
+  }
+  assert.equal(checked, 24);
+});
+test('offers 4 B3 parity: OfferRules.inWindow ≡ 3a\'s inWindowNow (9a6d4a78d) over the week, windows and overnight wraps', () => {
+  const A = refLoader(ROOT, A3).require('xpizza-functions/catalog/offers-serve.js');
+  const start = Date.UTC(2026, 10, 1), scheds = [{ start, end: null, days: [0, 1, 2, 3, 4, 5, 6] }, { start, end: start + 20 * 864e5, days: [5, 6], window: { from: 1260, to: 0 } },
+    { start, end: null, days: [1, 3], window: { from: 690, to: 900 } }, { start: start + 5 * 864e5, end: null, days: [0], window: { from: 1380, to: 120 } }, OQ.live.BOGO.raw[Object.keys(OQ.live.BOGO.raw)[0]].schedule];
+  let n = 0, inside = 0;
+  for (const sc of scheds) for (let t = start - 864e5; t < start + 21 * 864e5; t += 37 * 60e3) { const a = OR.inWindow(sc, t), b = A.inWindowNow({ window: null, end: null, ...sc }, t); assert.equal(a, b, `🔴 B3-WINDOW: ${JSON.stringify(sc)} @ ${t}`); n++; if (a) inside++; }
+  assert.ok(n > 4000 && inside > 0 && inside < n, `premise: both sides seen (${inside}/${n})`);
+});
+test('offers 4 B3: the provable case on the sheet — 2 ⇒ «L 340 ~~L 680~~ · 2 por 1» and «Agregar · L 340»; odd ⇒ the pill, no strike; out of its window ⇒ today\'s sheet', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), now: B3_NOW }); const p = OQ_CART.items[0].price;
+  await sheetAt2(b);
+  assert.equal(b.text('#detail-scroll .detail-pricerow'), `L ${p} L ${2 * p} 2 por 1`, '🔴 B3-STRIKE: the pair price, the struck gross, the pill');
+  assert.equal(b.q('#detail-scroll .detail-price s.was').textContent, `L ${2 * p}`);
+  assert.equal(b.text('#detail-cta'), `Agregar · L ${p}`, '🔴 B3-CTA: the clean button at the pair price (v6 label)');
+  await b.click('#detail-step [data-delta="1"]');
+  assert.equal(b.q('#detail-scroll .detail-price s.was'), null, '🔴 B3-ODD: 3 ⇒ no strike');
+  assert.ok(b.q('#detail-scroll .tag-offer-fill'), 'the pill stays (the dish is offered)');
+  assert.equal(b.text('#detail-cta'), `Agregar · L ${(3 * p).toLocaleString('en-US')}`, 'odd ⇒ today\'s gross button');
+  await b.click('#detail-step [data-delta="1"]');
+  assert.equal(b.text('#detail-scroll .detail-price'), `L ${(3 * p).toLocaleString('en-US')} L ${(4 * p).toLocaleString('en-US')}`, 'free_per_order 1: 4 ⇒ one free');
+  const o = bootCo({ envelope: offersEnv('BOGO') });   // NOON: before the offer starts
+  await sheetAt2(o);
+  assert.equal(o.q('#detail-scroll .detail-pricerow'), null, '🔴 B3-WINDOW-UI: outside its window ⇒ no pill, no strike');
+});
+// ── Codex offers-ui r1 (REVISE) — P1-1 / P1-2 / P1-3 / P2 ──
+// Codex r2 P2: a CONTRACT cell — the client cannot see usage caps; the real fix is 3a's served-headroom rule (only offers with cap headroom
+// are in menu.offers). This pins the client's half of that contract: no served offer ⇒ no strike
+test('Codex r1 P1-1 (CONTRACT): the strike comes ONLY from a served offer — an offer missing from menu.offers (e.g. at its cap, not served) ⇒ no strike, today\'s button', async () => {
+  for (const [what, env] of [['no offers key', PROV.x_pizza.envelope], ['only another offer served', offersEnv('LPS_UNDER')]]) {
+    const b = bootCo({ envelope: env, now: B3_NOW }); const s = await sheetAt2(b);
+    assert.equal(b.q('#detail-scroll .detail-pricerow'), null, `🔴 B3-SERVED: ${what} ⇒ no pill, no strike`);
+    assert.equal(s.cta, `Agregar · L ${2 * OQ_CART.items[0].price}`, `${what}: today's gross button`);
+  }
+});
+test('Codex r1 P1-2: a quote that settles while the checkout is open settles the store line too — back on the store, no stale «Ahorrás»', async () => {
+  let release; const held = new Promise((r) => { release = r; });
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL'), async (body) => { await held; return oqServer(() => 'OFF_DEL')(body); }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('[data-act="mode"][data-val="pickup"]'); await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 2, 'premise: the newer (pickup) quote is in flight');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', 'premise: in the checkout while it is pending');
+  release(); await settle(); b.timers.flush(); await settle();
+  b.w.history.back(); await popped(); b.w.history.back(); await popped();
+  assert.equal(b.ui.state.screen, 'store', 'premise: back on the store');
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-SETTLE-CO: the offer-less quote settled the line (no stale saving)');
+});
+test('Codex r1 P1-2: an identity change clears the line AT ONCE and re-quotes the cart for the new identity', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).on, true, 'premise: met'); const n0 = b.srv.of('quoteOrder').length;
+  b.ui.setMember({ uid: 'u_other', name: 'Otra', phone: '50499990001' });
+  assert.deepEqual(nudge(b), { on: false, text: '', tag: false }, '🔴 OF-IDENT: cleared at once (never a saving priced for someone else)');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, n0 + 1, '🔴 OF-IDENT: re-quoted for the new identity');
+});
+test('Codex r1 P1-3: a FAILED pickup quote keeps the cart\'s Total «—» — never the client subtotal as a total', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), script: { quoteOrder: [{ status: 200, json: { ok: false, error: 'pricing_unavailable' } }] } });
+  await b.click('[data-act="mode"][data-val="pickup"]'); await addTwo(b); await b.click('#cart-bar'); await quoteLand(b);
+  assert.ok(b.srv.of('quoteOrder').length >= 1, 'premise: the quote was asked (and refused)');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-PICK-FAIL: no client total');
+});
+test('Codex r1 P2: a RESTORED cart asks the same debounced store-page offers quote as an edit', async () => {
+  const a = bootCo({ envelope: offersEnv('BOGO') }); a.ui.cart.inc(OQ_CART.key); a.ui.cart.inc(OQ_CART.key); const snap = J(a.ui.snapshot());
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => 'BOGO_DEL')] } });
+  b.ui.restore(snap); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, 'debounced');
+  await quoteLand(b);
+  assert.equal(b.srv.of('quoteOrder').length, 1, '🔴 OF-RESTORE: the restored cart is quoted');
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', '🔴 OF-RESTORE: its line');
+});
+
+// ── Codex offers-ui r2 (REVISE, narrow) ──
+test('Codex r2 P1: a menu_changed quote settled in the checkout ALSO settles the store line — back on the store, no stale «Ahorrás»', async () => {
+  let refuse = false;
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [(body) => (refuse ? { status: 200, json: { ok: false, error: 'menu_changed' } } : oqServer(() => 'BOGO_DEL')(body))] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  refuse = true; await b.click('[data-act="type"][data-val="pickup"]'); await settle(); b.timers.flush(); await settle();
+  assert.ok(b.q('#layer .errsheet'), 'premise: the menu_changed sheet over the checkout');
+  assert.notEqual(b.ui.state.nudge, 'Ahorrás L 340 · 2 por 1', '🔴 OF-SETTLE-MC: the refused quote settled the line (the state the store repaints from — no stale saving)');
+});
+test('Codex r2 P1: the offer_changed re-quote settles the store line BEFORE its sheet — no stale «Ahorrás L 340»', async () => {
+  let phase = 'BOGO_DEL';
+  const b = bootCo({ envelope: offersEnv('BOGO'), mountOpts: { seedPin: OF_SEED }, script: { quoteOrder: [oqServer(() => phase)], createOrder: [{ status: 409, json: OCX2.scenarios.cash_cap.body }] } });
+  await addTwo(b); await quoteLand(b);
+  assert.equal(nudge(b).text, 'Ahorrás L 340 · 2 por 1', 'premise: met');
+  await b.click('#cart-bar'); await b.click('[data-act="checkout"]'); await settle();
+  await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
+  await b.type('#f-details', 'Portón negro'); await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]');
+  phase = 'UNDER_DEL';
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.text('#layer .errsheet h2'), 'La oferta ya no está disponible', 'premise: the offer-changed sheet');
+  assert.notEqual(b.ui.state.nudge, 'Ahorrás L 340 · 2 por 1', '🔴 OF-SETTLE-OC: the re-quote (no offer) settled the line before the sheet returned (the state the store repaints from)');
+});
+test('Codex r2 P1: a store with a served offer never shows a client Total — delivery with NO pin yet ⇒ «—», zero quotes; no offers ⇒ today\'s subtotal Total (OFF)', async () => {
+  const b = bootCo({ envelope: offersEnv('BOGO'), geo: GEO_NO });
+  await addTwo(b); await b.click('#cart-bar'); await settle(); b.timers.flush(); await settle();
+  assert.equal(b.srv.of('quoteOrder').length, 0, 'premise: no address ⇒ nothing asked');
+  assert.equal(b.text('#layer .ctot .sumrow.tot'), 'Total —', '🔴 OF-NOPIN: no client total with an offer live');
+  const o = bootCo({ geo: GEO_NO }); o.ui.cart.inc(OQ_CART.key); o.ui.cart.inc(OQ_CART.key); o.ui.render(); await o.click('#cart-bar');
+  assert.equal(o.text('#layer .ctot .sumrow.tot'), `Total L ${2 * OQ_CART.items[0].price}`, 'no offers ⇒ today\'s subtotal Total (OFF byte-identical)');
 });
 
 // ── rule 11 (owner; owed SBS 11-14, advisor ruling — a RECORDED deviation from v6:1276-1277's single figure): every time the customer

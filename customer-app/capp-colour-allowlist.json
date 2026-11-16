@@ -51,6 +51,10 @@
   "disposition": "v6-parity",
   "why": "a shadow / drop-shadow: dark on both themes (v6)"
  },
+ "css .nudge | box-shadow rgba(0,0,0,.12)": {
+  "disposition": "fixed",
+  "why": "offers 3 A: the line's soft drop above the cart pill (MOCKUP-capp-offers-calm-vs-loud .nudge-a, owner-approved 11-14): a dark 12 % shadow, readable on both themes"
+ },
  "css .dcard .ph .lg | background #fff": {
   "disposition": "fixed",
   "why": "logo backplate: restaurant logos are drawn for a white plate; v6 dark keeps it (§5 fixed)"

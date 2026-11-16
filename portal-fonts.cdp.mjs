@@ -1,4 +1,4 @@
-// PLAN-portal-fonts r1.1 §4 — the portal's self-hosted Archivo, proven in a REAL browser (headless Chrome over CDP), both entry pages.
+// PLAN-portal-fonts r1.1 §4 (+ PLAN-font-figtree-portal-r0: the hosted face is the manifest's — Figtree since 11-14) — the portal's self-hosted face, proven in a REAL browser (headless Chrome over CDP), both entry pages.
 // Run at hand-back (HEAVY, slotted; not in the npm chain):  node portal-fonts.cdp.mjs [--cells=fast,slow,failed,ctrl,typing,same]
 //   [--states=P-editor,…] [--views=1280,390] [--themes=light,dark]   CHROME_BIN overrides; FONTS_REPEATS (default 3).
 // ONE Chrome at a time, only while the 1-min load is < 30 (platform/perf/cdp-fonts.mjs waitForLoad). Nothing leaves the machine: pages
@@ -6,18 +6,21 @@
 // Reuses the forms harness's patterns (forms-fonts.cdp.mjs): the IN-PAGE paint snapshot at FCP + 1 rAF, the buffered whole-window CLS,
 // font-ONLY release (a held non-font request is failed at teardown, never continued), page-error collection, equalized-history pixels.
 // Cells (each entry page; FONTS_REPEATS repeats; every repeat must pass):
-//   FF-fast    fonts at once                         ⇒ Archivo paints (census); 0 boxes move from FIRST PAINT to settled; CLS 0
-//   FF-slow    Slow 4G + 4× CPU, fonts HELD ≥ 6000 ms ⇒ premise: no Archivo loaded at the FCP snapshot, the fallback painted before release;
+//   FF-fast    fonts at once                         ⇒ the hosted face paints (census); 0 boxes move from FIRST PAINT to settled; CLS 0
+//   FF-slow    Slow 4G + 4× CPU, fonts HELD ≥ 6000 ms ⇒ premise: no hosted face loaded at the FCP snapshot, the fallback painted before release;
 //                                                     after completion + settle the fallback is KEPT and 0 boxes move; CLS 0
 //   FF-failed  font requests FAIL                    ⇒ fallback kept; 0 move; no page errors beyond the expected font failures; usable
 //                                                     (index: the editor rows render + a drawer opens and a price types; aceptar: the email
 //                                                     step submits)
-//   FF-ctrl    NEGATIVE CONTROL: the held load with the OLD policy (swap, no fallback faces / names) ⇒ fallback → Archivo AND boxes move
-//   FF-typing  P-editor, FF-slow timing: a LIST-ROW price (render.js priceCell → .price input, Archivo 800, right-aligned), fixture value
+//   FF-ctrl    NEGATIVE CONTROL: the held load with the OLD policy (swap, no fallback faces / names) ⇒ fallback → the hosted face AND boxes move
+//   FF-typing  P-editor, FF-slow timing: a LIST-ROW price (render.js priceCell → .price input, the hosted face at 800, right-aligned), fixture value
 //              1280, caret placed INSIDE (between «12» and «80»); the RENDERED caret x (sentinel caret-color, pixel-located) before vs
 //              after release + settle ⇒ 0 px, the box unchanged, the value intact; its FF-ctrl twin (same target, same caret) must MOVE
 //   FF-same    every §4 STATE, baseline (today's portal at BASELINE_REV with its Google css replaced by the COMMITTED baseline css, gstatic
-//              served from the PINNED bytes) vs candidate (this tree), fonts fast, deterministic ⇒ gates (a)–(d) + FB-ctrl + FC-ctrl
+//              served from the PINNED bytes) vs candidate (this tree), fonts fast, deterministic ⇒ gates (a)–(d) + FB-ctrl + FC-ctrl.
+//              ONLY for a DELIVERY change of one face (Google → self-hosted); after a FACE change (Archivo → Figtree, owner 11-13) it is
+//              refused — the census then comes from:
+//   FF-census  FF-same without its baseline arm: every §4 STATE, candidate only ⇒ gate (b) + gate (d) + FB-ctrl + the census record
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,16 +33,18 @@ import { launch, serveDir, router, census, attribute, runsOf, GEO, OBSERVER, sle
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'xpizza-portal';
 const BASELINE_REV = process.env.FONTS_BASELINE_REV || 'd23bef66';   // the base this slice stacks on: today's portal (Google Archivo)
-const PIN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts/baseline/portal.pin.json'), 'utf8'));
-const BASELINE_CSS = fs.readFileSync(path.join(ROOT, 'platform/fonts/baseline/portal.google.css'));
+// the hosted face, its pin and its range come from the ONE manifest (never a copy here)
+const MAN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts/fonts.manifest.json'), 'utf8')).surfaces.portal;
+const PIN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts', `${MAN.baseline}.pin.json`), 'utf8'));
+const BASELINE_CSS = fs.readFileSync(path.join(ROOT, 'platform/fonts', path.dirname(MAN.baseline), PIN.css.file));
 const arg = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3).split(',') : d; };
-const CELLS = arg('cells', ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'same']);
+const CELLS = arg('cells', ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'census']);
 const VIEWS = arg('views', ['1280', '390']).map(Number);
 const THEMES = arg('themes', ['light', 'dark']);
 const REPEATS = Number(process.env.FONTS_REPEATS || 3);
 // Codex r1 P2-1: an argument that selects NOTHING (FONTS_REPEATS=0, an unknown or empty --cells, a bad view/theme/state) must never pass
 // vacuously — every one is refused HERE, before any Chrome is launched; and OK additionally requires > 0 completed checks (end of file)
-const KNOWN_CELLS = ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'same'];
+const KNOWN_CELLS = ['fast', 'clsctrl', 'slow', 'failed', 'ctrl', 'typing', 'same', 'census'];
 const refuse = (msg) => { console.error(`portal-fonts.cdp: refused — ${msg}`); process.exit(2); };
 if (!Number.isInteger(REPEATS) || REPEATS < 1) refuse(`FONTS_REPEATS must be an integer ≥ 1 (got ${JSON.stringify(process.env.FONTS_REPEATS)})`);
 if (!CELLS.length || CELLS.some((c) => !c)) refuse('--cells selects no cell');
@@ -47,8 +52,13 @@ for (const c of CELLS) if (!KNOWN_CELLS.includes(c)) refuse(`unknown cell ${JSON
 if (!VIEWS.length || VIEWS.some((v) => !Number.isInteger(v) || v < 320 || v > 3840)) refuse(`--views must be integer widths 320..3840 (got ${arg('views', ['1280', '390']).join(',')})`);
 if (!THEMES.length || THEMES.some((t) => !['light', 'dark'].includes(t))) refuse(`--themes must be light and/or dark (got ${THEMES.join(',')})`);
 const OUT = path.join(os.tmpdir(), `portal-fonts-cdp-${process.pid}`); fs.mkdirSync(OUT, { recursive: true });
-const RANGE = [600, 800];                       // the pinned baseline's ONE range descriptor per subset (no discrete faces)
-const HOSTED = ['Archivo'];
+const HOSTED = Object.keys(MAN.families);       // the manifest's hosted family (one: Figtree)
+// the pinned baseline's ONE range descriptor per subset (no discrete faces) — Figtree's variable 300 900
+const RANGE = (/font-weight: (\d+) (\d+);/.exec(BASELINE_CSS.toString('utf8')) || []).slice(1).map(Number);
+if (HOSTED.length !== 1 || RANGE.length !== 2) refuse(`the portal surface must host ONE range face (got ${HOSTED.join(', ')} / ${RANGE.join(' ')})`);
+const FACE = HOSTED[0];
+// FF-same compares ONE face across a delivery change: the baseline revision must use the same family
+if (CELLS.includes('same')) { const was = execFileSync('git', ['show', `${BASELINE_REV}:${SITE}/styles.css`], { cwd: ROOT }).toString(); if (!was.includes(`'${FACE}'`)) refuse(`--cells=same: ${BASELINE_REV} does not use ${FACE} — a FACE change has no pixel-exact baseline; use --cells=census (+ the font-only re-shoot)`); }
 const hostedOf = (name) => HOSTED.find((f) => name === f || name.startsWith(`${f} `)) || null;
 const firstFamily = (stack) => (stack.split(',')[0] || '').trim().replace(/^["']|["']$/g, '');
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
@@ -232,7 +242,7 @@ const PAINT_SNAP = `(() => { const DESC = () => [...document.querySelectorAll('b
   const VIS = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && (e.offsetParent !== null || getComputedStyle(e).position === 'fixed'); });
   const GEO = () => [...document.querySelectorAll('body *')].filter((e) => !/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(e.tagName)).map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => v.toFixed(2)).join(','); });
   try { new PerformanceObserver((l, obs) => { for (const e of l.getEntries()) if (e.name === 'first-contentful-paint' && !window.__paintSnap) { obs.disconnect();
-    requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), desc: DESC(), vis: VIS(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Archivo' && f.status === 'loaded').map((f) => 'Archivo ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
+    requestAnimationFrame(() => { window.__paintSnap = { t: performance.now(), fcp: e.startTime, geo: GEO(), desc: DESC(), vis: VIS(), loaded: [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === '${FACE}' && f.status === 'loaded').map((f) => '${FACE} ' + f.weight + ' ' + f.unicodeRange.slice(0, 12)) }; }); } }).observe({ type: 'paint', buffered: true }); } catch (_) {} })();`;
 // per shift: when, how much, WHICH nodes moved (prev → current rect), and what each source is (text-bearing? its first family / weight),
 // plus the page's FONT TIMELINE from document start (FontFaceSet loading / loadingdone / loadingerror per face) — the advisor's ruling
 // (2026-10-31) classifies each entry from these; the hosted-font resource windows are read from Resource Timing at the end of the run
@@ -250,7 +260,7 @@ const SHIFT_SRC = `window.__shiftSrc = []; window.__fontEv = []; try {
     const vm = document.getElementById('viewmenu'); if (!vm) return false; const b = vm.getBoundingClientRect(), c = s.currentRect;
     return c.width > 0 && c.x >= b.x - 1 && c.y >= b.y - 1 && c.x + c.width <= b.right + 1 && c.y + c.height <= b.bottom + 1; };
   new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shiftSrc.push({ t: e.startTime, v: e.value,
-    fontsLoaded: [...document.fonts].filter((f) => f.status === 'loaded' && f.family.replace(/["']/g, '') === 'Archivo').length,
+    fontsLoaded: [...document.fonts].filter((f) => f.status === 'loaded' && f.family.replace(/["']/g, '') === '${FACE}').length,
     sources: (e.sources || []).map((s) => ({ desc: d(s.node) + ' ' + r(s.previousRect) + '→' + r(s.currentRect), inViewmenu: inVm(s), text: textOf(s.node) })) }); }).observe({ type: 'layout-shift', buffered: true }); } catch (_) {}`;
 const FONT_RES = `performance.getEntriesByType('resource').filter((e) => /\\.woff2(\\?|$)|fonts\\.gstatic\\.com\\/s\\//.test(e.name)).map((e) => ({ name: e.name.split('/').pop(), start: e.startTime, end: e.responseEnd || e.startTime + e.duration }))`;
 const FRAME = 1000 / 60;
@@ -299,8 +309,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
       let out;
       if (STUB[rel]) out = STUB[rel](st);
       if (oldPolicy) {   // the OLD policy, in flight: swap, no fallback faces, no fallback names in the stacks
-        if (/portal-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap').replace(/@font-face\{font-family:'Archivo Fallback[^']*';[^}]*\}/g, '');
-        if (/(styles|aceptar)\.css$/.test(rel)) out = String(out ?? buf).replace(/,'Archivo Fallback( Roboto)?'/g, '');
+        if (/portal-fonts\.css$/.test(rel)) out = String(out ?? buf).replace(/font-display:optional/g, 'font-display:swap').replace(new RegExp(`@font-face\\{font-family:'${FACE} Fallback[^']*';[^}]*\\}`, 'g'), '');
+        if (/(styles|aceptar)\.css$/.test(rel)) out = String(out ?? buf).replace(new RegExp(`,'${FACE} Fallback( Roboto)?'`, 'g'), '');
       }
       if (faceChange && side === 'candidate' && /index\.html$/.test(rel)) out = String(out ?? buf).replace('</head>', '<style>.nm{font-weight:600!important}</style></head>');   // FC-ctrl
       return out;
@@ -339,7 +349,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     let caret0 = null;
     if (typing) {
       await cdp.ev(`(() => { const i = [...document.querySelectorAll('#detail .price input')].find((x) => x.value === '1280'); if (!i) throw new Error('premise: no list-row price 1280');
-        if (getComputedStyle(i).fontFamily.split(',')[0].replace(/["']/g, '').trim() !== 'Archivo' || getComputedStyle(i).fontWeight !== '800') throw new Error('premise: the target is not the Archivo 800 list-row price');
+        if (getComputedStyle(i).fontFamily.split(',')[0].replace(/["']/g, '').trim() !== '${FACE}' || getComputedStyle(i).fontWeight !== '800') throw new Error('premise: the target is not the ${FACE} 800 list-row price');
         i.id = '__typing'; const s = document.createElement('style'); s.textContent = '#__typing{caret-color:#ff00ff!important}'; document.head.appendChild(s);
         i.focus(); i.setSelectionRange(2, 2); return true; })()`);
       caret0 = await caretOf(cdp);
@@ -412,7 +422,7 @@ function faceSet(r) {
 }
 function primaryDecls() {   // every PRIMARY @font-face the candidate ships (one range face per subset)
   const css = fs.readFileSync(path.join(ROOT, SITE, 'portal-fonts.css'), 'utf8');
-  return [...css.matchAll(/@font-face\{font-family:'(Archivo)';font-style:(\w+);font-weight:(\d+) (\d+);[^}]*unicode-range:([^}]+)\}/g)]
+  return [...css.matchAll(new RegExp(`@font-face\\{font-family:'(${FACE})';font-style:(\\w+);font-weight:(\\d+) (\\d+);[^}]*unicode-range:([^}]+)\\}`, 'g'))]
     .map((m) => ({ family: m[1], style: m[2], lo: Number(m[3]), hi: Number(m[4]), range: m[5].split(',').map((r) => r.trim().replace(/^U\+/, '').split('-').map((x) => parseInt(x, 16))).map(([a, b]) => [a, b ?? a]), raw: m[5] }));
 }
 const inRange = (cp, range) => range.some(([lo, hi]) => cp >= lo && cp <= hi);
@@ -424,7 +434,7 @@ function requestedWeights() {   // r2's static scan: every weight a live --disp 
   }
   return w;
 }
-// For each declaration × each requested weight it serves: covered (a painted codepoint, attributed to Archivo at that weight, inside the
+// For each declaration × each requested weight it serves: covered (a painted codepoint, attributed to the hosted face at that weight, inside the
 // declaration's unicode-range) | r1 subset-only (that weight painted, none of its codepoints in this range) | r2 weight-unrequested | FAIL
 function gateB(byState, decls, reqW, without = new Set()) {
   const painted = new Set(); const cps = new Map();
@@ -450,7 +460,7 @@ function gateD(r) {
   for (const n of r.after.nodes) {
     if (!hostedOf(firstFamily(n.family))) continue;
     for (const run of runsOf(n, r.probe).runs) if (!hostedOf(run.familyName) && run.codepoints.some((cp) => inRange(cp, ranges)))
-      bad.push(`${n.path.slice(-50)}: ${run.familyName} draws ${JSON.stringify(String.fromCodePoint(...run.codepoints.filter((cp) => inRange(cp, ranges))))} inside Archivo's ranges`);
+      bad.push(`${n.path.slice(-50)}: ${run.familyName} draws ${JSON.stringify(String.fromCodePoint(...run.codepoints.filter((cp) => inRange(cp, ranges))))} inside ${FACE}'s ranges`);
   }
   return bad;
 }
@@ -470,7 +480,7 @@ const visMoved = (r) => { const a = r.after.paintSnap.geo, b = r.after.geo, v = 
 const showMoved = (r) => { const a = r.after.paintSnap.geo, b = r.after.geo, d = r.after.paintSnap.desc;
   if (a.length !== b.length) { console.log(`      box count changed ${a.length} → ${b.length} (content inserted/removed after first paint)`); return; }
   a.forEach((g, i) => { if (g !== b[i]) console.log(`      moved: ${d[i]}  ${g} → ${b[i]}`); })
-  console.log(`      FCP ${Math.round(r.after.paintSnap.fcp)} ms, snapshot ${Math.round(r.after.paintSnap.t)} ms; Archivo loaded at the snapshot: ${JSON.stringify(r.after.paintSnap.loaded)}; font events: ${(r.after.fontEv || []).map((e) => `${e.type} ${e.face} @${Math.round(e.t)}`).join(' · ') || 'none after document start'}; font bytes: ${(r.after.fontRes || []).map((x) => `${x.name} ${Math.round(x.start)}–${Math.round(x.end)} ms`).join(' · ')}`); };
+  console.log(`      FCP ${Math.round(r.after.paintSnap.fcp)} ms, snapshot ${Math.round(r.after.paintSnap.t)} ms; ${FACE} loaded at the snapshot: ${JSON.stringify(r.after.paintSnap.loaded)}; font events: ${(r.after.fontEv || []).map((e) => `${e.type} ${e.face} @${Math.round(e.t)}`).join(' · ') || 'none after document start'}; font bytes: ${(r.after.fontRes || []).map((x) => `${x.name} ${Math.round(x.start)}–${Math.round(x.end)} ms`).join(' · ')}`); };
 const SHELL_LOG = [], APPEAR_LOG = [];
 let LOAD_MAX = 0;
 const CELL_STATES = { index: 'P-editor', aceptar: 'I-email' };
@@ -480,8 +490,8 @@ for (let rep = 1; rep <= REPEATS; rep++) {
     for (const [page, stateName] of Object.entries(CELL_STATES)) {
       if (CELLS.includes('fast')) {
         const r = await run({ side: process.env.FONTS_FAST_SIDE || 'candidate', stateName, view, throttle: !!process.env.FONTS_FAST_THROTTLE });   // FONTS_FAST_THROTTLE=1: diagnostic (CPU 4× + Slow 4G, fonts NOT held)   // FONTS_FAST_SIDE=baseline: today's portal, the diagnostic reference
-        check(hostedPainted(r.after.nodes), `[${page}] FF-fast: Archivo paints (census)`);
-        check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; Archivo loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
+        check(hostedPainted(r.after.nodes), `[${page}] FF-fast: ${FACE} paints (census)`);
+        check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; ${FACE} loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
         const m = moved(r.after.paintGeo, r.after.geo);
         if (stateName === 'P-editor') console.log(`    · P-editor's rows arrive after the shell's discovery — boxes added after FCP are content, not reflow; the FIRST-PAINT comparison is recorded (${m}), the settled comparison is FF-slow's`);
         else {
@@ -507,13 +517,13 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
         const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), font = cls.filter((x) => x.font);
         const inside = font.filter((x) => x.sources.some((s) => s.inViewmenu));
-        check(hostedPainted(r.after.nodes) && !hostedPainted(r.before.nodes), `[${page}] CLS-ctrl premise: the old policy swapped fallback → Archivo at release (${r.after.heldMs} ms)`);
+        check(hostedPainted(r.after.nodes) && !hostedPainted(r.before.nodes), `[${page}] CLS-ctrl premise: the old policy swapped fallback → ${FACE} at release (${r.after.heldMs} ms)`);
         check(inside.length > 0 && font.reduce((a, x) => a + x.v, 0) > 0, `[${page}] CLS-ctrl: the swap's shift inside #viewmenu is FONT-ATTRIBUTED, so the FF-fast rule FAILS it (${inside.length} entr${inside.length === 1 ? 'y' : 'ies'}; arm (a) ${inside.filter((x) => x.armA).length}, arm (b) ${inside.filter((x) => x.armB).length}; font CLS ${+font.reduce((a, x) => a + x.v, 0).toPrecision(3)})`);
         showShifts(cls);
       }
       if (CELLS.includes('slow')) {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true });
-        check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-slow premise: NO Archivo loaded at the FCP snapshot (${r.after.paintSnap ? JSON.stringify(r.after.paintSnap.loaded) : 'no snapshot'}) — else VOID`);
+        check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-slow premise: NO ${FACE} loaded at the FCP snapshot (${r.after.paintSnap ? JSON.stringify(r.after.paintSnap.loaded) : 'no snapshot'}) — else VOID`);
         check(!hostedPainted(r.before.nodes), `[${page}] FF-slow premise: the fallback is painted before release (fonts released at ${r.after.heldMs} ms)`);
         check(!hostedPainted(r.after.nodes), `[${page}] FF-slow: the fallback is KEPT after the held fonts complete`);
         const m = moved(r.before.geo, r.after.geo);
@@ -530,8 +540,8 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       }
       if (CELLS.includes('ctrl')) {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true, oldPolicy: true });
-        check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-ctrl premise: NO Archivo loaded at the FCP snapshot — else VOID`);
-        check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes), `[${page}] FF-ctrl: the OLD policy swaps (fallback → Archivo)`);
+        check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-ctrl premise: NO ${FACE} loaded at the FCP snapshot — else VOID`);
+        check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes), `[${page}] FF-ctrl: the OLD policy swaps (fallback → ${FACE})`);
         const m = moved(r.before.geo, r.after.geo);
         check(m > 0, `[${page}] FF-ctrl: the geometry check SEES it — ${m} of ${r.after.geo.length} boxes moved`);
       }
@@ -558,7 +568,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const cand = await run({ side: process.env.FONTS_SELF_CONTROL ? 'baseline' : 'candidate', stateName: stn, deterministic: true, view, theme });
         byState[stn] = cand;
         fidelity(base, `${stn} baseline`); fidelity(cand, `${stn} candidate`);
-        check(hostedPainted(base.after.nodes) && hostedPainted(cand.after.nodes), `${stn}: Archivo paints on BOTH sides`);
+        check(hostedPainted(base.after.nodes) && hostedPainted(cand.after.nodes), `${stn}: ${FACE} paints on BOTH sides`);
         const A = [...faceSet(base)].sort(), B = [...faceSet(cand)].sort();
         check(JSON.stringify(A) === JSON.stringify(B), `${stn} gate (a): face sets identical (${B.length})${JSON.stringify(A) === JSON.stringify(B) ? '' : ` base ${JSON.stringify(A)} cand ${JSON.stringify(B)}`}`);
         const d = pixelDiff(base.png, cand.png), dRaw = pixelDiff(base.raw, cand.raw);
@@ -570,6 +580,34 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const b0 = await run({ side: 'baseline', stateName: 'P-editor', deterministic: true, view, theme });
         const c0 = await run({ side: 'candidate', stateName: 'P-editor', deterministic: true, view, theme, faceChange: true });
         check(pixelDiff(b0.png, c0.png) > 0, 'FC-ctrl: a deliberate face change (.nm → the 600 weight) FAILS the normalized pixel gate');
+      }
+      const decls = primaryDecls(), reqW = requestedWeights();
+      const vb = gateB(byState, decls, reqW);
+      for (const v of vb) check(!/^FAIL/.test(v.verdict), `gate (b) ${v.family} ${v.weight} ${v.raw.slice(0, 18)}…: ${v.verdict}`);
+      const coveredKeys = [...new Set(vb.filter((v) => v.verdict === 'covered').map((v) => `${v.family}|${v.weight}|${v.style}`))].sort();
+      const pick = coveredKeys[0];
+      const painters = new Set(Object.entries(byState).filter(([, r]) => r.after.nodes.some((n) => runsOf(n, r.probe).runs.some((x) => hostedOf(x.familyName) && `${hostedOf(x.familyName)}|${matchWeight(nodeWeight(n))}|${n.style}` === pick))).map(([s]) => s));
+      const named = gateB(byState, decls, reqW, painters).filter((v) => /^FAIL/.test(v.verdict) && `${v.family}|${v.weight}|${v.style}` === pick);
+      check(!!pick && named.length > 0, `FB-ctrl: removing ${painters.size} state(s) that paint ${pick} makes gate (b) FAIL, naming it (${named.length} declaration·weight)`);
+      if (view === VIEWS[0] && theme === THEMES[0]) fs.writeFileSync(path.join(OUT, `portal.census.${rep}.json`), JSON.stringify({ rep, view, theme, gateB: vb.map(({ range, ...x }) => x),
+        states: Object.fromEntries(Object.entries(byState).map(([s, r]) => [s, r.after.nodes.map((n) => ({ path: n.path, family: n.family, weight: n.weight, runs: runsOf(n, r.probe).runs.map((x) => ({ font: x.familyName, cps: x.codepoints.length })) }))])) }, null, 1));
+    }
+  }
+  // FF-census (PLAN-font-figtree-portal-r0 §3–§4): after a FACE change there is no pixel-exact baseline — FF-same without its baseline
+  // arm: every §4 state on the candidate only, fonts fast, deterministic ⇒ gate (b), gate (d), FB-ctrl, and the census record (the
+  // same shape). Layout of the new face is judged by the font-only re-shoot (§5), never by a pixel gate.
+  if (CELLS.includes('census')) {
+    for (const view of VIEWS) for (const theme of THEMES) {
+      console.log(`\n== FF-census · repeat ${rep} · ${view}px · ${theme}`);
+      const byState = {};
+      const states = Object.keys(STATES).filter((s) => !arg('states') || arg('states').includes(s));
+      for (const stn of states) {
+        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); continue; }
+        const cand = await run({ side: 'candidate', stateName: stn, deterministic: true, view, theme });
+        byState[stn] = cand;
+        fidelity(cand, `${stn} candidate`);
+        check(hostedPainted(cand.after.nodes), `${stn}: ${FACE} paints`);
+        for (const [side, r] of [['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `${stn} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
       }
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);

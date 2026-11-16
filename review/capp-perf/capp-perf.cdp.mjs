@@ -1,7 +1,7 @@
 // Customer app — the CDP performance harness (PLAN-capp-S7a r3.3 / PLAN-capp-S4 r5.3: ONE tool, both slices). Run at hand-back:
 //   node review/capp-perf/capp-perf.cdp.mjs            (CHROME_BIN overrides the browser; no emulator, no network beyond 127.0.0.1)
 // Cell F4 (this slice): the self-hosted fonts NEVER move layout. The REAL customer-app/index.html (its own <head>: preloads,
-// capp-fonts.css, capp.css) is served with ONE host script appended that mounts the REAL CappUI on the REAL served envelope
+// figtree-fonts.css, capp.css) is served with ONE host script appended that mounts the REAL CappUI on the REAL served envelope
 // (review/capp-s2b/envelopes.json), at 390×844 DPR 2. Layout shifts are read from the page's own PerformanceObserver.
 // "No reflow" is proven on RAW GEOMETRY, not on CLS alone: the bounding box of EVERY element under .app is captured after the mount
 // and again after the font has landed; a moved / resized box is a reflow. (CLS is also recorded, but a font swap can re-wrap text
@@ -75,8 +75,8 @@ function serve({ fontDelayMs, oldPolicy }) {
     if (!file.startsWith(ROOT + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
     let body = fs.readFileSync(file);
     if (rel === 'customer-app/index.html') body = Buffer.from(String(body).replace('</body>', `${HOST}</body>`));
-    if (oldPolicy && rel === 'customer-app/capp-fonts.css') body = Buffer.from(String(body).replace(/font-display:optional/g, 'font-display:swap').replace(/@font-face\{[^}]*src:local\([^}]*\}/g, ''));
-    if (oldPolicy && rel === 'customer-app/capp.css') body = Buffer.from(String(body).replace(/'Red Hat (Text|Display) Fallback( Roboto)?',\s*/g, ''));
+    if (oldPolicy && rel === 'customer-app/figtree-fonts.css') body = Buffer.from(String(body).replace(/font-display:optional/g, 'font-display:swap').replace(/@font-face\{[^}]*src:local\([^}]*\}/g, ''));
+    if (oldPolicy && rel === 'customer-app/capp.css') body = Buffer.from(String(body).replace(/'Figtree Fallback( Roboto)?',\s*/g, ''));
     const sitePath = '/' + rel.replace(/^customer-app\//, '');   // the site is published from customer-app/
     const send = () => { res.writeHead(200, { ...HEADERS(sitePath), 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' }); res.end(body); };
     if (file.endsWith('.woff2') && fontDelayMs) setTimeout(send, fontDelayMs); else send();

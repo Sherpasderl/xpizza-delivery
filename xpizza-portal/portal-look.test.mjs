@@ -40,23 +40,27 @@ test('OS dark mode cannot override the explicit light attribute; the dark blocks
   assert.ok(/:root,\s*:root\[data-theme="light"\]\s*\{/.test(css), 'the light tokens apply to :root and [data-theme="light"]');
 });
 
-// PLAN-portal-fonts r1.1 §5 (moved pin): Archivo is SELF-HOSTED now (platform/fonts → portal-fonts.css), no Google stylesheet;
-// the full font guards live in portal-fonts.test.mjs.
-test('fonts: Archivo self-hosted (portal-fonts.css, the 600..800 range), no Google stylesheet; no Hanken anywhere', () => {
+// PLAN-portal-fonts r1.1 §5 (moved pin) + PLAN-font-figtree-portal-r0 (owner 11-13: Figtree everywhere): the face is SELF-HOSTED
+// (platform/fonts → portal-fonts.css), no Google stylesheet; the full font guards live in portal-fonts.test.mjs.
+test('fonts: Figtree self-hosted (portal-fonts.css, the variable 300..900 range), no Google stylesheet; no Hanken anywhere', () => {
   assert.ok(!/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html), 'no Google font host in the shell');
   assert.ok(/<link rel="stylesheet" href="\.\/portal-fonts\.css">/.test(html), 'the self-hosted font css is linked');
-  assert.match(read('./portal-fonts.css'), /font-family:'Archivo';font-style:normal;font-weight:600 800;/, 'the hosted face is the 600..800 range');
+  assert.match(read('./portal-fonts.css'), /font-family:'Figtree';font-style:normal;font-weight:300 900;/, 'the hosted face is the variable 300..900 range');
   assert.ok(!/Hanken/i.test(html) && !/Hanken/i.test(css), 'Hanken Grotesk is gone (nothing referenced it)');
-  assert.match(css, /--disp:'Archivo'/, 'the display stack leads with Archivo — the face now loaded');
+  assert.match(css, /--body:'Figtree'/, 'the ONE stack leads with Figtree — the face now loaded');
+  assert.match(css, /--disp:var\(--body\);/, 'the display token is the same family');
+  assert.ok(!/Archivo|Söhne/.test(css), 'Archivo and the never-loaded Söhne are gone');
 });
 
-test('every rule that sets the Archivo display face (font-family:var(--disp)) declares a weight inside the loaded 600..800 range', () => {
+test('every rule that sets the display token (font-family:var(--disp)) declares a weight inside the hosted face\'s loaded range', () => {
+  const [lo, hi] = (/font-family:'Figtree';font-style:normal;font-weight:(\d+) (\d+);/.exec(read('./portal-fonts.css')) || []).slice(1).map(Number);
+  assert.ok(lo && hi, 'the hosted range was read from portal-fonts.css');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*font-family\s*:\s*var\(--disp\)[^{}]*)\}/g)];
   assert.ok(rules.length > 0, 'non-vacuity: --disp rules were found');
   for (const [, sel, body] of rules) {
     const w = [...body.matchAll(/font-weight\s*:\s*(\d+)/g)].map((m) => Number(m[1]));
     assert.equal(w.length, 1, `${sel.trim()}: declares exactly one font-weight (an inherited weight could fall outside the loaded range)`);
-    assert.ok(w[0] >= 600 && w[0] <= 800, `${sel.trim()}: weight ${w[0]} is inside the loaded 600..800 range`);
+    assert.ok(w[0] >= lo && w[0] <= hi, `${sel.trim()}: weight ${w[0]} is inside the loaded ${lo}..${hi} range`);
   }
 });
 

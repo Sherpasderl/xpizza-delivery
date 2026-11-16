@@ -39,7 +39,9 @@
       feeFromCents: d.fee && d.fee.state === 'priced' && Number.isFinite(d.fee.from_cents) ? d.fee.from_cents : null,
       // the ONE free-delivery predicate (home's, Codex s7a2 r1 #7: a promotional claim needs a PRICED fee) — home and the store page
       // both read it (PLAN-capp-store-promo-feeinfo r0); the price itself is the server's (delivery-pricing: members only)
-      promoFree: !!d.fee && d.fee.state === 'priced' && Number.isInteger(d.fee.from_cents) && d.fee.from_cents >= 0 && !!(d.promo && d.promo.free_delivery),
+      // RULE 10 (advisor 11-13): only a promo derived from the SAME pricing read as the quote is a claim — 5f marks it basis 'pricing';
+      // today's quote never grants free delivery (delivery-wire forces it off) and today's directory promo is unmarked ⇒ no claim anywhere
+      promoFree: !!d.fee && d.fee.state === 'priced' && Number.isInteger(d.fee.from_cents) && d.fee.from_cents >= 0 && !!(d.promo && d.promo.free_delivery === true && d.promo.basis === 'pricing'),
       orderIdPrefix: typeof d.order_id_prefix === 'string' ? d.order_id_prefix : undefined,
       endpoints: rt.endpoints, intakeKey: rt.intakeKey, mapsKey: rt.mapsKey || undefined,
       // PLAN-capp-tip-step r6: the RTDB base the member's last-tip leaf (user_private/{uid}/last_tip, owner-read) is read from

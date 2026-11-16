@@ -1,0 +1,26 @@
+package __PACKAGE__;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+// MOCKUP-capp-push r1 F2c (owner Q5) «Abrir Ajustes» (Codex r1 P2-9, advisor ruling (a): first-party, no dependency): THIS app's
+// own settings page, where its notification permission lives. The package is read at RUNTIME (never hard-coded).
+@CapacitorPlugin(name = "AppSettings")
+public class AppSettingsPlugin extends Plugin {
+    @PluginMethod
+    public void open(PluginCall call) {
+        try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", getContext().getPackageName(), null));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("settings_unavailable");
+        }
+    }
+}

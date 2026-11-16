@@ -1,0 +1,27 @@
+{
+  "surface": "capp + driver (one shared Figtree pin, advisor 11-14 option A)",
+  "captured": "2026-11-14",
+  "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+  "request": "https://fonts.googleapis.com/css2?family=Figtree:wght@300..900&display=swap",
+  "css": {
+    "file": "figtree.google.css",
+    "sha256": "7c9f3db64ef43d745d812b938c6d638e23b1a494e3b9cc624e85693e8e30dcd5",
+    "bytes": 855
+  },
+  "files": [
+    {
+      "family": "Figtree",
+      "subset": "latin-ext",
+      "url": "https://fonts.gstatic.com/s/figtree/v9/_Xms-HUzqDCFdgfMm4q9DaRvziissg.woff2",
+      "sha256": "f153aa07c1b16fbb12391c2512860c97819a0a9fd014f338b2b3f12496479d13",
+      "bytes": 10228
+    },
+    {
+      "family": "Figtree",
+      "subset": "latin",
+      "url": "https://fonts.gstatic.com/s/figtree/v9/_Xms-HUzqDCFdgfMm4S9DaRvzig.woff2",
+      "sha256": "8330490a01c60c196eae00b823de8102275aaa5862e7b76a7af21b8745338928",
+      "bytes": 20184
+    }
+  ]
+}

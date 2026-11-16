@@ -160,6 +160,19 @@
     if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return '<span class="pill new">Nuevo en Sherpa</span>';
     return '';
   }
+  // SBS asm9 D6: a logo that FAILS to load becomes the initials plate (the cards' and the store avatar's own no-logo look) — never the
+  // broken-image glyph with its alt text overflowing the circle. ONE capture listener (an img's error does not bubble), installed once
+  // by the shell; inline onerror is not allowed (CSP script-src 'self')
+  function logoFallback(doc) {
+    if (!doc || typeof doc.addEventListener !== 'function') return () => {};
+    const h = (e) => {
+      const img = e.target; if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-initials')) return;
+      const box = img.parentElement; if (!box) return;
+      box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');
+    };
+    doc.addEventListener('error', h, true);
+    return () => doc.removeEventListener('error', h, true);   // Codex P3: the shell's destroy() removes it (one listener per mount)
+  }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
   // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
@@ -186,7 +199,7 @@
   // the platform's «moments» (P mealDishes): a store's sections carry a moment id (its presentation `meals`); the title is Sherpa's
   const mealDishes = (stores, meal) => stores.flatMap((r) => (r.sections || []).filter((s) => r.meals[s.id] === meal).flatMap((s) => s.items.filter((it) => it.img).map((it) => ({ r, it })))).slice(0, 10);
   const initials = (name) => esc(String(name).split(' ').map((x) => x[0]).join('').slice(0, 2));
-  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
+  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt="" data-initials="${initials(r.name)}"></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
   const heroImg = (r, lazy) => (r.hero ? `<img src="${esc(r.hero)}" alt=""${lazy ? ' loading="lazy"' : ''}>` : '');
   const city = (platform) => (platform && typeof platform.city_label === 'string' && platform.city_label ? platform.city_label : '');
   // a row's entry state (r3.3-F1): gone ⇒ disabled in place; held ⇒ the drawn pressed state while its verification is awaited
@@ -266,7 +279,7 @@
     return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heart}
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${pv ? '' : ` · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}`}${again}</span>`
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`   /* SBS asm9 D1: the desk = f1a's one line (no closing time); C-1b: a «Para vos» card = 9.4's one line */
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -312,9 +325,11 @@
     }
     if (vm.outOfZone) return page(emptyHtml('pin', 'Ningún restaurante entrega en esta dirección', 'Probá otra dirección o recogé en tienda.', ['addr', 'Cambiar dirección']));   // frame 4
     const live = all.filter((r) => !r.gone);
+    // G-C (D-3 r3 f1a; advisor 11-13): the floor of the PRICED fees — the desk guest's 4th chip «Envío desde L {floor}», a fact, not a claim
+    const floor = live.filter(priced).reduce((m, r) => Math.min(m, r.fee.from_cents), Infinity), atFloor = (r) => priced(r) && r.fee.from_cents === floor;
     const cuisine = vm.cuisine || '', F = vm.filters;
     const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.promoAuth))
-      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)));
+      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)) && (!F.has('fee') || !vm.desk || atFloor(r)));   // the fee chip is the desk's: never a hidden filter on the phone
     const notes = [];
     // MOCKUP-capp-native-store-update state 1 A (owner: both A + B; A hidden by the customer until the next day): the INSTALLED app
     // has a newer store build — first in the Inicio body
@@ -324,8 +339,12 @@
     const tax = vm.platform && Array.isArray(vm.platform.cuisines) ? vm.platform.cuisines : [];
     const cuisineIds = tax.filter((x) => CUIS[x.id] && live.some((r) => r.cuisines.includes(x.id)));
     const cuisRow = cuisineIds.length ? `<div class="cuisrow" role="group" aria-label="Tipo de comida"><button class="cuis" aria-pressed="${!cuisine}" data-act="cuisine" data-val="">${CUIS.todo.icon}<span>Todo</span></button>${cuisineIds.map((x) => `<button class="cuis" aria-pressed="${cuisine === x.id}" data-act="cuisine" data-val="${esc(x.id)}">${CUIS[x.id].icon}<span>${esc(x.label)}</span></button>`).join('')}</div>` : '';
-    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))],
-      ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)]].filter((x) => x[3]);   // only chips the data supports
+    const cOpen = ['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], cFree = ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))];
+    const cPick = ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], cFast = ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)];
+    // the phone: v6's chips in v6's order; the desk (G-C, f1a): the same set in the frame's order, the 4th slot following the viewer —
+    // the member's «Envío gratis» where the rule-10 predicate holds, else the guest's «Envío desde L {floor}»
+    const cFee = ['fee', Number.isFinite(floor) ? `Envío desde ${money(floor / 100)}` : '', IC.bike, Number.isFinite(floor)];
+    const chips = (vm.desk ? [cOpen, cPick, cFast, cFree[3] ? cFree : cFee] : [cOpen, cFree, cPick, cFast]).filter((x) => x[3]);   // only chips the data supports
     const fchips = chips.length ? `<div class="fchips" role="group" aria-label="Filtros">${chips.map(([k, l, ic]) => `<button class="fchip" aria-pressed="${F.has(k)}" data-act="filter" data-val="${k}">${ic}${l}</button>`).join('')}</div>` : '';
     const open = (r) => !r.gone && isOpen(r.cfg, vm.now);
     const featured = vis.map((r, i) => [r, i]).sort((a, b) => (open(b[0]) - open(a[0])) || (a[1] - b[1])).map(([r]) => r).slice(0, 10);
@@ -466,6 +485,7 @@
     if (t.screen === 'orders') return S_('Pedidos');
     if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
     if (t.screen === 'account') return S_('Cuenta');
+    if (t.screen === 'notifs') return S_('Notificaciones');
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
   function accountMemberHtml(vm) {
@@ -477,6 +497,7 @@
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
+      ${vm.pushRow && vm.pushRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
@@ -497,5 +518,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

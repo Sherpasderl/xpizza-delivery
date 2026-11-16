@@ -486,6 +486,14 @@
       if (r.status === 400 && (j.error === 'guest_cash_not_allowed' || j.error === 'guest_email_required' || j.error === 'guest_ticket_invalid')) return { kind: j.error };
       return null;
     }
+    // PLAN-capp-marketing-offers r0 Q4 (advisor 11-14): 5f's 409 offer_changed, three forms (fixtures/offer-changed, 5f's REAL refusals).
+    // The GATE's (token-gate.js applyConfirmedNetGate, cash + card) carries net_total_cents: the server's NEW charge, higher than the one
+    // the customer confirmed — kept as the server's number, never charged without their consent. The CAP holds (cash index.js, card
+    // offer-usage afterGate) carry none ⇒ re-quote, never a guessed total. Every form is refused before any write or money (§1.2)
+    function offerChangedOf(status, j) {
+      if (status !== 409 || !j || typeof j !== 'object' || j.error !== 'offer_changed') return null;
+      return Number.isSafeInteger(j.net_total_cents) && j.net_total_cents > 0 ? { form: 'gate', requote: true, net_total_cents: j.net_total_cents } : { form: 'cap', requote: true };
+    }
     const isExisting = (r) => r.status === 409 && (r.json.error === 'order_exists' || r.json.error === 'order_context_changed');
     // rule ii: a FULLY parsed, definitive answer; everything else is unresolved (the outcome is unknown)
     function definitive(method, r) {
@@ -718,6 +726,8 @@
         // invalid / a higher price) of the replayed bytes is never rebuilt from the live flow nor re-priced over it: the definitive
         // answer above already ended the replay window (the lock is released), so the customer re-confirms a validated checkout
         if (replay && cq.classify(j)) return { kind: 'replay_requote', order_id: id };
+        // PLAN-capp-marketing-offers Q4: 5f's 409 offer_changed, typed — on the EXISTING generic path until the sheet is approved
+        { const oc = offerChangedOf(r.status, j); if (oc) return { kind: 'error', order_id: id, status: r.status, error: 'offer_changed', offer_changed: oc }; }
         const rj = await cq.handleRejection({ err: j, shownCents: expected, hasReward: false, retried: silentRetried, sheet: p.sheet });
         if (rj && rj.handled) {
           if (!rj.resend) return { kind: rj.declined ? 'price_declined' : 'error', order_id: id };

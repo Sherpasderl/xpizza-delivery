@@ -21,7 +21,8 @@ import { SCENES } from './scenes.mjs';
 import { S2_SCENES } from './scenes-s2.mjs';
 import { TIP_SCENES } from './scenes-tip.mjs';
 import { C1_SCENES } from './scenes-c1.mjs';   // --set c1: C-1a (D-3 r3 9.1 / 9.4) + C-3r (frame 13 on «Volver a pedir», the Pedidos dot)
-import { S3_SCENES } from './scenes-s3.mjs';   // --set s3: item S3 refusals vs MOCKUP-item-s3-refusals (a bundle WITH the sdkPay flag)   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
+import { S3_SCENES } from './scenes-s3.mjs';
+import { FX_SCENES } from './scenes-fx.mjs';   // --set fx: the functional re-shoot (D1/D2/D3/D6, G-A..C, rule-10 zero claims, D4 mount sheet, «wake» — advisor 11-14)   // --set s3: item S3 refusals vs MOCKUP-item-s3-refusals (a bundle WITH the sdkPay flag)   // --set tip: PLAN-capp-tip-step r6 vs MOCKUP-capp-tip-step-r2 (a bundle WITH the sdkPay flag)   // --set s2: a bundle packaged WITH the sdkPay flag (S2 method (A), advisor 11-09)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
@@ -87,19 +88,22 @@ async function openPage({ width, height, dark }) {
         if (out === src) throw new Error('S2 runtime injection anchor missing');
         return void await S('Fetch.fulfillRequest', { requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'text/javascript' }, { name: 'Cache-Control', value: 'no-store' }], body: Buffer.from(out).toString('base64') });
       }
+      // a scene's BLOCKED same-origin file (fx: «wake» with its controller absent — capp-splash.js never loads)
+      if (page.block && request.url.startsWith(ORIGIN) && page.block.includes(new URL(request.url).pathname)) { page.trace.push(`BLOCKED ${request.url.slice(ORIGIN.length)}`); return void await S('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }); }
       if (request.url.startsWith(ORIGIN) || request.url.startsWith('data:') || request.url.startsWith('blob:')) return void await S('Fetch.continueRequest', { requestId });
       let hit = null;
       try { hit = page.route ? await page.route(request) : null; }   // a route may be async (the real-composed quoteOrder)
       catch (e) { hit = null; request.__routeError = String(e && e.message || e).slice(0, 120); }   // a throwing route is UNMAPPED, never a hung request (Codex r1 P2-5)
-      page.trace.push(`${hit ? hit.status || 200 : 'UNMAPPED'} ${request.method} ${request.url.replace(/^https?:\/\//, '').slice(0, 110)}`);
+      page.trace.push(`${hit ? (hit.fail ? 'FAIL' : hit.status || 200) : 'UNMAPPED'} ${request.method} ${request.url.replace(/^https?:\/\//, '').slice(0, 110)}`);
       if (!hit) { unmapped.push(`${page.scene}: ${request.method} ${request.url.slice(0, 160)}${request.__routeError ? ` (route threw: ${request.__routeError})` : ''}`); return void await S('Fetch.fulfillRequest', { requestId, responseCode: 599, body: '' }); }
+      if (hit.fail) return void await S('Fetch.failRequest', { requestId, errorReason: 'ConnectionFailed' });   // a NETWORK failure (fx D4: the SDK answer is unknown)
       const body = Buffer.isBuffer(hit.body) || typeof hit.body === 'string' ? hit.body : JSON.stringify(hit.body ?? null);   // a Buffer = a committed image file
       if (hit.delay) await sleep(hit.delay);   // a slow read (memberExtra's receiptDelay: the cold-miss CLS scene)
       await S('Fetch.fulfillRequest', { requestId, responseCode: hit.status || 200, responseHeaders: [{ name: 'Content-Type', value: hit.type || 'application/json' }, { name: 'Access-Control-Allow-Origin', value: ORIGIN }, ...(hit.headers || [])], body: Buffer.from(body).toString('base64') });
     } catch (_) {}
   };
   handlers.add(onPaused);
-  const page = { S, sessionId, browserContextId, scene: '', route: null, rtPatch: null, trace: [],
+  const page = { S, sessionId, browserContextId, scene: '', route: null, rtPatch: null, block: null, trace: [],
     async eval(expr) { const r = await S('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(`eval: ${r.exceptionDetails.exception ? r.exceptionDetails.exception.description : r.exceptionDetails.text}`); return r.result.value; },
     async until(expr, ms = 15000) { const t0 = Date.now(); for (;;) { if (await page.eval(`!!(${expr})`).catch(() => false)) return; if (Date.now() - t0 > ms) throw new Error(`until timed out: ${expr}`); await sleep(100); } },
     async shot(clip) { const r = await S('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: !!clip }); return Buffer.from(r.data, 'base64'); },
@@ -159,8 +163,8 @@ async function diffPair(id, a, b, tag) {
 // ── the run ──
 const results = [];
 const SET = arg('--set', 'main');
-if (!['main', 's2', 'tip', 's3', 'c1'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3 | c1`);
-const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SET === 'c1' ? C1_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
+if (!['main', 's2', 'tip', 's3', 'c1', 'fx'].includes(SET)) throw new Error(`--set ${SET}: main | s2 | tip | s3 | c1 | fx`);
+const want = (SET === 's2' ? S2_SCENES : SET === 'tip' ? TIP_SCENES : SET === 's3' ? S3_SCENES : SET === 'c1' ? C1_SCENES : SET === 'fx' ? FX_SCENES : SCENES).filter((s) => !ONLY.length || ONLY.includes(s.name));
 const write = (f, buf) => fs.writeFileSync(path.join(OUT, 'img', f), buf);
 for (const sc of want) {
   for (const theme of sc.themes || ['light']) {
@@ -170,6 +174,7 @@ for (const sc of want) {
       p = await openPage({ width: sc.width, height: sc.height, dark: theme === 'dark' }); p.scene = id; p.route = router(typeof sc.fixtures === 'function' ? sc.fixtures() : (sc.fixtures || {}));   // a factory: fresh fixture state per theme
       // S2 method (A): the scene's stated injections — runtime mode 'native' (the bundle must already carry the sdkPay flag), the stand-in
       // pay binding (standin-paysdk.mjs, before any page script), a device position (the checkout's delivery pin)
+      p.block = sc.block || null;
       if (sc.native) p.rtPatch = (src) => (src.includes('"sdkPay":true') ? src.replace('"mode":"web"', '"mode":"native"') : src);
       if (sc.preboot) await p.S('Page.addScriptToEvaluateOnNewDocument', { source: typeof sc.preboot === 'function' ? sc.preboot(theme) : sc.preboot });
       if (sc.geo) { await send('Browser.grantPermissions', { origin: ORIGIN, permissions: ['geolocation'], browserContextId: p.browserContextId }); await p.S('Emulation.setGeolocationOverride', { ...sc.geo, accuracy: 10 }); }
@@ -179,6 +184,7 @@ for (const sc of want) {
       for (const step of sc.steps || []) { if (step.until) await p.until(step.until, step.ms); if (step.run) await p.eval(step.run); if (step.wait) await sleep(step.wait); }
       await sleep(sc.settle || 600);
       if (sc.cls) { await p.eval('window.__cls = 0'); for (const step of sc.cls) { if (step.until) await p.until(step.until, step.ms); if (step.run) await p.eval(step.run); if (step.wait) await sleep(step.wait); } await sleep(800); row.cls = +(await p.eval('window.__cls')).toFixed(4); }
+      if (sc.probe) row.probe = await p.eval(sc.probe);   // fx: an in-page measurement (bounds, timings, computed frames) — sc.verify judges it
       row.contrast = await p.eval(CONTRAST);
       const real = await p.shot(); write(`${id}-real.png`, real);
       const mk = typeof sc.mock === 'function' ? sc.mock(theme) : sc.mock;   // a mockup scene of THIS theme, else none (contrast only)
@@ -188,7 +194,8 @@ for (const sc of want) {
       if (mk) {
         const m = await openPage({ width: mk.vw || sc.mockWidth || 1600, height: mk.vh || sc.mockHeight || 1200, dark: theme === 'dark' }); m.scene = `${id}-mock`; m.route = () => ({ status: 404, body: '' });
         await m.S('Page.navigate', { url: `${ORIGIN}/__mock/${mk.file}` }); await m.until('document.readyState === "complete"');
-        if (mk.run) await m.eval(mk.run); await sleep(500);
+        if (mk.run) await m.eval(mk.run); await sleep(mk.probe ? 0 : 500);
+        if (mk.probe) row.mockProbe = await m.eval(mk.probe);   // the SAME measurement on the mockup (fx «wake»: the frame at t)
         await m.eval(`document.querySelectorAll('.vp .mk, .phin .mk').forEach((e) => e.remove())`);   // the mockup's numbered annotation markers
         const box = await m.eval(mk.clip);   // → { x, y, width, height } of the isolated scene, in CSS px
         const mock = await m.shot(box); write(`${id}-mock.png`, mock);
@@ -197,6 +204,7 @@ for (const sc of want) {
         const l = await diffPair(id, realL, mockL, 'ldiff'); write(`${id}-ldiff.png`, Buffer.from(l.png, 'base64')); row.layoutPct = l.pct;
         row.mock = mk.label || mk.file;
       }
+      if (sc.verify) sc.verify(row);   // fx: a failed functional check FAILS the scene (row.error)
     } catch (e) {
       row.error = String(e.message || e).slice(0, 300);
       // the failing page's own state, for the operator (the page is still open when a step times out)
@@ -208,7 +216,7 @@ for (const sc of want) {
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ origin: 'package-capp bundle at the tip', unmapped, results }, null, 1));
 // ── the ONE review page ──
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const rows = results.map((r) => { const id = `${r.scene}-${r.theme}`; return `<section><h2>${esc(r.scene)} · ${r.theme} · ${r.width}×${r.height}</h2><p class="n">${r.error ? `<b class="bad">ERROR</b> ${esc(r.error)}` : `pixels <b>${r.diffPct ?? '—'}%</b> · layout (text + images masked) <b>${r.layoutPct ?? '—'}%</b>${r.mock ? ` vs ${esc(r.mock)}` : ' (no mockup of this theme: contrast only)'} · contrast fails <b>${r.contrast.fails.length}</b> of ${r.contrast.checked} (${r.contrast.unknown} on images)${r.cls !== undefined ? ` · CLS <b>${r.cls}</b>` : ''}`}${r.note ? ` · ${esc(r.note)}` : ''} · <i>runtime + directory_endpoint (injected)${r.injections ? ' + ' + esc(r.injections) : ''}</i></p>
+const rows = results.map((r) => { const id = `${r.scene}-${r.theme}`; return `<section><h2>${esc(r.scene)} · ${r.theme} · ${r.width}×${r.height}</h2><p class="n">${r.error ? `<b class="bad">ERROR</b> ${esc(r.error)}` : `pixels <b>${r.diffPct ?? '—'}%</b> · layout (text + images masked) <b>${r.layoutPct ?? '—'}%</b>${r.mock ? ` vs ${esc(r.mock)}` : ' (no mockup of this theme: contrast only)'} · contrast fails <b>${r.contrast.fails.length}</b> of ${r.contrast.checked} (${r.contrast.unknown} on images)${r.cls !== undefined ? ` · CLS <b>${r.cls}</b>` : ''}`}${r.note ? ` · ${esc(r.note)}` : ''}${r.probe ? ` · probe <code>${esc(JSON.stringify(r.probe))}</code>` : ''}${r.mockProbe ? ` · mock probe <code>${esc(JSON.stringify(r.mockProbe))}</code>` : ''} · <i>runtime + directory_endpoint (injected)${r.injections ? ' + ' + esc(r.injections) : ''}</i></p>
   <div class="row"><figure><img src="img/${id}-real.png" loading="lazy"><figcaption>real (packaged)</figcaption></figure>${fs.existsSync(path.join(OUT, 'img', `${id}-mock.png`)) ? `<figure><img src="img/${id}-mock.png" loading="lazy"><figcaption>mockup</figcaption></figure><figure><img src="img/${id}-diff.png" loading="lazy"><figcaption>pixel diff (magenta = differs)</figcaption></figure><figure><img src="img/${id}-ldiff.png" loading="lazy"><figcaption>layout diff (text + images masked)</figcaption></figure>` : ''}</div>
   ${r.contrast && r.contrast.fails.length ? `<details><summary>contrast failures</summary><ul>${r.contrast.fails.map((f) => `<li>«${esc(f.text)}» ${f.ratio}:1 (needs ${f.need}) <code>${esc(f.sel)}</code></li>`).join('')}</ul></details>` : ''}</section>`; }).join('\n');
 fs.writeFileSync(path.join(OUT, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capp side-by-sides</title>

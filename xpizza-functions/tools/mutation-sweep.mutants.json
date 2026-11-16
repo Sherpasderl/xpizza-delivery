@@ -23785,8 +23785,8 @@
   "slice": "s2a",
   "label": "Total computed as net + tip",
   "file": "../customer-app/capp-checkout.js",
-  "from": "      tip: tipCentsOf(f), total: r.net_total_cents };",
-  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f) };",
+  "from": "      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {})",
+  "to": "      tip: tipCentsOf(f), total: r.net_total_cents + tipCentsOf(f), ...(offer ? { offer } : {})",
   "command": [
    "node",
    "--test",
@@ -25297,8 +25297,8 @@
   "slice": "s7a1",
   "label": "a delivery/pickup change does not notify the shell",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }",
-  "to": "if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; renderStoreKeep(); return; }",
+  "from": "S.mode = t.dataset.val; notifyCart(); offersCartChanged(); renderStoreKeep(); return; }",
+  "to": "S.mode = t.dataset.val; offersCartChanged(); renderStoreKeep(); return; }",
   "command": [
    "node",
    "--test",
@@ -26222,8 +26222,8 @@
   "slice": "perf-core",
   "label": "r3.3-F2: the fingerprint hashes non-canonical JSON",
   "file": "../customer-app/capp-checkout.js",
-  "from": "new TextEncoder().encode(canonicalJson(envelope))",
-  "to": "new TextEncoder().encode(JSON.stringify(envelope))",
+  "from": "new TextEncoder().encode(canonicalJson({ ...envelope, menu: content }))",
+  "to": "new TextEncoder().encode(JSON.stringify({ ...envelope, menu: content }))",
   "command": [
    "node",
    "--test",
@@ -26923,8 +26923,8 @@
   "slice": "s7a2",
   "label": "an existing checkout flow is re-seeded",
   "file": "../customer-app/capp-ui.js",
-  "from": "if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
-  "to": "if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }",
+  "from": "function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
+  "to": "function seededFlow() { if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
   "command": [
    "node",
    "--test",
@@ -27538,8 +27538,8 @@
   "slice": "g6",
   "label": "an ordinary sign-out keeps the cached profile",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); }",
-  "to": "if (st === 'guest') { clearComplete(); }",
+  "from": "if (st === 'guest') { CappDeviceAccount.forgetProfile(storage); clearComplete(); pushAuthExit(); pushSettleSoon(); }",
+  "to": "if (st === 'guest') { clearComplete(); pushAuthExit(); pushSettleSoon(); }",
   "command": [
    "node",
    "--test",
@@ -27640,7 +27640,7 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: a restored uid is applied without its completion mark",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {}); schedule(); return; }\n",
+  "from": "        if (u && u.uid && completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {})); schedule(); return; }\n",
   "to": "",
   "command": [
    "node",
@@ -27708,8 +27708,8 @@
   "slice": "g6",
   "label": "Codex G6 r2 #2: the uid is marked before its sign-out is confirmed (a rejected sign-out admits it at the next restore)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "completeUid() !== u.uid) { dropMember(); fbAuth.signOut().catch(() => {});",
-  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); fbAuth.signOut().catch(() => {});",
+  "from": "completeUid() !== u.uid) { dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "to": "completeUid() !== u.uid) { dropMember(); markComplete(u.uid); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
   "command": [
    "node",
    "--test",
@@ -28443,7 +28443,9 @@
   ],
   "kills_with": [
    "S4-row10: «Reintentar» stays enabled"
-  ]
+  ],
+  "equivalent": true,
+  "why": "vclock step-8b F-2 (advisor 11-14, analysed): gateCtx().anySlot is read only by missingStep (capp-checkout.js:171) via need(), and with a slot lock held no need() reader decides an outcome — ctaLabel returns «Reintentar» before need() (capp-ui.js:945-946); ctaOff ignores need() under the lock (:956); the CTA tap under the lock sends the replay directly (:1859), so enterTip/placeTap are never reached from it (:1860); the tip step is reachable only through :1860 (a forward history move is ignored :1801, backTo walks back :1542), so tip-place/tipReady (:1867/:1276) never run under the lock; the lock is member-only (lockedBody :838-839), so the guest paths (placeNow :1328 via OTP :1428, guest-card :1912) never hold it; err-card (:1917/:1920) and contextRestored (:1724) follow a payment_failed return, which releases the record first (capp-api.js:399; a non-clearable one shows the pending sheet, no err-card :1722); sdkPlaceIfReady (:2071) follows an SDK switch, and under a base lock the tender is fixed (:1180, :1847) and the tap replays the base body (:1859), so no SDK flow runs. Kept as defence-in-depth (hasSlotLock() is the ONE predicate every consumer reads, :844)."
  },
  {
   "id": "s4-28",
@@ -31231,8 +31233,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
   "command": [
    "node",
    "--test",
@@ -34059,10 +34061,10 @@
  {
   "id": "dsk-02",
   "slice": "desk",
-  "label": "the store's deskcart aside is never emitted (the cart unreachable on desktop)",
+  "label": "the DESK store page's deskcart aside is never emitted (the cart unreachable on desktop) — the live storeDeskHtml aside (re-pointed: the old :460 branch was dead since C-6c)",
   "file": "../customer-app/capp-ui.js",
-  "from": "${S.desk ? `<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside>` : ''}</div>${pill}`;   // v6 :1628",
-  "to": "</div>${pill}`;   // v6 :1628",
+  "from": "      return `${chrome}<div class=\"storewrap\">${scroller}<aside class=\"deskcart\" aria-label=\"Tu pedido\">${cartInner(true)}</aside></div>${pill}`;",
+  "to": "      return `${chrome}<div class=\"storewrap\">${scroller}</div>${pill}`;",
   "command": [
    "node",
    "--test",
@@ -35064,7 +35066,7 @@
    "--test",
    "../customer-app/capp-api-sdk.test.mjs"
   ],
-  "kills_with": "SDK-legacy: never paid over a dispatched placement"
+  "kills_with": "SDK-legacy-noauth"
  },
  {
   "id": "s2ck-a11",
@@ -35440,7 +35442,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": "SDKUI-reload-switch"
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-u16",
@@ -35468,9 +35470,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": [
-   "SDKUI-restore"
-  ]
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-u18",
@@ -35530,10 +35530,7 @@
    "--test",
    "../customer-app/capp-ui.test.mjs"
   ],
-  "kills_with": [
-   "SDKUI-reload-switch",
-   "SDKUI-restore"
-  ]
+  "kills_with": "SDKUI-F1"
  },
  {
   "id": "s2ck-r15",
@@ -35617,16 +35614,16 @@
   "slice": "c3r",
   "label": "a price_snapshot not aligned 1:1 with the row's items is kept (a past price taken from the wrong line; C-3r G1)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": " || ps.lines.length !== items.length",
-  "to": "",
+  "from": "return s && Array.isArray(items) && s.lines.length === items.length ? s : null;",
+  "to": "return s && Array.isArray(items) ? s : null;",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=C-3r G1 rowOf",
+   "--test-name-pattern=^C-3r v2",
    "../customer-app/capp-signup.test.mjs"
   ],
   "kills_with": [
-   "G1-row misaligned"
+   "C3R-V2-ALIGN"
   ]
  },
  {
@@ -35668,12 +35665,12 @@
   "slice": "c3r",
   "label": "a configuration WITH extras takes the snapshot dish price + the LIVE extras as «antes» (an invented configured past price; Codex C-3r r1 P2)",
   "file": "../customer-app/capp-shell-ui.js",
-  "from": "b: pb !== null && !Object.keys(x).length ? pb : live,",
-  "to": "b: pb !== null ? pb : live,",
+  "from": "return { b: live, x: liveX(x) };   // v1 (or an unmatched option)",
+  "to": "return { b: pb, x: liveX(x) };   // v1 (or an unmatched option)",
   "command": [
    "node",
    "--test",
-   "--test-name-pattern=C-3r G1",
+   "--test-name-pattern=^C-3r (v2|G1)",
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
@@ -35877,6 +35874,1804 @@
   ],
   "kills_with": [
    "WAKE-7"
+  ]
+ },
+ {
+  "id": "sbs9-01",
+  "slice": "sbs9",
+  "label": "the C-2 comment hint back in the global bordered .opt box (D3)",
+  "file": "../customer-app/capp-rate.js",
+  "from": "Comentario <span class=\"opthint\">",
+  "to": "Comentario <span class=\"opt\">",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D3"
+  ]
+ },
+ {
+  "id": "sbs9-02",
+  "slice": "sbs9",
+  "label": "a failed logo keeps the broken-image glyph + alt text (no fallback) (D6)",
+  "file": "../customer-app/capp-home.js",
+  "from": "box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');",
+  "to": "void box;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D6"
+  ]
+ },
+ {
+  "id": "sbs9-03",
+  "slice": "sbs9",
+  "label": "the desk card meta carries the closing time again (3 lines, a dangling «·») (D1)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}",
+  "to": " · cierra ${esc(closesText(r.cfg, now))}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^D1 ",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "D1"
+  ]
+ },
+ {
+  "id": "sbs9-04",
+  "slice": "sbs9",
+  "label": "«Envío desde L 45» may break in the desk cell (D2)",
+  "file": "../customer-app/capp.css",
+  "from": "font-weight:600;white-space:nowrap}   /* SBS asm9 D2",
+  "to": "font-weight:600}   /* SBS asm9 D2",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "D2"
+  ]
+ },
+ {
+  "id": "sbs9-05",
+  "slice": "sbs9",
+  "label": "the desk tools row cannot wrap — the nowrap cells overflow the column at ≥ 1280 (Codex P2)",
+  "file": "../customer-app/capp.css",
+  "from": "gap:10px;flex-wrap:wrap}   /* Codex P2",
+  "to": "gap:10px}   /* Codex P2",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "P2"
+  ]
+ },
+ {
+  "id": "sbs9-06",
+  "slice": "sbs9",
+  "label": "the shell's destroy() leaves the logo-error listener on the document (one more per mount; Codex P3)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "stopOrder(); if (typeof logoOff === 'function') logoOff();",
+  "to": "stopOrder();",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "P3"
+  ]
+ },
+ {
+  "id": "ga-01",
+  "slice": "ga",
+  "label": "a stale cart quote shows a guessed Total (the subtotal) instead of «—»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span>",
+  "to": "<span>${T.ready ? moneyC(T.total - T.tip) : money(total)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: a stale quote"
+  ]
+ },
+ {
+  "id": "ga-02",
+  "slice": "ga",
+  "label": "no debounce: every cart edit asks a quote at once",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (addr && !T.ready) cartQuoteSoon();",
+  "to": "if (addr && !T.ready) requote(true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: debounced"
+  ]
+ },
+ {
+  "id": "ga-03",
+  "slice": "ga",
+  "label": "a landed cart quote is never painted (no in-place refresh)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        nudgeSettle(key); cartRefresh(); return;",
+  "to": "        nudgeSettle(key); return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A3: the matching quote lands"
+  ]
+ },
+ {
+  "id": "ga-04",
+  "slice": "ga",
+  "label": "the cart Total carries the tip (v6 draws no Propina row in the cart)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span>",
+  "to": "<span>${T.ready ? moneyC(T.total) : addr || hasOffers() ? '—' : money(total)}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A6",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A6: the cart Total leaves the tip out"
+  ]
+ },
+ {
+  "id": "ga-05",
+  "slice": "ga",
+  "label": "rule 10: the guest free-delivery line shown before a priced quote (a claim before the price)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "guest && addr ? '<span class=\"feelnk\" aria-hidden=\"true\" style=\"visibility:hidden\">Creá tu cuenta y tu envío es gratis</span>' : '';",
+  "to": "guest && addr ? `<button class=\"feelnk\" data-act=\"signin\" data-ctx=\"${ctx}\">Creá tu cuenta y tu envío es gratis</button>` : '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A5: pending"
+  ]
+ },
+ {
+  "id": "ga-06",
+  "slice": "ga",
+  "label": "rule 10: the guest free-delivery line without the store's promo",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const guest = cfg.promoFree === true && authOf() === 'guest' && !(cartCtx && desk);",
+  "to": "const guest = authOf() === 'guest' && !(cartCtx && desk);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "G-A5: no promo"
+  ]
+ },
+ {
+  "id": "gb-01",
+  "slice": "gb",
+  "label": "the desk aside lacks frame 2a's «Agregar notas al restaurante» row",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        + (desk && S.desk ? `<button class=\"cnotes\" data-act=\"cartnotes\"",
+  "to": "        + (false ? `<button class=\"cnotes\" data-act=\"cartnotes\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: the aside row"
+  ]
+ },
+ {
+  "id": "gb-02",
+  "slice": "gb",
+  "label": "the notes row reaches the checkout with its notes field CLOSED (one more tap)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (act === 'cartnotes') { const was = S.more; S.more = true;",
+  "to": "if (act === 'cartnotes') { const was = S.more;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: the checkout's notes field is OPEN"
+  ]
+ },
+ {
+  "id": "gb-03",
+  "slice": "gb",
+  "label": "the notes field is opened but not focused",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (checkoutTap() && S.screen === 'checkout') focusTo($('f-notes'));",
+  "to": "if (checkoutTap() && S.screen === 'checkout') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-B",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-B: and focused"
+  ]
+ },
+ {
+  "id": "r10-01",
+  "slice": "r10",
+  "label": "rule 10: the one claim predicate ignores the pricing marker (an unmarked directory promo claims «Envío gratis»)",
+  "file": "../customer-app/capp-shell.js",
+  "from": "&& !!(d.promo && d.promo.free_delivery === true && d.promo.basis === 'pricing'),",
+  "to": "&& !!(d.promo && d.promo.free_delivery === true),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^RULE 10: what",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RULE 10: the raw writer"
+  ]
+ },
+ {
+  "id": "da-01",
+  "slice": "da",
+  "label": "the desk aside shows the phone row («según tu dirección») instead of frame 2a's «Envío desde L floor»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)",
+  "to": "      const fee = true ? feeRowHtml(T, false, 'cart', desk)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA1: frame 2a"
+  ]
+ },
+ {
+  "id": "da-02",
+  "slice": "da",
+  "label": "a landed quote never reaches the desk aside",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (aside) aside.outerHTML = cartTotsHtml(total, true);",
+  "to": "      void aside;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA2",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA2: the new quote lands in the aside"
+  ]
+ },
+ {
+  "id": "da-03",
+  "slice": "da",
+  "label": "rule 10: the aside's member «Gratis» without the predicate",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${cfg.promoFree === true && authOf() === 'member' ? `<span class=\"strike\">${floor}</span>",
+  "to": "${authOf() !== 'guest' ? `<span class=\"strike\">${floor}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 DA3 (false, unresolved)"
+  ]
+ },
+ {
+  "id": "da-04",
+  "slice": "da",
+  "label": "the desk aside carries the guest line (frame 2a draws the card-only note there)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const guest = cfg.promoFree === true && authOf() === 'guest' && !(cartCtx && desk);",
+  "to": "      const guest = cfg.promoFree === true && authOf() === 'guest';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^DA3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "DA3: priced — the aside never carries the guest line"
+  ]
+ },
+ {
+  "id": "gc-01",
+  "slice": "gc",
+  "label": "the desk filter row keeps the phone's order and set (no f1a fee chip)",
+  "file": "../customer-app/capp-home.js",
+  "from": "const chips = (vm.desk ? [cOpen, cPick, cFast, cFree[3] ? cFree : cFee] : [cOpen, cFree, cPick, cFast])",
+  "to": "const chips = ([cOpen, cFree, cPick, cFast])",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C1: the desk row"
+  ]
+ },
+ {
+  "id": "gc-02",
+  "slice": "gc",
+  "label": "the fee chip labelled by the HIGHEST priced fee, not the floor",
+  "file": "../customer-app/capp-home.js",
+  "from": "const floor = live.filter(priced).reduce((m, r) => Math.min(m, r.fee.from_cents), Infinity)",
+  "to": "const floor = live.filter(priced).reduce((m, r) => Math.max(m, r.fee.from_cents), -Infinity)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: the label is the real minimum"
+  ]
+ },
+ {
+  "id": "gc-03",
+  "slice": "gc",
+  "label": "the pressed fee chip filters nothing",
+  "file": "../customer-app/capp-home.js",
+  "from": "&& (!F.has('fee') || !vm.desk || atFloor(r)));",
+  "to": "&& true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: only the store at the floor"
+  ]
+ },
+ {
+  "id": "gc-04",
+  "slice": "gc",
+  "label": "the fee filter stays applied on the phone, where it has no chip (a hidden filter)",
+  "file": "../customer-app/capp-home.js",
+  "from": "&& (!F.has('fee') || !vm.desk || atFloor(r)));",
+  "to": "&& (!F.has('fee') || atFloor(r)));",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-C2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "G-C2: no HIDDEN filter"
+  ]
+ },
+ {
+  "id": "vc-01",
+  "slice": "vc",
+  "label": "same-due timers run LIFO (not in arming order)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "(t.due === best[1].due && t.seq < best[1].seq)",
+  "to": "(t.due === best[1].due && t.seq > best[1].seq)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC1",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC1: same due"
+  ]
+ },
+ {
+  "id": "vc-02",
+  "slice": "vc",
+  "label": "drain never fails on an instant self-re-arming loop (would hang / pass silently)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    throw new Error(`drain: not quiet after ${ROUNDS} rounds",
+  "to": "    return; throw new Error(`drain: not quiet after ${ROUNDS} rounds",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC4",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC4: bounded"
+  ]
+ },
+ {
+  "id": "vc-03",
+  "slice": "vc",
+  "label": "drain does not wait for WebCrypto digests in flight",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "      if (digestsInFlight()) { quiet = 0; await digestsSettled(); continue; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC5",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC5: the digest landed"
+  ]
+ },
+ {
+  "id": "vc-04",
+  "slice": "vc",
+  "label": "a timer's microtasks are not drained before the next timer fires",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "{ now = e[1].due; fire(e); await drain(); }",
+  "to": "{ now = e[1].due; fire(e); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC2",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC2: the 10 ms timer"
+  ]
+ },
+ {
+  "id": "vc-05",
+  "slice": "vc",
+  "label": "the virtual clock can jump backwards",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "if (!(v >= now)) throw new Error(`jump:",
+  "to": "if (false) throw new Error(`jump:",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC6",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "VC6: never backwards"
+  ]
+ },
+ {
+  "id": "vc-06",
+  "slice": "vc",
+  "label": "P1: the store UI gets no timers from the shell (a second, real clock)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "...(uo.timers ? {} : { timers: T }), ",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: CappUI.mount gets the shell's timers"
+  ]
+ },
+ {
+  "id": "vc-07",
+  "slice": "vc",
+  "label": "P1: the signup transport gets no timers from the shell",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "fetch: o.signupFetch, timers: T })",
+  "to": "fetch: o.signupFetch })",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "P1: the signup transport"
+  ]
+ },
+ {
+  "id": "vc-08",
+  "slice": "vc",
+  "label": "P2: the resend countdown reads Date.now, not the injected now()",
+  "file": "../customer-app/capp-signup.js",
+  "from": "const now = typeof o.now === 'function' ? o.now : () => Date.now();",
+  "to": "const now = () => Date.now();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC-P2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "VC-P2: the tick reads the injected now"
+  ]
+ },
+ {
+  "id": "vc-10",
+  "slice": "vc",
+  "label": "a shell window a cell left open is NOT closed at its end (late responses render into later cells)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "afterEach(() => { for (const x of SHELLS) if (!x.closed && x.cell === CUR) { try { x.w.close(); } catch (_) {} } VC = null;",
+  "to": "afterEach(() => { VC = null;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "VC-L: a shell left open"
+  ]
+ },
+ {
+  "id": "pr-01",
+  "slice": "pr-su",
+  "label": "«Pedido recibido» drops the quoted Envío row",
+  "file": "../customer-app/capp-order.js",
+  "from": "${del && o.fee != null ? `<div class=\"rrow\"><span class=\"k\">Envío</span>",
+  "to": "${false && o.fee != null ? `<div class=\"rrow\"><span class=\"k\">Envío</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido: a placed cash order",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-1: the quoted Envío"
+  ]
+ },
+ {
+  "id": "pr-02",
+  "slice": "pr-su",
+  "label": "«Pedido recibido» never shows the served display number («Orden #N»)",
+  "file": "../customer-app/capp-order.js",
+  "from": "o.display_number != null && String(o.display_number) !== '' ? `<div class=\"mk-num\">",
+  "to": "false ? `<div class=\"mk-num\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido: «Orden #N»",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-2: the display number from the tracking node"
+  ]
+ },
+ {
+  "id": "pr-03",
+  "slice": "pr-su",
+  "label": "the live order screen keeps «Pedido recibido» once the tracker says preparing",
+  "file": "../customer-app/capp-order.js",
+  "from": "case 'preparing': return { t: 'Tu pedido se está preparando',",
+  "to": "case 'preparing': return { t: 'Pedido recibido',",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^Pedido recibido · live: the order screen follows",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PR-live: preparing, in place"
+  ]
+ },
+ {
+  "id": "su-01",
+  "slice": "pr-su",
+  "label": "«Abrir App Store» records the handoff but never opens the store",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "keepHandoff(entry.rid); openExternal(runtime.store.url); } return; }",
+  "to": "keepHandoff(entry.rid); } return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update state 2",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-2: «Abrir App Store» opens the store URL"
+  ]
+ },
+ {
+  "id": "su-02",
+  "slice": "pr-su",
+  "label": "a NEW build on this device is never noticed («App actualizada» never shown)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (last && last !== b) appUpdated = true;",
+  "to": "if (false) appUpdated = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update state 4: back from the store",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-4: the one cart line"
+  ]
+ },
+ {
+  "id": "su-03",
+  "slice": "pr-su",
+  "label": "a 426 on an IN-FLIGHT send releases its placement record behind the SAME state-3 reply (the order could be sent twice)",
+  "file": "../customer-app/capp-api.js",
+  "from": "          return { ...(await resolveExisting(id)), update_required: true };",
+  "to": "          { const r = await resolveExisting(id); resolvePlace(id, 'released'); return { ...r, update_required: true }; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^store-update r2 \\(state 3 safety\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "SU-r2-3: the retained placement record survives the sheet"
+  ]
+ },
+ {
+  "id": "c6d-01",
+  "slice": "c6-desk",
+  "label": "C-6a: the store's tab title loses «— menú y pedidos a domicilio» (D-3 r3 §0 «Thing — what it is · Sherpa»)",
+  "file": "../customer-app/capp-home.js",
+  "from": "      return `${t.store || ''} — menú y pedidos a domicilio · Sherpa`;",
+  "to": "      return `${t.store || ''} · Sherpa`;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: the store"
+  ]
+ },
+ {
+  "id": "c6d-02",
+  "slice": "c6-desk",
+  "label": "C-6a: Buscar's tab title drops the query",
+  "file": "../customer-app/capp-home.js",
+  "from": "    if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');",
+  "to": "    if (t.screen === 'search') return S_('Buscar');",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: Buscar"
+  ]
+ },
+ {
+  "id": "c6d-03",
+  "slice": "c6-desk",
+  "label": "C-6a: Inicio's tab title ignores the directory's city (the city is DATA)",
+  "file": "../customer-app/capp-home.js",
+  "from": "    return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';",
+  "to": "    return 'Sherpa — Pedí a domicilio';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6a titles",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-title: Inicio"
+  ]
+ },
+ {
+  "id": "c6d-04",
+  "slice": "c6-desk",
+  "label": "C-6a: the shell becomes indexable before Phase S (robots meta index,follow)",
+  "file": "../customer-app/shell.html",
+  "from": "<meta name=\"robots\" content=\"noindex\">",
+  "to": "<meta name=\"robots\" content=\"index,follow\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "../customer-app/capp-seo.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SEO-noindex"
+  ]
+ },
+ {
+  "id": "c6d-05",
+  "slice": "c6-desk",
+  "label": "C-6c r2 (Codex C-6c r1 #1): the 1024–1279 px narrow desk keeps TWO card columns (cramped next to the aside)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .icards{grid-template-columns:minmax(0,1fr)}\n}",
+  "to": ".app.desk .icards{grid-template-columns:repeat(2,minmax(0,1fr))}\n}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6c r2 narrow desk",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 NB-1: one card column"
+  ]
+ },
+ {
+  "id": "c6d-06",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: the desk order panel keeps the phone order («Orden #N» above the bar, not after the receipt)",
+  "file": "../customer-app/capp-order.js",
+  "from": "    const deskOrder = !!c.desk && !c.past;",
+  "to": "    const deskOrder = false;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-1: desk = … receipt → number → share"
+  ]
+ },
+ {
+  "id": "c6d-07",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: a PAST receipt on the desk is reordered too (its tail streams in place; the order must hold)",
+  "file": "../customer-app/capp-order.js",
+  "from": "    const deskOrder = !!c.desk && !c.past;",
+  "to": "    const deskOrder = !!c.desk;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-1: a past receipt keeps its order"
+  ]
+ },
+ {
+  "id": "c6d-08",
+  "slice": "c6-desk",
+  "label": "C-6d frame 5: the desk order panel's title / window stay centred (the approved panel is left-aligned)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:left}",
+  "to": ".app.desk .mk-sheet .mk-title,.app.desk .mk-sheet .mk-window{text-align:center}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel \\(frame 5\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-2: left-aligned on the desk"
+  ]
+ },
+ {
+  "id": "c6d-09",
+  "slice": "c6-desk",
+  "label": "C-6d: the shell never passes the desk view to the order screen (a placed order on the desk keeps the phone order)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "desk: !!v.desk,",
+  "to": "desk: false,",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6d order panel through the SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OD-3: the shell draws the desk order"
+  ]
+ },
+ {
+  "id": "c6d-10",
+  "slice": "c6-desk",
+  "label": "C-6b heading: the desk Inicio H1 ignores the directory's city",
+  "file": "../customer-app/capp-home.js",
+  "from": "<h1>${c ? `Pedí a domicilio en ${esc(c)}` : 'Pedí a domicilio'}</h1>",
+  "to": "<h1>Pedí a domicilio</h1>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^C-6b heading",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 DN-5: the H1 from the data"
+  ]
+ },
+ {
+  "id": "vc-11",
+  "slice": "vclock",
+  "label": "a real-by-design name goes stale (its cell renamed) and VC-M still passes",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const REAL_BY_DESIGN = new Set([\n  'harness (2e",
+  "to": "const REAL_BY_DESIGN = new Set([\n  'harness (2f",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^VC-M",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a real-by-design name"
+  ]
+ },
+ {
+  "id": "vc-12",
+  "slice": "vclock",
+  "label": "step 9: the virtual default ignores REAL_BY_DESIGN — a paint-frame cell silently boots on the virtual clock",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "CLOCK_DEFAULT = !REAL_BY_DESIGN.has(t.name); });",
+  "to": "CLOCK_DEFAULT = true; });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^(harness|VC-M)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a real-by-design cell booted on the virtual clock"
+  ]
+ },
+ {
+  "id": "vc-13",
+  "slice": "vclock",
+  "label": "fireThrough fires in ARMING order (the old fake's snapshot order), not (due, arming)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {\n",
+  "to": "    for (let e = [...q].find(([, x]) => x.due <= limit) || null, at = null, same = 0; e; e = [...q].find(([, x]) => x.due <= limit) || null) {\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC8",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC8: (due, arming) order"
+  ]
+ },
+ {
+  "id": "vc-14",
+  "slice": "vclock",
+  "label": "intervals never re-arm (the old fake never fired them at all past once)",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    if (t.every != null) { t.due += Math.max(1, t.every); t.seq = ++seq; } else q.delete(id);\n",
+  "to": "    q.delete(id);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC9",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC9: a 1 s interval fires"
+  ]
+ },
+ {
+  "id": "vc-15",
+  "slice": "vclock",
+  "label": "fireThrough fires only the SNAPSHOT pending at entry (the old flush): an arm it chains waits",
+  "file": "../customer-app/test-clock.mjs",
+  "from": "    const limit = Number(t);\n    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {\n",
+  "to": "    const limit = Number(t), snap = new Set(q.keys());\n    const early = (l) => { let b = null; for (const [id, x] of q) if (snap.has(id) && x.due <= l && (!b || x.due < b[1].due || (x.due === b[1].due && x.seq < b[1].seq))) b = [id, x]; return b; };\n    for (let e = early(limit), at = null, same = 0; e; e = early(limit)) {\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^VC8",
+   "../customer-app/test-clock.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC8: a chained arm due by t fires"
+  ]
+ },
+ {
+  "id": "vc-16",
+  "slice": "vclock",
+  "label": "the capp-ui fake's intervals are dead again (the old fake: setInterval armed nothing)",
+  "file": "../customer-app/capp-ui.test.mjs",
+  "from": "setInterval: c.setInterval, clearInterval: c.clearInterval,",
+  "to": "setInterval: () => 0, clearInterval: () => {},",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: the countdown ticks at 1 s"
+  ]
+ },
+ {
+  "id": "vc-17",
+  "slice": "vclock",
+  "label": "«Realizando pedido…»: the countdown never ticks (stuck at 0:02)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "placingI = T_.setInterval(() => { left = Math.max(0, left - 1);",
+  "to": "placingI = T_.setInterval(() => { left = Math.max(0, left);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: the countdown ticks at 1 s"
+  ]
+ },
+ {
+  "id": "vc-18",
+  "slice": "vclock",
+  "label": "«Realizando pedido…»: the order is sent at 1 s, before the countdown ends",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      placingT = T_.setTimeout(placingGo, 2000);\n",
+  "to": "      placingT = T_.setTimeout(placingGo, 1000);\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^vclock 8b",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-UI1: nothing is sent before the 2 s"
+  ]
+ },
+ {
+  "id": "vc-19",
+  "slice": "vclock",
+  "label": "step 9: bootShell defaults to the REAL clock (a shell cell silently leaves the virtual clock)",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "clock: vclock = CLOCK_DEFAULT } = {}) {",
+  "to": "clock: vclock = false } = {}) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^(shell: Inicio paints|VC-M)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 VC-M: a cell booted a shell on the REAL clock"
+  ]
+ },
+ {
+  "id": "vc-20",
+  "slice": "vclock",
+  "label": "step 9: the s7a2 flush regains its real-sleep branch",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const flush = (ms = 30) => (VC || createClock(T0)).flush(ms);",
+  "to": "const flush = (ms = 30) => (VC ? VC.flush(ms) : new Promise((r) => setTimeout(r, ms)));",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^no fixed real sleep",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SLEEP: a fixed real sleep"
+  ]
+ },
+ {
+  "id": "vc-21",
+  "slice": "vclock",
+  "label": "step 9: a SECOND sleep hides in the waived file (the waiver pins its count)",
+  "file": "../customer-app/capp-s7a1-shell.test.mjs",
+  "from": "const popTick = (w) =>",
+  "to": "const nap = () => new Promise((r) => setTimeout(r, 30));\nconst popTick = (w) =>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^no fixed real sleep",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SLEEP: a fixed real sleep"
+  ]
+ },
+ {
+  "id": "vc-22",
+  "slice": "vclock",
+  "label": "the money queue never releases after an operation settles (a deadlock the drained SDK-fifo cell must report)",
+  "file": "../customer-app/capp-api.js",
+  "from": "moneyChain = run.then(() => {}, () => {}); return run; }",
+  "to": "moneyChain = run.then(() => new Promise(() => {})); return run; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=120000",
+   "--test-name-pattern=^Codex r3 P2-3 repro",
+   "../customer-app/capp-api-sdk.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SDK-fifo: no deadlock"
+  ]
+ },
+ {
+  "id": "w1-01",
+  "slice": "wake",
+  "label": "the overlay ring carries the GLOBAL class «ring» again (the spinner animation reaches it) — W1",
+  "file": "../customer-app/capp-splash.js",
+  "from": "<path class=\"cs-ring\"",
+  "to": "<path class=\"ring\"",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-8"
+  ]
+ },
+ {
+  "id": "w1-02",
+  "slice": "wake",
+  "label": "the overlay state class is the generic «gone» (shared with .rcard.gone) — W1",
+  "file": "../customer-app/capp-splash.js",
+  "from": "classList.add('cs-gone')",
+  "to": "classList.add('gone')",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-9"
+  ]
+ },
+ {
+  "id": "w1-03",
+  "slice": "wake",
+  "label": "a global rule widened onto an overlay class (the spinner on the halo) — W1",
+  "file": "../customer-app/capp.css",
+  "from": ".ring{width:44px;",
+  "to": ".ring,.cs-halo{width:44px;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-[89]",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "WAKE-8"
+  ]
+ },
+ {
+  "id": "w1-04",
+  "slice": "wake",
+  "label": "the W1 cells walk the DELETED capp-fonts.css again (the Figtree swap ebe410c7e × W1, merge 8839193d) — WAKE-CSS",
+  "file": "../customer-app/capp-splash.test.mjs",
+  "from": "const CSS_FILES = ['figtree-fonts.css', 'capp.css'];",
+  "to": "const CSS_FILES = ['capp-fonts.css', 'capp.css'];",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-CSS",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 WAKE-CSS: CSS_FILES ≠ index.html"
+  ]
+ },
+ {
+  "id": "w1-05",
+  "slice": "wake",
+  "label": "the native shell page links a stylesheet the W1 cells do not walk — WAKE-CSS pins shell.html too",
+  "file": "../customer-app/shell.html",
+  "from": "<link rel=\"stylesheet\" href=\"figtree-fonts.css\">",
+  "to": "<link rel=\"stylesheet\" href=\"capp-fonts.css\">",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^WAKE-CSS",
+   "../customer-app/capp-splash.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 WAKE-CSS: CSS_FILES ≠ shell.html"
+  ]
+ },
+ {
+  "id": "c3v2-01",
+  "slice": "c3r-v2",
+  "label": "R4.3: the check guards only the SUCCESS path (a late fallback applies unchecked)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid || S.tab !== tab || S.store) return;",
+  "to": "if (rc && (dead || gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid || S.tab !== tab || S.store)) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-TIMEOUT-SIGNOUT"
+  ]
+ },
+ {
+  "id": "c3v2-02",
+  "slice": "c3r-v2",
+  "label": "R4.3: no tap generation (an older reorder whose receipt lands first applies)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (dead || gen !== reorderGen || ownerNow()",
+  "to": "if (dead || ownerNow()",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE older"
+  ]
+ },
+ {
+  "id": "c3v2-03",
+  "slice": "c3r-v2",
+  "label": "R4.3: no navigation check (a forced store entry after the customer left Pedidos)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "cur.uid !== uid || S.tab !== tab || S.store) return;",
+  "to": "cur.uid !== uid || S.store) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE navigation"
+  ]
+ },
+ {
+  "id": "c3v2-04",
+  "slice": "c3r-v2",
+  "label": "R4.3: no owner / member / auth check (a signed-out or switched session gets the order)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "gen !== reorderGen || ownerNow() !== who || !S.member || S.member.uid !== uid || !cur || cur.uid !== uid ||",
+  "to": "gen !== reorderGen ||",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RACE sign-out",
+   "C3R-V2-RACE switch"
+  ]
+ },
+ {
+  "id": "c3v2-05",
+  "slice": "c3r-v2",
+  "label": "§4.3: the v2 extra cents ignored (a configuration WITH extras seeded live: no exact note)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (pex && ks.every((k) => pex.has(optOf[k])))",
+  "to": "if (false && pex && ks.every((k) => pex.has(optOf[k])))",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-EXTRA",
+   "C3R-V2-BOTH"
+  ]
+ },
+ {
+  "id": "c3v2-06",
+  "slice": "c3r-v2",
+  "label": "R3.2: the receipt drops its price_snapshot",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "...(snapShape(x.price_snapshot) ? { price_snapshot: snapShape(x.price_snapshot) } : {}) };",
+  "to": "};",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-RCPT"
+  ]
+ },
+ {
+  "id": "c3v2-07",
+  "slice": "c3r-v2",
+  "label": "R3.2: a LIST row still carries the snapshot (not receipt-only)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "      ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),   // advisor 11-01",
+  "to": "      ...(x.price_snapshot ? { price_snapshot: x.price_snapshot } : {}), ...(Number.isInteger(x.display_number) && x.display_number > 0 ? { display_number: x.display_number } : {}),   // advisor 11-01",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-LIST"
+  ]
+ },
+ {
+  "id": "c3v2-08",
+  "slice": "c3r-v2",
+  "label": "the snapshot used without the 1:1 alignment with the row's items",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "return s && Array.isArray(items) && s.lines.length === items.length ? s : null;",
+  "to": "return s;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r v2",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-ALIGN"
+  ]
+ },
+ {
+  "id": "c3v2-09",
+  "slice": "c3r-v2",
+  "label": "the v2 k matched by the extra's NAME, not the recipe option key (x_pizza's name-keyed k hides it; la_musa's k is the ID)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "            optOf[e.key] = op.v;   // the menu extra → its recipe option key (the v2 snapshot's k)",
+  "to": "            optOf[e.key] = e.name;   // the menu extra → its recipe option key (the v2 snapshot's k)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-3r (v2|G1)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C3R-V2-LM: the configured unit"
+  ]
+ },
+ {
+  "id": "rn-01",
+  "slice": "c2-rider-name",
+  "label": "the null fallback dropped (a nameless delivery reads «Tu repartidor, »)",
+  "file": "../customer-app/capp-rate.js",
+  "from": "<span class=\"t\">${vm.driverName ? `Tu repartidor, ${esc(vm.driverName)}` : 'Tu repartidor de Sherpa'}</span>",
+  "to": "<span class=\"t\">Tu repartidor, ${esc(vm.driverName || '')}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-2 rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-FALLBACK"
+  ]
+ },
+ {
+  "id": "oc-01",
+  "slice": "capp-offers-q4",
+  "label": "the gate form loses the server's new net (typed as a cap hold)",
+  "file": "../customer-app/capp-api.js",
+  "from": "? { form: 'gate', requote: true, net_total_cents: j.net_total_cents } :",
+  "to": "? { form: 'cap', requote: true } :",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: gate"
+  ]
+ },
+ {
+  "id": "oc-02",
+  "slice": "capp-offers-q4",
+  "label": "a cap hold given a guessed total",
+  "file": "../customer-app/capp-api.js",
+  "from": "{ form: 'cap', requote: true };\n",
+  "to": "{ form: 'cap', requote: true, net_total_cents: 0 };\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: cash_cap"
+  ]
+ },
+ {
+  "id": "oc-03",
+  "slice": "capp-offers-q4",
+  "label": "offer_changed not typed (falls to handleRejection's untyped error)",
+  "file": "../customer-app/capp-api.js",
+  "from": "        { const oc = offerChangedOf(r.status, j); if (oc) return { kind: 'error', order_id: id, status: r.status, error: 'offer_changed', offer_changed: oc }; }\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-TYPED: gate"
+  ]
+ },
+ {
+  "id": "oc-04",
+  "slice": "capp-offers-q4",
+  "label": "a malformed net trusted as the server's number",
+  "file": "../customer-app/capp-api.js",
+  "from": "return Number.isSafeInteger(j.net_total_cents) && j.net_total_cents > 0 ?",
+  "to": "return j.net_total_cents != null ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer_changed",
+   "../customer-app/capp-api.test.mjs"
+  ],
+  "kills_with": [
+   "OC-NOGUESS"
+  ]
+ },
+ {
+  "id": "of-01",
+  "slice": "capp-offers-sliceA",
+  "label": "the Descuento row drawn with no food discount (an envío-only offer gets «− L 0»)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';",
+  "to": "if (!T.ready || !T.offer || !(T.offer.discount_cents >= 0)) return '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-UI-ENVIO"
+  ]
+ },
+ {
+  "id": "of-02",
+  "slice": "capp-offers-sliceA",
+  "label": "the met line's amount computed by the client from the totals (not the quote's saving)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "moneyC(T.offer.discount_cents + T.offer.waived_envio_cents)",
+  "to": "moneyC(T.subtotal + T.envio - T.promoCents - T.total)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SAVED-ENVIO"
+  ]
+ },
+ {
+  "id": "of-04",
+  "slice": "capp-offers-sliceA",
+  "label": "the OFF golden broken: an empty slot left where the row would be",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';",
+  "to": "if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return T.ready ? '<div class=\"sumrow\" hidden></div>' : '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-OFF-GOLDEN: the checkout"
+  ]
+ },
+ {
+  "id": "of-05",
+  "slice": "capp-offers-sliceA",
+  "label": "the offer-changed sheet asked for an equal re-quoted Total",
+  "file": "../customer-app/capp-ui.js",
+  "from": "from !== null && T.total > from &&",
+  "to": "from !== null && T.total >= from &&",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-LOWER"
+  ]
+ },
+ {
+  "id": "of-06",
+  "slice": "capp-offers-sliceA",
+  "label": "no loop guard: a second offer_changed shows the sheet again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (k === 'error' && out.offer_changed && S.ocSeen !== stateKey()) {",
+  "to": "if (k === 'error' && out.offer_changed) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOLOOP"
+  ]
+ },
+ {
+  "id": "of-07",
+  "slice": "capp-offers-sliceA",
+  "label": "an empty (zero-saving) offer block kept as an offer",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (o.discount_cents + o.waived_envio_cents <= 0) return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOGUESS"
+  ]
+ },
+ {
+  "id": "of-09",
+  "slice": "capp-offers-sliceA",
+  "label": "the under-minimum amount adjusted on the client (not the quote's remaining_cents)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "OFFER_COPY.nudge(moneyC(n.remaining_cents),",
+  "to": "OFFER_COPY.nudge(moneyC(n.remaining_cents + T.envio),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offer",
+   "../customer-app/capp-checkout.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NEXT"
+  ]
+ },
+ {
+  "id": "of-10",
+  "slice": "capp-offers-sliceA",
+  "label": "a failed newer quote leaves the previous line standing",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const T = totalsNow(); S.nudge = T.ready ? C.nudgeLine(T, moneyC) : null; paintNudge();",
+  "to": "const T = totalsNow(); if (T.ready) S.nudge = C.nudgeLine(T, moneyC); paintNudge();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NUDGE-STALE"
+  ]
+ },
+ {
+  "id": "of-11",
+  "slice": "capp-offers-sliceA",
+  "label": "a store without offers treated as one (an empty `offers` list)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const hasOffers = () => !!menu.offers && menu.offers.length > 0;",
+  "to": "const hasOffers = () => !!menu.offers;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-OFF-GOLDEN: the store page"
+  ]
+ },
+ {
+  "id": "of-12",
+  "slice": "capp-offers-sliceA",
+  "label": "the pickup cart of a store with an offer not quoted (gross Total vs the checkout's net)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.mode !== 'delivery' && !hasOffers()) return",
+  "to": "if (S.mode !== 'delivery') return",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-PICK-CART"
+  ]
+ },
+ {
+  "id": "of-13",
+  "slice": "capp-offers-sliceA",
+  "label": "the menu fingerprint counts `offers` (an offer toggle reads as a changed menu)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    const { offers: _offers, ...content } = envelope.menu;\n",
+  "to": "    const content = envelope.menu;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-FP"
+  ]
+ },
+ {
+  "id": "of-14",
+  "slice": "capp-offers-sliceA",
+  "label": "the store-page quote not debounced (one request per tap)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (T.ready) { S.nudge = C.nudgeLine(T, moneyC); paintNudge(); return; }\n      cartQuoteSoon();",
+  "to": "      if (T.ready) { S.nudge = C.nudgeLine(T, moneyC); paintNudge(); return; }\n      requote(true);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=offers",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-DEBOUNCE"
+  ]
+ },
+ {
+  "id": "of-15",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the «2 por 1» pill shown without the server's rules (window unproven)",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return null;",
+  "to": "    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return { strike: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-NORULES"
+  ]
+ },
+ {
+  "id": "of-16",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: an odd count struck",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!Number.isSafeInteger(n) || n < 2 || n % 2 !== 0) return { strike: null };",
+  "to": "    if (!Number.isSafeInteger(n) || n < 2) return { strike: null };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-PARITY",
+   "B3-ODD"
+  ]
+ },
+ {
+  "id": "of-17",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the offer's window ignored",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule || rules.inWindow(f.schedule, nowMs) !== true) return null;",
+  "to": "    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-WINDOW-UI"
+  ]
+ },
+ {
+  "id": "of-18",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: the marginal saving ignores the cart's eligible units",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "held = (Array.isArray(cartUnits) ? cartUnits : []).filter((u) => items.has(u.key)).map((u) => u.unit);",
+  "to": "held = [].filter((u) => items.has(u.key)).map((u) => u.unit);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-PARITY"
+  ]
+ },
+ {
+  "id": "of-19",
+  "slice": "capp-offers-sliceA",
+  "label": "4 B3: several served offers still struck",
+  "file": "../customer-app/capp-checkout.js",
+  "from": "    if (!Array.isArray(offers) || offers.length !== 1) return null;",
+  "to": "    if (!Array.isArray(offers) || offers.length < 1) return null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=4 B3",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "B3-ONE"
+  ]
+ },
+ {
+  "id": "of-20",
+  "slice": "capp-offers-sliceA",
+  "label": "a quote settling in the checkout (incl. the offer_changed re-quote) leaves the store line stale (Codex r1 P1-2 / r2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      nudgeSettle(key);   // Codex offers-ui r1 P1-2 / r2: EVERY settled quote settles the store line — here, BEFORE the offer_changed sheet's return\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SETTLE-CO",
+   "OF-SETTLE-OC"
+  ]
+ },
+ {
+  "id": "of-21",
+  "slice": "capp-offers-sliceA",
+  "label": "an identity change keeps the previous identity's saving line (Codex r1 P1-2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "&& hasOffers()) { S.nudge = null; paintNudge(); offersCartChanged(); }",
+  "to": "&& false) { S.nudge = null; paintNudge(); offersCartChanged(); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-IDENT"
+  ]
+ },
+ {
+  "id": "of-22",
+  "slice": "capp-offers-sliceA",
+  "label": "a failed pickup quote shows the client subtotal as the Total (Codex r1 P1-3)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<span>${P.ready ? moneyC(P.total - P.tip) : '—'}</span>",
+  "to": "<span>${P.ready ? moneyC(P.total - P.tip) : failed ? money(total) : '—'}</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-PICK-FAIL"
+  ]
+ },
+ {
+  "id": "of-23",
+  "slice": "capp-offers-sliceA",
+  "label": "a restored cart is never offers-quoted (Codex r1 P2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "        offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r1 P",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-RESTORE"
+  ]
+ },
+ {
+  "id": "of-24",
+  "slice": "capp-offers-sliceA",
+  "label": "a menu_changed quote in the checkout leaves the store line stale (Codex r2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "{ nudgeSettle(key); itemRefused(r); return; }",
+  "to": "{ itemRefused(r); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-SETTLE-MC"
+  ]
+ },
+ {
+  "id": "of-25",
+  "slice": "capp-offers-sliceA",
+  "label": "a served-offer store shows the client subtotal as the delivery Total before a pin (Codex r2)",
+  "file": "../customer-app/capp-ui.js",
+  "from": ": addr || hasOffers() ? '—' : money(total)}",
+  "to": ": addr ? '—' : money(total)}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=Codex r",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "OF-NOPIN"
+  ]
+ },
+ {
+  "id": "of-off-eta",
+  "slice": "capp-offers-sliceA",
+  "label": "rule 11 reverted on the tip (a lone «≈ 30 min» again) — the golden mapping must not absorb it",
+  "file": "../customer-app/capp-ui.js",
+  "from": "e[1] > e[0] ? `${e[0]}–${e[1]} min` : ''",
+  "to": "e[1] > e[0] ? `≈ ${e[0]} min` : ''",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^offers OFF golden",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OF-OFF-ETA"
+  ]
+ },
+ {
+  "id": "of-off-cart",
+  "slice": "capp-offers-sliceA",
+  "label": "a tip-side change in the delivery cart sheet (Envío before Subtotal) with no offer",
+  "file": "../customer-app/capp-ui.js",
+  "from": "`<div class=\"ctot\">${sub}${fee}${discRowHtml(T)}",
+  "to": "`<div class=\"ctot\">${fee}${sub}${discRowHtml(T)}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^offers OFF golden",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 OF-OFF-GOLDEN: the cart sheet"
   ]
  },
  {
@@ -36107,8 +37902,8 @@
   "slice": "c1b",
   "label": "a «Para vos» card keeps the home card meta (closing time + fee) — C1b-P2, 16b",
   "file": "../customer-app/capp-home.js",
-  "from": "<b>Abierto</b>${pv ? '' : ` · cierra",
-  "to": "<b>Abierto</b>${false ? '' : ` · cierra",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra",
+  "to": "<b>Abierto</b>${false ? '' : `${vm.desk ? '' : ` · cierra",
   "command": [
    "node",
    "--test",
@@ -36190,6 +37985,42 @@
   ]
  },
  {
+  "id": "c1bp-ch1",
+  "slice": "c1b",
+  "label": "the 8839193d «Abierto» resolution reverted to the OFFERS parent (no «Para vos» hide, no again)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "to": "<b>Abierto</b>${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^CH-ABIERTO-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 CH-ABIERTO-3 (a)"
+  ]
+ },
+ {
+  "id": "c1bp-ch2",
+  "slice": "c1b",
+  "label": "the 8839193d «Abierto» resolution reverted to the PUSH parent (the desk shows «cierra»)",
+  "file": "../customer-app/capp-home.js",
+  "from": "<b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "to": "<b>Abierto</b>${pv ? '' : ` · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}`}${again}</span>`",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^CH-ABIERTO-3",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 CH-ABIERTO-3 (b)"
+  ]
+ },
+ {
   "id": "r11-01",
   "slice": "rule11-eta",
   "label": "the store / checkout ETA back to v6's lone «≈ N min» (rule 11)",
@@ -36221,6 +38052,896 @@
   ],
   "kills_with": [
    "R11-HOME"
+  ]
+ },
+ {
+  "id": "fav-copy-01",
+  "slice": "c1b-favorites",
+  "label": "the 50-favorites cap back to the 11-13 placeholder (owner-approved copy 11-14)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "'Llegaste a 50 favoritos. Quitá uno para guardar otro.'",
+  "to": "'Llegaste al máximo de favoritos.'",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-1b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "C1B-F3"
+  ]
+ },
+ {
+  "id": "ws-01",
+  "slice": "web-signin",
+  "label": "the website built without member sign-in (owner 11-14)",
+  "file": "../customer-app/netlify.toml",
+  "from": "--out dist --flags guestCardOnly,signup\"",
+  "to": "--out dist --flags guestCardOnly\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "member sign-in ON"
+  ]
+ },
+ {
+  "id": "ws-02",
+  "slice": "web-signin",
+  "label": "the ID token in the last-tip URL (rule 20)",
+  "file": "../customer-app/capp-api.js",
+  "from": "sfetch(`${E.getMyLastTip}?context=platform`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "to": "sfetch(`${E.getMyLastTip}?context=platform&auth=${tok}`, { method: 'GET', headers: { 'x-firebase-id-token': tok } })",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "R20-URL"
+  ]
+ },
+ {
+  "id": "fig-01",
+  "slice": "capp-figtree",
+  "label": "the shell page drops its one Figtree preload",
+  "file": "../customer-app/shell.html",
+  "from": "<link rel=\"preload\" href=\"fonts-figtree/figtree-latin.8330490a01.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-PRELOAD"
+  ]
+ },
+ {
+  "id": "fig-02",
+  "slice": "capp-figtree",
+  "label": "the hashed Figtree files no longer cached immutably (the old /fonts/* path)",
+  "file": "../customer-app/netlify.toml",
+  "from": "for = \"/fonts-figtree/*\"",
+  "to": "for = \"/fonts/*\"",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-CACHE"
+  ]
+ },
+ {
+  "id": "fig-03",
+  "slice": "capp-figtree",
+  "label": "the Figtree stack loses its metric-matched fallbacks (a swap reflow on a cold load)",
+  "file": "../customer-app/capp.css",
+  "from": "--fig:'Figtree','Figtree Fallback','Figtree Fallback Roboto',ui-sans-serif",
+  "to": "--fig:'Figtree',ui-sans-serif",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-fonts.test.mjs"
+  ],
+  "kills_with": [
+   "FIG-STACK"
+  ]
+ },
+ {
+  "id": "push-01",
+  "slice": "capp-push",
+  "label": "the soft ask at first launch (before any order)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (!on || offeredThisVisit || !(ordersPlaced >= 1)) return false;",
+  "to": "if (!on || offeredThisVisit) return false;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ASK"
+  ]
+ },
+ {
+  "id": "push-02",
+  "slice": "capp-push",
+  "label": "a token kept on the device after sign-out",
+  "file": "../customer-app/capp-push.js",
+  "from": "      write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET"
+  ]
+ },
+ {
+  "id": "push-03",
+  "slice": "capp-push",
+  "label": "a tapped push with a malformed order id opens it",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (id && ORDER_ID.test(id)) cb(",
+  "to": "if (id) cb(",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-TAP"
+  ]
+ },
+ {
+  "id": "push-04",
+  "slice": "capp-push",
+  "label": "the system prompt even when already granted",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'prompt' || st === 'prompt-with-rationale') st = (await plugin.requestPermissions()).receive;",
+  "to": "st = (await plugin.requestPermissions()).receive;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE"
+  ]
+ },
+ {
+  "id": "push-05",
+  "slice": "capp-push",
+  "label": "the push flag on the WEB build (owner Q5: no web push)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "...(f.push === true && rt.mode === 'native' ? { push: true } : {}),",
+  "to": "...(f.push === true ? { push: true } : {}),",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FLAG"
+  ]
+ },
+ {
+  "id": "push-06",
+  "slice": "capp-push",
+  "label": "the card returns after «Ahora no» without limit (owner Q2: at most twice)",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (n > RETURNS_MAX) return false;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-RETURNS"
+  ]
+ },
+ {
+  "id": "push-07",
+  "slice": "capp-push",
+  "label": "the register call drops ?context=platform",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken, query: 'context=platform' });",
+  "to": "const r = await call(E.registerCustomerPushToken, { body: { token, platform, app_build, install_id, pedidos, promociones }, idToken });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered"
+  ]
+ },
+ {
+  "id": "push-09",
+  "slice": "capp-push",
+  "label": "a token the server refused still counts as registered",
+  "file": "../customer-app/capp-push.js",
+  "from": "      if (read().token === token) write({ server: ok });   // a token",
+  "to": "      void ok;   // a token",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ACK: taken"
+  ]
+ },
+ {
+  "id": "push-10",
+  "slice": "capp-push",
+  "label": "sign-out leaves the token alive on the phone",
+  "file": "../customer-app/capp-push.js",
+  "from": "        : Promise.resolve().then(() => plugin.unregister()).then(() => true, () => false);",
+  "to": "        : Promise.resolve(true);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the server forgets it AND the phone deletes it"
+  ]
+ },
+ {
+  "id": "push-11",
+  "slice": "capp-push",
+  "label": "sign-out keeps the previous person's opt-in",
+  "file": "../customer-app/capp-push.js",
+  "from": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX), ...(s0.state === 'granted' ? { state: null } : {}) });",
+  "to": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX) });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-FORGET-2: the next member opts in for themselves"
+  ]
+ },
+ {
+  "id": "push-12",
+  "slice": "capp-push",
+  "label": "an Ajustes denial is not remembered",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied' });",
+  "to": "if (st === 'denied' && s.state !== 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: turned off in Ajustes"
+  ]
+ },
+ {
+  "id": "push-13",
+  "slice": "capp-push",
+  "label": "allowing again in Ajustes leaves the switches dead",
+  "file": "../customer-app/capp-push.js",
+  "from": "else if (st !== 'denied' && s.state === 'denied') write({ state: s.token && s.server === true ? 'granted' : null });",
+  "to": "else if (st !== 'denied' && s.state === 'denied') void 0;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-PERMISSION: allowed again"
+  ]
+ },
+ {
+  "id": "push-14",
+  "slice": "capp-push",
+  "label": "a new install_id at every register",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (typeof cur === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(cur)) return cur;",
+  "to": "void cur;",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-INSTALL: stable across a sign-out"
+  ]
+ },
+ {
+  "id": "push-15",
+  "slice": "capp-push",
+  "label": "register without install_id",
+  "file": "../customer-app/capp-push.js",
+  "from": "app_build: appBuild, install_id: installId(), pedidos",
+  "to": "app_build: appBuild, pedidos",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ENABLE: the 6b contract body"
+  ]
+ },
+ {
+  "id": "push-16",
+  "slice": "capp-push",
+  "label": "stale_prefs loses the server's current prefs",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "        if (r.status === 409 && r.json && r.json.reason === 'stale_prefs') return { ok: false, reason: 'stale_prefs', prefs: prefsOf(r.json.prefs) };\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API-REV: stale ⇒ the current prefs back"
+  ]
+ },
+ {
+  "id": "push-17",
+  "slice": "capp-push",
+  "label": "a malformed install_id is sent",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": " || !(typeof install_id === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(install_id))",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "a malformed install_id is never sent"
+  ]
+ },
+ {
+  "id": "push-18",
+  "slice": "capp-push",
+  "label": "prefs without their rev",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "? { pedidos: p.pedidos, promociones: p.promociones, rev: p.rev } : null);",
+  "to": "? { pedidos: p.pedidos, promociones: p.promociones } : null);",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-API: registered (prefs initialized, rev 1)"
+  ]
+ },
+ {
+  "id": "push-19",
+  "slice": "capp-push",
+  "label": "the denied rows are not inert",
+  "file": "../customer-app/capp-push.js",
+  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ic}",
+  "to": "      ? `<div class=\"rowbtn\">${ic}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-UI: F2c"
+  ]
+ },
+ {
+  "id": "push-20",
+  "slice": "capp-push",
+  "label": "the denied subtitle loses to the opt-in one",
+  "file": "../customer-app/capp-push.js",
+  "from": "    if (x.denied) return COPY.rowDenied;\n",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-ROW: denied wins"
+  ]
+ },
+ {
+  "id": "push-21",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-2: a sign-out drops the token instead of holding it in a durable pending record",
+  "file": "../customer-app/capp-push.js",
+  "from": "write({ token: null, owner: null, server: null, pending: pend.slice(-PENDING_MAX),",
+  "to": "write({ token: null, owner: null, server: null, pending: [],",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-FORGET-3: the token + its owner wait in a durable record"
+  ]
+ },
+ {
+  "id": "push-22",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-2: a refused / failed invalidation reports success",
+  "file": "../customer-app/capp-push.js",
+  "from": "return { ok: nativeOk && srv.every((r) => r && r.ok === true),",
+  "to": "return { ok: true,",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-FORGET-3: a server refusal never reports success"
+  ]
+ },
+ {
+  "id": "push-23",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-3: an OS denial drops the token (the sign-out loses its handle)",
+  "file": "../customer-app/capp-push.js",
+  "from": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied' });",
+  "to": "if (st === 'denied' && s.state !== 'denied') write({ state: 'denied', token: null, server: null });",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-DENIAL-KEEPS: a sign-out after a denial still invalidates the token (server)"
+  ]
+ },
+ {
+  "id": "push-24",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-5: an unacknowledged register counts as registered",
+  "file": "../customer-app/capp-push.js",
+  "from": "registered: !!s.token && s.server === true",
+  "to": "registered: !!s.token && s.server !== false",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-ACK-PENDING: in flight ⇒ not registered"
+  ]
+ },
+ {
+  "id": "push-25",
+  "slice": "capp-push",
+  "label": "Codex r2 P1: a server completion settles every record of the same token (not only its own op)",
+  "file": "../customer-app/capp-push.js",
+  "from": "mark(new Set([p.op]), 'server')",
+  "to": "mark(new Set(pendingOf(read()).filter((q) => q.token === p.token).map((q) => q.op)), 'server')",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-OP-OWN: B's record stays owed"
+  ]
+ },
+ {
+  "id": "push-26",
+  "slice": "capp-push",
+  "label": "Codex r2 P2: the server's success is persisted only after the phone answers",
+  "file": "../customer-app/capp-push.js",
+  "from": ".then((r) => { if (r && r.ok === true) mark(new Set([p.op]), 'server'); return r; })",
+  "to": ".then((r) => nativeP.then(() => { if (r && r.ok === true) mark(new Set([p.op]), 'server'); return r; }))",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SIDE-DURABLE: the server's success is on disk while the phone hangs"
+  ]
+ },
+ {
+  "id": "push-s01",
+  "slice": "capp-push",
+  "label": "the card on a guest's / any order (no member gate)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "    const pushUi = () => !!(S.member && pushCore() && push.available());",
+  "to": "    const pushUi = () => !!(pushCore() && push.available());",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-GATE"
+  ]
+ },
+ {
+  "id": "push-s02",
+  "slice": "capp-push",
+  "label": "the card anywhere in the sheet (not under the status line)",
+  "file": "../customer-app/capp-order.js",
+  "from": "${segbar}${statusrow}${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}",
+  "to": "${!sc && st === 'new' && typeof c.pushAsk === 'string' ? c.pushAsk : ''}${segbar}${statusrow}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: right under the status line"
+  ]
+ },
+ {
+  "id": "push-s03",
+  "slice": "capp-push",
+  "label": "the order line ignores push",
+  "file": "../customer-app/capp-order.js",
+  "from": "${typeof c.pushLine === 'string' && c.pushLine ? esc(c.pushLine) : 'Te avisamos por WhatsApp'}",
+  "to": "Te avisamos por WhatsApp",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-1: the order line once push is on"
+  ]
+ },
+ {
+  "id": "push-s04",
+  "slice": "capp-push",
+  "label": "a stale save overwrites blindly (no re-apply)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        keepPrefs({ ok: true, prefs: r.prefs }); cur = r.prefs;\n",
+  "to": "        return false;\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-7"
+  ]
+ },
+ {
+  "id": "push-s05",
+  "slice": "capp-push",
+  "label": "a 503 read leaves the switches live",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "else if (r && r.reason === 'unavailable') S.pushDown = true;",
+  "to": "else if (r && r.reason === 'unavailable') S.pushReady = uid;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-8: both inert"
+  ]
+ },
+ {
+  "id": "push-s06",
+  "slice": "capp-push",
+  "label": "an opt-in over existing prefs drops the person's choice",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (sp[k] !== prefs[k]) ok = (await pushApply(k, prefs[k], sp)) === true;",
+  "to": "void sp;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-9"
+  ]
+ },
+ {
+  "id": "push-s07",
+  "slice": "capp-push",
+  "label": "sign-out without forgetting the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      await pushAuthExit();   // the server forgets",
+  "to": "      void 0;   // the server forgets",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-5: 3a forgot the token"
+  ]
+ },
+ {
+  "id": "push-s08",
+  "slice": "capp-push",
+  "label": "«Abrir Ajustes» raises no host event",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'push-settings') { emit('open-os-settings', {}); return; }",
+  "to": "if (a === 'push-settings') return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-4: the host opens Ajustes"
+  ]
+ },
+ {
+  "id": "push-s09",
+  "slice": "capp-push",
+  "label": "the Cuenta row placed before Direcciones",
+  "file": "../customer-app/capp-home.js",
+  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-3: right after Direcciones"
+  ]
+ },
+ {
+  "id": "push-s10",
+  "slice": "capp-push",
+  "label": "a tapped push opens nothing",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      push.onTap((x) => { S.pushTap = x.order_id; pushTapRun(); });",
+  "to": "      push.onTap(() => {});",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PUSH-SHELL-6: the tap opens its live screen"
+  ]
+ },
+ {
+  "id": "push-s11",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-1: a push call takes whatever session token is current (not the owner's)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const tok = await tokFor(c && c.owner, { member });",
+  "to": "const tok = fbAuth ? await fbAuth.idToken() : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-11: nothing of A's action is sent under B's token"
+  ]
+ },
+ {
+  "id": "push-s12",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: the SDK's own sign-out (guest) never forgets the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "clearComplete(); pushAuthExit(); pushSettleSoon(); }",
+  "to": "clearComplete(); pushSettleSoon(); }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (guest)"
+  ]
+ },
+ {
+  "id": "push-s13",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: a session without its completion mark is signed out without forgetting the token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "dropMember(); pushAuthExit().then(() => fbAuth.signOut().catch(() => {}));",
+  "to": "dropMember(); fbAuth.signOut().catch(() => {});",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (marker)"
+  ]
+ },
+ {
+  "id": "push-s14",
+  "slice": "capp-push",
+  "label": "Codex r1 P1-4: a cold restore as another person keeps the previous owner's token",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (h && h.live && h.owner !== (u && u.uid)) pushForget();",
+  "to": "if (h && h.live && S.member && h.owner !== (u && u.uid)) pushForget();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-12 (cold)"
+  ]
+ },
+ {
+  "id": "push-s15",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-9: the packaged boot drops «Abrir Ajustes» (no AppSettings call)",
+  "file": "../customer-app/capp-boot.js",
+  "from": "if (n === 'open-os-settings') {",
+  "to": "if (n === 'open-os-settings-x') {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^SETTINGS-BOOT",
+   "../customer-app/capp-boot.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SETTINGS-BOOT: open-os-settings ⇒ AppSettings.open()"
+  ]
+ },
+ {
+  "id": "push-s16",
+  "slice": "capp-push",
+  "label": "Codex r2 P2-6: an earlier visit's late read counts for the current visit",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "|| visit !== pushVisit) return;",
+  "to": ") return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-13d: visit 1's late read never frees visit 2's switches"
+  ]
+ },
+ {
+  "id": "push-s17",
+  "slice": "capp-push",
+  "label": "Codex r1 P2-7 / r2: the tap listener is installed only by the auth callback (not at startup)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      if (runtime.push === true) pushCore();",
+  "to": "      if (false) pushCore();",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PUSH-SHELL",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 PUSH-SHELL-14: listening from startup"
+  ]
+ },
+ {
+  "id": "bk-01",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (ee6dedd6a): a confirmed address never seeds the cart flow again (zero quotes, a Total without delivery)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const sp = seedPin(); if (!sp || sp.confirmed !== true) return;",
+  "to": "const sp = seedPin(); if (true) return;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^G-A7",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 G-A7: a confirmed address ⇒ pending «—»"
+  ]
+ },
+ {
+  "id": "bk-02",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (fa9cbc169): navigation no longer voids a pending reorder (a round trip to the same tab reopens it)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "        reorderGen++;   // … and voids",
+  "to": "        // … and voids",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^C-3r v2 R4.3 race — a ROUND TRIP",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 C3R-V2-RACE round trip"
+  ]
+ },
+ {
+  "id": "bk-03",
+  "slice": "capp-backfill",
+  "label": "Codex backfill P2 (fa9cbc169): a cart action no longer voids a pending reorder (the late replacement discards the added dish)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "      reorderGen++;   // a newer cart action",
+  "to": "      // a newer cart action",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^C-3r v2 R4.3 race — a CART ACTION",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 C3R-V2-RACE cart action"
+  ]
+ },
+ {
+  "id": "lf-01",
+  "slice": "capp-sbs-followup",
+  "label": "offers SBS 11-15 defect A: the checkout logo chip loses its initials (a failed logo is an empty disc)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "alt=\"\" data-initials=\"${esc(String(cfg.name",
+  "to": "alt=\"\" data-x=\"${esc(String(cfg.name",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^LF-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 LF-1: a failed checkout logo"
+  ]
+ },
+ {
+  "id": "nb-01",
+  "slice": "capp-sbs-followup",
+  "label": "offers SBS 11-15 defect B (16b): the guest card option breaks «3D Secure» across lines again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "<b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\\u00a0Secure).",
+  "to": "<b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^NB-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 NB-1:"
   ]
  },
  {

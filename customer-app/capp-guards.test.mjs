@@ -33,13 +33,11 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// BASE → 604e96ab (advisor 11-13, option (a), the D4 precedent): the asm9b capp lane (the rule-20 swap + C-1b) branches FROM the
-// asm9 RC itself (2e: no fork-point auto-merges), so first-parent from 1d862e17 would walk the TRAIN's own commits (other lanes'
-// server files). The lane's range is now 604e96ab..CAPP_TIP; everything below it is the RC (all prior capp work, Codex-approved).
-// Bite proof: a planted capp commit touching xpizza-functions/claim-order.js in the new range fails «no server change» (index.js is
-// in the cell's own S2TIP_SERVER allowlist, so it cannot be the proof file; the run is in the d8256f73 commit message)
-const BASE = '604e96ab';
-const CAPP_TIP = 'aeb48923';
+// BASE → 827373d6 (advisor 11-15, the forked-lane rule): feat/capp-offers-r20 = the offers line + a MERGE of feat/capp-push (the
+// r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
+// merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
+const BASE = '827373d6';
+const CAPP_TIP = 'b7880d0e';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -148,7 +146,8 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
   // key omit list, and a failure must not dump it
   const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
-  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  // owner 11-14 (PLAN-capp-web-signin r0, accepted): members sign in on the WEBSITE — the web build carries `signup` (phone + WhatsApp)
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly,signup"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target, member sign-in ON (owner 11-14)');
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
@@ -239,8 +238,33 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
 const MERGE_ALLOW = {
-  // (empty at BASE 604e96ab: the asm8 195147ff and asm9 11273d0c entries name merges BELOW the base — in the RC the lane branches from —
-  // so they would read as stale; advisor ruling 11-13, option (a), as at the 11-12 BASE move)
+  // feat/capp-offers-r20 (advisor 11-15): every hit proven line by line — the merge's `git show --cc` lines that come from NO parent are
+  // listed in each reason (none, or exactly the ruled lines); PROVISIONAL with the merges until Codex/advisor approve capp-push r2
+  'b63d58a0 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-checkout.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN offer-quote marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-s7a2.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN c3r-v2 marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api-sdk.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-colour-allowlist.json': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-guards.test.mjs': 'union + ONLY the ruled forked-lane BASE move to 827373d6 (advisor 11-15, ruling (a)): 3 comment lines, the BASE line, 1 blank',
+  '8839193d customer-app/capp-home.js': 'hand-resolved same-line merge of offers desk-hide + push preview-hide; cell CH-ABIERTO-3',
+  '8839193d customer-app/capp-menu.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/fixtures/s7a2/gen-directory.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/index.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/shell.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-push.test.mjs': 'union + the PUSH-TAP microtask (vclock step 9 in the merged tree)',
+  '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
+  '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
+  '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
   const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
@@ -276,4 +300,52 @@ test('S2 SBS: the stand-in pay binding and the native-mode injection live ONLY i
     const rt = {}; new Function('self', B.files.get('capp-runtime.js').toString('utf8'))(rt);
     assert.equal(rt.CAPP_RUNTIME && rt.CAPP_RUNTIME.mode, target, `🔴 SBS-3: the packaged ${target} runtime says its own mode (no injected mode)`);
   }
+});
+
+// PLAN-capp-virtual-clock step 9 (advisor 11-14): the customer-app suites never WAIT on a fixed real sleep — a Promise settled by a real
+// setTimeout races the work it waits for under load (the 2e flakes); the virtual clock (test-clock.mjs) drains instead. Real = a bare,
+// window or jsdom-window setTimeout — any receiver that is not a virtual clock (fail closed). A waiver names its reason and pins its
+// count (a second sleep in a waived file is never hidden by the first). The premises split «set»+«Timeout» so this file scans clean
+const SLEEP_WAIVED = {
+  'capp-s7a1-shell.test.mjs': [1, 'popTick: an EVENT-based wait for jsdom\'s popstate — its 1 s timer is a hang cap only (advisor 11-14)'],
+};
+const VIRTUAL_RECV = /^(VC|vc|c|POP)\.$/;
+function realSleeps(src) {
+  const out = [];
+  for (const m of src.matchAll(/new Promise\(\s*(?:\(\s*(\w+)[^)]*\)|(\w+))\s*=>/g)) {
+    const r = m[1] || m[2], body = src.slice(m.index, m.index + 400);
+    const settles = new RegExp(`([\\w.]*?)setTimeout\\)?\\(\\s*(?:${r}\\s*[,)]|\\(\\)\\s*=>\\s*\\{?\\s*${r}\\()`, 'g');
+    for (const t of body.matchAll(settles)) if (!VIRTUAL_RECV.test(t[1])) { out.push(src.slice(0, m.index).split('\n').length); break; }
+  }
+  return out;
+}
+test('no fixed real sleep in the customer-app suites: no Promise settled by a real setTimeout — the virtual clock drains instead (PLAN-capp-virtual-clock step 9)', () => {
+  const dir = join(ROOT, 'customer-app'), files = readdirSync(dir).filter((f) => f.endsWith('.test.mjs'));
+  assert.ok(files.length >= 30 && files.includes('capp-s7a2.test.mjs') && files.includes('capp-ui.test.mjs'), `🔴 premise: the scan reads the suites (${files.length})`);
+  const ST = 'set' + 'Timeout';
+  assert.deepEqual(realSleeps(`const s = () => new Promise((r) => ${ST}(r, 30));`), [1], '🔴 premise: the scanner sees a bare sleep');
+  assert.deepEqual(realSleeps(`const s = () => new Promise((res) => w.${ST}(() => res(), 30));`), [1], '🔴 premise: the scanner sees a jsdom-window sleep');
+  assert.deepEqual(realSleeps(`const s = () => new Promise((r) => VC.${ST}(r, 30));`), [], '🔴 premise: a virtual-clock wait is not a sleep');
+  const found = Object.fromEntries(files.map((f) => [f, realSleeps(readFileSync(join(dir, f), 'utf8'))]).filter(([, l]) => l.length));
+  const bad = Object.entries(found).filter(([f, l]) => !SLEEP_WAIVED[f] || l.length !== SLEEP_WAIVED[f][0]).map(([f, l]) => `${f}:${l.join(',')}`);
+  assert.deepEqual(bad, [], '🔴 SLEEP: a fixed real sleep in a customer-app suite (wait on the virtual clock, or on an event)');
+  assert.deepEqual(Object.keys(SLEEP_WAIVED).filter((f) => !found[f]), [], '🔴 SLEEP: a stale waiver (its sleep is gone — drop it)');
+});
+
+// rule 20 (owner; PLAN-capp-web-signin r0 — the WEBSITE now signs members in): NO script the web shell loads builds a URL that carries a
+// token — an ID / custom / access token goes in a HEADER, never a query (a URL lands in browser history, devtools, proxy logs). The
+// scan covers every <script src> of shell.html (the packager's web file list, package-capp.js) — a token-shaped query parameter fed
+// from code (`?auth=${…}`, `&token=' + …`) is red; TIP-F4 (capp-ui) pins the one historical offender (last_tip) dynamically
+test('rule 20 (web sign-in): no script of the web shell puts a token in a URL query', () => {
+  const shell = readFileSync(join(ROOT, 'customer-app', 'shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/^https?:/.test(f));
+  assert.ok(scripts.length >= 10 && scripts.includes('capp-api.js') && scripts.includes('capp-signup-api.js'), 'premise: the shell\'s scripts');
+  const TOKQ = /[?&](?:auth|token|id_?token|access_?token|custom_?token|tok)=(?:\$\{|['"`]\s*\+)/i;
+  const hits = [];
+  for (const f of scripts) {
+    const src = readFileSync(join(ROOT, 'customer-app', f), 'utf8');
+    src.split('\n').forEach((ln, i) => { if (TOKQ.test(ln) && !/^\s*\/\//.test(ln)) hits.push(`${f}:${i + 1}`); });
+  }
+  assert.deepEqual(hits, [], '🔴 R20-URL: a token built into a URL query');
+  assert.ok(TOKQ.test("fetch(`${base}/x.json?auth=${encodeURIComponent(tok)}`)") && TOKQ.test("u + '&token=' + t"), 'non-vacuity: the former offender\'s shape is caught');
 });
