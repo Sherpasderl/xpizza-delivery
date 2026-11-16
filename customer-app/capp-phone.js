@@ -15,11 +15,16 @@
 //   parseE164(s)              { cc, national } for a qualified '+CC…' of a supported country with a valid length; null otherwise
 //                             (an unsupported code — e.g. +44 — or a wrong length is never guessed into another country)
 //   display(cc, s)            '+cc ' + format — how a number is shown back (the sheet's «Te lo enviamos al …», the member row)
+//   served(extraCc, src)      the rows a PICKER offers (PLAN-capp-picker-served-countries r1): the COUNTRIES whose cc the server
+//                             serves — phone-countries.js COUNTRIES, the server's own list, synced into the app byte for byte
+//                             (tools/sync-client.js; the page loads it before this file) — in COUNTRIES order, plus extraCc's row
+//                             (a member's own saved country) when it is not served. No list ⇒ Honduras only (fail closed).
 (function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
+  const cjs = typeof module === 'object' && module.exports;
+  const api = factory(cjs ? () => require('./phone-countries.js') : () => root.PhoneCountries);
+  if (cjs) module.exports = api;
   else root.CappPhone = api;
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (servedSource) {
   'use strict';
 
   // groups: the local format as digit-group sizes + the separators BEFORE each group (the mockup's placeholders)
@@ -59,6 +64,11 @@
     return null;
   }
   const display = (cc, s) => { const f = format(cc, s); return f ? `+${cc} ${f}` : ''; };
+  function served(extraCc, src = servedSource()) {
+    const list = src && Array.isArray(src.COUNTRIES) ? src.COUNTRIES.map((c) => c && c.cc) : [DEFAULT_CC];
+    const keep = new Set([DEFAULT_CC, ...list, ...(byCc(extraCc) ? [String(extraCc)] : [])]);
+    return COUNTRIES.filter((c) => keep.has(c.cc));
+  }
 
-  return { COUNTRIES, DEFAULT_CC, byCc, digits, national, format, valid, toE164, parseE164, display };
+  return { COUNTRIES, DEFAULT_CC, byCc, digits, national, format, valid, toE164, parseE164, display, served };
 });

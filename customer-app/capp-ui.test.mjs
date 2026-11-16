@@ -2466,7 +2466,7 @@ test('Codex guest r2 #2: a browser / device BACK while the verification waits �
 
 // ── S-picker (PLAN-intl-phone r2.3; MOCKUP-intl-phone-picker-APPROVED-2026-10-27 frames 4–6): behind the runtime intlPhone ──
 const INTL = { intlPhone: true };
-const loadPhone = (w) => w.eval(readFileSync(join(HERE, 'capp-phone.js'), 'utf8'));   // the page loads it (shell.html), as here
+const loadPhone = (w) => { for (const f of ['phone-countries.js', 'capp-phone.js']) w.eval(readFileSync(join(HERE, f), 'utf8')); };   // the page loads them (shell.html), in its order
 const bootIntl = (o = {}) => bootCo({ ...o, config: { ...INTL, ...(o.config || {}) }, pre: loadPhone });
 async function intlFilled(b, cc, digits, pay = null) {
   await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
@@ -2485,12 +2485,12 @@ test('S-picker frame 4: the WhatsApp field = the country button «+504» + the i
   assert.equal(o.ui.state.screen, 'checkout', '🔴 off: the page never reaches for the picker module (its checkout opens)');
   assert.equal(o.q('.fld .phonerow'), null, '🔴 off: no picker without the runtime flag'); assert.equal(o.q('#f-phone').getAttribute('placeholder'), '+504 9999-9999', 'off: unchanged');
 });
-test('S-picker frame 5: the country sheet — «País del número» + its line, the ten countries in order, the current one in accent with a check; the button shows it open', async () => {
+test('S-picker frame 5: the country sheet — «País del número» + its line, the served countries in order, the current one in accent with a check; the button shows it open', async () => {
   const b = bootIntl(); await toCheckout(b); await b.click('[data-act="cc"]');
   assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'País del número');
   assert.equal(b.text('#layer .sheethead h2'), 'País del número Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
   assert.deepEqual(b.qa('#layer .crow').map((r) => [b.text(r), r.classList.contains('on')]), [['Honduras +504', true], ['Estados Unidos +1', false], ['México +52', false], ['Guatemala +502', false],
-    ['El Salvador +503', false], ['Nicaragua +505', false], ['Costa Rica +506', false], ['Panamá +507', false], ['Belice +501', false], ['España +34', false]]);
+    ['El Salvador +503', false], ['Nicaragua +505', false], ['Costa Rica +506', false], ['España +34', false]], '🔴 PS-co: a guest gets the server\'s countries (no Panamá, no Belice)');
   assert.ok(b.q('#layer .crow.on svg'), 'the check'); assert.equal(b.q('#layer .crow.on').getAttribute('aria-pressed'), 'true');
   assert.ok(b.q('.fld .cc').classList.contains('focus'), 'the button shows the sheet open');
   await b.click('#layer [data-act="lclose"]'); assert.equal(b.q('#layer .sheet'), null); assert.equal(b.text('.fld .cc'), '+504', 'closing changes nothing');
@@ -2503,8 +2503,8 @@ test('S-picker frame 6: Estados Unidos ⇒ «+1», «(555) 123-4567», «Estados
   await b.type('#f-phone', '305555014799');
   assert.equal(b.q('#f-phone').value, '(305) 555-0147', '🔴 the local format, capped at 10');
   assert.equal(b.text('#f-phone-cc'), 'Estados Unidos · 10 dígitos · se guarda como +1 (305) 555-0147');
-  await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="501"]');
-  assert.equal(b.q('#f-phone').value, '305-5550', 'another country keeps the digits, capped to ITS length (Belice 7)');
+  await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="34"]');
+  assert.equal(b.q('#f-phone').value, '305 55 50 14', 'another country keeps the digits, capped to ITS length (España 9)');
 });
 test('S-picker wire: the order carries the chosen country\'s E.164 (+504 too, with the picker on); flag absent ⇒ «+504 9999-0000» as today', async () => {
   const b = bootIntl({ script: { createOrder: [OK_CASH_UI] } }); await intlFilled(b, '1', '3055550147', 'cash');
@@ -2529,6 +2529,19 @@ test('S-picker restore + member: a stored E.164 keeps its country (the return\'s
   await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+1'); assert.equal(b.q('#f-phone').value, '(305) 555-0147');
   const l = bootIntl({ member: { ...m, phone: '96123344' } }); await toCheckout(l); await l.click('[data-act="editwho"]');
   assert.equal(l.text('.fld .cc'), '+504'); assert.equal(l.q('#f-phone').value, '9612-3344');
+});
+test('PS-co member (PLAN-capp-picker-served-countries r1): a member\'s own saved non-served country stays a row of THEIR picker, selected — never re-coded; a +504 member gets the served list', async () => {
+  const SRV = require('../xpizza-functions/phone-countries.js').COUNTRIES.map((c) => c.cc);
+  const m = { uid: 'u1', name: 'Ana', phone: '+50769999999', email: 'a@b.co' };
+  const b = bootIntl({ member: m }); await toCheckout(b);
+  assert.match(b.text(b.q('[data-act="editwho"]').closest('.urow')), /\+507 6999-9999/, 'the saved number shows as before');
+  await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+507'); await b.click('[data-act="cc"]');
+  const rows = b.qa('#layer [data-act="cc-pick"]').map((r) => r.dataset.cc);
+  assert.deepEqual(rows, ['504', '1', '52', '502', '503', '505', '506', '507', '34'], '🔴 PS-co: the served list + Panamá, in order');
+  assert.equal(b.q('#layer .crow.on').dataset.cc, '507', '🔴 PS-co: their own country selected');
+  const h = bootIntl({ member: { ...m, phone: '+50499990000' } }); await toCheckout(h); await h.click('[data-act="editwho"]'); await h.click('[data-act="cc"]');
+  const hr = h.qa('#layer [data-act="cc-pick"]').map((r) => r.dataset.cc);
+  assert.deepEqual(new Set(hr), new Set(SRV), '🔴 PS-co: a +504 member gets exactly the server\'s countries'); assert.equal(hr.length, SRV.length);
 });
 test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as ITS E.164; an unreadable one opens «Tus datos» in edit and is never sent as a +504 guess', async () => {
   const m = { uid: 'u1', name: 'Ana', phone: '+13055550147', email: 'a@b.co', idToken: 'tok' };

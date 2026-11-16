@@ -840,11 +840,13 @@
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
       return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog"${off ? ' disabled' : ''}>+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"${off ? ' disabled' : ''}></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
     }
+    // the rows: the countries the server serves (P.served, PLAN-capp-picker-served-countries r1) + a member's own saved country, so
+    // their number is never re-coded to another country (a guest gets the served list alone)
     function ccSheetHtml() {
-      const P = phoneMod(), cur = ccOf(S.flow);
+      const P = phoneMod(), cur = ccOf(S.flow), m = member(), own = m && m.phone ? P.parseE164(m.phone) : null;
       return `<div class="scrim" data-act="lclose"></div><div class="sheet ccsheet" role="dialog" aria-label="País del número"><div class="grab"></div>
         <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+        ${P.served(own ? own.cc : null).map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
