@@ -140,22 +140,42 @@ ok('EXECUTABLE per-file measurement: an empty file, an exit-only file, a skip/to
 }
 ok(`zero-cell excuses: excused-zero green, excuse-that-asserts RED, orphan RED; child env drops only the count-marks preload; ${Object.keys(A.ZERO_CELL_OK).length} ZERO_CELL_OK entries`);
 
-// 10. 🔴 A CANCELLED FILE IS RED (portal light chain r0). A folder's --test-timeout caps the WHOLE file under this
-//     runner (node --test wraps the file as one test), so an over-the-cap file is CANCELLED, not failed — and must
-//     still score RED. EXECUTABLE: a real file over a 1 s cap, through the runner's own runFile + classify.
+// 10. 🔴 A CANCELLED TEST IS RED (portal light chain r0): a test over node's per-test --test-timeout is CANCELLED, not
+//     failed, and must still score RED. EXECUTABLE: a real file through the runner's own runFile + classify.
 {
   const os = require('os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'app-suites-cancel-'));
   try {
     fs.writeFileSync(path.join(dir, 'slow.test.js'), "const t = require('node:test'); t.test('fast', () => {}); t.test('slow', () => new Promise((r) => setTimeout(r, 3000)));\n");
-    const r = A.runFile({ file: 'fx/slow.test.js', cwd: '.', rel: 'slow.test.js', env: {}, flags: ['--test-timeout=1000'] }, dir, process.env);
+    const r = A.runFile({ file: 'fx/slow.test.js', cwd: '.', rel: 'slow.test.js', env: {}, flags: ['--test-timeout=1000'], deadlineMs: 10000 }, dir, process.env);
     assert.ok(r.cancelled >= 1, FAIL(`the over-the-cap file was not reported CANCELLED (cancelled=${r.cancelled}): ${r.out.slice(-300)}`));
     assert.strictEqual(r.ok, false, FAIL('a CANCELLED (timed-out) file scored as a pass'));
     const cv = A.classify([r], {}, ['fx/slow.test.js'], {});
     assert.ok(cv.rows[0].state === 'fail' && cv.exitCode === 1, FAIL(`a cancelled file must fail the run: ${JSON.stringify(cv.rows[0])}`));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
-ok('EXECUTABLE: a file over its folder\'s --test-timeout is CANCELLED, reported as such, and scored RED (never a pass)');
+ok('EXECUTABLE: a test over node\'s per-test --test-timeout is CANCELLED, reported as such, and scored RED (never a pass)');
+
+// 10b. 🔴 THE FILE DEADLINE (codex #100 P2): --test-timeout caps each TEST, so two tests EACH under the cap can run a file
+//      past it and pass. runFile's process-level deadline (the contract's --test-timeout) must kill the whole group and
+//      score the file RED «timeout». EXECUTABLE: two 900 ms tests under a 1500 ms contract, through runFile + classify.
+{
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'app-suites-deadline-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'sum.test.js'), "const t = require('node:test'); const w = () => new Promise((r) => setTimeout(r, 900)); t.test('one', w); t.test('two', w);\n");
+    assert.strictEqual(A.fileDeadlineMs(['--test-timeout=1500']), 1500, FAIL('the deadline is read from the contract'));
+    assert.strictEqual(A.fileDeadlineMs([]), A.FILE_DEADLINE_MS, FAIL('no contract timeout → the default deadline'));
+    const t0 = Date.now();
+    const r = A.runFile({ file: 'fx/sum.test.js', cwd: '.', rel: 'sum.test.js', env: {}, flags: ['--test-timeout=1500'] }, dir, process.env);
+    const ms = Date.now() - t0;
+    assert.ok(r.timedOut === true && r.ok === false, FAIL(`two tests each under the per-test cap ran the file past its 1500 ms deadline and were not stopped (${ms} ms, timedOut=${r.timedOut}, ok=${r.ok}): ${r.out.slice(-200)}`));
+    assert.ok(ms < 1750, FAIL(`the deadline did not stop the file on time (${ms} ms)`));
+    const dv = A.classify([r], {}, ['fx/sum.test.js'], {});
+    assert.ok(dv.rows[0].state === 'fail' && dv.exitCode === 1, FAIL(`a file past its deadline must fail the run: ${JSON.stringify(dv.rows[0])}`));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+ok('EXECUTABLE: a file whose tests each pass the per-test cap but together run past the contract deadline is killed (whole group) and scored RED «timeout»');
 
 // 11. 🔴 NO BROWSER IN THE LIGHT CHAIN (rule 32: Chrome only at a slot turn). A file a light npm test step names (side
 //     'test') or test:apps plans (side 'apps') whose own source launches a browser is a plan PROBLEM unless KNOWN_BROWSER
@@ -187,7 +207,7 @@ ok('EXECUTABLE: a file over its folder\'s --test-timeout is CANCELLED, reported 
   assert.ok(browser.length >= 1 && portal.length > browser.length, FAIL(`premise: ${portal.length} portal files, ${browser.length} browser`));
   assert.deepStrictEqual([portal.filter((f) => reached.has(f)), portal.filter((f) => planned.has(f)).length], [browser, portal.length - browser.length], FAIL('test:portal must reach ONLY the portal *.browser.test.mjs files, and test:apps must plan every other portal file'));
   const pm = A.parseManifest(JSON.parse(fs.readFileSync(path.join(FUNCTIONS, '..', 'xpizza-portal', 'package.json'), 'utf8')).scripts.test);
-  assert.ok(pm && pm.flags.includes('--test-timeout=180000'), FAIL('the portal test contract must carry --test-timeout=180000 (a whole-file cap under test:apps; marketing ≈ 54 s)'));
+  assert.ok(pm && pm.flags.includes('--test-timeout=180000'), FAIL('the portal test contract must carry --test-timeout=180000 (the per-test cap AND the runFile per-file deadline; marketing ≈ 54 s)'));
   ok(`no browser in the light chain (${light.size} files): an unexcused browser file on the npm test side AND on the test:apps side, a wrong-side excuse and a stale excuse are RED; ${Object.keys(A.KNOWN_BROWSER).length} KNOWN_BROWSER (${Object.values(A.KNOWN_BROWSER).map((e) => e.side).join('/')}); portal: ${browser.length} browser file(s) by test:portal, ${portal.length - browser.length} by test:apps at 180 s`);
 }
 

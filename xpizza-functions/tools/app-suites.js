@@ -38,9 +38,12 @@
  * which gate-all sums with the runner's own (0: the echoed child output is prefixed so nothing in it
  * reads as a mark). The gate's number is therefore exactly the per-file measurement below.
  *
- * 🔴 A CANCELLED FILE IS RED. A folder's --test-timeout caps the WHOLE file here (node --test runs the file as one
- * wrapper test), so a file over the cap is CANCELLED: node exits 1, the file scores `fail`, and the summary tags it
- * «cancelled: timeout» from the TAP `# cancelled N` line. The portal's contract is 180 s (marketing ≈ 54 s at load 10).
+ * 🔴 EACH FILE HAS ITS OWN DEADLINE, AND A TIMEOUT IS RED (codex #100 P2). node's --test-timeout caps each TEST, not the
+ * file: two 150 ms tests under --test-timeout=200 pass in 392 ms. So runFile runs every file in its OWN process group
+ * under a process-level deadline: the folder's contract --test-timeout (portal: 180 s), else FILE_DEADLINE_MS. On
+ * expiry the WHOLE group is SIGKILLed and the file scores `fail`, tagged «timeout»; one slow file gets its own red
+ * instead of taking the whole test:apps step down. A test node itself cancels at its per-test cap exits 1 and also
+ * scores `fail`, tagged «cancelled» from the TAP `# cancelled N` line. Marketing ≈ 54 s at load 10.
  *
  * 🔴 NO BROWSER IN THE LIGHT CHAIN (rule 32). The light chain = every functions `npm test` step minus the two heavy
  * guards (HEAVY_STEP, as light-chain.sh drops them) — side 'test' — plus every file this runner plans — side 'apps'. A
@@ -134,11 +137,27 @@ function childEnv(base, extra) {
 }
 
 /* run ONE planned file and measure it — the function the guard's executable controls drive */
+/* a file's deadline: its folder contract's --test-timeout (ms), else FILE_DEADLINE_MS */
+const FILE_DEADLINE_MS = 600000;
+function fileDeadlineMs(flags) {
+  const m = (flags || []).map((f) => /^--test-timeout=(\d+)$/.exec(f)).find(Boolean);
+  return m ? Number(m[1]) : FILE_DEADLINE_MS;
+}
+
+/* rungroup (same contract as D4c-grill/train-ready-tools/run-group.sh): the command leads its OWN process group; on the
+   deadline the WHOLE group is SIGKILLed, a marker goes to stderr and the rc is 124; children left behind are killed too */
+const GROUP_RUNNER = 'use Time::HiRes "alarm"; my $t = shift; my $p = fork; defined $p or exit 125;'
+  + ' if (!$p) { setpgrp(0, 0); exec @ARGV; exit 127 }'
+  + ' $SIG{ALRM} = sub { kill "KILL", -$p; waitpid($p, 0); print STDERR "\\n##APP-SUITES-DEADLINE\\n"; exit 124 };'
+  + ' alarm $t; waitpid($p, 0); my $st = $?; alarm 0; kill "KILL", -$p; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);';
+
 function runFile(e, root = ROOT, base = process.env) {
-  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
+  const secs = (e.deadlineMs || fileDeadlineMs(e.flags)) / 1000;   // e.deadlineMs: a control's override
+  const r = spawnSync('perl', ['-e', GROUP_RUNNER, String(secs), process.execPath, '--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const c = /^# cancelled (\d+)$/m.exec(r.stdout || '');
-  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), cancelled: c ? Number(c[1]) : 0, out };
+  const timedOut = r.status === 124 && /^##APP-SUITES-DEADLINE$/m.test(r.stderr || '');
+  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), cancelled: c ? Number(c[1]) : 0, timedOut, deadlineMs: secs * 1000, out };
 }
 
 function trackedFiles(root = ROOT) {
@@ -312,8 +331,8 @@ function main() {
   const v = classify(results, KNOWN_RED, p.entries.map((e) => e.file));
   const TAG = { pass: 'pass', fail: '🔴 FAIL', excused: 'KNOWN-RED (excused)', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS', 'zero-excused': 'ZERO-CELL (excused)', 'zero-stale': '🔴 ZERO-CELL-OK BUT ASSERTS' };
   console.log('');
-  const cancelled = new Set(results.filter((r) => r.cancelled).map((r) => r.file));
-  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${(TAG[r.state] + (cancelled.has(r.file) ? ' (cancelled: timeout)' : '')).padEnd(26)} ${r.file}`);
+  const why = Object.fromEntries(results.map((r) => [r.file, r.timedOut ? ` (timeout: file deadline ${r.deadlineMs / 1000} s)` : r.cancelled ? ' (cancelled: per-test timeout)' : '']));
+  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${(TAG[r.state] + why[r.file]).padEnd(26)} ${r.file}`);
   for (const f of v.orphans) console.log(`  ${'🔴 EXCUSE WITHOUT A FILE'.padEnd(26)} ${f}`);
   if (v.excused) {
     console.log('\nEXCUSED — these RAN and FAILED:');
@@ -325,5 +344,5 @@ function main() {
   process.exit(v.exitCode);
 }
 
-module.exports = { KNOWN_RED, KNOWN_BROWSER, BROWSER_RE, browserProblems, chainFiles, lightSides, HEAVY_STEP, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
+module.exports = { FILE_DEADLINE_MS, fileDeadlineMs, KNOWN_RED, KNOWN_BROWSER, BROWSER_RE, browserProblems, chainFiles, lightSides, HEAVY_STEP, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
 if (require.main === module) main();
