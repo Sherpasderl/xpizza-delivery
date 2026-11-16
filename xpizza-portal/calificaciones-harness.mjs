@@ -94,7 +94,7 @@ async function place(db, id, rid = 'x_pizza') {
   attachCustomerAttribution(u, id, A, { now: 1, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: body });
   await db.ref().update(u);
 }
-const fulfil = async (db, id, at) => { db.set(`orders/${id}/status`, 'delivered'); await stampRatingFulfilment(db, { orderId: id, status: 'delivered', now: at }); };
+const fulfil = async (db, id, at) => { db.set(`orders/${id}/status`, 'delivered'); await stampRatingFulfilment(db, { orderId: id, status: 'delivered', eventTime: at }); };   // reviews v2 S3: the stamp takes the EVENT's time
 const rate = (db, body, now) => rateOrderCore(db, { body, idToken: `tok-${A}`, now, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) });
 // a fulfilled order, rated (or not) — all through the real writers; a delivery thumb on every rating
 async function order(db, id, { rid = 'x_pizza', at, comment, store = 5 } = {}) {
