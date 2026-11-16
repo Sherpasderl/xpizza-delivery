@@ -130,7 +130,12 @@ const written = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).exists();
         const ent = entry === 'app' ? { entry_mode: 'app' } : {};
         const tag = `${setting} ${entry} ${rid} ${Object.keys(over)[0]}=array`;
         const f = await fresh();
-        const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)], ent), { 'x-firebase-id-token': uid });
+        // OWNER 11-16: an APP pickup is card only ⇒ the APP createOrder cell is an app DELIVERY inside a placeholder band, priced only
+        // for this call (the suite's app quotes carry no mode and keep the unpriced path)
+        const appDel = entry === 'app' ? { order_type: 'delivery', lat: 14.1 + 1 / 111.195, lng: -87.2, pin_confirmed: true, address_detected: 'Col. Prueba', address_details: 'Casa 1' } : {};
+        if (entry === 'app') await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 7, cents: 3000 }], restaurants: {} });
+        const co = await post(app.createOrder, bodyFor(rid, f.oid, f.phone, [lineOf(rid, over)], { ...ent, ...appDel }), { 'x-firebase-id-token': uid });
+        if (entry === 'app') await rtdb.ref('platform_config/delivery_pricing').remove();
         assert.ok(judge(co), `I-CREATE ${tag} (${co.status} ${co.text.slice(0, 200)})`);
         if (judge === isMalformed) assert.strictEqual(await written(f.oid), false, `I-CREATE ${tag} nothing written`);
         const g = await fresh(); const before = CHARGED.length;

@@ -87,7 +87,10 @@ const order = (rid, oid, method, cart) => ({ ...entry(), restaurant_id: rid, ord
 async function cash(rid, extra, tag, { line = null, hdr = {} } = {}) {
   await clean();
   const oid = `xi_${rid}_${tag}_${Date.now()}`;
-  const r = await post(app.createOrder, order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]), hdr);
+  const b = order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]);
+  // OWNER 11-16: an APP pickup is card only (400 pickup_card_only) ⇒ the APP cash path is an app DELIVERY inside the bands (a FORM keeps pickup)
+  if (APP) Object.assign(b, { order_type: 'delivery', lat: 14.1 + 1 / 111.195, lng: -87.2, pin_confirmed: true, address_detected: 'Col. Prueba', address_details: 'Casa 1' });
+  const r = await post(app.createOrder, b, hdr);
   return { ...r, oid, written: (await rtdb.ref(`orders/${oid}`).get()).exists() };
 }
 async function card(rid, extra, tag, { line = null, body = null } = {}) {
@@ -133,6 +136,8 @@ const GEN_HDR = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-xi', 
     assert.ok(FREE_ITEM[rid], `${rid}: premise — some item takes every extra`);
     await rtdb.ref(`restaurants/${rid}/identity`).set({ name: rid, phone: '+504', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1, hours: HOURS });
   }
+  // the app cash path is a delivery (an app pickup is card only, owner 11-16): one placeholder band so an app delivery is priced
+  await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 7, cents: 3000 }], restaurants: {} });
 
   // ── absent → off, then explicit off: a denied extra is charged as today ──
   for (const [label, v] of [['absent', undefined], ["'off'", 'off']]) {

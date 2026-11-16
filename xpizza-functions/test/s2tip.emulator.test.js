@@ -128,7 +128,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
 
   // ── 1. a FORM + tip → 409 tip_not_enabled everywhere, nothing written; a FORM without a tip → accepted as before ──
   await setPricing(undefined);
-  const food = (await cash({ type: 'pickup' })).rec.total_cents;   // the food total (dark, no envío)
+  const food = (await cash({ type: 'pickup', extra: FORM })).rec.total_cents;   // the food total (dark, no envío) — a FORM pickup: an app pickup is card only (owner 11-16)
   {
     const q = await quote({ ...FORM, tip_cents: 2000 });
     assert.deepStrictEqual([q.status, q.json], [409, { ok: false, error: 'tip_not_enabled' }], `dark quote + tip (${q.text.slice(0, 160)})`);
@@ -185,8 +185,9 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
       const k = await card({ extra });
       assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts, k.rec], [status, error, 0, 0, null], `card ${JSON.stringify(extra)}`);
     }
-    const p = await cash({ method: 'card_delivery', type: 'pickup', extra: { tip_cents: 500 } });
-    assert.deepStrictEqual([p.status, p.json && p.json.error, p.rec], [400, 'tip_pickup', null], 'pickup + tip → 400 tip_pickup, no order');
+    // an app pickup is card only (owner 11-16) ⇒ the pickup + tip refusal is proven on the CARD path (a cash/terminal app pickup is pickup_card_only)
+    const p = await card({ type: 'pickup', extra: { tip_cents: 500 } });
+    assert.deepStrictEqual([p.status, p.json && p.json.error, p.charged.length, p.attempts, p.rec], [400, 'tip_pickup', 0, 0, null], 'pickup + tip → 400 tip_pickup, no checkout, no order');
     const ok200 = await cash({ method: 'card_delivery', extra: { tip_cents: 200000 } });
     assert.deepStrictEqual([ok200.status, ok200.rec.tip_cents], [200, 200000], 'TIP_MAX (L 2,000) itself is accepted');
     const qr = await post(app.quoteRedemption, { restaurant_id: RID, items: [LINE], redeem: { type: 'free_pizza_choice', item_id: 'Carnivora' }, tip_cents: 500, mode: 'delivery', pin: { ...north(4), confirmed: true }, entry_mode: 'app' }, { 'x-firebase-id-token': 'member1' });
@@ -235,6 +236,25 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     assert.strictEqual(plain.status, 200, 'D0-cash: cash without a tip is unchanged');
   }
   ok('D0: a tip with an omitted / empty / unknown payment_method ⇒ 400 tip_payment_method_invalid on cash and card, ZERO writes, no checkout; cash + tip ⇒ 400 tip_cash_unsupported (owner 11-09, card-only tip), zero writes; card_delivery + tip accepted; without a tip ⇒ today\'s path');
+
+  {   // OWNER 11-16: an APP pickup is CARD ONLY (pickup-card-only.js via the early seam) — refused before ANY write on both handlers
+    const snapOf = async () => JSON.stringify(await Promise.all(['orders', 'payment_attempts', 'user_orders', 'user_private', 'order_tracking', 'tasks', 'checkout_claims'].map(async (p) => (await rtdb.ref(p).get()).val())));
+    const before = await snapOf();
+    for (const m of ['cash', 'card_delivery']) {
+      const c = await cash({ method: m, type: 'pickup' }, { 'x-firebase-id-token': 'm_pco' });
+      assert.deepStrictEqual([c.status, c.json && c.json.error, c.rec], [400, 'pickup_card_only', null], `🔴 PCO-EMU-CASH: app pickup ${m} on createOrder ⇒ 400, no order`);
+      const k = await card({ body: body(m, { type: 'pickup' }) });
+      assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length, k.attempts], [400, 'pickup_card_only', 0, 0], `🔴 PCO-EMU-CASH: app pickup ${m} on the charge ⇒ 400, no checkout`);
+    }
+    assert.strictEqual(await snapOf(), before, '🔴 PCO-EMU-ZERO: ZERO writes on the refusals');
+    const on = await card({ type: 'pickup' });
+    assert.deepStrictEqual([on.status, on.charged.length], [200, 1], `🔴 PCO-EMU-ONLINE: an app pickup paid online is accepted (${on.text.slice(0, 160)})`);
+    const dc = await cash({});
+    assert.strictEqual(dc.status, 200, `🔴 PCO-EMU-DELIVERY-CASH: an app delivery in cash is unchanged (${dc.text.slice(0, 160)})`);
+    const fp = await cash({ type: 'pickup', extra: FORM });
+    assert.strictEqual(fp.status, 200, `🔴 PCO-EMU-FORMS: a FORM pickup in cash is unchanged (${fp.text.slice(0, 160)})`);
+  }
+  ok('PCO: an app pickup in cash / card_delivery ⇒ 400 pickup_card_only on createOrder AND the charge, zero writes, no checkout; app pickup online, app delivery cash and form pickup cash unchanged (owner 11-16)');
 
   // ── 4. idempotency: same id + same tip → the same order; a changed tip → order_exists reason 'tip' ──
   {
@@ -370,7 +390,7 @@ const setRadius = (km) => rtdb.ref(`restaurants/${RID}/identity/delivery_radius_
     // not eligible: guest / absent tip_choice / pickup ⇒ nothing
     await cash({ method: 'card_delivery', extra: { tip_cents: 2000, tip_choice: true } });
     await cash({ method: 'card_delivery', extra: { tip_cents: 6000 } }, M('m_nochoice'));
-    await cash({ type: 'pickup', extra: { tip_choice: true } }, M('m_pickup'));
+    await card({ type: 'pickup', extra: { tip_choice: true } }, M('m_pickup'));   // an app pickup is card only (owner 11-16)
     assert.deepStrictEqual([await lastTip('m_nochoice'), await lastTip('m_pickup')], [null, null], '🔴 PREF-E: no tip_choice / pickup ⇒ nothing; a guest has no uid');
     // a refused order writes nothing
     const bad = await cash({ method: 'card_delivery', extra: { tip_cents: 2000, tip_choice: true, payment_method: '' } }, M('m_refused'));
