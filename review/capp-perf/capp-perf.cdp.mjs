@@ -7,11 +7,11 @@
 // "No reflow" is proven on RAW GEOMETRY, not on CLS alone: the bounding box of EVERY element under .app is captured after the mount
 // and again after the font has landed; a moved / resized box is a reflow. (CLS is also recorded, but a font swap can re-wrap text
 // inside a box without firing layout-shift — the first control run showed exactly that: swap, CLS 0 — so CLS cannot be the proof.)
-//   F4-cold   a FRESH profile (an empty HTTP cache), fonts served at once ⇒ 0 boxes move, CLS = 0; it PASSES only if the Red Hat
+//   F4-cold   a FRESH profile (an empty HTTP cache), fonts served at once ⇒ 0 boxes move, CLS = 0; it PASSES only if the self-hosted
 //             faces landed — a cold load whose face missed the optional window is reported «fallback kept», NEVER a pass
 //   F4-warm   the SAME profile navigated again (the fonts now in its HTTP cache, as a returning customer) ⇒ NON-VACUITY: the faces
-//             are loaded (document.fonts.check) AND rendered, by WEIGHT (the alias rule: a heading at 700 renders Red Hat Display,
-//             400 text renders Red Hat Text — the platform font of the node, never the computed family name); 0 boxes move; CLS = 0
+//             are loaded (document.fonts.check) AND rendered, by WEIGHT (a heading at its own weight and 400 text both render the self-hosted face that
+//             figtree-fonts.css declares — the platform font of the node, never the computed family name); 0 boxes move; CLS = 0
 //   F4-slow   Slow 4G + 4× CPU, fonts HELD 6000 ms (past the mount: text is painted BEFORE the font exists)
 //             ⇒ the metric-matched fallback is painted and KEPT after the font lands; 0 boxes move; CLS = 0
 //   F4-ctrl   NEGATIVE CONTROL: the same held load with the OLD policy (font-display:swap, no fallback faces), rewritten in flight
@@ -74,7 +74,19 @@ function siteHeaders() {
   return Object.assign(resolve, { fonts });
 }
 const HEADERS = siteHeaders();
-if (process.argv.includes('--premise')) { console.log(`premise OK: ${HEADERS.fonts.length} font(s) cacheable — ${HEADERS.fonts.map((f) => `${f} → ${HEADERS(f)['cache-control']}`).join('; ')}`); process.exit(0); }
+// the self-hosted FACE, read from the same stylesheet (never typed here): the one family whose @font-face loads a url() — the fallback
+// faces are local() aliases of system fonts — and the weight range those url() faces declare (a variable font: «300 900»)
+function selfHostedFace() {
+  const css = fs.readFileSync(path.join(ROOT, 'customer-app/figtree-fonts.css'), 'utf8');
+  const faces = [...css.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((b) => /src:\s*url\(/.test(b));
+  const families = [...new Set(faces.map((b) => ((b.match(/font-family:\s*['"]?([^;'"]+)['"]?/) || [])[1] || '').trim()))];
+  if (families.length !== 1 || !families[0]) throw new Error(`premise: figtree-fonts.css must self-host exactly ONE family (url() faces): ${JSON.stringify(families)}`);
+  const ws = faces.flatMap((b) => ((b.match(/font-weight:\s*([0-9 ]+)/) || [])[1] || '').trim().split(/\s+/).map(Number)).filter(Number.isFinite);
+  if (!ws.length) throw new Error('premise: the self-hosted faces declare no font-weight');
+  return { family: families[0], min: Math.min(...ws), max: Math.max(...ws) };
+}
+const FACE = selfHostedFace();
+if (process.argv.includes('--premise')) { console.log(`premise OK: ${HEADERS.fonts.length} font(s) cacheable — ${HEADERS.fonts.map((f) => `${f} → ${HEADERS(f)['cache-control']}`).join('; ')} · the face «${FACE.family}» ${FACE.min}–${FACE.max}`); process.exit(0); }
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2' };
 function serve({ fontDelayMs, oldPolicy }) {
   const srv = http.createServer((req, res) => {
@@ -145,7 +157,8 @@ async function run(name, { fontDelayMs = 0, throttle = false, oldPolicy = false,
     await ev(`(() => { const el = [...document.querySelectorAll('.app *')].find((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()) && getComputedStyle(e).fontWeight === '400' && e.getBoundingClientRect().width > 0); if (el) el.setAttribute('data-perf-body', '1'); return !!el; })()`);
     const body = await font('[data-perf-body]').catch(() => '');
     const headWeight = await ev(`getComputedStyle(document.querySelector('.app h1, .app h2')).fontWeight`);
-    const loaded = await ev(`document.fonts.check('400 16px "Red Hat Text"') && document.fonts.check('700 16px "Red Hat Display"')`);
+    const fam = JSON.stringify(FACE.family);   // the face at 400 AND at the heading's own computed weight
+    const loaded = await ev(`document.fonts.check('400 16px ${fam}') && document.fonts.check('${headWeight} 16px ${fam}')`);
     const out = { name, mountedAt, before, after, body, headWeight, loaded, boxes: geo0.length, moved, cls: await ev('window.__cls'), shifts: await ev('window.__shifts') };
     ws.close();
     return out;
@@ -156,7 +169,10 @@ async function run(name, { fontDelayMs = 0, throttle = false, oldPolicy = false,
   }
 }
 
-const isRedHat = (f) => /Red Hat/.test(f);
+// the PLATFORM font a node renders (never the family it names). A variable font reports the family of its default named instance
+// (the self-hosted woff2's name table: nameID 1 «Figtree Light», fvar wght default 300) at EVERY weight, so the platform name is the
+// family itself or the family + a space + the instance; the fallbacks are local() aliases and report the system font (Arial, .SF NS)
+const isFace = (f) => String(f).split(',').some((p) => p === FACE.family || p.startsWith(FACE.family + ' '));
 const fails = [];
 const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
 
@@ -165,27 +181,28 @@ const cold = await run('F4-cold', {});
 console.log(JSON.stringify(cold));
 check(cold.boxes > 50 && cold.moved === 0, `F4-cold: 0 of ${cold.boxes} boxes moved (${cold.moved})`);
 check(cold.cls === 0, `F4-cold: CLS = 0 (${cold.cls})`);
-if (isRedHat(cold.after)) console.log(`  ✓ F4-cold: the self-hosted face landed on a cold profile (${cold.after})`);
+if (isFace(cold.after)) console.log(`  ✓ F4-cold: the self-hosted face landed on a cold profile (${cold.after})`);
 else { reported.push('F4-cold: fallback kept'); console.log(`  · F4-cold: FALLBACK KEPT (${cold.after}) — the face missed the optional window on a cold profile; reported, never a pass`); }
 
 const warm = await run('F4-warm', { warm: true });
 console.log(JSON.stringify(warm));
-check(warm.loaded === true, `F4-warm: the faces are LOADED (document.fonts.check: Red Hat Text 400 + Red Hat Display 700)`);
-check(warm.headWeight === '700' && /Red Hat Display/.test(warm.after), `F4-warm: a heading at weight ${warm.headWeight} RENDERS Red Hat Display (${warm.after})`);
-check(/Red Hat Text/.test(warm.body), `F4-warm: 400 text RENDERS Red Hat Text (${warm.body})`);
+check(warm.loaded === true, `F4-warm: the face is LOADED (document.fonts.check: ${FACE.family} 400 + ${warm.headWeight})`);
+const hw = Number(warm.headWeight);
+check(hw > 400 && hw >= FACE.min && hw <= FACE.max && isFace(warm.after), `F4-warm: a heading at weight ${warm.headWeight} RENDERS ${FACE.family} (${warm.after}; the face declares ${FACE.min}–${FACE.max})`);
+check(isFace(warm.body), `F4-warm: 400 text RENDERS ${FACE.family} (${warm.body})`);
 check(warm.boxes > 50 && warm.moved === 0, `F4-warm: 0 of ${warm.boxes} boxes moved (${warm.moved})`);
 check(warm.cls === 0, `F4-warm: CLS = 0 (${warm.cls})`);
 
 const slow = await run('F4-slow', { fontDelayMs: 6000, throttle: true });
 console.log(JSON.stringify(slow));
-check(!isRedHat(slow.before), `F4-slow: the font missed the window ⇒ the fallback is painted (${slow.before})`);
+check(!isFace(slow.before), `F4-slow: the font missed the window ⇒ the fallback is painted (${slow.before})`);
 check(slow.before === slow.after, `F4-slow: NO swap after the font lands (${slow.before} → ${slow.after})`);
 check(slow.boxes > 50 && slow.moved === 0, `F4-slow: 0 of ${slow.boxes} boxes moved when the font landed (${slow.moved})`);
 check(slow.cls === 0, `F4-slow: CLS = 0 (${slow.cls})`);
 
 const ctrl = await run('F4-ctrl', { fontDelayMs: 6000, throttle: true, oldPolicy: true });
 console.log(JSON.stringify(ctrl));
-check(!isRedHat(ctrl.before) && isRedHat(ctrl.after), `F4-ctrl: the old swap policy DOES swap (${ctrl.before} → ${ctrl.after})`);
+check(!isFace(ctrl.before) && isFace(ctrl.after), `F4-ctrl: the old swap policy DOES swap (${ctrl.before} → ${ctrl.after})`);
 check(ctrl.moved > 0, `F4-ctrl: and the geometry check SEES its reflow, ${ctrl.moved} of ${ctrl.boxes} boxes moved — the zeros above are not vacuous (CLS ${ctrl.cls}, recorded only)`);
 
 console.log(fails.length ? `\ncapp-perf: ${fails.length} FAILED` : `\ncapp-perf: F4 OK (4 cells)${reported.length ? ` — REPORTED: ${reported.join('; ')}` : ''}`);
