@@ -47,7 +47,11 @@ function storedOfferOf(o) {
   if (!o || typeof o !== 'object' || o.funded_by !== 'restaurant' || typeof o.offer_id !== 'string' || !OP.TYPES_PRICED.includes(o.type) || typeof o.name !== 'string') return null;
   const ints = ['rev', 'discount_cents', 'waived_envio_cents'].every((k) => Number.isSafeInteger(o[k]) && o[k] >= 0);
   if (!ints || o.rev < 1 || o.discount_cents % 100 !== 0 || (o.discount_cents === 0 && o.waived_envio_cents === 0)) return null;
-  return OP.mintStored({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
+  // an audience offer was priced only for its own kind (offer-price savingOf): both present and equal, or both absent ('all' / pre-audience)
+  const aud = 'audience' in o || 'audience_kind' in o;
+  if (aud && !((o.audience === 'new' || o.audience === 'returning') && o.audience_kind === o.audience)) return null;
+  if (o.type === 'nuevos' && o.audience !== 'new') return null;
+  return OP.mintStored({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents, ...(aud ? { audience: o.audience, audience_kind: o.audience_kind } : {}) });
 }
 
 // the envío waiver on the request's ctx — or the ctx already waived (a grandfathered checkout's stored ctx) — or CANNOT (no waiver possible)
