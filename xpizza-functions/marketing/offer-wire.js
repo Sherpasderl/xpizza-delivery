@@ -15,6 +15,8 @@
 // A failure anywhere ⇒ no offer (full price, logged with a code only); at placement the gate then answers offer_changed if the quote
 // had one — never an order refused by a marketing outage, never a discount on a guess.
 const CFG = require('./config');
+const AC = require('./audience-core');
+const AR = require('./audience-read');
 const OP = require('./offer-price');
 const P = require('../delivery/delivery-pricing');
 
@@ -63,32 +65,71 @@ function waivedCtx(ctx, offer) {
   return w !== ctx ? w : CANNOT;
 }
 
-async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null, app = false, orderId = null, nowMs = Date.now(), placement = false, log = console }) {
+/* offer-audience (PLAN-5f-offer-audience r4.1 §3) — the placement's audience EVIDENCE, from the request's quote token (verified here, never
+   believed raw): 'valid' = a fresh token that signed aud (its kind, selection, codes and customer); 'expired' = an expired SIGNED token that
+   carried aud (quote-token expired_aud); 'bad' = a valid token whose aud is not a well-formed block; 'none' = anything else (no token /
+   malformed / forged / aud-less) ⇒ kind none, today's paths. */
+function placementAudOf(token, secret, nowMs) {
+  if (typeof token !== 'string' || !token || typeof secret !== 'string' || !secret) return { state: 'none' };
+  const v = require('../quote-token').verifyQuoteToken(token, secret, nowMs);
+  if (v.ok) {
+    if (!('aud' in v.payload)) return { state: 'none' };
+    return AC.audShapeOk(v.payload.aud) ? { state: 'valid', aud: v.payload.aud, customer_id: v.payload.customer_id == null ? null : v.payload.customer_id } : { state: 'bad' };
+  }
+  return v.reason === 'expired' && 'expired_aud' in v ? { state: 'expired' } : { state: 'none' };
+}
+const OFFER_CHANGED = Object.freeze({ refusal: 'offer_changed', httpStatus: 409 });
+const selOf = (o) => (o ? { offer_id: o.offer_id, rev: o.rev, discount_cents: o.discount_cents } : null);
+const sameSel = (a, b) => (a === null || b === null ? a === b : a.offer_id === b.offer_id && a.rev === b.rev && a.discount_cents === b.discount_cents);
+// is the rid's mirror audience-exposed (≥ 1 'new' / 'returning' entry — a nuevos is 'new')? Only then does a quote resolve anyone.
+const exposedOf = (live) => !!live && typeof live === 'object' && Object.values(live).some((e) => e && (e.audience === 'new' || e.audience === 'returning'));
+
+async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null, app = false, orderId = null, nowMs = Date.now(), placement = false, log = console,
+  audience = null, placementAud = null, placingUid = null }) {
   if (reward || !app) return dq;
   if (dq && dq.refusal) return dq;                       // a refused envío answers first, untouched
+  // offer-audience: an EXPIRED token that signed aud never grants its discount and never falls into grace — refused (requote) whatever
+  // the program's state now (it keys on the token); a valid token with a malformed aud likewise. Scope = FRESH placements: a replay of a
+  // stored order and a grandfathered live checkout keep their economics (plan r4.1 §3) — so judged after those two below.
+  const pa = placement && placementAud ? placementAud : { state: 'none' };
+  const stale = pa.state === 'expired' || pa.state === 'bad';
   // v1 (owner 11-15; Codex REVISE #1 P1): a restaurant envío waiver is never honoured — a live card checkout grandfathered at a STORED one
   // is not resumed at its old total: refused offer_changed before any acquire (no reuse, nothing charged or refunded; the client re-quotes)
   if (dq && dq.grandfathered && dq.ctx && dq.ctx.delivery_discount_funder === 'restaurant') return { refusal: 'offer_changed', httpStatus: 409 };
   try {
     const cfg = await configOf(db, nowMs);
-    if (!cfg || cfg.offers_enabled !== true) return dq;
+    if (!cfg || cfg.offers_enabled !== true) return stale ? OFFER_CHANGED : dq;
     const ctx = dq && dq.ctx ? dq.ctx : null;
     let offer = null;
     if (placement && orderId) offer = storedOfferOf((await db.ref(`orders/${orderId}/offer`).once('value')).val());
-    if (!offer) {
-      if (dq && dq.grandfathered) return dq;             // a live issued checkout priced with no offer stays without one
-      const live = await mirrorOf(db, rid, nowMs, { cached: !placement });
-      offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward });   // offers v1: no caps, no usage read
+    if (offer) { const c0 = waivedCtx(ctx, offer); return c0 === CANNOT ? dq : { ...(dq || {}), ctx: c0, offer }; }   // a replay keeps its frozen economics (no audience re-check)
+    if (dq && dq.grandfathered) return dq;               // a live issued checkout priced with no offer stays without one
+    if (stale) return OFFER_CHANGED;
+    const live = await mirrorOf(db, rid, nowMs, { cached: !placement });
+    // offer-audience: the customer's KIND — at the quote resolved (only when the program is ON and the mirror is audience-exposed: else +0);
+    // at placement the SIGNED kind (never re-classified), bound to the placing customer
+    let kind = 'none'; let aud = null; let audUid = null;
+    if (!placement && audience && CFG.audienceEnabled(cfg) && exposedOf(live)) {
+      const uid = await audience.member();
+      const r = uid ? await AR.resolveAudience(db, { uid, rid, key: audience.key(), nowMs, log }) : { kind: 'none', ids: null };
+      kind = r.kind; aud = { kind, sel: null, ids: kind === 'none' ? null : r.ids }; audUid = kind === 'none' ? null : uid;
     }
+    if (pa.state === 'valid') {
+      if (pa.customer_id !== (placingUid || null)) return OFFER_CHANGED;   // r4 P1: the signed customer must be the placing one (A → B, member → guest)
+      kind = pa.aud.kind;
+    }
+    offer = OP.offerFor({ cfg, live, nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, kind });   // offers v1: no caps, no usage read
+    let c = ctx;
+    if (offer) { c = waivedCtx(ctx, offer); if (c === CANNOT) offer = null; }   // never half an offer
+    if (pa.state === 'valid' && !sameSel(selOf(offer), pa.aud.sel)) return OFFER_CHANGED;   // a replaced / larger / appearing / vanished offer: requote, even when lower
+    const audFields = aud ? { aud: { ...aud, sel: selOf(offer) }, aud_uid: audUid } : pa.state === 'valid' && pa.aud.ids ? { audience_ids: pa.aud.ids } : {};
     if (!offer) {
       // a QUOTE with no offer may name the next one (capp Slice A, advisor 11-14): only its minimum unmet
-      if (placement || !dq || typeof dq !== 'object') return dq;
-      const n = OP.nextOfferFor({ cfg, live: await mirrorOf(db, rid, nowMs, { cached: true }), nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward });
-      return n ? { ...dq, offer_next: n.shown } : dq;
+      if (placement || !dq || typeof dq !== 'object') return Object.keys(audFields).length ? { ...(dq || {}), ...audFields } : dq;
+      const n = OP.nextOfferFor({ cfg, live: await mirrorOf(db, rid, nowMs, { cached: true }), nowMs, items, rid, tables, baseTotalL, deliveryContext: ctx, reward, kind });
+      return n || Object.keys(audFields).length ? { ...dq, ...(n ? { offer_next: n.shown } : {}), ...audFields } : dq;
     }
-    const c = waivedCtx(ctx, offer);
-    if (c === CANNOT) return dq;                         // never half an offer
-    return { ...(dq || {}), ctx: c, offer };
+    return { ...(dq || {}), ctx: c, offer, ...audFields };
   } catch (e) {
     try { log.warn('marketing_offer_unavailable', JSON.stringify({ rid, code: codeOf(e) })); } catch (_) {}
     return dq;
@@ -98,4 +139,4 @@ async function withOffer({ db, rid, items, tables, baseTotalL, dq, reward = null
 const offerOf = (dq) => (dq && OP.isServerOfferCtx(dq.offer) ? dq.offer : null);
 const _resetCaches = () => { cfgCache = null; liveCache.clear(); BO._reset(); };   // tests only
 
-module.exports = { withOffer, offerOf, storedOfferOf, TTL_MS, _resetCaches };
+module.exports = { withOffer, offerOf, storedOfferOf, placementAudOf, TTL_MS, _resetCaches };

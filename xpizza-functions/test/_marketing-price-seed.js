@@ -33,7 +33,7 @@ const snap = (docs) => ({ empty: docs.length === 0, docs: docs.map((v, i) => ({ 
 // rid + its brand; menu = { key: lempiras }; every dish in category 'c1'
 // legacy: the PROD shape (advisor 11-14 read-only count: both live restaurants) — a legacy singleton brand record brands/{rid} and an
 // identity WITHOUT brand_id; the brand is then the rid by brand-model brandIdOf, for the writer and the readers alike
-async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = {}, offers_enabled = true, legacy = false } = {}) {
+async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = {}, offers_enabled = true, legacy = false, audience_enabled = undefined } = {}) {
   const brand = legacy ? rid : brandIn;
   const fake = createFakeDb({
     brands: { [brand]: { name: 'Marca', active: true, locations: { [rid]: 'member' }, activation: { state: legacy ? 'legacy' : 'on', since: 1 } } },
@@ -42,7 +42,8 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
   const db = prodDb(fake);
   assert.strictEqual((await R.mutateRoster({ db: fake, now: () => 1 }, brand, { kind: 'cli', operator: 'op' }, { type: 'bootstrap_owner', uid: OWNER, profile: { name: 'Dueña', email: 'd@m.hn' } })).ok, true, 'premise: owner');
   await makeRtdbMirror(db)(rid, { version: 'v1', seq: 1, rid, menu, extras });
-  const cfgBody = (on) => ({ offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } });
+  let audOn = audience_enabled;   // offer-audience: 3a's optional switch (absent = OFF), written by the REAL config writer
+  const cfgBody = (on) => ({ offers_enabled: on, anuncio_enabled: false, collections_enabled: false, ...(audOn === undefined ? {} : { audience_enabled: audOn }), anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } });
   await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // the owner's go-live marker (PLAN-5f-pending-sweep r1 §4)
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: cfgBody(true), actor: 'cli:op', now: 1 })).ok, true, 'premise: config');
   const rows = Object.entries(menu).map(([key, price]) => ({ key, price, display: { price, cat: 'c1', name: key } }));
@@ -66,6 +67,10 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     const cur = fake.get('platform_config/marketing');
     assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: cur.policy_version, config: cfgBody(on), actor: 'cli:op', now: 2 })).ok, true, 'premise: switch');
   };
+  const setAudience = async (on) => {
+    audOn = on; const cur = fake.get('platform_config/marketing');
+    assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: cur.policy_version, config: cfgBody(cur.offers_enabled), actor: 'cli:op', now: 3 })).ok, true, 'premise: audience switch');
+  };
   const live = () => fake.get(`marketing_brand/${brand}/live/${rid}`);   // the mirror as 3a's writer keys it (ONE brand root, c4538460a)
   // An envío entry PLANTED in the mirror: 3a's v1 core refuses the type (owner 11-15), so no writer can mirror one — a REAL projection
   // (a pct offer through the cores) with its type turned into envío; params absent = how RTDB stores «sin mínimo»
@@ -75,7 +80,7 @@ async function world({ rid = 'tb_centro', brand: brandIn = 'tb', menu, extras = 
     fake.put(`marketing_brand/${brand}/live/${rid}/${id}`, e);
     return id;
   };
-  return { fake, db, rid, brand, publish, pause, setOffers, live, plantEnvio };
+  return { fake, db, rid, brand, publish, pause, setOffers, setAudience, live, plantEnvio };
 }
 
 module.exports = { world, prodDb, NOW, DAY, OWNER };

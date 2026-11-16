@@ -13,7 +13,8 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
 assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
 for (const F of FILES) {
   // offer audience (5f): the NEWER audience layer edits a mktprice line (quote-issue.js), so it is peeled first, on the raw read
-  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule(F, raw);
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `MKTPRICE: non-vacuity — ${F} carries the marketing hunks`);
   assert.strictEqual(unapplyMktPriceModule(F, disk), base, `MKTPRICE: 🔴 ${F} minus the marketing hunks is not ${BASE}:${F}`);

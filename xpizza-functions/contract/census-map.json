@@ -872,6 +872,8 @@
   "marketing/config.js#exactKeys": "marketing",
   "marketing/offer-model.js#exactKeys": "marketing",
   "marketing/audience-core.js#kindOf": "marketing_price",
+  "marketing/offer-wire.js#selOf": "marketing_price",
+  "marketing/offer-wire.js#sameSel": "marketing_price",
   "marketing/audience-core.js#audShapeOk": "marketing_price",
   "marketing/audience-read.js#resolveAudience>anon": "marketing_price",
   "marketing/offer-price.js#discountOf": "marketing_price",
