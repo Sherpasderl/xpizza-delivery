@@ -106,7 +106,7 @@ async function setSwitches(audience) {
   assert.strictEqual(r.ok, true, 'premise: the switches');
 }
 const caches = () => { require('../marketing/offer-wire')._resetCaches(); require('../marketing/brand-of')._reset(); };
-const cartOf = (qty = 2) => { const d = MENU.dishes.find((x) => !x.launcher && !(MENU.weekendOnlyCats.has(String(x.cat)) || MENU.pickupOnlyCats.has(String(x.cat)))); const c = createCart(MENU); c.add(d.key, [], qty); return { cart: c, s: require(path.join(ROOT, 'customer-app/capp-serialize.js')).serialize(c) }; };
+const cartOf = (qty = 2) => { const d = MENU.dishes.find((x) => !x.launcher && !(MENU.weekendOnlyCats.has(String(x.cat)) || MENU.pickupOnlyCats.has(String(x.cat)))); const c = createCart(MENU); c.add(d.key, [], qty); return { cart: c, s: require(path.join(ROOT, 'customer-app/capp-serialize.js')).serialize(c, MENU) }; };
 const deliver = async (orderId) => { await rtdb.ref(`orders/${orderId}/status`).set('delivered'); const after = await rtdb.ref(`orders/${orderId}/status`).get();
   await app.markAudienceOnStatus.run({ data: { before: { val: () => 'new' }, after }, params: { orderId }, time: new Date().toISOString() }); };
 
