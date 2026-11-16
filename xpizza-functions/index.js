@@ -7829,6 +7829,17 @@ exports.markAudienceOnStatus = onValueWritten(
     catch (e) { console.error('markAudienceOnStatus', e && e.code ? String(e.code).slice(0, 40) : 'error'); throw e; }
   },
 );
+// offer-audience (PLAN r4.1 §5, rule 39): the two BOUNDED, RESUMABLE cleanups (≤ 500 entries per run each; a backlog continues next run).
+// Markers past the 24-month retention (a refreshed customer survives); audience_ids past 30 days whatever the order's status (an
+// audience-'new' order is decided 'sherpa'/'ids_expired' first). Counts-only logs.
+exports.sweepAudienceMarkers = onSchedule(
+  { schedule: 'every day 03:40', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => { await require('./marketing/audience-sweep').expireMarkers(getDatabase(), { nowMs: Date.now() }); },
+);
+exports.sweepAudienceIds = onSchedule(
+  { schedule: 'every day 03:50', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => { await require('./marketing/audience-sweep').expireIds(getDatabase(), { nowMs: Date.now() }); },
+);
 // S-A1 r4 (Codex r3 P2): the durable rating-redaction journal has its OWN small schedule — the daily account sweep's budget can never
 // starve it (pruneResidual also runs it first, isolated)
 exports.drainRatingRedactions = onSchedule(

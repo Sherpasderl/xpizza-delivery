@@ -10,7 +10,7 @@
 //        reason, at }: 'sherpa'/'seen_before' when any of the codes' markers is already live, else 'restaurant'/'first'; identities
 //        unavailable ⇒ 'sherpa'/'ids_unavailable' (Sherpa absorbs uncertainty). Decided BEFORE the markers and never overwritten, so a
 //        retry after its own markers can never flip a legitimate first fulfilment.
-//     3. the markers, per code: the month index customer_seen_m/{brand}/{M}/{h} FIRST, then customer_seen/{brand}/{h}.m = max(m, M) in a
+//     3. the markers, per code: the month index customer_seen_m/{brand}/{M}_{h} (flat: the expiry sweep's range read is bounded) FIRST, then customer_seen/{brand}/{h}.m = max(m, M) in a
 //        transaction (monotonic), then the superseded month's index entry removed. M = the fulfilment's HN month; M < the 24-month cutoff
 //        ⇒ nothing written (never a marker outside the window).
 //     4. the order's audience_ids and its audience_ids_by_day entry deleted (the day = the order's created_at).
@@ -32,7 +32,7 @@ async function readOrder(db, orderId) {
 async function dropCodes(db, orderId, o) {
   if (o.audience_ids === null) return;
   const u = { [`orders/${orderId}/audience_ids`]: null };
-  if (Number.isSafeInteger(o.created_at)) u[`audience_ids_by_day/${AC.hnDayOf(o.created_at)}/${orderId}`] = null;
+  if (Number.isSafeInteger(o.created_at)) u[`audience_ids_by_day/${AC.dayKey(o.created_at, orderId)}`] = null;
   await db.ref().update(u);
 }
 
@@ -56,15 +56,15 @@ async function decide(db, orderId, decision) {
 }
 
 async function mark(db, brandId, h, month) {
-  await db.ref(`customer_seen_m/${brandId}/${month}/${h}`).set(true);   // the index FIRST: a marker never exists without its expiry entry
+  await db.ref(`customer_seen_m/${brandId}/${AC.monthKey(month, h)}`).set(true);   // the index FIRST: a marker never exists without its expiry entry
   let prev = null;
   await db.ref(`customer_seen/${brandId}/${h}`).transaction((cur) => {
     prev = cur && typeof cur.m === 'string' ? cur.m : null;
     if (prev !== null && prev >= month) return undefined;               // monotonic: an older / equal month never moves m back
     return { m: month };
   });
-  if (prev !== null && prev < month) await db.ref(`customer_seen_m/${brandId}/${prev}/${h}`).remove();
-  else if (prev !== null && prev > month) await db.ref(`customer_seen_m/${brandId}/${month}/${h}`).remove();   // this run's entry was superseded
+  if (prev !== null && prev < month) await db.ref(`customer_seen_m/${brandId}/${AC.monthKey(prev, h)}`).remove();
+  else if (prev !== null && prev > month) await db.ref(`customer_seen_m/${brandId}/${AC.monthKey(month, h)}`).remove();   // this run's entry was superseded
 }
 
 async function onOrderStatus(db, { orderId, status, eventTime, nowMs = eventTime, key, log = console }) {

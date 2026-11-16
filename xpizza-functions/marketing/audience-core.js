@@ -54,6 +54,12 @@ function cutoffMonth(nowMs) {
 // the HN day key `days` days before today (the audience_ids deadline: buckets with key < this are overdue)
 function dayBefore(nowMs, days) { return Number.isFinite(nowMs) ? hnDayOf(nowMs - days * 86400000) : null; }
 
+// the FLAT index keys (PLAN r4.1 §5, ruling T9): `<YYYY-MM>_<h>` (marker expiry) and `<YYYY-MM-DD>_<orderId>` (the audience_ids deadline) —
+// a key sorts by its date prefix, so orderByKey().endBefore(<cutoff>).limitToFirst(N) is exactly the N oldest overdue entries
+const monthKey = (month, h) => `${month}_${h}`;
+const dayKey = (ms, orderId) => `${hnDayOf(ms)}_${orderId}`;
+const keyParts = (k) => { const i = typeof k === 'string' ? k.indexOf('_') : -1; return i > 0 ? { date: k.slice(0, i), id: k.slice(i + 1) } : null; };
+
 // rows: user_orders/{uid} entries (restaurant + status); brandOfRid: { rid → brandId } for the rows' rids; markers: { p?: bool, e?: bool }
 function kindOf({ brandId, rows, brandOfRid, markers }) {
   if (markers && (markers.p === true || markers.e === true)) return 'returning';
@@ -76,4 +82,4 @@ function audShapeOk(a) {
   return a.kind === 'none' ? a.ids === null : idsShapeOk(a.ids);
 }
 
-module.exports = { KINDS, audShapeOk, KV, KEY_MIN, RETENTION_MONTHS, FULFILLED, idsOf, idsShapeOk, hnMonthOf, hnDayOf, cutoffMonth, dayBefore, kindOf };
+module.exports = { monthKey, dayKey, keyParts, KINDS, audShapeOk, KV, KEY_MIN, RETENTION_MONTHS, FULFILLED, idsOf, idsShapeOk, hnMonthOf, hnDayOf, cutoffMonth, dayBefore, kindOf };

@@ -281,6 +281,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
     "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
@@ -711,6 +712,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
     "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
@@ -1196,6 +1198,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
     "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
@@ -1627,6 +1630,7 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
     "xpizza-functions/marketing/audience-wire.test.js",
     "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
@@ -2359,6 +2363,7 @@
   "xpizza-functions/ratings/aggregate-producer.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_anuncio-world.js",
+  "xpizza-functions/test/_audience-seed.js",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
   "xpizza-functions/test/_marketing-price-seed.js",
@@ -2942,6 +2947,7 @@
   "marketing/audience-core.js",
   "marketing/audience-place.js",
   "marketing/audience-read.js",
+  "marketing/audience-sweep.js",
   "marketing/audience-writer.js",
   "marketing/brand-of.js",
   "marketing/config.js",
@@ -7201,6 +7207,10 @@
    "lifts": []
   },
   "marketing/audience-read.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-sweep.js": {
    "pins": [],
    "lifts": []
   },

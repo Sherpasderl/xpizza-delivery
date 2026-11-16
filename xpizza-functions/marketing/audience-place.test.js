@@ -42,7 +42,7 @@ const auth = (claims) => ({ verifyIdToken: async (t) => { if (!claims[t]) throw 
   await cell('AP-CASH: the codes on the order and the HN day index in ONE multi-path update; no codes ⇒ the update untouched', async (L) => {
     const u = { 'orders/o1': { status: 'new' } };
     AP.stampCash(u, 'o1', { audience_ids: IDS }, NOW);
-    assert.deepStrictEqual(u, { 'orders/o1': { status: 'new', audience_ids: IDS }, 'audience_ids_by_day/2026-11-16/o1': true }, `🔴 ${L}`);
+    assert.deepStrictEqual(u, { 'orders/o1': { status: 'new', audience_ids: IDS }, 'audience_ids_by_day/2026-11-16_o1': true }, `🔴 ${L}`);
     const v = { 'orders/o2': { status: 'new' } }; const before = JSON.stringify(v);
     for (const dq of [null, {}, { audience_ids: null }, { audience_ids: { p: 'x', kv: 'v1' } }]) { AP.stampCash(v, 'o2', dq, NOW); assert.strictEqual(JSON.stringify(v), before, `${L}: ${JSON.stringify(dq)}`); }
   });
@@ -50,19 +50,19 @@ const auth = (claims) => ({ verifyIdToken: async (t) => { if (!claims[t]) throw 
     const fake = createFakeDb(); const order = []; const db = { ref: (p) => { const r = fake.ref(p); return { ...r, set: async (v) => { order.push(p); return r.set(v); } }; } };
     const rec = { status: 'pending_payment' };
     await AP.stampCard(db, rec, 'o3', { audience_ids: IDS }, NOW);
-    assert.deepStrictEqual([fake.get('audience_ids_by_day/2026-11-16/o3'), rec.audience_ids, order], [true, IDS, ['audience_ids_by_day/2026-11-16/o3']], `🔴 ${L}`);
+    assert.deepStrictEqual([fake.get('audience_ids_by_day/2026-11-16_o3'), rec.audience_ids, order], [true, IDS, ['audience_ids_by_day/2026-11-16_o3']], `🔴 ${L}`);
     const r2 = { status: 'pending_payment' }; await AP.stampCard(db, r2, 'o4', {}, NOW);
-    assert.deepStrictEqual([r2, fake.get('audience_ids_by_day/2026-11-16/o4')], [{ status: 'pending_payment' }, null], `${L}: no codes ⇒ nothing`);
+    assert.deepStrictEqual([r2, fake.get('audience_ids_by_day/2026-11-16_o4')], [{ status: 'pending_payment' }, null], `${L}: no codes ⇒ nothing`);
   });
   await cell('AP-DAY: the index day is the ORDER\'s created_at (what the writer and the sweep read back), never a second clock', async (L) => {
     const created = Date.UTC(2026, 10, 17, 5, 59, 59, 999);   // 16 Nov 23:59:59.999 HN
     const later = created + 2;                                // 17 Nov in HN — a second clock read would pick the wrong day
     const u = { 'orders/o5': { status: 'new', created_at: created } };
     AP.stampCash(u, 'o5', { audience_ids: IDS }, later);
-    assert.strictEqual(u['audience_ids_by_day/2026-11-16/o5'], true, `🔴 ${L}: cash (${JSON.stringify(Object.keys(u))})`);
+    assert.strictEqual(u['audience_ids_by_day/2026-11-16_o5'], true, `🔴 ${L}: cash (${JSON.stringify(Object.keys(u))})`);
     const fake = createFakeDb(); const rec = { status: 'pending_payment', created_at: created };
     await AP.stampCard({ ref: (p) => fake.ref(p) }, rec, 'o6', { audience_ids: IDS }, later);
-    assert.strictEqual(fake.get('audience_ids_by_day/2026-11-16/o6'), true, `🔴 ${L}: card`);
+    assert.strictEqual(fake.get('audience_ids_by_day/2026-11-16_o6'), true, `🔴 ${L}: card`);
   });
   FINISHED = true;
   if (fails.length) { console.log(`audience-place: ${fails.length} FAILED`); process.exit(1); }
