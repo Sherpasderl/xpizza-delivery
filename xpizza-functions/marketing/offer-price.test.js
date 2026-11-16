@@ -60,10 +60,11 @@ async function world({ offers_enabled = true } = {}) {
   assert.strictEqual(w.ok, true, 'premise: config written');
   const deps = { db, verifyIdToken, now: () => NOW, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async () => versionMenu([[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], ['pizzas', 'bebidas']) };
   // ONE offer, published by the REAL cores (save draft → active); offers_enabled must be on to write, so OFF worlds flip it after
+  const req = (body) => ({ method: 'POST', body: { rid: 'tb_centro', ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
+  // the REAL save core, unasserted (a refusal cell reads its answer)
+  const save = (o) => C.marketingOfferSaveCore(deps, req({ expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: ['tb_centro'], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o } }));
   const publish = async (o) => {
-    const req = (body) => ({ method: 'POST', body: { rid: 'tb_centro', ...body }, get: (h) => (h === 'authorization' ? `Bearer t-${OWNER}` : undefined) });
-    const offer = { name: 'Oferta', audience: 'all', branches: ['tb_centro'], schedule: { start: NOW, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o };
-    const s = await C.marketingOfferSaveCore(deps, req({ expected_rev: 0, offer }));
+    const s = await save(o);
     assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
     const m = await C.marketingOfferSetStateCore(deps, req({ offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }));
     assert.strictEqual(m.status, 200, `premise: published (${JSON.stringify(m.body)})`);
@@ -79,7 +80,7 @@ async function world({ offers_enabled = true } = {}) {
     fake.put(`marketing_brand/tb/live/tb_centro/${id}`, e);
     return id;
   };
-  return { fake, db, publish, cfg, live, plantEnvio };
+  return { fake, db, save, publish, cfg, live, plantEnvio };
 }
 const line = (key, qty = 1, extras = []) => ({ name: key, qty, extras });
 const food = (items) => { const t = computeServerTotal(items, 'tb_centro', TABLES); assert.strictEqual(t.error, null, 'premise: priceable cart'); return t.total; };
@@ -203,10 +204,16 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
     assert.ok(await atS(hn(2026, 11, 22, 0, 30)), `${L}: Sun 00:30`);
     assert.strictEqual(await atS(hn(2026, 11, 22, 1, 0)), null, `${L}: Sun 01:00`);
   });
-  await cell('OP-AUDIENCE: phase 1 applies audience «all» only — «new» / «returning» / nuevos fail closed (Q5)', async (L) => {
-    for (const o of [{ type: 'lps', params: { off_cents: 5000, min_cents: 20000 }, audience: 'returning' }, { type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' }]) {
-      const w = await world(); await w.publish(o);
-      assert.strictEqual(await pick(w, [line(K2, 2)]), null, `${L}: ${o.type}/${o.audience}`);
+  // advisor 11-16 (RC ruling): 3a's v1 audience gate (937953553) refuses the save itself, so no audience offer can reach the mirror —
+  // the cell is the refusal (400 audience_not_supported, nothing written). The offer-audience build replaces it.
+  await cell('OP-AUDIENCE: v1 authors audience «all» only — a save with «new» / «returning» / nuevos is REFUSED (400 audience_not_supported) and writes nothing (Q5)', async (L) => {
+    for (const o of [{ type: 'lps', params: { off_cents: 5000, min_cents: 20000 }, audience: 'returning' }, { type: 'pct', params: { pct: 10 }, audience: 'new' }, { type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' }]) {
+      const w = await world(); const before = JSON.stringify(w.fake.get('marketing_brand/tb') ?? null);
+      const s = await w.save(o);
+      assert.strictEqual(s.status, 400, `🔴 ${L}: ${o.type}/${o.audience} refused (${JSON.stringify(s.body)})`);
+      assert.strictEqual(s.body && s.body.reason, 'audience_not_supported', `🔴 ${L}: ${o.type}/${o.audience} reason (${JSON.stringify(s.body)})`);
+      assert.strictEqual(JSON.stringify(w.fake.get('marketing_brand/tb') ?? null), before, `🔴 ${L}: ${o.type}/${o.audience} — the brand root is unchanged`);
+      assert.strictEqual(await pick(w, [line(K2, 2)]), null, `${L}: ${o.type}/${o.audience} — nothing priced`);
     }
   });
   await cell('OP-CTX: the result is a SERVER offer ctx (a JSON copy is not one); it carries id, rev, type, name, the amounts and the label facts (pct / min_cents) only', async (L) => {
@@ -228,10 +235,11 @@ const brief = (o) => (o ? { type: o.type, discount_cents: o.discount_cents, waiv
       assert.deepStrictEqual(brief(await pick(w, [line(K2, 2)])), want, `🔴 ${L}: caps ${JSON.stringify(caps)} ignored`);
     }
   });
-  await cell('OP-PIN: the merged tree\'s marketing/offer-model.js (liveProjection) is byte-identical to 3a\'s APPROVED v1 pin 20000624d — the projection these cells price is the shipping one', async (L) => {
+  // re-pinned (advisor 11-16 RC ruling): 3a's «OF fix» 20325d019 — the audience gate + per-branch category projection (last touch 64fb520da)
+  await cell('OP-PIN: the merged tree\'s marketing/offer-model.js (liveProjection) is byte-identical to 3a\'s APPROVED «OF fix» pin 20325d019 — the projection these cells price is the shipping one', async (L) => {
     const { execFileSync } = require('child_process');
-    const pinned = execFileSync('git', ['show', '20000624d2b3e71f1dc48b6288a10fd2780d5837:./offer-model.js'], { cwd: __dirname, maxBuffer: 1 << 24 });
-    assert.ok(Buffer.compare(pinned, require('fs').readFileSync(require('path').join(__dirname, 'offer-model.js'))) === 0, `🔴 ${L}: offer-model.js differs from 20000624d — re-pin with the advisor`);
+    const pinned = execFileSync('git', ['show', '20325d0190e419d506b7bca5781ad132a4bed635:./offer-model.js'], { cwd: __dirname, maxBuffer: 1 << 24 });
+    assert.ok(Buffer.compare(pinned, require('fs').readFileSync(require('path').join(__dirname, 'offer-model.js'))) === 0, `🔴 ${L}: offer-model.js differs from 20325d019 — re-pin with the advisor`);
   });
   await cell('OP-MALFORMED: a corrupt mirror (not an object / a bad id / a missing rev / a bad schedule) applies nothing and never throws', async (L) => {
     const w = await world(); const id = await w.publish({ type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });

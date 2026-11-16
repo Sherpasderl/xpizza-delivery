@@ -44,7 +44,7 @@ async function world({ on }) {
   return { db, odeps };
 }
 async function live(odeps, o) {
-  const s = await C.marketingOfferSaveCore(odeps, req({ rid: RID, expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: [RID], schedule: { start: NOW - DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, ...o } }));
+  const s = await C.marketingOfferSaveCore(odeps, req({ rid: RID, expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: [RID], schedule: { start: NOW - DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, ...o } }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
   assert.strictEqual((await C.marketingOfferSetStateCore(odeps, req({ rid: RID, offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }))).status, 200, 'premise: published');
   return s.body.offer.id;
@@ -89,10 +89,10 @@ const keysOf = (b) => Object.keys(b.restaurants[0]);
   {
     const { db, odeps } = await world({ on: true });
     await live(odeps, { type: 'pct', params: { pct: 20, max_cents: 10000 } });
-    await live(odeps, { type: 'envio', params: { min_cents: 20000 } });
+    await live(odeps, { type: 'lps', params: { off_cents: 5000, min_cents: 20000 } });   // v1 cannot author envío (3a b1ca178f7); an authorable lps (advisor 11-16 RC ruling (A))
     const on = await settled(db); const without = await D.buildDirectory(depsOf(db, { flag: false }).deps);
     const e = on.body.restaurants[0];
-    assert.deepStrictEqual(e.offer, { offers: [{ min_cents: 20000, type: 'envio' }, { pct: 20, type: 'pct' }].map((o) => o).sort((a, b) => (D.canonicalJson(a) < D.canonicalJson(b) ? -1 : 1)) }, `🔴 DO-ON: the store's offers (${JSON.stringify(e.offer)})`);
+    assert.deepStrictEqual(e.offer, { offers: [{ min_cents: 20000, off_cents: 5000, type: 'lps' }, { pct: 20, type: 'pct' }].map((o) => o).sort((a, b) => (D.canonicalJson(a) < D.canonicalJson(b) ? -1 : 1)) }, `🔴 DO-ON: the store's offers (${JSON.stringify(e.offer)})`);
     assert.deepStrictEqual(keysOf(on.body), [...D.ENTRY_FIELDS, 'offer'], 'DO-ON: the one schema + the offer key, last');
     const { offer, ...rest } = e; void offer;
     assert.deepStrictEqual(rest, without.body.restaurants[0], 'DO-ON: every other field unchanged');

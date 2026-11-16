@@ -44,7 +44,7 @@ async function world() {
   await db.ref('platform_config/pending_sweep_exit').set({ at: 1, by: 'test' });   // offers ON needs the owner's go-live marker on trees that have the gate
   assert.strictEqual((await CFG.writeMarketingConfig(db, { expected: 0, config: config(true), actor: 'cli:op', now: 1 })).ok, true, 'premise: config on (to publish)');
   const odeps = { db, verifyIdToken: async () => ({ uid: OWNER }), now: () => NOW - 2 * DAY, readMirror: makeRtdbMirrorReader(db), readCategoryMenu: async () => null };
-  const s = await C.marketingOfferSaveCore(odeps, req({ rid: RIDS[0], expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: [RIDS[0]], schedule: { start: NOW - DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, caps: { weekly: false }, type: 'pct', params: { pct: 20, max_cents: 10000 } } }));
+  const s = await C.marketingOfferSaveCore(odeps, req({ rid: RIDS[0], expected_rev: 0, offer: { name: 'Oferta', audience: 'all', branches: [RIDS[0]], schedule: { start: NOW - DAY, end: NOW + 30 * DAY, days: [0, 1, 2, 3, 4, 5, 6] }, type: 'pct', params: { pct: 20, max_cents: 10000 } } }));
   assert.strictEqual(s.status, 200, `premise: saved (${JSON.stringify(s.body)})`);
   assert.strictEqual((await C.marketingOfferSetStateCore(odeps, req({ rid: RIDS[0], offer_id: s.body.offer.id, to: 'active', expected_rev: 1 }))).status, 200, 'premise: published');
   const id = s.body.offer.id;   // the mirror root differs by tree (base: marketing_live/{rid}; candidate: 3a's marketing_brand/{brand}/live/{rid})
