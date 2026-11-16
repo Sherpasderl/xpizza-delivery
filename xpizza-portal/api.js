@@ -203,6 +203,28 @@ export async function resetDraftToLive({ rid, expectedRevision, token }) {
 export async function getSalesStats({ rid, from, to, granularity, compare, token, assertLive }) {
   return apiFetch('getSalesStats', { rid, token, assertLive, params: { from, to, granularity, compare } });
 }
+// S2 (5f, PLAN-portal-inicio-server-r0): several branches merged ON THE SERVER — «Todas las sucursales». The ids travel as ONE
+// `restaurantIds` param (2..20, each authorized there); `restaurantId` never rides with it. JSON only; no `customers` in this form.
+export async function getSalesStatsMulti({ rids, from, to, granularity, compare, token, assertLive }) {
+  return apiFetch('getSalesStats', { token, assertLive, params: { restaurantIds: rids.join(','), from, to, granularity, compare } });
+}
+
+// ── P-1 «Calificaciones» — the anonymous rating comments (S-A(d) getMerchantRatingComments) ──────────────
+// → { ok, comments: [{ comment, store }], cursor }. The rid travels as `rid` in params, NEVER through the
+// `rid` argument: buildRequest spells that one restaurantId=, which this endpoint refuses (400). An absent
+// cursor is page 1 (params skips it).
+export async function fetchRatingComments({ rid, cursor, token, assertLive }) {
+  return apiFetch('getMerchantRatingComments', { token, assertLive, params: { rid, cursor } });
+}
+// ── «Calificaciones» step 2 — the NAMED reviews (3a reviews v2, getMerchantReviews @ 4adde46e4) ──────────────
+// → { ok, reviews, cursor, overview } (overview on the FIRST page only). rids ≤ 10, comma-joined; weeks 1|4|13; stars a set of 1..5
+// (sorted, comma-joined; absent = all); comment 'with' | 'without' (absent = any); an absent cursor is page 1.
+export async function fetchMerchantReviews({ rids, weeks, stars, comment, cursor, token, assertLive }) {
+  return apiFetch('getMerchantReviews', { token, assertLive, params: {
+    rids: rids.join(','), weeks: String(weeks),
+    stars: stars && stars.length ? [...stars].sort((a, b) => a - b).join(',') : undefined,
+    comment: comment === 'with' || comment === 'without' ? comment : undefined, cursor } });
+}
 
 // THE TEXT/BLOB PATH. readResponse parses JSON only; a CSV export is text, so it gets its own reader
 // with the SAME failure typing (a non-2xx still becomes an ApiError from its JSON error body).

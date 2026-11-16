@@ -7,6 +7,8 @@
   import './app.js';   // listens for portal:signed-in and resolves the restaurant list
   import './ventas.js';   // Stats S2: the owner-only Ventas page (listens for portal:auth / portal:restaurant)
   import './shell.js';    // PORTAL-UI 1a: discovery + the brand/branch switcher + the branch screens (after ventas.js: its nav handlers run first)
+  import './inicio.js';   // INICIO (PLAN-portal-inicio-r0): the home, the landing page (owner 11-13) — registered on the shell before the first nav render
+  import './calificaciones-view.js';   // Nav B (owner 11-14): «Calificaciones», its own entry right after «Ventas» (registered first in Negocio)
   import './team.js';     // PLAN-portal-team-invites T-b: «Equipo de trabajo», registered on the shell (after shell.js, before the first nav render)
   import './marketing.js';   // MOCKUP-portal-marketing v5 (owner 11-14): «Marketing» › Ofertas, registered on the shell's 'Negocio' group
   import './envio.js';    // ENVÍO (PLAN-portal-envio-step1 r2): the Sherpa-admin delivery-fee screen, registered on the shell's 'Sherpa' group

@@ -183,7 +183,17 @@ const defsOf = (decl) => { const defs = new Map(); for (const d of decl) if (d.p
 // in that page's own colours — «faithful preview of the customer order page's card; changes with that page». Exactly this selector,
 // property and value; anything else on it (or this value anywhere else) is judged like every other rule. The customer-side gold price is
 // on the owner's list as a separate question.
-export const EXEMPT = Object.freeze([Object.freeze({ sel: '.phoprice', prop: 'color', value: '#7A5A08' })]);
+// THE STARS-ONLY EXCEPTION (owner 2026-11-14, MOCKUP-portal-calificaciones-color decision Q1 «A shape, yellow stars»): the Calificaciones
+// rating stars are a clear warm yellow (#FFD60A, a #B38400 outline in light: 3.38:1 on white, 3.12:1 on #F6F6F2 — WCAG 1.4.11; Codex 11-15
+// measured the old #E3A800 at 2.13:1, contrast-only tweak, advisor 11-15) — the star tokens, defined ONLY in the three theme
+// blocks, used ONLY by the star rule. Chips, tags and bars stay pastel; this value anywhere else is judged like every other rule.
+export const STARS_EXEMPT = Object.freeze([
+  { sel: ':root, :root[data-theme="light"]', prop: '--star', value: '#FFD60A' }, { sel: ':root, :root[data-theme="light"]', prop: '--star-line', value: '#B38400' },
+  { sel: ':root[data-theme="dark"]', prop: '--star', value: '#FFD60A' }, { sel: ':root[data-theme="dark"]', prop: '--star-line', value: '#FFD60A' },
+  { sel: ':root:not([data-theme="light"])', prop: '--star', value: '#FFD60A' }, { sel: ':root:not([data-theme="light"])', prop: '--star-line', value: '#FFD60A' },
+  { sel: '.calif .stars svg', prop: 'fill', value: 'var(--star)' }, { sel: '.calif .stars svg', prop: 'stroke', value: 'var(--star-line)' },
+].map(Object.freeze));
+export const EXEMPT = Object.freeze([Object.freeze({ sel: '.phoprice', prop: 'color', value: '#7A5A08' }), ...STARS_EXEMPT]);
 const exempt = (sel, prop, value) => EXEMPT.some((e) => e.sel === sel && e.prop === prop && e.value === value);
 // judge «prop: value» (var() resolved across every scope of `defs`) → the reports
 function judgeDecl(at, prop, value, defs) {
@@ -246,7 +256,6 @@ const ALLOW = Object.freeze([
   Object.freeze({ file: 'branches-view.js', at: "setAttribute('stroke', stroke)", why: 'the 1a static map path helper g(); its only two callers, in the same file, pass the literal #CFD6CC and #B9C3B5, which the hex sweep measures' }),
   Object.freeze({ file: 'photo.js', at: 'setAttribute(k, v)', why: 'icon(): writes the ICONS table, a literal object of geometry only (d / cx / cy / r / x / y / width / height / rx) — a colour key in it would be judged by the key context' }),
   Object.freeze({ file: 'ops-dom.js', at: 'setAttribute(k, String(v))', why: 'the stroke-icon helper: its specs are literal {rect}/{circle} geometry objects — a colour key in one would be judged by the key context' }),
-  Object.freeze({ file: 'ventas.js', at: 'setAttribute(k, v)', why: 'the el() attribute helper: every attrs object is a literal at its call site — a colour key in one would be judged by the key context' }),
 ]);
 export function amberInSource(text, { html = /<(?:!doctype|html|svg|div|span)\b/i.test(text) && !/\b(?:const|let|function|import)\b/.test(text), file = null } = {}) {
   const code = withoutComments(text, html);
@@ -344,7 +353,11 @@ test('non-vacuity: the measure finds amber / gold (today\'s tokens, a raw litera
 });
 
 test('the .phoprice exemption covers ONLY that selector, property and value (the customer card preview)', () => {
-  assert.deepEqual(EXEMPT, [{ sel: '.phoprice', prop: 'color', value: '#7A5A08' }], 'one entry, exactly');
+  assert.deepEqual(EXEMPT.slice(0, 1), [{ sel: '.phoprice', prop: 'color', value: '#7A5A08' }], 'the photo-preview entry, exactly');
+  assert.equal(STARS_EXEMPT.length, 8, 'the stars-only exception: six token definitions + the star rule\'s fill and stroke — nothing else');
+  assert.ok(STARS_EXEMPT.every((e) => /^--star(-line)?$/.test(e.prop) || e.sel === '.calif .stars svg'), 'only the star tokens and the star rule');
+  assert.ok(amberInSheet(`${CSS}\n.ctag{background:var(--star)}`).some((b) => b.includes('.ctag {')), 'the star yellow on anything but the stars is judged (chips stay pastel)');
+  assert.ok(amberInSheet(`${CSS}\n.calif .stars svg{color:#FFD60A}`).some((b) => b.includes('color: #FFD60A')), 'another property on the star rule is judged');
   assert.ok(declarations(CSS).some((d) => d.sel === '.phoprice' && d.prop === 'color' && d.value === '#7A5A08'), 'premise: the preview\'s price rule is in the sheet');
   assert.ok(amberInSheet(`${CSS}\n.phoprice{background:#E3B54A}`).some((b) => b.includes('.phoprice { background')), 'another property on it is judged');
   assert.ok(amberInSheet(`${CSS}\n.other{color:#7A5A08}`).some((b) => b.includes('.other {')), 'the same value elsewhere is judged');
@@ -434,7 +447,7 @@ for (const [name, js] of SOURCE_RED) {
 }
 
 test('ALLOW: each entry is pinned — its file carries the exact call exactly once (a stale entry is red), and nothing else is allowed', () => {
-  assert.equal(ALLOW.length, 4, 'four call sites, exactly');
+  assert.equal(ALLOW.length, 3, 'three call sites, exactly (ventas.js\'s el() helper left with the old page — «Ventas» V3b)');
   for (const a of ALLOW) {
     const code = readFileSync(join(DIR, a.file), 'utf8');
     assert.equal(code.split(a.at).length - 1, 1, `${a.file}: «${a.at}» occurs exactly once`);

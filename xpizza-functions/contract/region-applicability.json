@@ -10646,9 +10646,14 @@
       "xpizza-functions/portal/functions.js#functions": 3,
       "xpizza-functions/stats/keyer.js#functions": 1,
       "xpizza-functions/stats/stats-api.js#functions": 1,
-      "xpizza-portal/api.js#xpizza-portal": 4,
+      "xpizza-portal/api.js#xpizza-portal": 5,
+      "xpizza-portal/inicio-logic.js#xpizza-portal": 1,
+      "xpizza-portal/inicio.js#xpizza-portal": 3,
+      "xpizza-portal/rend-data.js#xpizza-portal": 3,
+      "xpizza-portal/rend-fold.mjs#xpizza-portal": 6,
       "xpizza-portal/ventas-logic.js#xpizza-portal": 1,
-      "xpizza-portal/ventas.js#xpizza-portal": 4
+      "xpizza-portal/ventas-tab.js#xpizza-portal": 2,
+      "xpizza-portal/ventas.js#xpizza-portal": 2
      }
     }
    ],

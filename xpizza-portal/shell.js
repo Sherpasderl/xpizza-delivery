@@ -16,13 +16,16 @@ import * as L from './branch-logic.js';
 import * as B from './branch-1b-logic.js';
 import { $, el, icon, svg, errBox, OFFLINE } from './ops-dom.js';
 import { mountBranches } from './branches-view.js';
-import { mountPausas } from './pausas.js';
+import { pauseLanding } from './pause-control.js';   // «Pausar pedidos» moved inside Sucursales (PLAN-portal-pausar-in-sucursales §2.3–§2.4)
 import { mountAvailability } from './availability.js';
 import { mountEquipos } from './equipos.js';
 
 const SEL_KEY = (uid) => `sherpa.portal.sel.${uid}`;
 const CACHE_KEY = (uid) => `sherpa.portal.branches.${uid}`;
 const EDITOR_KEY = (uid, b) => `sherpa.portal.editor.${uid}.${b}`;
+// a one-shot landing (Codex Inicio backfill item 7): «Revisar» on another branch's menu row selects that branch (the guarded reload) and
+// asks the reloaded page to open on Productos instead of the home — set ONLY after canLeave agreed; consumed exactly ONCE at the landing
+const LAND_KEY = (uid) => `sherpa.portal.land.${uid}`;
 const BLOCKED_TEXT = 'Guardá o descartá tus cambios antes de cambiar de sucursal.';   // D13
 
 const S = {
@@ -44,6 +47,7 @@ function clearPersisted(uid) {
   if (!uid) return;
   store.del(SEL_KEY(uid));
   store.del(CACHE_KEY(uid));
+  store.del(LAND_KEY(uid));
   try {
     for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith(`sherpa.portal.editor.${uid}.`)) sessionStorage.removeItem(k); }
     sessionStorage.removeItem(`sherpa.portal.envio.${uid}`);   // ENVÍO (Codex r1 F4): the admin pricing cache never outlives its session
@@ -81,8 +85,9 @@ export function requestReload() {
 // a NEW selection → persisted, then a guarded reload. Blocked → nothing changes.
 export function select(next) {
   if (!S.uid || !next) return false;
-  if (!canLeave()) { showBlocked(true); return false; }
+  if (!canLeave()) { showBlocked(true); return false; }   // refused: nothing is stored — no selection, no landing marker
   store.set(SEL_KEY(S.uid), { brand_id: next.brand_id, scope: next.scope });
+  if (next.land === 'menu') store.set(LAND_KEY(S.uid), 'menu');
   reload();
   return true;
 }
@@ -255,7 +260,15 @@ function apply(e1, { persist = true } = {}) {
     const b = sel.brand.branches.find((x) => x.rid === rid);
     catalog = openEditor(rid, { name: b ? b.name : rid, sales: S.sales });   // ONCE per page (apply runs once; a later E1 only repaints)
   }
-  settleThenReady(renderViews(), catalog);
+  const strip = renderViews();
+  // INICIO (owner 11-13: the landing page): the first selection of a page opens the home; its figures fill fixed slots, so the reveal
+  // waits on nothing Productos-only (the strip and the catalog keep loading behind it)
+  if (HOME && S.views.inicio && !S.landed) {
+    S.landed = true;
+    const land = store.get(LAND_KEY(S.uid)); store.del(LAND_KEY(S.uid));   // consumed exactly once, whatever it held
+    if (land !== 'menu') { goto('inicio'); settleThenReady(); return; }
+  }
+  settleThenReady(strip, catalog);
 }
 
 function showBootError(err) {
@@ -285,8 +298,8 @@ function showNoBranches() {
 
 // ── chrome: switcher, scope, nav ──────────────────────────────────────────────────────────────────────────────────────
 function hideOpsChrome() {
-  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navpausas', 'navequipos', 'mnsuc', 'mnpausas', 'mnequipos', 'mtop', 'mscopemenu', 'availstrip', 'menulock']) { const n = $(id); if (n) n.classList.add('hidden'); }
-  for (const id of ['viewsuc', 'viewpausas', 'viewequipos']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
+  for (const id of ['scopewrap', 'navopslabel', 'navsuc', 'navequipos', 'mnsuc', 'mnequipos', 'mtop', 'mscopemenu', 'availstrip', 'menulock', 'navinicio', 'mninicio']) { const n = $(id); if (n) n.classList.add('hidden'); }
+  for (const id of ['viewsuc', 'viewequipos', 'viewinicio']) { const n = $(id); if (n) { n.classList.add('hidden'); n.replaceChildren(); } }
   const app = $('app'); if (app) app.classList.remove('opsview');
   hideRegistered();
 }
@@ -346,10 +359,8 @@ function renderChrome() {
   const sucCount = nav.sucCount === null ? null : nav.sucCount + (B.writesOn(S.e1) && B.ownsBrand(S.e1, sel.brand_id) ? B.draftsOf(S.e1, sel.brand_id).length : 0);
   cnt.classList.toggle('hidden', sucCount === null);
   cnt.textContent = sucCount === null ? '' : String(sucCount);
-  $('navpausas').classList.toggle('hidden', !nav.pause);
   $('mnsuc').classList.remove('hidden');
   $('mnsuc').textContent = nav.sucLabel;
-  $('mnpausas').classList.toggle('hidden', !nav.pause);
   // slice 2: «Equipos» — any in-scope branch holding device.list; the count is E1's linked devices in the selection
   $('navequipos').classList.toggle('hidden', !nav.devices);
   $('mnequipos').classList.toggle('hidden', !nav.devices);
@@ -359,6 +370,7 @@ function renderChrome() {
   ecnt.textContent = nav.devices ? String(linked) : '';
   $('mnav').classList.add('show');
   $('mnventas').classList.toggle('hidden', !S.sales);
+  for (const id of ['navinicio', 'mninicio']) { const n = $(id); if (n) n.classList.toggle('hidden', !HOME); }   // INICIO: first in the nav (map order)
   renderRegistered();
   for (const id of badges.keys()) paintBadge(id);   // codex follow-up r1: a label rewrite above (mnsuc) drops its badge → re-apply
 }
@@ -385,7 +397,7 @@ function renderLifecycleChrome(sel) {
     it.addEventListener('click', () => { closeMenus(); if (b.brand_id !== sel.brand_id) select({ brand_id: b.brand_id, scope: null }); });
     menu.append(it);
   }
-  for (const id of ['scopewrap', 'navmenulabel', 'navprod', 'navopslabel', 'navpausas', 'navequipos', 'navbiz', 'navventas', 'mnprod', 'mnpausas', 'mnequipos', 'mnventas', 'availstrip', 'menulock']) { const x = $(id); if (x) x.classList.add('hidden'); }
+  for (const id of ['scopewrap', 'navmenulabel', 'navprod', 'navopslabel', 'navequipos', 'navbiz', 'navventas', 'mnprod', 'mnequipos', 'mnventas', 'availstrip', 'menulock', 'navinicio', 'mninicio']) { const x = $(id); if (x) x.classList.add('hidden'); }
   $('navsuc').classList.remove('hidden');
   $('navsuctext').textContent = 'Sucursales';
   const cnt = $('navsuccount');
@@ -460,7 +472,7 @@ $('mswitch').addEventListener('click', (e) => { e.stopPropagation(); if (adminVi
 document.addEventListener('click', (e) => { if (!e.target.closest || (!e.target.closest('.switchwrap') && !e.target.closest('#mtop') && !e.target.closest('#mscopemenu'))) closeMenus(); });
 
 // ── views ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const NAV = [['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navpausas', 'pausas'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
+const NAV = [['navinicio', 'inicio'], ['mninicio', 'inicio'], ['navprod', 'menu'], ['navventas', 'ventas'], ['navsuc', 'suc'], ['navequipos', 'equipos'], ['mnprod', 'menu'], ['mnventas', 'ventas'], ['mnsuc', 'suc'], ['mnpausas', 'pausas'], ['mnequipos', 'equipos']];
 // ENVÍO: on a Sherpa-admin view the chrome shows the neutral admin scope («Sherpa · Todas las marcas», a globe) instead of a
 // restaurant — same components (index.html .admonly / .admhide); the switcher opens nothing there
 const adminView = () => { const a = $('app'); return !!(a && a.classList.contains('admview')); };
@@ -482,7 +494,14 @@ let navRefreshDue = false;
 export function requestNavRefresh() { navRefreshDue = true; }
 function applyNavRefresh() { if (!navRefreshDue || !navRendered) return; navRefreshDue = false; renderRegistered(); }
 export function goto(view, opts = {}) {
+  // «Pausar pedidos» lives on each branch's page (owner 11-13, map Q4): an old «pausas» entry lands on the branch (one branch in scope, or
+  // opts.rid) or on the list («Todas») — PLAN-portal-pausar-in-sucursales §2.4
+  if (view === 'pausas') { const t = pauseLanding(S.sel, opts); goto('suc', t.rid ? { rid: t.rid } : { list: true }); return; }
+  // Nav B (owner 11-14): «Ventas», «Calificaciones» and «Tu nivel» are three entries; an old «rendimiento» link lands on Ventas, and
+  // 'calificaciones' is its own registered view (calificaciones-view.js)
+  if (view === 'rendimiento') view = 'ventas';
   if (view === 'menu' || view === 'ventas') { $(view === 'menu' ? 'navprod' : 'navventas').click(); return; }   // ventas.js owns those two
+  if (view === 'inicio' && !(HOME && S.views.inicio)) { $('navprod').click(); return; }   // no home on this page → today's landing
   const reg = REG.find((r) => r.id === view);
   if (reg && !canOffer(reg)) { $('navprod').click(); return; }   // not offered on this page → the default view
   if (reg && reg.mounted) return;   // codex follow-up r1: already showing → no second mount
@@ -490,19 +509,19 @@ export function goto(view, opts = {}) {
   S.view = view;
   $('viewmenu').classList.add('hidden');
   $('viewventas').classList.add('hidden');
-  const isSuc = view === 'suc', isPausas = view === 'pausas';
+  const isSuc = view === 'suc';
   $('viewsuc').classList.toggle('hidden', !isSuc);
-  $('viewpausas').classList.toggle('hidden', !isPausas);
   const isEquipos = view === 'equipos';
   $('viewequipos').classList.toggle('hidden', !isEquipos);
+  const vi = $('viewinicio'); if (vi) vi.classList.toggle('hidden', view !== 'inicio');
   if (reg) { reg.main.classList.remove('hidden'); try { reg.mount(reg.main, viewSel(reg)); } catch (e) { console.error('portal view mount', view, e && e.message); } }
   const app = $('app');
   app.classList.remove('vview');
   app.classList.add('opsview');
   markNav(view);
   if (view === 'suc') S.views.suc && S.views.suc.show(opts);
-  if (view === 'pausas') S.views.pausas && S.views.pausas.show(opts);
   if (view === 'equipos') S.views.equipos && S.views.equipos.show(opts);
+  if (view === 'inicio') S.views.inicio && S.views.inicio.show(opts);
   if (typeof window !== 'undefined' && window.scrollTo) { try { window.scrollTo(0, 0); } catch (_) { /* jsdom-free harness */ } }
   applyNavRefresh();
 }
@@ -510,22 +529,33 @@ export function goto(view, opts = {}) {
 function leaveOps(v) {
   leaveRegistered(v);
   S.view = v;
-  $('viewsuc').classList.add('hidden'); $('viewpausas').classList.add('hidden'); $('viewequipos').classList.add('hidden');
+  $('viewsuc').classList.add('hidden'); $('viewequipos').classList.add('hidden');
+  { const vi = $('viewinicio'); if (vi) vi.classList.add('hidden'); }
   $('app').classList.remove('opsview');
   $('sucbar').classList.remove('show');
   markNav(v);
   applyNavRefresh();
 }
+{ const navinicio = $('navinicio'); if (navinicio) navinicio.addEventListener('click', () => goto('inicio')); }
+{ const mninicio = $('mninicio'); if (mninicio) mninicio.addEventListener('click', () => goto('inicio')); }
 $('navsuc').addEventListener('click', () => goto('suc'));
-$('navpausas').addEventListener('click', () => goto('pausas'));
 $('mnsuc').addEventListener('click', () => goto('suc'));
-$('mnpausas').addEventListener('click', () => goto('pausas'));
 $('navequipos').addEventListener('click', () => goto('equipos'));
 $('mnequipos').addEventListener('click', () => goto('equipos'));
 $('navprod').addEventListener('click', () => leaveOps('menu'));
 $('mnprod').addEventListener('click', () => leaveOps('menu'));
 $('navventas').addEventListener('click', () => leaveOps('ventas'));
 $('mnventas').addEventListener('click', () => leaveOps('ventas'));
+
+// ── INICIO (PLAN-portal-inicio-r0): the home is a BUILT-IN ops view (it needs the branch list, the token and the pause control —
+// the ops ctx), registered by its own module so a page that does not load inicio.js keeps today's shell (Productos lands)
+let HOME = null;
+export function registerHome(def) {
+  if (HOME) throw new Error('registerHome: one home');
+  if (navRendered) throw new Error('registerHome: register at module top level, before the nav is first drawn');
+  if (!def || typeof def.mount !== 'function') throw new Error('registerHome: a mount function is required');
+  HOME = def;
+}
 
 // ── registered views (PLAN-portal-team-invites §4.1): another lane's view layers on the shell with zero shell edits ──────
 // registerView({ id, group, label, icon?, visible(sel), mount(el, sel), unmount(), canLeave() }) — called at module top level, before
@@ -536,9 +566,9 @@ $('mnventas').addEventListener('click', () => leaveOps('ventas'));
 // operational branches; scope = the selected branch rid, or null for «Todas».
 // ENVÍO: group 'Sherpa' = the Sherpa-admin area (the «SHERPA · ADMIN» label, after Negocio). Only `admin: true` views may join it,
 // and an admin view is shown only for platform_admin (a display hint; the server decides every request).
-const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navpausas', 'Negocio': 'navventas', 'Sherpa': 'navadmlabel' });
-const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnpausas', 'Negocio': 'mnventas', 'Sherpa': 'mnadmanchor' });
-const BUILTIN = Object.freeze({ menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'], pausas: ['navpausas', 'mnpausas'] });
+const GROUPS = Object.freeze({ 'Menú': 'navprod', 'Operación': 'navsuc', 'Negocio': 'navventas', 'Sherpa': 'navadmlabel' });
+const MGROUPS = Object.freeze({ 'Menú': 'mnprod', 'Operación': 'mnsuc', 'Negocio': 'mnventas', 'Sherpa': 'mnadmanchor' });
+const BUILTIN = Object.freeze({ inicio: ['navinicio', 'mninicio'], menu: ['navprod', 'mnprod'], ventas: ['navventas', 'mnventas'], suc: ['navsuc', 'mnsuc'] });
 const REG = [];
 const badges = new Map();   // viewId → text | null
 let navRendered = false;
@@ -573,7 +603,7 @@ export function registerView(def) {
   const last = anchor();
   placeAfter(last ? last.nav : $(GROUPS[d.group]), nav);
   placeAfter(last ? last.mn : $(MGROUPS[d.group]), mn);
-  placeAfter(REG.length ? REG[REG.length - 1].main : $('viewpausas'), main);
+  placeAfter(REG.length ? REG[REG.length - 1].main : $('viewsuc'), main);
   const r = { id: d.id, group: d.group, label: d.label, visible: d.visible, mount: d.mount, unmount: d.unmount, canLeave: d.canLeave, nav, mn, main, mounted: false,
     admin: d.admin === true, revoke: d.revoke || null, pending: d.pending || null };
   const wrapMount = r.mount;
@@ -720,11 +750,11 @@ const ctx = {
 function renderViews() {
   if (!S.sel) return;
   if (!S.views.suc) S.views.suc = mountBranches($('viewsuc'), ctx);
-  if (!S.views.pausas) S.views.pausas = mountPausas($('viewpausas'), ctx);
   if (!S.views.avail) S.views.avail = mountAvailability(ctx);
   if (!S.views.equipos) S.views.equipos = mountEquipos($('viewequipos'), ctx);
+  if (HOME && !S.views.inicio && $('viewinicio')) { const mountHome = HOME.mount; S.views.inicio = mountHome($('viewinicio'), ctx); }
+  if (S.views.inicio) S.views.inicio.render();
   S.views.suc.render();
-  S.views.pausas.render();
   const strip = S.views.avail.render();
   S.views.equipos.render();   // a no-op while hidden; entry (goto) fetches
   return strip;
