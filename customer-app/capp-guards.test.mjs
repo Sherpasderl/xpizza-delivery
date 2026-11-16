@@ -269,6 +269,8 @@ const MERGE_ALLOW = {
   '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
   '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
   '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
+  // asm10 RC (advisor 11-16): the cross-lane C-1a × 3a reviews v2 fix, in a resolution per the asm5 ruling (RED on the capp lane alone)
+  '2b7e9c53 customer-app/capp-s7a2.test.mjs': 'ONE key in c1Stats: fulfilmentUpdater `now` → `fulfilledAt` (3a 4d7e86676 rename; real writer rating-fulfilment.js:21)',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
