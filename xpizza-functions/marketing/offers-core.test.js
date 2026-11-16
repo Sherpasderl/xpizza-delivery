@@ -112,15 +112,15 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const { fake, deps } = await setup({ switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false } });
       const before = clone(fake.get(''));
       const r = await get(deps, `t-${OWNER}`, 'tb_centro');
-      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, offers: [], bookings: [] }], 'OFF: the read states three falses and no list');
+      assert.deepStrictEqual([r.status, r.body], [200, { ok: true, switches: { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, audience_enabled: false }, offers: [], bookings: [] }], 'OFF: the read states every switch false and no list');
       const s = await save(deps, `t-${OWNER}`, { offer: offer() });
       assert.deepStrictEqual([s.status, s.body.error], [409, 'offers_disabled'], 'OFF: a save is refused offers_disabled');
       assert.deepStrictEqual(fake.get(''), before, 'OFF: nothing written');
       ok('OFF: switches stated false, the save refused, nothing written');
       fake.put('platform_config/marketing', { policy_version: 2, offers_enabled: 'yes', anuncio_enabled: true, collections_enabled: true, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } });
-      assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.switches, { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, 'a MALFORMED config enables nothing');
+      assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.switches, { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, audience_enabled: false }, 'a MALFORMED config enables nothing');
       fake.failReads.add('platform_config');
-      assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.switches, { offers_enabled: false, anuncio_enabled: false, collections_enabled: false }, 'an UNREADABLE config states OFF');
+      assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.switches, { offers_enabled: false, anuncio_enabled: false, collections_enabled: false, audience_enabled: false }, 'an UNREADABLE config states OFF');
       assert.deepStrictEqual((await save(deps, `t-${OWNER}`, { offer: offer() })).status, 503, 'an unreadable config: a write is 503, never on');
       ok('a malformed config enables nothing; an unreadable one states OFF and writes 503');
     }
@@ -183,10 +183,10 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         [{ caps: { redemptions: 50, spend_cents: null, weekly: false } }, 'caps_not_supported'],
         [{ caps: {} }, 'caps_not_supported'],
         [{ caps: 0 }, 'caps_not_supported'],
-        // v1 audiences (Codex #93 F4, owner 11-15): only 'all' — the price path applies no other yet; never stored, never projected
-        [{ audience: 'new' }, 'audience_not_supported'],
-        [{ audience: 'returning' }, 'audience_not_supported'],
-        [{ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' }, 'audience_not_supported'],
+        // audiences (Codex #93 F4 → the audience_enabled switch, advisor 11-16): only 'all' while the switch is OFF (block 10 has ON)
+        [{ audience: 'new' }, 'audience_not_enabled'],
+        [{ audience: 'returning' }, 'audience_not_enabled'],
+        [{ type: 'nuevos', params: { off_cents: 5000 }, audience: 'new' }, 'audience_not_enabled'],
         [{ audience: 'vip' }, 'bad_audience'],
         [{ extra: 1 }, 'bad_shape'],
       ];
@@ -1098,12 +1098,12 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       assert.deepStrictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers.map((o) => [o.id, o.audience]).sort(), [[draftId, 'returning'], [pausedId, 'new'], [endedId, 'returning']], 'a stored audience reads back and lists (the field is kept)');
       for (const [id, rev] of [[draftId, 1], [pausedId, 2]]) {
         const a = await move(deps, `t-${OWNER}`, { offer_id: id, to: 'active', expected_rev: rev });
-        assert.deepStrictEqual([a.status, a.body.error], [409, 'audience_not_supported'], `a stored non-'all' offer can never be activated (${JSON.stringify(a.body)})`);
+        assert.deepStrictEqual([a.status, a.body.error, a.body.reason], [400, 'bad_request', 'audience_not_enabled'], `a stored non-'all' offer is never activated while the switch is OFF (${JSON.stringify(a.body)})`);
       }
       const rp = await C.marketingOfferRepeatCore(deps, req(`t-${OWNER}`, { rid: 'tb_centro', offer_id: endedId, program: true, schedule: { start: NOW + 2 * DAY } }));
-      assert.deepStrictEqual([rp.status, rp.body.reason], [400, 'audience_not_supported'], `…never repeated (${JSON.stringify(rp.body)})`);
+      assert.deepStrictEqual([rp.status, rp.body.reason], [400, 'audience_not_enabled'], `…never repeated (${JSON.stringify(rp.body)})`);
       const ed = await save(deps, `t-${OWNER}`, { offer_id: draftId, expected_rev: 1, offer: offer({ name: 'Vuelve', type: 'pct', params: { pct: 15 }, audience: 'returning' }) });
-      assert.deepStrictEqual([ed.status, ed.body.reason], [400, 'audience_not_supported'], '…never re-saved with its audience');
+      assert.deepStrictEqual([ed.status, ed.body.reason], [400, 'audience_not_enabled'], '…never re-saved with its audience');
       assert.deepStrictEqual(mirrored(fake), [], 'no non-\'all\' offer ever reaches the live mirror');
       assert.strictEqual((await move(deps, `t-${OWNER}`, { offer_id: pausedId, to: 'ended', expected_rev: 2 })).status, 200, 'it can still be ENDED');
       assert.strictEqual(OM.liveProjection({ ...base, rev: 9, state: 'active', schedule: sched }, 'tb', 'tb_centro'), null, 'liveProjection never projects a non-\'all\' audience');
@@ -1140,7 +1140,7 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
       const sur = await published(deps, { name: 'Solo Sur', type: 'pct', params: { pct: 15 }, branches: ['tb_sur'] });
       const r = await get(deps, `t-${OWNER}`, 'tb_centro');
       assert.deepStrictEqual(r.body.offers.map((o) => o.id), [a.id], 'the read lists only offers touching this branch');
-      assert.deepStrictEqual(r.body.switches, { offers_enabled: true, anuncio_enabled: false, collections_enabled: false });
+      assert.deepStrictEqual(r.body.switches, { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, audience_enabled: false });
       assert.ok(!('created_by' in r.body.offers[0]), 'no author uid in the read');
       fake.put(`marketing_brand/tb/live/tb_centro/${a.id}`, null);
       assert.strictEqual((await get(deps, `t-${OWNER}`, 'tb_centro')).body.offers[0].live_drift, true, 'a missing mirror is reported as live_drift');
@@ -1333,6 +1333,77 @@ const published = async (deps, o) => { const d = await created(deps, o); const r
         assert.strictEqual(s1 && text(s1).replace(/\s*\/\/.*$/, ''), 'if (c) return c;', '🔴 OPJ-REPLAY-SECOND');
       }
       ok('the premise, from the syntax tree: in each of the three brand-txn steps claimCheck is the first statement and its replay the second');
+    }
+
+    // ── 10. PLAN-5f-offer-audience r4.1 §5 / r2 §5 + BRIEF §1 (advisor 11-16): the `audience_enabled` switch. OFF (default): new /
+    //        returning offers and the `nuevos` type are refused on save / program / publish / resume / repeat (400 audience_not_enabled,
+    //        judged after the claim check) and never projected. ON: authored and projected through the same path as 'all'; new vs
+    //        returning are DISJOINT (never a duplicate, never an overlap); 'all' overlaps both ──
+    {
+      const O = `t-${OWNER}`;
+      const AUD = (r) => [r.status, r.body.error, r.body.field, r.body.reason];
+      const OFFV = [400, 'bad_request', 'audience', 'audience_not_enabled'];
+      const pctA = (o = {}) => offer({ name: 'Bienvenida 10', type: 'pct', params: { pct: 10 }, audience: 'new', ...o });
+      const nuevosA = (o = {}) => offer({ name: 'Descuento de bienvenida', type: 'nuevos', params: { off_cents: 5000 }, audience: 'new', ...o });
+      const ON = { offers_enabled: true, anuncio_enabled: false, collections_enabled: false, audience_enabled: true };
+      // (a) OFF — the default config (no audience_enabled key)
+      { const { fake, deps } = await setup();
+        assert.strictEqual((await get(deps, O, 'tb_centro')).body.switches.audience_enabled, false, 'AUDSW-STATED-OFF');
+        for (const o of [pctA(), pctA({ audience: 'returning' }), nuevosA()]) {
+          assert.deepStrictEqual(AUD(await save(deps, O, { offer: o })), OFFV, `🔴 AUDSW-OFF-SAVE ${o.type}/${o.audience}`);
+          assert.deepStrictEqual(AUD(await save(deps, O, { offer: o, program: true })), OFFV, `🔴 AUDSW-OFF-PROGRAM ${o.type}/${o.audience}`);
+        }
+        const j = await save(deps, O, { offer: pctA(), op_id: 'aud_' + 'a'.repeat(20) });
+        assert.deepStrictEqual([...AUD(j), j.body.op], [...OFFV, 'judged'], 'AUDSW-OFF-JUDGED (after the claim check: op-judged)');
+        assert.deepStrictEqual(mirrored(fake), [], 'AUDSW-OFF nothing mirrored');
+        assert.deepStrictEqual(Object.keys(fake.get('marketing_brand/tb/offers') || {}), [], 'AUDSW-OFF nothing stored'); }
+      // (b) ON: a 'new' pct and a `nuevos` programmed through the same path as 'all' — each mirror entry is the REAL projection (5f's
+      //     real-writer input for the price path)
+      const { fake, db, deps } = await setup({ switches: ON });
+      assert.strictEqual((await get(deps, O, 'tb_centro')).body.switches.audience_enabled, true, 'AUDSW-STATED-ON');
+      const n1 = await save(deps, O, { offer: pctA(), program: true });
+      assert.deepStrictEqual([n1.status, n1.body.offer && n1.body.offer.state, n1.body.offer && n1.body.offer.audience], [200, 'active', 'new'], `🔴 AUDSW-ON-PROGRAM (${JSON.stringify(n1.body)})`);
+      const r1 = fake.get(`marketing_brand/tb/offers/${n1.body.offer.id}`);
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${n1.body.offer.id}`), { rev: r1.rev, brand_id: 'tb', name: 'Bienvenida 10', type: 'pct', params: { pct: 10 }, audience: 'new', schedule: r1.schedule },
+        '🔴 AUDSW-ON-MIRROR (the real projection of an audience-\'new\' record)');
+      const nv = await save(deps, O, { offer: nuevosA(), program: true });
+      assert.deepStrictEqual([nv.status, nv.body.offer && nv.body.offer.state], [200, 'active'], `🔴 AUDSW-ON-NUEVOS (${JSON.stringify(nv.body)})`);
+      const rv = fake.get(`marketing_brand/tb/offers/${nv.body.offer.id}`);
+      assert.deepStrictEqual(fake.get(`marketing_brand/tb/live/tb_centro/${nv.body.offer.id}`), { rev: rv.rev, brand_id: 'tb', name: 'Descuento de bienvenida', type: 'nuevos', params: { off_cents: 5000 }, audience: 'new', schedule: rv.schedule },
+        '🔴 AUDSW-ON-NUEVOS-MIRROR');
+      assert.deepStrictEqual(OM.liveProjection(r1, 'tb', 'tb_centro', true), fake.get(`marketing_brand/tb/live/tb_centro/${n1.body.offer.id}`), 'AUDSW-PROJECTION-ON = the stored mirror');
+      assert.strictEqual(OM.liveProjection(r1, 'tb', 'tb_centro', false), null, '🔴 AUDSW-PROJECTION-OFF (non-\'all\' never projected while OFF)');
+      assert.strictEqual(OM.liveProjection(r1, 'tb', 'tb_centro'), null, 'AUDSW-PROJECTION-DEFAULT-OFF');
+      // (c) disjoint audiences: the identical offer for RETURNING customers is neither a duplicate nor an overlap; for 'all' it is
+      const rt = await save(deps, O, { offer: pctA({ name: 'Vuelve 10', audience: 'returning' }), program: true });
+      assert.deepStrictEqual([rt.status, rt.body.error], [200, undefined], `🔴 AUDSW-DISJOINT-NOT-DUPLICATE (${JSON.stringify(rt.body)})`);
+      const al = await save(deps, O, { offer: pctA({ name: 'Todos 10', audience: 'all' }), program: true });
+      assert.deepStrictEqual([al.status, al.body.error, [n1.body.offer.id, rt.body.offer.id].includes(al.body.offer_id)], [409, 'duplicate', true], `🔴 AUDSW-ALL-DUPLICATES-BOTH (${JSON.stringify(al.body)})`);
+      const bNew = await save(deps, O, { offer: offer({ name: 'Bogo nuevos', audience: 'new' }), program: true });
+      assert.strictEqual(bNew.status, 200, `premise: a new-audience bogo programmed (${JSON.stringify(bNew.body)})`);
+      const bRet = await save(deps, O, { offer: offer({ name: 'Bogo vuelven', audience: 'returning', params: { items: [K1, K2], free_per_order: 1 } }), program: true });
+      assert.deepStrictEqual([bRet.status, bRet.body.error], [200, undefined], `🔴 AUDSW-DISJOINT-NO-OVERLAP (${JSON.stringify(bRet.body)})`);
+      const bAll = await save(deps, O, { offer: offer({ name: 'Bogo todos', audience: 'all', params: { items: [K2], free_per_order: 1 } }), program: true });
+      assert.deepStrictEqual([bAll.status, bAll.body.error], [409, 'overlap'], `🔴 AUDSW-ALL-OVERLAPS (${JSON.stringify(bAll.body)})`);
+      // (d) resume while ON; then the switch goes OFF: publish / resume / repeat / re-save refused, the existing projections stay (5f's
+      //     pricing drops them while OFF — rollback = OFF), and pause / end still work
+      assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'paused_owner', expected_rev: 1 })).status, 200, 'premise: paused (a programmed create is rev 1)');
+      assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'active', expected_rev: 2 })).status, 200, 'AUDSW-ON-RESUME');
+      const draft = await save(deps, O, { offer: pctA({ name: 'Borrador nuevo', params: { pct: 20 } }) });
+      assert.strictEqual(draft.status, 200, 'premise: a new-audience draft while ON');
+      assert.strictEqual((await move(deps, O, { offer_id: nv.body.offer.id, to: 'ended', expected_rev: 1 })).status, 200, 'premise: a nuevos ended while ON');
+      assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'paused_owner', expected_rev: 3 })).status, 200, 'premise: paused again');
+      const w = await CFG.writeMarketingConfig(db, { expected: 1, config: { ...ON, audience_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } }, actor: 'cli:op', now: 2 });
+      assert.strictEqual(w.ok, true, 'premise: the switch turned OFF by the real writer');
+      assert.deepStrictEqual(AUD(await move(deps, O, { offer_id: n1.body.offer.id, to: 'active', expected_rev: 4 })), OFFV, '🔴 AUDSW-OFF-RESUME');
+      assert.deepStrictEqual(AUD(await move(deps, O, { offer_id: draft.body.offer.id, to: 'active', expected_rev: 1 })), OFFV, '🔴 AUDSW-OFF-PUBLISH');
+      assert.deepStrictEqual(AUD(await C.marketingOfferRepeatCore(deps, req(O, { rid: 'tb_centro', offer_id: nv.body.offer.id }))), OFFV, '🔴 AUDSW-OFF-REPEAT');
+      assert.deepStrictEqual(AUD(await save(deps, O, { offer_id: draft.body.offer.id, expected_rev: 1, offer: pctA({ name: 'Borrador nuevo', params: { pct: 25 } }) })), OFFV, '🔴 AUDSW-OFF-RESAVE');
+      assert.ok(mirrored(fake).includes(`tb_centro/${rt.body.offer.id}`), 'AUDSW-OFF-KEEPS-PROJECTIONS (3a never sweeps them; pricing drops them while OFF)');
+      assert.strictEqual((await move(deps, O, { offer_id: rt.body.offer.id, to: 'paused_owner', expected_rev: 1 })).status, 200, 'AUDSW-OFF-PAUSE-STILL-WORKS');
+      assert.ok(tombs(fake).includes(`tb_centro/${rt.body.offer.id}`), 'AUDSW-OFF-PAUSE-TOMBSTONES');
+      assert.strictEqual((await move(deps, O, { offer_id: n1.body.offer.id, to: 'ended', expected_rev: 4 })).status, 200, 'AUDSW-OFF-END-STILL-WORKS');
+      ok('audience_enabled: OFF refuses new / returning / nuevos on save, program, publish, resume, repeat and re-save (400 audience_not_enabled, op-judged) and never projects; ON authors and projects them through the same path (the real mirror entries); new vs returning are disjoint (no duplicate, no overlap), \'all\' duplicates / overlaps both; OFF later keeps the existing projections and still pauses / ends');
     }
 
     FINISHED = true;
