@@ -125,6 +125,7 @@
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "reviews-v2-frozen-response.fixture.json",
   "rp-fold.mjs",
   "s1-fold.mjs",
   "s2-fold.mjs",
@@ -209,6 +210,10 @@
   "portalui-guards.t1-hunks.json": {
    "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
    "bytes": 35199
+  },
+  "reviews-v2-frozen-response.fixture.json": {
+   "sha256": "8203d9b5cc961e19353cf0e90a99e6c9d8737e8812018806cf2ed864c181fb76",
+   "bytes": 841
   },
   "styles.css": {
    "sha256": "b2d928e44b8068446211efe3e164927dcd8b654f7f382ea314f93454bfd4df1f",
