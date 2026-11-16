@@ -115,6 +115,33 @@ try {
     finally { git(sb.repo, 'rm', '-q', '--cached', 'xpizza-kitchen/.env.local'); fs.unlinkSync(f); git(sb.repo, 'commit', '-qm', 'unenv'); }
   });
 
+  cell('CT3-DOTENV-NESTED (Codex #106 P1): a GITIGNORED .env file in a SUBFOLDER of the publish dir → REFUSED dotenv_present', () => {
+    const gi = path.join(sb.repo, '.gitignore'); const keep = fs.readFileSync(gi, 'utf8');
+    fs.writeFileSync(gi, keep + '.env*\n'); git(sb.repo, 'commit', '-qam', 'ignore env');
+    const d = path.join(sb.repo, 'xpizza-kitchen', 'config'); fs.mkdirSync(d); fs.writeFileSync(path.join(d, '.env.local'), 'A=1');
+    try {
+      assert.strictEqual(git(sb.repo, 'status', '--porcelain', '--untracked-files=all'), '', 'premise: the nested dotenv is ignored, the tree is clean');
+      const r = run(sb, ['kitchen-xpizza', '--yes']); refusedWith(r, 'dotenv_present'); assert.ok(r.err.includes('config/.env.local'), r.err);
+    } finally { fs.rmSync(d, { recursive: true }); fs.writeFileSync(gi, keep); git(sb.repo, 'commit', '-qam', 'unignore env'); }
+  });
+
+  cell('CT3-SIBLING (Codex #106 P2): a publish dir that leaves the row\'s own folder for a SIBLING site (publish = "../xpizza-kitchen", or a symlink to it) → REFUSED outside_folder', () => {
+    const t = path.join(sb.repo, 'xpizza-portal', 'netlify.toml'); const keep = fs.readFileSync(t, 'utf8');
+    fs.writeFileSync(t, keep.replace(/^(\s*publish\s*=\s*)".*"/m, '$1"../xpizza-kitchen"')); git(sb.repo, 'commit', '-qam', 'sibling');
+    try { refusedWith(run(sb, ['portal', '--yes']), 'outside_folder'); }
+    finally { fs.writeFileSync(t, keep); git(sb.repo, 'commit', '-qam', 'restore5'); }
+    fs.symlinkSync('../xpizza-kitchen', path.join(sb.repo, 'xpizza-portal', 'pub'));
+    fs.writeFileSync(t, keep.replace(/^(\s*publish\s*=\s*)".*"/m, '$1"pub"')); git(sb.repo, 'add', '-A'); git(sb.repo, 'commit', '-qm', 'sibling link');
+    try { refusedWith(run(sb, ['portal', '--yes']), 'outside_folder'); }
+    finally { fs.unlinkSync(path.join(sb.repo, 'xpizza-portal', 'pub')); fs.writeFileSync(t, keep); git(sb.repo, 'add', '-A'); git(sb.repo, 'commit', '-qm', 'restore6'); }
+  });
+
+  cell('CT3-DIRTY-CONFIG (Codex #106 P2): status.showUntrackedFiles=no in the repo config still refuses an untracked file → REFUSED dirty_tree', () => {
+    git(sb.repo, 'config', 'status.showUntrackedFiles', 'no'); const f = path.join(sb.repo, 'xpizza-portal', 'stray.html'); fs.writeFileSync(f, 'x');
+    try { refusedWith(run(sb, ['portal', '--yes']), 'dirty_tree'); }
+    finally { fs.unlinkSync(f); git(sb.repo, 'config', '--unset', 'status.showUntrackedFiles'); }
+  });
+
   cell('CT3-OUTSIDE-CWD: run from a directory that is not inside a git worktree → REFUSED not_a_worktree', () => {
     refusedWith(run(sb, ['portal'], { cwd: sb.root }), 'not_a_worktree');
   });

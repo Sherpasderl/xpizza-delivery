@@ -6,8 +6,9 @@
 // <deployment-id> is a platform/sites.json `deployments[].id` (portal, legal, kitchen-xpizza, …). Everything else is resolved
 // from that file and the folder's own netlify.toml: --dir = <folder>/<[build] publish>, --site = the row's netlify_site NAME.
 // It refuses (exit non-zero, `REFUSED <code>` on stderr, nothing run): usage, not_a_worktree, unknown_site, no_publish,
-// dir_missing, entry_missing, outside_worktree (realpath — the repo root itself counts, the 6ae0f734 accident), dirty_tree,
-// dotenv_present (a .env* file in the dir would be PUBLISHED).
+// dir_missing, entry_missing, outside_worktree (realpath — the repo root itself counts, the 6ae0f734 accident), outside_folder
+// (a sibling site's folder), dirty_tree (untracked files always count, whatever status.showUntrackedFiles says),
+// dotenv_present (a .env* file anywhere under the dir, ignored or not, would be PUBLISHED).
 // It never reads, prints or passes a token: Netlify auth is the owner's own `netlify login`; NETLIFY_AUTH_TOKEN is removed from
 // the child's environment unread. No dotenv, no prompts (stdin is closed for the child). No network lookups.
 const fs = require('fs');
@@ -32,6 +33,17 @@ function publishOf(tomlText) {
 
 const inside = (root, p) => p.startsWith(root + path.sep);
 
+// every .env* file under dir (relative paths), recursively; symlinks are listed, never followed (containment covers them)
+function dotenvsUnder(dir, rel = '') {
+  const out = [];
+  for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+    const p = rel ? `${rel}/${e.name}` : e.name;
+    if (/^\.env/.test(e.name)) out.push(p);
+    else if (e.isDirectory() && !e.isSymbolicLink()) out.push(...dotenvsUnder(dir, p));
+  }
+  return out;
+}
+
 // PURE of git: sites.json row → { ok, id, site, dir, entrypoints } | { ok:false, code, detail }
 function resolveSite(repo, key) {
   try {
@@ -46,6 +58,8 @@ function resolveSite(repo, key) {
     if (!fs.existsSync(want)) refuse('dir_missing', `${path.relative(repo, want) || '.'} does not exist${publish !== '.' ? ' (a build output — build it first)' : ''}`);
     const dir = fs.realpathSync(want);
     if (!inside(repo, dir)) refuse('outside_worktree', `${dir} is not inside the worktree ${repo}`);
+    const own = path.join(repo, row.folder);   // Codex #106 P2: the row's OWN folder (lexical — a symlinked folder or publish never counts as it)
+    if (dir !== own && !inside(own, dir)) refuse('outside_folder', `${dir} is not ${row.folder}/ or below it — a ${row.id} deploy never ships another folder`);
     const entries = Array.isArray(row.entrypoints) ? row.entrypoints : [];
     const gone = entries.filter((e) => !fs.existsSync(path.join(dir, e)));
     if (!entries.length || gone.length) refuse('entry_missing', `${dir} lacks ${gone.length ? gone.join(', ') : 'any declared entrypoint'}`);
@@ -64,8 +78,8 @@ function plan(cwd, argv) {
   try { repo = fs.realpathSync(gitOut(cwd, 'rev-parse', '--show-toplevel')); } catch (_) { refuse('not_a_worktree', `${cwd} is not inside a git worktree`); }
   const r = resolveSite(repo, rest[0]);
   if (!r.ok) refuse(r.code, r.detail);
-  if (gitOut(repo, 'status', '--porcelain') !== '') refuse('dirty_tree', `${repo} has uncommitted or untracked changes — deploy only a committed tip`);
-  const envs = fs.readdirSync(r.dir).filter((f) => /^\.env/.test(f));
+  if (gitOut(repo, 'status', '--porcelain', '--untracked-files=all') !== '') refuse('dirty_tree', `${repo} has uncommitted or untracked changes — deploy only a committed tip`);
+  const envs = dotenvsUnder(r.dir);   // Codex #106 P1: the WHOLE publish tree (ignored files are published too); symlinks not followed
   if (envs.length) refuse('dotenv_present', `${r.dir} contains ${envs.join(', ')} — it would be published`);
   const head = gitOut(repo, 'rev-parse', 'HEAD');
   const args = ['netlify-cli', 'deploy', '--prod', '--no-build', '--cwd', r.dir, '--dir', r.dir, '--site', r.site];
