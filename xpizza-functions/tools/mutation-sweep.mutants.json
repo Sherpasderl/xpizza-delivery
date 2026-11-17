@@ -38958,5 +38958,515 @@
    "node",
    "signup-name.test.js"
   ]
+ },
+ {
+  "id": "ls3-p01-food-base",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p01-food-base",
+  "file": "ledger/projector.js",
+  "from": "const food = total - netEnv - tip;",
+  "to": "const food = pos(alloc.food && alloc.food.subtotal_cents);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-COMMISSION:"
+  ]
+ },
+ {
+  "id": "ls3-p02-halfup",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p02-halfup",
+  "file": "ledger/projector.js",
+  "from": "const halfUp = (num, den) => Math.floor((2 * num + den) / (2 * den));",
+  "to": "const halfUp = (num, den) => Math.floor(num / den);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-COMMISSION:"
+  ]
+ },
+ {
+  "id": "ls3-p03-isv",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: the first cell asserting the ISV (375 on 2500) is PR-CARD-PAID",
+  "file": "ledger/projector.js",
+  "from": "return { commission, isv: halfUp(commission * ISV_BP, 10000) };",
+  "to": "return { commission, isv: halfUp(commission * 1800, 10000) };",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p04-collection-envio",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p04-collection-envio",
+  "file": "ledger/projector.js",
+  "from": "{ account: 'delivery_revenue', cr: netEnv }, { account: 'tip_liability', cr: tip }];",
+  "to": "{ account: 'delivery_revenue', cr: netEnv + tip }];",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p05-promo",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p05-promo",
+  "file": "ledger/projector.js",
+  "from": "env.delivery_discount_funder === 'sherpa' && promo > 0 ?",
+  "to": "false ?",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p06-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p06-reversal",
+  "file": "ledger/projector.js",
+  "from": "        out.push(mirror('reversal', col.id, date, col));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-VOIDED:"
+  ]
+ },
+ {
+  "id": "ls3-p07-commission-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p07-commission-reversal",
+  "file": "ledger/projector.js",
+  "from": "        if (kj) out.push(mirror('commission_reversal', orderId, date, kj));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-VOIDED:"
+  ]
+ },
+ {
+  "id": "ls3-p08-one-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: the reversal identity keyed off the attempt instead of its collection id",
+  "file": "ledger/projector.js",
+  "from": "        out.push(mirror('reversal', col.id, date, col));",
+  "to": "        out.push(mirror('reversal', c.key, date, col));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ONE-REVERSAL (Codex #108 r2 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p09-extra-suspense",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p09-extra-suspense",
+  "file": "ledger/projector.js",
+  "from": "{ account: 'customer_refund_suspense', cr: x.amount_cents }], 'extra'));",
+  "to": "{ account: 'restaurant_payable', cr: x.amount_cents }], 'extra'));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SUPERSEDED:"
+  ]
+ },
+ {
+  "id": "ls3-p10-cash-collect",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p10-cash-collect",
+  "file": "ledger/projector.js",
+  "from": "    reasons.add('cash_not_evidenced');\n    if (kPositive) out.push(commission());",
+  "to": "    reasons.add('cash_not_evidenced');\n    if (kPositive) out.push(commission());\n    out.push(journal('collection', orderId, date, saleLines()));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CASH:"
+  ]
+ },
+ {
+  "id": "ls3-p11-cash-fulfilled",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p11-cash-fulfilled",
+  "file": "ledger/projector.js",
+  "from": "const FULFILLED = new Set(['delivered', 'completed']);",
+  "to": "const FULFILLED = new Set(['delivered', 'completed', 'preparing']);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CASH:"
+  ]
+ },
+ {
+  "id": "ls3-p12-app-pickup",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p12-app-pickup",
+  "file": "ledger/projector.js",
+  "from": "alloc.order_type === 'pickup' && alloc.payment_method !== 'online') return 'app_pickup_cash';",
+  "to": "false) return 'app_pickup_cash';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p14-mismatch-q",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p14-mismatch-q",
+  "file": "ledger/projector.js",
+  "from": "  if (alloc.mismatch === true) return 'mode_mismatch';\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p18-sdk-uncaptured",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p18-sdk-uncaptured",
+  "file": "ledger/projector.js",
+  "from": "if (l && int(l.amount_cents) && l.state === 'captured') cols.push(",
+  "to": "if (l && int(l.amount_cents) && (l.state === 'captured' || l.state === 'voided')) cols.push(",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK:"
+  ]
+ },
+ {
+  "id": "ls3-p19-date",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p19-date",
+  "file": "ledger/projector.js",
+  "from": "const date = order && int(order.created_at) ? order.created_at : null;",
+  "to": "const date = int(alloc.created_at) ? alloc.created_at : null;",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-DATE (Codex #110 r2 condition):"
+  ]
+ },
+ {
+  "id": "ls3-p20-rate",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p20-rate",
+  "file": "ledger/projector.js",
+  "from": "const rateOk = int(rateBp) && rateBp >= 0 && rateBp <= 10000;",
+  "to": "const rateOk = typeof rateBp === 'number' || typeof rateBp === 'string';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-RATE + PR-DETERMINISTIC:"
+  ]
+ },
+ {
+  "id": "ls3-p13-sdk-revision",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p13-sdk-revision",
+  "file": "ledger/projector.js",
+  "from": "if (sdk && ((sdk.committed_revision || 0) > 0 || pendingProjection(sdk, order))) return",
+  "to": "if (sdk && (pendingProjection(sdk, order))) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p15-capturing",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p15-capturing",
+  "file": "ledger/projector.js",
+  "from": "  if (a.status === 'capturing' || a.status === 'capture_unverified') return { unresolved: 'capture_unproven' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p16-manual",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p16-manual",
+  "file": "ledger/projector.js",
+  "from": "  if (a.manual_verified) return { unresolved: 'manual_unverified' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p17-mismatch-amount",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p17-mismatch-amount",
+  "file": "ledger/projector.js",
+  "from": "? { kind: 'mismatch', amount: ev.amount_cents, reversed, pending }",
+  "to": "? { kind: 'mismatch', amount: 29900, reversed, pending }",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH:"
+  ]
+ },
+ {
+  "id": "ls3-p21-state-unknown",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p21-state-unknown",
+  "file": "ledger/projector.js",
+  "from": "  if (!ATTEMPT_STATUS.has(a.status) || !HOSTED_STATE.has(a.hosted_state)) return { unresolved: 'attempt_state_unknown' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p22-bound-void",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p22-bound-void",
+  "file": "ledger/projector.js",
+  "from": "|| a.hosted_state === 'voided' || boundVoid;",
+  "to": "|| a.hosted_state === 'voided';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p23-sale-pending",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p23-sale-pending",
+  "file": "ledger/projector.js",
+  "from": "      if (c.pending) reasons.add('reversal_pending');\n    }\n  } else if",
+  "to": "    }\n  } else if",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p24-manual-review",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p24-manual-review",
+  "file": "ledger/projector.js",
+  "from": "  if (a.status === 'manual_review' || a.no_uuid_paid_callback) return { unresolved: 'manual_review' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MANUAL-STATES (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p25-manual-recon",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p25-manual-recon",
+  "file": "ledger/projector.js",
+  "from": "  if (a.status === 'manual_reconciliation' || a.hosted_state === 'manual_reconciliation') return { unresolved: 'manual_reconciliation' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MANUAL-STATES (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p26-mismatch-pending",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p26-mismatch-pending",
+  "file": "ledger/projector.js",
+  "from": "if (f.reversed) out.push(mirror('reversal', j.id, date, j)); else reasons.add(f.pending ? 'reversal_pending' : 'reversal_unproven');",
+  "to": "if (f.reversed) out.push(mirror('reversal', j.id, date, j));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH-RETRY (Codex #114 #2):"
+  ]
+ },
+ {
+  "id": "ls3-p27-mismatch-indep",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p27-mismatch-indep",
+  "file": "ledger/projector.js",
+  "from": "  if (a.mismatch_reason) {   // a mismatched capture",
+  "to": "  if (a.mismatch_reason && a.status === 'voided') {   // a mismatched capture",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH-RETRY (Codex #114 #2):"
+  ]
+ },
+ {
+  "id": "ls3-p28-offline",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p28-offline",
+  "file": "ledger/projector.js",
+  "from": "    if (order && (order.resolution === 'offline_fulfilled' || order.fulfilled_offline_at)) reasons.add('manual_unverified');\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-OFFLINE (Codex #114 #4):"
+  ]
+ },
+ {
+  "id": "ls3-p29-zero-commission",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p29-zero-commission",
+  "file": "ledger/projector.js",
+  "from": "const kPositive = !!k && k.commission + k.isv > 0;",
+  "to": "const kPositive = !!k;",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ZERO-FOOD (Codex #114 #5):"
+  ]
+ },
+ {
+  "id": "ls3-p30-superseded",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p30-superseded",
+  "file": "ledger/projector.js",
+  "from": "      if (!c.primary || sold) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SUPERSEDED:"
+  ]
+ },
+ {
+  "id": "ls3-p31-promo-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p31-promo-reversal",
+  "file": "ledger/projector.js",
+  "from": "        if (p) out.push(mirror('envio_promo_reversal', orderId, date, p));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-NETS-ZERO:"
+  ]
+ },
+ {
+  "id": "ls3-p32-sdk-closure",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: PR-SDK cannot decide it alone (the placed order is not terminal yet); PR-SDK-REWARD is the first cell where closure alone decides",
+  "file": "ledger/projector.js",
+  "from": "      if (!isFinanciallyClosed(sdk, order, { rewardState })) open = true;",
+  "to": "      // closure ignored",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-REWARD (Codex #114 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p33-reward-state",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p33-reward-state",
+  "file": "ledger/projector.js",
+  "from": "isFinanciallyClosed(sdk, order, { rewardState })",
+  "to": "isFinanciallyClosed(sdk, order, {})",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-REWARD (Codex #114 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p34-pending-projection",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p34-pending-projection",
+  "file": "ledger/projector.js",
+  "from": "if (sdk && ((sdk.committed_revision || 0) > 0 || pendingProjection(sdk, order))) return",
+  "to": "if (sdk && ((sdk.committed_revision || 0) > 0)) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-ADJUSTED:"
+  ]
  }
 ]

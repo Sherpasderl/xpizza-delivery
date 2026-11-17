@@ -2113,7 +2113,7 @@
   }
  ],
  "moneyPathNonFactReads": {
-  "payment_commit@xpizza-functions/ledger/projector.js#quarantineOf": "ledger S3: a PRESENCE / revision compare of the server-only SDK decision marker (rules-immutable for dispatchers) against payment_sdk committed_revision — it QUARANTINES an adjusted SDK order (sdk_adjusted), never an amount, never posted",
+  "resolution@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #114 #4): the PRESENCE of resolve-manual close_fulfilled's marker (resolution offline_fulfilled) puts the order on the MANUAL HOLD — nothing is posted; never an amount or a selector of money",
   "created_at@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #110 r2 condition): the AUTHORITATIVE order date — every journal is DATED by it (the snapshot's created_at is informational); never an amount or a selector of money",
   "active_attempt_id@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3: selects WHICH paid attempt is the order's sale (the primary collection); any other paid attempt goes to customer_refund_suspense — the amounts are the PROVIDER-reported ones, never this pointer's",
   "offer@xpizza-functions/index.js#paymentStatus": "marketing price (Q5): the customer poll SHOWS the stored order's frozen offer (pollOfferOf → type / discount_cents / waived_envio_cents, the order screen's «Descuento»; no merchant name) — a display of what the order write saved, never re-priced, never charged and never a total (total_cents beside it is the stored one); no offer id / rev / usage leaves (Q9)",
