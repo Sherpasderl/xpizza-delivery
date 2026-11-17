@@ -120,8 +120,8 @@ function projectOrder(src, { rateBp } = {}) {
     if (sdk && sdk.legs) {
       for (const lid of Object.keys(sdk.legs).sort()) {
         const l = sdk.legs[lid];
-        const captured = l && int(l.amount_cents) && (l.state === 'captured' || (l.state === 'voided' && int(l.captured_at)));
-        if (captured) cols.push({ key: `${orderId}+${lid}`, idFamily: 'sdk_collection', primary: true, amount: l.amount_cents, reversed: l.state === 'voided', pending: false });
+        // only a CAPTURED leg is money; an SDK refund is an obligation, and an obligation means an adjusted (quarantined) order
+        if (l && int(l.amount_cents) && l.state === 'captured') cols.push({ key: `${orderId}+${lid}`, idFamily: 'sdk_collection', primary: true, amount: l.amount_cents, reversed: false, pending: false });
       }
       if (!isFinanciallyClosed(sdk, order, { rewardState })) open = true;   // Codex #114 #3: the reward reservation state is an input
     }

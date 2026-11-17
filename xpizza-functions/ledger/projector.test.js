@@ -264,8 +264,10 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     assert.deepStrictEqual([byFamily(done, 'collection').length, byFamily(done, 'collection')[0].id, done.status], [1, PJ.idOf('sdk_collection', `${SOID}+L1`), 'final'], '🔴 PR-SDK: captured ⇒ one collection, final');
     const c = sdkWorld();
     await C.placeOriginal(c.deps, { attempt_id: 'att_fixed_p00002', orderId: SOID, token: 'T', amount_cents: 10000 });
+    c.deps.cancelVoidEligible = () => true;   // same Honduras day: the real cancel VOIDS the approved hold
     await C.cancelSdkOrder(c.deps, { orderId: SOID, kind: 'cancel' });
-    assert.deepStrictEqual(Object.keys(sproj(c).journals).length, 0, '🔴 PR-SDK: an uncaptured cancel posts nothing');
+    assert.strictEqual(c.db.getAt(`payment_sdk/${SOID}/legs/L1/state`), 'voided', 'premise: the real cancel voided the uncaptured hold');
+    assert.deepStrictEqual(Object.keys(sproj(c).journals).length, 0, '🔴 PR-SDK: an uncaptured void posts nothing');
   });
 
   await cell('PR-SDK-REWARD (Codex #114 #3): a REAL SDK order whose reward the settlement CONSUMED is final with rewardState consumed; without the reward state it stays open', async () => {
