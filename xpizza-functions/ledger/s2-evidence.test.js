@@ -37,7 +37,7 @@ const SBOX_KEY = '1234567890', SBOX_SECRET = '@s4ndb0x-abcd-1234-n1l4-p1x3l';
       { v: 1, amount_cents: 29900, payment_uuid: 'P-paid-1', at: 7, verified: true, approved: true, mismatch_reason: null });
   });
   await cell('S2-EV-MALFORMED: missing / non-finite / string / oversized / negative amounts ⇒ amount_cents null; unsafe uuid / reason ⇒ null; never throws', async () => {
-    for (const x of [undefined, null, 'abc', '', NaN, Infinity, 1e20, -5, {}, [1], true]) {
+    for (const x of [undefined, null, 'abc', '', NaN, Infinity, 1e20, 50000000, -5, {}, [1], true]) {   // 50,000,000 L: a safe integer, but over the L10M cap
       const e = EV.evidenceOf({ capture: { data: { transaction_approved_amount: x } }, paymentUuid: 'S', at: 1, verified: false, approved: false, mismatchReason: 'amount_mismatch' });
       assert.strictEqual(e.amount_cents, null, `🔴 S2-EV-MALFORMED: ${JSON.stringify(x)}`);
     }
