@@ -38,6 +38,21 @@
  * which gate-all sums with the runner's own (0: the echoed child output is prefixed so nothing in it
  * reads as a mark). The gate's number is therefore exactly the per-file measurement below.
  *
+ * 🔴 EACH FILE HAS ITS OWN DEADLINE, AND A TIMEOUT IS RED (codex #100 P2). node's --test-timeout caps each TEST, not the
+ * file: two 150 ms tests under --test-timeout=200 pass in 392 ms. So runFile runs every file in its OWN process group
+ * under a process-level deadline: the folder's contract --test-timeout (portal: 180 s), else FILE_DEADLINE_MS. On
+ * expiry the WHOLE group is SIGKILLed and the file scores `fail`, tagged «timeout»; one slow file gets its own red
+ * instead of taking the whole test:apps step down. A test node itself cancels at its per-test cap exits 1 and also
+ * scores `fail`, tagged «cancelled» from the TAP `# cancelled N` line. Marketing ≈ 54 s at load 10.
+ *
+ * 🔴 NO BROWSER IN THE LIGHT CHAIN (rule 32). The light chain = every functions `npm test` step minus the two heavy
+ * guards (HEAVY_STEP, as light-chain.sh drops them) — side 'test' — plus every file this runner plans — side 'apps'. A
+ * file on either side whose own source launches a browser (BROWSER_RE) is a plan PROBLEM unless KNOWN_BROWSER excuses
+ * it on THAT side with a reason, an owner and a date. Browser
+ * files are named *.browser.test.* and run from a heavy script at a slot turn (the portal's: test:portal, whose glob
+ * is exactly ../xpizza-portal/*.browser.test.mjs, so the other portal files are planned here, one verdict each).
+ * Lexical, on the file's own source: a browser launched through an imported helper is not seen.
+ *
  * 🔴 xpizza-handheld/guards.test.js resolves 'acorn' through createRequire(xpizza-functions/package.json)
  * — a deliberate borrow of the functions install (handheld declares no dependencies and has no
  * lockfile). This runner therefore needs xpizza-functions to be npm ci'd first, which is the gate's
@@ -53,6 +68,16 @@ const ROOT = path.join(FUNCTIONS, '..');
 /* Each entry RUNS; its failure is reported and excused. Passing, or naming a file that is not in the
    plan, fails the run. */
 const KNOWN_RED = {};   // the rule-20 url-token guard's entry expired with the getMyLastTip swap (advisor 11-13)
+
+/* A light-chain file that launches a browser, excused until its owner moves it to a heavy script. An entry whose file
+   the light chain no longer runs, or that no longer launches one, fails the plan. */
+const KNOWN_BROWSER = {
+  'xpizza-driver/fa4400-render.browser.test.js': { side: 'apps', reason: 'headless Chrome (computed --accent) planned by test:apps; routed to 2f for a heavy test:*-browser script (advisor 11-16)', owner: '2f', since: '2026-11-16' },
+  'xpizza-dispatch/dispatch-cashbar-layout.test.js': { side: 'test', reason: 'Google Chrome layout gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
+  'xpizza-dispatch/dispatch-driver-admin-panel.test.js': { side: 'test', reason: 'Google Chrome panel gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
+};
+const HEAVY_STEP = /emulator-ports\.guard|census\.negative/;   // the two npm test steps the light chain drops (light-chain.sh)
+const BROWSER_RE = /CHROME_BIN|CHROME_HEADLESS_SHELL|chrome-headless-shell|remote-debugging-port|Google Chrome\.app|puppeteer|playwright/;
 
 /* A file that legitimately asserts nothing, with the reason. Empty by design; an entry whose file now
    asserts something fails the run, as does one naming no planned file. */
@@ -112,10 +137,27 @@ function childEnv(base, extra) {
 }
 
 /* run ONE planned file and measure it — the function the guard's executable controls drive */
+/* a file's deadline: its folder contract's --test-timeout (ms), else FILE_DEADLINE_MS */
+const FILE_DEADLINE_MS = 600000;
+function fileDeadlineMs(flags) {
+  const m = (flags || []).map((f) => /^--test-timeout=(\d+)$/.exec(f)).find(Boolean);
+  return m ? Number(m[1]) : FILE_DEADLINE_MS;
+}
+
+/* rungroup (same contract as D4c-grill/train-ready-tools/run-group.sh): the command leads its OWN process group; on the
+   deadline the WHOLE group is SIGKILLed, a marker goes to stderr and the rc is 124; children left behind are killed too */
+const GROUP_RUNNER = 'use Time::HiRes "alarm"; my $t = shift; my $p = fork; defined $p or exit 125;'
+  + ' if (!$p) { setpgrp(0, 0); exec @ARGV; exit 127 }'
+  + ' $SIG{ALRM} = sub { kill "KILL", -$p; waitpid($p, 0); print STDERR "\\n##APP-SUITES-DEADLINE\\n"; exit 124 };'
+  + ' alarm $t; waitpid($p, 0); my $st = $?; alarm 0; kill "KILL", -$p; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);';
+
 function runFile(e, root = ROOT, base = process.env) {
-  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
+  const secs = (e.deadlineMs || fileDeadlineMs(e.flags)) / 1000;   // e.deadlineMs: a control's override
+  const r = spawnSync('perl', ['-e', GROUP_RUNNER, String(secs), process.execPath, '--test', '--test-reporter=tap', ...e.flags, e.rel], { cwd: path.join(root, e.cwd), env: childEnv(base, e.env), encoding: 'utf8', maxBuffer: 256 << 20 });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), out };
+  const c = /^# cancelled (\d+)$/m.exec(r.stdout || '');
+  const timedOut = r.status === 124 && /^##APP-SUITES-DEADLINE$/m.test(r.stderr || '');
+  return { file: e.file, ok: r.status === 0, cells: measureTap(r.stdout || '', e.rel), cancelled: c ? Number(c[1]) : 0, timedOut, deadlineMs: secs * 1000, out };
 }
 
 function trackedFiles(root = ROOT) {
@@ -203,6 +245,42 @@ function plan({ files, manifests, reached, glob = (cwd, pattern) => globIn(cwd, 
   return { tests, entries, problems };
 }
 
+/* repo paths the LIGHT steps of the functions `npm test` chain name (exact paths and globs, relative to xpizza-functions) */
+function chainFiles(testScript, root = ROOT) {
+  const out = new Set();
+  const light = String(testScript || '').split('&&').filter((c) => !HEAVY_STEP.test(c)).join(' ');
+  for (const tok of light.split(/\s+/)) {
+    const t = tok.replace(/^["']|["';)]+$/g, '');
+    if (!TEST_RE.test(t)) continue;
+    const rel = path.posix.normalize(path.posix.join('xpizza-functions', t));
+    if (GLOB_CHARS.test(rel)) for (const m of fs.globSync(rel, { cwd: root })) out.add(m.split(path.sep).join('/'));
+    else out.add(rel);
+  }
+  return [...out].sort();
+}
+
+/* the light chain as { file: side }: 'test' = a light npm test step names it, 'apps' = this runner plans it */
+function lightSides(entries, testScript, root = ROOT) {
+  const sides = {};
+  for (const f of chainFiles(testScript, root)) sides[f] = 'test';
+  for (const e of entries) sides[e.file] = sides[e.file] ? `${sides[e.file]}+apps` : 'apps';
+  return sides;
+}
+
+/* light-chain files that launch a browser (see the header) + stale KNOWN_BROWSER entries → problems. Pure over `read`. */
+function browserProblems(sides, read, known = KNOWN_BROWSER) {
+  const out = [];
+  for (const [f, side] of Object.entries(sides)) {
+    if (!BROWSER_RE.test(String(read(f) || ''))) continue;
+    if (!known[f] || known[f].side !== side) out.push(`${f}: launches a browser (${BROWSER_RE.exec(read(f))[0]}) on the LIGHT chain's '${side}' side${known[f] ? ` (its KNOWN_BROWSER entry is for '${known[f].side}')` : ''} — name it *.browser.test.* and run it from a heavy script, or excuse it in KNOWN_BROWSER`);
+  }
+  for (const f of Object.keys(known)) {
+    if (!sides[f]) out.push(`KNOWN_BROWSER ${f} names no light-chain file — delete the entry`);
+    else if (!BROWSER_RE.test(String(read(f) || ''))) out.push(`KNOWN_BROWSER ${f} no longer launches a browser — delete the entry`);
+  }
+  return out;
+}
+
 /* THE VERDICT — pure. pass | fail | excused | stale-excuse | zero-cell | zero-excused | zero-stale, plus
    excuses (either list) naming a file that is not planned. A failing file is judged by KNOWN_RED whatever its
    count; a passing file must ALSO have measured at least one cell, unless ZERO_CELL_OK names it. */
@@ -222,8 +300,11 @@ function classify(results, knownRed, plannedFiles, zeroOk = ZERO_CELL_OK) {
 function currentPlan() {
   const files = trackedFiles();
   const tests = testFiles(files);
-  const reached = functionsReach(JSON.parse(fs.readFileSync(path.join(FUNCTIONS, 'package.json'), 'utf8')).scripts);
-  return plan({ files, manifests: readManifests(ROOT, [...new Set(tests.map(topOf))]), reached });
+  const scripts = JSON.parse(fs.readFileSync(path.join(FUNCTIONS, 'package.json'), 'utf8')).scripts;
+  const reached = functionsReach(scripts);
+  const p = plan({ files, manifests: readManifests(ROOT, [...new Set(tests.map(topOf))]), reached });
+  p.problems.push(...browserProblems(lightSides(p.entries, scripts.test), (f) => fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  return p;
 }
 
 function main() {
@@ -250,7 +331,8 @@ function main() {
   const v = classify(results, KNOWN_RED, p.entries.map((e) => e.file));
   const TAG = { pass: 'pass', fail: '🔴 FAIL', excused: 'KNOWN-RED (excused)', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS', 'zero-excused': 'ZERO-CELL (excused)', 'zero-stale': '🔴 ZERO-CELL-OK BUT ASSERTS' };
   console.log('');
-  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${TAG[r.state].padEnd(26)} ${r.file}`);
+  const why = Object.fromEntries(results.map((r) => [r.file, r.timedOut ? ` (timeout: file deadline ${r.deadlineMs / 1000} s)` : r.cancelled ? ' (cancelled: per-test timeout)' : '']));
+  for (const r of v.rows) if (r.state !== 'pass') console.log(`  ${(TAG[r.state] + why[r.file]).padEnd(26)} ${r.file}`);
   for (const f of v.orphans) console.log(`  ${'🔴 EXCUSE WITHOUT A FILE'.padEnd(26)} ${f}`);
   if (v.excused) {
     console.log('\nEXCUSED — these RAN and FAILED:');
@@ -262,5 +344,5 @@ function main() {
   process.exit(v.exitCode);
 }
 
-module.exports = { KNOWN_RED, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
+module.exports = { FILE_DEADLINE_MS, fileDeadlineMs, KNOWN_RED, KNOWN_BROWSER, BROWSER_RE, browserProblems, chainFiles, lightSides, HEAVY_STEP, ZERO_CELL_OK, MARK, measureTap, childEnv, runFile, TEST_RE, testFiles, functionsReach, parseManifest, plan, classify, currentPlan, trackedFiles, topOf };
 if (require.main === module) main();

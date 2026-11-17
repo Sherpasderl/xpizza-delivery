@@ -199,8 +199,8 @@
    "bytes": 1072
   },
   "package.json": {
-   "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
-   "bytes": 443
+   "sha256": "9aa8cd0a81eaa4327c954b634b641f2b67bca6210b73ce3ebd6559fe43236920",
+   "bytes": 444
   },
   "perf/portal.origins.json": {
    "sha256": "740f32b569d578e82f0749e48c180c482232ac2e109bbc19a21ae1376ce29d7d",

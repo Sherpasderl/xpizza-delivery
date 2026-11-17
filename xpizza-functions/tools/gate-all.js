@@ -10,7 +10,8 @@
  * not have shown; the loop was the defect. So the list is ENUMERATED from package.json, never typed:
  * a suite added tomorrow is in the gate tomorrow, without anyone remembering to add it.
  *
- *   npm run test:gate               EVERYTHING: npm test + all 44 emulator scripts + test:portal
+ *   npm run test:gate               EVERYTHING: npm test + all 44 emulator scripts + test:portal (the portal's
+ *                                   *.browser.test.mjs files; its other files run per file in test:apps)
  *   npm run test:emulators:all      the emulator subset only (the slow part), by delegation
  *   npm run test:gate -- --list     just show what would run
  *
