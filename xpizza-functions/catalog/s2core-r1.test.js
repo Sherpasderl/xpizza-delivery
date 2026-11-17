@@ -12,7 +12,11 @@ const { clone } = H;
 const forged = (rid, name, g) => (rid === 'la_musa'
   ? { key: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), price: 30, display: { id: name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), name, cat: g, price: 30 } }
   : { key: name, price: 30, display: { id: 'e99', name, cat: g, price: 30 } });
-const groupOf = (rid) => buildSourceFromCode(rid).structure.extra_categories[0];
+// the first group holding NO reward-eligible extra: a reward group refuses any new option first (reward_group_add_blocked, Codex #119),
+// which would hide the refusal each cell pins
+const groupOf = (rid) => { const s = buildSourceFromCode(rid); const el = new Set(s.structure.redeem_eligible_extras || []);
+  const reward = new Set(s.extras.filter((e) => el.has(e.key)).map((e) => e.display && e.display.cat));
+  return s.structure.extra_categories.find((g) => !reward.has(g)); };
 
 (async () => {
   for (const rid of ['x_pizza', 'la_musa']) {

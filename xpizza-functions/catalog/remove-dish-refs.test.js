@@ -11,6 +11,9 @@ const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 // these cells judge the removal path ON (P-R5 platform-removal.js; OFF = today's refusals, pinned by remove-product-server.test.js)
 { const p = require.resolve('./platform-removal'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { removalCapabilities: () => ({ productRemoval: true }) } }; }
+// the Extras-page switch (platform-structure extrasCatalog): null ⇒ the REAL shipped value (ON since the extras switch-on, 5f 11-16); RDR-OTHER pins it
+const STRUCT = { extrasCatalog: null };
+{ const p = require.resolve('./platform-structure'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), ...(STRUCT.extrasCatalog === null ? {} : { extrasCatalog: STRUCT.extrasCatalog }) }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceToBuildInputs } = require('./source-store');
@@ -88,14 +91,34 @@ function formPrepare(rid, inForce) {
     assert.ok(!(saved.structure.extras_by_item || {})[key], `RDR-${key}: its extras_by_item entry left with it`);
     ok(`${rid}: removing «${key}» (${what}) with its declared claim saves; its own entries leave with it`);
   }
-  {   // nothing ELSE may change: dropping ANOTHER dish's override / reward entry beside the removal is still refused
-    const s = removed(base('la_musa'), 'soft_01'); s.structure.redeem_eligible_items = s.structure.redeem_eligible_items.filter((k) => k !== 'soft_02');
-    const { r } = await save('la_musa', s, [stamp('la_musa', 'soft_01')]);
-    assert.ok(r.status >= 400 && r.body.error === 'structure_changed', `RDR-OTHER: another dish's entry cannot leave with a removal (${show(r)})`);
+  {   // nothing ELSE may change: ANOTHER dish's reward entry leaving beside a removal is refused — with the Extras switch OFF and ON
+    for (const sw of [false, true]) {
+      STRUCT.extrasCatalog = sw;
+      const s = removed(base('la_musa'), 'soft_01'); s.structure.redeem_eligible_items = s.structure.redeem_eligible_items.filter((k) => k !== 'soft_02');
+      const { r } = await save('la_musa', s, [stamp('la_musa', 'soft_01')]);
+      assert.ok(r.status >= 400 && r.body.error === 'structure_changed', `RDR-OTHER (extrasCatalog ${sw}): another dish's reward entry cannot leave with a removal (${show(r)})`);
+    }
+    STRUCT.extrasCatalog = false;   // the switch OFF (as shipped before 11-16): another dish's override cannot leave with a removal
     const t = removed(base('la_musa'), 'soft_01'); delete t.structure.exposure.item_overrides.rice_03;
     const { r: r2 } = await save('la_musa', t, [stamp('la_musa', 'soft_01')]);
     assert.ok(r2.status >= 400 && r2.body.error === 'structure_changed', `RDR-OTHER: another dish's override cannot leave with a removal (${show(r2)})`);
-    ok('nothing else may change: another dish\'s override or reward entry leaving beside a removal is still structure_changed');
+    STRUCT.extrasCatalog = null;
+    ok('nothing else may change: another dish\'s reward entry (switch OFF and ON) or override (switch OFF) leaving beside a removal is structure_changed');
+  }
+  {   // RDR-OTHER-ON (5f ruling 11-16, advisor ACCEPTED): with the Extras switch ON, rice_03's override { add: ['Proteínas'] } leaving is the Extras page's
+      // own ITEM-scope group DETACH — an authorized S2 transition — so it SAVES beside the removal, and the review diff SHOWS it (token-bound)
+    STRUCT.extrasCatalog = true;
+    try {
+      const t = removed(base('la_musa'), 'soft_01'); delete t.structure.exposure.item_overrides.rice_03;
+      const { r } = await save('la_musa', t, [stamp('la_musa', 'soft_01')]);
+      assert.strictEqual(r.status, 200, `🔴 RDR-OTHER-ON: the detach saves beside the removal (${show(r)})`);
+      const rows = (r.body.diff && r.body.diff.attachments) || [];
+      assert.deepStrictEqual(rows, [{ group: 'Proteínas', scope: 'item', target: 'rice_03', change: 'detached' }], `🔴 RDR-OTHER-ON: the review diff shows exactly the detach (${JSON.stringify(r.body.diff).slice(0, 300)})`);
+      const u = removed(base('la_musa'), 'soft_01'); u.structure.exposure.item_overrides.rice_03 = { add: ['Proteínas'], deny: ['rice_white'] };   // a SINGLE-extra entry: not a writer transition
+      const { r: r3 } = await save('la_musa', u, [stamp('la_musa', 'soft_01')]);
+      assert.ok(r3.status >= 400 && r3.body.error === 'structure_changed', `🔴 RDR-OTHER-ON: a single-extra entry on another dish beside a removal is still refused (${show(r3)})`);
+    } finally { STRUCT.extrasCatalog = null; }
+    ok('ON: another dish\'s whole-group detach saves beside a removal and shows in the review diff; a single-extra entry is still refused');
   }
   {   // an UNDECLARED removal keeps today's refusal
     const { r } = await save('x_pizza', removed(base('x_pizza'), 'Nutella'), []);

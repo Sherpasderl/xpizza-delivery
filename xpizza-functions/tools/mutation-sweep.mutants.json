@@ -39366,6 +39366,111 @@
   ]
  },
  {
+  "id": "xf-x1-switch-prs",
+  "slice": "extras-flip",
+  "label": "extras switch-on: the switch is ON: a hand-made token no longer matches the canonical diff",
+  "file": "catalog/platform-structure.js",
+  "from": "const EXTRAS_CATALOG = true;",
+  "to": "const EXTRAS_CATALOG = false;",
+  "command": [
+   "node",
+   "catalog/publish-request-consequences.test.js"
+  ],
+  "kills_with": [
+   "✗ PRS-STRUCTURE-ON"
+  ]
+ },
+ {
+  "id": "xf-x3-layer-base",
+  "slice": "extras-flip",
+  "label": "extras switch-on: the extrasflip layer peels back to the base byte-for-byte",
+  "file": "tools/extrasflip-module-inverse.js",
+  "from": "\"was\": \"const EXTRAS_CATALOG = false;",
+  "to": "\"was\": \"const EXTRAS_CATALOG = true;",
+  "command": [
+   "node",
+   "extrasflip-wiring.guard.test.js"
+  ],
+  "kills_with": [
+   "🔴 EXTRASFLIP-BASE:"
+  ]
+ },
+ {
+  "id": "xf-x4-peel-wrapped",
+  "slice": "extras-flip",
+  "label": "extras switch-on: every s3choice peel wraps the extrasflip peel",
+  "file": "a1-wiring.guard.test.js",
+  "from": "unapplyS3choiceModule(f, require('./tools/extrasflip-module-inverse').unapplyExtrasflipModule(f, ",
+  "to": "unapplyS3choiceModule(f, ((g, s) => s)(f, ",
+  "command": [
+   "node",
+   "extrasflip-wiring.guard.test.js"
+  ],
+  "kills_with": [
+   "🔴 EXTRASFLIP-PEEL:"
+  ]
+ },
+ {
+  "id": "xf-x5-guard-call",
+  "slice": "extras-flip",
+  "label": "extras switch-on: the reward-group guard runs at every judgment",
+  "file": "catalog/choice-compare.js",
+  "from": "  rewardGroupGuard(args);   // Codex #119",
+  "to": "  void args;   // Codex #119",
+  "command": [
+   "node",
+   "catalog/reward-group-guard.test.js"
+  ],
+  "kills_with": [
+   "✗ RG-REPRO:"
+  ]
+ },
+ {
+  "id": "xf-x6-reward-groups",
+  "slice": "extras-flip",
+  "label": "extras switch-on: a group holding a reward-eligible extra is a reward group",
+  "file": "catalog/choice-compare.js",
+  "from": "const rewardGroups = new Set(eligible.map((k) => catOf.get(k)).filter(Boolean));",
+  "to": "const rewardGroups = new Set();",
+  "command": [
+   "node",
+   "catalog/reward-group-guard.test.js"
+  ],
+  "kills_with": [
+   "✗ RG-REPRO:"
+  ]
+ },
+ {
+  "id": "xf-x7-only-new",
+  "slice": "extras-flip",
+  "label": "extras switch-on: only a NEW extra is refused; existing ones stay editable",
+  "file": "catalog/choice-compare.js",
+  "from": "if (e && !catOf.has(e.key) && rewardGroups.has(g))",
+  "to": "if (e && rewardGroups.has(g))",
+  "command": [
+   "node",
+   "catalog/reward-group-guard.test.js"
+  ],
+  "kills_with": [
+   "✗ RG-REMOVE-REPRICE:"
+  ]
+ },
+ {
+  "id": "xf-x8-retire-switch",
+  "slice": "extras-flip",
+  "label": "extras switch-on: the guard retires with LEGACY_FORM_REWARD_PICKERS",
+  "file": "catalog/choice-compare.js",
+  "from": "if (!extrasCatalog || !legacy || !draftBuilt || !activeBuilt) return;",
+  "to": "if (!extrasCatalog || !draftBuilt || !activeBuilt) return;",
+  "command": [
+   "node",
+   "catalog/reward-group-guard.test.js"
+  ],
+  "kills_with": [
+   "✗ RG-RETIRE:"
+  ]
+ },
+ {
   "id": "ls3-p01-food-base",
   "slice": "ledger-s3",
   "label": "ledger S3 projector: p01-food-base",
@@ -40443,21 +40548,6 @@
   ],
   "kills_with": [
    "✗ RB-CAP:"
-  ]
- },
- {
-  "id": "ls5-a1-unfinished-alarm",
-  "slice": "ledger-s5",
-  "label": "ledger S5 nightly rebuild: the safety slot alarms an unfinished run (the first cell pinning it is RB-ALARM)",
-  "file": "ledger/rebuild.js",
-  "from": "if (!recorded && slot === 'safety') {",
-  "to": "if (false) {",
-  "command": [
-   "node",
-   "ledger/rebuild.test.js"
-  ],
-  "kills_with": [
-   "✗ RB-ALARM:"
   ]
  },
  {

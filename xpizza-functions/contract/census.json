@@ -2427,7 +2427,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#0",
-   "line": 30,
+   "line": 50,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2437,7 +2437,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#1",
-   "line": 31,
+   "line": 51,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2447,7 +2447,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#2",
-   "line": 52,
+   "line": 72,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2457,7 +2457,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#3",
-   "line": 54,
+   "line": 74,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2467,7 +2467,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#compareToActive#items#4",
-   "line": 66,
+   "line": 86,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2477,7 +2477,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#prepareExistingGroups#items#0",
-   "line": 86,
+   "line": 106,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -2487,7 +2487,7 @@
   },
   {
    "id": "xpizza-functions/catalog/choice-compare.js#prepareExistingGroups#items#1",
-   "line": 86,
+   "line": 106,
    "kind": "member",
    "facts": [
     "ITEMS"
