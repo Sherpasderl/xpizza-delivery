@@ -21,6 +21,7 @@ require('./_emulator-required')('database', 'firestore');
 const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const OE_HARNESS = (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits';   // the suite's own cleanup, recorded ahead of the request
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const fsys = require('fs');
@@ -56,6 +57,7 @@ const SD = require('./_serial3-delta');
 const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
 const CLAIM_DELTA = { n: 0 };
 const POST_OF = new WeakMap();
+const LEDGER_OF = new WeakMap();   // LEDGER S1: recorded result → the VERIFIED declared snapshot leaves it wrote (normalized; test/_ledger-declared)
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)   // recorded result → the order record after the request (the content a stamp may bind to)
 let S3_BOUND = 0, S3_UNBOUND = 0, S3_DIFF = 0;
 // R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
@@ -95,6 +97,11 @@ const GOLDEN = path.join(__dirname, 'order-exists-base.golden.json');
 // menu_version_id — on a VERSIONED route all of them (a flat-route order stores a null version, which writes no path). Whether the
 // route is versioned comes from the FIXTURE's provenance, never from the observed paths (codex S1d r1 #4). Nothing else is admitted.
 const FIXTURES_VERSIONED = true;   // every order in these suites is priced from a catalog published through publishVersion
+// LEDGER S1: the golden's change set + EXACTLY the verified declared snapshot leaves of this request (LEDGER_OF; never a prefix)
+function expectedChangedLedger(expected, r) {
+  const add = (LEDGER_OF.get(r) || []).filter((q) => !expected.includes(q));
+  return add.length ? [...expected, ...add].sort() : expected;
+}
 function expectedChangedS1d(goldenChanged, { versioned }) {
   const add = [];
   for (const p of goldenChanged) {
@@ -184,9 +191,10 @@ async function seed(rid) {
   await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
 }
+let LAST_HDR = {};      // LEDGER S1: the headers the request sent (the snapshot's mode evidence)
 let LAST_SENT = null;   // §3 r2: the body the request actually POSTED — the stamp's real input (bound cases bind to it)
 function post(handler, body, headers = {}) {
-  LAST_SENT = body;
+  LAST_SENT = body; LAST_HDR = headers;
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
@@ -257,6 +265,17 @@ async function traced(c, rid, setupState) {
   COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
   POST_OF.set(out, post_);
   SENT_OF.set(out, LAST_SENT);
+  // LEDGER S1 (cb008ac98): the DECLARED snapshot writes — ledger_alloc/<oid> (cash create) and the hosted claim's
+  // payment_attempts/<aid>/ledger — each VERIFIED equal to the real writer's (alloc-snapshot of the STORED order)
+  {
+    const decl = []; const body0 = LAST_SENT || {}; const hdrs = LAST_HDR || {};
+    const ra = LD.subtreeOf(after, `ledger_alloc/${oid}`);
+    if (ra) decl.push(...LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: ra, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs }), label: `ledger_alloc ${oid}` }));
+    for (const [aid, a] of Object.entries(LD.subtreeOf(after, 'payment_attempts') || {})) {
+      if (a && a.order_id === oid && a.ledger) decl.push(...LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs, hosted: true }), label: `attempt ledger ${oid}` }));
+    }
+    LEDGER_OF.set(out, decl.map(norm).filter((q) => changed.includes(q)));
+  }
   return out;
 }
 
@@ -413,7 +432,8 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(DR.without(r.ops, L, { ignore: OE_HARNESS })) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write — ${RD.opsDiff(cs.expected, cs.actual)}`);
-        const ch = SD.changedShape(r.changed, expectedChangedS1d(g.changed, { versioned: FIXTURES_VERSIONED }), { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        if (/ROTATE/.test(c.name)) assert.ok((LEDGER_OF.get(r) || []).length > 0, `🔴 ${L}: the rotated attempt carries S1's declared snapshot (non-vacuity)`);
+        const ch = SD.changedShape(r.changed, expectedChangedLedger(expectedChangedS1d(g.changed, { versioned: FIXTURES_VERSIONED }), r), { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
           assert.strictEqual(r.status, 409);

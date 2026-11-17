@@ -18,6 +18,7 @@ process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'lr-secret';
 process.env.QUOTE_TOKEN_SECRET = process.env.QUOTE_TOKEN_SECRET || 'lr-quote-secret';
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, children: [], paths: [], exports: exportsOf(real) }; };
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
+stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));   // a signed-in member
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -96,7 +97,7 @@ const proj = async (id) => { const v = await read(`ledger/orders/${id}`); return
   const cashId = `lr_cash_${NOW}`;
   const b = { restaurant_id: RID, order_id: cashId, customer_name: 'Ledger S5', customer_phone: '99550001', customer_email: 'lr@example.com', items_text: '1x Margherita', order_type: 'delivery', payment_method: 'cash',
     items: [{ name: 'Margherita', qty: 1, price: 0 }], lat: HUB.lat + 1 / 111.195, lng: HUB.lng, address_detected: 'Col. Prueba', address_details: 'Casa 1', pin_confirmed: true, entry_mode: 'app' };
-  const r = await post(app.createOrder, b, APP_HDR);
+  const r = await post(app.createOrder, b, { ...APP_HDR, 'x-firebase-id-token': 'lrmember' });   // a MEMBER: guests are card-only (guest_cash_not_allowed)
   assert.strictEqual(r.status, 200, `premise: the real createOrder (${r.text.slice(0, 200)})`);
   await rtdb.ref(`orders/${cashId}`).update({ status: 'delivered', delivered_at: NOW - 3600000 });   // the dispatcher's status write
   await hostedOrder('lr_paid', NOW - 2 * DAY);

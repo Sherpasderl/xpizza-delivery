@@ -40,6 +40,7 @@ Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
 const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const fsys = require('fs');
@@ -199,14 +200,18 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   await require('./_catalog-clock').warmPhoneFlag(rtdb);   // the phone flag (30 s, never-awaited refresh) freshly read with the recorder OFF — no refresh lands inside the recording (advisor ruling B, 2026-11-01)
   REC = [];
   const b = bodyFor(rid, oid, phone, { redeem: kind === 'redeem' });
+  const hdrs = { 'x-firebase-id-token': uid };
   const r = kind === 'cash'
-    ? await post(app.createOrder, b, { 'x-firebase-id-token': uid })
+    ? await post(app.createOrder, b, hdrs)
     : kind === 'redeem'
       ? await post(app.quoteRedemption, { restaurant_id: rid, items: b.items, redeem: b.redeem }, { 'x-firebase-id-token': uid })
       : await post(app.quoteOrder, { restaurant_id: rid, items: b.items }, {});
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
+  // LEDGER S1 (cb008ac98): the declared snapshot ledger_alloc/<oid>, VERIFIED equal to the real writer's (test/_ledger-declared)
+  const la = kind === 'cash' ? (await rtdb.ref(`ledger_alloc/${oid}`).get()).val() : null;
+  const ledger = !!la && LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: la, expected: LD.expectedSnapshot(o, { body: b, headers: hdrs }), label: `${rid} ${oid} ledger_alloc` }).length > 0;
   const subs = [];
   for (const [k, v] of Object.entries(o)) if (/attempt_id$|poll_token$|tracking_token$/.test(k) && typeof v === 'string' && v.length >= 8) subs.push([v, `<${k}>`]);
   subs.push([oid, '<oid>'], [rateLimitKey(phone), '<phoneKey>'], [uid, '<uid>']);
@@ -238,7 +243,16 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
   const batch = (raw) => ({ paths: raw.map(norm).sort(), raw_order: raw.every((x, i) => i === 0 || raw[i - 1] <= x) ? 'ascending' : 'other', count: raw.length });
   const trace = calls.map((c) => ({ ...c, ...(c.path !== undefined ? { path: norm(c.path) } : {}), ...(c.paths ? batch(c.paths) : {}), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
-  return { status: r.status, trace, json: r.json };
+  return { status: r.status, trace, json: r.json, ledger };
+}
+// LEDGER S1: the order's create update carries exactly ONE declared key more, ledger_alloc/<oid> — removed from THAT update's key list
+// only when the snapshot was verified; every other call and key stays compared
+function stripLedger(trace, verified, label) {
+  let n = 0;
+  const t = trace.map((e) => (e.op === 'update' && Array.isArray(e.keys) && e.keys.includes('ledger_alloc/<oid>') && e.keys.includes('orders/<oid>')
+    ? (n += 1, { ...e, keys: e.keys.filter((k) => k !== 'ledger_alloc/<oid>') }) : e));
+  assert.ok(n <= 1 && (n === 0 || verified), `🔴 ${label}: ledger_alloc/<oid> rides at most ONE create update, verified against the real writer (n=${n})`);
+  return { t, n };
 }
 
 async function seedAndExport(idMapFile) {
@@ -257,7 +271,7 @@ async function seedAndExport(idMapFile) {
 }
 
 async function capturePhase() {
-  const out = {};
+  const out = {}; const LEDG = {};   // LEDGER S1: per case, was the declared snapshot verified
   const money = {};
   // premises are RECORDED here and asserted by the orchestrator AFTER the money comparison, so a money mutant is killed
   // by the money assertion itself, not by a premise
@@ -289,6 +303,7 @@ async function capturePhase() {
       premises.push([v.trace.some((e) => e.db === 'rtdb' && /^catalog_snapshot/.test(e.path || '')) || k.startsWith('a_') || k.startsWith('b_'), `${rid} ${k}: premise — the refresh re-read the mirror/persisted context`]);
     }
     out[rid] = { a_quote_mirror: a.trace, b_cash_mirror: b.trace, c_quote_mirror_refresh: c.trace, d_cash_mirror_refresh: d.trace };
+    LEDG[rid] = { a_quote_mirror: a.ledger, b_cash_mirror: b.ledger, c_quote_mirror_refresh: c.ledger, d_cash_mirror_refresh: d.ledger };
     // MONEY on the mirror route (owner rule): the quote's numeric fields and the WRITTEN order's money fields (every leaf
     // whose key names money: totals, subtotals, tax, line prices, discounts), warmed AND refresh
     const quoteMoney = (j) => Object.fromEntries(Object.entries(j || {}).filter(([k, v]) => typeof v === 'number').sort());
@@ -428,7 +443,9 @@ async function capturePhase() {
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request — got ${floorCalls.length}`);
       const opts = ctlOpts(rid, k);
       const rest = CTL.withoutControlRead(out[rid][k], rid, opts);
-      { const got = DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)); assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace — ${RD.opsDiff(golden[rid][k], got)}`); }
+      { const sl = stripLedger(DR.without(rest, `${rid} ${k}`).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), LEDG[rid][k], `${rid} ${k}`); const got = sl.t;
+        if (/_cash_/.test(k)) assert.strictEqual(sl.n, 1, `🔴 ${rid} ${k}: the cash create carries S1's declared snapshot key (non-vacuity)`);
+        assert.deepStrictEqual(got, golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace — ${RD.opsDiff(golden[rid][k], got)}`); }
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get, +${opts.expected} switch read)`);
     }
     // ── RENDER-ON COMPANION (1D add-product B, PB-2): ON == OFF + exactly the declared delta, the OFF side recorded in the SAME

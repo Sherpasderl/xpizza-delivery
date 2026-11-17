@@ -83,7 +83,8 @@ const stored = (v) => { if (v === null || typeof v !== 'object') return v; const
   {   // S1-CASH (app delivery, priced)
     await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 7, cents: 3000 }], restaurants: {} });
     await clean(); const b = body({ type: 'delivery', app: true });
-    const r = await post(app.createOrder, b, APP_HDR);
+    // a signed-in MEMBER (guests are card-only: guest_cash_not_allowed, owner 10-27) — the stubbed verifyIdToken makes the token the uid
+    const r = await post(app.createOrder, b, { ...APP_HDR, 'x-firebase-id-token': 'ls1member' });
     assert.strictEqual(r.status, 200, `🔴 S1-CASH (${r.text.slice(0, 200)})`);
     const o = await read(`orders/${b.order_id}`); const a = await read(`ledger_alloc/${b.order_id}`);
     assert.deepStrictEqual(a, stored(LA.snapshotOf(o, LA.modeOf({ body: b, clientHdr: { app: 'capp', deployment: 'orders-app' } }))), '🔴 S1-CASH: the snapshot is the stored order\'s');

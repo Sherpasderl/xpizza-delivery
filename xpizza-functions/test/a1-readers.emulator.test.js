@@ -20,6 +20,7 @@
 require('./_emulator-required')('database', 'firestore');
 
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const Module = require('module');
@@ -462,6 +463,7 @@ async function failingOrderWrite(oid, fn) {
       const out = { status: resp.status, body: JSON.parse(norm(JSON.stringify(resp.json || null)).replace(/"(?:[a-z_]*_at|timestamp)":\d+/g, '"t":0')), changed };
       // the RAW written values (Codex asm5 P2: `changed` is stringified) — non-enumerable, so the golden deepStrictEqual never sees it
       Object.defineProperty(out, 'raw', { value: raw, enumerable: false });
+      Object.defineProperty(out, 'after', { value: after, enumerable: false });   // LEDGER S1: the stored state, for the declared snapshot check
       return out;
     };
     for (const rid of ['x_pizza', 'la_musa', T3.THIRD]) for (const method of ['cash', 'online']) {
@@ -506,7 +508,30 @@ async function failingOrderWrite(oid, fn) {
         assert.ok(s1d.every((k) => typeof mine[i].raw[k] === 'string' && mine[i].raw[k]), `🔴 ${rid}/${method} step ${i}: S1d's declared provenance is a non-empty string as WRITTEN (${s1d.map((k) => `${k}=${typeof mine[i].raw[k]}`).join(', ')})`);
         if (i === 0) assert.ok(s1d.includes(`orders/${oid}/menu_version_id`), `🔴 ${rid}/${method}: the placement stores S1d's menu_version_id (non-vacuity)`);
         assert.ok(!(`orders/${oid}/menu_version_id` in theirs[i].changed), `premise: ${BASE} never wrote menu_version_id`);
-        const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k) && !s1d.includes(k))) };
+        // DECLARED (LEDGER S1 cb008ac98, PLAN-5f-ledger-shadow-s1-r3 §1): a CASH placement also writes ledger_alloc/<oid> in the order's own
+        // multi-path update; an ONLINE placement's hosted claim carries payment_attempts/<aid>/ledger. EXACTLY the real writer's leaves
+        // (test/_ledger-declared: the written subtree must equal alloc-snapshot of the STORED order) are stripped; the first placement must
+        // carry them (non-vacuity) and the BASE never wrote them.
+        const ledgerKeys = (o, step) => {
+          const after = o.after || {}; const order = after.orders && after.orders[oid]; if (!order) return [];
+          const body = mk(['A', 'A', 'B'][step]);
+          if (method === 'cash') {
+            const w = after.ledger_alloc && after.ledger_alloc[oid]; if (!w) return [];
+            return LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: w, expected: LD.expectedSnapshot(order, { body }), label: `${rid}/cash step ${step}` }).filter((k) => k in o.changed);
+          }
+          const out = [];
+          for (const [aid, a] of Object.entries(after.payment_attempts || {})) {
+            if (!a || a.order_id !== oid || !a.ledger) continue;
+            for (const k of LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(order, { body, hosted: true }), label: `${rid}/online step ${step}` })) {
+              const nk = k.replace(`payment_attempts/${aid}/`, 'payment_attempts/<tok>/'); if (nk in o.changed) out.push(nk);
+            }
+          }
+          return out;
+        };
+        const ldg = ledgerKeys(mine[i], i);
+        if (i === 0) assert.ok(ldg.length > 0, `🔴 ${rid}/${method}: the placement writes S1's declared snapshot (non-vacuity)`);
+        assert.ok(ldg.every((k) => !(k in theirs[i].changed)), `premise: ${BASE} never wrote the S1 snapshot`);
+        const stripped = { ...mine[i], changed: Object.fromEntries(Object.entries(mine[i].changed).filter(([k]) => !decl.includes(k) && !s1d.includes(k) && !ldg.includes(k))) };
         assert.deepStrictEqual(stripped, theirs[i], `🔴 ${rid}/${method} step ${i}: today's handler differs from ${BASE}`);
       }
       assert.strictEqual(mine[2].status, 200, `${rid}/${method}: a LEGACY order with a cart differing only past char 1500 → idempotent, exactly as ${BASE} (int10 truncation)`);
