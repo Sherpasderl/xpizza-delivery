@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isFace as matchFace, fontsLabel } from './face-match.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');   // review/capp-perf/ → the repo (never under customer-app/: that folder deploys)
 const W = 390, H = 844;
@@ -132,7 +133,7 @@ async function run(name, { fontDelayMs = 0, throttle = false, oldPolicy = false,
       const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: sel });
       if (!nodeId) throw new Error(`no node ${sel}`);
       const { fonts } = await s('CSS.getPlatformFontsForNode', { nodeId });
-      return fonts.map((f) => f.familyName).join(',');
+      return fonts;   // the PlatformFontUsage records, provenance (isCustomFont) kept — Codex #113 P2
     };
     if (warm) {   // a first visit fills the profile's HTTP cache (the fonts are immutable), then the measured visit is a NEW document
       await s('Page.navigate', { url: `${base}/customer-app/index.html` });
@@ -155,11 +156,11 @@ async function run(name, { fontDelayMs = 0, throttle = false, oldPolicy = false,
     const moved = geo0.length === geo1.length ? geo0.filter((g, i) => g !== geo1[i]).length : -1;
     // non-vacuity (the alias rule): the face a 400 text node RENDERS (its platform font), not the family it names
     await ev(`(() => { const el = [...document.querySelectorAll('.app *')].find((e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()) && getComputedStyle(e).fontWeight === '400' && e.getBoundingClientRect().width > 0); if (el) el.setAttribute('data-perf-body', '1'); return !!el; })()`);
-    const body = await font('[data-perf-body]').catch(() => '');
+    const body = await font('[data-perf-body]').catch(() => []);
     const headWeight = await ev(`getComputedStyle(document.querySelector('.app h1, .app h2')).fontWeight`);
     const fam = JSON.stringify(FACE.family);   // the face at 400 AND at the heading's own computed weight
     const loaded = await ev(`document.fonts.check('400 16px ${fam}') && document.fonts.check('${headWeight} 16px ${fam}')`);
-    const out = { name, mountedAt, before, after, body, headWeight, loaded, boxes: geo0.length, moved, cls: await ev('window.__cls'), shifts: await ev('window.__shifts') };
+    const out = { name, mountedAt, before: fontsLabel(before), after: fontsLabel(after), body: fontsLabel(body), recs: { before, after, body }, headWeight, loaded, boxes: geo0.length, moved, cls: await ev('window.__cls'), shifts: await ev('window.__shifts') };
     ws.close();
     return out;
   } finally {
@@ -169,10 +170,8 @@ async function run(name, { fontDelayMs = 0, throttle = false, oldPolicy = false,
   }
 }
 
-// the PLATFORM font a node renders (never the family it names). A variable font reports the family of its default named instance
-// (the self-hosted woff2's name table: nameID 1 «Figtree Light», fvar wght default 300) at EVERY weight, so the platform name is the
-// family itself or the family + a space + the instance; the fallbacks are local() aliases and report the system font (Arial, .SF NS)
-const isFace = (f) => String(f).split(',').some((p) => p === FACE.family || p.startsWith(FACE.family + ' '));
+// the PLATFORM font a node renders (never the family it names), and only a WEB font: face-match.mjs (its own cells, face-match.test.mjs)
+const isFace = (recs) => matchFace(recs, FACE.family);
 const fails = [];
 const check = (ok, msg) => { console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
 
@@ -181,28 +180,28 @@ const cold = await run('F4-cold', {});
 console.log(JSON.stringify(cold));
 check(cold.boxes > 50 && cold.moved === 0, `F4-cold: 0 of ${cold.boxes} boxes moved (${cold.moved})`);
 check(cold.cls === 0, `F4-cold: CLS = 0 (${cold.cls})`);
-if (isFace(cold.after)) console.log(`  ✓ F4-cold: the self-hosted face landed on a cold profile (${cold.after})`);
+if (isFace(cold.recs.after)) console.log(`  ✓ F4-cold: the self-hosted face landed on a cold profile (${cold.after})`);
 else { reported.push('F4-cold: fallback kept'); console.log(`  · F4-cold: FALLBACK KEPT (${cold.after}) — the face missed the optional window on a cold profile; reported, never a pass`); }
 
 const warm = await run('F4-warm', { warm: true });
 console.log(JSON.stringify(warm));
 check(warm.loaded === true, `F4-warm: the face is LOADED (document.fonts.check: ${FACE.family} 400 + ${warm.headWeight})`);
 const hw = Number(warm.headWeight);
-check(hw > 400 && hw >= FACE.min && hw <= FACE.max && isFace(warm.after), `F4-warm: a heading at weight ${warm.headWeight} RENDERS ${FACE.family} (${warm.after}; the face declares ${FACE.min}–${FACE.max})`);
-check(isFace(warm.body), `F4-warm: 400 text RENDERS ${FACE.family} (${warm.body})`);
+check(hw > 400 && hw >= FACE.min && hw <= FACE.max && isFace(warm.recs.after), `F4-warm: a heading at weight ${warm.headWeight} RENDERS ${FACE.family} (${warm.after}; the face declares ${FACE.min}–${FACE.max})`);
+check(isFace(warm.recs.body), `F4-warm: 400 text RENDERS ${FACE.family} (${warm.body})`);
 check(warm.boxes > 50 && warm.moved === 0, `F4-warm: 0 of ${warm.boxes} boxes moved (${warm.moved})`);
 check(warm.cls === 0, `F4-warm: CLS = 0 (${warm.cls})`);
 
 const slow = await run('F4-slow', { fontDelayMs: 6000, throttle: true });
 console.log(JSON.stringify(slow));
-check(!isFace(slow.before), `F4-slow: the font missed the window ⇒ the fallback is painted (${slow.before})`);
+check(!isFace(slow.recs.before), `F4-slow: the font missed the window ⇒ the fallback is painted (${slow.before})`);
 check(slow.before === slow.after, `F4-slow: NO swap after the font lands (${slow.before} → ${slow.after})`);
 check(slow.boxes > 50 && slow.moved === 0, `F4-slow: 0 of ${slow.boxes} boxes moved when the font landed (${slow.moved})`);
 check(slow.cls === 0, `F4-slow: CLS = 0 (${slow.cls})`);
 
 const ctrl = await run('F4-ctrl', { fontDelayMs: 6000, throttle: true, oldPolicy: true });
 console.log(JSON.stringify(ctrl));
-check(!isFace(ctrl.before) && isFace(ctrl.after), `F4-ctrl: the old swap policy DOES swap (${ctrl.before} → ${ctrl.after})`);
+check(!isFace(ctrl.recs.before) && isFace(ctrl.recs.after), `F4-ctrl: the old swap policy DOES swap (${ctrl.before} → ${ctrl.after})`);
 check(ctrl.moved > 0, `F4-ctrl: and the geometry check SEES its reflow, ${ctrl.moved} of ${ctrl.boxes} boxes moved — the zeros above are not vacuous (CLS ${ctrl.cls}, recorded only)`);
 
 console.log(fails.length ? `\ncapp-perf: ${fails.length} FAILED` : `\ncapp-perf: F4 OK (4 cells)${reported.length ? ` — REPORTED: ${reported.join('; ')}` : ''}`);

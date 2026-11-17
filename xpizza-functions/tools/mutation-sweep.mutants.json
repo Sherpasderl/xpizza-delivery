@@ -26059,6 +26059,23 @@
   "why": "equivalent against this harness (advisor ruling (1), 2026-10-27): F4-cold measures a FRESH profile, so re-adding setCacheDisabled changes nothing it observes; non-vacuity is proven by F4-ctrl (255/451 boxes moved under the old swap policy). Killable once a warm from-cache cell exists (follow-up)"
  },
  {
+  "id": "f4-02",
+  "slice": "f4",
+  "label": "the face match drops the provenance check (an INSTALLED «Figtree …» passes as the web font) — Codex #113 P2",
+  "file": "../review/capp-perf/face-match.mjs",
+  "from": "  && records.some((r) => !!r && r.isCustomFont === true && (r.familyName === family || String(r.familyName).startsWith(family + ' ')));\n",
+  "to": "  && records.some((r) => !!r && (r.familyName === family || String(r.familyName).startsWith(family + ' ')));\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "../review/capp-perf/face-match.test.mjs"
+  ],
+  "kills_with": [
+   "an installed «Figtree X» must not pass as the web font"
+  ]
+ },
+ {
   "id": "perf-core-1",
   "slice": "perf-core",
   "label": "r3.4-1: a provenance cart serializes no provenance",
