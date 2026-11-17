@@ -88,5 +88,21 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.deepStrictEqual(Object.keys((await db8.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-KEY-RANGE: a key prefix range, inclusive');
   assert.deepStrictEqual(db7.queries.map((q) => [q.path, q.child]), [['o', 't'], ['o', 'r'], ['o', 't']], '🔴 HRM-QUERY-LOG: every child query is logged');
   ok('orderByChild startAt / equalTo in RTDB value order; orderByKey startAt/endAt; child queries logged');
+  // Codex #116 #4: the query bounds DIFFERENTIALLY against the installed Admin SDK (it validates a bound synchronously, before any network)
+  {
+    const sdkApp = require('firebase-admin').initializeApp({ projectId: 'demo-hrm', databaseURL: 'http://127.0.0.1:1?ns=demo-hrm' }, 'hrm-bounds');
+    const sdk = sdkApp.database();
+    const db9 = makeHonestDb({ o: { a: { t: 1 }, b: { u: 1 }, c: { t: 'x' } } });
+    const BOUNDS = [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['null', null], ['undefined', undefined], ['1', 1], ['"x"', 'x'], ['true', true], ['{}', { a: 1 }], ['[]', [1]]];
+    const throws = (f) => { try { f(); return false; } catch (_) { return true; } };
+    for (const m of ['startAt', 'equalTo']) for (const [label, v] of BOUNDS) {
+      assert.strictEqual(throws(() => db9.ref('o').orderByChild('t')[m](v)), throws(() => sdk.ref('o').orderByChild('t')[m](v)), `🔴 HRM-BOUNDS: orderByChild().${m}(${label}) — the model must accept / refuse as the Admin SDK does`);
+    }
+    for (const [label, v] of BOUNDS) assert.strictEqual(throws(() => db9.ref('o').orderByKey().startAt(v)), throws(() => sdk.ref('o').orderByKey().startAt(v)), `🔴 HRM-BOUNDS: orderByKey().startAt(${label})`);
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').startAt(null).once('value')).val()), ['b', 'a', 'c'], '🔴 HRM-BOUNDS: startAt(null) keeps every child (absent first)');
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').equalTo(null).once('value')).val()), ['b'], '🔴 HRM-BOUNDS: equalTo(null) = the children without the value');
+    await sdkApp.delete();
+  }
+  ok('query bounds accepted / refused exactly as the Admin SDK (differential); null bounds behave as RTDB');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
