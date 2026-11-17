@@ -150,7 +150,62 @@ function reachesLauncher(body, root = ROOT) {
   });
 }
 
-module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher, makeCollector };
+/* 🔴 THE FAILURE BLOCK SHOWS THE FAILURE, NOT A TEST NAME (advisor asm11; 14d red twice in slots, undiagnosable). It
+   was the first 6 lines matching /FAIL|AssertionError|Error:|REFUSED|not ok/, and portal TEST NAMES match that
+   («…FAILS…», «…REFUSED…»): the same filter over a GREEN run printed the same lines, so the real failing line was
+   cut off. Now, in order:
+     1. TAP `not ok` lines with their YAML diagnostic block (location, error, expected/actual, the stack's top) —
+        leaf failures first: a parent whose only fault is `failureType: 'subtestsFailed'` says nothing new;
+     2. only when there is no `not ok` at all (a suite with its own ✓/✗ convention, or a crash): the keyword
+        lines, never a line that is a PASSING test's name (`ok n`, `# Subtest:`, ✓, ✔).
+   Bounded either way; the whole output is in the log file whose path the gate prints next to it. */
+const NOT_OK = /^(\s*)not ok \d+ - /;
+const PASSING_NAME = /^\s*(?:ok \d+ |# Subtest:|✓|✔)/;
+const FAIL_WORD = /✗|✖|FAIL|AssertionError|Error:|REFUSED|not ok/;
+function failureBlock(out, { maxFailures = 4, perFailure = 12, maxFallback = 8 } = {}) {
+  const lines = String(out || '').split('\n');
+  const fails = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = NOT_OK.exec(lines[i]);
+    if (!m) continue;
+    const ind = m[1].length;
+    const diag = [];
+    let wrapper = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j];
+      if (!l.trim()) continue;
+      if (l.search(/\S/) <= ind) break;             // back at (or above) the not ok's own level: the block ended
+      const t = l.trim();
+      if (/^failureType: 'subtestsFailed'/.test(t)) wrapper = true;
+      if (t === '---' || t === '...' || /^(?:duration_ms|type|failureType|code|name):/.test(t)) continue;   // bookkeeping, not the failure
+      diag.push(t);
+    }
+    fails.push({ head: lines[i].trim(), diag, wrapper });
+  }
+  if (fails.length) {
+    const leaves = fails.filter((f) => !f.wrapper);
+    const show = leaves.length ? leaves : fails;
+    const body = show.slice(0, maxFailures).flatMap((f) => [f.head, ...f.diag.slice(0, perFailure - 1).map((d) => `  ${d}`)]);
+    if (show.length > maxFailures) body.push(`… and ${show.length - maxFailures} more \`not ok\` (see the full output)`);
+    return body;
+  }
+  return lines.filter((l) => FAIL_WORD.test(l) && !PASSING_NAME.test(l)).slice(0, maxFallback).map((l) => l.trim());
+}
+
+/* Every failing script's FULL output goes to a file and the gate prints its path, so the next red is diagnosable
+   after the fact (the failure block is bounded on purpose). Never fatal: a log that cannot be written is said. */
+function writeFailureLog(dir, name, out) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const p = path.join(dir, `${name.replace(/[^\w.-]+/g, '_')}.log`);
+    fs.writeFileSync(p, String(out || ''));
+    return p;
+  } catch (e) {
+    return `(could not write the full output: ${e && e.message})`;
+  }
+}
+
+module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher, makeCollector, failureBlock, writeFailureLog };
 if (require.main !== module) return;
 
 const EMULATORS_ONLY = process.argv.includes('--emulators');
@@ -269,16 +324,20 @@ for (const r of verdict.rows) {
   console.log(`  ${TAG[r.state].padEnd(26)} ${r.name.padEnd(32)} ${String(r.cells).padStart(3)} cells  ${r.secs.padStart(6)}s`);
 }
 
+const LOG_DIR = process.env.GATE_ALL_LOG_DIR || path.join(require('os').tmpdir(), `gate-all-${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
+for (const r of results) if (!r.ok) r.log = writeFailureLog(LOG_DIR, r.name, r.out);
+
 for (const r of results) {
   if (r.ok || KNOWN_RED[r.name]) continue;
   console.log(`\n── ${r.name} ─────────────────────────────`);
-  const lines = r.out.split('\n').filter((l) => /FAIL|AssertionError|Error:|REFUSED|not ok/.test(l));
-  console.log(lines.slice(0, 6).map((l) => `   ${l.trim()}`).join('\n') || '   (no recognisable failure line; see the suite output)');
+  const lines = failureBlock(r.out);
+  console.log(lines.map((l) => `   ${l}`).join('\n') || '   (no recognisable failure line; see the full output)');
+  console.log(`   full output: ${r.log}`);
 }
 
 if (excused) {
   console.log('\nEXCUSED, each with a reason — these RAN and FAILED, they were not skipped:');
-  for (const r of results) if (!r.ok && KNOWN_RED[r.name]) console.log(`\n  ${r.name}\n    ${KNOWN_RED[r.name].replace(/(.{96}) /g, '$1\n    ')}`);
+  for (const r of results) if (!r.ok && KNOWN_RED[r.name]) console.log(`\n  ${r.name}\n    ${KNOWN_RED[r.name].replace(/(.{96}) /g, '$1\n    ')}\n    full output: ${r.log}`);
 }
 if (stale) {
   console.log('\n🔴 A KNOWN-RED SUITE PASSED. Delete its KNOWN_RED entry — an excuse that outlives its');
