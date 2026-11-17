@@ -8,6 +8,9 @@ const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'p'.repeat(32);
 const SWITCH = { enabled: true };
 { const p = require.resolve('./item-text-edit'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { textEditCapabilities: () => ({ enabled: SWITCH.enabled }) } }; }
+// the Extras-page switch (platform-structure extrasCatalog): null ⇒ the REAL shipped value (ON since the extras switch-on, 5f 11-16); a cell may pin it
+const STRUCT = { extrasCatalog: null };
+{ const p = require.resolve('./platform-structure'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), ...(STRUCT.extrasCatalog === null ? {} : { extrasCatalog: STRUCT.extrasCatalog }) }) } }; }
 const { createFakeDb } = require('../merchant/_fake-db');
 const { makeDb } = require('./firestore-fake');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
@@ -129,7 +132,9 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
 
   // «Quitar del menú» Codex r1 P2-2 (advisor RULED 11-12): the manager's request runs the SAME structural assessment as the owner's publish
   // (compareToActive), before the request is written — a token-bound draft the owner publish refuses is refused at the request too.
-  await cell('PRS-STRUCTURE', async (L) => {
+  await cell('PRS-STRUCTURE', async (L) => {   // the switch pinned OFF: the typed refusal
+    STRUCT.extrasCatalog = false;
+    try {
     SWITCH.enabled = true;
     const w = world(); await w.ready;
     const { source } = await PR.readDraftFrom(w.fs, FISCAL);
@@ -146,6 +151,28 @@ const moveToNy = (...keys) => (d) => { for (const k of keys) d.items.find((i) =>
     // train/portal-structure: a category_allow change is an Extras-page op — with the S2 switch OFF the request's current-state gate (S2-core
     // Codex build r1 P2-6) answers the TYPED refusal first; refused before anything is written, as the owner publish refuses it
     assert.deepStrictEqual([r.status, r.body.error], [409, 'extras_catalog_not_supported_yet'], `${L}: the manager's request refuses it (got ${JSON.stringify(r)})`);
+    assert.strictEqual(await w.slot(), null, `${L}: no request is written`);
+    } finally { STRUCT.extrasCatalog = null; }
+  });
+
+
+  await cell('PRS-STRUCTURE-ON', async (L) => {   // the switch ON (shipped): the same hand-made token no longer matches the canonical diff
+    SWITCH.enabled = true;
+    const w = world(); await w.ready;
+    const { source } = await PR.readDraftFrom(w.fs, FISCAL);
+    const draft = JSON.parse(JSON.stringify(source)); draft.structure.exposure.category_allow.ny = ['Salsas & Queso', 'Carnes'];   // an unrelated exposure change
+    await w.meta('source').set(draft);
+    const { source: stored, updateTime } = await PR.readDraftFrom(w.fs, FISCAL);
+    const live = buildSourceCandidate(FISCAL, w.live); const d = buildSourceCandidate(FISCAL, stored);
+    const { withConsequences } = require('./extras-consequences');
+    const diff = withConsequences(catalogDiff({ ...live.built, extras: live.inputs.extras }, { ...d.built, extras: d.inputs.extras }), { live: { ...live.built, extras: live.inputs.extras }, liveExtraRecords: live.built.extras, draftBuilt: { ...d.built, extras: d.inputs.extras }, draftExtraRecords: d.built.extras });
+    const token = issueEditToken({ rid: FISCAL, baseActiveVersionId: 'v1', sourceUpdateTime: updateTime, sourceHash: sha256(stored), diff });
+    const p = await w.ownerPublish(token);
+    assert.deepStrictEqual([p.status, p.body.error], [409, 'edit_superseded'], `${L}: premise — the owner publish refuses it too (the token no longer matches the ON diff) (${JSON.stringify(p.body).slice(0, 200)})`);
+    const r = await w.request(token);
+    // with the switch ON the category_allow change is an Extras-page op the request recomputes into the canonical diff (attachments): the
+    // hand-made token no longer matches ⇒ 409 edit_superseded — still refused before anything is written
+    assert.deepStrictEqual([r.status, r.body.error], [409, 'edit_superseded'], `${L}: the manager's request refuses it (got ${JSON.stringify(r)})`);
     assert.strictEqual(await w.slot(), null, `${L}: no request is written`);
   });
 
