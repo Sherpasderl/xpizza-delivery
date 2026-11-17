@@ -237,10 +237,12 @@ const clockAt = (t) => () => t;
     assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold')], [true, null], '🔴 RB-STALE-HOLD: at 30 days it stays');
     await RB.runNightly({ db, clock: clockAt(t0 + 61 * DAY) }, { slot: 'run' });
     assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold'), db.getAt('ledger/orders/Q/status')], [null, true, 'quarantined'], '🔴 RB-STALE-HOLD: after 60 unchanged days it leaves the open set, marked stale_hold');
+    assert.deepStrictEqual(db.getAt('ledger/stale'), { Q: true }, '🔴 RB-STALE-HOLD: listed in ledger/stale for the S6 report');
     const t3 = t0 + 70 * DAY;
     db.setAt('orders/Q/status', 'delivered'); db.setAt('orders/Q/delivered_at', t3 - HR);   // a window event
     await RB.runNightly({ db, clock: clockAt(t3) }, { slot: 'run' });
     assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold'), db.getAt('ledger/orders/Q/computed_at')], [true, null, t3], '🔴 RB-STALE-HOLD: a window event re-projects it (stale_hold cleared, back in the open set)');
+    assert.strictEqual(db.getAt('ledger/stale'), null, '🔴 RB-STALE-HOLD: and leaves ledger/stale');
   });
 
   await cell('RB-SLOT: the scheduled function picks the slot by the Honduras minute — 03:00 / 03:01 ⇒ run, 03:30 ⇒ safety', async () => {

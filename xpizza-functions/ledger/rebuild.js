@@ -10,6 +10,7 @@
 //   run record   ledger/run/{HN date} = { started_at, finished_at, attempt, stopped, counts } — counts and codes only
 //   cap          400 s of wall time, checked before each order ⇒ stopped: 'time_cap'; the 03:30 slot restarts FROM SCRATCH (the
 //                per-order replace makes a full re-run harmless) or, after a finished run, does nothing
+//   stale hold   a hold unchanged > 60 days leaves ledger/open, marked stale_hold and listed in ledger/stale (the S6 report's list)
 //   alarm        ONE create-once dispatcher_alerts/ledger_run_{date} (type contabilidad_sombra; Central renders it in «Otros / Revisar»)
 //                when the safety slot ends unfinished, or when unresolved went up vs yesterday's finished run
 // Writes ONLY ledger/orders, ledger/open, ledger/run and that alert (all server-only); never a source node.
@@ -91,12 +92,13 @@ async function rebuildOrder(db, orderId, { settings, now }) {
     // report lists it for a person; a window event still re-projects it (a new hash replaces the projection and it rejoins)
     const held = r.status === 'quarantined' || r.status === 'unresolved';
     if (!(held && stale !== true && time(since) && now - since > STALE_MS)) return { result: 'unchanged', status: r.status };
-    patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true };
+    patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true, [`ledger/stale/${orderId}`]: true };   // ledger/stale: the S6 report's list
   } else {
     const keep = r.status !== 'final';   // plan §2: every non-final order stays in discovery — a quarantined SDK order can still change with no windowed field (Codex #116 #1)
     patch = {
       [`ledger/orders/${orderId}`]: { v: 1, computed_at: now, hash_since: now, inputs_hash: hash, rate_bp: rateBp, status: r.status, reasons: r.reasons, journals: r.journals },
       [`ledger/open/${orderId}`]: keep ? true : null,
+      [`ledger/stale/${orderId}`]: null,
     };
   }
   await db.ref().update(patch);   // ONE multi-path update: open-set membership always rides the projection write
