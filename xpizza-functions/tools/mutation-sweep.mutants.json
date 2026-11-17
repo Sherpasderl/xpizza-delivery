@@ -40329,8 +40329,8 @@
   "slice": "ledger-s5",
   "label": "ledger S5 nightly rebuild: stale_hold leaves the open set in the same update",
   "file": "ledger/rebuild.js",
-  "from": "patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true };",
-  "to": "patch = { [`ledger/orders/${orderId}/stale_hold`]: true };",
+  "from": "patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true,",
+  "to": "patch = { [`ledger/orders/${orderId}/stale_hold`]: true,",
   "command": [
    "node",
    "ledger/rebuild.test.js"
@@ -40346,6 +40346,36 @@
   "file": "ledger/rebuild.js",
   "from": "computed_at: now, hash_since: now,",
   "to": "computed_at: now,",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st5-stale-listed",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a stale hold is listed in ledger/stale",
+  "file": "ledger/rebuild.js",
+  "from": ", [`ledger/stale/${orderId}`]: true };",
+  "to": " };",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st6-stale-cleared",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a re-projection leaves ledger/stale",
+  "file": "ledger/rebuild.js",
+  "from": "      [`ledger/stale/${orderId}`]: null,\n",
+  "to": "",
   "command": [
    "node",
    "ledger/rebuild.test.js"
