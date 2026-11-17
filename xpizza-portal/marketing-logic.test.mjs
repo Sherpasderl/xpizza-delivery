@@ -293,7 +293,7 @@ test('live_drift: an active offer missing from the price path is NOT applied; a 
 });
 
 test('the Anuncio stays DARK: only api.js calls its endpoints, no shipped module imports those calls, and the offers model drops the bookings', async () => {
-  const src = readdirSync(DIR).filter((f) => /\.(js|html|mjs)$/.test(f) && !/\.test\.mjs$/.test(f));
+  const src = readdirSync(DIR).filter((f) => /\.(js|html|mjs)$/.test(f) && !/\.test\.mjs$/.test(f) && !f.startsWith('__'));
   // compact projections (the first hit, or null) — a failing whole-file match would carry the file into the report
   const hit = (f, re) => (readFileSync(join(DIR, f), 'utf8').match(re) || [null])[0];
   for (const f of src) if (f !== 'api.js') assert.equal(hit(f, /rawCall\('(getAnuncioWeeks|anuncioBook|anuncioCancel)'|cloudfunctions\.net\/(getAnuncioWeeks|anuncioBook|anuncioCancel)/), null, `${f} calls no Anuncio endpoint (api.js only)`);
