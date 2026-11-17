@@ -39498,5 +39498,215 @@
   "kills_with": [
    "✗ PR-REVERSING-CRASH (Codex #114 #1):"
   ]
+ },
+ {
+  "id": "ls4-r1-no-fallback",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r1-no-fallback",
+  "file": "ledger/commission-rate.js",
+  "from": "for (const scope of [rid, DEFAULT]) {",
+  "to": "for (const scope of [rid]) {",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r2-exclusive",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r2-exclusive",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!validEntry(e) || e.effective_from > at) continue;",
+  "to": "if (!validEntry(e) || e.effective_from >= at) continue;",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r3-default-first",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r3-default-first",
+  "file": "ledger/commission-rate.js",
+  "from": "for (const scope of [rid, DEFAULT]) {",
+  "to": "for (const scope of [DEFAULT, rid]) {",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-RESTAURANT:"
+  ]
+ },
+ {
+  "id": "ls4-r4-retro",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the first cell asserting the effective_from filter is CR-DEFAULT (a later entry takes over only from its instant)",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!validEntry(e) || e.effective_from > at) continue;",
+  "to": "if (!validEntry(e)) continue;",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r5-bounds",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r5-bounds",
+  "file": "ledger/commission-rate.js",
+  "from": "&& e.bp >= MIN_BP && e.bp <= MAX_BP",
+  "to": "&& e.bp >= MIN_BP",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-MALFORMED:"
+  ]
+ },
+ {
+  "id": "ls4-r6-reserved",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r6-reserved",
+  "file": "ledger/commission-rate.js",
+  "from": "&& RID.test(rid) && rid !== DEFAULT;",
+  "to": "&& RID.test(rid);",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-MALFORMED:"
+  ]
+ },
+ {
+  "id": "ls4-r7-tie",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r7-tie",
+  "file": "ledger/commission-rate.js",
+  "from": "(e.effective_from === best.e.effective_from && key > best.key)",
+  "to": "(e.effective_from === best.e.effective_from && key < best.key)",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-TIE:"
+  ]
+ },
+ {
+  "id": "ls4-c1-past",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c1-past",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (entry.effective_from < now) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c2-dup",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c2-dup",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (same.length) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c3-ahead",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c3-ahead",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (entry.effective_from > now + R.MAX_AHEAD_MS) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c4-existing-key",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c4-existing-key",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if ((await ref.once('value')).val() !== null) throw new Error(",
+  "to": "  if (false) throw new Error(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-APPEND:"
+  ]
+ },
+ {
+  "id": "ls4-c5-append-past",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c5-append-past",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (!R.validEntry(entry) || entry.effective_from < now || entry.effective_from > now + R.MAX_AHEAD_MS) throw",
+  "to": "if (!R.validEntry(entry)) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-APPEND:"
+  ]
+ },
+ {
+  "id": "ls4-c6-scope",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c6-scope",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (out.scope === undefined || !(out.scope === R.DEFAULT || R.validRid(out.scope))) return",
+  "to": "if (out.scope === undefined) return",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-c7-allow-past",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c7-allow-past",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "const known = new Set(['--project', '--scope', '--bp', '--effective-from', '--apply']);",
+  "to": "const known = new Set(['--project', '--scope', '--bp', '--effective-from', '--apply', '--allow-past']);",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
  }
 ]
