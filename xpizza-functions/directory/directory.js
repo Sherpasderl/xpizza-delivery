@@ -10,7 +10,7 @@
 //   loadSchedule(rid)        → schedule/load-schedule (S4 C′)  {valid, hours, cfg, source}  (throw ⇒ schedule unavailable)
 //   readPresentation(rid)    → restaurants/{rid}/presentation | null                  (throw ⇒ degraded, partial)
 //   pricingView(rid, id)     → the Sherpa delivery readers (wired later, on a base with the delivery modules):
-//                              { fee:{state:'priced',from_cents}|{state:'none'|'invalid'}, promo:{free_delivery,label}|null,
+//                              { fee:{state:'priced',from_cents}|{state:'none'|'invalid'}, promo:{free_delivery,label,basis?}|null,
 //                                coverage_km:number|null }                           (throw ⇒ fee unavailable, partial)
 // house ids are served UNFILTERED (no catalog dependency; the client MenuCache drops ids its loaded menu lacks).
 //   offerFlag(rid)           → catalog/offers-serve offerFlagOf (3a) {offers:[…]} | null  (throw ⇒ absent; never partial)
@@ -55,7 +55,7 @@ function feeOf(f) {
 }
 function promoOf(p) {
   if (!p || typeof p !== 'object') return null;
-  return { free_delivery: p.free_delivery === true, label: typeof p.label === 'string' && p.label.length ? p.label : null };
+  return { free_delivery: p.free_delivery === true, label: typeof p.label === 'string' && p.label.length ? p.label : null, ...(p.basis === 'pricing' ? { basis: 'pricing' } : {}) };   // Q-D: basis only when the promo IS the quote's read (pricing-view.js); capp claims nothing else
 }
 
 // the store's offer hint, field by field (the flag's own shape, never trusted blind) ⇒ { offers } | null

@@ -1,7 +1,7 @@
 'use strict';
-// S7a directory — the production readers, each the ONE shared reader of its value. pricingView is NOT built here: it comes
-// from the Sherpa delivery readers (delivery/delivery-pricing.js minBandCents + readPricing promo_label + the coverageKm
-// export), wired in ONE later commit on a base that contains both the train and the customer-app line.
+// S7a directory — the production readers, each the ONE shared reader of its value. pricingView is NOT built here: it is
+// directory/pricing-view.js makePricingView({ rtdb }) (Q-D: the quote's own delivery-wire.loadPricing read), injected by the ONE later
+// commit that wires the directory on a base that contains both the train and the customer-app line.
 const { activityWithSource } = require('../catalog/public-menu');
 const { loadSchedule } = require('../schedule/load-schedule');
 const { readCustomerAppPlatform } = require('./platform-config');

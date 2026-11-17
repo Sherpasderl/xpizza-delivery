@@ -32,7 +32,9 @@ const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf
 }
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'AUDIENCE: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  // asm11: directory wiring (5f, merged after this layer: one disjoint index.js export line) is peeled first on the raw read
+  const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');   // the layer's own guard: its BASE already holds D4 (as mktprice-wiring's raw read)
+  const disk = require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, raw);
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `AUDIENCE: non-vacuity — ${F} carries the audience hunks`);
   assert.strictEqual(unapplyAudienceModule(F, disk), base, `AUDIENCE: 🔴 ${F} minus the audience hunks is not ${BASE}:${F}`);
