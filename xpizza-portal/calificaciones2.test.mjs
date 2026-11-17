@@ -66,8 +66,9 @@ test('P4 rows: the REAL first page ⇒ ONLY { rid, stars, comment, ratedOn, edit
     { rid: 'x_pizza', stars: 4, comment: null, ratedOn: '2026-11-12', edited: false, customer: null, tone: null },
   ], 'P4: a named row and an unnamed one (no customer key ⇒ «Cliente»)');
   assert.ok(Number.isInteger(st.rows[0].tone) && st.rows[0].tone >= 0 && st.rows[0].tone <= 4, 'the served tone digit');
-  // the frozen first page (3a merchant-reviews.test §24): its rows map the same way
-  const frozen = JSON.parse(readFileSync(join(DIR, '..', '..', 'xpizza-D4c-grill', 'NOTE-reviews-v2-frozen-response.json'), 'utf8'));
+  // the frozen first page (3a merchant-reviews.test §24): its rows map the same way. In-repo fixture, byte-identical to 3a's
+  // D4c-grill/NOTE-reviews-v2-frozen-response.json (sha256 8203d9b5…fb76) — read from outside the repo it failed in any other checkout
+  const frozen = JSON.parse(readFileSync(join(DIR, 'reviews-v2-frozen-response.fixture.json'), 'utf8'));
   assert.deepEqual(frozen.reviews.map(L.reviewRow), [
     { rid: 'x_pizza', stars: 4, comment: null, ratedOn: '2026-11-02', edited: false, customer: null, tone: null },
     { rid: 'x_pizza', stars: 5, comment: 'Excelente', ratedOn: '2026-11-02', edited: false, customer: 'Ana P.', tone: 3 },
