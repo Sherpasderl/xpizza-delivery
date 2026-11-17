@@ -40383,5 +40383,230 @@
   "kills_with": [
    "✗ RB-STALE-HOLD:"
   ]
+ },
+ {
+  "id": "ls6-r1-cohort",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: only orders created at or after the ledger start count on the ledger side",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!(time(o.created_at) && o.created_at >= start)) {",
+  "to": "if (false) {",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-r2-first-day",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a partial first day is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (from <= ST.dateOf(start)) throw",
+  "to": "if (false) throw",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-r3-sdk-column",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the SDK placed-not-captured column",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (o.payment_flow === 'sdk_auth_v1' && o.payment_placed && !sale) r.sdk_placed_not_captured += 1;",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-SDK:"
+  ]
+ },
+ {
+  "id": "ls6-r4-not-projected",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a cohort order with no projection is a gap",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!p) { completeness.not_projected += 1; continue; }",
+  "to": "if (!p) { continue; }",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COMPLETENESS:"
+  ]
+ },
+ {
+  "id": "ls6-r6-quarantine-off",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a quarantined order never counts on the ledger side",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "    if (p.status === 'quarantined') continue;\n",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COMPLETENESS:"
+  ]
+ },
+ {
+  "id": "ls6-r7-food",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: ledger food = total − net envío − tip",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "r.ledger.cents += foodParts(snap).food;",
+  "to": "r.ledger.cents += snap.total_cents;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-MATCH:"
+  ]
+ },
+ {
+  "id": "ls6-r8-accrual-only",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: accrual-only = cash sales with cash_not_evidenced",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if ((p.reasons || []).includes('cash_not_evidenced')) cash.accrual_only += 1;",
+  "to": "cash.accrual_only += 1;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CASH:"
+  ]
+ },
+ {
+  "id": "ls6-r9-card-delivery",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: card_delivery is counted apart",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (o.payment_method === 'card_delivery') cash.card_delivery_sales += 1;",
+  "to": "if (o.payment_method === 'cash') cash.card_delivery_sales += 1;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CASH:"
+  ]
+ },
+ {
+  "id": "ls6-r10-week-overlap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: only weeks overlapping the range",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "return b.start < hi && b.end > lo;",
+  "to": "return true;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-r11-paid",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: paid counts only paid drivers",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "paid: ds.filter((d) => d && d.paid).length",
+  "to": "paid: ds.filter((d) => d).length",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-r12-missing-runs",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: dates with no run record are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const missing = dates.filter((d) => !has(d));",
+  "to": "const missing = [];",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COVERAGE + NO-PII:"
+  ]
+ },
+ {
+  "id": "ls6-r13-stale",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: stale holds are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "for (const id of Object.keys(stale || {})) {",
+  "to": "for (const id of []) {",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-STALE:"
+  ]
+ },
+ {
+  "id": "ls6-r14-age-bucket",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the pending age buckets",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "age < 7 * DAY ? 'd1_7'",
+  "to": "age < 10 * DAY ? 'd1_7'",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COMPLETENESS:"
+  ]
+ },
+ {
+  "id": "ls6-c1-unknown-arg",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: an unknown argument (e.g. --apply) is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!(name in known)) return {",
+  "to": "if (false) return {",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CLI:"
+  ]
+ },
+ {
+  "id": "ls6-c2-from-to",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: --from after --to is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (out.from > out.to) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CLI:"
+  ]
  }
 ]
