@@ -19,7 +19,7 @@ const TERMINAL = new Set(['delivered', 'completed', 'cancelled']);
 const FULFILLED = new Set(['delivered', 'completed']);
 const UNRESOLVED = new Set(['capture_unproven', 'manual_unverified', 'manual_review', 'manual_reconciliation', 'attempt_state_unknown', 'reversal_unproven', 'reversal_pending', 'amount_mismatch', 'rate_missing', 'components_invalid', 'no_order_date']);
 // every state the writers give an attempt (Codex #114 #1): anything else is unresolved, never silently final
-const ATTEMPT_STATUS = new Set([undefined, null, 'active', 'captured', 'capturing', 'capture_unverified', 'declined', 'voided_inactive', 'manual_review', 'manual_reconciliation', 'reversing', 'refund_pending', 'refunded', 'voided']);
+const ATTEMPT_STATUS = new Set([undefined, null, 'active', 'captured', 'capturing', 'capture_unverified', 'declined', 'voided_inactive', 'manual_review', 'manual_reconciliation', 'reversing', 'refund_pending', 'refunded', 'voided', 'abandoned']);   // abandoned: resolve-manual «Descartar» (no money)
 const HOSTED_STATE = new Set([undefined, null, 'creating', 'created', 'failed_create', 'paid', 'voided', 'refund_pending', 'manual_reconciliation', 'abandoned']);
 const int = (x) => Number.isSafeInteger(x);
 const pos = (x) => (int(x) && x > 0 ? x : 0);
@@ -59,9 +59,11 @@ function attemptFacts(aid, a, refunds) {
   if (!ATTEMPT_STATUS.has(a.status) || !HOSTED_STATE.has(a.hosted_state)) return { unresolved: 'attempt_state_unknown' };
   if (a.status === 'capturing' || a.status === 'capture_unverified') return { unresolved: 'capture_unproven' };
   if (a.manual_verified) return { unresolved: 'manual_unverified' };
-  if (a.status === 'manual_review' || a.no_uuid_paid_callback) return { unresolved: 'manual_review' };
-  if (a.status === 'manual_reconciliation' || a.hosted_state === 'manual_reconciliation') return { unresolved: 'manual_reconciliation' };
+  // the bound reversal proof is evaluated FIRST (Codex #114 r2 #2): voidOrRefund's stale retry parks a voided attempt as manual_review
+  // (pixelpay-cancel.js:69), but its immutable refund row still proves the reversal; a hold stays only where no proof exists
   const boundVoid = Object.values(refunds || {}).some((r) => r && r.attempt_id === aid && r.voided === true && r.code !== 'no_payment_to_void');
+  if ((a.status === 'manual_review' || a.no_uuid_paid_callback) && !boundVoid) return { unresolved: 'manual_review' };
+  if (a.status === 'manual_reconciliation' || a.hosted_state === 'manual_reconciliation') return { unresolved: 'manual_reconciliation' };
   const reversed = a.status === 'refunded' || a.status === 'voided' || a.hosted_state === 'voided' || boundVoid;
   const pending = !reversed && (a.status === 'refund_pending' || a.status === 'reversing' || a.hosted_state === 'refund_pending');
   if (a.mismatch_reason) {   // a mismatched capture (S2 evidence): its PROVIDER amount, whatever became of the void

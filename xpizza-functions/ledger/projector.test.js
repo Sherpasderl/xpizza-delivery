@@ -168,6 +168,12 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     const withEv = proj(db);
     assert.ok(Object.values(db.getAt('refund_attempts')).some((r) => r.voided === true), 'premise: the immutable refund evidence exists');
     assert.deepStrictEqual([byFamily(withEv, 'collection').length, byFamily(withEv, 'reversal').length, withEv.reasons.includes('reversal_pending')], [1, 1, false], '🔴 PR-REVERSING-CRASH: the bound refund evidence proves ONE reversal');
+    // Codex #114 r2 #2: the REAL stale retry (> 2 min later) marks the attempt manual_review — the bound proof still decides: ONE reversal
+    await require('../pixelpay-cancel').voidOrRefund({ db, client: { voidTransaction: async () => ({ ok: true }) }, alert: () => {} }, { orderId: 'O1', attemptId: A, pixelpayOrderId: `O1-${A}`, paymentUuid: 'P-1', reason: 'cancel', now: ORDER_AT + 70000 + 3 * 60000 });
+    assert.strictEqual(db.getAt(`payment_attempts/${A}`).status, 'manual_review', 'premise: the real stale retry parked it for manual review');
+    const after = proj(db);
+    assert.deepStrictEqual([byFamily(after, 'reversal').length, after.reasons.includes('manual_review'), after.reasons.includes('reversal_pending')], [1, false, false], '🔴 PR-REVERSING-CRASH: after the stale retry the bound proof still gives ONE reversal');
+    assert.deepStrictEqual([proj(db, { refunds: null }).status], ['unresolved'], '🔴 PR-REVERSING-CRASH: without the proof the stale retry stays a hold');
   });
 
   await cell('PR-MANUAL-STATES (Codex #114 #1): a paid callback with NO payment uuid on a cancelled order (manual_review) and a callback failing verification (manual_reconciliation) — the REAL webhook — are unresolved, never final', async () => {
@@ -205,6 +211,15 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     assert.deepStrictEqual([o.status, o.resolution, !!o.fulfilled_offline_at], ['completed', 'offline_fulfilled', true], `premise: the real offline close (${JSON.stringify(r)})`);
     const out = proj(db);
     assert.deepStrictEqual([out.status, out.reasons.includes('manual_unverified'), byFamily(out, 'collection').length, byFamily(out, 'commission').length], ['unresolved', true, 0, 0], '🔴 PR-OFFLINE');
+  });
+
+  await cell('PR-ABANDON (Codex #114 r2 #1): the REAL resolver «Descartar» (abandon) on an unpaid order — attempt status + hosted_state abandoned — is FINAL with nothing posted (a known state, never attempt_state_unknown)', async () => {
+    const db = hostedWorld({ restaurant_id: 'tb_rest', payment_status: 'manual_reconciliation', status: 'new', blocked_reason: 'x' });
+    const r = await require('../resolve-manual').resolveManualReconciliationCore({ db, client: {}, alert: async () => {}, sanitizeText: (x) => x, serverTimestamp: ORDER_AT + 2 }, { orderId: 'O1', action: 'abandon', actor: 'disp@x', note: 'x', now: ORDER_AT + 2, claimId: 'C1' });
+    const att = db.getAt(`payment_attempts/${A}`);
+    assert.deepStrictEqual([att.status, att.hosted_state, db.getAt('orders/O1/status')], ['abandoned', 'abandoned', 'cancelled'], `premise: the real abandon (${JSON.stringify(r)})`);
+    const out = proj(db);
+    assert.deepStrictEqual([out.status, out.reasons, Object.keys(out.journals).length], ['final', [], 0], '🔴 PR-ABANDON');
   });
 
   await cell('PR-ZERO-FOOD (Codex #114 #5): a 100 %-off offer (L150 off L150) charged only net envío + tip ⇒ no commission journal, the collection / envío / tip intact, no throw', async () => {
