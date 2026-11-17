@@ -2930,6 +2930,7 @@
   "index.js",
   "ledger/alloc-snapshot.js",
   "ledger/capture-evidence.js",
+  "ledger/projector.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
@@ -7164,6 +7165,10 @@
    "lifts": [
     "xpizza-functions/ledger-writes.guard.test.js"
    ]
+  },
+  "ledger/projector.js": {
+   "pins": [],
+   "lifts": []
   },
   "lib/driver-admin-ops.js": {
    "pins": [],
