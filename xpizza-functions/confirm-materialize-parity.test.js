@@ -96,7 +96,11 @@ async function run(mod, init, clientOpts, { withHubFor }) {
     const o = await run(OLD, init, c, { withHubFor: false });
     const v = await run(NEW, init, c, { withHubFor: true });
     assert.deepStrictEqual(v.outcome, o.outcome, `${label}: outcome`);
-    assert.deepStrictEqual(v.root, o.root, `${label}: the ENTIRE database after the run is byte-identical`);
+    // LEDGER S2 (PLAN-5f-ledger-shadow-s1-r3 §5): the ONE authorized addition — payment_attempts/*/capture_evidence on the mismatch void
+    // (here 'declined capture': captured but not approved ⇒ void); everything else stays byte-identical
+    const noEv = (r) => { const c = JSON.parse(JSON.stringify(r)); for (const a of Object.values(c.payment_attempts || {})) if (a) for (const k of Object.keys(a)) if (k.startsWith('capture_evidence')) delete a[k]; return c; };   // this mock keeps an update's path key literally
+    assert.deepStrictEqual(noEv(v.root), o.root, `${label}: the ENTIRE database after the run is byte-identical (minus the S2 capture evidence)`);
+    assert.strictEqual(!!JSON.stringify(v.root).includes('capture_evidence'), label === 'declined capture', `${label}: capture evidence exactly on the mismatch void`);
     assert.deepStrictEqual(v.calls, o.calls, `${label}: PixelPay calls (capture / status / void)`);
     assert.deepStrictEqual(v.alerts, o.alerts, `${label}: alerts`);
     assert.deepStrictEqual(v.hubReads, [], `${label}: no identity read`);

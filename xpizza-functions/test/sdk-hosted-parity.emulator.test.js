@@ -17,6 +17,7 @@ let CLOCK = REAL_NOW() + 3600 * 1000;
 Date.now = () => CLOCK;
 
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const fsys = require('fs');
@@ -115,6 +116,34 @@ async function wipe() {
   await rtdb.ref().remove();
 }
 // random ids renamed in first-appearance order (type-preserving otherwise)
+// LEDGER S1 (cb008ac98): the TIP's DECLARED snapshot writes — the ledger_alloc/<oid> key of the cash create update and the `ledger` field
+// of the hosted claim transaction. EACH removed write's OWN payload (Codex #120 #2) is checked against the real writer (test/_ledger-
+// declared: alloc-snapshot of the STORED order, the posted body, the sent headers) and BOUND to this request's order id; the cash
+// payload carries the server-timestamp sentinel as created_at (resolved by the same write), the hosted one the committed order time
+// (bounded). Only that key / that field is removed from that ONE write; every other byte stays compared. → the number removed
+async function declareLedger(writes, body, hdr) {
+  let n = 0; const oid = body && body.order_id;
+  const order = oid ? (await rtdb.ref(`orders/${oid}`).get()).val() : null;
+  for (const e of writes) {
+    if (e.op === 'update' && e.path === '' && e.value && typeof e.value === 'object') {
+      for (const k of Object.keys(e.value)) {
+        if (!/^ledger_alloc\//.test(k)) continue;
+        assert.strictEqual(k, `ledger_alloc/${oid}`, `🔴 parity: the snapshot key is bound to THIS request's order (${k} vs ${oid})`);
+        const payload = e.value[k]; const expected = LD.expectedSnapshot(order, { body, headers: hdr });
+        assert.deepStrictEqual(payload && payload.created_at, { '.sv': 'timestamp' }, `🔴 parity ${k}: the written created_at is the server-timestamp sentinel`);
+        const { created_at: _p, ...pRest } = payload; const { created_at: _e, ...eRest } = expected;
+        assert.deepStrictEqual(LD.stored(pRest), eRest, `🔴 parity ${k}: the WRITTEN payload is exactly the real writer's (alloc-snapshot of the stored order)`);
+        delete e.value[k]; n += 1;
+      }
+    }
+    if (e.op === 'transaction' && /^payment_attempts\/[^/]+$/.test(e.path) && e.value && typeof e.value === 'object' && e.value.ledger) {
+      assert.strictEqual(e.value.order_id, oid, `🔴 parity: the claimed attempt ${e.path} is bound to THIS request's order`);
+      LD.declaredLeaves({ root: `${e.path}/ledger`, written: e.value.ledger, expected: LD.expectedSnapshot(order, { body, headers: hdr, hosted: true }), label: `parity ${e.path}/ledger (the written payload)`, createdAtSkewMs: LD.HOSTED_SKEW_MS });
+      delete e.value.ledger; n += 1;
+    }
+  }
+  return n;
+}
 function canon(x) {
   const seen = new Map(); const rename = (s) => { if (!seen.has(s)) seen.set(s, `<id${seen.size + 1}>`); return seen.get(s); };
   const TOKEN_KEY = /(attempt_id|poll_token|tracking_token|claim_id|hosted_order_id|active_attempt_id)$/;
@@ -215,6 +244,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
     let k = 0;
     for (const [name, setup, steps, intended] of MATRIX) {
       k += 1;
+      let TIP_DECL = 0;
       const runOn = async (side) => {
         CLOCK = T0 + k * 3600e3;   // the SAME instant on both sides
         REC = null; await rtdb.ref().set(S0); if (setup) await setup();
@@ -229,7 +259,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
           REC = [];
           const r = await post(kind === 'cash' ? h.createOrder : h.chargeOnlineOrder, b, hdr);
           await new Promise((res) => setTimeout(res, 400));   // fire-and-forget writes settle
-          out.push({ status: r.status, headers: r.headers, body: r.json, writes: markEchoes(REC, before) });
+          const writes = markEchoes(REC, before);
+          if (side === 'tip') TIP_DECL += await declareLedger(writes, b, hdr);   // LEDGER S1: the declared snapshot, verified then removed
+          out.push({ status: r.status, headers: r.headers, body: r.json, writes });
           REC = null;
         }
         return canon({ out });
@@ -237,6 +269,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('sdk-hoste
       const b = await runOn('base');
       assert.deepStrictEqual(b.out.map((x) => x.status), intended, `${name}: the BASE reaches its INTENDED outcome (${JSON.stringify(b.out.map((x) => [x.status, x.body]))})`);
       const t = await runOn('tip');
+      if (intended[0] === 200) assert.ok(TIP_DECL > 0, `🔴 ${name}: the tip's placement writes S1's declared snapshot (non-vacuity)`);
       assert.deepStrictEqual(t, b, `🔴 ${name}: the TIP's status / headers / body / ORDERED writes differ from the BASE`);
       ok(`${name}: base ≡ tip (${intended.join(', ')})`);
     }

@@ -90,6 +90,10 @@ const D = {
     'identity-factura-flag', 'driver-return-backfill', 'audience-backfill',
     // PAY RATE — the owner's append-only driver pay-rate CLI: parseArgs, then requireProject({ requireFlag: true }) before any client
     'set-driver-rate',
+    // LEDGER S4 — the owner's append-only commission-rate CLI (never retro): parseArgs, then requireProject({ requireFlag: true }) before any client
+    'set-commission-rate',
+    // LEDGER S6 — the owner's READ-ONLY shadow-ledger report: requireProject({ requireFlag: true }), then parseArgs, then the clients
+    'ledger-shadow-report',
     // Calificaciones v2 r6.1 §1 — the owner's ratings-disclosure CLI (dry run unless --apply): requireProject({ requireFlag: true }) before any client
     'ratings-config',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
@@ -171,6 +175,9 @@ const D = {
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/audience-backfill.test.js')]: 'unit: offer-audience — drives the marker-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
+  [F('tools/ledger-shadow-report.test.js')]: 'unit: drives the ledger-shadow-report CLI into argument / require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over the honest model',
+  [F('_honest-rtdb-model.test.js')]: 'unit: the Admin SDK only VALIDATES query bounds (synchronous, before any network) for the HRM-BOUNDS differential — an app on a dead-port database URL, never connected, deleted after',
+  [F('tools/set-commission-rate.test.js')]: 'unit: drives the set-commission-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/set-driver-rate.test.js')]: 'unit: drives the set-driver-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
@@ -260,7 +267,8 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   // 3. PROD CLIs (require-project) + functions-root PROD SCRIPTS: mixed signals ⇒ refuse; no signal ⇒ unchanged
   const ARGS = {
     [F('scripts/test-ingest.js')]: ['https://us-central1-xpizza-delivery.cloudfunctions.net/ingestDriverLocation', 'UID'],
-    [F('tools/platform-pending.js')]: ['status', '--rid', 'x_pizza'],   // valid arguments, so the run reaches requireProject (not the argument refusal)
+    [F('tools/platform-pending.js')]: ['status', '--rid', 'x_pizza'],
+    [F('tools/ledger-shadow-report.js')]: ['--start', '2026-11-10T12:00', '--from', '2026-11-12', '--to', '2026-11-13'],   // valid arguments, so the run reaches requireProject (not the argument refusal)
   };
   const EXTRA = { [F('seed_identity.js')]: { ULTRAMSG_INSTANCE_ID: 'instanceX' } };
   let cli = 0;

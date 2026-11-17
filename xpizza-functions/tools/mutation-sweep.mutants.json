@@ -39364,5 +39364,1850 @@
    "node",
    "signup-name.test.js"
   ]
+ },
+ {
+  "id": "ls3-p01-food-base",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p01-food-base",
+  "file": "ledger/projector.js",
+  "from": "return { total, tip, env, gross, promo, netEnv, food: total - netEnv - tip };",
+  "to": "return { total, tip, env, gross, promo, netEnv, food: pos(alloc.food && alloc.food.subtotal_cents) };",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-COMMISSION:"
+  ]
+ },
+ {
+  "id": "ls3-p02-halfup",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p02-halfup",
+  "file": "ledger/projector.js",
+  "from": "const halfUp = (num, den) => Math.floor((2 * num + den) / (2 * den));",
+  "to": "const halfUp = (num, den) => Math.floor(num / den);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-COMMISSION:"
+  ]
+ },
+ {
+  "id": "ls3-p03-isv",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: the first cell asserting the ISV (375 on 2500) is PR-CARD-PAID",
+  "file": "ledger/projector.js",
+  "from": "return { commission, isv: halfUp(commission * ISV_BP, 10000) };",
+  "to": "return { commission, isv: halfUp(commission * 1800, 10000) };",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p04-collection-envio",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p04-collection-envio",
+  "file": "ledger/projector.js",
+  "from": "{ account: 'delivery_revenue', cr: netEnv }, { account: 'tip_liability', cr: tip }];",
+  "to": "{ account: 'delivery_revenue', cr: netEnv + tip }];",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p05-promo",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p05-promo",
+  "file": "ledger/projector.js",
+  "from": "env.delivery_discount_funder === 'sherpa' && promo > 0 ?",
+  "to": "false ?",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-PAID:"
+  ]
+ },
+ {
+  "id": "ls3-p06-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p06-reversal",
+  "file": "ledger/projector.js",
+  "from": "        out.push(mirror('reversal', col.id, date, col));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-VOIDED:"
+  ]
+ },
+ {
+  "id": "ls3-p07-commission-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p07-commission-reversal",
+  "file": "ledger/projector.js",
+  "from": "        if (kj) out.push(mirror('commission_reversal', orderId, date, kj));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CARD-VOIDED:"
+  ]
+ },
+ {
+  "id": "ls3-p08-one-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: the reversal identity keyed off the attempt instead of its collection id",
+  "file": "ledger/projector.js",
+  "from": "        out.push(mirror('reversal', col.id, date, col));",
+  "to": "        out.push(mirror('reversal', c.key, date, col));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ONE-REVERSAL (Codex #108 r2 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p09-extra-suspense",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p09-extra-suspense",
+  "file": "ledger/projector.js",
+  "from": "{ account: 'customer_refund_suspense', cr: x.amount_cents }], 'extra'));",
+  "to": "{ account: 'restaurant_payable', cr: x.amount_cents }], 'extra'));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SUPERSEDED:"
+  ]
+ },
+ {
+  "id": "ls3-p10-cash-collect",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p10-cash-collect",
+  "file": "ledger/projector.js",
+  "from": "    reasons.add('cash_not_evidenced');\n    if (kPositive) out.push(commission());",
+  "to": "    reasons.add('cash_not_evidenced');\n    if (kPositive) out.push(commission());\n    out.push(journal('collection', orderId, date, saleLines()));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CASH:"
+  ]
+ },
+ {
+  "id": "ls3-p11-cash-fulfilled",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p11-cash-fulfilled",
+  "file": "ledger/projector.js",
+  "from": "const FULFILLED = new Set(['delivered', 'completed']);",
+  "to": "const FULFILLED = new Set(['delivered', 'completed', 'preparing']);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-CASH:"
+  ]
+ },
+ {
+  "id": "ls3-p12-app-pickup",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p12-app-pickup",
+  "file": "ledger/projector.js",
+  "from": "alloc.order_type === 'pickup' && alloc.payment_method !== 'online') return 'app_pickup_cash';",
+  "to": "false) return 'app_pickup_cash';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p14-mismatch-q",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p14-mismatch-q",
+  "file": "ledger/projector.js",
+  "from": "  if (alloc.mismatch === true) return 'mode_mismatch';\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p18-sdk-uncaptured",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p18-sdk-uncaptured",
+  "file": "ledger/projector.js",
+  "from": "if (l && int(l.amount_cents) && l.state === 'captured') cols.push(",
+  "to": "if (l && int(l.amount_cents) && (l.state === 'captured' || l.state === 'voided')) cols.push(",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK:"
+  ]
+ },
+ {
+  "id": "ls3-p19-date",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p19-date",
+  "file": "ledger/projector.js",
+  "from": "const date = order && int(order.created_at) ? order.created_at : null;",
+  "to": "const date = int(alloc.created_at) ? alloc.created_at : null;",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-DATE (Codex #110 r2 condition):"
+  ]
+ },
+ {
+  "id": "ls3-p20-rate",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p20-rate",
+  "file": "ledger/projector.js",
+  "from": "const rateOk = int(rateBp) && rateBp >= 0 && rateBp <= 10000;",
+  "to": "const rateOk = typeof rateBp === 'number' || typeof rateBp === 'string';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-RATE + PR-DETERMINISTIC:"
+  ]
+ },
+ {
+  "id": "ls3-p13-sdk-revision",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p13-sdk-revision",
+  "file": "ledger/projector.js",
+  "from": "if (sdk && ((sdk.committed_revision || 0) > 0 || pendingProjection(sdk, order))) return",
+  "to": "if (sdk && (pendingProjection(sdk, order))) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-QUARANTINE:"
+  ]
+ },
+ {
+  "id": "ls3-p15-capturing",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p15-capturing",
+  "file": "ledger/projector.js",
+  "from": "  if (a.status === 'capturing' || a.status === 'capture_unverified') return { unresolved: 'capture_unproven' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p16-manual",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p16-manual",
+  "file": "ledger/projector.js",
+  "from": "  if (a.manual_verified) return { unresolved: 'manual_unverified' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p17-mismatch-amount",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p17-mismatch-amount",
+  "file": "ledger/projector.js",
+  "from": "? { kind: 'mismatch', amount: ev.amount_cents, reversed, pending }",
+  "to": "? { kind: 'mismatch', amount: 29900, reversed, pending }",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH:"
+  ]
+ },
+ {
+  "id": "ls3-p21-state-unknown",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p21-state-unknown",
+  "file": "ledger/projector.js",
+  "from": "  if (!ATTEMPT_STATUS.has(a.status) || !HOSTED_STATE.has(a.hosted_state)) return { unresolved: 'attempt_state_unknown' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-UNRESOLVED (r3 §5):"
+  ]
+ },
+ {
+  "id": "ls3-p22-bound-void",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p22-bound-void",
+  "file": "ledger/projector.js",
+  "from": "|| a.hosted_state === 'voided' || boundVoid;",
+  "to": "|| a.hosted_state === 'voided';",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p23-sale-pending",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p23-sale-pending",
+  "file": "ledger/projector.js",
+  "from": "      if (c.pending) reasons.add('reversal_pending');\n    }\n  } else if",
+  "to": "    }\n  } else if",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p24-manual-review",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: the first cell pinning the manual_review hold is PR-REVERSING-CRASH (the stale retry without proof)",
+  "file": "ledger/projector.js",
+  "from": "  if ((a.status === 'manual_review' || a.no_uuid_paid_callback) && !boundVoid) return { unresolved: 'manual_review' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p25-manual-recon",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p25-manual-recon",
+  "file": "ledger/projector.js",
+  "from": "  if (a.status === 'manual_reconciliation' || a.hosted_state === 'manual_reconciliation') return { unresolved: 'manual_reconciliation' };\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MANUAL-STATES (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p26-mismatch-pending",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p26-mismatch-pending",
+  "file": "ledger/projector.js",
+  "from": "if (f.reversed) out.push(mirror('reversal', j.id, date, j)); else reasons.add(f.pending ? 'reversal_pending' : 'reversal_unproven');",
+  "to": "if (f.reversed) out.push(mirror('reversal', j.id, date, j));",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH-RETRY (Codex #114 #2):"
+  ]
+ },
+ {
+  "id": "ls3-p27-mismatch-indep",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p27-mismatch-indep",
+  "file": "ledger/projector.js",
+  "from": "  if (a.mismatch_reason) {   // a mismatched capture",
+  "to": "  if (a.mismatch_reason && a.status === 'voided') {   // a mismatched capture",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-MISMATCH-RETRY (Codex #114 #2):"
+  ]
+ },
+ {
+  "id": "ls3-p28-offline",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p28-offline",
+  "file": "ledger/projector.js",
+  "from": "    if (order && (order.resolution === 'offline_fulfilled' || order.fulfilled_offline_at)) reasons.add('manual_unverified');\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-OFFLINE (Codex #114 #4):"
+  ]
+ },
+ {
+  "id": "ls3-p29-zero-commission",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p29-zero-commission",
+  "file": "ledger/projector.js",
+  "from": "const kPositive = !!k && k.commission + k.isv > 0;",
+  "to": "const kPositive = !!k;",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ZERO-FOOD (Codex #114 #5):"
+  ]
+ },
+ {
+  "id": "ls3-p30-superseded",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p30-superseded",
+  "file": "ledger/projector.js",
+  "from": "      if (!c.primary || sold) {",
+  "to": "      if (false) {",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SUPERSEDED:"
+  ]
+ },
+ {
+  "id": "ls3-p31-promo-reversal",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p31-promo-reversal",
+  "file": "ledger/projector.js",
+  "from": "        if (p) out.push(mirror('envio_promo_reversal', orderId, date, p));\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-NETS-ZERO:"
+  ]
+ },
+ {
+  "id": "ls3-p32-sdk-closure",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: PR-SDK cannot decide it alone (the placed order is not terminal yet); PR-SDK-REWARD is the first cell where closure alone decides",
+  "file": "ledger/projector.js",
+  "from": "      if (!isFinanciallyClosed(sdk, order, { rewardState })) open = true;",
+  "to": "      // closure ignored",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-REWARD (Codex #114 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p33-reward-state",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p33-reward-state",
+  "file": "ledger/projector.js",
+  "from": "isFinanciallyClosed(sdk, order, { rewardState })",
+  "to": "isFinanciallyClosed(sdk, order, {})",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-REWARD (Codex #114 #3):"
+  ]
+ },
+ {
+  "id": "ls3-p34-pending-projection",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p34-pending-projection",
+  "file": "ledger/projector.js",
+  "from": "if (sdk && ((sdk.committed_revision || 0) > 0 || pendingProjection(sdk, order))) return",
+  "to": "if (sdk && ((sdk.committed_revision || 0) > 0)) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-SDK-ADJUSTED:"
+  ]
+ },
+ {
+  "id": "ls3-p35-abandoned",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p35-abandoned",
+  "file": "ledger/projector.js",
+  "from": "'voided', 'abandoned']);",
+  "to": "'voided']);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ABANDON (Codex #114 r2 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p36-proof-first",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p36-proof-first",
+  "file": "ledger/projector.js",
+  "from": "if ((a.status === 'manual_review' || a.no_uuid_paid_callback) && !boundVoid) return",
+  "to": "if ((a.status === 'manual_review' || a.no_uuid_paid_callback)) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
+  ]
+ },
+ {
+  "id": "ls4-r1-no-fallback",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r1-no-fallback",
+  "file": "ledger/commission-rate.js",
+  "from": "for (const scope of [rid, DEFAULT]) {",
+  "to": "for (const scope of [rid]) {",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r2-exclusive",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r2-exclusive",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!validEntry(e) || e.effective_from > at) continue;",
+  "to": "if (!validEntry(e) || e.effective_from >= at) continue;",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r3-default-first",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r3-default-first",
+  "file": "ledger/commission-rate.js",
+  "from": "for (const scope of [rid, DEFAULT]) {",
+  "to": "for (const scope of [DEFAULT, rid]) {",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-RESTAURANT:"
+  ]
+ },
+ {
+  "id": "ls4-r4-retro",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the first cell asserting the effective_from filter is CR-DEFAULT (a later entry takes over only from its instant)",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!validEntry(e) || e.effective_from > at) continue;",
+  "to": "if (!validEntry(e)) continue;",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-DEFAULT:"
+  ]
+ },
+ {
+  "id": "ls4-r5-bounds",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r5-bounds",
+  "file": "ledger/commission-rate.js",
+  "from": "&& e.bp >= MIN_BP && e.bp <= MAX_BP",
+  "to": "&& e.bp >= MIN_BP",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-MALFORMED:"
+  ]
+ },
+ {
+  "id": "ls4-r7-tie",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: r7-tie",
+  "file": "ledger/commission-rate.js",
+  "from": "(e.effective_from === best.e.effective_from && key > best.key)",
+  "to": "(e.effective_from === best.e.effective_from && key < best.key)",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-TIE:"
+  ]
+ },
+ {
+  "id": "ls4-c1-past",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c1-past",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (entry.effective_from < now) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c2-dup",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c2-dup",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (same.length) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c3-ahead",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c3-ahead",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (entry.effective_from > now + R.MAX_AHEAD_MS) refusals.push(",
+  "to": "  if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c4-existing-key",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c4-existing-key",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if ((await ref.once('value')).val() !== null) throw new Error(",
+  "to": "  if (false) throw new Error(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-APPEND:"
+  ]
+ },
+ {
+  "id": "ls4-c5-append-ahead",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the append backstop refuses more than 366 days ahead",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (!R.validEntry(entry) || entry.effective_from > now + R.MAX_AHEAD_MS) throw",
+  "to": "if (!R.validEntry(entry)) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-APPEND:"
+  ]
+ },
+ {
+  "id": "ls4-c6-scope",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c6-scope",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (out.scope === undefined || !(out.scope === R.DEFAULT || R.validRid(out.scope))) return",
+  "to": "if (out.scope === undefined) return",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-c7-allow-past",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: c7-allow-past",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "const known = new Set(['--project', '--scope', '--bp', '--effective-from', '--apply']);",
+  "to": "const known = new Set(['--project', '--scope', '--bp', '--effective-from', '--apply', '--allow-past']);",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-r8-rid-grammar",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the platform restaurant-id grammar (hyphenated ids)",
+  "file": "ledger/commission-rate.js",
+  "from": "typeof rid === 'string' && RID_RE.test(rid);",
+  "to": "typeof rid === 'string' && /^[a-z0-9_]{1,64}$/.test(rid) && rid !== '_default';",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-PLATFORM-RID:"
+  ]
+ },
+ {
+  "id": "ls4-r9-key-order",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the entry chosen by effective_from, never push-key order",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!best || e.effective_from > best.e.effective_from || (e.effective_from === best.e.effective_from && key > best.key)) best = { key, e };",
+  "to": "if (!best || key > best.key) best = { key, e };",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-KEY-ORDER:"
+  ]
+ },
+ {
+  "id": "ls4-c8-apply-value",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: --apply=false is refused, not read as --apply",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (eq > 0) return { error: '--apply takes no value",
+  "to": "if (false) return { error: '--apply takes no value",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-c9-lead-plan",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the 1-hour margin at planning",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  else if (entry.effective_from < now + R.MIN_LEAD_MS) refusals.push(",
+  "to": "  else if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c10-lead-at-write",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the clock re-read after the reads, before the write",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (entry.effective_from < clock() + R.MIN_LEAD_MS) throw",
+  "to": "if (entry.effective_from < now + R.MIN_LEAD_MS) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-DELAY:"
+  ]
+ },
+ {
+  "id": "ls4-c11-readback",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: a missing / differing read-back fails",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (!back || back.bp !== entry.bp || back.effective_from !== entry.effective_from) throw",
+  "to": "  if (false) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-READBACK:"
+  ]
+ },
+ {
+  "id": "ls4-c12-readback-ef",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: a read-back with a different effective_from fails",
+  "file": "tools/set-commission-rate-core.js",
+  "from": " || back.effective_from !== entry.effective_from) throw",
+  "to": ") throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-READBACK:"
+  ]
+ },
+ {
+  "id": "ls5-w1-order-windows",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: every order window is queried",
+  "file": "ledger/rebuild.js",
+  "from": "for (const c of ORDER_TIMES) {",
+  "to": "for (const c of ORDER_TIMES.slice(1)) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w2-attempt-windows",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: every attempt window is queried",
+  "file": "ledger/rebuild.js",
+  "from": "for (const c of ATTEMPT_TIMES) {",
+  "to": "for (const c of ATTEMPT_TIMES.slice(1)) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w3-21-days",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 21-day window bound",
+  "file": "ledger/rebuild.js",
+  "from": "const from = now - WINDOW_MS;",
+  "to": "const from = now - 2 * WINDOW_MS;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w4-recheck-time",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a non-numeric time never enters by the window",
+  "file": "ledger/rebuild.js",
+  "from": "if (time(o && o[c]) && o[c] >= from) add(k);",
+  "to": "add(k);",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-w5-open-set",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the open set is read",
+  "file": "ledger/rebuild.js",
+  "from": "(await db.ref('ledger/open').once(",
+  "to": "(await db.ref('ledger/open_x').once(",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-w6-extra-review",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: extra_payment_review orders are read",
+  "file": "ledger/rebuild.js",
+  "from": ".equalTo(true).once(",
+  "to": ".equalTo(false).once(",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-s1-active-attempt",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the active attempt snapshot",
+  "file": "ledger/rebuild.js",
+  "from": "if (act && act.ledger) return act.ledger;",
+  "to": "if (false) return act.ledger;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s2-ambiguous",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: ambiguous snapshots ⇒ none",
+  "file": "ledger/rebuild.js",
+  "from": "return all.length === 1 ? all[0] : null;",
+  "to": "return all.length >= 1 ? all[0] : null;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s3-sdk",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the SDK record snapshot",
+  "file": "ledger/rebuild.js",
+  "from": "if (sdk && sdk.ledger) return sdk.ledger;",
+  "to": "if (false) return sdk.ledger;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s4-alloc-first",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: ledger_alloc first",
+  "file": "ledger/rebuild.js",
+  "from": "  if (alloc) return alloc;",
+  "to": "  if (false) return alloc;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-h1-hash-skip",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: an unchanged order is not rewritten",
+  "file": "ledger/rebuild.js",
+  "from": "if (prevHash === hash) {",
+  "to": "if (false) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-NOOP:"
+  ]
+ },
+ {
+  "id": "ls5-o1-open-keep",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: unresolved stays in the open set",
+  "file": "ledger/rebuild.js",
+  "from": "const keep = r.status !== 'final';",
+  "to": "const keep = r.status === 'open';",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ORACLE:"
+  ]
+ },
+ {
+  "id": "ls5-o2-open-clear",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a final order leaves the open set",
+  "file": "ledger/rebuild.js",
+  "from": "[`ledger/open/${orderId}`]: keep ? true : null,",
+  "to": "...(keep ? { [`ledger/open/${orderId}`]: true } : {}),",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ORACLE:"
+  ]
+ },
+ {
+  "id": "ls5-c1-cap",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 400-s cap",
+  "file": "ledger/rebuild.js",
+  "from": "if (clock() - start >= CAP_MS)",
+  "to": "if (false)",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-c2-safety-noop",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: after a finished run the safety slot is a no-op",
+  "file": "ledger/rebuild.js",
+  "from": "if (prior && time(prior.finished_at)) return { outcome: 'noop' };",
+  "to": "if (false) return { outcome: 'noop' };",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-c3-attempt",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the restart is attempt 2",
+  "file": "ledger/rebuild.js",
+  "from": "attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;",
+  "to": "attempt = 1;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-a1-unfinished-alarm",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the safety slot alarms an unfinished run (the first cell pinning it is RB-ALARM)",
+  "file": "ledger/rebuild.js",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (false) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a1-unfinished-alarm",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the safety slot alarms an unfinished run (the first cell pinning it is RB-ALARM)",
+  "file": "ledger/rebuild.js",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (false) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a2-unresolved-up",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: unresolved went up ⇒ alarm",
+  "file": "ledger/rebuild.js",
+  "from": "if (y && time(y.finished_at) && y.counts",
+  "to": "if (false && y && time(y.finished_at) && y.counts",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a3-strictly-up",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: equal unresolved ⇒ no alarm",
+  "file": "ledger/rebuild.js",
+  "from": "counts.unresolved > y.counts.unresolved",
+  "to": "counts.unresolved >= y.counts.unresolved",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a4-create-once",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the alert is create-once",
+  "file": "ledger/rebuild.js",
+  "from": ".transaction((cur) => (cur === null ? payload : undefined));",
+  "to": ".transaction(() => payload);",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a5-bare-code",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: only a bare error code is stored",
+  "file": "ledger/rebuild.js",
+  "from": "typeof e.code === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(e.code) ? e.code",
+  "to": "typeof e.code === 'string' ? e.code",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-hm1-value-order",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: startAt keeps strings / objects (RTDB value order)",
+  "file": "_honest-rtdb-model.js",
+  "from": "return sel((y) => cmpV(y, b) >= 0);",
+  "to": "return sel((y) => rank(y) === rank(b) && cmpV(y, b) >= 0);",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-CHILD-START:"
+  ]
+ },
+ {
+  "id": "ls5-hm2-key-range-end",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: the key range end",
+  "file": "_honest-rtdb-model.js",
+  "from": "(b === undefined || keyCmp(k, b) <= 0)",
+  "to": "true",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-KEY-RANGE:"
+  ]
+ },
+ {
+  "id": "ls5-hm3-query-log",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: every child query is logged",
+  "file": "_honest-rtdb-model.js",
+  "from": "        queries.push({ path: p, child: c });\n",
+  "to": "",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-QUERY-LOG:"
+  ]
+ },
+ {
+  "id": "ls5-a6-not-at-run-slot",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a 03:00 failure alone is retried, not alarmed",
+  "file": "ledger/rebuild.js",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (!recorded) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-q1-quarantine-stays",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a quarantined order stays in discovery (Codex #116 #1)",
+  "file": "ledger/rebuild.js",
+  "from": "const keep = r.status !== 'final';",
+  "to": "const keep = r.status === 'open' || r.status === 'unresolved';",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-QUARANTINE-STAYS:"
+  ]
+ },
+ {
+  "id": "ls5-m1-alert-txn-before-mark",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed alert transaction blocks the completion marker",
+  "file": "ledger/rebuild.js",
+  "from": "await alarmOnce(db, date, start, ['unresolved_up'], counts);",
+  "to": "await alarmOnce(db, date, start, ['unresolved_up'], counts).catch(() => {});",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALERT-BEFORE-MARK:"
+  ]
+ },
+ {
+  "id": "ls5-m2-yesterday-before-mark",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed read of yesterday blocks the completion marker",
+  "file": "ledger/rebuild.js",
+  "from": "(await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value')).val();",
+  "to": "(await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value').catch(() => ({ val: () => null }))).val();",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALERT-BEFORE-MARK:"
+  ]
+ },
+ {
+  "id": "ls5-l1-record-write-alarm",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed record write still alarms in the safety slot",
+  "file": "ledger/rebuild.js",
+  "from": "  } catch (_) { /* the safety slot alarms below",
+  "to": "  } catch (_) { return { outcome: 'error', counts }; /* the safety slot alarms below",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-LIFECYCLE:"
+  ]
+ },
+ {
+  "id": "ls5-l2-prior-read-protected",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the run-record read is protected",
+  "file": "ledger/rebuild.js",
+  "from": "  let attempt = null; let outcome = 'finished';\n  try {\n    const prior = (await runRef.once('value')).val();",
+  "to": "  let attempt = null; let outcome = 'finished';\n  const prior = (await runRef.once('value')).val();\n  try {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-LIFECYCLE:"
+  ]
+ },
+ {
+  "id": "ls5-hm4-finite-bound",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: NaN / Infinity bounds refused as the SDK",
+  "file": "_honest-rtdb-model.js",
+  "from": "(typeof x === 'number' && Number.isFinite(x))",
+  "to": "typeof x === 'number'",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-BOUNDS:"
+  ]
+ },
+ {
+  "id": "ls5-hm5-undefined-start",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: startAt(undefined) = startAt(null) as the SDK",
+  "file": "_honest-rtdb-model.js",
+  "from": "          if (x === undefined && w === 'startAt') return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-BOUNDS:"
+  ]
+ },
+ {
+  "id": "ls5-st1-stale-leaves",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a hold unchanged > 60 days leaves the open set",
+  "file": "ledger/rebuild.js",
+  "from": "if (!(held && stale !== true && time(since) && now - since > STALE_MS)) return",
+  "to": "if (true) return",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st2-60-days",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 60-day bound",
+  "file": "ledger/rebuild.js",
+  "from": "const STALE_MS = 60 * 86400000;",
+  "to": "const STALE_MS = 20 * 86400000;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st3-clears-open",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: stale_hold leaves the open set in the same update",
+  "file": "ledger/rebuild.js",
+  "from": "patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true,",
+  "to": "patch = { [`ledger/orders/${orderId}/stale_hold`]: true,",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st4-hash-since",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: hash_since is stamped on every full write",
+  "file": "ledger/rebuild.js",
+  "from": "computed_at: now, hash_since: now,",
+  "to": "computed_at: now,",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st5-stale-listed",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a stale hold is listed in ledger/stale",
+  "file": "ledger/rebuild.js",
+  "from": ", [`ledger/stale/${orderId}`]: true };",
+  "to": " };",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st6-stale-cleared",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a re-projection leaves ledger/stale",
+  "file": "ledger/rebuild.js",
+  "from": "      [`ledger/stale/${orderId}`]: null,\n",
+  "to": "",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls6-j1-journals-not-snapshot",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the ledger side is the persisted journals, never the snapshot",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (f.food > 0 || snapFood === 0) add(r.ledger, f.food);",
+  "to": "add(r.ledger, snapFood);",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j2-collection-fault",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a wrong / missing collection is a fault",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (f.food !== owesFood) inc(out,",
+  "to": "if (false) inc(out,",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j3-commission-check",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the commission + ISV are checked",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (f.commission !== k.commission || f.isv !== k.isv) inc(out, 'commission');",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j4-unbalanced",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: an unbalanced journal is a fault",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (f.unbalanced) inc(out, 'unbalanced', f.unbalanced);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j5-cash-bridge-gated",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: cash is bridged only when its commission journal is right",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!Object.keys(faults).length) { add(r.ledger, snapFood);",
+  "to": "if (true) { add(r.ledger, snapFood);",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j6-faults-mismatch",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a journal fault alone is a mismatch",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "(diff.orders || diff.cents || Object.keys(r.journal_faults).length) ?",
+  "to": "(diff.orders || diff.cents) ?",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-k1-sdk-legs",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: capture is decided from the SDK legs",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "Object.values((rec && rec.legs) || {}).some((l) => l && l.state === 'captured');",
+  "to": "true;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-SDK:"
+  ]
+ },
+ {
+  "id": "ls6-p1-pre-cohort-subtracted",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: pre-cohort sales are subtracted from the stats side",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const stats = { orders: r.stats_raw.orders - r.pre_cohort.orders, cents: r.stats_raw.cents - r.pre_cohort.cents };",
+  "to": "const stats = { orders: r.stats_raw.orders, cents: r.stats_raw.cents };",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-p2-completed-day",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: only completed days",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (to >= ST.dateOf(now)) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-p3-first-day",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a partial first day is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (from <= ST.dateOf(start)) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-n1-stats-missing",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: missing stats are not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!r.stats_published && 'stats_missing'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-n2-stats-stale",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: stats published before the day ended are not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!(r.stats_computed_at >= end) && 'stats_stale'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-n3-ledger-rebuilt",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: no nightly run after the day ⇒ not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!(lastRun >= end) && 'ledger_not_rebuilt'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-b1-record-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the per-read record cap",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (records > MAX_RECORDS) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-BUDGET:"
+  ]
+ },
+ {
+  "id": "ls6-b2-time-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the run time cap",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (elapsedMs > MAX_MS) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-BUDGET:"
+  ]
+ },
+ {
+  "id": "ls6-s2-global-open",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the global open set by status",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "inc(global.open_status, (p && p.status) || 'not_projected');",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-SCOPE:"
+  ]
+ },
+ {
+  "id": "ls6-s3-stale",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: stale holds are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "for (const id of Object.keys(stale || {})) {",
+  "to": "for (const id of []) {",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-STALE:"
+  ]
+ },
+ {
+  "id": "ls6-c1-awaiting-bridge",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: cash awaiting fulfilment is an explicit bridge",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!isFulfilled(o)) { add(r.bridges.cash_awaiting_fulfilment, snapFood);",
+  "to": "if (!isFulfilled(o)) { (() => {})(r, snapFood);",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CASH:"
+  ]
+ },
+ {
+  "id": "ls6-d1-week-overlap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: only weeks overlapping the range",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "return b.start < hi && b.end > lo;",
+  "to": "return true;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-d2-paid",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: paid counts only paid drivers",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "paid: ds.filter((d) => d && d.paid).length",
+  "to": "paid: ds.filter((d) => d).length",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-v1-missing-runs",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: dates with no run record are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const missing = dates.filter((d) => !has(d));",
+  "to": "const missing = [];",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COVERAGE + NO-PII:"
+  ]
+ },
+ {
+  "id": "ls6-a1-unknown-arg",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: an unknown argument (e.g. --apply) is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!(name in known)) return {",
+  "to": "if (false) return {",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CLI:"
+  ]
+ },
+ {
+  "id": "ls6-a2-from-to",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: --from after --to is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (out.from > out.to) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CLI:"
+  ]
+ },
+ {
+  "id": "ls6-v1-validate-every-order",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: every projected order is validated, not only counted sales",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const faults = p ? validateOrder(o, p, snap, rec) : {};",
+  "to": "const faults = p && isSale(o) ? validateOrder(o, p, snap, rec) : {};",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v2-orphan-reversal",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a reversal that mirrors no journal is a fault",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (orphans) inc(out, 'orphan_reversal', orphans);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v3-unreversed",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a non-sale card must hold no collected food",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const owesFood = card && sale && capturedOf(o, rec) ? snapFood : 0;",
+  "to": "const owesFood = card && capturedOf(o, rec) ? snapFood : 0;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v4-outside-line",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: faults outside the counted rows are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "else inc(journal_faults_outside, k, c);",
+  "to": "else void 0;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-rc1-read-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: readSources refuses past READ_CAP rows",
+  "file": "ledger/rebuild.js",
+  "from": "if (Object.keys(o).length > READ_CAP) throw",
+  "to": "if (false) throw",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-READ-CAP:"
+  ]
  }
 ]

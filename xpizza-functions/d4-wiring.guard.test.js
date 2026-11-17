@@ -14,7 +14,7 @@ assert.strictEqual(BASE, 'fda8f0ed', 'D4-WIRING: the base is the train commit D4
 assert.deepStrictEqual([...FILES].sort(), ['catalog/charge-inputs.js', 'index.js', 'pixelpay-hosted-charge.js', 'rewards-reserve.js'], 'D4-WIRING: the owned files');
 for (const f of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, f), 'utf8');
-  const src = require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/memberreads-module-inverse').unapplyMemberReadsModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(f, require('./tools/audience-module-inverse').unapplyAudienceModule(f, require('./tools/dirwire-module-inverse').unapplyDirwireModule(f, disk))))));   // marketing price (5f, the newest layer) peeled on the raw read; train/portal-structure (5f): S2b's s2bext (merge 4) then S1-server's s1srv (disjoint index.js hunks), merged beside this lane, are peeled innermost
+  const src = require('./tools/s1srv-module-inverse').unapplyS1srvModule(f, require('./tools/memberreads-module-inverse').unapplyMemberReadsModule(f, require('./tools/s2bext-module-inverse').unapplyS2bextModule(f, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(f, require('./tools/audience-module-inverse').unapplyAudienceModule(f, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(f, require('./tools/dirwire-module-inverse').unapplyDirwireModule(f, disk)))))));   // marketing price (5f, the newest layer) peeled on the raw read; train/portal-structure (5f): S2b's s2bext (merge 4) then S1-server's s1srv (disjoint index.js hunks), merged beside this lane, are peeled innermost
   const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(src, b, `D4-WIRING: non-vacuity: ${f} differs from ${BASE}`);
   assert.strictEqual(unapplyD4Module(f, src), b, `D4-WIRING: 🔴 ${f} minus the D4 hunks is not ${BASE}:${f}`);
@@ -29,7 +29,7 @@ assert.strictEqual(unapplyD4Module('tb-unowned.js', 'x\n'), 'x\n', 'D4-WIRING: a
 ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outside caught (${HUNKS.length} hunks); unowned passes`);
 // the portal fold of index.js carries every D4 index.js hunk exactly once (the guards that read the fold peel this layer)
 {
-  const fold = require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', require('./tools/audience-module-inverse').unapplyAudienceModule('index.js', require('./tools/portal-split').foldPortalSplit()));   // marketing price (5f): its runGate hunk overlaps a D4 hunk — the newer layer peeled first
+  const fold = require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', require('./tools/audience-module-inverse').unapplyAudienceModule('index.js', require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module('index.js', require('./tools/portal-split').foldPortalSplit())));   // marketing price (5f): its runGate hunk overlaps a D4 hunk — the newer layer peeled first
   for (const h of HUNKS.filter((x) => x.file === 'index.js')) assert.strictEqual(fold.split(h.now).length - 1, 1, `D4-WIRING: an index.js hunk survives the portal fold exactly once (${h.now.slice(0, 80)})`);
   ok('the portal fold carries each D4 index.js hunk exactly once');
 }
@@ -54,6 +54,8 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
   // directly — the file minus it is its BASE (ae7ec7e35) byte for byte, where D4 sits innermost as before
   const MKT_IN_D4 = /require\('[./]*(?:tools\/)?d4-intake-inverse'\)\.unapplyD4Module\(\w+, require\('[./]*(?:tools\/)?mktprice-module-inverse'\)\.unapplyMktPriceModule\(\w+, (?:fs|fsys)\.readFileSync\(/g;
   const AUD_IN_MKT_IN_D4 = /require\('[./]*(?:tools\/)?d4-intake-inverse'\)\.unapplyD4Module\(\w+, require\('[./]*(?:tools\/)?mktprice-module-inverse'\)\.unapplyMktPriceModule\(\w+, require\('[./]*(?:tools\/)?audience-module-inverse'\)\.unapplyAudienceModule\(\w+, (?:fs|fsys)\.readFileSync\(/g;
+  // asm11 17 (ledger S1 on the audience train): D4(mktprice(audience(ledgers1(raw)))) — ledgers1 is generated against the pre-17 train tip, so it peels first, on the raw read, directly inside the audience peel
+  const LS1_IN_AUD_IN_MKT_IN_D4 = /require\('[./]*(?:tools\/)?d4-intake-inverse'\)\.unapplyD4Module\(\w+, require\('[./]*(?:tools\/)?mktprice-module-inverse'\)\.unapplyMktPriceModule\(\w+, require\('[./]*(?:tools\/)?audience-module-inverse'\)\.unapplyAudienceModule\(\w+, require\('[./]*(?:tools\/)?ledgers1-module-inverse'\)\.unapplyLedgerS1Module\(\w+, (?:fs|fsys)\.readFileSync\(/g;
   for (const f of files) {
     if (/^tools\/.*-inverse\.js$/.test(f)) continue;
     const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -61,7 +63,8 @@ ok(`${FILES.length} file(s) → ${BASE} byte-for-byte; inside / duplicate / outs
     // offer audience (5f): NEWER than mktprice and editing a mktprice line (quote-issue.js) — its peel sits on the raw read directly inside
     // the mktprice peel that feeds D4: D4(mktprice(audience(raw))); the file minus it is its BASE (eb3d1cb9c), where the chain is as before
     const audFed = new Set([...s.matchAll(AUD_IN_MKT_IN_D4)].map((m) => m.index + m[0].lastIndexOf('require(')));   // the audience call's own offset
-    const bad = [...s.matchAll(INNER)].filter((m) => m[1] !== 'd4-intake' && !(m[1] === 'mktprice-module' && fed.has(m.index)) && !(m[1] === 'audience-module' && audFed.has(m.index)));
+    const ls1Fed = new Set([...s.matchAll(LS1_IN_AUD_IN_MKT_IN_D4)].map((m) => m.index + m[0].lastIndexOf('require(')));   // the ledgers1 call's own offset (asm11 17)
+    const bad = [...s.matchAll(INNER)].filter((m) => m[1] !== 'd4-intake' && !(m[1] === 'mktprice-module' && fed.has(m.index)) && !(m[1] === 'audience-module' && audFed.has(m.index)) && !(m[1] === 'ledgers1-module' && ls1Fed.has(m.index)));
     assert.strictEqual(bad.length, 0, `D4-WIRING: ${f}: ${bad.length} raw read(s) feed the ${bad.map((m) => m[1]).join(', ')} inverse WITHOUT the D4 layer innermost`);
   }
   ok(`the D4 layer sits innermost at all ${sites} raw-read sites that compose the older layers`);

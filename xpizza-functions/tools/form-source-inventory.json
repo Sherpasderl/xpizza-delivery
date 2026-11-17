@@ -428,6 +428,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -847,6 +849,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -1354,6 +1358,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -1775,6 +1781,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -2968,6 +2976,12 @@
   "form-signal.js",
   "hosted-charge-flow.js",
   "index.js",
+  "ledger/alloc-snapshot.js",
+  "ledger/capture-evidence.js",
+  "ledger/commission-rate.js",
+  "ledger/functions.js",
+  "ledger/projector.js",
+  "ledger/rebuild.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
@@ -4367,6 +4381,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4433,6 +4448,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4503,6 +4519,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4564,6 +4581,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4609,6 +4627,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4672,6 +4691,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4726,6 +4746,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -4750,6 +4771,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4784,6 +4806,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4832,6 +4855,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4844,6 +4868,7 @@
       "tools/audience-module-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js"
      ]
     },
@@ -4867,6 +4892,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4908,6 +4934,7 @@
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4934,6 +4961,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4982,6 +5010,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5028,6 +5057,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5063,6 +5093,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5095,6 +5126,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5154,6 +5186,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5200,6 +5233,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5251,6 +5285,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5313,6 +5348,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5371,6 +5407,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5418,6 +5455,7 @@
       "tools/envlim-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -5445,6 +5483,7 @@
       "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5468,6 +5507,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5493,6 +5533,7 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/dirwire-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js"
      ]
@@ -5516,6 +5557,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5567,6 +5609,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -5616,6 +5659,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5675,6 +5719,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5726,6 +5771,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -5760,6 +5806,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -5801,6 +5848,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5843,6 +5891,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5903,6 +5952,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5956,6 +6006,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6013,6 +6064,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6076,6 +6128,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6124,6 +6177,7 @@
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6143,6 +6197,7 @@
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6159,6 +6214,7 @@
       "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6186,6 +6242,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6232,6 +6289,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6277,6 +6335,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6325,6 +6384,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6372,6 +6432,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6415,6 +6476,7 @@
       "tools/formbake-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -6463,6 +6525,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6518,6 +6581,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6556,6 +6620,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6580,6 +6645,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6603,6 +6669,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -6640,6 +6707,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6701,6 +6769,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6765,6 +6834,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6825,6 +6895,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -6869,6 +6940,7 @@
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -6926,6 +6998,7 @@
       "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6994,6 +7067,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -7049,6 +7123,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -7110,6 +7185,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -7168,6 +7244,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -7203,6 +7280,7 @@
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7243,6 +7321,7 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
@@ -7279,6 +7358,34 @@
     "xpizza-functions/tools/portal-split.js",
     "xpizza-functions/tracker-hold-inertness.guard.test.js",
     "xpizza-functions/whatsapp-brand.test.js"
+   ]
+  },
+  "ledger/alloc-snapshot.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/capture-evidence.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
+  },
+  "ledger/commission-rate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/projector.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/rebuild.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
    ]
   },
   "lib/driver-admin-ops.js": {
@@ -7592,7 +7699,9 @@
   },
   "payments/sdk/coordinator.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
   },
   "payments/sdk/decline-buckets.js": {
    "pins": [],
@@ -7883,6 +7992,7 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7892,6 +8002,7 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7902,6 +8013,7 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7909,6 +8021,7 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -7918,7 +8031,8 @@
      "file": "xpizza-functions/envlim-wiring.guard.test.js",
      "inverses": [
       "tools/d4-intake-inverse.js",
-      "tools/envlim-module-inverse.js"
+      "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js"
      ]
     },
     {
@@ -7933,7 +8047,8 @@
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/delivery/envlim-callers.guard.test.js",
-    "xpizza-functions/extras-wiring.guard.test.js"
+    "xpizza-functions/extras-wiring.guard.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js"
    ]
   },
   "pixelpay-hosted-webhook.js": {
@@ -7943,12 +8058,14 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
    "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },

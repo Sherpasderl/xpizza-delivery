@@ -129,5 +129,40 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.deepStrictEqual([d.getAt('c/new'), d.getAt('c/deep/x')], [2, 3], 'HRM-INCREMENT: set and a nested sentinel too');
   }
   ok('ServerValue.increment resolves against the previous value (absent / numeric / non-numeric)');
+  // LEDGER S5: the nightly rebuild's queries — orderByChild(c).startAt(x) / .equalTo(x) and orderByKey().startAt(a).endAt(b) — in
+  // RTDB's VALUE order (absent < false < true < numbers < strings < objects): a startAt(number) ALSO returns string / object values,
+  // as production does, so a reader must re-check the type. Every query is logged (db.queries) for the index cross-check.
+  const db7 = makeHonestDb({ o: { a: { t: 5 }, b: { t: 10 }, c: { t: 'x' }, d: {}, e: { t: { n: 1 } }, f: { t: 10, r: true }, g: { r: false } } });
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('t').startAt(10).once('value')).val()), ['b', 'f', 'c', 'e'], '🔴 HRM-CHILD-START: numbers ≥ 10, then strings, then objects (value order, ties by key)');
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('r').equalTo(true).once('value')).val()), ['f'], '🔴 HRM-CHILD-EQ: equalTo(true) is exact');
+  assert.strictEqual((await db7.ref('o').orderByChild('t').equalTo(11).once('value')).val(), null, '🔴 HRM-CHILD-EQ: no match ⇒ null');
+  const db8 = makeHonestDb({ r: { 'A-1': 1, 'A-2': 2, 'AB-1': 3, 'B-1': 4 } });
+  assert.deepStrictEqual(Object.keys((await db8.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-KEY-RANGE: a key prefix range, inclusive');
+  assert.deepStrictEqual(db7.queries.map((q) => [q.path, q.child]), [['o', 't'], ['o', 'r'], ['o', 't']], '🔴 HRM-QUERY-LOG: every child query is logged');
+  ok('orderByChild startAt / equalTo in RTDB value order; orderByKey startAt/endAt; child queries logged');
+  // Codex #116 #4: the query bounds DIFFERENTIALLY against the installed Admin SDK (it validates a bound synchronously, before any network)
+  {
+    const sdkApp = require('firebase-admin').initializeApp({ projectId: 'demo-hrm', databaseURL: 'http://127.0.0.1:1?ns=demo-hrm' }, 'hrm-bounds');
+    const sdk = sdkApp.database();
+    const db9 = makeHonestDb({ o: { a: { t: 1 }, b: { u: 1 }, c: { t: 'x' } } });
+    const BOUNDS = [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['null', null], ['undefined', undefined], ['1', 1], ['"x"', 'x'], ['true', true], ['{}', { a: 1 }], ['[]', [1]]];
+    const throws = (f) => { try { f(); return false; } catch (_) { return true; } };
+    for (const m of ['startAt', 'equalTo']) for (const [label, v] of BOUNDS) {
+      assert.strictEqual(throws(() => db9.ref('o').orderByChild('t')[m](v)), throws(() => sdk.ref('o').orderByChild('t')[m](v)), `🔴 HRM-BOUNDS: orderByChild().${m}(${label}) — the model must accept / refuse as the Admin SDK does`);
+    }
+    for (const [label, v] of BOUNDS) assert.strictEqual(throws(() => db9.ref('o').orderByKey().startAt(v)), throws(() => sdk.ref('o').orderByKey().startAt(v)), `🔴 HRM-BOUNDS: orderByKey().startAt(${label})`);
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').startAt(null).once('value')).val()), ['b', 'a', 'c'], '🔴 HRM-BOUNDS: startAt(null) keeps every child (absent first)');
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').equalTo(null).once('value')).val()), ['b'], '🔴 HRM-BOUNDS: equalTo(null) = the children without the value');
+    await sdkApp.delete();
+  }
+  ok('query bounds accepted / refused exactly as the Admin SDK (differential); null bounds behave as RTDB');
+  // LEDGER S6 r3 (Codex #118 r2 #2): the bounded reads — limitToFirst after equalTo / startAt and after a key range, in the query's order
+  {
+    const db10 = makeHonestDb({ p: { a: { o: 'X' }, b: { o: 'X' }, c: { o: 'Y' }, d: { o: 'X' } }, r: { 'A-1': 1, 'A-2': 2, 'A-3': 3 } });
+    assert.deepStrictEqual(Object.keys((await db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(2).once('value')).val()), ['a', 'b'], '🔴 HRM-LIMIT: equalTo(…).limitToFirst(2)');
+    assert.deepStrictEqual(Object.keys((await db10.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').limitToFirst(2).once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-LIMIT: a key range .limitToFirst(2)');
+    assert.throws(() => db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(0), /limitToFirst/, '🔴 HRM-LIMIT: a non-positive limit throws');
+  }
+  ok('limitToFirst after a child equalTo / startAt and after a key range (bounded reads)');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });

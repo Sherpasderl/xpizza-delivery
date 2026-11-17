@@ -12,9 +12,9 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.deepStrictEqual([...FILES].sort(), ['compute-server-net.js', 'delivery/delivery-pricing.js', 'delivery/delivery-wire.js', 'index.js', 'quote-issue.js', 'token-gate.js'], 'MKTPRICE: the owned files');
 for (const F of FILES) {
-  // offer audience (5f): the NEWER audience layer edits a mktprice line (quote-issue.js), so it is peeled first; directory wiring (5f, merged after it: one disjoint index.js export line) is peeled before it, and the 3a capp push wiring (after aaeb8f277; merged last, asm11 15) before both, on the raw read
+  // offer audience (5f): the NEWER audience layer edits a mktprice line (quote-issue.js), so it is peeled first; directory wiring (5f, merged after it) before it, the 3a capp push wiring (after aaeb8f277, asm11 15) before both, and ledger S1 (5f, asm11 17: generated against the pre-17 train tip, its hosted-call hunk inside older hunks) first of all, on the raw read
   const raw = fs.readFileSync(path.join(__dirname, F), 'utf8');
-  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule(F, require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, raw, BASE)));
+  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule(F, require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/memberreads-module-inverse').unapplyAfter(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, raw), BASE)));
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `MKTPRICE: non-vacuity — ${F} carries the marketing hunks`);
   assert.strictEqual(unapplyMktPriceModule(F, disk), base, `MKTPRICE: 🔴 ${F} minus the marketing hunks is not ${BASE}:${F}`);

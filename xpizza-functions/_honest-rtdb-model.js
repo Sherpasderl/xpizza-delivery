@@ -87,6 +87,10 @@ function makeHonestDb(initial = {}, hooks = {}) {
   const isInt = (k) => INT.test(k) && Number(k) >= -2147483648 && Number(k) <= 2147483647;
   const keyCmp = (a, b) => (isInt(a) !== isInt(b) ? (isInt(a) ? -1 : 1) : isInt(a) ? Number(a) - Number(b) : (a < b ? -1 : a > b ? 1 : 0));
   const snap = (v) => { const frozen = clone(v); return { val: () => clone(frozen), exists: () => frozen != null }; };
+  // RTDB value order (orderByValue / orderByChild): null < false < true < numbers < strings < objects
+  const rank = (v) => (v === null || v === undefined ? 0 : v === false ? 1 : v === true ? 2 : typeof v === 'number' ? 3 : typeof v === 'string' ? 4 : 5);
+  const cmpV = (a, b) => (rank(a) !== rank(b) ? rank(a) - rank(b) : rank(a) === 3 ? a - b : rank(a) === 4 ? (a < b ? -1 : a > b ? 1 : 0) : 0);
+  const queries = [];
   const api = {};
   const ref = (p = '') => {
     if (/[.#$[\]\u0000-\u001f\u007f]/.test(p)) throw new Error(`invalid RTDB path "${p}"`);   // as the Admin SDK: a path with . # $ [ ] or a control character throws at ref(), read or write
@@ -139,13 +143,47 @@ function makeHonestDb(initial = {}, hooks = {}) {
           const out = {}; for (const k of keys.slice(0, n)) out[k] = v[k];
           return snap(keys.length ? out : null);
         } });
-        return { limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(n); } };
+        // LEDGER S5: a key range (inclusive both ends, RTDB key order) — the refund rows of one attempt (`${aid}-${ts}`)
+        const lim = (n) => { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return n; };
+        const range = (a, b, n) => ({ async once() {
+          if (hooks.beforeRead) await hooks.beforeRead(p, api);
+          const v = getAt(p);
+          if (v == null || typeof v !== 'object') return snap(null);
+          const keys = Object.keys(v).filter((k) => keyCmp(k, a) >= 0 && (b === undefined || keyCmp(k, b) <= 0)).sort(keyCmp).slice(0, n);
+          const out = {}; for (const k of keys) out[k] = v[k];
+          return snap(keys.length ? out : null);
+        }, limitToFirst(m) { return range(a, b, lim(m)); } });
+        const str = (x, w) => { if (typeof x !== 'string') throw new Error(`orderByKey().${w}: a key bound must be a string`); return x; };
+        return { limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(n); },
+          startAt(a) { str(a, 'startAt'); return { ...range(a), endAt(b) { return range(a, str(b, 'endAt')); } }; } };
+      },
+      // LEDGER S5: a child-value query in RTDB VALUE order (absent < false < true < numbers < strings < objects, ties by key):
+      // startAt(x) keeps every child whose value ranks ≥ x — so a numeric startAt ALSO returns string / object values, as production
+      // does; equalTo(x) is exact (a primitive). Each query is logged in db.queries ({ path, child }) for the index cross-check.
+      orderByChild(c) {
+        if (typeof c !== 'string' || !c || RESERVED.test(c)) throw new Error(`orderByChild: invalid child "${c}"`);
+        queries.push({ path: p, child: c });
+        const cv = (x) => (x && typeof x === 'object' && x[c] !== undefined ? x[c] : null);
+        // the bounds the Admin SDK accepts (Codex #116 #4, differential cell HRM-BOUNDS): null, a boolean, a FINITE number or a string;
+        // startAt(undefined) is startAt(null), equalTo(undefined) throws; NaN / ±Infinity / objects / arrays throw
+        const prim = (x, w) => {
+          if (x === undefined && w === 'startAt') return null;
+          if (x === null || typeof x === 'boolean' || typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x))) return x;
+          throw new Error(`orderByChild().${w}: ${String(x)} is not a valid bound (null, boolean, finite number or string)`);
+        };
+        const sel = (keep, n) => ({ async once() {
+          if (hooks.beforeRead) await hooks.beforeRead(p, api);
+          const v = getAt(p);
+          if (v == null || typeof v !== 'object') return snap(null);
+          const keys = Object.keys(v).filter((k) => keep(cv(v[k]))).sort((a, b) => cmpV(cv(v[a]), cv(v[b])) || keyCmp(a, b)).slice(0, n);
+          const out = {}; for (const k of keys) out[k] = v[k];
+          return snap(keys.length ? out : null);
+        }, limitToFirst(m) { if (!Number.isInteger(m) || m < 1) throw new Error(`limitToFirst: invalid limit ${m}`); return sel(keep, m); } });
+        return { startAt(x) { const b = prim(x, 'startAt'); return sel((y) => cmpV(y, b) >= 0); }, equalTo(x) { const b = prim(x, 'equalTo'); return sel((y) => rank(y) === rank(b) && (b === null || y === b)); } };
       },
       // a value-ordered page, as RTDB orders values: null < false < true < numbers < strings < objects, ties by key;
       // endAt is inclusive; a non-positive limit throws instead of returning everything
       orderByValue() {
-        const rank = (v) => (v === null || v === undefined ? 0 : v === false ? 1 : v === true ? 2 : typeof v === 'number' ? 3 : typeof v === 'string' ? 4 : 5);
-        const cmpV = (a, b) => (rank(a) !== rank(b) ? rank(a) - rank(b) : rank(a) === 3 ? a - b : rank(a) === 4 ? (a < b ? -1 : a > b ? 1 : 0) : 0);
         const page = (end, n) => ({ async once() {
           if (hooks.beforeRead) await hooks.beforeRead(p, api);
           const v = getAt(p);
@@ -161,7 +199,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
     };
     return r;
   };
-  Object.assign(api, { ref, getAt, setAt });
+  Object.assign(api, { ref, getAt, setAt, queries });
   // a LIVE getter: Object.assign would copy a getter's value once, at creation, and every later db.root would be stale
   Object.defineProperty(api, 'root', { get: () => clone(root) || {}, enumerable: true });
   return api;

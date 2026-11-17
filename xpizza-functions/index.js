@@ -93,6 +93,7 @@ const { getIdentity: getRestaurantIdentity, hubSnapshot } = require('./restauran
 const TP = require('./tip-pref');   // PLAN-capp-tip-step r6 §1: the member's last tip, best-effort after acceptance
 /* tippref:end require */
 const { buildCreateOrderUpdates, buildScheduledOrderRecord, attachCustomerAttribution, attributionUid } = require('./create-order-build');
+const LA = () => require('./ledger/alloc-snapshot');   // LEDGER S1 (PLAN-5f-ledger-shadow-s1-r3 §1): the frozen allocation snapshot (pure, non-throwing)
 const { claimPrefillCore } = require('./claim-prefill');   // Track A — profile-claim soft-fill (pure core; wrapper below)
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
@@ -1289,6 +1290,7 @@ createOrderApp.all('*', async (req, res) => {
        reason: bind what the order was agreed against to the order itself. */
     if (quoteProvenance) heldUpdates[`orders/${orderId}`].quote = quoteProvenance;
     require('./marketing/audience-place').stampCash(heldUpdates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update
+    heldUpdates[LA().allocPath(orderId)] = LA().snapshotOf(heldUpdates[`orders/${orderId}`], LA().modeOf({ body, clientHdr }));   // LEDGER S1: rides the held order's own multi-path update
     try {
       await db.ref().update(heldUpdates);
       console.log(`createOrder: HELD scheduled ${orderType} order ${orderId} for ${scheduledForRaw} (release ${releaseAt})`);
@@ -1337,6 +1339,7 @@ createOrderApp.all('*', async (req, res) => {
      reason: bind what the order was agreed against to the order itself. */
   if (quoteProvenance) updates[`orders/${orderId}`].quote = quoteProvenance;
   require('./marketing/audience-place').stampCash(updates, orderId, dq, Date.now());   // offer-audience: the signed codes + the deadline index, same update
+  updates[LA().allocPath(orderId)] = LA().snapshotOf(updates[`orders/${orderId}`], LA().modeOf({ body, clientHdr }));   // LEDGER S1: rides the order's own multi-path update
 
   try {
     await db.ref().update(updates);
@@ -2251,6 +2254,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       /* a1:begin card-acquire-binding */
       { a8Fp: () => a8FingerprintC, fresh: cardTextVersion }, TIP.ofBody(body), PE.unconfigured(body, process.env), (o) => DW.deliveryResumeRefusal(db, o, dpP),   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
       /* a1:end card-acquire-binding */
+      LA().snapshotOf(pendingOrderRecord, LA().modeOf({ body, clientHdr })),   // LEDGER S1: rides the exclusive payment_attempts claim
     );   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
     /* extras:end card-acquire */
   } catch (e) {
@@ -4773,6 +4777,7 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
 });
 
 exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; exports.closeDriverPayWeeks = require('./driver-ledger/functions').closeDriverPayWeeks; exports.getDriverPayWeek = require('./driver-ledger/functions').getDriverPayWeek; exports.markDriverWeekPaid = require('./driver-ledger/functions').markDriverWeekPaid;   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)
+exports.rebuildLedgerNightly = require('./ledger/functions').rebuildLedgerNightly;   // LEDGER S5: the shadow ledger's nightly rebuild (ledger/rebuild.js)
 
 // clearTrackerMirrorOnDone (Phase A) — when an order leaves 'out_for_delivery' (delivered/cancelled/etc.),
 // null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The
