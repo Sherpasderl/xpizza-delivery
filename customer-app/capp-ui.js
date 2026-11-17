@@ -805,7 +805,8 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.trimNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      // Codex #117 P2: a pending trim note is cleared only by closing the CART it was shown in — an unrelated layer keeps it
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') { appUpdatedSeen(); S.trimNote = null; } layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
@@ -1854,6 +1855,10 @@
     function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }
     function openCheckout() {
       if (!mods()) return false;
+      // Codex #117 P2: a trim the customer has not seen yet ⇒ every checkout entry (Programar on a closed store included) shows the CART
+      // first; its own «Ir al checkout» proceeds (the cart is open: reviewed). On the desk store the aside IS the cart, drawn with the note
+      const cartSeen = S.layerKind === 'cart' || (S.desk && S.screen === 'store');
+      if (S.trimNote && !cartSeen) { openLayer('cart'); return false; }
       // S7a-2 (PLAN-capp-S7a r2 §2.2): the flow is created ONCE with its pin decided — a restored return flow, else this mount's
       // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
       seededFlow();
@@ -2377,7 +2382,7 @@
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
         if (canSchedule()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
-        openCheckout(); if (!canSchedule()) scheduleGate();
+        if (openCheckout() && !canSchedule()) scheduleGate();   // a pending trim opened the cart instead: no gate over it
         return;
       }
       if (act === 'closed-sched') { emit('schedule'); return; }

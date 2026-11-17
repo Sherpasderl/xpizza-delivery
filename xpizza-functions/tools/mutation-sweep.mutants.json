@@ -39276,5 +39276,59 @@
   "kills_with": [
    "TRIM-ADDPAST: the store opens"
   ]
+ },
+ {
+  "id": "extra-07",
+  "slice": "capp-extra-trim",
+  "label": "a checkout entry (Programar) skips the cart while a trim is unseen",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (S.trimNote && !cartSeen) { openLayer('cart'); return false; }\n",
+  "to": "\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-PROGRAMAR",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-PROGRAMAR: not straight to checkout"
+  ]
+ },
+ {
+  "id": "extra-08",
+  "slice": "capp-extra-trim",
+  "label": "closing ANY layer (the search) clears the pending trim note",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.layerKind === 'cart') { appUpdatedSeen(); S.trimNote = null; } layerTeardown(); S.layerKind = null; S.cartNote = null;",
+  "to": "if (S.layerKind === 'cart') { appUpdatedSeen(); } layerTeardown(); S.layerKind = null; S.trimNote = null; S.cartNote = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-SEARCH",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-SEARCH: an unrelated layer never clears"
+  ]
+ },
+ {
+  "id": "extra-09",
+  "slice": "capp-extra-trim",
+  "label": "the desk aside is not treated as the seen cart (a cart sheet stacks over the desk page)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const cartSeen = S.layerKind === 'cart' || (S.desk && S.screen === 'store');",
+  "to": "const cartSeen = S.layerKind === 'cart';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-DESK",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-DESK: the aside"
+  ]
  }
 ]

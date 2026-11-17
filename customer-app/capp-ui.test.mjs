@@ -4472,3 +4472,36 @@ test('TRIM-NOTE-STACK: a deleted dish AND a deleted extra ⇒ the existing dish-
   const { b, d, e } = await adoptedWithout(HOSTED_KEYS, [{ key: 'gone', qty: 1, ex: [{}], added: 99 }]);
   assert.deepEqual(noteTexts(b), ['1 plato ya no está disponible', `${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-STACK: both pills, in order');
 });
+
+// ── Codex #117 P2 (advisor 11-16): a PENDING trim disclosure survives until the customer has seen the cart — every checkout entry
+//    goes through the cart first while it is pending, and an unrelated layer (the store search) never clears it ──
+const TRIM_SNAP = () => { const d = PROV.x_pizza.envelope.menu.dishes.find((x) => x.name === 'Carnivora');
+  return { v: 2, lines: [{ key: String(d.dish_id), qty: 1, ex: [{ GONE_EXTRA: 1 }], added: 1, xn: { GONE_EXTRA: 'Queso extra' } }], mode: 'delivery' }; };
+const TRIM_TEXT = 'Queso extra ya no está disponible. Actualizamos tu Carnivora.';
+test('TRIM-NAV-PROGRAMAR: «Programar» on a closed store with a pending trim opens the CART (the note) first — never straight to «Entrega & Pago»; then «Ir al checkout» proceeds', async () => {
+  const b = bootS4({ at: hnT(20, 3, 0), config: HOSTED_KEYS });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  assert.ok(b.q('[data-act="closed-sched"]'), 'premise: the closed store offers «Programar»');
+  await b.click('[data-act="closed-sched"]'); await settle();
+  assert.notEqual(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-PROGRAMAR: not straight to checkout while the trim is unseen');
+  assert.deepEqual(noteTexts(b), [TRIM_TEXT], '🔴 TRIM-NAV-PROGRAMAR: the cart opens with the note');
+  await b.click('#layer [data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', 'reviewed ⇒ the checkout opens');
+});
+test('TRIM-NAV-SEARCH: opening and closing the store search keeps a pending trim — the cart opened afterwards still shows the note', async () => {
+  const b = bootCo({ config: HOSTED_KEYS });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  await b.click('[data-act="ssearch"]'); await settle();
+  assert.equal(b.ui.state.layerKind, 'ssearch', 'premise: the search is open');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  b.ui.openCart(); await settle();
+  assert.deepEqual(noteTexts(b), [TRIM_TEXT], '🔴 TRIM-NAV-SEARCH: an unrelated layer never clears the pending note');
+});
+test('TRIM-NAV-DESK: on the desk the aside IS the cart — the note shows there, and its «Ir al checkout» proceeds (no cart sheet stacked over the page)', async () => {
+  const b = bootCo({ config: HOSTED_KEYS, mountOpts: { view: { desk: () => true } } });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  assert.deepEqual(b.qa('.deskcart .cartnote').map((n) => n.textContent.trim()), [TRIM_TEXT], 'premise: the aside shows the note');
+  await b.click('.deskcart [data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-DESK: the aside\'s checkout proceeds');
+  assert.notEqual(b.ui.state.layerKind, 'cart', 'no cart sheet over the desk page');
+});
