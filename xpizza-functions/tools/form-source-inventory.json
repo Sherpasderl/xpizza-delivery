@@ -1877,6 +1877,7 @@
     "customer-app/capp-readers.test.mjs",
     "d4b-availability.test.mjs",
     "s2b-paid-text.test.mjs",
+    "tools/netlify-deploy.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
