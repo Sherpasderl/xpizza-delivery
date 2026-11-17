@@ -1238,7 +1238,11 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const out = `${r.stdout || ''}${r.stderr || ''}`;
     assert.ok(!/ReferenceError|TypeError|is not defined|is not a function/.test(out),
       `🔴 the gate crashes on its own main path: ${out.split('\n').filter((l) => /Error/.test(l))[0] || out.slice(-200)}`);
-    assert.match(out, /gate-all: 1\/1 passing/, `🔴 the gate did not complete one script end to end: ${out.slice(-300)}`);
+    /* The message carries the gate's whole failure section (each red script's `not ok` block and its full-output log
+       path, tools/gate-all-failure.test.js), not the last 300 characters: twice in slots that tail held only passing
+       test names and nobody could tell which suite failed (advisor asm11). */
+    const failSection = out.includes('\n── ') ? out.slice(out.indexOf('\n── '), out.indexOf('\n── ') + 4000) : out.slice(-300);
+    assert.match(out, /gate-all: 1\/1 passing/, `🔴 the gate did not complete one script end to end: ${failSection}`);
     assert.match(out, /\d+ cells/, 'and it reported a cell count, so the counting path ran too');
     assert.strictEqual(r.status, 0, 'a passing script leaves the gate green');
     ok('gate-all runs one real script through its whole main path — the code below require.main is executed, not only parsed');
