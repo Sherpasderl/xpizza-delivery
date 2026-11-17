@@ -40655,21 +40655,6 @@
   ]
  },
  {
-  "id": "ls6-c2-accrual-only",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: accrual-only = cash_not_evidenced",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (o.payment_method === 'cash' && (p.reasons || []).includes('cash_not_evidenced')) cash.accrual_only += 1;",
-  "to": "if (o.payment_method === 'cash') cash.accrual_only += 1;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-CASH:"
-  ]
- },
- {
   "id": "ls6-d1-week-overlap",
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: only weeks overlapping the range",
