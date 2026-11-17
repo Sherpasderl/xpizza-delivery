@@ -160,14 +160,17 @@
     return { available: () => on, shouldOffer, markOffered, snooze, enable, permission, forget, settle, held, onTap, state };
   }
 
-  // the push UI copy — OWNER-APPROVED (MOCKUP-capp-push r1 + the Q1–Q6 rulings, 11-14); every string pinned by the SHIP GATE cell.
-  // offersSub is the push-offers CONSENT text: 3a's PUSH_OFFERS_COPY_VERSION bumps whenever it changes (PUSH-COPY-VERSION pins the pair)
+  // the push UI copy — OWNER-APPROVED (MOCKUP-capp-push r1 + the Q1–Q6 rulings, 11-14; the «Notificaciones» screen and the Cuenta row:
+  // MOCKUP-capp-notificaciones 2b, owner 11-16); every string pinned by the SHIP GATE cell.
+  // offersSub is the push-offers CONSENT text: 3a's PUSH_OFFERS_COPY_VERSION bumps whenever it changes (PUSH-COPY-VERSION pins the pair) —
+  // kept under the 2b row «En tu teléfono» by advisor ruling 11-16 (consent text never changes with a layout)
   const COPY = Object.freeze({
     askTitle: '¿Te avisamos cómo va tu pedido?', askOn: 'Activar avisos', askLater: 'Ahora no', toastOn: 'Avisos activados',
     orderLinePush: 'Te avisamos con una notificación',
-    screenTitle: 'Notificaciones', ordersTitle: 'Mis pedidos', ordersSub: 'Cuando cambie el estado', offersTitle: 'Ofertas de Sherpa', offersSub: 'Promociones de los restaurantes',
+    screenTitle: 'Notificaciones', groupOrders: 'Pedidos', groupOffers: 'Ofertas', phoneTitle: 'En tu teléfono', ordersSub: 'Cuando cambie el estado', offersSub: 'Promociones de los restaurantes',
+    waTitle: 'Por WhatsApp', waSub: 'Siempre activo: es como te avisamos', promosTitle: 'Por correo y WhatsApp', promosSub: 'A tu correo y a tu WhatsApp',
     deniedTitle: 'Avisos apagados', deniedSub: 'Activalos en Ajustes del teléfono.', deniedAct: 'Abrir Ajustes',
-    rowNone: 'Estado del pedido por WhatsApp', rowOrders: 'Mis pedidos activados', rowBoth: 'Mis pedidos · Ofertas de Sherpa', rowDenied: 'Apagadas en tu teléfono',
+    rowOffers: 'Pedidos y ofertas', rowOrdersOnly: 'Solo pedidos', rowDenied: 'Apagadas en tu teléfono',
   });
   const COPY_PENDING = Object.freeze([]);
 
@@ -178,26 +181,40 @@
     tag: SVG('<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>'),
     off: SVG('<path d="M8.6 6.4A6 6 0 0 1 18 11v5l1.5 2H9"/><path d="M6 11v5l-1.5 2H5"/><path d="M10 20a2 2 0 0 0 4 0"/><path d="M4 4l16 16"/>'),
     back: SVG('<path d="M19 12H5"></path><path d="M11 18l-6-6 6-6"></path>'),
+    // MOCKUP-capp-notificaciones: the channel glyphs (single-stroke, generic; never a brand logo)
+    phone: SVG('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17h2"/>'),
+    chat: SVG('<path d="M4 5h16v11H9l-5 4z"/>'),
+    mailChat: SVG('<rect x="3" y="6" width="13" height="10" rx="2"/><path d="m3 8.5 6.5 4.5L16 8.5"/><path d="M19 10h2v9l-3-2.5h-6"/>'),
   });
   // frame 1: the soft card on «Pedido recibido», under the status line (card A, no sub-line — owner Q1)
   const askHtml = () => `<div class="px-ask" role="group" aria-label="Avisos de tu pedido"><div class="hd"><span class="ic">${ICON.bell}</span><div class="t"><b>${COPY.askTitle}</b></div></div><div class="acts"><button class="primary" data-act="push-on">${COPY.askOn}</button><button class="btn2" data-act="push-later">${COPY.askLater}</button></div></div>`;
-  // frame 4: the Cuenta row's subtitle — { granted, denied, pedidos, promociones }
+  // the ONE Cuenta row's subtitle (MOCKUP-capp-notificaciones frame 1 notes) — { denied, granted, promociones } (the phone's push) +
+  // { promos } (the email + WhatsApp consent): the phone permission denied ⇒ «Apagadas en tu teléfono»; any offers channel on ⇒
+  // «Pedidos y ofertas»; else «Solo pedidos» (order status always reaches the customer by WhatsApp)
   function rowSub(v) {
     const x = v || {};
     if (x.denied) return COPY.rowDenied;
-    if (x.granted && x.pedidos === true) return x.promociones === true ? COPY.rowBoth : COPY.rowOrders;
-    if (x.granted && x.promociones === true) return COPY.offersTitle;   // advisor 11-14: offers alone ⇒ «Ofertas de Sherpa» (no WhatsApp talk)
-    return COPY.rowNone;
+    return (x.granted && x.promociones === true) || x.promos === true ? COPY.rowOffers : COPY.rowOrdersOnly;
   }
-  // frame 2: the «Notificaciones» screen — two switches (the switch IS the consent, owner Q4); OS denied ⇒ the quiet card + «Abrir
-  // Ajustes» (owner Q5) and both switches dimmed, off, inert
+  // the «Notificaciones» screen (MOCKUP-capp-notificaciones 2b / 3, owner 11-16), grouped by topic: «Pedidos» = the phone's order
+  // alerts (push) + v6's always-on WhatsApp line; «Ofertas» = the phone's offers (push) + «Por correo y WhatsApp» — G7's ONE stored
+  // email + WhatsApp consent (setPromos), moved here unchanged. v = the push vm { app, denied, granted, pedidos, promociones, busy } +
+  // the consent { promos: true | false | null, settled }. Without the app's push (the web; advisor 11-16, a strict subset of 2b) there
+  // are no phone rows and no permission card. The OS denied ⇒ the quiet card + «Abrir Ajustes» (owner Q5) and ONLY the phone rows
+  // dimmed, off, inert; the consent switch stays live. No served consent ⇒ G7 frame 4b's inert switch (ON while loading, OFF settled)
   function screenHtml(v) {
-    const x = v || {}, dn = !!x.denied;
-    const row = (k, ic, t, sub, on) => dn
-      ? `<div class="rowbtn" aria-disabled="true">${ic}<span class="t">${t}<span>${sub}</span></span><span class="switch" role="switch" aria-checked="false" aria-disabled="true"></span></div>`
-      : `<div class="rowbtn">${ic}<span class="t">${t}<span>${sub}</span></span><button class="switch" role="switch" aria-checked="${on === true}" aria-label="${t}" data-act="push-pref" data-k="${k}"${x.busy ? ' aria-disabled="true"' : ''}></button></div>`;
+    const x = v || {}, app = x.app === true, dn = app && !!x.denied;
+    const row = (k, sub, on) => dn
+      ? `<div class="rowbtn" aria-disabled="true">${ICON.phone}<span class="t">${COPY.phoneTitle}<span>${sub}</span></span><span class="switch" role="switch" aria-checked="false" aria-disabled="true"></span></div>`
+      : `<div class="rowbtn">${ICON.phone}<span class="t">${COPY.phoneTitle}<span>${sub}</span></span><button class="switch" role="switch" aria-checked="${on === true}" aria-label="${COPY.phoneTitle}" data-act="push-pref" data-k="${k}"${x.busy ? ' aria-disabled="true"' : ''}></button></div>`;
+    const inert = typeof x.promos !== 'boolean';
+    const promos = inert
+      ? `<div class="rowbtn" data-row="promos" aria-disabled="true">${ICON.mailChat}<span class="t">${COPY.promosTitle}<span>${COPY.promosSub}</span></span><span class="switch" role="switch" aria-checked="${!x.settled}" aria-disabled="true"></span></div>`
+      : `<div class="rowbtn" data-row="promos">${ICON.mailChat}<span class="t">${COPY.promosTitle}<span>${COPY.promosSub}</span></span><button class="switch" role="switch" aria-checked="${x.promos}" aria-label="${COPY.promosTitle}" data-act="promos"></button></div>`;
     const quiet = dn ? `<div class="px-quiet"><span class="ic">${ICON.off}</span><div class="t"><b>${COPY.deniedTitle}</b><span>${COPY.deniedSub}</span><button class="lnk" data-act="push-settings">${COPY.deniedAct}</button></div></div>` : '';
-    return `<div class="topbar"><button class="iconbtn" data-act="notifs-back" aria-label="Volver">${ICON.back}</button><h1>${COPY.screenTitle}</h1><span class="sp"></span></div><div class="scroller">${quiet}<div class="rows">${row('pedidos', ICON.bell, COPY.ordersTitle, COPY.ordersSub, x.pedidos)}${row('promociones', ICON.tag, COPY.offersTitle, COPY.offersSub, x.promociones)}</div></div>`;
+    return `<div class="topbar"><button class="iconbtn" data-act="notifs-back" aria-label="Volver">${ICON.back}</button><h1>${COPY.screenTitle}</h1><span class="sp"></span></div><div class="scroller ntf">${quiet}`
+      + `<h2 class="gh">${COPY.groupOrders}</h2><div class="rows">${app ? row('pedidos', COPY.ordersSub, x.pedidos) : ''}<div class="rowbtn ntf-info">${ICON.chat}<span class="t">${COPY.waTitle}<span>${COPY.waSub}</span></span></div></div>`
+      + `<h2 class="gh">${COPY.groupOffers}</h2><div class="rows">${app ? row('promociones', COPY.offersSub, x.promociones) : ''}${promos}</div></div>`;
   }
   return { createPush, KEY, SNOOZE_MS, RETURNS_MAX, COPY, COPY_PENDING, ICON, askHtml, rowSub, screenHtml };
 });

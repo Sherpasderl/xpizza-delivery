@@ -57,3 +57,48 @@ test('S-picker checkout guard: with a country, a MEMBER\'s unreadable number is 
   assert.notEqual(C.missingStep({ ...f, cc: '1', phone: '(305) 555-0147' }, { member: { uid: 'u1' } }), C.COPY.phone);
   assert.notEqual(C.missingStep({ ...f, phone: '' }, { member: { uid: 'u1' } }), C.COPY.phone, 'no country: a member is not re-validated, as today');
 });
+
+// ── PLAN-capp-picker-served-countries r1: the pickers offer only the SERVER's countries (xpizza-functions/phone-countries.js, synced
+// into customer-app/ byte for byte), from that ONE list — never a second hand-written one ──
+const SRV = require('../xpizza-functions/phone-countries.js');
+const COPY_SRC = readFileSync(new URL('./phone-countries.js', import.meta.url), 'utf8');
+test('PS-0: the server list\'s node exports are unchanged by its dual-mode tail — same keys, same frozen list, same parseE164 on a fixed table', () => {
+  assert.deepEqual(Object.keys(SRV), ['COUNTRIES', 'parseE164'], '🔴 PS-0: the exports object keeps exactly its two keys');
+  assert.ok(Object.isFrozen(SRV.COUNTRIES));
+  assert.deepEqual(SRV.COUNTRIES, [{ cc: '504', len: 8 }, { cc: '1', len: 10 }, { cc: '502', len: 8 }, { cc: '503', len: 8 }, { cc: '505', len: 8 }, { cc: '506', len: 8 }, { cc: '52', len: 10 }, { cc: '34', len: 9 }]);
+  const e = (e164, cc, national) => ({ e164, cc, national });
+  // captured from f8f7815af (before the tail) — the server callers (signup-platform, checkout-otp) see the same answers
+  const TABLE = [['+50499990000', e('+50499990000', '504', '99990000')], ['+13055550147', e('+13055550147', '1', '3055550147')], ['+525512345678', e('+525512345678', '52', '5512345678')],
+    ['+50299990000', e('+50299990000', '502', '99990000')], ['+50399990000', e('+50399990000', '503', '99990000')], ['+50599990000', e('+50599990000', '505', '99990000')],
+    ['+50699990000', e('+50699990000', '506', '99990000')], ['+34612345678', e('+34612345678', '34', '612345678')], ['+50769999999', null], ['+5016221234', null],
+    ['+442079460958', null], ['50499990000', null], ['+5049999000', null], [' +50499990000 ', e('+50499990000', '504', '99990000')], ['+504 9999-0000', null], [null, null], [42, null]];
+  for (const [raw, want] of TABLE) assert.deepEqual(SRV.parseE164(raw), want, `🔴 PS-0: parseE164(${JSON.stringify(raw)})`);
+});
+test('PS-1: in a PAGE the list is the global PhoneCountries and nothing else leaks to the window; capp-phone reads it there', async () => {
+  const { JSDOM } = createRequire(new URL('../xpizza-functions/x.js', import.meta.url))('jsdom');
+  const w = new JSDOM('<!doctype html><body>', { runScripts: 'outside-only' }).window;
+  const before = new Set(Object.getOwnPropertyNames(w));
+  w.eval(COPY_SRC);
+  assert.deepEqual(Object.getOwnPropertyNames(w).filter((k) => !before.has(k)), ['PhoneCountries'], '🔴 PS-1: one global');
+  assert.equal(w.eval('typeof COUNTRIES'), 'undefined', '🔴 PS-1: no top-level binding shared with the other page scripts');
+  w.eval(readFileSync(new URL('./capp-phone.js', import.meta.url), 'utf8'));
+  assert.deepEqual(JSON.parse(w.eval('JSON.stringify(CappPhone.served().map((c) => c.cc))')), ['504', '1', '52', '502', '503', '505', '506', '34'], '🔴 PS-1: the page\'s picker list = the global');
+});
+test('PS-2: served() = the COUNTRIES rows whose cc the server list carries, in the picker\'s order — Panamá and Belice gone; every served cc has a format row', () => {
+  const ccs = P.served().map((c) => c.cc);
+  assert.deepEqual(new Set(ccs), new Set(SRV.COUNTRIES.map((c) => c.cc)), '🔴 PS-2: exactly the server\'s set');
+  assert.deepEqual(ccs, P.COUNTRIES.map((c) => c.cc).filter((cc) => ccs.includes(cc)), 'the mockup\'s order (Honduras first)');
+  assert.ok(!ccs.includes('507') && !ccs.includes('501'), '🔴 PS-2: no Panamá, no Belice');
+  for (const c of SRV.COUNTRIES) assert.equal(P.byCc(c.cc) && P.byCc(c.cc).len, c.len, `🔴 PS-2: +${c.cc} has a format row of the server's length (never silently missing)`);
+  assert.equal(P.COUNTRIES.length, 10, 'the parse/format table is unchanged (a saved +507 still reads)');
+});
+test('PS-3: served(extraCc) adds a member\'s own saved country (once, in order); an unknown / served / empty extra changes nothing', () => {
+  const base = P.served().map((c) => c.cc);
+  assert.deepEqual(P.served('507').map((c) => c.cc), ['504', '1', '52', '502', '503', '505', '506', '507', '34'], '🔴 PS-3: Panamá kept for its member');
+  assert.deepEqual(P.served('501').map((c) => c.cc).filter((cc) => !base.includes(cc)), ['501']);
+  for (const x of ['1', '44', '', null, undefined]) assert.deepEqual(P.served(x).map((c) => c.cc), base, `extra ${JSON.stringify(x)}`);
+});
+test('PS-4: no server list (the page missed the script) ⇒ Honduras ONLY — fail closed, never every COUNTRIES row', () => {
+  for (const src of [null, undefined, {}, { COUNTRIES: 'x' }]) assert.deepEqual(P.served(null, src === undefined ? null : src).map((c) => c.cc), ['504'], `🔴 PS-4: ${JSON.stringify(src)}`);
+  assert.deepEqual(P.served('507', null).map((c) => c.cc), ['504', '507'], 'a member\'s own country still kept');
+});

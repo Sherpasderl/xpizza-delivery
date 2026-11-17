@@ -12,7 +12,7 @@ for (const f of folders) fs.copyFileSync(SRC, path.join(ROOT, f, 'sherpa-client.
 // byte-identical across forms / KDS / server) → the customer app's folder (the platform orders deployment), so the app decides
 // availability exactly as the forms and the server do (capp-guards pins each copy byte-identical to its source)
 for (const f of [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context === 'platform').map((d) => d.folder))])
-  for (const m of ['avail-key.js', 'availability-reducer.js']) fs.copyFileSync(path.join(ROOT, 'xpizza-functions', m), path.join(ROOT, f, m));
+  for (const m of ['avail-key.js', 'availability-reducer.js', 'phone-countries.js']) fs.copyFileSync(path.join(ROOT, 'xpizza-functions', m), path.join(ROOT, f, m));
 // the order-form adapter: only the `orders` deployments' folders — the FORMS, not the customer app (context 'platform'), whose
 // own adapter is customer-app/capp-self-update.js (the forms' adapter depends on form globals; PLAN-capp-S2-r4 §2.2)
 const ORDER_SRC = path.join(ROOT, 'platform', 'client', 'order-self-update.js');

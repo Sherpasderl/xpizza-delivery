@@ -7704,7 +7704,11 @@
   },
   "phone-countries.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-phone.test.mjs",
+    "customer-app/capp-ui.test.mjs"
+   ]
   },
   "phone/flag.js": {
    "pins": [],

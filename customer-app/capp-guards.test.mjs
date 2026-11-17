@@ -37,7 +37,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
 // merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
 const BASE = '827373d6';
-const CAPP_TIP = 'b7880d0e';
+const CAPP_TIP = '2b4aae89';
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -126,6 +126,15 @@ test('no restaurant id or name in customer-app/ code', () => {
   }
 });
 
+// PLAN-capp-picker-served-countries r1: phone-countries.js (the dual-mode tail only — PS-0 pins its node exports) is ALSO the app's
+// served list: a sync-client copy (byte-pinned by capRange), loaded by the shell BEFORE capp-phone.js reads its global
+test('PS-sync: the pickers\' served list is the server\'s phone-countries.js, synced byte for byte and loaded before capp-phone.js', () => {
+  assert.ok(syncedIntoApp().some(({ src, dst }) => src === 'xpizza-functions/phone-countries.js' && dst === 'customer-app/phone-countries.js'), '🔴 PS-sync: sync-client copies the server list into the app');
+  assert.ok(sameBytes('customer-app/phone-countries.js', 'xpizza-functions/phone-countries.js'), '🔴 PS-sync: the copy is byte-identical');
+  const src = [...readFileSync(join(ROOT, 'customer-app/shell.html'), 'utf8').matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+  assert.ok(src.includes('phone-countries.js') && src.indexOf('phone-countries.js') < src.indexOf('capp-phone.js'), '🔴 PS-sync: the shell loads it before capp-phone.js');
+});
+
 test('customer-app/ is the one platform orders deployment, with exactly the approved shape (no host literal)', () => {
   const copies = ['platform/sites.json', 'xpizza-functions/platform/sites.json'].map((p) => readFileSync(join(ROOT, p), 'utf8'));
   assert.equal(copies[0], copies[1], 'premise: the bundled manifest is the canonical one');
@@ -195,7 +204,7 @@ const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contr
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'phone-countries.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const [, tip] = capRange();
   const changed = laneChanged(tip, ['xpizza-functions'])

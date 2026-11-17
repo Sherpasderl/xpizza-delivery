@@ -26051,11 +26051,29 @@
    "../review/capp-perf/capp-perf.cdp.mjs"
   ],
   "kills_with": [
-   "✗ F4-warm: the faces are LOADED",
-   "✗ F4-warm: a heading at weight"
+   "✗ F4-warm: the face is LOADED",
+   "✗ F4-warm: a heading at weight",
+   "✗ F4-warm: 400 text RENDERS"
   ],
   "equivalent": true,
   "why": "equivalent against this harness (advisor ruling (1), 2026-10-27): F4-cold measures a FRESH profile, so re-adding setCacheDisabled changes nothing it observes; non-vacuity is proven by F4-ctrl (255/451 boxes moved under the old swap policy). Killable once a warm from-cache cell exists (follow-up)"
+ },
+ {
+  "id": "f4-02",
+  "slice": "f4",
+  "label": "the face match drops the provenance check (an INSTALLED «Figtree …» passes as the web font) — Codex #113 P2",
+  "file": "../review/capp-perf/face-match.mjs",
+  "from": "  && records.some((r) => !!r && r.isCustomFont === true && (r.familyName === family || String(r.familyName).startsWith(family + ' ')));\n",
+  "to": "  && records.some((r) => !!r && (r.familyName === family || String(r.familyName).startsWith(family + ' ')));\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "../review/capp-perf/face-match.test.mjs"
+  ],
+  "kills_with": [
+   "an installed «Figtree X» must not pass as the web font"
+  ]
  },
  {
   "id": "perf-core-1",
@@ -30933,9 +30951,9 @@
   "id": "g7-07",
   "slice": "g7",
   "label": "no served promotions value ⇒ an active switch with an invented value",
-  "file": "../customer-app/capp-home.js",
-  "from": "const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';",
-  "to": "const a = vm.acct || {}, inert = false;",
+  "file": "../customer-app/capp-push.js",
+  "from": "const inert = typeof x.promos !== 'boolean';",
+  "to": "const inert = false;",
   "command": [
    "node",
    "--test",
@@ -31526,9 +31544,9 @@
   "id": "g7-26",
   "slice": "g7",
   "label": "a settled member with no stored consent draws the switch «ON»",
-  "file": "../customer-app/capp-home.js",
-  "from": "aria-checked=\"${inert ? !a.settled : a.promos}\"",
-  "to": "aria-checked=\"${inert ? true : a.promos}\"",
+  "file": "../customer-app/capp-push.js",
+  "from": "aria-checked=\"${!x.settled}\" aria-disabled=\"true\"",
+  "to": "aria-checked=\"true\" aria-disabled=\"true\"",
   "command": [
    "node",
    "--test",
@@ -38428,15 +38446,15 @@
   "slice": "capp-push",
   "label": "the denied rows are not inert",
   "file": "../customer-app/capp-push.js",
-  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ic}",
-  "to": "      ? `<div class=\"rowbtn\">${ic}",
+  "from": "      ? `<div class=\"rowbtn\" aria-disabled=\"true\">${ICON.phone}",
+  "to": "      ? `<div class=\"rowbtn\">${ICON.phone}",
   "command": [
    "node",
    "--test",
    "../customer-app/capp-push.test.mjs"
   ],
   "kills_with": [
-   "PUSH-UI: F2c"
+   "NOTIFS-DENIED: the two phone rows inert"
   ]
  },
  {
@@ -38700,8 +38718,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.pushRow && vm.pushRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.pushRow.title)}<span>${esc(vm.pushRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
   "command": [
    "node",
    "--test",
@@ -38942,6 +38960,394 @@
   ],
   "kills_with": [
    "🔴 NB-1:"
+  ]
+ },
+ {
+  "id": "notifs-01",
+  "slice": "capp-notifs",
+  "label": "the Cuenta keeps a separate «Promociones» row beside «Notificaciones»",
+  "file": "../customer-app/capp-home.js",
+  "from": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"promos\">${IC.bell}<span class=\"t\">Promociones<span>Ofertas por correo y WhatsApp</span></span></button>\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7 frame 1 / 4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-ONE-ROW: the web member"
+  ]
+ },
+ {
+  "id": "notifs-02",
+  "slice": "capp-notifs",
+  "label": "«Por correo y WhatsApp» writes the push prefs instead of the email + WhatsApp consent",
+  "file": "../customer-app/capp-push.js",
+  "from": "aria-label=\"${COPY.promosTitle}\" data-act=\"promos\"></button>",
+  "to": "aria-label=\"${COPY.promosTitle}\" data-act=\"push-pref\" data-k=\"promociones\"></button>",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-PROMOS: «Por correo y WhatsApp» is the promos switch"
+  ]
+ },
+ {
+  "id": "notifs-03",
+  "slice": "capp-notifs",
+  "label": "the phone permission off dims the email + WhatsApp consent too",
+  "file": "../customer-app/capp-push.js",
+  "from": "const inert = typeof x.promos !== 'boolean';",
+  "to": "const inert = dn || typeof x.promos !== 'boolean';",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-DENIED: the email + WhatsApp consent is NOT dimmed"
+  ]
+ },
+ {
+  "id": "notifs-04",
+  "slice": "capp-notifs",
+  "label": "the web screen draws the phone rows (no app push)",
+  "file": "../customer-app/capp-push.js",
+  "from": "const x = v || {}, app = x.app === true,",
+  "to": "const x = v || {}, app = x.app !== false,",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-WEB: no phone rows"
+  ]
+ },
+ {
+  "id": "notifs-05",
+  "slice": "capp-notifs",
+  "label": "the «Notificaciones» row opens only with the native push (the web member loses the consent)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (a === 'sub-notifs') { if (notifsOk()) nav.go({ name: 'notifs' }); return; }",
+  "to": "if (a === 'sub-notifs') { if (pushUi()) nav.go({ name: 'notifs' }); return; }",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G7 frame 1 / 4a",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-WEB-SHELL: the web member opens the screen"
+  ]
+ },
+ {
+  "id": "notifs-06",
+  "slice": "capp-notifs",
+  "label": "the Cuenta row's subtitle ignores the email + WhatsApp consent",
+  "file": "../customer-app/capp-push.js",
+  "from": "(x.granted && x.promociones === true) || x.promos === true ?",
+  "to": "(x.granted && x.promociones === true) ?",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-push.test.mjs"
+  ],
+  "kills_with": [
+   "NOTIFS-ROW: the email + WhatsApp consent counts"
+  ]
+ },
+ {
+  "id": "pickup-01",
+  "slice": "capp-pickup",
+  "label": "the choke point is gone (a pickup flow keeps cash)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';\n",
+  "to": "\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-1: a pickup flow is never cash"
+  ]
+ },
+ {
+  "id": "pickup-02",
+  "slice": "capp-pickup",
+  "label": "the choke point fixes only cash (a pickup with nothing chosen shows a selected card it will not send)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';\n",
+  "to": "      if (pickupFlow() && S.flow.pay === 'cash') S.flow.pay = 'online';\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^S2b pickup: the branch row",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-NONE: nothing chosen yet"
+  ]
+ },
+ {
+  "id": "pickup-03",
+  "slice": "capp-pickup",
+  "label": "a member at pickup gets the two-option / collapsed «Pago» again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const pago = g ? pagoGuest : !del ? pagoPickup : `",
+  "to": "      const pago = g ? pagoGuest : `",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-1: cash ABSENT at pickup"
+  ]
+ },
+ {
+  "id": "pickup-04",
+  "slice": "capp-pickup",
+  "label": "the hosted decline at pickup offers «Pagar en efectivo»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "cardOnlyGuest() || pickupFlow() ? ERR.payFailedGuest() : ERR.payFailed()",
+  "to": "cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-4",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-4: no cash exit at pickup"
+  ]
+ },
+ {
+  "id": "pickup-05",
+  "slice": "capp-pickup",
+  "label": "the in-app card chooser offers cash at pickup",
+  "file": "../customer-app/capp-ui.js",
+  "from": "cashAllowed: !cardOnlyGuest() && !pickupFlow() });",
+  "to": "cashAllowed: !cardOnlyGuest() });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-5: no cash in the chooser at pickup"
+  ]
+ },
+ {
+  "id": "pickup-06",
+  "slice": "capp-pickup",
+  "label": "the guest benefit still promises cash at pickup",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>Opción de pago en efectivo y tarjeta</span>",
+  "to": "<span>Efectivo al entregar o al recoger</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G2 frame 5b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-BENEFIT: the first benefit"
+  ]
+ },
+ {
+  "id": "extra-01",
+  "slice": "capp-extra-trim",
+  "label": "the restore drops the whole line again for a deleted extra (no trim)",
+  "file": "../customer-app/capp-cart.js",
+  "from": "              return instOf(validConfig(d.key, ks.filter((k) => offered.has(k))));\n",
+  "to": "              return instOf(validConfig(d.key, ks));\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-B: the dish kept, the extra named"
+  ]
+ },
+ {
+  "id": "extra-02",
+  "slice": "capp-extra-trim",
+  "label": "the provenance snapshot no longer stores the extras' names",
+  "file": "../customer-app/capp-cart.js",
+  "from": "seen: byKey.get(l.key).map(copySeen), xn: xnOf(l) }))",
+  "to": "seen: byKey.get(l.key).map(copySeen) }))",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAME: the provenance snapshot stores the extra"
+  ]
+ },
+ {
+  "id": "extra-03",
+  "slice": "capp-extra-trim",
+  "label": "a stored name is ignored (every trimmed extra unnamed)",
+  "file": "../customer-app/capp-cart.js",
+  "from": "t.extras.push(typeof n === 'string' && n.trim() && n.length <= 80 ? n : null);",
+  "to": "t.extras.push(null);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-B: the dish kept, the extra named"
+  ]
+ },
+ {
+  "id": "extra-04",
+  "slice": "capp-extra-trim",
+  "label": "the cart note never names the extra (always the A fallback)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "(t.extras.every((n) => typeof n === 'string')\n",
+  "to": "(false\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-B: the named note"
+  ]
+ },
+ {
+  "id": "extra-05",
+  "slice": "capp-extra-trim",
+  "label": "the restore no longer hands the trim to the cart note",
+  "file": "../customer-app/capp-ui.js",
+  "from": "S.trimNote = r.trimmed || null; S.refusal",
+  "to": "S.refusal",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-B: the named note"
+  ]
+ },
+ {
+  "id": "extra-06",
+  "slice": "capp-extra-trim",
+  "label": "«+» on a past dish adds silently over a trimmed cart",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "(rr.hydrated.dropped || rr.hydrated.trimmed)",
+  "to": "(rr.hydrated.dropped)",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-ADDPAST",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-ADDPAST: the store opens"
+  ]
+ },
+ {
+  "id": "extra-07",
+  "slice": "capp-extra-trim",
+  "label": "a checkout entry (Programar) skips the cart while a trim is unseen",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (S.trimNote && !cartSeen) { openLayer('cart'); return false; }\n",
+  "to": "\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-PROGRAMAR",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-PROGRAMAR: not straight to checkout"
+  ]
+ },
+ {
+  "id": "extra-08",
+  "slice": "capp-extra-trim",
+  "label": "closing ANY layer (the search) clears the pending trim note",
+  "file": "../customer-app/capp-ui.js",
+  "from": "if (S.layerKind === 'cart') { appUpdatedSeen(); S.trimNote = null; } layerTeardown(); S.layerKind = null; S.cartNote = null;",
+  "to": "if (S.layerKind === 'cart') { appUpdatedSeen(); } layerTeardown(); S.layerKind = null; S.trimNote = null; S.cartNote = null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-SEARCH",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-SEARCH: an unrelated layer never clears"
+  ]
+ },
+ {
+  "id": "extra-09",
+  "slice": "capp-extra-trim",
+  "label": "the desk aside is not treated as the seen cart (a cart sheet stacks over the desk page)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const cartSeen = S.layerKind === 'cart' || (S.desk && S.screen === 'store');",
+  "to": "const cartSeen = S.layerKind === 'cart';",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NAV-DESK",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAV-DESK: the aside"
+  ]
+ },
+ {
+  "id": "extra-10",
+  "slice": "capp-extra-trim",
+  "label": "the two sentences of a trim note share one block again (a mid-line join at 390)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${x.map((y) => `<span class=\"cn-s\">${esc(y)}</span>`).join(' ')}",
+  "to": "${esc(x.join(' '))}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-SENTENCES: one block per sentence"
   ]
  },
  {

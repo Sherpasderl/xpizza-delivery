@@ -431,6 +431,15 @@
       return push;
     }
     const pushUi = () => !!(S.member && pushCore() && push.available());
+    // MOCKUP-capp-notificaciones 2b (owner 11-16): ONE «Notificaciones» row on the member's Cuenta and its grouped screen, for EVERY
+    // member (the web too — advisor 11-16: a strict subset of 2b, no phone rows without the app's push). The screen carries G7's ONE
+    // email + WhatsApp consent (acctVm's promos / settled, written by togglePromos → setPromos — unchanged) beside the push prefs
+    const cappPush = () => CappPush || (CappPush = pick(o, 'CappPush', './capp-push.js'));
+    const notifsOk = () => !!(SU && S.member);
+    function notifsVm() {
+      const a = acctVm() || {};
+      return { ...(pushUi() ? { app: true, ...pushVm() } : {}), promos: typeof a.promos === 'boolean' ? a.promos : null, settled: !!a.settled };
+    }
     // Codex r1 P1-1: the ID token FOR `uid` — the session (and, for a member action, the admitted member) must be that uid both before
     // the token read and after it; a switch in between ⇒ null, nothing sent. The result of a call is re-checked by its caller
     async function tokFor(uid, { member = true } = {}) {
@@ -523,7 +532,7 @@
       renderNow(); if (ok !== true) toast('No se guardó el cambio. Intentá de nuevo.');   // G7 frame 1b's words
     }
     function pushAct(a, t) {
-      if (a === 'sub-notifs') { if (pushUi()) nav.go({ name: 'notifs' }); return; }
+      if (a === 'sub-notifs') { if (notifsOk()) nav.go({ name: 'notifs' }); return; }
       if (a === 'notifs-back') { nav.back(); return; }
       if (!pushUi()) return;
       if (a === 'push-later') { push.snooze(); if (S.order) S.order.pushAsk = false; renderNow(); return; }
@@ -730,7 +739,7 @@
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
-        if (entry.name === 'notifs') { if (!pushUi()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; pushRefresh(); renderNow(); return; }
+        if (entry.name === 'notifs') { if (!notifsOk()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; if (pushUi()) pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
         S.tab = entry.name; dir.visit(); dir.revalidate(); loadMenus();
         renderNow(x && x.restored ? x.restored : null);
@@ -857,7 +866,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), ...(pushUi() ? { pushRow: { title: CappPush.COPY.screenTitle, sub: CappPush.rowSub(pushVm()) } } : {}) } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -883,7 +892,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && pushUi() ? CappHome.shellWrap(v, CappPush.screenHtml(pushVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -1702,7 +1711,7 @@
       const core = CappUI.createCartCore({ menu: view.menu, cfg, api: () => api, mods: () => true, CappCart: pick(o, 'CappCart', './capp-cart.js'), CappSerialize: pick(o, 'CappSerialize', './capp-serialize.js') });
       // the store's own ORDER: its mount restores first (reconcile — a purchased cart cleared), then a tap mutates (frozen ⇒ refused)
       const rr = core.restore(readJ(cfg.cartKey));
-      if (rr.blocked || (rr.hydrated && rr.hydrated.dropped)) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened cart
+      if (rr.blocked || (rr.hydrated && (rr.hydrated.dropped || rr.hydrated.trimmed))) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened (or trimmed, G2) cart
       if (!core.mutate((c) => c.inc(key), true).ok) return enter(rid, key);   // frozen / not addable (a launcher) / the text cap: the store
       const snap = core.snapshotFor(rr.mode || 'delivery');
       // the store's notifyCart → the shell's onCartChange. A FAILED persist: the store's own «+» keeps the edit in its live cart —
