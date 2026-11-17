@@ -40,4 +40,16 @@ cell('CR-TIE: two valid entries at the same instant (append refuses it; defensiv
   const t = D('2026-11-20T06:00:00Z');
   assert.strictEqual(R.rateAt({ _default: { k1: { bp: 900, effective_from: t }, k2: { bp: 950, effective_from: t } } }, 'x_pizza', t + 1).key, 'k2');
 });
+cell('CR-PLATFORM-RID: the restaurant id is the PLATFORM grammar (platform-manifest RID_RE — hyphens allowed): a hyphenated id gets the default and its own rate (Codex #115 #3)', () => {
+  const H = { ...S, 'sushi-sur': { h: { bp: 600, effective_from: D('2026-12-10T06:00:00Z') } } };
+  assert.deepStrictEqual(R.rateAt(H, 'sushi-sur', D('2026-11-25T00:00:00Z')), { bp: 1000, scope: '_default', key: 'a' }, '🔴 CR-PLATFORM-RID: a hyphenated id falls back to the default');
+  assert.deepStrictEqual(R.rateAt(H, 'sushi-sur', D('2026-12-11T00:00:00Z')), { bp: 600, scope: 'sushi-sur', key: 'h' }, '🔴 CR-PLATFORM-RID: a hyphenated id has its own rate');
+  assert.strictEqual(R.validRid('sushi-sur'), true); assert.strictEqual(R.validRid('_default'), false, '_default stays reserved');
+});
+
+cell('CR-KEY-ORDER: the entry is chosen by effective_from, never by push-key order (the March entry pushed FIRST, the February one later) (Codex #115 #4)', () => {
+  const K = { _default: { k1: { bp: 1300, effective_from: D('2027-03-01T06:00:00Z') }, k2: { bp: 1100, effective_from: D('2027-02-01T06:00:00Z') } } };
+  assert.deepStrictEqual(R.rateAt(K, 'x_pizza', D('2027-02-15T00:00:00Z')), { bp: 1100, scope: '_default', key: 'k2' }, '🔴 CR-KEY-ORDER: February in effect mid-February');
+  assert.deepStrictEqual(R.rateAt(K, 'x_pizza', D('2027-04-01T00:00:00Z')), { bp: 1300, scope: '_default', key: 'k1' }, '🔴 CR-KEY-ORDER: March in effect in April although its key is SMALLER');
+});
 console.log(`commission-rate: OK (${n})`);

@@ -39575,21 +39575,6 @@
   ]
  },
  {
-  "id": "ls4-r6-reserved",
-  "slice": "ledger-s4",
-  "label": "ledger S4 commission rate: r6-reserved",
-  "file": "ledger/commission-rate.js",
-  "from": "&& RID.test(rid) && rid !== DEFAULT;",
-  "to": "&& RID.test(rid);",
-  "command": [
-   "node",
-   "ledger/commission-rate.test.js"
-  ],
-  "kills_with": [
-   "✗ CR-MALFORMED:"
-  ]
- },
- {
   "id": "ls4-r7-tie",
   "slice": "ledger-s4",
   "label": "ledger S4 commission rate: r7-tie",
@@ -39665,11 +39650,11 @@
   ]
  },
  {
-  "id": "ls4-c5-append-past",
+  "id": "ls4-c5-append-ahead",
   "slice": "ledger-s4",
-  "label": "ledger S4 commission rate: c5-append-past",
+  "label": "ledger S4 commission rate: the append backstop refuses more than 366 days ahead",
   "file": "tools/set-commission-rate-core.js",
-  "from": "if (!R.validEntry(entry) || entry.effective_from < now || entry.effective_from > now + R.MAX_AHEAD_MS) throw",
+  "from": "if (!R.validEntry(entry) || entry.effective_from > now + R.MAX_AHEAD_MS) throw",
   "to": "if (!R.validEntry(entry)) throw",
   "command": [
    "node",
@@ -39707,6 +39692,111 @@
   ],
   "kills_with": [
    "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-r8-rid-grammar",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the platform restaurant-id grammar (hyphenated ids)",
+  "file": "ledger/commission-rate.js",
+  "from": "typeof rid === 'string' && RID_RE.test(rid);",
+  "to": "typeof rid === 'string' && /^[a-z0-9_]{1,64}$/.test(rid) && rid !== '_default';",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-PLATFORM-RID:"
+  ]
+ },
+ {
+  "id": "ls4-r9-key-order",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the entry chosen by effective_from, never push-key order",
+  "file": "ledger/commission-rate.js",
+  "from": "if (!best || e.effective_from > best.e.effective_from || (e.effective_from === best.e.effective_from && key > best.key)) best = { key, e };",
+  "to": "if (!best || key > best.key) best = { key, e };",
+  "command": [
+   "node",
+   "ledger/commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ CR-KEY-ORDER:"
+  ]
+ },
+ {
+  "id": "ls4-c8-apply-value",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: --apply=false is refused, not read as --apply",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (eq > 0) return { error: '--apply takes no value",
+  "to": "if (false) return { error: '--apply takes no value",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-ARGS:"
+  ]
+ },
+ {
+  "id": "ls4-c9-lead-plan",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the 1-hour margin at planning",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  else if (entry.effective_from < now + R.MIN_LEAD_MS) refusals.push(",
+  "to": "  else if (false) refusals.push(",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-PLAN:"
+  ]
+ },
+ {
+  "id": "ls4-c10-lead-at-write",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: the clock re-read after the reads, before the write",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "if (entry.effective_from < clock() + R.MIN_LEAD_MS) throw",
+  "to": "if (entry.effective_from < now + R.MIN_LEAD_MS) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-DELAY:"
+  ]
+ },
+ {
+  "id": "ls4-c11-readback",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: a missing / differing read-back fails",
+  "file": "tools/set-commission-rate-core.js",
+  "from": "  if (!back || back.bp !== entry.bp || back.effective_from !== entry.effective_from) throw",
+  "to": "  if (false) throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-READBACK:"
+  ]
+ },
+ {
+  "id": "ls4-c12-readback-ef",
+  "slice": "ledger-s4",
+  "label": "ledger S4 commission rate: a read-back with a different effective_from fails",
+  "file": "tools/set-commission-rate-core.js",
+  "from": " || back.effective_from !== entry.effective_from) throw",
+  "to": ") throw",
+  "command": [
+   "node",
+   "tools/set-commission-rate.test.js"
+  ],
+  "kills_with": [
+   "✗ SCR-READBACK:"
   ]
  }
 ]

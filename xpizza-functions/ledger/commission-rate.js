@@ -10,11 +10,12 @@ const DEFAULT = '_default';
 const MIN_BP = 0; const MAX_BP = 10000;
 const MIN_EFFECTIVE_FROM = Date.UTC(2026, 0, 1);
 const MAX_AHEAD_MS = 366 * 86400000;
-const RID = /^[a-z0-9_]{1,64}$/;
+const { RID_RE } = require('../platform-manifest');   // the platform's ONE restaurant-id grammar (hyphens allowed — Codex #115 #3)
+const MIN_LEAD_MS = 3600000;   // a new entry takes effect ≥ 1 h after it is written (Codex #115 #1: no race with an order being placed)
 
 const validEntry = (e) => !!e && typeof e === 'object' && Number.isSafeInteger(e.bp) && e.bp >= MIN_BP && e.bp <= MAX_BP
   && Number.isSafeInteger(e.effective_from) && e.effective_from >= MIN_EFFECTIVE_FROM;
-const validRid = (rid) => typeof rid === 'string' && RID.test(rid) && rid !== DEFAULT;
+const validRid = (rid) => typeof rid === 'string' && RID_RE.test(rid);   // _default can never match (it starts with _): reserved by the grammar
 
 // the latest valid entry of one scope effective at `at` (ties: the greater key) → { bp, key } | null
 function inScope(entries, at) {
@@ -36,4 +37,4 @@ function rateAt(settings, rid, at) {
   return null;
 }
 
-module.exports = { NODE, DEFAULT, MIN_BP, MAX_BP, MIN_EFFECTIVE_FROM, MAX_AHEAD_MS, validEntry, validRid, rateAt };
+module.exports = { NODE, DEFAULT, MIN_BP, MAX_BP, MIN_EFFECTIVE_FROM, MAX_AHEAD_MS, MIN_LEAD_MS, validEntry, validRid, rateAt };
