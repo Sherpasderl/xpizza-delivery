@@ -77,6 +77,12 @@ function attemptFacts(aid, a, refunds) {
   return { kind: 'sale', amount, reversed, pending };
 }
 
+// the snapshot's money parts — the food the customer paid = total − NET envío − tip (S6's report uses this ONE formula)
+function foodParts(alloc) {
+  const total = pos(alloc.total_cents); const tip = pos(alloc.tip_cents); const env = alloc.envio || {};
+  const gross = pos(env.delivery_cents); const promo = Math.min(pos(env.promo_discount_cents), gross); const netEnv = gross - promo;
+  return { total, tip, env, gross, promo, netEnv, food: total - netEnv - tip };
+}
 function projectOrder(src, { rateBp } = {}) {
   const { orderId, order, alloc, attempts, sdk, refunds, rewardState } = src || {};
   const reasons = new Set(); const out = [];
@@ -87,9 +93,7 @@ function projectOrder(src, { rateBp } = {}) {
   const rateOk = int(rateBp) && rateBp >= 0 && rateBp <= 10000;
   if (!rateOk) reasons.add('rate_missing');
 
-  const total = pos(alloc.total_cents); const tip = pos(alloc.tip_cents); const env = alloc.envio || {};
-  const gross = pos(env.delivery_cents); const promo = Math.min(pos(env.promo_discount_cents), gross); const netEnv = gross - promo;
-  const food = total - netEnv - tip;
+  const { total, tip, env, promo, netEnv, food } = foodParts(alloc);
   if (food < 0) reasons.add('components_invalid');
   const saleLines = () => [{ account: 'processor_receivable', dr: total }, { account: 'restaurant_payable', cr: food }, { account: 'delivery_revenue', cr: netEnv }, { account: 'tip_liability', cr: tip }];
   const k = rateOk && food >= 0 ? commissionOf(food, rateBp) : null;
@@ -160,4 +164,4 @@ function projectOrder(src, { rateBp } = {}) {
   return { status, reasons: rs, journals };
 }
 
-module.exports = { projectOrder, commissionOf, idOf, ISV_BP };
+module.exports = { projectOrder, foodParts, commissionOf, idOf, ISV_BP };
