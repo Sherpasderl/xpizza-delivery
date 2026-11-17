@@ -24,6 +24,7 @@ import { HF_BASE, HF_FOLD } from './hotfix-1112-fold.mjs';
 import { MINT_BASE, MINT_FOLD } from './mint-fold.mjs';
 import { RP_BASE, RP_FOLD } from './rp-fold.mjs';
 import { REND_BASE, REND_FOLD } from './rend-fold.mjs';
+import { RGB_BASE, RGB_FOLD } from './rgb-fold.mjs';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const BASE = '613f7e08';
@@ -47,7 +48,17 @@ function withoutREND(f, src) {
   }
   return out;
 }
-const fileOnDisk = (f) => withoutREND(f, diskFile(f));
+// the «reward group» refusal (rgb-fold.mjs, 5f bd0157bdd) is the NEWEST layer of all, above REND: folded out at the very lowest read,
+// so REND and every older pin judge exactly what they judged before; the RGB test pins the layer itself on disk.
+function withoutRGB(f, src) {
+  let out = src;
+  for (const [now, was] of RGB_FOLD[f] || []) {
+    assert.equal(out.split(now).length - 1, 1, `RGB hunk occurs exactly once in ${f}: ${now.trim().slice(0, 80)}`);
+    out = out.replace(now, () => was);
+  }
+  return out;
+}
+const fileOnDisk = (f) => withoutREND(f, withoutRGB(f, diskFile(f)));
 function withoutRP(f, src) {
   let out = src;
   for (const [now, was] of RP_FOLD[f] || []) {
@@ -445,6 +456,15 @@ test('the «Ventas» layer (Nav B 11-14 + the V3b handover): app.js keeps ONE hu
   assert.throws(() => withoutREND('ventas.js', diskFile('ventas.js').replace('mountVentasTab($', 'mountVentasTabX($')), 'an edit INSIDE the gate breaks the fold');
 });
 
+
+test('the «reward group» refusal: review.js gains exactly ONE hunk (the reward_group_add_blocked row) — folding it out gives RGB_BASE byte-for-byte', () => {
+  assert.deepEqual(Object.keys(RGB_FOLD), ['review.js'], 'the layer touches review.js only');
+  const was = execFileSync('git', ['show', `${RGB_BASE}:xpizza-portal/review.js`], { cwd: DIR, encoding: 'utf8', maxBuffer: 1 << 26 });
+  assert.notEqual(withoutRGB('review.js', diskFile('review.js')), diskFile('review.js'), 'non-vacuity: the fold changes something');
+  assert.equal(withoutRGB('review.js', diskFile('review.js')), was, `review.js minus the layer ≠ ${RGB_BASE}`);
+  assert.notEqual(withoutRGB('review.js', diskFile('review.js') + '\n// stray\n'), was, 'non-vacuity: a stray edit survives the fold (and fails the pin)');
+  assert.throws(() => withoutRGB('review.js', diskFile('review.js').replace('agregarle extras nuevos', 'agregarle extras')), 'an edit INSIDE the row breaks the fold');
+});
 
 test('«Quitar del menú»: its files gain exactly the named hunks — folding them out gives RP_BASE byte-for-byte', () => {
   for (const f of Object.keys(RP_FOLD)) {
