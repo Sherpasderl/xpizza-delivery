@@ -39307,16 +39307,16 @@
  {
   "id": "ls3-p24-manual-review",
   "slice": "ledger-s3",
-  "label": "ledger S3 projector: p24-manual-review",
+  "label": "ledger S3 projector: the first cell pinning the manual_review hold is PR-REVERSING-CRASH (the stale retry without proof)",
   "file": "ledger/projector.js",
-  "from": "  if (a.status === 'manual_review' || a.no_uuid_paid_callback) return { unresolved: 'manual_review' };\n",
+  "from": "  if ((a.status === 'manual_review' || a.no_uuid_paid_callback) && !boundVoid) return { unresolved: 'manual_review' };\n",
   "to": "",
   "command": [
    "node",
    "ledger/projector.test.js"
   ],
   "kills_with": [
-   "✗ PR-MANUAL-STATES (Codex #114 #1):"
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
   ]
  },
  {
@@ -39467,6 +39467,36 @@
   ],
   "kills_with": [
    "✗ PR-SDK-ADJUSTED:"
+  ]
+ },
+ {
+  "id": "ls3-p35-abandoned",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p35-abandoned",
+  "file": "ledger/projector.js",
+  "from": "'voided', 'abandoned']);",
+  "to": "'voided']);",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-ABANDON (Codex #114 r2 #1):"
+  ]
+ },
+ {
+  "id": "ls3-p36-proof-first",
+  "slice": "ledger-s3",
+  "label": "ledger S3 projector: p36-proof-first",
+  "file": "ledger/projector.js",
+  "from": "if ((a.status === 'manual_review' || a.no_uuid_paid_callback) && !boundVoid) return",
+  "to": "if ((a.status === 'manual_review' || a.no_uuid_paid_callback)) return",
+  "command": [
+   "node",
+   "ledger/projector.test.js"
+  ],
+  "kills_with": [
+   "✗ PR-REVERSING-CRASH (Codex #114 #1):"
   ]
  }
 ]

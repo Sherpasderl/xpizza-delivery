@@ -17247,7 +17247,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#3",
-   "line": 62,
+   "line": 65,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17260,7 +17260,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#4",
-   "line": 63,
+   "line": 66,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17273,7 +17273,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#5",
-   "line": 65,
+   "line": 67,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17286,7 +17286,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#6",
-   "line": 65,
+   "line": 67,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17299,7 +17299,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#7",
-   "line": 66,
+   "line": 68,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17312,7 +17312,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#attemptFacts#status#8",
-   "line": 66,
+   "line": 68,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17325,7 +17325,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#projectOrder#total_cents#0",
-   "line": 88,
+   "line": 90,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -17337,7 +17337,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#projectOrder#status#0",
-   "line": 98,
+   "line": 100,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -17350,7 +17350,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#projectOrder#payment_method#0",
-   "line": 99,
+   "line": 101,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -17363,7 +17363,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#projectOrder#fulfilled_offline_at#0",
-   "line": 103,
+   "line": 105,
    "kind": "member",
    "facts": [
     "DRIVER"
@@ -17373,7 +17373,7 @@
   },
   {
    "id": "xpizza-functions/ledger/projector.js#projectOrder#status#1",
-   "line": 150,
+   "line": 152,
    "kind": "member",
    "facts": [
     "STATUS",
