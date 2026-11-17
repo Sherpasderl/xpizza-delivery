@@ -39330,5 +39330,23 @@
   "kills_with": [
    "TRIM-NAV-DESK: the aside"
   ]
+ },
+ {
+  "id": "extra-10",
+  "slice": "capp-extra-trim",
+  "label": "the two sentences of a trim note share one block again (a mid-line join at 390)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "${x.map((y) => `<span class=\"cn-s\">${esc(y)}</span>`).join(' ')}",
+  "to": "${esc(x.join(' '))}",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-SENTENCES: one block per sentence"
+  ]
  }
 ]

@@ -759,11 +759,12 @@
       const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
       // G2 (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy): a deleted extra trimmed off a kept dish — named when the
-      // cart stored the name, else the dish only; one line per note, its own pill after the dish-gone one
+      // cart stored the name, else the dish only; its own pill after the dish-gone one. Each note is two sentences, each its OWN
+      // block (owner: «one sentence per line where it fits» — the SBS caught «… disponible. Actualizamos | tu …» at 390)
       const trimLines = (S.trimNote || []).flatMap((t) => (t.extras.every((n) => typeof n === 'string')
-        ? t.extras.map((n) => `${n} ya no está disponible. Actualizamos tu ${t.dish}.`)
-        : [`Un extra de tu ${t.dish} ya no está disponible. Lo quitamos del pedido.`]));
-      const trimNote = trimLines.length ? `<div class="cartnote" role="status">${IC.info}<span>${trimLines.map((x) => `<span class="cn-l">${esc(x)}</span>`).join('')}</span></div>` : '';
+        ? t.extras.map((n) => [`${n} ya no está disponible.`, `Actualizamos tu ${t.dish}.`])
+        : [[`Un extra de tu ${t.dish} ya no está disponible.`, 'Lo quitamos del pedido.']]));
+      const trimNote = trimLines.length ? `<div class="cartnote" role="status">${IC.info}<span>${trimLines.map((x) => `<span class="cn-l">${x.map((y) => `<span class="cn-s">${esc(y)}</span>`).join(' ')}</span>`).join('')}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
       if (!lines.length) return head + note + trimNote + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);

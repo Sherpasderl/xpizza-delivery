@@ -4461,6 +4461,8 @@ test('TRIM-NOTE-B: the restaurant deleted an extra ⇒ the dish stays in the car
   const { b, d, e } = await adoptedWithout(HOSTED_KEYS);
   assert.equal(b.ui.cart.count(), 1, 'the dish is still in the cart');
   assert.deepEqual(noteTexts(b), [`${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-B: the named note, owner 11-16 final');
+  // owner 11-16 «one sentence per line where it fits» (the SBS caught a mid-line join at 390): each sentence is its own block
+  assert.deepEqual(b.qa('#layer .cartnote .cn-s').map((x) => x.textContent), [`${e.name} ya no está disponible.`, `Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-SENTENCES: one block per sentence');
   assert.ok(!/platos? ya no est/.test(b.text('#layer')), 'never the dish-gone note for a kept dish');
 });
 test('TRIM-NOTE-A: a cart saved without the extra\'s name (the S2 / link cart) ⇒ «Un extra de tu {Plato} ya no está disponible. Lo quitamos del pedido.»', async () => {
