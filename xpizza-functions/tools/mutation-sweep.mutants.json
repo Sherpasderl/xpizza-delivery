@@ -39798,5 +39798,365 @@
   "kills_with": [
    "✗ SCR-READBACK:"
   ]
+ },
+ {
+  "id": "ls5-w1-order-windows",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: every order window is queried",
+  "file": "ledger/rebuild.js",
+  "from": "for (const c of ORDER_TIMES) {",
+  "to": "for (const c of ORDER_TIMES.slice(1)) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w2-attempt-windows",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: every attempt window is queried",
+  "file": "ledger/rebuild.js",
+  "from": "for (const c of ATTEMPT_TIMES) {",
+  "to": "for (const c of ATTEMPT_TIMES.slice(1)) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w3-21-days",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 21-day window bound",
+  "file": "ledger/rebuild.js",
+  "from": "const from = now - WINDOW_MS;",
+  "to": "const from = now - 2 * WINDOW_MS;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-WINDOWS:"
+  ]
+ },
+ {
+  "id": "ls5-w4-recheck-time",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a non-numeric time never enters by the window",
+  "file": "ledger/rebuild.js",
+  "from": "if (time(o && o[c]) && o[c] >= from) add(k);",
+  "to": "add(k);",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-w5-open-set",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the open set is read",
+  "file": "ledger/rebuild.js",
+  "from": "(await db.ref('ledger/open').once(",
+  "to": "(await db.ref('ledger/open_x').once(",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-w6-extra-review",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: extra_payment_review orders are read",
+  "file": "ledger/rebuild.js",
+  "from": ".equalTo(true).once(",
+  "to": ".equalTo(false).once(",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-TOUCHED:"
+  ]
+ },
+ {
+  "id": "ls5-s1-active-attempt",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the active attempt snapshot",
+  "file": "ledger/rebuild.js",
+  "from": "if (act && act.ledger) return act.ledger;",
+  "to": "if (false) return act.ledger;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s2-ambiguous",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: ambiguous snapshots ⇒ none",
+  "file": "ledger/rebuild.js",
+  "from": "return all.length === 1 ? all[0] : null;",
+  "to": "return all.length >= 1 ? all[0] : null;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s3-sdk",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the SDK record snapshot",
+  "file": "ledger/rebuild.js",
+  "from": "if (sdk && sdk.ledger) return sdk.ledger;",
+  "to": "if (false) return sdk.ledger;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-s4-alloc-first",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: ledger_alloc first",
+  "file": "ledger/rebuild.js",
+  "from": "  if (alloc) return alloc;",
+  "to": "  if (false) return alloc;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-SNAPSHOT:"
+  ]
+ },
+ {
+  "id": "ls5-h1-hash-skip",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: an unchanged order is not rewritten",
+  "file": "ledger/rebuild.js",
+  "from": "if (prev === hash) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-NOOP:"
+  ]
+ },
+ {
+  "id": "ls5-o1-open-keep",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: unresolved stays in the open set",
+  "file": "ledger/rebuild.js",
+  "from": "const keep = r.status === 'open' || r.status === 'unresolved';",
+  "to": "const keep = r.status === 'open';",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ORACLE:"
+  ]
+ },
+ {
+  "id": "ls5-o2-open-clear",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a final order leaves the open set",
+  "file": "ledger/rebuild.js",
+  "from": "[`ledger/open/${orderId}`]: keep ? true : null,",
+  "to": "...(keep ? { [`ledger/open/${orderId}`]: true } : {}),",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ORACLE:"
+  ]
+ },
+ {
+  "id": "ls5-c1-cap",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 400-s cap",
+  "file": "ledger/rebuild.js",
+  "from": "if (clock() - start >= CAP_MS)",
+  "to": "if (false)",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-c2-safety-noop",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: after a finished run the safety slot is a no-op",
+  "file": "ledger/rebuild.js",
+  "from": "if (prior && time(prior.finished_at)) return { outcome: 'noop' };",
+  "to": "if (false) return { outcome: 'noop' };",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-c3-attempt",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the restart is attempt 2",
+  "file": "ledger/rebuild.js",
+  "from": "const attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;",
+  "to": "const attempt = 1;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-CAP:"
+  ]
+ },
+ {
+  "id": "ls5-a1-safety-only",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a 03:00 failure alone is retried, not alarmed",
+  "file": "ledger/rebuild.js",
+  "from": "if (!finished && slot === 'safety') reasons.push(",
+  "to": "if (!finished) reasons.push(",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a2-unresolved-up",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: unresolved went up ⇒ alarm",
+  "file": "ledger/rebuild.js",
+  "from": "if (y && time(y.finished_at) && y.counts",
+  "to": "if (false && y && time(y.finished_at) && y.counts",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a3-strictly-up",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: equal unresolved ⇒ no alarm",
+  "file": "ledger/rebuild.js",
+  "from": "counts.unresolved > y.counts.unresolved",
+  "to": "counts.unresolved >= y.counts.unresolved",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a4-create-once",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the alert is create-once",
+  "file": "ledger/rebuild.js",
+  "from": ".transaction((cur) => (cur === null ? payload : undefined));",
+  "to": ".transaction(() => payload);",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a5-bare-code",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: only a bare error code is stored",
+  "file": "ledger/rebuild.js",
+  "from": "typeof e.code === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(e.code) ? e.code",
+  "to": "typeof e.code === 'string' ? e.code",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-hm1-value-order",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: startAt keeps strings / objects (RTDB value order)",
+  "file": "_honest-rtdb-model.js",
+  "from": "return sel((y) => cmpV(y, x) >= 0);",
+  "to": "return sel((y) => rank(y) === rank(x) && cmpV(y, x) >= 0);",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-CHILD-START:"
+  ]
+ },
+ {
+  "id": "ls5-hm2-key-range-end",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: the key range end",
+  "file": "_honest-rtdb-model.js",
+  "from": "(b === undefined || keyCmp(k, b) <= 0)",
+  "to": "true",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-KEY-RANGE:"
+  ]
+ },
+ {
+  "id": "ls5-hm3-query-log",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: every child query is logged",
+  "file": "_honest-rtdb-model.js",
+  "from": "        queries.push({ path: p, child: c });\n",
+  "to": "",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-QUERY-LOG:"
+  ]
  }
 ]
