@@ -85,7 +85,7 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
   await cell('LSR-COMPLETENESS: a cohort sale with no projection is a gap (and its food is missing from the ledger side, never invented); quarantine and unresolved by reason; pending (open / unresolved) by age', async () => {
     const w = world(); delete w.orders.PRE; delete w.orders.SDK1;   // SDK1 (no record here) would add an unrelated no_snapshot quarantine
     const L = await ledgerSide(w, { skip: ['NOPROJ'] });
-    L.projections.Q1 = { status: 'quarantined', reasons: ['app_pickup_cash'] }; w.orders.Q1 = ord('Q1', { payment_method: 'cash', order_type: 'pickup' });
+    L.projections.Q1 = { status: 'quarantined', reasons: ['app_pickup_cash'] }; w.orders.Q1 = ord('Q1', { payment_method: 'cash', order_type: 'pickup' }); L.snapshots.Q1 = alloc({ ...w.orders.Q1 });   // a quarantine WITH a snapshot
     L.projections.U1 = { status: 'unresolved', reasons: ['capture_unproven'] }; L.open.U1 = true; w.orders.U1 = ord('U1', { payment_method: 'online', status: 'preparing', created_at: NOW - 9 * DAY });
     const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
     assert.strictEqual(r.completeness.not_projected, 1, `🔴 LSR-COMPLETENESS: the gap ${JSON.stringify(r.completeness)}`);
@@ -93,6 +93,7 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
     assert.deepStrictEqual(r.completeness.pending_age, { under_1d: 0, d1_7: 0, d7_21: 1, over_21d: 0 }, '🔴 LSR-COMPLETENESS: pending by age');
     const row = r.days.find((d) => d.date === '2026-11-12');
     assert.ok(row.diff.orders >= 1 && row.diff.cents >= 16500, `🔴 LSR-COMPLETENESS: the gap shows as a difference ${JSON.stringify(row)}`);
+    assert.strictEqual(row.ledger.orders, 3, `🔴 LSR-COMPLETENESS: a quarantined order never counts on the ledger side, even with a snapshot (${JSON.stringify(row)})`);
   });
 
   await cell('LSR-STALE: a stale hold (a quarantined / unresolved order unchanged > 60 days, out of the open set — S5) is listed by reason for a person to resolve', async () => {
@@ -108,9 +109,10 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
 
   await cell('LSR-CASH: cash sales and the accrual-only ones (no collection evidence: cash_not_evidenced) are counted; card_delivery is NOT physical cash', async () => {
     const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
+    w.orders.CASH2 = ord('CASH2', { payment_method: 'cash', status: 'preparing', delivered_at: null }); w.ledger_alloc.CASH2 = alloc({ ...w.orders.CASH2 });   // a cash sale not yet delivered: no accrual yet
     const L = await ledgerSide(w);
     const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
-    assert.deepStrictEqual(r.cash, { cash_sales: 1, accrual_only: 1, card_delivery_sales: 1 }, `🔴 LSR-CASH: ${JSON.stringify(r.cash)}`);
+    assert.deepStrictEqual(r.cash, { cash_sales: 2, accrual_only: 1, card_delivery_sales: 1 }, `🔴 LSR-CASH: ${JSON.stringify(r.cash)}`);
   });
 
   await cell('LSR-DRIVER: S8 closed weeks overlapping the range, side by side — drivers, deliveries, net cents, payable / paid counts; no driver id', async () => {
