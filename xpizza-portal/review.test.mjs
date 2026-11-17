@@ -1350,9 +1350,10 @@ test('S2 §5.2 — the group, the removal, the switch, the caps, the size: each 
   const off = outcomeFor(xErr('extras_catalog_not_supported_yet', 409, { field: 'extras' }), 'edit', EXTRA_CTX);
   assert.deepStrictEqual([off.title, off.detail, off.action.id, off.action.label], ['Agregar extras todavía no está disponible', 'Tus otros cambios siguen acá.', PUBLISH_ACTIONS.FIX, 'Entendido']);
   // 5f bd0157bdd (Codex #119 P2): a NEW extra in a group that feeds a reward picker, while the legacy forms remain — 400, field extras;
-  // the approved copy (advisor 11-16), the same family as the switch-off refusal (info, FIX «Entendido», the other changes kept)
+  // the approved copy (advisor 11-16: a short title in the siblings' shape, the reason + «Tus otros cambios siguen acá.» as the detail),
+  // the same family as the switch-off refusal (info, FIX «Entendido»)
   const rg = outcomeFor(xErr('reward_group_add_blocked', 400, { field: 'extras' }), 'edit', EXTRA_CTX);
-  assert.deepStrictEqual([rg.icon, rg.title, rg.detail, rg.action.id, rg.action.label], [off.icon, 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos.', 'Tus otros cambios siguen acá.', PUBLISH_ACTIONS.FIX, 'Entendido']);
+  assert.deepStrictEqual([rg.icon, rg.title, rg.detail, rg.action.id, rg.action.label], [off.icon, 'No se pueden agregar extras a este grupo', 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos. Tus otros cambios siguen acá.', PUBLISH_ACTIONS.FIX, 'Entendido']);
   assert.strictEqual(off.icon, 'info', 'the family the new refusal shares');
   const ops = outcomeFor(xErr('structure_caps', 409, { field: 'ops' }), 'edit', EXTRA_CTX);
   assert.deepStrictEqual([ops.title, ops.detail, ops.action.id, ops.action.label], ['Son demasiados cambios a la vez', 'Publicá parte de los cambios primero.', PUBLISH_ACTIONS.BACK, 'Entendido']);

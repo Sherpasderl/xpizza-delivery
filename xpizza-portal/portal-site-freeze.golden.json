@@ -125,6 +125,7 @@
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "rgb-fold.mjs",
   "rp-fold.mjs",
   "s1-fold.mjs",
   "s2-fold.mjs",

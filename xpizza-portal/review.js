@@ -1169,8 +1169,8 @@ const PANELS = {
     detail: 'Tus otros cambios siguen acá.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
   // 5f bd0157bdd (Codex #119 P2): a NEW extra in a group that feeds a reward picker while the legacy forms remain (400, field extras)
-  reward_group_add_blocked: { icon: 'info', title: 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos.',
-    detail: 'Tus otros cambios siguen acá.',
+  reward_group_add_blocked: { icon: 'info', title: 'No se pueden agregar extras a este grupo',
+    detail: 'Este grupo se usa para recompensas, así que por ahora no podés agregarle extras nuevos. Tus otros cambios siguen acá.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
   structure_caps: { icon: 'warn', title: 'Son demasiados cambios a la vez',
     detail: 'Publicá parte de los cambios primero.',
