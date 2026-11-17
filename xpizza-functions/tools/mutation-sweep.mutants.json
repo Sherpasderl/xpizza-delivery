@@ -39168,5 +39168,113 @@
   "kills_with": [
    "PICKUP-CARD-BENEFIT: the first benefit"
   ]
+ },
+ {
+  "id": "extra-01",
+  "slice": "capp-extra-trim",
+  "label": "the restore drops the whole line again for a deleted extra (no trim)",
+  "file": "../customer-app/capp-cart.js",
+  "from": "              return instOf(validConfig(d.key, ks.filter((k) => offered.has(k))));\n",
+  "to": "              return instOf(validConfig(d.key, ks));\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-B: the dish kept, the extra named"
+  ]
+ },
+ {
+  "id": "extra-02",
+  "slice": "capp-extra-trim",
+  "label": "the provenance snapshot no longer stores the extras' names",
+  "file": "../customer-app/capp-cart.js",
+  "from": "seen: byKey.get(l.key).map(copySeen), xn: xnOf(l) }))",
+  "to": "seen: byKey.get(l.key).map(copySeen) }))",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NAME: the provenance snapshot stores the extra"
+  ]
+ },
+ {
+  "id": "extra-03",
+  "slice": "capp-extra-trim",
+  "label": "a stored name is ignored (every trimmed extra unnamed)",
+  "file": "../customer-app/capp-cart.js",
+  "from": "t.extras.push(typeof n === 'string' && n.trim() && n.length <= 80 ? n : null);",
+  "to": "t.extras.push(null);",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-B",
+   "../customer-app/capp-cart.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-B: the dish kept, the extra named"
+  ]
+ },
+ {
+  "id": "extra-04",
+  "slice": "capp-extra-trim",
+  "label": "the cart note never names the extra (always the A fallback)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "(t.extras.every((n) => typeof n === 'string')\n",
+  "to": "(false\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-B: the named note"
+  ]
+ },
+ {
+  "id": "extra-05",
+  "slice": "capp-extra-trim",
+  "label": "the restore no longer hands the trim to the cart note",
+  "file": "../customer-app/capp-ui.js",
+  "from": "S.trimNote = r.trimmed || null; S.refusal",
+  "to": "S.refusal",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-NOTE-B",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-NOTE-B: the named note"
+  ]
+ },
+ {
+  "id": "extra-06",
+  "slice": "capp-extra-trim",
+  "label": "«+» on a past dish adds silently over a trimmed cart",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "(rr.hydrated.dropped || rr.hydrated.trimmed)",
+  "to": "(rr.hydrated.dropped)",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^TRIM-ADDPAST",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "TRIM-ADDPAST: the store opens"
+  ]
  }
 ]

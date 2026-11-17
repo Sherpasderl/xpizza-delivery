@@ -4440,3 +4440,35 @@ test('PICKUP-CARD-5: the in-app card chooser at pickup lists NO «Efectivo» (ca
   await b.click('.paybar.pay [data-act="paysheet"]'); await settle();
   assert.ok(b.q('#layer [data-act="paypick"][data-card="cash"]'), 'at delivery the chooser offers cash again');
 });
+
+// ── EXTRA REMOVED, the cart note (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy). The adoption path the shell takes
+//    after «Recargar» (adoptInto: the carried snapshot restored on the fresh body, then openCart) — here the fresh body is the REAL
+//    x_pizza envelope with one extra left out, as getPublicMenu serves it once the restaurant deletes it.
+const XM = () => require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope);
+const xTrimDish = () => { const m = XM(); const d = m.dishes.find((x) => !x.launcher && m.extrasFor(x.key).length >= 1); return { d, e: m.extrasFor(d.key)[0] }; };
+const envWithout = (key) => { const env = PROV.x_pizza.envelope; return { ...env, menu: { ...env.menu, extras: env.menu.extras.filter((e) => String(e.extra_id) !== key) } }; };
+const noteTexts = (b) => b.qa('#layer .cartnote').map((n) => n.textContent.trim());
+async function adoptedWithout(config, extraLines = []) {
+  const { d, e } = xTrimDish();
+  const a = bootCo({ config }); a.ui.cart.add(d.key, [e.key], 1);
+  const carried = J(a.ui.snapshot()); a.ui.destroy();
+  carried.lines.push(...extraLines);
+  const b = bootCo({ config, envelope: envWithout(e.key) });
+  b.ui.restore(carried); await settle(); b.ui.openCart(); await settle();
+  return { b, d, e };
+}
+test('TRIM-NOTE-B: the restaurant deleted an extra ⇒ the dish stays in the cart and ONE note names both: «{Extra} ya no está disponible. Actualizamos tu {Plato}.»', async () => {
+  const { b, d, e } = await adoptedWithout(HOSTED_KEYS);
+  assert.equal(b.ui.cart.count(), 1, 'the dish is still in the cart');
+  assert.deepEqual(noteTexts(b), [`${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-B: the named note, owner 11-16 final');
+  assert.ok(!/platos? ya no est/.test(b.text('#layer')), 'never the dish-gone note for a kept dish');
+});
+test('TRIM-NOTE-A: a cart saved without the extra\'s name (the S2 / link cart) ⇒ «Un extra de tu {Plato} ya no está disponible. Lo quitamos del pedido.»', async () => {
+  const { b, d } = await adoptedWithout({});
+  assert.equal(b.ui.cart.count(), 1);
+  assert.deepEqual(noteTexts(b), [`Un extra de tu ${d.name} ya no está disponible. Lo quitamos del pedido.`], '🔴 TRIM-NOTE-A: the fallback note');
+});
+test('TRIM-NOTE-STACK: a deleted dish AND a deleted extra ⇒ the existing dish-gone pill first, then the extra pill (two pills, mockup «stack»)', async () => {
+  const { b, d, e } = await adoptedWithout(HOSTED_KEYS, [{ key: 'gone', qty: 1, ex: [{}], added: 99 }]);
+  assert.deepEqual(noteTexts(b), ['1 plato ya no está disponible', `${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-STACK: both pills, in order');
+});

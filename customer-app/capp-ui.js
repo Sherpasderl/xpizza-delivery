@@ -277,7 +277,7 @@
     // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
     // deskcart aside, the checkout's col-b); no view handed over (the single-store page, every phone) ⇒ byte-identical to before
     const view = opts.view && typeof opts.view.desk === 'function' ? opts.view : null;
-    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, trimNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
@@ -758,9 +758,15 @@
       const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
       const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
+      // G2 (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy): a deleted extra trimmed off a kept dish — named when the
+      // cart stored the name, else the dish only; one line per note, its own pill after the dish-gone one
+      const trimLines = (S.trimNote || []).flatMap((t) => (t.extras.every((n) => typeof n === 'string')
+        ? t.extras.map((n) => `${n} ya no está disponible. Actualizamos tu ${t.dish}.`)
+        : [`Un extra de tu ${t.dish} ya no está disponible. Lo quitamos del pedido.`]));
+      const trimNote = trimLines.length ? `<div class="cartnote" role="status">${IC.info}<span>${trimLines.map((x) => `<span class="cn-l">${esc(x)}</span>`).join('')}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
-      if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
+      if (!lines.length) return head + note + trimNote + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
@@ -779,7 +785,7 @@
       const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
       const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
-      return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+      return head + updNote + note + trimNote + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
         + cnote + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
@@ -799,7 +805,7 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.trimNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
@@ -1857,7 +1863,7 @@
       // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
       // action (never under a finger); a failure leaves the schedule in hand
       if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
-      S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
+      S.layerKind = null; S.cartNote = null; S.trimNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
       S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
       S.screen = 'checkout'; render();
@@ -2540,7 +2546,7 @@
         if (rr.blocked) return { blocked: true, step: rr.step };
         if (rr.cleared) { render(); return { cleared: true }; }
         if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
-        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.trimNote = r.trimmed || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
         offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit
         return r; },
       // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /

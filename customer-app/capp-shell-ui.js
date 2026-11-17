@@ -1711,7 +1711,7 @@
       const core = CappUI.createCartCore({ menu: view.menu, cfg, api: () => api, mods: () => true, CappCart: pick(o, 'CappCart', './capp-cart.js'), CappSerialize: pick(o, 'CappSerialize', './capp-serialize.js') });
       // the store's own ORDER: its mount restores first (reconcile — a purchased cart cleared), then a tap mutates (frozen ⇒ refused)
       const rr = core.restore(readJ(cfg.cartKey));
-      if (rr.blocked || (rr.hydrated && rr.hydrated.dropped)) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened cart
+      if (rr.blocked || (rr.hydrated && (rr.hydrated.dropped || rr.hydrated.trimmed))) return enter(rid, key);   // the store draws its own disclosure — never a silently shortened (or trimmed, G2) cart
       if (!core.mutate((c) => c.inc(key), true).ok) return enter(rid, key);   // frozen / not addable (a launcher) / the text cap: the store
       const snap = core.snapshotFor(rr.mode || 'delivery');
       // the store's notifyCart → the shell's onCartChange. A FAILED persist: the store's own «+» keeps the edit in its live cart —

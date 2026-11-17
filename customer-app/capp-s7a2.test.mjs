@@ -3101,6 +3101,19 @@ test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the l
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:avail:x_pizza', JSON.stringify([String(marg.dish_id)])) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0), '🔴 VP-17: nothing added to the cart (C-3r W1: no longer `|| true`)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
 });
+// G2 (advisor 11-16): an existing line whose EXTRA the live menu no longer offers is TRIMMED by the restore — never a silent
+// «Agregado» over that changed cart either: the store opens and discloses (its own extra-removed note)
+test('TRIM-ADDPAST: «+» on a past dish over a cart whose extra was deleted ⇒ the store opens (its own disclosure); no silent «Agregado»', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const TRIMMED = JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{ GONE_EXTRA: 1 }], added: 1, xn: { GONE_EXTRA: 'Queso extra' } }], rid: 'x_pizza', mode: 'delivery' });
+  const { S } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', TRIMMED) });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 TRIM-ADDPAST: the store opens (its own disclosure)');
+    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 TRIM-ADDPAST: no silent «Agregado» over a trimmed cart');
+  } finally { S.w.close(); }
+});
 test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
   const { S, st } = await againBoot();
