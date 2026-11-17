@@ -104,5 +104,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     await sdkApp.delete();
   }
   ok('query bounds accepted / refused exactly as the Admin SDK (differential); null bounds behave as RTDB');
+  // LEDGER S6 r3 (Codex #118 r2 #2): the bounded reads — limitToFirst after equalTo / startAt and after a key range, in the query's order
+  {
+    const db10 = makeHonestDb({ p: { a: { o: 'X' }, b: { o: 'X' }, c: { o: 'Y' }, d: { o: 'X' } }, r: { 'A-1': 1, 'A-2': 2, 'A-3': 3 } });
+    assert.deepStrictEqual(Object.keys((await db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(2).once('value')).val()), ['a', 'b'], '🔴 HRM-LIMIT: equalTo(…).limitToFirst(2)');
+    assert.deepStrictEqual(Object.keys((await db10.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').limitToFirst(2).once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-LIMIT: a key range .limitToFirst(2)');
+    assert.throws(() => db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(0), /limitToFirst/, '🔴 HRM-LIMIT: a non-positive limit throws');
+  }
+  ok('limitToFirst after a child equalTo / startAt and after a key range (bounded reads)');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });

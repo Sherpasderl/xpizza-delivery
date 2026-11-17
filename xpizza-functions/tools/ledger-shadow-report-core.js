@@ -77,12 +77,30 @@ function journalFacts(p) {
     unbalanced: js.filter((j) => sumSide(j.lines, 'dr') !== sumSide(j.lines, 'cr')).length,
   };
 }
-// the faults of a projection whose food base is `base` ⇒ { fault: n }
-function faultsOf(p, f, base) {
-  const out = {};
+const REVERSAL = { reversal: 1, commission_reversal: 1, envio_promo_reversal: 1 };
+const lineKey = (ls) => linesOf(ls).map((l) => `${l.account}|${l.dr || 0}|${l.cr || 0}`).sort().join(',');
+const flipKey = (ls) => linesOf(ls).map((l) => `${l.account}|${l.cr || 0}|${l.dr || 0}`).sort().join(',');
+const capturedOf = (o, rec) => o.payment_flow !== 'sdk_auth_v1' || Object.values((rec && rec.legs) || {}).some((l) => l && l.state === 'captured');
+// EVERY projected order's PERSISTED journals, before any exclusion or bridge (Codex #118 r2 #1) ⇒ { fault: n }:
+//   unbalanced (Σdr ≠ Σcr) · orphan_reversal (a reversal that mirrors no journal of the order) — always; then, when the projection is
+//   final / open with its snapshot, the money it must hold: the collected food (restaurant_payable on collection / reversal) = the snapshot
+//   food for a CAPTURED card sale, else 0 (unreversed / collection_missing / collection_amount / collection_unexpected); the commission +
+//   ISV = commissionOf(snapshot food, rate_bp) for a captured card sale or a fulfilled non-card sale, else 0 (the projector's own rules)
+function validateOrder(o, p, snap, rec) {
+  const out = {}; const f = journalFacts(p);
   if (f.unbalanced) inc(out, 'unbalanced', f.unbalanced);
-  if (Number.isSafeInteger(p.rate_bp) && Number.isSafeInteger(base) && base >= 0) {
-    const k = commissionOf(base, p.rate_bp);
+  const js = Object.values((p && p.journals) || {}).filter((j) => j && typeof j === 'object');
+  const mirrors = {}; for (const j of js) if (!REVERSAL[j.family]) mirrors[flipKey(j.lines)] = true;
+  const orphans = js.filter((j) => REVERSAL[j.family] && !mirrors[lineKey(j.lines)]).length;
+  if (orphans) inc(out, 'orphan_reversal', orphans);
+  if (!snap || p.status === 'quarantined' || p.status === 'unresolved') return out;
+  const snapFood = foodParts(snap).food; const sale = isSale(o);
+  const card = o.payment_method === 'online';
+  const owesFood = card && sale && capturedOf(o, rec) ? snapFood : 0;
+  if (f.food !== owesFood) inc(out, !card ? 'collection_unexpected' : owesFood === 0 ? 'unreversed' : f.food === 0 ? 'collection_missing' : 'collection_amount');
+  const accrues = card ? owesFood > 0 : sale && isFulfilled(o);
+  if (Number.isSafeInteger(p.rate_bp)) {
+    const k = accrues ? commissionOf(snapFood, p.rate_bp) : { commission: 0, isv: 0 };   // the base = the food the customer paid (the snapshot)
     if (f.commission !== k.commission || f.isv !== k.isv) inc(out, 'commission');
   }
   return out;
@@ -106,27 +124,25 @@ function buildReport({ start, from, to, now, orders, snapshots, sdk, projections
   const add = (z, cents) => { z.orders += 1; z.cents += cents; };
   const cash = { cash_sales: 0, accrual_only: 0, awaiting_fulfilment: 0, card_delivery_sales: 0 };
   const in_range = { not_projected: 0, no_snapshot: 0, quarantined: {}, unresolved: {}, journal_faults: {} };
-  const fault = (r, faults) => { for (const [k, c] of Object.entries(faults)) { inc(r.journal_faults, k, c); inc(in_range.journal_faults, k, c); } };
+  const journal_faults_outside = {};
   for (const [id, o] of Object.entries(orders || {})) {
     if (!o || typeof o !== 'object') continue;
-    const ms = ST.serviceMs(o); if (ms === null) continue;
-    const date = ST.dateOf(ms); if (!inRange[date]) continue;
-    const r = rows[`${SB.ridOf(o)}|${date}`]; const sale = isSale(o);
-    if (!(time(o.created_at) && o.created_at >= start)) { if (sale) add(r.pre_cohort, orderFood(o)); continue; }
-    const p = projections && projections[id];
+    const ms = ST.serviceMs(o); const date = ms === null ? null : ST.dateOf(ms);
+    const cohort = time(o.created_at) && o.created_at >= start;
+    const r = date !== null && inRange[date] ? rows[`${SB.ridOf(o)}|${date}`] : null;
+    const p = projections && projections[id]; const snap = snapshots && snapshots[id]; const rec = sdk && sdk[id];
+    const faults = p ? validateOrder(o, p, snap, rec) : {};
+    for (const [k, c] of Object.entries(faults)) { if (r && cohort) { inc(r.journal_faults, k, c); inc(in_range.journal_faults, k, c); } else inc(journal_faults_outside, k, c); }
+    if (!r) continue;
+    const sale = isSale(o);
+    if (!cohort) { if (sale) add(r.pre_cohort, orderFood(o)); continue; }
     if (!p) { in_range.not_projected += 1; continue; }
     if (p.status === 'quarantined' || p.status === 'unresolved') { for (const why of p.reasons || ['unknown']) inc(in_range[p.status], why); continue; }
     if (!sale) continue;
-    const snap = snapshots && snapshots[id];
     if (!snap) { in_range.no_snapshot += 1; continue; }
     const snapFood = foodParts(snap).food; const f = journalFacts(p);
     if (o.payment_method === 'online') {
-      const rec = sdk && sdk[id];
-      const captured = o.payment_flow !== 'sdk_auth_v1' || Object.values((rec && rec.legs) || {}).some((l) => l && l.state === 'captured');
-      if (!captured) { add(r.bridges.sdk_authorized_not_captured, snapFood); continue; }
-      const faults = faultsOf(p, f, snapFood);   // the commission base is the food the customer paid (the snapshot), as the projector's
-      if (f.food !== snapFood) inc(faults, f.food === 0 ? 'collection_missing' : 'collection_amount');
-      fault(r, faults);
+      if (!capturedOf(o, rec)) { add(r.bridges.sdk_authorized_not_captured, snapFood); continue; }
       if (f.food > 0 || snapFood === 0) add(r.ledger, f.food);
       continue;
     }
@@ -134,10 +150,7 @@ function buildReport({ start, from, to, now, orders, snapshots, sdk, projections
     if (o.payment_method === 'card_delivery') cash.card_delivery_sales += 1;
     if (!isFulfilled(o)) { add(r.bridges.cash_awaiting_fulfilment, snapFood); if (o.payment_method === 'cash') cash.awaiting_fulfilment += 1; continue; }
     if (o.payment_method === 'cash' && (p.reasons || []).includes('cash_not_evidenced')) cash.accrual_only += 1;
-    const faults = faultsOf(p, f, snapFood);
-    if (f.food !== 0) inc(faults, 'collection_unexpected');
-    fault(r, faults);
-    if (!Object.keys(faults).length) { add(r.ledger, snapFood); add(r.cash_bridged, snapFood); }
+    if (!Object.keys(faults).length) { add(r.ledger, snapFood); add(r.cash_bridged, snapFood); }   // the bridge only for a clean order
   }
   const lastRun = Object.values(runs || {}).filter((x) => x && time(x.finished_at) && time(x.started_at)).reduce((m, x) => Math.max(m, x.started_at), 0);
   const days = Object.values(rows).map((r) => {
@@ -170,8 +183,8 @@ function buildReport({ start, from, to, now, orders, snapshots, sdk, projections
   const has = (d) => !!(runs && runs[d]);
   const missing = dates.filter((d) => !has(d));
   const runList = dates.filter(has).map((d) => { const x = runs[d]; return { date: d, finished: time(x.finished_at), attempt: x.attempt || null, stopped: x.stopped || null, counts: x.counts || {} }; });
-  return { cohort: { start, start_day: ST.dateOf(start), from, to }, days, cash, driver, in_range, global,
+  return { cohort: { start, start_day: ST.dateOf(start), from, to }, days, cash, driver, in_range, journal_faults_outside, global,
     coverage: { runs: runList, missing_run_dates: missing, last_finished_run_start: lastRun || null } };
 }
 
-module.exports = { parseArgs, rangeError, overBudget, journalFacts, buildReport, MAX_DAYS, MAX_RECORDS, MAX_MS };
+module.exports = { parseArgs, rangeError, overBudget, journalFacts, validateOrder, buildReport, MAX_DAYS, MAX_RECORDS, MAX_MS };

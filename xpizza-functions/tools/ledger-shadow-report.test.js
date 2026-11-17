@@ -87,6 +87,29 @@ const jOf = (p, fam) => Object.entries(p.journals).find(([, j]) => j.family === 
     assert.ok(unbal.status === 'mismatch' && unbal.journal_faults.unbalanced === 1, `🔴 LSR-JOURNALS: an unbalanced journal (${JSON.stringify(unbal.journal_faults)})`);
   });
 
+  await cell('LSR-ALL-JOURNALS: EVERY projected order is validated before any exclusion or bridge (Codex #118 r2 #1) — a cancelled card whose reversal was deleted (still payable), and an unbalanced journal on an order that is not a counted sale ⇒ MISMATCH in its row; out of range ⇒ «journal faults outside»', async () => {
+    const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
+    w.orders.CXL = ord('CXL', { payment_method: 'online', payment_status: 'confirmed', active_attempt_id: 'aX', status: 'cancelled', delivered_at: null, cancelled_at: D1 + HR, total_cents: 29900, subtotal_cents: 25000, delivery_cents: 5000, promo_discount_cents: 1000, tip_cents: 900 });
+    w.payment_attempts.aX = { order_id: 'CXL', hosted_state: 'voided', status: 'voided', paid_amount_cents: 29900, paid_at: D1 + 60000, voided_at: D1 + HR, ledger: alloc({ ...w.orders.CXL }) };
+    const L = await ledgerSide(w); const S = statsOf(w.orders, ['2026-11-12']);
+    assert.ok(jOf(L.projections.CXL, 'reversal'), 'premise: the real projector reversed the cancelled card');
+    assert.strictEqual(row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L })).status, 'match', 'premise: untouched ⇒ match');
+    const P = clone(L.projections);
+    for (const [k, j] of Object.entries(P.CXL.journals)) if (j.family === 'reversal' || j.family === 'commission_reversal' || j.family === 'envio_promo_reversal') delete P.CXL.journals[k];
+    const r1 = row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L, projections: P }));
+    assert.ok(r1.status === 'mismatch' && r1.journal_faults.unreversed === 1, `🔴 LSR-ALL-JOURNALS: a cancelled card still payable (${JSON.stringify(r1.journal_faults)})`);
+    const P2 = clone(L.projections); const [, cj] = jOf(P2.CXL, 'collection'); cj.lines[0].dr += 5;
+    const r2 = row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L, projections: P2 }));
+    assert.ok(r2.status === 'mismatch' && r2.journal_faults.unbalanced === 1, `🔴 LSR-ALL-JOURNALS: an unbalanced journal on a non-sale (${JSON.stringify(r2.journal_faults)})`);
+    const P3 = clone(L.projections); const [rk, rj] = jOf(P3.CXL, 'reversal'); rj.lines = rj.lines.map((l) => ({ ...l, ...(l.dr ? { dr: l.dr + 1 } : { cr: l.cr + 1 }) }));
+    const r3 = row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L, projections: P3 }));
+    assert.ok(r3.status === 'mismatch' && r3.journal_faults.orphan_reversal === 1, `🔴 LSR-ALL-JOURNALS: a reversal that mirrors no journal (${rk}: ${JSON.stringify(r3.journal_faults)})`);
+    const out = { ...w.orders, OLD: ord('OLD', { payment_method: 'online', payment_status: 'confirmed', status: 'cancelled', created_at: START + HR, scheduled_for: null, delivered_at: null, cancelled_at: START + 2 * HR }) };   // a cancelled card served on the start day (out of range)
+    const P4 = clone(L.projections); P4.OLD = clone(P.CXL); P4.OLD.status = 'final';
+    const r4 = C.buildReport({ ...ARGS, orders: out, stats: S, ...L, projections: P4, snapshots: { ...L.snapshots, OLD: L.snapshots.CXL } });
+    assert.ok(r4.journal_faults_outside.unreversed === 1 && row(r4).status === 'match', `🔴 LSR-ALL-JOURNALS: out of range ⇒ the outside line (${JSON.stringify(r4.journal_faults_outside)})`);
+  });
+
   await cell('LSR-SDK: capture is decided from the SDK record\'s legs (#118 #2) — the REAL coordinator: placed + materialized (a stats sale) but not captured ⇒ the sdk_authorized_not_captured bridge, match; captured at delivery ⇒ its collection journal, match; cancelled ⇒ on neither side', async () => {
     const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const CO = require('../payments/sdk/coordinator');
     const mk = () => {
@@ -103,6 +126,11 @@ const jOf = (p, fam) => Object.entries(p.journals).find(([, j]) => j.family === 
     assert.ok(isSale(w.db.getAt('orders/S')) && !Object.values(w.db.getAt('payment_sdk/S/legs')).some((l) => l.state === 'captured'), 'premise: the real go-live is a stats sale with an authorized, uncaptured leg');
     const placed = await report(w, NOW);
     assert.deepStrictEqual([placed.status, placed.bridges.sdk_authorized_not_captured.orders, placed.ledger.orders], ['match', 1, 0], `🔴 LSR-SDK: placed, not captured (${JSON.stringify(placed)})`);
+    w.db.setAt('ledger/orders/S/journals/zz', { id: 'zz', family: 'collection', date: D1, lines: [{ account: 'processor_receivable', dr: 100 }, { account: 'restaurant_payable', cr: 90 }] });   // Codex #118 r2 repro
+    const oS = { S: w.db.getAt('orders/S') };
+    const bad = row(C.buildReport({ ...ARGS, now: NOW, orders: oS, stats: statsOf(oS, ['2026-11-12'], NOW), ...(await ledgerOf(w.db, ['S'])) }));
+    assert.ok(bad.status === 'mismatch' && bad.journal_faults.unbalanced === 1, `🔴 LSR-SDK: an authorized SDK order with an unbalanced collection (${JSON.stringify(bad.journal_faults)})`);
+    w.db.setAt('ledger/orders/S/journals/zz', null);
     await w.db.ref('orders/S/status').set('delivered'); await CO.settleTerminal(w.deps, { orderId: 'S' });
     const cap = await report(w, NOW + DAY);
     assert.deepStrictEqual([cap.status, cap.bridges.sdk_authorized_not_captured.orders, cap.ledger.orders], ['match', 0, 1], `🔴 LSR-SDK: captured (${JSON.stringify(cap)})`);

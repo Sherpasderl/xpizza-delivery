@@ -68,11 +68,13 @@ const ms = (x) => (x && typeof x.toMillis === 'function' ? x.toMillis() : Number
   for (const w of r.driver) console.log(`driver week ${w.week}: ${w.drivers} drivers, ${w.deliveries} deliveries, L ${L(w.net_cents)} net, ${w.payable} payable, ${w.paid} paid`);
   const c = r.in_range;
   console.log(`IN RANGE: not projected ${c.not_projected}, no snapshot ${c.no_snapshot}; quarantined ${JSON.stringify(c.quarantined)}; unresolved ${JSON.stringify(c.unresolved)}; journal faults ${JSON.stringify(c.journal_faults)}`);
+  if (Object.keys(r.journal_faults_outside).length) console.log(`JOURNAL FAULTS OUTSIDE the counted rows (other dates / pre-cohort): ${JSON.stringify(r.journal_faults_outside)}`);
   console.log(`GLOBAL BACKLOG: open set by status ${JSON.stringify(r.global.open_status)}, by age ${JSON.stringify(r.global.open_by_age)}; STALE holds (a person must resolve) ${JSON.stringify(r.global.stale_hold)}`);
   for (const x of r.coverage.runs) console.log(`run ${x.date}: ${x.finished ? 'finished' : `NOT finished (${x.stopped})`}, attempt ${x.attempt}, ${JSON.stringify(x.counts)}`);
   if (r.coverage.missing_run_dates.length) console.log(`no run record: ${r.coverage.missing_run_dates.join(', ')}`);
   process.exit(0);
 })().catch((e) => {
   if (e instanceof Budget) { console.error(`ledger-shadow-report: ${e.message}`); process.exit(3); }
+  if (e && e.code === 'read_cap') { console.error(`ledger-shadow-report: report incomplete: budget exceeded (an order's attempts / refunds exceed ${require('../ledger/rebuild').READ_CAP})`); process.exit(3); }   // readSources' bounded queries (#118 r2)
   console.error('ledger-shadow-report FAILED:', (e && e.code) || 'error'); process.exit(1);
 });

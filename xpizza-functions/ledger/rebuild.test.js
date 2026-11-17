@@ -245,6 +245,17 @@ const clockAt = (t) => () => t;
     assert.strictEqual(db.getAt('ledger/stale'), null, '🔴 RB-STALE-HOLD: and leaves ledger/stale');
   });
 
+  await cell('RB-READ-CAP: readSources bounds its attempt and refund queries (Codex #118 r2 #2): more than READ_CAP rows ⇒ a read_cap error, never an unbounded read; at the cap it reads', async () => {
+    const many = (n, f) => { const o = {}; for (let i = 0; i < n; i++) o[f(i)] = { order_id: 'M' }; return o; };
+    const db = makeHonestDb({ orders: { M: order('M', NEW) }, payment_attempts: many(RB.READ_CAP + 1, (i) => `a${String(i).padStart(5, '0')}`) });
+    await assert.rejects(RB.readSources(db, 'M'), (e) => e && e.code === 'read_cap', '🔴 RB-READ-CAP: attempts over the cap');
+    const ok1 = makeHonestDb({ orders: { M: order('M', NEW) }, payment_attempts: many(RB.READ_CAP, (i) => `a${String(i).padStart(5, '0')}`) });
+    assert.strictEqual(Object.keys((await RB.readSources(ok1, 'M')).attempts).length, RB.READ_CAP, 'at the cap it reads');
+    const refunds = {}; for (let i = 0; i <= RB.READ_CAP; i++) refunds[`a1-${1000 + i}`] = { attempt_id: 'a1' };
+    const db2 = makeHonestDb({ orders: { M: order('M', NEW) }, payment_attempts: { a1: { order_id: 'M' } }, refund_attempts: refunds });
+    await assert.rejects(RB.readSources(db2, 'M'), (e) => e && e.code === 'read_cap', '🔴 RB-READ-CAP: refunds over the cap');
+  });
+
   await cell('RB-SLOT: the scheduled function picks the slot by the Honduras minute — 03:00 / 03:01 ⇒ run, 03:30 ⇒ safety', async () => {
     const { slotOf } = require('./functions');
     assert.deepStrictEqual([slotOf(NOW), slotOf(NOW + 60000), slotOf(NOW + 1800000)], ['run', 'run', 'safety'], '🔴 RB-SLOT');

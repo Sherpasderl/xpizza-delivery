@@ -40404,8 +40404,8 @@
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: a wrong / missing collection is a fault",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (f.food !== snapFood) inc(faults,",
-  "to": "if (false) inc(faults,",
+  "from": "if (f.food !== owesFood) inc(out,",
+  "to": "if (false) inc(out,",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
@@ -40610,21 +40610,6 @@
   ]
  },
  {
-  "id": "ls6-s1-scope-in-range",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: completeness counts only in-range orders",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "const date = ST.dateOf(ms); if (!inRange[date]) continue;",
-  "to": "const date = ST.dateOf(ms); if (!inRange[date] && false) continue;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-SCOPE:"
-  ]
- },
- {
   "id": "ls6-s2-global-open",
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: the global open set by status",
@@ -40757,6 +40742,81 @@
   ],
   "kills_with": [
    "✗ LSR-CLI:"
+  ]
+ },
+ {
+  "id": "ls6-v1-validate-every-order",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: every projected order is validated, not only counted sales",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const faults = p ? validateOrder(o, p, snap, rec) : {};",
+  "to": "const faults = p && isSale(o) ? validateOrder(o, p, snap, rec) : {};",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v2-orphan-reversal",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a reversal that mirrors no journal is a fault",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (orphans) inc(out, 'orphan_reversal', orphans);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v3-unreversed",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a non-sale card must hold no collected food",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const owesFood = card && sale && capturedOf(o, rec) ? snapFood : 0;",
+  "to": "const owesFood = card && capturedOf(o, rec) ? snapFood : 0;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-v4-outside-line",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: faults outside the counted rows are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "else inc(journal_faults_outside, k, c);",
+  "to": "else void 0;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-ALL-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-rc1-read-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: readSources refuses past READ_CAP rows",
+  "file": "ledger/rebuild.js",
+  "from": "if (Object.keys(o).length > READ_CAP) throw",
+  "to": "if (false) throw",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-READ-CAP:"
   ]
  }
 ]

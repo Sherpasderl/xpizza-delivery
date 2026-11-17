@@ -22,7 +22,8 @@ const CR = require('./commission-rate');
 
 const WINDOW_MS = 21 * 86400000;
 const CAP_MS = 400000;
-const STALE_MS = 60 * 86400000;   // a hold unchanged this long leaves the open set (stale_hold)
+const STALE_MS = 60 * 86400000;
+const READ_CAP = 5000;   // rows per readSources query (attempts / refunds of ONE order) — far above real volume; over it ⇒ read_cap (S6 #118 r2)   // a hold unchanged this long leaves the open set (stale_hold)
 const HN_OFFSET_MS = 6 * 3600000;   // Honduras: UTC−6, no daylight saving
 const ORDER_TIMES = ['created_at', 'delivered_at', 'cancelled_at', 'refunded_at', 'fulfilled_offline_at'];
 const ATTEMPT_TIMES = ['paid_at', 'refunded_at', 'voided_at', 'failed_at', 'uncertain_at', 'flagged_at'];
@@ -67,9 +68,10 @@ function snapshotOf(alloc, sdk, order, attempts) {
 async function readSources(db, orderId) {
   const v = async (p) => (await db.ref(p).once('value')).val();
   const order = await v(`orders/${orderId}`);
-  const attempts = obj(await db.ref('payment_attempts').orderByChild('order_id').equalTo(orderId).once('value').then((s) => s.val()));
+  const capped = (x) => { const o = obj(x); if (Object.keys(o).length > READ_CAP) throw Object.assign(new Error('read cap exceeded'), { code: 'read_cap' }); return o; };
+  const attempts = capped((await db.ref('payment_attempts').orderByChild('order_id').equalTo(orderId).limitToFirst(READ_CAP + 1).once('value')).val());
   const refunds = {};
-  for (const aid of Object.keys(attempts).sort()) Object.assign(refunds, obj((await db.ref('refund_attempts').orderByKey().startAt(`${aid}-`).endAt(`${aid}-`).once('value')).val()));
+  for (const aid of Object.keys(attempts).sort()) Object.assign(refunds, capped((await db.ref('refund_attempts').orderByKey().startAt(`${aid}-`).endAt(`${aid}-`).limitToFirst(READ_CAP + 1).once('value')).val()));
   const sdk = order && order.payment_flow === 'sdk_auth_v1' ? await v(`payment_sdk/${orderId}`) : null;
   const alloc = snapshotOf(await v(`ledger_alloc/${orderId}`), sdk, order, attempts);
   const rewardState = order && order.redemption && typeof order.customer_uid === 'string' && typeof order.restaurant_id === 'string'
@@ -149,4 +151,4 @@ async function runNightly({ db, clock }, { slot }) {
   return { outcome: recorded ? 'finished' : outcome === 'time_cap' ? 'time_cap' : 'error', counts };
 }
 
-module.exports = { STALE_MS, runNightly, rebuildOrder, readSources, touchedSet, snapshotOf, hnDate, errCode, WINDOW_MS, CAP_MS, ALERT_TYPE, ORDER_TIMES, ATTEMPT_TIMES };
+module.exports = { STALE_MS, READ_CAP, runNightly, rebuildOrder, readSources, touchedSet, snapshotOf, hnDate, errCode, WINDOW_MS, CAP_MS, ALERT_TYPE, ORDER_TIMES, ATTEMPT_TIMES };

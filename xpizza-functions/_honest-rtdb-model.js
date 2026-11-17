@@ -107,14 +107,15 @@ function makeHonestDb(initial = {}, hooks = {}) {
           return snap(keys.length ? out : null);
         } });
         // LEDGER S5: a key range (inclusive both ends, RTDB key order) — the refund rows of one attempt (`${aid}-${ts}`)
-        const range = (a, b) => ({ async once() {
+        const lim = (n) => { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return n; };
+        const range = (a, b, n) => ({ async once() {
           if (hooks.beforeRead) await hooks.beforeRead(p, api);
           const v = getAt(p);
           if (v == null || typeof v !== 'object') return snap(null);
-          const keys = Object.keys(v).filter((k) => keyCmp(k, a) >= 0 && (b === undefined || keyCmp(k, b) <= 0)).sort(keyCmp);
+          const keys = Object.keys(v).filter((k) => keyCmp(k, a) >= 0 && (b === undefined || keyCmp(k, b) <= 0)).sort(keyCmp).slice(0, n);
           const out = {}; for (const k of keys) out[k] = v[k];
           return snap(keys.length ? out : null);
-        } });
+        }, limitToFirst(m) { return range(a, b, lim(m)); } });
         const str = (x, w) => { if (typeof x !== 'string') throw new Error(`orderByKey().${w}: a key bound must be a string`); return x; };
         return { limitToFirst(n) { if (!Number.isInteger(n) || n < 1) throw new Error(`limitToFirst: invalid limit ${n}`); return page(n); },
           startAt(a) { str(a, 'startAt'); return { ...range(a), endAt(b) { return range(a, str(b, 'endAt')); } }; } };
@@ -133,14 +134,14 @@ function makeHonestDb(initial = {}, hooks = {}) {
           if (x === null || typeof x === 'boolean' || typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x))) return x;
           throw new Error(`orderByChild().${w}: ${String(x)} is not a valid bound (null, boolean, finite number or string)`);
         };
-        const sel = (keep) => ({ async once() {
+        const sel = (keep, n) => ({ async once() {
           if (hooks.beforeRead) await hooks.beforeRead(p, api);
           const v = getAt(p);
           if (v == null || typeof v !== 'object') return snap(null);
-          const keys = Object.keys(v).filter((k) => keep(cv(v[k]))).sort((a, b) => cmpV(cv(v[a]), cv(v[b])) || keyCmp(a, b));
+          const keys = Object.keys(v).filter((k) => keep(cv(v[k]))).sort((a, b) => cmpV(cv(v[a]), cv(v[b])) || keyCmp(a, b)).slice(0, n);
           const out = {}; for (const k of keys) out[k] = v[k];
           return snap(keys.length ? out : null);
-        } });
+        }, limitToFirst(m) { if (!Number.isInteger(m) || m < 1) throw new Error(`limitToFirst: invalid limit ${m}`); return sel(keep, m); } });
         return { startAt(x) { const b = prim(x, 'startAt'); return sel((y) => cmpV(y, b) >= 0); }, equalTo(x) { const b = prim(x, 'equalTo'); return sel((y) => rank(y) === rank(b) && (b === null || y === b)); } };
       },
       // a value-ordered page, as RTDB orders values: null < false < true < numbers < strings < objects, ties by key;
