@@ -72,9 +72,6 @@ const KNOWN_RED = {};   // the rule-20 url-token guard's entry expired with the 
 /* A light-chain file that launches a browser, excused until its owner moves it to a heavy script. An entry whose file
    the light chain no longer runs, or that no longer launches one, fails the plan. */
 const KNOWN_BROWSER = {
-  'xpizza-driver/fa4400-render.browser.test.js': { side: 'apps', reason: 'headless Chrome (computed --accent) planned by test:apps; routed to 2f for a heavy test:*-browser script (advisor 11-16)', owner: '2f', since: '2026-11-16' },
-  'xpizza-dispatch/dispatch-cashbar-layout.test.js': { side: 'test', reason: 'Google Chrome layout gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
-  'xpizza-dispatch/dispatch-driver-admin-panel.test.js': { side: 'test', reason: 'Google Chrome panel gate named in the npm test chain; dispatch is moving it to a test:dispatch-*-browser script (advisor 11-16)', owner: 'dispatch', since: '2026-11-16' },
 };
 const HEAVY_STEP = /emulator-ports\.guard|census\.negative/;   // the two npm test steps the light chain drops (light-chain.sh)
 const BROWSER_RE = /CHROME_BIN|CHROME_HEADLESS_SHELL|chrome-headless-shell|remote-debugging-port|Google Chrome\.app|puppeteer|playwright/;
