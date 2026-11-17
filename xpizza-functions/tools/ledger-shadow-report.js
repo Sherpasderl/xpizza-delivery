@@ -30,7 +30,8 @@ const val = async (q) => (await q.once('value')).val() || {};
   const lo = ST.dayStartMs(req.from) - ST.READ_PAD_MS; const hi = ST.dayEndMs(req.to);
   const orders = await val(db.ref('orders').orderByChild('created_at').startAt(lo).endAt(hi));
   const open = await val(db.ref('ledger/open'));
-  for (const id of Object.keys(open)) if (!orders[id]) { const o = (await db.ref(`orders/${id}`).once('value')).val(); if (o) orders[id] = o; }
+  const stale = await val(db.ref('ledger/stale'));
+  for (const id of [...Object.keys(open), ...Object.keys(stale)]) if (!orders[id]) { const o = (await db.ref(`orders/${id}`).once('value')).val(); if (o) orders[id] = o; }
   const projections = {}; const snapshots = {};
   for (const id of Object.keys(orders)) {
     const p = (await db.ref(`ledger/orders/${id}`).once('value')).val();
@@ -43,7 +44,7 @@ const val = async (q) => (await q.once('value')).val() || {};
   const dates = ST.datesBetween(req.from, req.to);
   const stats = {};
   for (const rid of rids) stats[rid] = Object.fromEntries(await readDailies(fs, rid, dates));
-  const r = buildReport({ start: req.start, from: req.from, to: req.to, now, orders, snapshots, projections, open, runs, stats, weeks });
+  const r = buildReport({ start: req.start, from: req.from, to: req.to, now, orders, snapshots, projections, open, runs, stats, weeks, stale });
   if (req.json) { console.log(JSON.stringify(r, null, 1)); process.exit(0); }
   const L = (x) => (x / 100).toFixed(2);
   console.log(`LEDGER SHADOW REPORT — project ${PROJECT_ID} — cohort from ${new Date(r.cohort.start).toISOString()} — service dates ${r.cohort.from} … ${r.cohort.to}`);
@@ -52,7 +53,7 @@ const val = async (q) => (await q.once('value')).val() || {};
   console.log(`cash: ${r.cash.cash_sales} cash sales, ${r.cash.accrual_only} accrual only (no collection evidence); card_delivery (not cash): ${r.cash.card_delivery_sales}`);
   for (const w of r.driver) console.log(`driver week ${w.week}: ${w.drivers} drivers, ${w.deliveries} deliveries, L ${L(w.net_cents)} net, ${w.payable} payable, ${w.paid} paid`);
   const c = r.completeness;
-  console.log(`completeness: not projected ${c.not_projected}, no snapshot ${c.no_snapshot}; quarantined ${JSON.stringify(c.quarantined)}; unresolved ${JSON.stringify(c.unresolved)}; pending by age ${JSON.stringify(c.pending_age)}`);
+  console.log(`completeness: not projected ${c.not_projected}, no snapshot ${c.no_snapshot}; quarantined ${JSON.stringify(c.quarantined)}; unresolved ${JSON.stringify(c.unresolved)}; pending by age ${JSON.stringify(c.pending_age)}; STALE holds (a person must resolve) ${JSON.stringify(c.stale_hold)}`);
   for (const x of r.coverage.runs) console.log(`run ${x.date}: ${x.finished ? 'finished' : `NOT finished (${x.stopped})`}, attempt ${x.attempt}, ${JSON.stringify(x.counts)}`);
   if (r.coverage.missing_run_dates.length) console.log(`no run record: ${r.coverage.missing_run_dates.join(', ')}`);
   process.exit(0);

@@ -9,7 +9,8 @@
 //   sdk column    an SDK order placed but not captured (not a sale yet): on neither side — auth → capture timing, never a mismatch
 //   cash          cash sales, the accrual-only ones (cash_not_evidenced), card_delivery apart (it is not physical cash)
 //   driver        S8 closed weeks overlapping the range: drivers / deliveries / net cents / payable / paid — earnings stay OUT of the ledger
-//   completeness  cohort orders in range with no projection, quarantine and unresolved by reason, pending (open / unresolved) by age
+//   completeness  cohort orders in range with no projection, quarantine and unresolved by reason, pending (open / unresolved) by age, and
+//                 the STALE holds (S5: unchanged > 60 days, out of the open set — ledger/stale) by reason, for a person to resolve
 //   coverage      the nightly run records of the range, and the dates with none
 // Plain objects only (no Map / Set): the read-only scan in the test stays exact.
 const { isSale } = require('../stats/stats-classify');
@@ -47,7 +48,7 @@ const time = (x) => Number.isSafeInteger(x) && x > 0;
 const inc = (o, k, by = 1) => { o[k] = (o[k] || 0) + by; };
 const orderFood = (o) => (Number.isSafeInteger(o.total_cents) ? o.total_cents : 0) - SB.envioNetCents(o) - SB.tipCents(o);   // stats-build addSale
 
-function buildReport({ start, from, to, now, orders, snapshots, projections, open, runs, stats, weeks }) {
+function buildReport({ start, from, to, now, orders, snapshots, projections, open, runs, stats, weeks, stale }) {
   if (from <= ST.dateOf(start)) throw new Error(`--from must be after the ledger start day ${ST.dateOf(start)} (a partial first day cannot be matched)`);
   const dates = ST.datesBetween(from, to);
   const inRange = {}; for (const d of dates) inRange[d] = true;
@@ -63,7 +64,7 @@ function buildReport({ start, from, to, now, orders, snapshots, projections, ope
     }
   }
   const cash = { cash_sales: 0, accrual_only: 0, card_delivery_sales: 0 };
-  const completeness = { not_projected: 0, no_snapshot: 0, quarantined: {}, unresolved: {}, pending_age: { under_1d: 0, d1_7: 0, d7_21: 0, over_21d: 0 } };
+  const completeness = { not_projected: 0, no_snapshot: 0, quarantined: {}, unresolved: {}, stale_hold: {}, pending_age: { under_1d: 0, d1_7: 0, d7_21: 0, over_21d: 0 } };
   for (const [id, o] of Object.entries(orders || {})) {
     if (!o || typeof o !== 'object') continue;
     const ms = ST.serviceMs(o); if (ms === null) continue;
@@ -81,6 +82,7 @@ function buildReport({ start, from, to, now, orders, snapshots, projections, ope
     if (!snap) { completeness.no_snapshot += 1; continue; }
     r.ledger.orders += 1; r.ledger.cents += foodParts(snap).food;
   }
+  for (const id of Object.keys(stale || {})) { const p = projections && projections[id]; for (const why of (p && p.reasons) || ['unknown']) inc(completeness.stale_hold, why); }
   for (const [id, p] of Object.entries(projections || {})) {
     if (!p) continue;
     if (p.status === 'quarantined') for (const why of p.reasons || []) inc(completeness.quarantined, why);

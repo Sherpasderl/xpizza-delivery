@@ -95,6 +95,17 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
     assert.ok(row.diff.orders >= 1 && row.diff.cents >= 16500, `🔴 LSR-COMPLETENESS: the gap shows as a difference ${JSON.stringify(row)}`);
   });
 
+  await cell('LSR-STALE: a stale hold (a quarantined / unresolved order unchanged > 60 days, out of the open set — S5) is listed by reason for a person to resolve', async () => {
+    const T0 = Date.parse('2026-09-01T18:00:00Z');
+    const db = makeHonestDb({ orders: { Q: ord('Q', { payment_method: 'cash', status: 'preparing', delivered_at: null, created_at: T0 }) }, ledger_settings: RATES }, { now: () => T0 });   // no snapshot ⇒ quarantined
+    await RB.runNightly({ db, clock: () => T0 }, { slot: 'run' });
+    await RB.runNightly({ db, clock: () => T0 + 61 * DAY }, { slot: 'run' });
+    assert.deepStrictEqual(db.getAt('ledger/stale'), { Q: true }, 'premise: S5 made it a stale hold');
+    const stale = db.getAt('ledger/stale'); const projections = { Q: db.getAt('ledger/orders/Q') };
+    const r = C.buildReport({ ...ARGS, orders: { Q: db.getAt('orders/Q') }, stats: {}, projections, open: {}, runs: {}, snapshots: {}, weeks: {}, stale });
+    assert.deepStrictEqual(r.completeness.stale_hold, { no_snapshot: 1 }, `🔴 LSR-STALE: ${JSON.stringify(r.completeness)}`);
+  });
+
   await cell('LSR-CASH: cash sales and the accrual-only ones (no collection evidence: cash_not_evidenced) are counted; card_delivery is NOT physical cash', async () => {
     const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
     const L = await ledgerSide(w);
