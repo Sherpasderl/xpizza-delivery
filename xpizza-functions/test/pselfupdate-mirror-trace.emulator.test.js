@@ -380,7 +380,7 @@ async function capturePhase() {
     }
     await rtdb.ref('platform_config/client_floor/orders').remove();
   }
-  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, premises, companion, unhandled: globalThis.__UNHANDLED || [] }));
+  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, ledg: LEDG, floorOn, money, premises, companion, unhandled: globalThis.__UNHANDLED || [] }));   // ledg: LEDGER S1 per case (the capture runs in this child)
 }
 
 (async () => {
@@ -398,7 +398,7 @@ async function capturePhase() {
   delete env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
   try { execFileSync('node', [__filename], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000, killSignal: 'SIGKILL' }); }
   catch (e) { console.error(String(e.stdout || '').slice(-1500) + String(e.stderr || '').slice(-3000)); throw new Error(`capture phase failed (${e.status === null ? 'TIMEOUT' : e.status})`); }
-  const { out, floorOn, unhandled, money, premises, companion } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  const { out, ledg: LEDG, floorOn, unhandled, money, premises, companion } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
   if (process.env.PSU_COMPANION_DUMP) fsys.writeFileSync(process.env.PSU_COMPANION_DUMP, JSON.stringify(companion, null, 1));
   const assertPremises = () => { for (const [okay, msg] of premises) assert.ok(okay, msg); };
   const undocumented = (unhandled || []).filter((u) => !u.documented);
