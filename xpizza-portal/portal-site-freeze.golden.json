@@ -33,6 +33,7 @@
   "branches-view.js",
   "calificaciones-harness.mjs",
   "calificaciones-logic.js",
+  "calificaciones-skeleton-fit.browser.test.mjs",
   "calificaciones-view.js",
   "calificaciones.js",
   "calificaciones.test.mjs",
@@ -126,6 +127,7 @@
   "review.js",
   "review.test.mjs",
   "reviews-v2-frozen-response.fixture.json",
+  "rgb-fold.mjs",
   "rp-fold.mjs",
   "s1-fold.mjs",
   "s2-fold.mjs",
@@ -152,6 +154,7 @@
   "ventas-tab.test.mjs",
   "ventas.js",
   "ventas.test.mjs",
+  "whoami-fit.test.mjs",
   "wiring-ast.mjs"
  ],
  "bytes": {
@@ -216,8 +219,8 @@
    "bytes": 841
   },
   "styles.css": {
-   "sha256": "b2d928e44b8068446211efe3e164927dcd8b654f7f382ea314f93454bfd4df1f",
-   "bytes": 226226
+   "sha256": "4f1448da708ac3379be7d3a47fc833edf452235257915d3aa59a7f2e82b2e4b4",
+   "bytes": 226452
   }
  },
  "diff_aid": {
