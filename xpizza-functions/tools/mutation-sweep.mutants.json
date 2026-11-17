@@ -39969,7 +39969,7 @@
   "slice": "ledger-s5",
   "label": "ledger S5 nightly rebuild: unresolved stays in the open set",
   "file": "ledger/rebuild.js",
-  "from": "const keep = r.status === 'open' || r.status === 'unresolved';",
+  "from": "const keep = r.status !== 'final';",
   "to": "const keep = r.status === 'open';",
   "command": [
    "node",
@@ -40029,8 +40029,8 @@
   "slice": "ledger-s5",
   "label": "ledger S5 nightly rebuild: the restart is attempt 2",
   "file": "ledger/rebuild.js",
-  "from": "const attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;",
-  "to": "const attempt = 1;",
+  "from": "attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;",
+  "to": "attempt = 1;",
   "command": [
    "node",
    "ledger/rebuild.test.js"
@@ -40040,12 +40040,27 @@
   ]
  },
  {
-  "id": "ls5-a1-safety-only",
+  "id": "ls5-a1-unfinished-alarm",
   "slice": "ledger-s5",
-  "label": "ledger S5 nightly rebuild: a 03:00 failure alone is retried, not alarmed",
+  "label": "ledger S5 nightly rebuild: the safety slot alarms an unfinished run (the first cell pinning it is RB-ALARM)",
   "file": "ledger/rebuild.js",
-  "from": "if (!finished && slot === 'safety') reasons.push(",
-  "to": "if (!finished) reasons.push(",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (false) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-a1-unfinished-alarm",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the safety slot alarms an unfinished run (the first cell pinning it is RB-ALARM)",
+  "file": "ledger/rebuild.js",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (false) {",
   "command": [
    "node",
    "ledger/rebuild.test.js"
@@ -40119,8 +40134,8 @@
   "slice": "ledger-s5",
   "label": "ledger S5 nightly rebuild: honest model: startAt keeps strings / objects (RTDB value order)",
   "file": "_honest-rtdb-model.js",
-  "from": "return sel((y) => cmpV(y, x) >= 0);",
-  "to": "return sel((y) => rank(y) === rank(x) && cmpV(y, x) >= 0);",
+  "from": "return sel((y) => cmpV(y, b) >= 0);",
+  "to": "return sel((y) => rank(y) === rank(b) && cmpV(y, b) >= 0);",
   "command": [
    "node",
    "_honest-rtdb-model.test.js"
@@ -40157,6 +40172,126 @@
   ],
   "kills_with": [
    "🔴 HRM-QUERY-LOG:"
+  ]
+ },
+ {
+  "id": "ls5-a6-not-at-run-slot",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a 03:00 failure alone is retried, not alarmed",
+  "file": "ledger/rebuild.js",
+  "from": "if (!recorded && slot === 'safety') {",
+  "to": "if (!recorded) {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALARM:"
+  ]
+ },
+ {
+  "id": "ls5-q1-quarantine-stays",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a quarantined order stays in discovery (Codex #116 #1)",
+  "file": "ledger/rebuild.js",
+  "from": "const keep = r.status !== 'final';",
+  "to": "const keep = r.status === 'open' || r.status === 'unresolved';",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-QUARANTINE-STAYS:"
+  ]
+ },
+ {
+  "id": "ls5-m1-alert-txn-before-mark",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed alert transaction blocks the completion marker",
+  "file": "ledger/rebuild.js",
+  "from": "await alarmOnce(db, date, start, ['unresolved_up'], counts);",
+  "to": "await alarmOnce(db, date, start, ['unresolved_up'], counts).catch(() => {});",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALERT-BEFORE-MARK:"
+  ]
+ },
+ {
+  "id": "ls5-m2-yesterday-before-mark",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed read of yesterday blocks the completion marker",
+  "file": "ledger/rebuild.js",
+  "from": "(await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value')).val();",
+  "to": "(await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value').catch(() => ({ val: () => null }))).val();",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-ALERT-BEFORE-MARK:"
+  ]
+ },
+ {
+  "id": "ls5-l1-record-write-alarm",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a failed record write still alarms in the safety slot",
+  "file": "ledger/rebuild.js",
+  "from": "  } catch (_) { /* the safety slot alarms below",
+  "to": "  } catch (_) { return { outcome: 'error', counts }; /* the safety slot alarms below",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-LIFECYCLE:"
+  ]
+ },
+ {
+  "id": "ls5-l2-prior-read-protected",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the run-record read is protected",
+  "file": "ledger/rebuild.js",
+  "from": "  let attempt = null; let outcome = 'finished';\n  try {\n    const prior = (await runRef.once('value')).val();",
+  "to": "  let attempt = null; let outcome = 'finished';\n  const prior = (await runRef.once('value')).val();\n  try {",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-LIFECYCLE:"
+  ]
+ },
+ {
+  "id": "ls5-hm4-finite-bound",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: NaN / Infinity bounds refused as the SDK",
+  "file": "_honest-rtdb-model.js",
+  "from": "(typeof x === 'number' && Number.isFinite(x))",
+  "to": "typeof x === 'number'",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-BOUNDS:"
+  ]
+ },
+ {
+  "id": "ls5-hm5-undefined-start",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: honest model: startAt(undefined) = startAt(null) as the SDK",
+  "file": "_honest-rtdb-model.js",
+  "from": "          if (x === undefined && w === 'startAt') return null;\n",
+  "to": "",
+  "command": [
+   "node",
+   "_honest-rtdb-model.test.js"
+  ],
+  "kills_with": [
+   "🔴 HRM-BOUNDS:"
   ]
  }
 ]
