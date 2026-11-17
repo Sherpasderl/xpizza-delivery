@@ -78,6 +78,23 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   assert.deepStrictEqual(db6.getAt('x'), { c: [1, 2], keep: 1 }, `HRM-EMPTY-ARRAY: an empty array is absent, as in RTDB (got ${JSON.stringify(db6.getAt('x'))})`);
   ok('an empty array is pruned');
   // Codex #111 P3: the model must not be laxer than the Admin SDK's update validation
+  {   // HRM-NONFINITE: NaN / ±Infinity are refused on every write (the SDK refuses a non-finite number)
+    const d = makeHonestDb({});
+    await assert.rejects(d.ref('x').set(NaN), /non-finite/, 'HRM-NONFINITE: set NaN');
+    await assert.rejects(d.ref('x').set({ a: { b: -Infinity } }), /non-finite/, 'HRM-NONFINITE: a nested -Infinity');
+    await assert.rejects(d.ref('x').push({ v: Infinity }), /non-finite/, 'HRM-NONFINITE: push');
+    await assert.rejects(d.ref('x').transaction(() => ({ v: NaN })), /non-finite/, 'HRM-NONFINITE: a transaction result');
+    assert.strictEqual(d.getAt('x'), null, 'HRM-NONFINITE: nothing written');
+  }
+  ok('NaN / Infinity are refused on set, push, update and transaction');
+  {   // HRM-ATOMIC: the WHOLE patch is validated before anything is written
+    const d = makeHonestDb({ k: 0 });
+    for (const [patch, re] of [[{ ok: 1, 'bad.key': 2 }, /invalid RTDB key/], [{ ok: 1, und: undefined }, /undefined value/], [{ ok: 1, n: NaN }, /non-finite/], [{ ok: 1, deep: { x: { y: Infinity } } }, /non-finite/]]) {
+      await assert.rejects(d.ref('').update(patch), re, `HRM-ATOMIC: ${Object.keys(patch).join(',')} refused`);
+      assert.deepStrictEqual(d.getAt(''), { k: 0 }, `HRM-ATOMIC: the valid key of a refused patch was NOT written (${Object.keys(patch).join(',')})`);
+    }
+  }
+  ok('a refused update writes NOTHING — the valid keys beside a bad one are not applied');
   {   // HRM-OVERLAP: an update whose paths are ancestor / descendant of each other is refused (the SDK: «… is an ancestor of …»), WHOLE
     const d = makeHonestDb({ a: { keep: 1 } });
     for (const patch of [{ a: { x: 1 }, 'a/b': 2 }, { 'a/b': 1, 'a/b/c': 2 }, { 'a/b/c': 1, a: null }]) {
@@ -89,22 +106,5 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.deepStrictEqual(d.getAt('a'), { keep: 1, b: 1, c: 2, bc: 3 });
   }
   ok('an update with overlapping (ancestor / descendant) paths is refused whole; siblings and prefix-sharing keys are fine');
-  {   // HRM-ATOMIC: the WHOLE patch is validated before anything is written
-    const d = makeHonestDb({ k: 0 });
-    for (const [patch, re] of [[{ ok: 1, 'bad.key': 2 }, /invalid RTDB key/], [{ ok: 1, und: undefined }, /undefined value/], [{ ok: 1, n: NaN }, /non-finite/], [{ ok: 1, deep: { x: { y: Infinity } } }, /non-finite/]]) {
-      await assert.rejects(d.ref('').update(patch), re, `HRM-ATOMIC: ${Object.keys(patch).join(',')} refused`);
-      assert.deepStrictEqual(d.getAt(''), { k: 0 }, `HRM-ATOMIC: the valid key of a refused patch was NOT written (${Object.keys(patch).join(',')})`);
-    }
-  }
-  ok('a refused update writes NOTHING — the valid keys beside a bad one are not applied');
-  {   // HRM-NONFINITE: NaN / ±Infinity are refused on every write (the SDK refuses a non-finite number)
-    const d = makeHonestDb({});
-    await assert.rejects(d.ref('x').set(NaN), /non-finite/, 'HRM-NONFINITE: set NaN');
-    await assert.rejects(d.ref('x').set({ a: { b: -Infinity } }), /non-finite/, 'HRM-NONFINITE: a nested -Infinity');
-    await assert.rejects(d.ref('x').push({ v: Infinity }), /non-finite/, 'HRM-NONFINITE: push');
-    await assert.rejects(d.ref('x').transaction(() => ({ v: NaN })), /non-finite/, 'HRM-NONFINITE: a transaction result');
-    assert.strictEqual(d.getAt('x'), null, 'HRM-NONFINITE: nothing written');
-  }
-  ok('NaN / Infinity are refused on set, push, update and transaction');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
