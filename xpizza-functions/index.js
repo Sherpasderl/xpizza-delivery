@@ -7917,4 +7917,24 @@ require('./ratings/rate-order').configure({ resolveContext: async (rid) => conte
 // PLAN-3a-marketing-server steps 1–2: the portal «Marketing» offer endpoints (marketing/functions.js; dark until platform_config/marketing.offers_enabled)
 exports.getMarketing = require('./marketing/functions').getMarketing; exports.marketingOfferSave = require('./marketing/functions').marketingOfferSave; exports.marketingOfferSetState = require('./marketing/functions').marketingOfferSetState; exports.marketingOfferRepeat = require('./marketing/functions').marketingOfferRepeat;
 exports.getAnuncioWeeks = require('./marketing/functions').getAnuncioWeeks; exports.anuncioBook = require('./marketing/functions').anuncioBook; exports.anuncioCancel = require('./marketing/functions').anuncioCancel;   // PLAN-3a-marketing-server step 3: the «Anuncio» (dark until anuncio_enabled)
+// PLAN-3a-capp-push-tokens r0 §2 (advisor GO 11-16): the capp's push endpoints — the device registration + the person's push prefs
+// (customer-push.js, built + approved at 4d9d1905c; the capp's api calls these names). Member-only (x-firebase-id-token, member-auth),
+// ?context=platform, rate-limited per uid; server-only nodes customer_push_tokens / customer_push_prefs (rules: server-only)
+const CUSTOMER_PUSH = require('./customer-push').makeCustomerPush({ getDatabase, getAuth, checkRateLimit });
+exports.registerCustomerPushToken = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CUSTOMER_PUSH.registerCustomerPushToken,
+);
+exports.unregisterCustomerPushToken = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CUSTOMER_PUSH.unregisterCustomerPushToken,
+);
+exports.setCustomerPushPrefs = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CUSTOMER_PUSH.setCustomerPushPrefs,
+);
+exports.getCustomerPushPrefs = onRequest(
+  { region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
+  CUSTOMER_PUSH.getCustomerPushPrefs,
+);
 /* checkout:end endpoints */

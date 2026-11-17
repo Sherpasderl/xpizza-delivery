@@ -16,7 +16,9 @@ assert.strictEqual(HUNKS.length, 1, 'DIRWIRE: one hunk (one added export line)')
 assert.ok(HUNKS[0].now.startsWith('exports.getRestaurantDirectory = onRequest(') && HUNKS[0].was === '', 'DIRWIRE: the hunk IS the export line, added');
 {
   // asm11: the offer-audience layer (5f, disjoint index.js hunks, merged beside this one) is peeled on the raw read
-  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
+  // asm11 15: the 3a capp push wiring (memberreads hunks marked after aaeb8f277, merged last) is peeled first
+  const raw = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const disk = require('./tools/audience-module-inverse').unapplyAudienceModule('index.js', require('./tools/memberreads-module-inverse').unapplyAfter('index.js', raw, 'aaeb8f277'));
   const base = git(['show', `${BASE}:xpizza-functions/index.js`]);
   assert.notStrictEqual(disk, base, 'DIRWIRE: non-vacuity — index.js carries the wiring');
   assert.strictEqual(unapplyDirwireModule('index.js', disk), base, `DIRWIRE: 🔴 index.js minus the directory wiring is not ${BASE}:index.js`);

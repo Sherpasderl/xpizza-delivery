@@ -390,6 +390,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -808,6 +809,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -1314,6 +1316,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -1734,6 +1737,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -4839,7 +4843,8 @@
      "inverses": [
       "tools/audience-module-inverse.js",
       "tools/d4-intake-inverse.js",
-      "tools/dirwire-module-inverse.js"
+      "tools/dirwire-module-inverse.js",
+      "tools/memberreads-module-inverse.js"
      ]
     },
     {
