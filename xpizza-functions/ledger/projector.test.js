@@ -11,7 +11,8 @@ const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
 const { buildMaterializeUpdates } = require('../materialize');
 const { paymentHash } = require('../pixelpay');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-async function cell(label, fn) { try { await fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); }
+const ONLY = process.env.PR_ONLY;   // run ONE cell (RED proofs against an older projector)
+async function cell(label, fn) { if (ONLY && !label.startsWith(`${ONLY}:`) && !label.startsWith(`${ONLY} `)) return; try { await fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); }
 
 const RATE = 1000;   // 10 % (owner: 1,000 bp on the food the customer paid, ISV included)
 const stored = (v) => { if (v === null || typeof v !== 'object') return v; const o = {}; for (const [k, x] of Object.entries(v)) { const y = stored(x); if (y !== null && !(typeof y === 'object' && !Object.keys(y).length)) o[k] = y; } return o; };
@@ -78,17 +79,6 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     assert.strictEqual(byFamily(out, 'reversal')[0].id, PJ.idOf('reversal', PJ.idOf('collection', A)));
   });
 
-  await cell('PR-EXTRA (Codex #108 r2 #4): an extra receipt on an attempt ⇒ Dr PR / Cr customer_refund_suspense at the provider amount — no commission, no restaurant credit', async () => {
-    const h = await hosted();
-    const att = { ...h.attempts[A], extra_payments: { k1: { uuid: 'P-2', amount_cents: 29900, at: ORDER_AT + 70000 } } };
-    const out = PJ.projectOrder({ orderId: 'O1', order: h.order, alloc: allocOf(CARD_REC), attempts: { [A]: att } }, { rateBp: RATE });
-    balanced(out);
-    const [x] = byFamily(out, 'extra_receipt');
-    assert.deepStrictEqual([amt(x, 'processor_receivable', 'dr'), amt(x, 'customer_refund_suspense', 'cr'), x.lines.length], [29900, 29900, 2], '🔴 PR-EXTRA');
-    assert.strictEqual(x.id, PJ.idOf('extra', `${A}+k1`));
-    assert.strictEqual(byFamily(out, 'commission').length, 1, 'still ONE commission (the sale)');
-  });
-
   await cell('PR-CASH: a cash order — commission accrual ONLY at fulfilment (delivered / completed), no collection posted (no receipt evidence), coverage reason cash_not_evidenced; a cancelled cash order posts nothing', async () => {
     const cash = allocOf({ payment_method: 'cash', order_type: 'delivery', total_cents: 25000, subtotal_cents: 25000, tax_cents: 0 }, { body: {}, clientHdr: {} });
     const open = PJ.projectOrder({ orderId: 'C1', order: { status: 'preparing', created_at: ORDER_AT, payment_method: 'cash' }, alloc: cash, attempts: null }, { rateBp: RATE });
@@ -118,7 +108,7 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
   await cell('PR-UNRESOLVED (r3 §5): an attempt in capturing / capture_unverified, a manually verified capture, or a voided mismatch without evidence ⇒ unresolved, nothing posted for it', async () => {
     const order = { status: 'pending_payment', created_at: ORDER_AT, payment_method: 'online', active_attempt_id: A };
     for (const [att, why] of [[{ status: 'capturing' }, 'capture_unproven'], [{ status: 'capture_unverified' }, 'capture_unproven'],
-      [{ status: 'captured', capture_verified: true, manual_verified: true }, 'manual_unverified'], [{ status: 'voided', mismatch_reason: 'hash_mismatch' }, 'reversal_unproven']]) {
+      [{ status: 'captured', capture_verified: true, manual_verified: true }, 'manual_unverified'], [{ status: 'voided', mismatch_reason: 'hash_mismatch' }, 'capture_unproven'], [{ status: 'some_future_state', hosted_state: 'paid', paid_amount_cents: 29900 }, 'attempt_state_unknown']]) {   // no evidence ⇒ the captured AMOUNT is unproven (Codex #114 #2)
       const out = PJ.projectOrder({ orderId: 'U', order, alloc: allocOf(CARD_REC), attempts: { [A]: { order_id: 'U', ...att } } }, { rateBp: RATE });
       assert.deepStrictEqual([out.status, out.reasons.includes(why), byFamily(out, 'collection').length], ['unresolved', true, 0], `🔴 PR-UNRESOLVED: ${JSON.stringify(att)}`);
     }
@@ -138,19 +128,6 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     assert.deepStrictEqual([amt(m, 'processor_receivable', 'dr'), amt(m, 'customer_refund_suspense', 'cr'), byFamily(out, 'reversal').length, byFamily(out, 'collection').length, byFamily(out, 'commission').length], [10000, 10000, 1, 0, 0], '🔴 PR-MISMATCH');
   });
 
-  await cell('PR-SDK: a captured SDK leg ⇒ a collection keyed by order + leg; voided AFTER capture ⇒ its one reversal; an approved leg voided before capture posts nothing', async () => {
-    const alloc = allocOf({ ...CARD_REC }, { sdk: true });
-    const order = { status: 'delivered', created_at: ORDER_AT, payment_method: 'online', payment_flow: 'sdk_auth_v1' };
-    const rec = (legState, extra = {}) => ({ flow: 'sdk_auth_v1', phase: 'closed', committed_revision: 0, legs: { L1: { kind: 'auth', amount_cents: 29900, state: legState, ...extra } } });
-    const cap = PJ.projectOrder({ orderId: 'S1', order, alloc, sdk: rec('captured', { captured_at: ORDER_AT + 9 }) }, { rateBp: RATE });
-    balanced(cap);
-    assert.deepStrictEqual([byFamily(cap, 'collection').length, byFamily(cap, 'collection')[0].id], [1, PJ.idOf('sdk_collection', 'S1+L1')], '🔴 PR-SDK: captured');
-    const rev = PJ.projectOrder({ orderId: 'S1', order: { ...order, status: 'cancelled' }, alloc, sdk: rec('voided', { captured_at: ORDER_AT + 9 }) }, { rateBp: RATE });
-    assert.deepStrictEqual([byFamily(rev, 'collection').length, byFamily(rev, 'reversal').length], [1, 1], '🔴 PR-SDK: voided after capture');
-    const auth = PJ.projectOrder({ orderId: 'S1', order: { ...order, status: 'cancelled' }, alloc, sdk: rec('voided') }, { rateBp: RATE });
-    assert.deepStrictEqual([Object.keys(auth.journals).length, auth.status], [0, 'final'], '🔴 PR-SDK: an uncaptured void is non-posting');
-  });
-
   await cell('PR-DATE (Codex #110 r2 condition): every journal is dated by orders/{id}.created_at — never by the snapshot\'s informational created_at', async () => {
     const h = await hosted({ cancel: true });
     const out = PJ.projectOrder({ orderId: 'O1', order: h.order, alloc: allocOf(CARD_REC), attempts: h.attempts }, { rateBp: RATE });
@@ -167,6 +144,156 @@ const CARD_REC = { payment_method: 'online', order_type: 'delivery', total_cents
     const a = PJ.projectOrder({ orderId: 'O1', order: h.order, alloc: allocOf(CARD_REC), attempts: h.attempts }, { rateBp: RATE });
     const b = PJ.projectOrder(JSON.parse(JSON.stringify({ orderId: 'O1', order: h.order, alloc: allocOf(CARD_REC), attempts: h.attempts })), { rateBp: RATE });
     assert.strictEqual(JSON.stringify(a), JSON.stringify(b), '🔴 PR-DETERMINISTIC');
+  });
+  // ── Codex #114: writer-driven cells ──
+  const HC2 = (aid) => ({ order: `O1-${aid}`, ref: 'R', status: 'paid', amount: 299, transaction_id: 'T', payment_hash: paymentHash(`O1-${aid}`, KEY, SECRET) });
+  const hostedWorld = (over = {}, attOver = {}, hooks = {}) => makeHonestDb({ orders: { O1: { order_id: 'O1', order_type: 'pickup', payment_method: 'online', payment_status: 'pending', status: 'pending_payment', total: 299, total_cents: 29900, customer_name: 'T', items_text: 'M', active_attempt_id: A, created_at: ORDER_AT, ...over } },
+    payment_attempts: { [A]: { order_id: 'O1', hosted_state: 'created', hosted_order_id: `O1-${A}`, ...attOver } } }, { now: () => ORDER_AT + 60000, ...hooks });
+  const PICK = { payment_method: 'online', order_type: 'pickup', total_cents: 29900, subtotal_cents: 29900, tax_cents: 0 };
+  const proj = (db, extra = {}) => PJ.projectOrder({ orderId: 'O1', order: db.getAt('orders/O1'), alloc: allocOf(PICK), attempts: db.getAt('payment_attempts'), refunds: db.getAt('refund_attempts'), ...extra }, { rateBp: RATE });
+  const realVoid = (client) => async (deps, args) => require('../pixelpay-cancel').voidOrRefund({ ...deps, client }, args);
+
+  await cell('PR-REVERSING-CRASH (Codex #114 #1): the REAL voidOrRefund voids at the provider, then the terminal attempt write is lost (hosted paid, status reversing, side_effect_started) — never final; its bound refund evidence proves the ONE reversal', async () => {
+    const db = hostedWorld();
+    await handleHostedCallback({ db, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) }, { ...HC2(A), uuid: 'P-1' }, ORDER_AT + 60000);   // a real paid order
+    let armed = true;
+    const ref0 = db.ref.bind(db);
+    db.ref = (p) => { const r = ref0(p); if (p !== `payment_attempts/${A}`) return r; const w = Object.create(r); w.update = async (patch) => { if (armed && patch && 'refunded_at' in patch) throw new Error('crash: terminal write lost'); return r.update(patch); }; return w; };
+    await require('../pixelpay-cancel').voidOrRefund({ db, client: { voidTransaction: async () => ({ ok: true }) }, alert: () => {} }, { orderId: 'O1', attemptId: A, pixelpayOrderId: `O1-${A}`, paymentUuid: 'P-1', reason: 'cancel', now: ORDER_AT + 70000 }).catch(() => {});
+    armed = false; db.ref = ref0;
+    const att = db.getAt(`payment_attempts/${A}`);
+    assert.deepStrictEqual([att.hosted_state, att.status, att.reversing_phase], ['paid', 'reversing', 'side_effect_started'], `premise: the real crash state (${JSON.stringify(att)})`);
+    const noEv = proj(db, { refunds: null });
+    assert.deepStrictEqual([noEv.status, noEv.reasons.includes('reversal_pending')], ['unresolved', true], '🔴 PR-REVERSING-CRASH: without the refund evidence ⇒ unresolved, never final');
+    const withEv = proj(db);
+    assert.ok(Object.values(db.getAt('refund_attempts')).some((r) => r.voided === true), 'premise: the immutable refund evidence exists');
+    assert.deepStrictEqual([byFamily(withEv, 'collection').length, byFamily(withEv, 'reversal').length, withEv.reasons.includes('reversal_pending')], [1, 1, false], '🔴 PR-REVERSING-CRASH: the bound refund evidence proves ONE reversal');
+  });
+
+  await cell('PR-MANUAL-STATES (Codex #114 #1): a paid callback with NO payment uuid on a cancelled order (manual_review) and a callback failing verification (manual_reconciliation) — the REAL webhook — are unresolved, never final', async () => {
+    const a = hostedWorld({}, { cancel_pending: true });
+    await handleHostedCallback({ db: a, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) }, { ...HC2(A) }, ORDER_AT + 60000);
+    assert.deepStrictEqual([proj(a).status, proj(a).reasons.includes('manual_review')], ['unresolved', true], '🔴 PR-MANUAL-STATES: manual_review');
+    const b = hostedWorld();
+    await handleHostedCallback({ db: b, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) }, { ...HC2(A), uuid: 'P-1', payment_hash: 'deadbeef'.repeat(4) }, ORDER_AT + 60000);
+    assert.deepStrictEqual([proj(b).status, proj(b).reasons.includes('manual_reconciliation')], ['unresolved', true], '🔴 PR-MANUAL-STATES: manual_reconciliation');
+  });
+
+  await cell('PR-MISMATCH-RETRY (Codex #114 #2): the REAL confirm captures L100 for an L299 order and its void FAILS (refund_pending + evidence) ⇒ the suspense receipt + unresolved reversal_pending; the REAL voidOrRefund retry succeeds ⇒ exactly ONE reversal', async () => {
+    const realClient = require('../pixelpay-client');
+    const db = makeHonestDb({ orders: { 'PZX-1': { order_id: 'PZX-1', customer_name: 'Ana', customer_phone: '50488887777', items_text: 'M x1', total: 299, total_cents: 29900, subtotal_cents: 29900, tax_cents: 0, notes: '', payment_method: 'online', payment_status: 'pending', order_type: 'pickup', pickup_time: 'standard', status: 'pending_payment', active_attempt_id: 'A', payment_fingerprint: 'fp', created_at: ORDER_AT } },
+      payment_attempts: { A: { order_id: 'PZX-1', status: 'active', total_cents: 29900, pixelpay_order_id: 'PZX-1-A', created_at: 1 } } }, { now: () => ORDER_AT + 5 });
+    const client = (voidOk) => ({ interpretStatus: realClient.interpretStatus, verifyCaptureResult: realClient.verifyCaptureResult, async getStatus() { return { data: { status: 'authorized' } }; },
+      async capture() { return { ok: true, httpStatus: 200, data: { response_approved: true, transaction_approved_amount: 100, payment_hash: paymentHash('PZX-1-A', KEY, SECRET) } }; }, async voidTransaction() { return { ok: voidOk }; } });
+    const { voidOrRefund } = require('../pixelpay-cancel');
+    await require('../pixelpay-confirm').confirmOnlinePayment({ db, client: client(false), restaurant: RESTAURANT, buildMaterializeUpdates, voidOrRefund, staleMs: 90000, alert: () => {} }, { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: ORDER_AT + 5 });
+    const p = (o) => PJ.projectOrder({ orderId: 'PZX-1', order: db.getAt('orders/PZX-1'), alloc: allocOf(PICK), attempts: db.getAt('payment_attempts'), refunds: db.getAt('refund_attempts') }, o);
+    const pend = p({ rateBp: RATE });
+    assert.strictEqual(db.getAt('payment_attempts/A').status, 'refund_pending', 'premise: the void failed');
+    assert.deepStrictEqual([amt(byFamily(pend, 'mismatch_capture')[0] || { lines: [] }, 'customer_refund_suspense', 'cr'), byFamily(pend, 'reversal').length, pend.status, pend.reasons.includes('reversal_pending')], [10000, 0, 'unresolved', true], '🔴 PR-MISMATCH-RETRY: pending');
+    await voidOrRefund({ db, client: client(true), alert: () => {} }, { orderId: 'PZX-1', attemptId: 'A', pixelpayOrderId: 'PZX-1-A', paymentUuid: 'S-uuid', reason: 'retry', now: ORDER_AT + 9 });
+    const done = p({ rateBp: RATE });
+    balanced(done);
+    assert.deepStrictEqual([byFamily(done, 'mismatch_capture').length, byFamily(done, 'reversal').length, done.reasons.includes('reversal_pending'), byFamily(done, 'commission').length], [1, 1, false, 0], '🔴 PR-MISMATCH-RETRY: proven ⇒ the receipt + exactly one reversal, no sale');
+  });
+
+  await cell('PR-OFFLINE (Codex #114 #4): the REAL close_fulfilled (status completed, resolution offline_fulfilled, fulfilled_offline_at) on a paid order ⇒ the manual hold — unresolved, no sale posted', async () => {
+    const db = hostedWorld({ restaurant_id: 'tb_rest', payment_status: 'manual_reconciliation', status: 'new', blocked_reason: 'x', items: [{ qty: 1, description: 'P', line_gross_cents: 29900 }], subtotal_cents: 29900, tax_cents: 0 },
+      { hosted_state: 'paid', payment_uuid: 'P-1', paid_amount_cents: 29900, paid_at: ORDER_AT + 1 });
+    const r = await require('../resolve-manual').resolveManualReconciliationCore({ db, client: {}, alert: async () => {}, sanitizeText: (x) => x, serverTimestamp: ORDER_AT + 2 }, { orderId: 'O1', action: 'close_fulfilled', actor: 'disp@x', note: 'entregado', now: ORDER_AT + 2, claimId: 'C1' });
+    const o = db.getAt('orders/O1');
+    assert.deepStrictEqual([o.status, o.resolution, !!o.fulfilled_offline_at], ['completed', 'offline_fulfilled', true], `premise: the real offline close (${JSON.stringify(r)})`);
+    const out = proj(db);
+    assert.deepStrictEqual([out.status, out.reasons.includes('manual_unverified'), byFamily(out, 'collection').length, byFamily(out, 'commission').length], ['unresolved', true, 0, 0], '🔴 PR-OFFLINE');
+  });
+
+  await cell('PR-ZERO-FOOD (Codex #114 #5): a 100 %-off offer (L150 off L150) charged only net envío + tip ⇒ no commission journal, the collection / envío / tip intact, no throw', async () => {
+    const OFP = require('../marketing/offer-price');
+    const offer = OFP.frozenOf({ offer_id: 'of_full', rev: 1, type: 'lps', name: 'Gratis', discount_cents: 15000, waived_envio_cents: 0 });
+    const rec = { payment_method: 'online', order_type: 'delivery', total_cents: 4900, subtotal_cents: 0, tax_cents: 0, desc_rebaja_cents: 15000, delivery_cents: 4000, tip_cents: 900, offer };
+    const db = hostedWorld({ total: 49, total_cents: 4900 }, {}); await handleHostedCallback({ db, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) }, { ...HC2(A), amount: 49, uuid: 'P-1' }, ORDER_AT + 60000);
+    const out = PJ.projectOrder({ orderId: 'O1', order: db.getAt('orders/O1'), alloc: allocOf(rec), attempts: db.getAt('payment_attempts') }, { rateBp: RATE });
+    balanced(out);
+    const [c] = byFamily(out, 'collection');
+    assert.deepStrictEqual([amt(c, 'processor_receivable', 'dr'), amt(c, 'restaurant_payable', 'cr'), amt(c, 'delivery_revenue', 'cr'), amt(c, 'tip_liability', 'cr'), byFamily(out, 'commission').length], [4900, 0, 4000, 900, 0], '🔴 PR-ZERO-FOOD');
+  });
+
+  await cell('PR-SUPERSEDED: the REAL webhook pays a NON-active attempt (attempt_superseded) and a second payment id on the active one (extra) ⇒ both in customer_refund_suspense, ONE sale, ONE commission', async () => {
+    const B = 'b1b2c3d4e5f6a7b8';
+    const db = makeHonestDb({ orders: { O1: { order_id: 'O1', order_type: 'pickup', payment_method: 'online', payment_status: 'pending', status: 'pending_payment', total: 299, total_cents: 29900, customer_name: 'T', items_text: 'M', active_attempt_id: B, created_at: ORDER_AT } },
+      payment_attempts: { [A]: { order_id: 'O1', hosted_state: 'created', hosted_order_id: `O1-${A}` }, [B]: { order_id: 'O1', hosted_state: 'created', hosted_order_id: `O1-${B}` } } }, { now: () => ORDER_AT + 60000 });
+    const d = { db, restaurant: RESTAURANT, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) };
+    await handleHostedCallback(d, { ...HC2(B), uuid: 'P-B' }, ORDER_AT + 60000);
+    assert.strictEqual((await handleHostedCallback(d, { ...HC2(A), uuid: 'P-A' }, ORDER_AT + 60001)).outcome, 'attempt_superseded', 'premise');
+    assert.strictEqual((await handleHostedCallback(d, { ...HC2(B), uuid: 'P-B2' }, ORDER_AT + 60002)).outcome, 'extra_payment_recorded', 'premise');
+    const out = proj(db);
+    balanced(out);
+    const sus = Object.values(out.journals).reduce((s2, j) => s2 + amt(j, 'customer_refund_suspense', 'cr'), 0);
+    assert.deepStrictEqual([byFamily(out, 'collection').length, byFamily(out, 'superseded_receipt').length, byFamily(out, 'extra_receipt').length, sus, byFamily(out, 'commission').length], [1, 1, 1, 59800, 1], '🔴 PR-SUPERSEDED');
+  });
+
+  await cell('PR-NETS-ZERO: a fully reversed card order nets EVERY account to zero — the collection, the Sherpa envío promo and the commission + ISV', async () => {
+    const h = await hosted({ cancel: true });
+    const out = PJ.projectOrder({ orderId: 'O1', order: h.order, alloc: allocOf(CARD_REC), attempts: h.attempts }, { rateBp: RATE });
+    const net = {}; for (const j of Object.values(out.journals)) for (const l of j.lines) net[l.account] = (net[l.account] || 0) + (l.dr || 0) - (l.cr || 0);
+    assert.ok(Object.values(net).every((v) => v === 0), `🔴 PR-NETS-ZERO: ${JSON.stringify(net)}`);
+  });
+
+  // ── SDK, through the REAL coordinator (placeOriginal → delivered → settleTerminal; cancel; decrease) ──
+  const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter');
+  const C = require('../payments/sdk/coordinator'); const SOID = 'tb_sdk_1';
+  const sdkOrder = (o = {}) => ({ restaurant_id: 'tb_rest', payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'delivery', hub_lat: 14.1, hub_lng: -87.2, items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, address_detected: 'c', address_details: 'd', customer_name: 'Ana', total_cents: 10000, subtotal_cents: 10000, tax_cents: 0, created_at: ORDER_AT, ...o });
+  const sdkWorld = (seed = {}, hooks = {}) => {
+    let t = ORDER_AT + 1000;
+    const db = makeHonestDb({ orders: { [SOID]: sdkOrder() }, ...seed }, { now: () => t, ...hooks });
+    const fake = makeFakePsp({}, {});
+    const deps = { db, psp: makeAdapter(fake.impl), clock: () => t, voidEligible: () => false, releaseResources: async () => {},
+      goLive: (dp, id) => require('../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' } }, { orderId: id, attemptId: null, now: t, trackingToken: 'TT', sdkGoLive: true }) };
+    return { db, deps, tick: (ms) => { t += ms; } };
+  };
+  const SALLOC = allocOf({ payment_method: 'online', order_type: 'delivery', total_cents: 10000, subtotal_cents: 10000, tax_cents: 0 }, { sdk: true });
+  const sproj = (w, extra = {}) => PJ.projectOrder({ orderId: SOID, order: w.db.getAt(`orders/${SOID}`), alloc: SALLOC, sdk: w.db.getAt(`payment_sdk/${SOID}`), ...extra }, { rateBp: RATE });
+  await cell('PR-SDK: the REAL coordinator — a placed, uncaptured order is OPEN with nothing posted; delivered + settled ⇒ ONE collection keyed by order + leg, FINAL; an order cancelled before capture posts nothing', async () => {
+    const w = sdkWorld();
+    await C.placeOriginal(w.deps, { attempt_id: 'att_fixed_p00001', orderId: SOID, token: 'T', amount_cents: 10000 });
+    const placed = sproj(w);
+    assert.deepStrictEqual([placed.status, Object.keys(placed.journals).length], ['open', 0], '🔴 PR-SDK: placed, not captured ⇒ open, nothing');
+    await w.db.ref(`orders/${SOID}/status`).set('delivered'); await C.settleTerminal(w.deps, { orderId: SOID });
+    const done = sproj(w);
+    balanced(done);
+    assert.deepStrictEqual([byFamily(done, 'collection').length, byFamily(done, 'collection')[0].id, done.status], [1, PJ.idOf('sdk_collection', `${SOID}+L1`), 'final'], '🔴 PR-SDK: captured ⇒ one collection, final');
+    const c = sdkWorld();
+    await C.placeOriginal(c.deps, { attempt_id: 'att_fixed_p00002', orderId: SOID, token: 'T', amount_cents: 10000 });
+    await C.cancelSdkOrder(c.deps, { orderId: SOID, kind: 'cancel' });
+    assert.deepStrictEqual(Object.keys(sproj(c).journals).length, 0, '🔴 PR-SDK: an uncaptured cancel posts nothing');
+  });
+
+  await cell('PR-SDK-REWARD (Codex #114 #3): a REAL SDK order whose reward the settlement CONSUMED is final with rewardState consumed; without the reward state it stays open', async () => {
+    const RWP = 'user_rewards/tb_uid/tb_rest';
+    const w = sdkWorld({ orders: { [SOID]: sdkOrder({ customer_uid: 'tb_uid', redemption: { cost: 5, item: 'tb_item' } }) }, user_rewards: { tb_uid: { tb_rest: { balance: 10, reserved: 5, reservations: { [SOID]: { state: 'reserved', cost: 5, created_at: 1 } } } } } });
+    await C.placeOriginal(w.deps, { attempt_id: 'att_fixed_p00003', orderId: SOID, token: 'T', amount_cents: 10000 });
+    await w.db.ref(`orders/${SOID}/status`).set('delivered'); await C.settleTerminal(w.deps, { orderId: SOID });
+    const st = w.db.getAt(`${RWP}/reservations/${SOID}/state`);
+    assert.strictEqual(st, 'consumed', 'premise: the real settlement consumed the reward');
+    assert.strictEqual(sproj(w, { rewardState: st }).status, 'final', '🔴 PR-SDK-REWARD: settled reward ⇒ final');
+    assert.strictEqual(sproj(w).status, 'open', '🔴 PR-SDK-REWARD: no reward state ⇒ open');
+  });
+
+  await cell('PR-SDK-ADJUSTED: the REAL requestDecrease (rule 4) ⇒ quarantined sdk_adjusted; and a decrease committed on the ORDER whose record projection crashed (pending projection) ⇒ quarantined too', async () => {
+    const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
+    const w = sdkWorld();
+    await C.placeOriginal(w.deps, { attempt_id: 'att_fixed_p00004', orderId: SOID, token: 'T', amount_cents: 10000 });
+    await w.db.ref(`orders/${SOID}/status`).set('preparing');
+    await C.requestDecrease(w.deps, { orderId: SOID, new_total_cents: 8000, revision: REV(8000) });
+    assert.deepStrictEqual([sproj(w).status, sproj(w).reasons], ['quarantined', ['sdk_adjusted']], '🔴 PR-SDK-ADJUSTED: committed revision');
+    let crash = false;
+    const p = sdkWorld({}, { beforeTx: async (path, api) => { if (crash && path === `payment_sdk/${SOID}` && api.getAt(`orders/${SOID}/payment_commit`)) throw new Error('crash: projection lost'); } });
+    await C.placeOriginal(p.deps, { attempt_id: 'att_fixed_p00005', orderId: SOID, token: 'T', amount_cents: 10000 });
+    await p.db.ref(`orders/${SOID}/status`).set('preparing');
+    crash = true; await C.requestDecrease(p.deps, { orderId: SOID, new_total_cents: 8000, revision: REV(8000) }).catch(() => {}); crash = false;
+    const rec = p.db.getAt(`payment_sdk/${SOID}`); const ord = p.db.getAt(`orders/${SOID}`);
+    assert.ok(ord.payment_commit && (rec.committed_revision || 0) < ord.payment_commit.revision, `premise: committed on the order, not projected (${JSON.stringify([ord.payment_commit, rec.committed_revision])})`);
+    assert.deepStrictEqual([sproj(p).status, sproj(p).reasons], ['quarantined', ['sdk_adjusted']], '🔴 PR-SDK-ADJUSTED: pending projection');
   });
   console.log(`projector: OK (${n})`);
 })().catch((e) => { console.error(e && e.stack || e); process.exit(1); });

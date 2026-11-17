@@ -12,12 +12,15 @@
 // NOT posted (r3 §4): cash / card_delivery collection, handoff or retained-cash settlement — non-card orders get the commission accrual
 // only, with reason cash_not_evidenced; driver earnings (S8 stays the driver ledger).
 const crypto = require('crypto');
-const { isFinanciallyClosed } = require('../payments/sdk/record');
+const { isFinanciallyClosed, pendingProjection } = require('../payments/sdk/record');
 
 const ISV_BP = 1500;
 const TERMINAL = new Set(['delivered', 'completed', 'cancelled']);
 const FULFILLED = new Set(['delivered', 'completed']);
-const UNRESOLVED = new Set(['capture_unproven', 'manual_unverified', 'reversal_unproven', 'reversal_pending', 'amount_mismatch', 'rate_missing', 'components_invalid', 'no_order_date']);
+const UNRESOLVED = new Set(['capture_unproven', 'manual_unverified', 'manual_review', 'manual_reconciliation', 'attempt_state_unknown', 'reversal_unproven', 'reversal_pending', 'amount_mismatch', 'rate_missing', 'components_invalid', 'no_order_date']);
+// every state the writers give an attempt (Codex #114 #1): anything else is unresolved, never silently final
+const ATTEMPT_STATUS = new Set([undefined, null, 'active', 'captured', 'capturing', 'capture_unverified', 'declined', 'voided_inactive', 'manual_review', 'manual_reconciliation', 'reversing', 'refund_pending', 'refunded', 'voided']);
+const HOSTED_STATE = new Set([undefined, null, 'creating', 'created', 'failed_create', 'paid', 'voided', 'refund_pending', 'manual_reconciliation', 'abandoned']);
 const int = (x) => Number.isSafeInteger(x);
 const pos = (x) => (int(x) && x > 0 ? x : 0);
 
@@ -41,32 +44,39 @@ function quarantineOf(alloc, sdk, order) {
   if (alloc.v !== 1 || !['sdk', 'app', 'direct'].includes(alloc.mode)) return 'snapshot_unparsed';
   if (alloc.mismatch === true) return 'mode_mismatch';
   if ((alloc.mode === 'app' || alloc.mode === 'sdk') && alloc.order_type === 'pickup' && alloc.payment_method !== 'online') return 'app_pickup_cash';
-  if (sdk && ((sdk.committed_revision || 0) > 0 || (sdk.obligations && Object.keys(sdk.obligations).length)
-    || (order && order.payment_commit && order.payment_commit.revision > (sdk.committed_revision || 0)))) return 'sdk_adjusted';
+  // an ADJUSTED SDK order (r3 #2): a committed revision, or one committed on the order and not yet projected. Every refund obligation is
+  // opened only by a decrease / rule-4 path that commits a revision first (coordinator.js:101 / :549), so it is covered by these two.
+  if (sdk && ((sdk.committed_revision || 0) > 0 || pendingProjection(sdk, order))) return 'sdk_adjusted';
   return null;
 }
 
-// the hosted / legacy attempt ⇒ { amount, reversed, pending, unresolved } from the PROVIDER-reported facts, independent of lifecycle
-function attemptFacts(a) {
+// the hosted / legacy attempt ⇒ { kind: 'sale' | 'mismatch', amount, reversed, pending } | { unresolved } | null (no money), from the
+// PROVIDER-reported capture facts READ INDEPENDENTLY of the reversal state (Codex #114 #2), and the reversal proven by the attempt's own
+// terminal state OR by its bound immutable refund evidence (refund_attempts, voided, written by voidOrRefund — Codex #114 #1). A
+// surviving hosted `paid` never implies closure: reversing / refund_pending without proof ⇒ pending (unresolved).
+function attemptFacts(aid, a, refunds) {
   if (!a || typeof a !== 'object') return null;
+  if (!ATTEMPT_STATUS.has(a.status) || !HOSTED_STATE.has(a.hosted_state)) return { unresolved: 'attempt_state_unknown' };
   if (a.status === 'capturing' || a.status === 'capture_unverified') return { unresolved: 'capture_unproven' };
   if (a.manual_verified) return { unresolved: 'manual_unverified' };
-  if (a.status === 'voided' && a.mismatch_reason) {   // a mismatched capture voided by the confirm path (S2 evidence)
+  if (a.status === 'manual_review' || a.no_uuid_paid_callback) return { unresolved: 'manual_review' };
+  if (a.status === 'manual_reconciliation' || a.hosted_state === 'manual_reconciliation') return { unresolved: 'manual_reconciliation' };
+  const boundVoid = Object.values(refunds || {}).some((r) => r && r.attempt_id === aid && r.voided === true && r.code !== 'no_payment_to_void');
+  const reversed = a.status === 'refunded' || a.status === 'voided' || a.hosted_state === 'voided' || boundVoid;
+  const pending = !reversed && (a.status === 'refund_pending' || a.status === 'reversing' || a.hosted_state === 'refund_pending');
+  if (a.mismatch_reason) {   // a mismatched capture (S2 evidence): its PROVIDER amount, whatever became of the void
     const ev = a.capture_evidence && a.capture_evidence.confirm;
-    return ev && pos(ev.amount_cents) ? { mismatch: ev.amount_cents } : { unresolved: 'reversal_unproven' };
+    return ev && pos(ev.amount_cents) ? { kind: 'mismatch', amount: ev.amount_cents, reversed, pending } : { unresolved: 'capture_unproven' };
   }
-  const hostedPaid = ['paid', 'voided', 'refund_pending'].includes(a.hosted_state) && int(a.paid_amount_cents);
-  const legacyPaid = a.status === 'captured' && a.capture_verified === true && int(a.amount_cents);
-  const legacyLater = ['refunded', 'refund_pending', 'voided'].includes(a.status) && int(a.amount_cents) && !a.mismatch_reason;
-  const amount = hostedPaid ? a.paid_amount_cents : legacyPaid || legacyLater ? a.amount_cents : null;
-  if (amount === null) return null;
-  const reversed = a.hosted_state === 'voided' || a.status === 'refunded' || (a.status === 'voided' && !a.mismatch_reason);
-  const pending = !reversed && (a.hosted_state === 'refund_pending' || a.status === 'refund_pending');
-  return { amount, reversed, pending };
+  const hosted = ['paid', 'voided', 'refund_pending'].includes(a.hosted_state) && pos(a.paid_amount_cents);
+  const legacy = a.capture_verified === true && pos(a.amount_cents);
+  const amount = hosted ? a.paid_amount_cents : legacy ? a.amount_cents : null;
+  if (amount === null) return pending ? { unresolved: 'reversal_unproven' } : null;   // a reversal of nothing proven captured
+  return { kind: 'sale', amount, reversed, pending };
 }
 
 function projectOrder(src, { rateBp } = {}) {
-  const { orderId, order, alloc, attempts, sdk } = src || {};
+  const { orderId, order, alloc, attempts, sdk, refunds, rewardState } = src || {};
   const reasons = new Set(); const out = [];
   const q = quarantineOf(alloc, sdk, order);
   if (q) return { status: 'quarantined', reasons: [q], journals: {} };
@@ -81,6 +91,7 @@ function projectOrder(src, { rateBp } = {}) {
   if (food < 0) reasons.add('components_invalid');
   const saleLines = () => [{ account: 'processor_receivable', dr: total }, { account: 'restaurant_payable', cr: food }, { account: 'delivery_revenue', cr: netEnv }, { account: 'tip_liability', cr: tip }];
   const k = rateOk && food >= 0 ? commissionOf(food, rateBp) : null;
+  const kPositive = !!k && k.commission + k.isv > 0;   // Codex #114 #5: a fully discounted food price has no commission journal
   const commission = () => journal('commission', orderId, date, [{ account: 'restaurant_payable', dr: k.commission + k.isv }, { account: 'commission_revenue', cr: k.commission }, { account: 'isv_payable', cr: k.isv }]);
   const promoJ = () => (env.delivery_discount_funder === 'sherpa' && promo > 0 ? journal('envio_promo', orderId, date, [{ account: 'delivery_promo_expense', dr: promo }, { account: 'delivery_revenue', cr: promo }]) : null);
 
@@ -88,17 +99,20 @@ function projectOrder(src, { rateBp } = {}) {
   if (alloc.payment_method === 'online') {
     // collections: hosted / legacy attempts (provider facts) and SDK legs; the order's active attempt is the PRIMARY (the sale)
     const cols = [];
+    // Codex #114 #4: a manual offline fulfilment (resolve-manual close_fulfilled) is the planned manual hold — never posted as a sale
+    if (order && (order.resolution === 'offline_fulfilled' || order.fulfilled_offline_at)) reasons.add('manual_unverified');
     for (const aid of Object.keys(attempts || {}).sort()) {
-      const a = attempts[aid]; const f = attemptFacts(a);
+      const a = attempts[aid]; const f = attemptFacts(aid, a, refunds);
       for (const xk of Object.keys((a && a.extra_payments) || {}).sort()) {   // Codex #108 r2 #4: an extra receipt → suspense, no commission
         const x = a.extra_payments[xk];
         if (pos(x && x.amount_cents)) out.push(journal('extra_receipt', `${aid}+${xk}`, date, [{ account: 'processor_receivable', dr: x.amount_cents }, { account: 'customer_refund_suspense', cr: x.amount_cents }], 'extra'));   // r1 §3: hash(extra, attempt + extra key)
       }
       if (!f) continue;
       if (f.unresolved) { reasons.add(f.unresolved); continue; }
-      if (f.mismatch) {   // captured the wrong amount / binding, voided at once: in to suspense, out again
-        const j = journal('mismatch_capture', aid, date, [{ account: 'processor_receivable', dr: f.mismatch }, { account: 'customer_refund_suspense', cr: f.mismatch }]);
-        out.push(j, mirror('reversal', idOf('mismatch_capture', aid), date, j));
+      if (f.kind === 'mismatch') {   // captured the wrong amount / binding: in to suspense; out again once the void is PROVEN
+        const j = journal('mismatch_capture', aid, date, [{ account: 'processor_receivable', dr: f.amount }, { account: 'customer_refund_suspense', cr: f.amount }]);
+        out.push(j);
+        if (f.reversed) out.push(mirror('reversal', j.id, date, j)); else reasons.add(f.pending ? 'reversal_pending' : 'reversal_unproven');
         continue;
       }
       cols.push({ key: aid, idFamily: 'collection', primary: order && order.active_attempt_id === aid, ...f });
@@ -109,8 +123,9 @@ function projectOrder(src, { rateBp } = {}) {
         const captured = l && int(l.amount_cents) && (l.state === 'captured' || (l.state === 'voided' && int(l.captured_at)));
         if (captured) cols.push({ key: `${orderId}+${lid}`, idFamily: 'sdk_collection', primary: true, amount: l.amount_cents, reversed: l.state === 'voided', pending: false });
       }
-      if (!isFinanciallyClosed(sdk, order, {})) open = true;
+      if (!isFinanciallyClosed(sdk, order, { rewardState })) open = true;   // Codex #114 #3: the reward reservation state is an input
     }
+    if (reasons.has('manual_unverified')) cols.length = 0;
     let sold = false;
     for (const c of cols) {
       if (!c.primary || sold) {   // a second paid attempt on one order: the extra receipt is the customer's, held in suspense
@@ -121,9 +136,10 @@ function projectOrder(src, { rateBp } = {}) {
       if (c.amount !== total) { reasons.add('amount_mismatch'); continue; }
       if (food < 0) continue;
       sold = true;
+      if (total === 0) continue;   // nothing was charged
       const col = journal('collection', c.key, date, saleLines(), c.idFamily); out.push(col);
       const p = promoJ(); if (p) out.push(p);
-      const kj = k ? commission() : null; if (kj) out.push(kj);
+      const kj = kPositive ? commission() : null; if (kj) out.push(kj);
       if (c.reversed) {   // Codex #108 r2 #3: ONE economic reversal per collection, whichever observer proved it
         out.push(mirror('reversal', col.id, date, col));
         if (p) out.push(mirror('envio_promo_reversal', orderId, date, p));
@@ -133,7 +149,7 @@ function projectOrder(src, { rateBp } = {}) {
     }
   } else if (order && FULFILLED.has(order.status) && food >= 0) {
     reasons.add('cash_not_evidenced');
-    if (k) out.push(commission());
+    if (kPositive) out.push(commission());
   }
   const journals = {};
   for (const j of out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) journals[j.id] = j;
