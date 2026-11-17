@@ -38,6 +38,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
 const BASE = '827373d6';
 const CAPP_TIP = '2b4aae89';
+// ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
+// the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
+// only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
+// form or xpizza-functions/, so the range cells (live forms, server change) lose nothing.
+const ASSEMBLY_STEPS = {
+  '792a3dde73e0bff5181c4082c0e0a6a291afbd02': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs', 'review/capp-sbs/scenes-fx.mjs'],
+};
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -68,9 +75,12 @@ const capRange = () => {
   // Both ranges are listed WITHOUT a pathspec (Codex r2 P2-1): a path-limited walk applies git's history simplification, which drops a
   // merge's side when the merge is TREESAME to a parent for that path; each listed commit's OWN paths are then filtered here.
   const skip = new Set(['customer-app/capp-guards.test.mjs', ...synced.map(({ dst }) => dst)]);
-  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%h %s', ...range).split('\x01').filter(Boolean)
-    .map((rec) => { const [head, ...files] = rec.split('\0'); const [subject, first] = head.split('\n'); return { subject, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
-    .filter(({ files }) => files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
+  for (const sha of Object.keys(ASSEMBLY_STEPS)) assert.ok(isAncestor(sha, 'HEAD'), `🔴 stale ASSEMBLY_STEPS entry ${sha.slice(0, 9)} — not in HEAD's history`);
+  const stepOk = (sha, files) => !!ASSEMBLY_STEPS[sha] && [...files].sort().join('\n') === [...ASSEMBLY_STEPS[sha]].sort().join('\n');
+  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%H %s', ...range).split('\x01').filter(Boolean)
+    .map((rec) => { const [head, ...files] = rec.split('\0'); const [line, first] = head.split('\n'); const sha = line.slice(0, 40);
+      return { sha, subject: `${sha.slice(0, 9)}${line.slice(40)}`, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
+    .filter(({ sha, files }) => !stepOk(sha, files) && files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
   const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..HEAD`]), ...touched(['--ancestry-path', `${CAPP_TIP}..HEAD`])])].join('\n');
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
@@ -256,6 +266,9 @@ const MERGE_ALLOW = {
   'b63d58a0 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   'b63d58a0 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   'b63d58a0 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  // asm11 step 5 (advisor 11-17): fc0f3213 = the step-4 overlay drop 792a3dde7 + the lane tip 457066a23 — a clean automerge (git show --cc: 0 hunks)
+  'fc0f3213 customer-app/capp-guards.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'fc0f3213 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   '1adc6541 customer-app/capp-checkout.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN offer-quote marker lines (advisor 11-15)',
   '1adc6541 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
   '1adc6541 customer-app/capp-s7a2.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN c3r-v2 marker lines (advisor 11-15)',
@@ -278,8 +291,8 @@ const MERGE_ALLOW = {
   '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
   '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
   '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
-  // asm10 RC (advisor 11-16): the cross-lane C-1a × 3a reviews v2 fix, in a resolution per the asm5 ruling (RED on the capp lane alone)
-  '2b7e9c53 customer-app/capp-s7a2.test.mjs': 'ONE key in c1Stats: fulfilmentUpdater `now` → `fulfilledAt` (3a 4d7e86676 rename; real writer rating-fulfilment.js:21)',
+  // (asm10 RC 2b7e9c53 — ruled in eaca7fc3f — left the walk at asm11: it descends from the old pin b7880d0e, not from the lane pin, so like
+  // every train-only merge it is neither on the lane line nor after the pin)
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
