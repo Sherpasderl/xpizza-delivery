@@ -8,11 +8,11 @@
 // --from / --to = HN service dates (at most 62), the first one AFTER the start day. Reads (all bounded, all indexed): orders by created_at
 // over the range (+ the stats read pad, for scheduled orders), the ledger projection and S1 snapshot of each, the open set, the nightly
 // run records, the S8 driver weeks, and restaurants/{rid}/stats_daily/{date} by id. The core is tools/ledger-shadow-report-core.js.
-const { parseArgs, buildReport } = require('./ledger-shadow-report-core');
-const req = parseArgs(process.argv.slice(2));               // the arguments FIRST (pure) — a bad one never reaches the project guard
-if (req.error) { console.error(`ledger-shadow-report: REFUSED — ${req.error}`); process.exit(2); }
 const { requireProject } = require('./require-project');
-const PROJECT_ID = requireProject({ requireFlag: true });   // then the project guard, before any client
+const PROJECT_ID = requireProject({ requireFlag: true });   // the project guard FIRST (the platform's CLI contract: endpoint-census / project-guard)
+const { parseArgs, buildReport } = require('./ledger-shadow-report-core');
+const req = parseArgs(process.argv.slice(2));               // then the arguments (pure) — still before any credential or client
+if (req.error) { console.error(`ledger-shadow-report: REFUSED — ${req.error}`); process.exit(2); }
 const admin = require('firebase-admin');
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
 const ST = require('../stats/stats-time');

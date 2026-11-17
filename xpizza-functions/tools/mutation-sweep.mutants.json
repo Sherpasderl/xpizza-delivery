@@ -38964,8 +38964,8 @@
   "slice": "ledger-s3",
   "label": "ledger S3 projector: p01-food-base",
   "file": "ledger/projector.js",
-  "from": "const food = total - netEnv - tip;",
-  "to": "const food = pos(alloc.food && alloc.food.subtotal_cents);",
+  "from": "return { total, tip, env, gross, promo, netEnv, food: total - netEnv - tip };",
+  "to": "return { total, tip, env, gross, promo, netEnv, food: pos(alloc.food && alloc.food.subtotal_cents) };",
   "command": [
    "node",
    "ledger/projector.test.js"

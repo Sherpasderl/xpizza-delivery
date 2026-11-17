@@ -92,7 +92,7 @@ const D = {
     'set-driver-rate',
     // LEDGER S4 — the owner's append-only commission-rate CLI (never retro): parseArgs, then requireProject({ requireFlag: true }) before any client
     'set-commission-rate',
-    // LEDGER S6 — the owner's READ-ONLY shadow-ledger report: parseArgs, then requireProject({ requireFlag: true }), then the clients
+    // LEDGER S6 — the owner's READ-ONLY shadow-ledger report: requireProject({ requireFlag: true }), then parseArgs, then the clients
     'ledger-shadow-report',
     // Calificaciones v2 r6.1 §1 — the owner's ratings-disclosure CLI (dry run unless --apply): requireProject({ requireFlag: true }) before any client
     'ratings-config',
@@ -265,7 +265,8 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   // 3. PROD CLIs (require-project) + functions-root PROD SCRIPTS: mixed signals ⇒ refuse; no signal ⇒ unchanged
   const ARGS = {
     [F('scripts/test-ingest.js')]: ['https://us-central1-xpizza-delivery.cloudfunctions.net/ingestDriverLocation', 'UID'],
-    [F('tools/platform-pending.js')]: ['status', '--rid', 'x_pizza'],   // valid arguments, so the run reaches requireProject (not the argument refusal)
+    [F('tools/platform-pending.js')]: ['status', '--rid', 'x_pizza'],
+    [F('tools/ledger-shadow-report.js')]: ['--start', '2026-11-10T12:00', '--from', '2026-11-12', '--to', '2026-11-13'],   // valid arguments, so the run reaches requireProject (not the argument refusal)
   };
   const EXTRA = { [F('seed_identity.js')]: { ULTRAMSG_INSTANCE_ID: 'instanceX' } };
   let cli = 0;

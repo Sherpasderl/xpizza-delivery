@@ -119,14 +119,14 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
     for (const bad of ['CASH1', 'CARD1', 'Ana', '9999', 'uSECRET', 'a1']) assert.ok(!s.includes(`"${bad}`) && !s.includes(bad === 'a1' ? '"a1"' : bad), `🔴 LSR-NO-PII: ${bad} in the report`);
   });
 
-  await cell('LSR-CLI: the arguments are parsed BEFORE the project guard (and before any client); the CLI refuses without --project; the CLI and core never write (no set / update / push / remove / transaction)', async () => {
+  await cell('LSR-CLI: the project guard first, then the arguments, both before any client (the platform CLI contract); the CLI refuses without --project; the CLI and core never write (no set / update / push / remove / transaction)', async () => {
     assert.deepStrictEqual(C.parseArgs(['--project', 'x', '--start', '2026-11-10T12:00:00Z', '--from', '2026-11-12', '--to', '2026-11-13']), { start: START, from: '2026-11-12', to: '2026-11-13', json: false });
     for (const a of [['--from', '2026-11-12'], ['--start', 'nope', '--from', '2026-11-12', '--to', '2026-11-13'], ['--start', '2026-11-10', '--from', '2026-11-13', '--to', '2026-11-12'], ['--start', '2026-11-10', '--from', '2026-11-12', '--to', '2026-11-13', '--apply']]) {
       assert.ok(C.parseArgs(a).error, `🔴 LSR-CLI: accepted ${a.join(' ')}`);
     }
     const cli = fs.readFileSync(path.join(__dirname, 'ledger-shadow-report.js'), 'utf8');
     const iParse = cli.indexOf('parseArgs(process.argv'); const iGuard = cli.indexOf('requireProject({'); const iAdmin = cli.indexOf("require('firebase-admin')");
-    assert.ok(iParse > 0 && iParse < iGuard && iGuard < iAdmin, '🔴 LSR-CLI: parseArgs → requireProject → firebase-admin, in that order');
+    assert.ok(iGuard > 0 && iGuard < iParse && iParse < iAdmin, '🔴 LSR-CLI: requireProject → parseArgs → firebase-admin, in that order');
     for (const f of ['ledger-shadow-report.js', 'ledger-shadow-report-core.js']) {
       const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
       assert.ok(!/\.(set|update|push|remove|transaction|delete|add|create)\(/.test(s), `🔴 LSR-CLI: ${f} writes (no Map / Set either: plain objects keep this scan exact)`);
@@ -135,8 +135,9 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
     delete env.GOOGLE_CLOUD_PROJECT; delete env.GCLOUD_PROJECT; delete env.NODE_OPTIONS;
     const r = spawnSync(process.execPath, [path.join(__dirname, 'ledger-shadow-report.js'), '--start', '2026-11-10T12:00:00Z', '--from', '2026-11-12', '--to', '2026-11-13'], { env, encoding: 'utf8', timeout: 20000 });
     assert.ok(r.status !== 0 && !/LEDGER SHADOW REPORT/.test(r.stdout), `🔴 LSR-CLI: refuses without --project (${r.status})`);
-    const r2 = spawnSync(process.execPath, [path.join(__dirname, 'ledger-shadow-report.js'), '--from', '2026-11-12'], { env, encoding: 'utf8', timeout: 20000 });
-    assert.ok(r2.status === 2 && /--start/.test(r2.stderr), `🔴 LSR-CLI: a bad argument exits 2 before the project guard (${r2.status} ${r2.stderr})`);
+    const envProd = { ...env }; delete envProd.FIREBASE_DATABASE_EMULATOR_HOST;
+    const r2 = spawnSync(process.execPath, [path.join(__dirname, 'ledger-shadow-report.js'), '--project', require('./require-project').expectedProject(), '--from', '2026-11-12'], { env: envProd, encoding: 'utf8', timeout: 20000 });
+    assert.ok(r2.status === 2 && /--start/.test(r2.stderr) && !/LEDGER SHADOW REPORT/.test(r2.stdout), `🔴 LSR-CLI: a bad argument exits 2 before any client (${r2.status} ${r2.stderr})`);
   });
   console.log(`\nledger-shadow-report: OK (${n})`);
 })().catch((e) => { console.error('ledger-shadow-report FAILED:', e && e.message); process.exit(1); });
