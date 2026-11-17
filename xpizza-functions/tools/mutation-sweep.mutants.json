@@ -40385,42 +40385,102 @@
   ]
  },
  {
-  "id": "ls6-r1-cohort",
+  "id": "ls6-j1-journals-not-snapshot",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: only orders created at or after the ledger start count on the ledger side",
+  "label": "ledger S6 shadow report: the ledger side is the persisted journals, never the snapshot",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (!(time(o.created_at) && o.created_at >= start)) {",
-  "to": "if (false) {",
+  "from": "if (f.food > 0 || snapFood === 0) add(r.ledger, f.food);",
+  "to": "add(r.ledger, snapFood);",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
   ],
   "kills_with": [
-   "✗ LSR-COHORT:"
+   "✗ LSR-JOURNALS:"
   ]
  },
  {
-  "id": "ls6-r2-first-day",
+  "id": "ls6-j2-collection-fault",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: a partial first day is refused",
+  "label": "ledger S6 shadow report: a wrong / missing collection is a fault",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (from <= ST.dateOf(start)) throw",
-  "to": "if (false) throw",
+  "from": "if (f.food !== snapFood) inc(faults,",
+  "to": "if (false) inc(faults,",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
   ],
   "kills_with": [
-   "✗ LSR-COHORT:"
+   "✗ LSR-JOURNALS:"
   ]
  },
  {
-  "id": "ls6-r3-sdk-column",
+  "id": "ls6-j3-commission-check",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: the SDK placed-not-captured column",
+  "label": "ledger S6 shadow report: the commission + ISV are checked",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (o.payment_flow === 'sdk_auth_v1' && o.payment_placed && !sale) r.sdk_placed_not_captured += 1;",
+  "from": "if (f.commission !== k.commission || f.isv !== k.isv) inc(out, 'commission');",
   "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j4-unbalanced",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: an unbalanced journal is a fault",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (f.unbalanced) inc(out, 'unbalanced', f.unbalanced);",
+  "to": "",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j5-cash-bridge-gated",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: cash is bridged only when its commission journal is right",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (!Object.keys(faults).length) { add(r.ledger, snapFood);",
+  "to": "if (true) { add(r.ledger, snapFood);",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-j6-faults-mismatch",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a journal fault alone is a mismatch",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "(diff.orders || diff.cents || Object.keys(r.journal_faults).length) ?",
+  "to": "(diff.orders || diff.cents) ?",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-JOURNALS:"
+  ]
+ },
+ {
+  "id": "ls6-k1-sdk-legs",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: capture is decided from the SDK legs",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "Object.values((rec && rec.legs) || {}).some((l) => l && l.state === 'captured');",
+  "to": "true;",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
@@ -40430,127 +40490,157 @@
   ]
  },
  {
-  "id": "ls6-r4-not-projected",
+  "id": "ls6-p1-pre-cohort-subtracted",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: a cohort order with no projection is a gap",
+  "label": "ledger S6 shadow report: pre-cohort sales are subtracted from the stats side",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (!p) { completeness.not_projected += 1; continue; }",
-  "to": "if (!p) { continue; }",
+  "from": "const stats = { orders: r.stats_raw.orders - r.pre_cohort.orders, cents: r.stats_raw.cents - r.pre_cohort.cents };",
+  "to": "const stats = { orders: r.stats_raw.orders, cents: r.stats_raw.cents };",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
   ],
   "kills_with": [
-   "✗ LSR-COMPLETENESS:"
+   "✗ LSR-COHORT:"
   ]
  },
  {
-  "id": "ls6-r6-quarantine-off",
+  "id": "ls6-p2-completed-day",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: a quarantined order never counts on the ledger side",
+  "label": "ledger S6 shadow report: only completed days",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "    if (p.status === 'quarantined') continue;\n",
+  "from": "if (to >= ST.dateOf(now)) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-p3-first-day",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: a partial first day is refused",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (from <= ST.dateOf(start)) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COHORT:"
+  ]
+ },
+ {
+  "id": "ls6-n1-stats-missing",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: missing stats are not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!r.stats_published && 'stats_missing'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-n2-stats-stale",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: stats published before the day ended are not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!(r.stats_computed_at >= end) && 'stats_stale'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-n3-ledger-rebuilt",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: no nightly run after the day ⇒ not comparable",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "!(lastRun >= end) && 'ledger_not_rebuilt'",
+  "to": "false",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-NOT-COMPARABLE:"
+  ]
+ },
+ {
+  "id": "ls6-b1-record-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the per-read record cap",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (records > MAX_RECORDS) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-BUDGET:"
+  ]
+ },
+ {
+  "id": "ls6-b2-time-cap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the run time cap",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (elapsedMs > MAX_MS) return",
+  "to": "if (false) return",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-BUDGET:"
+  ]
+ },
+ {
+  "id": "ls6-s1-scope-in-range",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: completeness counts only in-range orders",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const date = ST.dateOf(ms); if (!inRange[date]) continue;",
+  "to": "const date = ST.dateOf(ms); if (!inRange[date] && false) continue;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-SCOPE:"
+  ]
+ },
+ {
+  "id": "ls6-s2-global-open",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: the global open set by status",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "inc(global.open_status, (p && p.status) || 'not_projected');",
   "to": "",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
   ],
   "kills_with": [
-   "✗ LSR-COMPLETENESS:"
+   "✗ LSR-SCOPE:"
   ]
  },
  {
-  "id": "ls6-r7-food",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: ledger food = total − net envío − tip",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "r.ledger.cents += foodParts(snap).food;",
-  "to": "r.ledger.cents += snap.total_cents;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-MATCH:"
-  ]
- },
- {
-  "id": "ls6-r8-accrual-only",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: accrual-only = cash sales with cash_not_evidenced",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "if ((p.reasons || []).includes('cash_not_evidenced')) cash.accrual_only += 1;",
-  "to": "cash.accrual_only += 1;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-CASH:"
-  ]
- },
- {
-  "id": "ls6-r9-card-delivery",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: card_delivery is counted apart",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "if (o.payment_method === 'card_delivery') cash.card_delivery_sales += 1;",
-  "to": "if (o.payment_method === 'cash') cash.card_delivery_sales += 1;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-CASH:"
-  ]
- },
- {
-  "id": "ls6-r10-week-overlap",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: only weeks overlapping the range",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "return b.start < hi && b.end > lo;",
-  "to": "return true;",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-DRIVER:"
-  ]
- },
- {
-  "id": "ls6-r11-paid",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: paid counts only paid drivers",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "paid: ds.filter((d) => d && d.paid).length",
-  "to": "paid: ds.filter((d) => d).length",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-DRIVER:"
-  ]
- },
- {
-  "id": "ls6-r12-missing-runs",
-  "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: dates with no run record are listed",
-  "file": "tools/ledger-shadow-report-core.js",
-  "from": "const missing = dates.filter((d) => !has(d));",
-  "to": "const missing = [];",
-  "command": [
-   "node",
-   "tools/ledger-shadow-report.test.js"
-  ],
-  "kills_with": [
-   "✗ LSR-COVERAGE + NO-PII:"
-  ]
- },
- {
-  "id": "ls6-r13-stale",
+  "id": "ls6-s3-stale",
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: stale holds are listed",
   "file": "tools/ledger-shadow-report-core.js",
@@ -40565,22 +40655,82 @@
   ]
  },
  {
-  "id": "ls6-r14-age-bucket",
+  "id": "ls6-c1-awaiting-bridge",
   "slice": "ledger-s6",
-  "label": "ledger S6 shadow report: the pending age buckets",
+  "label": "ledger S6 shadow report: cash awaiting fulfilment is an explicit bridge",
   "file": "tools/ledger-shadow-report-core.js",
-  "from": "age < 7 * DAY ? 'd1_7'",
-  "to": "age < 10 * DAY ? 'd1_7'",
+  "from": "if (!isFulfilled(o)) { add(r.bridges.cash_awaiting_fulfilment, snapFood);",
+  "to": "if (!isFulfilled(o)) { (() => {})(r, snapFood);",
   "command": [
    "node",
    "tools/ledger-shadow-report.test.js"
   ],
   "kills_with": [
-   "✗ LSR-COMPLETENESS:"
+   "✗ LSR-CASH:"
   ]
  },
  {
-  "id": "ls6-c1-unknown-arg",
+  "id": "ls6-c2-accrual-only",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: accrual-only = cash_not_evidenced",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "if (o.payment_method === 'cash' && (p.reasons || []).includes('cash_not_evidenced')) cash.accrual_only += 1;",
+  "to": "if (o.payment_method === 'cash') cash.accrual_only += 1;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-CASH:"
+  ]
+ },
+ {
+  "id": "ls6-d1-week-overlap",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: only weeks overlapping the range",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "return b.start < hi && b.end > lo;",
+  "to": "return true;",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-d2-paid",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: paid counts only paid drivers",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "paid: ds.filter((d) => d && d.paid).length",
+  "to": "paid: ds.filter((d) => d).length",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-DRIVER:"
+  ]
+ },
+ {
+  "id": "ls6-v1-missing-runs",
+  "slice": "ledger-s6",
+  "label": "ledger S6 shadow report: dates with no run record are listed",
+  "file": "tools/ledger-shadow-report-core.js",
+  "from": "const missing = dates.filter((d) => !has(d));",
+  "to": "const missing = [];",
+  "command": [
+   "node",
+   "tools/ledger-shadow-report.test.js"
+  ],
+  "kills_with": [
+   "✗ LSR-COVERAGE + NO-PII:"
+  ]
+ },
+ {
+  "id": "ls6-a1-unknown-arg",
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: an unknown argument (e.g. --apply) is refused",
   "file": "tools/ledger-shadow-report-core.js",
@@ -40595,7 +40745,7 @@
   ]
  },
  {
-  "id": "ls6-c2-from-to",
+  "id": "ls6-a2-from-to",
   "slice": "ledger-s6",
   "label": "ledger S6 shadow report: --from after --to is refused",
   "file": "tools/ledger-shadow-report-core.js",

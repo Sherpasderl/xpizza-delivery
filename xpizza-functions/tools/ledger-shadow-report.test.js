@@ -1,9 +1,8 @@
 'use strict';
-// LEDGER S6 (PLAN-5f-ledger-shadow-s1-r1 §5, r3 table) — the owner's READ-ONLY shadow report, names / counts only. Both sides on the SAME
-// cohort (created_at ≥ the ledger start), the same restaurants and the same HN service date: stats_daily (built here by the REAL
-// stats/stats-build buildDailies) vs the ledger (projections made by the REAL S5 runNightly over the honest model; food from the S1
-// snapshots). Plus the SDK placed-not-captured column, cash coverage (card_delivery apart), S8 driver weeks side by side, completeness and
-// the nightly run's coverage. Run: node tools/ledger-shadow-report.test.js
+// LEDGER S6 (PLAN-5f-ledger-shadow-s1-r1 §5, r3 table; Codex #118 r1) — the owner's READ-ONLY shadow report, names / counts only. STATS side:
+// stats_daily as the REAL stats/stats-build buildDailies builds it (published after the day); LEDGER side: the PERSISTED journals of the
+// projections the REAL S5 runNightly writes over the honest model (SDK orders through the REAL coordinator). Each row is match / mismatch /
+// not comparable; bridges are explicit. Run: node tools/ledger-shadow-report.test.js
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -13,6 +12,7 @@ const LA = require('../ledger/alloc-snapshot');
 const RB = require('../ledger/rebuild');
 const B = require('../stats/stats-build');
 const { makeCustomerKeyer } = require('../stats/stats-identity');
+const { isSale } = require('../stats/stats-classify');
 const C = require('./ledger-shadow-report-core');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 async function cell(label, fn) { try { await fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); }
@@ -21,12 +21,14 @@ const DAY = 86400000; const HR = 3600000;
 const START = Date.parse('2026-11-10T12:00:00Z');                 // the ledger start (S1 deploy), mid-day 11-10 HN
 const NOW = Date.parse('2026-11-20T09:00:00Z');                   // 03:00 HN on 11-20
 const D1 = Date.parse('2026-11-12T18:00:00Z');                    // 12:00 HN on 11-12
+const clone = (v) => JSON.parse(JSON.stringify(v));
 const stored = (v) => { if (v === null || typeof v !== 'object') return v; const o = {}; for (const [k, x] of Object.entries(v)) { const y = stored(x); if (y !== null && !(typeof y === 'object' && !Object.keys(y).length)) o[k] = y; } return Object.keys(o).length ? o : null; };
 const APP = LA.modeOf({ body: { entry_mode: 'app' }, clientHdr: { app: 'capp', deployment: 'orders-app' } });
 const money = (x) => ({ total_cents: 20000, subtotal_cents: 17000, tax_cents: 0, delivery_cents: 3000, tip_cents: 500, order_type: 'delivery', ...x });
 const alloc = (o) => stored(LA.snapshotOf(o, APP));
 const ord = (id, x) => ({ order_id: id, restaurant_id: 'x_pizza', created_at: D1, status: 'delivered', delivered_at: D1 + HR, ...money({}), ...x });
 const RATES = { commission: { _default: { k1: { bp: 1000, effective_from: Date.parse('2026-01-02T00:00:00Z') } } } };
+const FOOD = 20000 - 3000 - 500; const CARD_FOOD = 29900 - 4000 - 900;
 
 function world() {
   const orders = {
@@ -34,7 +36,6 @@ function world() {
     CARD1: ord('CARD1', { payment_method: 'online', payment_status: 'confirmed', active_attempt_id: 'a1', total_cents: 29900, subtotal_cents: 25000, delivery_cents: 5000, promo_discount_cents: 1000, tip_cents: 900 }),
     CDEL: ord('CDEL', { payment_method: 'card_delivery' }),
     GONE: ord('GONE', { payment_method: 'cash', status: 'cancelled', delivered_at: null, cancelled_at: D1 + HR }),
-    SDK1: ord('SDK1', { payment_method: 'online', payment_flow: 'sdk_auth_v1', status: 'pending_payment', delivered_at: null, payment_placed: { leg_id: 'l1', at: D1 } }),
     PRE: ord('PRE', { payment_method: 'cash', created_at: START - 2 * DAY, scheduled_for: D1 }),                 // created BEFORE the start, served in range
     NOPROJ: ord('NOPROJ', { payment_method: 'cash', created_at: D1 + 2 * HR }),                                   // a cohort sale the ledger never projected
   };
@@ -42,97 +43,154 @@ function world() {
   const payment_attempts = { a1: { order_id: 'CARD1', hosted_state: 'paid', paid_amount_cents: 29900, paid_at: D1 + 60000, ledger: alloc({ ...orders.CARD1 }) } };
   return { orders, ledger_alloc, payment_attempts, ledger_settings: RATES };
 }
-// the ledger side exactly as the CLI assembles it: S5 projections + the snapshots readSources selects
-async function ledgerSide(w, { skip = [] } = {}) {
+// the ledger side exactly as the CLI assembles it: S5 projections (journals included) + the sources readSources selects
+async function ledgerOf(db, ids, { skip = [] } = {}) {
+  for (const id of skip) { db.setAt(`ledger/orders/${id}`, null); db.setAt(`ledger/open/${id}`, null); }
+  const snapshots = {}; const sdk = {};
+  for (const id of ids) { const s = await RB.readSources(db, id); snapshots[id] = s.alloc; if (s.sdk) sdk[id] = s.sdk; }
+  return { projections: db.getAt('ledger/orders') || {}, open: db.getAt('ledger/open') || {}, stale: db.getAt('ledger/stale') || {}, runs: db.getAt('ledger/run') || {}, snapshots, sdk };
+}
+async function ledgerSide(w, opts) {
   const db = makeHonestDb(w, { now: () => NOW });
   await RB.runNightly({ db, clock: () => NOW }, { slot: 'run' });
-  for (const id of skip) { db.setAt(`ledger/orders/${id}`, null); db.setAt(`ledger/open/${id}`, null); }
-  const snapshots = {}; for (const id of Object.keys(w.orders)) snapshots[id] = (await RB.readSources(db, id)).alloc;
-  return { projections: db.getAt('ledger/orders') || {}, open: db.getAt('ledger/open') || {}, runs: db.getAt('ledger/run') || {}, snapshots };
+  return ledgerOf(db, Object.keys(w.orders), opts);
 }
 const keyer = makeCustomerKeyer('k'.repeat(40));
-const statsOf = (orders, dates) => { const m = B.buildDailies(Object.values(orders), { keyer, restaurants: new Set(['x_pizza']), dates: new Set(dates) }); const out = {}; for (const [rid, byDate] of m) { out[rid] = {}; for (const [d, s] of byDate) out[rid][d] = s; } return out; };
-const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
+// stats_daily as published: the real builder's summary + the publication's computed_at (after the day ended)
+const statsOf = (orders, dates, computedAt = NOW) => { const m = B.buildDailies(Object.values(orders), { keyer, restaurants: new Set(['x_pizza']), dates: new Set(dates) }); const out = {}; for (const [rid, byDate] of m) { out[rid] = {}; for (const [d, s] of byDate) out[rid][d] = { ...s, computed_at: computedAt }; } return out; };
+const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW, weeks: {} };
+const row = (r, date = '2026-11-12') => r.days.find((d) => d.rid === 'x_pizza' && d.date === date);
+const jOf = (p, fam) => Object.entries(p.journals).find(([, j]) => j.family === fam);
 
 (async () => {
-  await cell('LSR-MATCH: on the same cohort / restaurant / service date, the ledger food (S1 snapshots) of every sale equals stats_daily sale.cents (both exclude net envío and tip) — a matched day has zero difference', async () => {
-    const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ; delete w.ledger_alloc.PRE; delete w.ledger_alloc.NOPROJ;
-    const L = await ledgerSide(w);
-    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
-    const row = r.days.find((d) => d.rid === 'x_pizza' && d.date === '2026-11-12');
-    assert.deepStrictEqual([row.stats.orders, row.ledger.orders], [3, 3], `🔴 LSR-MATCH: sales counted alike (cash, card, card_delivery) ${JSON.stringify(row)}`);
-    assert.deepStrictEqual([row.ledger.cents, row.diff.orders, row.diff.cents], [row.stats.cents, 0, 0], `🔴 LSR-MATCH: ledger food = stats cents (${JSON.stringify(row)})`);
-    assert.strictEqual(row.ledger.cents, (20000 - 3000 - 500) * 2 + (29900 - 4000 - 900), '🔴 LSR-MATCH: food = total − net envío − tip per sale');
-  });
-
-  await cell('LSR-COHORT: an order created BEFORE the ledger start never counts on the ledger side; one served in range is reported in pre_cohort (the stats side cannot be split); a range starting on or before the start day is refused', async () => {
-    const w = world(); delete w.orders.NOPROJ; delete w.ledger_alloc.NOPROJ;
-    const L = await ledgerSide(w);
-    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
-    const row = r.days.find((d) => d.date === '2026-11-12');
-    assert.deepStrictEqual([row.ledger.orders, row.pre_cohort.orders, row.stats.orders], [3, 1, 4], `🔴 LSR-COHORT: ${JSON.stringify(row)}`);
-    assert.deepStrictEqual([row.diff.orders, row.diff.cents], [1, 16500], 'the difference is exactly the pre-cohort order, and the row says so');
-    assert.throws(() => C.buildReport({ ...ARGS, from: '2026-11-10', orders: {}, stats: {}, projections: {}, open: {}, runs: {}, snapshots: {}, weeks: {} }), /after the ledger start day/, '🔴 LSR-COHORT: a partial first day is refused');
-  });
-
-  await cell('LSR-SDK: an SDK order placed but not captured is its own column, on neither side (auth → capture timing, never a mismatch)', async () => {
+  await cell('LSR-MATCH: on the same cohort / restaurant / completed service date, the PERSISTED journals (card collection food; cash bridged by its checked commission) equal stats_daily sale — status match, zero difference', async () => {
     const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
     const L = await ledgerSide(w);
-    const row = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} }).days[0];
-    assert.deepStrictEqual([row.sdk_placed_not_captured, row.diff.orders], [1, 0], `🔴 LSR-SDK: ${JSON.stringify(row)}`);
+    const r = row(C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L }));
+    assert.deepStrictEqual([r.status, r.diff], ['match', { orders: 0, cents: 0 }], `🔴 LSR-MATCH: ${JSON.stringify(r)}`);
+    assert.deepStrictEqual([r.ledger, r.cash_bridged], [{ orders: 3, cents: 2 * FOOD + CARD_FOOD }, { orders: 2, cents: 2 * FOOD }], '🔴 LSR-MATCH: card from its journal, cash + card_delivery bridged');
   });
 
-  await cell('LSR-COMPLETENESS: a cohort sale with no projection is a gap (and its food is missing from the ledger side, never invented); quarantine and unresolved by reason; pending (open / unresolved) by age', async () => {
-    const w = world(); delete w.orders.PRE; delete w.orders.SDK1;   // SDK1 (no record here) would add an unrelated no_snapshot quarantine
+  await cell('LSR-JOURNALS: the ledger side is the PERSISTED journals, never the snapshot (#118 #1) — a wrong, missing, duplicated or unbalanced journal with the snapshot and status kept ⇒ mismatch with its fault', async () => {
+    const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
+    const L = await ledgerSide(w); const S = statsOf(w.orders, ['2026-11-12']);
+    const run = (mut) => { const P = clone(L.projections); mut(P); return row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L, projections: P })); };
+    const wrong = run((P) => { const [, j] = jOf(P.CARD1, 'collection'); for (const l of j.lines) { if (l.account === 'restaurant_payable') l.cr -= 100; if (l.account === 'processor_receivable') l.dr -= 100; } });
+    assert.deepStrictEqual([wrong.status, wrong.diff.cents, wrong.journal_faults], ['mismatch', 100, { collection_amount: 1 }], `🔴 LSR-JOURNALS: a wrong collection (${JSON.stringify(wrong)})`);
+    const gone = run((P) => { delete P.CARD1.journals[jOf(P.CARD1, 'collection')[0]]; });
+    assert.deepStrictEqual([gone.status, gone.diff.orders, gone.journal_faults.collection_missing], ['mismatch', 1, 1], `🔴 LSR-JOURNALS: a missing collection (${JSON.stringify(gone)})`);
+    const dup = run((P) => { const [, j] = jOf(P.CARD1, 'collection'); P.CARD1.journals.dup0000 = { ...clone(j), id: 'dup0000' }; });
+    assert.deepStrictEqual([dup.status, dup.diff.cents, dup.journal_faults.collection_amount], ['mismatch', -CARD_FOOD, 1], `🔴 LSR-JOURNALS: a duplicated collection (${JSON.stringify(dup)})`);
+    const noComm = run((P) => { delete P.CASH1.journals[jOf(P.CASH1, 'commission')[0]]; });
+    assert.deepStrictEqual([noComm.status, noComm.diff.orders, noComm.journal_faults], ['mismatch', 1, { commission: 1 }], `🔴 LSR-JOURNALS: cash without its commission journal is not bridged (${JSON.stringify(noComm)})`);
+    const unbal = run((P) => { const [, j] = jOf(P.CARD1, 'commission'); j.lines[0].dr += 1; });
+    assert.ok(unbal.status === 'mismatch' && unbal.journal_faults.unbalanced === 1, `🔴 LSR-JOURNALS: an unbalanced journal (${JSON.stringify(unbal.journal_faults)})`);
+  });
+
+  await cell('LSR-SDK: capture is decided from the SDK record\'s legs (#118 #2) — the REAL coordinator: placed + materialized (a stats sale) but not captured ⇒ the sdk_authorized_not_captured bridge, match; captured at delivery ⇒ its collection journal, match; cancelled ⇒ on neither side', async () => {
+    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const CO = require('../payments/sdk/coordinator');
+    const mk = () => {
+      let t = D1;
+      const o = { restaurant_id: 'x_pizza', payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'delivery', hub_lat: 14.1, hub_lng: -87.2, items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, address_detected: 'tb calle 1', address_details: 'tb casa azul', customer_name: 'tb Cliente', customer_phone: '+50499990000', restaurant_name: 'tb R', restaurant_phone: '+50400000000', total: 100, total_cents: 10000, created_at: t };
+      const db = makeHonestDb({ orders: { S: o }, ledger_settings: RATES }, { now: () => t });
+      const goLive = (dp, id) => require('../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../materialize').buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' } }, { orderId: id, attemptId: null, now: t, trackingToken: 'TT-tb', sdkGoLive: true });
+      const deps = { db, psp: makeAdapter(makeFakePsp({}, {}).impl), clock: () => t, voidEligible: () => false, releaseResources: async () => {}, goLive };
+      return { db, deps, set: (x) => { t = x; } };
+    };
+    const report = async (w, at) => { w.set(at); await RB.runNightly({ db: w.db, clock: () => at }, { slot: 'run' }); const orders = { S: w.db.getAt('orders/S') }; return row(C.buildReport({ ...ARGS, now: at, orders, stats: statsOf(orders, ['2026-11-12'], at), ...(await ledgerOf(w.db, ['S'])) })); };
+    const w = mk();
+    await CO.placeOriginal(w.deps, { attempt_id: 'att_fixed_c00008', orderId: 'S', token: 'T-tb-token', amount_cents: 10000 });
+    assert.ok(isSale(w.db.getAt('orders/S')) && !Object.values(w.db.getAt('payment_sdk/S/legs')).some((l) => l.state === 'captured'), 'premise: the real go-live is a stats sale with an authorized, uncaptured leg');
+    const placed = await report(w, NOW);
+    assert.deepStrictEqual([placed.status, placed.bridges.sdk_authorized_not_captured.orders, placed.ledger.orders], ['match', 1, 0], `🔴 LSR-SDK: placed, not captured (${JSON.stringify(placed)})`);
+    await w.db.ref('orders/S/status').set('delivered'); await CO.settleTerminal(w.deps, { orderId: 'S' });
+    const cap = await report(w, NOW + DAY);
+    assert.deepStrictEqual([cap.status, cap.bridges.sdk_authorized_not_captured.orders, cap.ledger.orders], ['match', 0, 1], `🔴 LSR-SDK: captured (${JSON.stringify(cap)})`);
+    const w2 = mk();
+    await CO.placeOriginal(w2.deps, { attempt_id: 'att_fixed_c00009', orderId: 'S', token: 'T-tb-token', amount_cents: 10000 });
+    await CO.cancelSdkOrder(w2.deps, { orderId: 'S', kind: 'cancel' });
+    const can = await report(w2, NOW);
+    assert.deepStrictEqual([can.status, can.stats.orders, can.ledger.orders, can.bridges.sdk_authorized_not_captured.orders], ['match', 0, 0, 0], `🔴 LSR-SDK: cancelled (${JSON.stringify(can)})`);
+  });
+
+  await cell('LSR-COHORT: validated pre-cohort sales (created before --start, served in range) are SUBTRACTED from the stats side (#118 #3), the raw value kept — the day still matches; a partial first day or an incomplete --to is refused', async () => {
+    const w = world(); delete w.orders.NOPROJ;
+    const L = await ledgerSide(w);
+    const r = row(C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L }));
+    assert.deepStrictEqual([r.stats_raw.orders, r.pre_cohort, r.stats.orders, r.status], [4, { orders: 1, cents: FOOD }, 3, 'match'], `🔴 LSR-COHORT: ${JSON.stringify(r)}`);
+    const none = { orders: {}, stats: {}, projections: {}, open: {}, stale: {}, runs: {}, snapshots: {}, sdk: {} };
+    assert.throws(() => C.buildReport({ ...ARGS, ...none, from: '2026-11-10' }), /after the ledger start day/, '🔴 LSR-COHORT: a partial first day');
+    assert.throws(() => C.buildReport({ ...ARGS, ...none, to: '2026-11-20' }), /COMPLETED HN day/, '🔴 LSR-COHORT: an incomplete last day');
+  });
+
+  await cell('LSR-NOT-COMPARABLE: missing stats, stats published before the day ended, or no finished nightly run after the day ended ⇒ not comparable, NO difference printed (#118 #4)', async () => {
+    const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
+    const L = await ledgerSide(w); const S = statsOf(w.orders, ['2026-11-12']);
+    const missing = row(C.buildReport({ ...ARGS, orders: w.orders, stats: {}, ...L }));
+    assert.deepStrictEqual([missing.status, missing.not_comparable, missing.diff], ['not_comparable', ['stats_missing'], null], `🔴 LSR-NOT-COMPARABLE: missing (${JSON.stringify(missing)})`);
+    const early = row(C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12'], D1 + HR), ...L }));
+    assert.deepStrictEqual([early.status, early.not_comparable], ['not_comparable', ['stats_stale']], '🔴 LSR-NOT-COMPARABLE: stale stats');
+    const noRun = row(C.buildReport({ ...ARGS, orders: w.orders, stats: S, ...L, runs: { '2026-11-12': { started_at: D1 - HR, finished_at: D1 } } }));
+    assert.deepStrictEqual([noRun.status, noRun.not_comparable], ['not_comparable', ['ledger_not_rebuilt']], '🔴 LSR-NOT-COMPARABLE: no rebuild after the day');
+  });
+
+  await cell('LSR-BUDGET: a read over 5,000 records or a run over 120 s refuses «report incomplete: budget exceeded» (#118 #5); the CLI bounds every query and checks every read', async () => {
+    assert.ok(/budget exceeded/.test(C.overBudget({ records: 5001, elapsedMs: 0 }) || ''), '🔴 LSR-BUDGET: records');
+    assert.ok(/budget exceeded/.test(C.overBudget({ records: 1, elapsedMs: 120001 }) || ''), '🔴 LSR-BUDGET: time');
+    assert.strictEqual(C.overBudget({ records: 5000, elapsedMs: 120000 }), null, 'at the limits is fine');
+    const cli = fs.readFileSync(path.join(__dirname, 'ledger-shadow-report.js'), 'utf8');
+    const queries = (cli.match(/\.orderBy(Child|Key)\(/g) || []).length;
+    assert.ok(queries >= 4 && (cli.match(/\.limitToFirst\(C\.MAX_RECORDS \+ 1\)/g) || []).length === queries, '🔴 LSR-BUDGET: every query is bounded');
+    assert.ok(/const check = \(records\) => \{[^\n]*C\.overBudget\(/.test(cli) && /const read = async \(ref\) => \{[^\n]*\bcheck\(/.test(cli), '🔴 LSR-BUDGET: the read helper applies the budget check');
+    assert.ok(!/\.once\('value'\)/.test(cli.replace(/const read = async \(ref\) => \{[^\n]*\n/, '')), '🔴 LSR-BUDGET: every direct read goes through the read helper');
+  });
+
+  await cell('LSR-SCOPE: completeness counts only the cohort orders served in range (#118 #6); the open set and the stale holds are a separate, global section', async () => {
+    const w = world(); delete w.orders.PRE;
+    w.orders.U1 = ord('U1', { payment_method: 'online', status: 'preparing', created_at: NOW - 9 * DAY, delivered_at: null, active_attempt_id: 'aU' });
+    w.payment_attempts.aU = { order_id: 'U1', status: 'capture_unverified', hosted_state: 'paid', paid_amount_cents: 29900, paid_at: NOW - 9 * DAY, ledger: alloc({ ...w.orders.U1, total_cents: 29900 }) };
     const L = await ledgerSide(w, { skip: ['NOPROJ'] });
-    L.projections.Q1 = { status: 'quarantined', reasons: ['app_pickup_cash'] }; w.orders.Q1 = ord('Q1', { payment_method: 'cash', order_type: 'pickup' }); L.snapshots.Q1 = alloc({ ...w.orders.Q1 });   // a quarantine WITH a snapshot
-    L.projections.U1 = { status: 'unresolved', reasons: ['capture_unproven'] }; L.open.U1 = true; w.orders.U1 = ord('U1', { payment_method: 'online', status: 'preparing', created_at: NOW - 9 * DAY });
-    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
-    assert.strictEqual(r.completeness.not_projected, 1, `🔴 LSR-COMPLETENESS: the gap ${JSON.stringify(r.completeness)}`);
-    assert.deepStrictEqual([r.completeness.quarantined, r.completeness.unresolved], [{ app_pickup_cash: 1 }, { capture_unproven: 1 }], '🔴 LSR-COMPLETENESS: by reason');
-    assert.deepStrictEqual(r.completeness.pending_age, { under_1d: 0, d1_7: 0, d7_21: 1, over_21d: 0 }, '🔴 LSR-COMPLETENESS: pending by age');
-    const row = r.days.find((d) => d.date === '2026-11-12');
-    assert.ok(row.diff.orders >= 1 && row.diff.cents >= 16500, `🔴 LSR-COMPLETENESS: the gap shows as a difference ${JSON.stringify(row)}`);
-    assert.strictEqual(row.ledger.orders, 3, `🔴 LSR-COMPLETENESS: a quarantined order never counts on the ledger side, even with a snapshot (${JSON.stringify(row)})`);
+    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L });
+    assert.deepStrictEqual([r.in_range.not_projected, r.in_range.unresolved], [1, {}], `🔴 LSR-SCOPE: in range only (${JSON.stringify(r.in_range)})`);
+    assert.deepStrictEqual([r.global.open_status, r.global.open_by_age.d7_21], [{ unresolved: 1 }, 1], `🔴 LSR-SCOPE: the global section (${JSON.stringify(r.global)})`);
   });
 
-  await cell('LSR-STALE: a stale hold (a quarantined / unresolved order unchanged > 60 days, out of the open set — S5) is listed by reason for a person to resolve', async () => {
+  await cell('LSR-STALE: a stale hold (a quarantined / unresolved order unchanged > 60 days — S5, ledger/stale) is listed by reason in the global section', async () => {
     const T0 = Date.parse('2026-09-01T18:00:00Z');
     const db = makeHonestDb({ orders: { Q: ord('Q', { payment_method: 'cash', status: 'preparing', delivered_at: null, created_at: T0 }) }, ledger_settings: RATES }, { now: () => T0 });   // no snapshot ⇒ quarantined
     await RB.runNightly({ db, clock: () => T0 }, { slot: 'run' });
     await RB.runNightly({ db, clock: () => T0 + 61 * DAY }, { slot: 'run' });
     assert.deepStrictEqual(db.getAt('ledger/stale'), { Q: true }, 'premise: S5 made it a stale hold');
-    const stale = db.getAt('ledger/stale'); const projections = { Q: db.getAt('ledger/orders/Q') };
-    const r = C.buildReport({ ...ARGS, orders: { Q: db.getAt('orders/Q') }, stats: {}, projections, open: {}, runs: {}, snapshots: {}, weeks: {}, stale });
-    assert.deepStrictEqual(r.completeness.stale_hold, { no_snapshot: 1 }, `🔴 LSR-STALE: ${JSON.stringify(r.completeness)}`);
+    const r = C.buildReport({ ...ARGS, orders: { Q: db.getAt('orders/Q') }, stats: {}, ...(await ledgerOf(db, ['Q'])) });
+    assert.deepStrictEqual(r.global.stale_hold, { no_snapshot: 1 }, `🔴 LSR-STALE: ${JSON.stringify(r.global)}`);
   });
 
-  await cell('LSR-CASH: cash sales and the accrual-only ones (no collection evidence: cash_not_evidenced) are counted; card_delivery is NOT physical cash', async () => {
+  await cell('LSR-CASH: cash sales, the accrual-only ones (cash_not_evidenced), the ones awaiting fulfilment (bridged), card_delivery apart', async () => {
     const w = world(); delete w.orders.PRE; delete w.orders.NOPROJ;
-    w.orders.CASH2 = ord('CASH2', { payment_method: 'cash', status: 'preparing', delivered_at: null }); w.ledger_alloc.CASH2 = alloc({ ...w.orders.CASH2 });   // a cash sale not yet delivered: no accrual yet
+    w.orders.CASH2 = ord('CASH2', { payment_method: 'cash', status: 'preparing', delivered_at: null }); w.ledger_alloc.CASH2 = alloc({ ...w.orders.CASH2 });
     const L = await ledgerSide(w);
-    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: {} });
-    assert.deepStrictEqual(r.cash, { cash_sales: 2, accrual_only: 1, card_delivery_sales: 1 }, `🔴 LSR-CASH: ${JSON.stringify(r.cash)}`);
+    const r = C.buildReport({ ...ARGS, orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L });
+    assert.deepStrictEqual(r.cash, { cash_sales: 2, accrual_only: 1, awaiting_fulfilment: 1, card_delivery_sales: 1 }, `🔴 LSR-CASH: ${JSON.stringify(r.cash)}`);
+    assert.deepStrictEqual([row(r).status, row(r).bridges.cash_awaiting_fulfilment], ['match', { orders: 1, cents: FOOD }], '🔴 LSR-CASH: the awaiting sale is an explicit bridge');
   });
 
   await cell('LSR-DRIVER: S8 closed weeks overlapping the range, side by side — drivers, deliveries, net cents, payable / paid counts; no driver id', async () => {
-    const weeks = { 'W2026-11-09': { week: 'W2026-11-09', drivers: { u1: { deliveries: ['CASH1', 'CARD1'], net_cents: 14000, outcome: 'payable', paid: { amount_cents: 14000 } }, u2: { deliveries: ['CDEL'], net_cents: 7000, outcome: 'payable' } } },
-      'W2026-09-28': { week: 'W2026-09-28', drivers: { u9: { deliveries: ['X'], net_cents: 7000, outcome: 'payable' } } } };
-    const r = C.buildReport({ ...ARGS, orders: {}, stats: {}, projections: {}, open: {}, runs: {}, snapshots: {}, weeks });
+    const weeks = { 'W2026-11-09': { drivers: { u1: { deliveries: ['CASH1', 'CARD1'], net_cents: 14000, outcome: 'payable', paid: { amount_cents: 14000 } }, u2: { deliveries: ['CDEL'], net_cents: 7000, outcome: 'payable' } } },
+      'W2026-09-28': { drivers: { u9: { deliveries: ['X'], net_cents: 7000, outcome: 'payable' } } } };
+    const r = C.buildReport({ ...ARGS, orders: {}, stats: {}, projections: {}, open: {}, stale: {}, runs: {}, snapshots: {}, sdk: {}, weeks });
     assert.deepStrictEqual(r.driver, [{ week: 'W2026-11-09', drivers: 2, deliveries: 3, net_cents: 21000, payable: 2, paid: 1 }], `🔴 LSR-DRIVER: ${JSON.stringify(r.driver)}`);
   });
 
-  await cell('LSR-COVERAGE + NO-PII: the nightly run records of the range (finished / stopped / counts) are listed; the report carries no order id, customer, phone, uid or attempt id', async () => {
+  await cell('LSR-COVERAGE + NO-PII: the run records of the range and the dates with none; the report carries no order id, customer, phone, uid or attempt id', async () => {
     const w = world(); w.orders.CASH1.customer_name = 'Ana Cliente'; w.orders.CASH1.customer_phone = '+50499998888';
     const L = await ledgerSide(w);
-    const r = C.buildReport({ ...ARGS, to: '2026-11-20', orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: { 'W2026-11-09': { drivers: { uSECRET: { deliveries: ['CASH1'], net_cents: 7000, outcome: 'payable' } } } } });
-    assert.deepStrictEqual(r.coverage.runs.map((x) => [x.date, x.finished, x.counts.touched]), [['2026-11-20', true, L.runs['2026-11-20'].counts.touched]], `🔴 LSR-COVERAGE: ${JSON.stringify(r.coverage)}`);
-    assert.deepStrictEqual(r.coverage.missing_run_dates.length, 8, '🔴 LSR-COVERAGE: the dates with no run record are listed (11-12 … 11-19)');
+    const r = C.buildReport({ ...ARGS, to: '2026-11-19', orders: w.orders, stats: statsOf(w.orders, ['2026-11-12']), ...L, weeks: { 'W2026-11-09': { drivers: { uSECRET: { deliveries: ['CASH1'], net_cents: 7000, outcome: 'payable' } } } } });
+    assert.deepStrictEqual([r.coverage.runs.length, r.coverage.missing_run_dates.length, r.coverage.last_finished_run_start], [0, 8, NOW], `🔴 LSR-COVERAGE: ${JSON.stringify(r.coverage)}`);
     const s = JSON.stringify(r);
-    for (const bad of ['CASH1', 'CARD1', 'Ana', '9999', 'uSECRET', 'a1']) assert.ok(!s.includes(`"${bad}`) && !s.includes(bad === 'a1' ? '"a1"' : bad), `🔴 LSR-NO-PII: ${bad} in the report`);
+    for (const bad of ['CASH1', 'CARD1', 'Ana', '9999', 'uSECRET', '"a1"']) assert.ok(!s.includes(bad), `🔴 LSR-NO-PII: ${bad} in the report`);
   });
 
-  await cell('LSR-CLI: the project guard first, then the arguments, both before any client (the platform CLI contract); the CLI refuses without --project; the CLI and core never write (no set / update / push / remove / transaction)', async () => {
+  await cell('LSR-CLI: the project guard first, then the arguments, both before any client (the platform CLI contract); refuses without --project; the CLI and core never write', async () => {
     assert.deepStrictEqual(C.parseArgs(['--project', 'x', '--start', '2026-11-10T12:00:00Z', '--from', '2026-11-12', '--to', '2026-11-13']), { start: START, from: '2026-11-12', to: '2026-11-13', json: false });
     for (const a of [['--from', '2026-11-12'], ['--start', 'nope', '--from', '2026-11-12', '--to', '2026-11-13'], ['--start', '2026-11-10', '--from', '2026-11-13', '--to', '2026-11-12'], ['--start', '2026-11-10', '--from', '2026-11-12', '--to', '2026-11-13', '--apply']]) {
       assert.ok(C.parseArgs(a).error, `🔴 LSR-CLI: accepted ${a.join(' ')}`);
@@ -142,7 +200,7 @@ const ARGS = { start: START, from: '2026-11-12', to: '2026-11-12', now: NOW };
     assert.ok(iGuard > 0 && iGuard < iParse && iParse < iAdmin, '🔴 LSR-CLI: requireProject → parseArgs → firebase-admin, in that order');
     for (const f of ['ledger-shadow-report.js', 'ledger-shadow-report-core.js']) {
       const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
-      assert.ok(!/\.(set|update|push|remove|transaction|delete|add|create)\(/.test(s), `🔴 LSR-CLI: ${f} writes (no Map / Set either: plain objects keep this scan exact)`);
+      assert.ok(!/\.(set|update|push|remove|transaction|delete|add|create)\(/.test(s), `🔴 LSR-CLI: ${f} writes (no Map / Set / push either: plain objects keep this scan exact)`);
     }
     const env = { ...process.env, FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', GOOGLE_APPLICATION_CREDENTIALS: '/nonexistent/creds.json' };
     delete env.GOOGLE_CLOUD_PROJECT; delete env.GCLOUD_PROJECT; delete env.NODE_OPTIONS;
