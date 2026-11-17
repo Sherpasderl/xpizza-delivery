@@ -23,6 +23,7 @@ const NOW = D('2026-11-16T18:00:00Z');
       assert.ok(C.parseArgs(a).error, `🔴 SCR-ARGS ${a.join(' ')} accepted (a missing flag, or --allow-past: never retro)`);
     }
     assert.ok(/not a valid ISO/.test(C.parseArgs(['--scope', '_default', '--bp', '1000', '--effective-from', '2026-02-31']).error));
+    assert.ok(/never retro/.test(C.parseArgs(['--scope', '_default', '--bp', '1000', '--effective-from', '2026-11-20', '--allow-past']).error || ''), '🔴 SCR-ARGS: --allow-past is refused AS never-retro (no override exists)');
   });
 
   const EX = { _default: { '-Na': { bp: 1000, effective_from: D('2026-11-01T06:00:00Z') }, '-Nb': { bp: 1100, effective_from: D('2026-12-01T06:00:00Z') } } };   // one in effect now, one ahead
