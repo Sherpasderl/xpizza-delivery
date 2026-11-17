@@ -84,7 +84,7 @@ async function rebuildOrder(db, orderId, { settings, now }) {
   const r = PJ.projectOrder(src, { rateBp });
   const prev = (await db.ref(`ledger/orders/${orderId}/inputs_hash`).once('value')).val();
   if (prev === hash) return { result: 'unchanged', status: r.status };
-  const keep = r.status === 'open' || r.status === 'unresolved';   // can still change on its own; final / quarantined leave the open set
+  const keep = r.status !== 'final';   // plan §2: every non-final order stays in discovery — a quarantined SDK order can still change with no windowed field (Codex #116 #1)
   await db.ref().update({
     [`ledger/orders/${orderId}`]: { v: 1, computed_at: now, inputs_hash: hash, rate_bp: rateBp, status: r.status, reasons: r.reasons, journals: r.journals },
     [`ledger/open/${orderId}`]: keep ? true : null,
@@ -99,17 +99,21 @@ async function alarmOnce(db, date, now, reasons, counts) {
   await db.ref(`dispatcher_alerts/ledger_run_${date}`).transaction((cur) => (cur === null ? payload : undefined));
 }
 
-// slot: 'run' (03:00 HN) | 'safety' (03:30 HN) ⇒ { outcome: 'finished' | 'time_cap' | 'error' | 'noop', counts? }
+// slot: 'run' (03:00 HN) | 'safety' (03:30 HN) ⇒ { outcome: 'finished' | 'time_cap' | 'error' | 'noop', counts }. NEVER throws (Codex #116
+// #3): the whole lifecycle is inside one protected block. The alert is decided and delivered BEFORE the completion marker (Codex #116 #2):
+// a failed read of yesterday's run or a failed alert transaction leaves the run unfinished, so the 03:30 slot re-runs and delivers it.
+// When the safety slot ends without a recorded completion, the create-once «unfinished» alarm is attempted on its own, whatever became of
+// the run record.
 async function runNightly({ db, clock }, { slot }) {
   const start = clock(); const date = hnDate(start);
   const runRef = db.ref(`ledger/run/${date}`);
-  const prior = (await runRef.once('value')).val();
-  if (prior && time(prior.finished_at)) return { outcome: 'noop' };
-  const attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;
-  await runRef.set({ started_at: start, attempt });
   const counts = { touched: 0, written: 0, unchanged: 0, final: 0, open: 0, quarantined: 0, unresolved: 0 };
-  let outcome = 'finished';
+  let attempt = null; let outcome = 'finished';
   try {
+    const prior = (await runRef.once('value')).val();
+    if (prior && time(prior.finished_at)) return { outcome: 'noop' };
+    attempt = (prior && Number.isSafeInteger(prior.attempt) ? prior.attempt : 0) + 1;
+    await runRef.set({ started_at: start, attempt });
     const settings = (await db.ref(CR.NODE).once('value')).val();
     const ids = [...(await touchedSet(db, start))].sort();
     counts.touched = ids.length;
@@ -118,17 +122,18 @@ async function runNightly({ db, clock }, { slot }) {
       const { result, status } = await rebuildOrder(db, id, { settings, now: start });
       counts[result] += 1; counts[status] += 1;
     }
+    if (outcome === 'finished') {   // the alert BEFORE the marker
+      const y = (await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value')).val();
+      if (y && time(y.finished_at) && y.counts && Number.isSafeInteger(y.counts.unresolved) && counts.unresolved > y.counts.unresolved) await alarmOnce(db, date, start, ['unresolved_up'], counts);
+    }
   } catch (e) { outcome = errCode(e); }
-  const finished = outcome === 'finished';
-  await runRef.set({ started_at: start, attempt, counts, ...(finished ? { finished_at: clock() } : { stopped: outcome }) });
-  const reasons = [];
-  if (!finished && slot === 'safety') reasons.push('unfinished');
-  if (finished) {
-    const y = (await db.ref(`ledger/run/${hnDate(start - 86400000)}`).once('value')).val();
-    if (y && time(y.finished_at) && y.counts && Number.isSafeInteger(y.counts.unresolved) && counts.unresolved > y.counts.unresolved) reasons.push('unresolved_up');
-  }
-  if (reasons.length) await alarmOnce(db, date, start, reasons, counts);
-  return { outcome: finished ? 'finished' : outcome === 'time_cap' ? 'time_cap' : 'error', counts };
+  let recorded = false;
+  try {
+    await runRef.set({ started_at: start, attempt, counts, ...(outcome === 'finished' ? { finished_at: clock() } : { stopped: outcome }) });
+    recorded = outcome === 'finished';
+  } catch (_) { /* the safety slot alarms below; the 03:00 slot is retried at 03:30 */ }
+  if (!recorded && slot === 'safety') { try { await alarmOnce(db, date, start, ['unfinished'], counts); } catch (_) { /* nothing left to try: the log line */ } }
+  return { outcome: recorded ? 'finished' : outcome === 'time_cap' ? 'time_cap' : 'error', counts };
 }
 
 module.exports = { runNightly, rebuildOrder, readSources, touchedSet, snapshotOf, hnDate, errCode, WINDOW_MS, CAP_MS, ALERT_TYPE, ORDER_TIMES, ATTEMPT_TIMES };

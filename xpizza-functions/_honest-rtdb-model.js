@@ -126,7 +126,13 @@ function makeHonestDb(initial = {}, hooks = {}) {
         if (typeof c !== 'string' || !c || RESERVED.test(c)) throw new Error(`orderByChild: invalid child "${c}"`);
         queries.push({ path: p, child: c });
         const cv = (x) => (x && typeof x === 'object' && x[c] !== undefined ? x[c] : null);
-        const prim = (x, w) => { if (x === null || (typeof x === 'object')) throw new Error(`orderByChild().${w}: a primitive bound is required`); return x; };
+        // the bounds the Admin SDK accepts (Codex #116 #4, differential cell HRM-BOUNDS): null, a boolean, a FINITE number or a string;
+        // startAt(undefined) is startAt(null), equalTo(undefined) throws; NaN / ±Infinity / objects / arrays throw
+        const prim = (x, w) => {
+          if (x === undefined && w === 'startAt') return null;
+          if (x === null || typeof x === 'boolean' || typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x))) return x;
+          throw new Error(`orderByChild().${w}: ${String(x)} is not a valid bound (null, boolean, finite number or string)`);
+        };
         const sel = (keep) => ({ async once() {
           if (hooks.beforeRead) await hooks.beforeRead(p, api);
           const v = getAt(p);
@@ -135,7 +141,7 @@ function makeHonestDb(initial = {}, hooks = {}) {
           const out = {}; for (const k of keys) out[k] = v[k];
           return snap(keys.length ? out : null);
         } });
-        return { startAt(x) { prim(x, 'startAt'); return sel((y) => cmpV(y, x) >= 0); }, equalTo(x) { prim(x, 'equalTo'); return sel((y) => rank(y) === rank(x) && y === x); } };
+        return { startAt(x) { const b = prim(x, 'startAt'); return sel((y) => cmpV(y, b) >= 0); }, equalTo(x) { const b = prim(x, 'equalTo'); return sel((y) => rank(y) === rank(b) && (b === null || y === b)); } };
       },
       // a value-ordered page, as RTDB orders values: null < false < true < numbers < strings < objects, ties by key;
       // endAt is inclusive; a non-positive limit throws instead of returning everything

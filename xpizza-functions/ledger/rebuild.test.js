@@ -93,7 +93,7 @@ const clockAt = (t) => () => t;
     assert.deepStrictEqual(await pick({ ledger_alloc: { O: a1 }, payment_attempts: { p: { order_id: 'O', ledger: a2 } } }), a1, '🔴 RB-SNAPSHOT: ledger_alloc first');
   });
 
-  await cell('RB-ORACLE: one run writes, for every touched order, EXACTLY projectOrder of its sources (S3 is the oracle) + the open set (open / unresolved in, final / quarantined out) + a finished run record with counts only', async () => {
+  await cell('RB-ORACLE: one run writes, for every touched order, EXACTLY projectOrder of its sources (S3 is the oracle) + the open set (every non-final order in, final out) + a finished run record with counts only', async () => {
     const { db } = counting(seed());
     const r = await RB.runNightly({ db, clock: clockAt(NOW) }, { slot: 'run' });
     for (const id of ['C_NEW', 'C_OLD_LATE', 'H_NEW', 'H_OLD_REFUND', 'U_OLD_OPEN', 'X_OLD_REVIEW']) {
@@ -179,6 +179,55 @@ const clockAt = (t) => () => t;
     await RB.runNightly({ db: d3, clock: clockAt(NOW) }, { slot: 'run' });
     assert.strictEqual(d3.getAt('dispatcher_alerts'), null, '🔴 RB-ALARM: unresolved unchanged vs yesterday ⇒ no alert');
   });
+  await cell('RB-QUARANTINE-STAYS: a quarantined order stays in discovery (Codex #116 #1) — the REAL coordinator: an SDK order placed, decreased (rule 4), delivered ⇒ sdk_adjusted; 22 days later completeObligation changes no windowed field, and the next run still re-projects it', async () => {
+    const { makeAdapter } = require('../payments/sdk/psp-adapter'); const { makeFakePsp } = require('../payments/sdk/fake-adapter'); const CO = require('../payments/sdk/coordinator');
+    const OID = 'tb_sdk_1'; let t = NOW - 2 * DAY;
+    const sdkOrder = { restaurant_id: 'x_pizza', payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'delivery', hub_lat: 14.1, hub_lng: -87.2, items: [{ name: 'tb_item', qty: 1, unit: 100 }], items_text: '1x tb_item', lat: 14.08, lng: -87.19, address_detected: 'tb calle 1', address_details: 'tb casa azul', customer_name: 'tb Cliente', customer_phone: '+50499990000', restaurant_name: 'tb R', restaurant_phone: '+50400000000', total: 100, total_cents: 10000, created_at: t };
+    const db = makeHonestDb({ orders: { [OID]: sdkOrder }, ledger_settings: RATES }, { now: () => t });
+    const goLive = (dp, id) => require('../pixelpay-confirm').confirmAndMaterialize({ db, buildMaterializeUpdates: require('../materialize').buildMaterializeUpdates, restaurant: { lat: 14.1, lng: -87.2, name: 'tb R', phone: '+50400000000' } }, { orderId: id, attemptId: null, now: t, trackingToken: 'TT-tb', sdkGoLive: true });
+    const deps = { db, psp: makeAdapter(makeFakePsp({}, {}).impl), clock: () => t, voidEligible: () => false, releaseResources: async () => {}, goLive };
+    await CO.placeOriginal(deps, { attempt_id: 'att_fixed_c00008', orderId: OID, token: 'T-tb-token', amount_cents: 10000 });
+    await db.ref(`orders/${OID}/status`).set('preparing');
+    await CO.requestDecrease(deps, { orderId: OID, new_total_cents: 8000, revision: { items: [{ name: 'tb_item', qty: 1, unit: 80 }], total_cents: 8000, delivery_cents: 0 } });
+    await db.ref(`orders/${OID}/status`).set('delivered'); await CO.settleTerminal(deps, { orderId: OID });
+    await RB.runNightly({ db, clock: () => t }, { slot: 'run' });
+    assert.deepStrictEqual([db.getAt(`ledger/orders/${OID}/status`), db.getAt(`ledger/orders/${OID}/reasons`)], ['quarantined', ['sdk_adjusted']], 'premise: the real coordinator made it sdk_adjusted');
+    assert.strictEqual(db.getAt(`ledger/open/${OID}`), true, '🔴 RB-QUARANTINE-STAYS: a quarantined order stays in the open set');
+    t += 22 * DAY;
+    await CO.completeObligation(deps, { orderId: OID, obligationId: 'refund_1', state: 'verified', bank_ref: 'BANK-1' });
+    const o = db.getAt(`orders/${OID}`);
+    for (const c of RB.ORDER_TIMES) assert.ok(!(o[c] >= t - RB.WINDOW_MS), `premise: no windowed order field is recent (${c})`);
+    assert.strictEqual(db.getAt('payment_attempts'), null, 'premise: no attempt rows (an SDK order)');
+    await RB.runNightly({ db, clock: () => t }, { slot: 'run' });
+    assert.strictEqual(db.getAt(`ledger/orders/${OID}/computed_at`), t, '🔴 RB-QUARANTINE-STAYS: the later change is re-projected');
+    assert.deepStrictEqual(proj(db, OID), await oracle(db, OID));
+  });
+
+  await cell('RB-ALERT-BEFORE-MARK: the alert is decided and delivered BEFORE the completion marker (Codex #116 #2) — a failed read of yesterday\'s run or a failed alert transaction leaves the run unfinished, and the 03:30 slot delivers it', async () => {
+    const Y = { finished_at: NOW - DAY, attempt: 1, counts: { touched: 1, written: 1, unchanged: 0, final: 1, open: 0, quarantined: 0, unresolved: 0 } };
+    for (const [label, hook] of [['yesterday read', 'beforeRead'], ['alert transaction', 'beforeTx']]) {
+      let armed = true;
+      const target = hook === 'beforeRead' ? 'ledger/run/2026-11-19' : 'dispatcher_alerts/ledger_run_2026-11-20';
+      const db = makeHonestDb({ ...seed(), ledger: { open: { U_OLD_OPEN: true }, run: { '2026-11-19': Y } } }, { now: () => NOW, [hook]: (p) => { if (armed && p === target) { armed = false; throw Object.assign(new Error('transient'), { code: 'ETRANSIENT' }); } } });
+      const r1 = await RB.runNightly({ db, clock: clockAt(NOW) }, { slot: 'run' });
+      assert.ok(r1.outcome !== 'finished' && !db.getAt('ledger/run/2026-11-20/finished_at'), `🔴 RB-ALERT-BEFORE-MARK (${label}): not marked finished while the alert is undelivered (${JSON.stringify(db.getAt('ledger/run/2026-11-20'))})`);
+      const r2 = await RB.runNightly({ db, clock: clockAt(NOW + 1800000) }, { slot: 'safety' });
+      assert.strictEqual(r2.outcome, 'finished', `🔴 RB-ALERT-BEFORE-MARK (${label}): the safety slot finishes`);
+      assert.deepStrictEqual(db.getAt('dispatcher_alerts/ledger_run_2026-11-20/reasons'), ['unresolved_up'], `🔴 RB-ALERT-BEFORE-MARK (${label}): the alert is delivered`);
+    }
+  });
+
+  await cell('RB-LIFECYCLE: the whole lifecycle is protected (Codex #116 #3) — a failing run-record read or write never throws out of the job; in the safety slot the create-once «unfinished» alarm is still attempted, independently of the record', async () => {
+    for (const hook of ['beforeRead', 'beforeWrite']) {
+      const db = makeHonestDb(seed(), { now: () => NOW, [hook]: (p) => { if (p === 'ledger/run/2026-11-20') throw Object.assign(new Error('down'), { code: 'EDOWN' }); } });
+      const r = await RB.runNightly({ db, clock: clockAt(NOW) }, { slot: 'run' });
+      assert.ok(r.outcome !== 'finished' && db.getAt('dispatcher_alerts') === null, `🔴 RB-LIFECYCLE (${hook}): the 03:00 slot neither throws nor alarms (${JSON.stringify(r)})`);
+      const r2 = await RB.runNightly({ db, clock: clockAt(NOW + 1800000) }, { slot: 'safety' });
+      assert.ok(r2.outcome !== 'finished', `${hook}: still unfinished`);
+      assert.deepStrictEqual(db.getAt('dispatcher_alerts/ledger_run_2026-11-20/reasons'), ['unfinished'], `🔴 RB-LIFECYCLE (${hook}): the safety slot alarms although the record could not be ${hook === 'beforeRead' ? 'read' : 'written'}`);
+    }
+  });
+
   await cell('RB-SLOT: the scheduled function picks the slot by the Honduras minute — 03:00 / 03:01 ⇒ run, 03:30 ⇒ safety', async () => {
     const { slotOf } = require('./functions');
     assert.deepStrictEqual([slotOf(NOW), slotOf(NOW + 60000), slotOf(NOW + 1800000)], ['run', 'run', 'safety'], '🔴 RB-SLOT');
