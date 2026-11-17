@@ -142,8 +142,10 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
     const k = await card(rid, { km: 4 });
     assert.ok(k.status === 200 && k.charged.length === 1, `${rid}: card accepted (${k.text.slice(0, 200)})`);
     assert.strictEqual(k.charged[0] * 100, food + 5000, `${rid}: PixelPay is asked for food + envío`);
-    const pk = await cash(rid, { type: 'pickup' });
-    assert.deepStrictEqual([pk.status, pk.rec.total_cents, pk.rec.delivery_cents, pk.rec.delivery_snapshot.mode], [200, food, 0, 'pickup'], `${rid}: pickup → envío 0`);
+    // OWNER 11-16: an APP pickup is card only ⇒ the pickup envío-0 cell is proven on the card path (the pending order is what capture charges)
+    const pk = await card(rid, { type: 'pickup' });
+    const pkRec = (await rtdb.ref(`orders/${pk.b.order_id}`).get()).val();
+    assert.deepStrictEqual([pk.status, pk.charged.length, pk.charged[0] * 100, pkRec.total_cents, pkRec.delivery_cents, pkRec.delivery_snapshot.mode], [200, 1, food, food, 0, 'pickup'], `${rid}: pickup → envío 0 (${pk.text.slice(0, 160)})`);
   }
   ok('ACTIVE: envío by straight-line band (1 km L30, 4 km L50, 6.5 km L70) recorded and charged on cash AND card; subtotal/tax stay the food split; pickup 0');
 
@@ -320,8 +322,10 @@ const DELIVERY_KEYS = ['delivery_cents', 'promo_discount_cents', 'delivery_snaps
     assert.deepStrictEqual([k.status, k.json && k.json.error, k.charged.length], [503, 'delivery_pricing_unavailable', 0], `an app card delivery with no table (${k.text.slice(0, 160)})`);
     const q = await quote('x_pizza', { mode: 'delivery', pin: { ...north(1), confirmed: true } });
     assert.deepStrictEqual([q.status, q.json], [503, { ok: false, error: 'delivery_pricing_unavailable', retryable: true }], 'an app delivery quote with no table');
-    const pk = await cash('x_pizza', { type: 'pickup' });
-    assert.ok(pk.status === 200 && !DELIVERY_KEYS.some((x) => x in pk.rec) && pk.rec.total_cents === DARK.x_pizza.total_cents, `an app pickup with no table is today's dark order (${pk.text.slice(0, 160)})`);
+    // OWNER 11-16: an APP pickup is card only ⇒ proven on the card path (the pending order is what capture charges)
+    const pk = await card('x_pizza', { type: 'pickup' });
+    const pkRec = (await rtdb.ref(`orders/${pk.b.order_id}`).get()).val();
+    assert.ok(pk.status === 200 && pk.charged.length === 1 && pkRec && !DELIVERY_KEYS.some((x) => x in pkRec) && pkRec.total_cents === DARK.x_pizza.total_cents, `an app pickup with no table is today's dark order (${pk.text.slice(0, 160)})`);
     const qp = await quote('x_pizza', { mode: 'pickup' });
     assert.deepStrictEqual(Object.keys(qp.json).sort(), ['net_total_cents', 'ok', 'quote_token', 'subtotal_cents', 'tax_cents', 'total_cents'], 'an app pickup quote with no table is today\'s dark quote');
   }

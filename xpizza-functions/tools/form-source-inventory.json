@@ -3072,6 +3072,7 @@
   "photos/sweep-core.js",
   "photos/sweep-io.js",
   "photos/upload-start.js",
+  "pickup-card-only.js",
   "pixelpay-cancel.js",
   "pixelpay-charge.js",
   "pixelpay-client.js",
@@ -7833,6 +7834,10 @@
    "lifts": []
   },
   "photos/upload-start.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "pickup-card-only.js": {
    "pins": [],
    "lifts": []
   },

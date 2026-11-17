@@ -532,6 +532,7 @@
   "createorder-classify.js#classifyExistingOrder": "intake",
   "tip.js#orderRefusal": "intake",
   "tip.js#refuse": "intake",
+  "pickup-card-only.js#pickupCardOnlyRefusal": "intake",
   "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
