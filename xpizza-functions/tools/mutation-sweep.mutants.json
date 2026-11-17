@@ -39954,8 +39954,8 @@
   "slice": "ledger-s5",
   "label": "ledger S5 nightly rebuild: an unchanged order is not rewritten",
   "file": "ledger/rebuild.js",
-  "from": "if (prev === hash) return",
-  "to": "if (false) return",
+  "from": "if (prevHash === hash) {",
+  "to": "if (false) {",
   "command": [
    "node",
    "ledger/rebuild.test.js"
@@ -40292,6 +40292,66 @@
   ],
   "kills_with": [
    "🔴 HRM-BOUNDS:"
+  ]
+ },
+ {
+  "id": "ls5-st1-stale-leaves",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: a hold unchanged > 60 days leaves the open set",
+  "file": "ledger/rebuild.js",
+  "from": "if (!(held && stale !== true && time(since) && now - since > STALE_MS)) return",
+  "to": "if (true) return",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st2-60-days",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: the 60-day bound",
+  "file": "ledger/rebuild.js",
+  "from": "const STALE_MS = 60 * 86400000;",
+  "to": "const STALE_MS = 20 * 86400000;",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st3-clears-open",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: stale_hold leaves the open set in the same update",
+  "file": "ledger/rebuild.js",
+  "from": "patch = { [`ledger/open/${orderId}`]: null, [`ledger/orders/${orderId}/stale_hold`]: true };",
+  "to": "patch = { [`ledger/orders/${orderId}/stale_hold`]: true };",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
+  ]
+ },
+ {
+  "id": "ls5-st4-hash-since",
+  "slice": "ledger-s5",
+  "label": "ledger S5 nightly rebuild: hash_since is stamped on every full write",
+  "file": "ledger/rebuild.js",
+  "from": "computed_at: now, hash_since: now,",
+  "to": "computed_at: now,",
+  "command": [
+   "node",
+   "ledger/rebuild.test.js"
+  ],
+  "kills_with": [
+   "✗ RB-STALE-HOLD:"
   ]
  }
 ]
