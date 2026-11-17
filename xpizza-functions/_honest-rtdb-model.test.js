@@ -77,5 +77,16 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   await db6.ref('x').set({ a: [], b: [null], c: [1, 2], keep: 1 });
   assert.deepStrictEqual(db6.getAt('x'), { c: [1, 2], keep: 1 }, `HRM-EMPTY-ARRAY: an empty array is absent, as in RTDB (got ${JSON.stringify(db6.getAt('x'))})`);
   ok('an empty array is pruned');
+  // LEDGER S5: the nightly rebuild's queries — orderByChild(c).startAt(x) / .equalTo(x) and orderByKey().startAt(a).endAt(b) — in
+  // RTDB's VALUE order (absent < false < true < numbers < strings < objects): a startAt(number) ALSO returns string / object values,
+  // as production does, so a reader must re-check the type. Every query is logged (db.queries) for the index cross-check.
+  const db7 = makeHonestDb({ o: { a: { t: 5 }, b: { t: 10 }, c: { t: 'x' }, d: {}, e: { t: { n: 1 } }, f: { t: 10, r: true }, g: { r: false } } });
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('t').startAt(10).once('value')).val()), ['b', 'f', 'c', 'e'], 'HRM-CHILD-START: numbers ≥ 10, then strings, then objects (value order, ties by key)');
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('r').equalTo(true).once('value')).val()), ['f'], 'HRM-CHILD-EQ: equalTo(true) is exact');
+  assert.strictEqual((await db7.ref('o').orderByChild('t').equalTo(11).once('value')).val(), null, 'HRM-CHILD-EQ: no match ⇒ null');
+  const db8 = makeHonestDb({ r: { 'A-1': 1, 'A-2': 2, 'AB-1': 3, 'B-1': 4 } });
+  assert.deepStrictEqual(Object.keys((await db8.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').once('value')).val()), ['A-1', 'A-2'], 'HRM-KEY-RANGE: a key prefix range, inclusive');
+  assert.deepStrictEqual(db7.queries.map((q) => [q.path, q.child]), [['o', 't'], ['o', 'r'], ['o', 't']], 'HRM-QUERY-LOG: every child query is logged');
+  ok('orderByChild startAt / equalTo in RTDB value order; orderByKey startAt/endAt; child queries logged');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
