@@ -15,7 +15,7 @@ for (const F of FILES) {
   const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `EXTRASFLIP: non-vacuity — ${F} carries the flip hunk(s)`);
-  assert.strictEqual(unapplyExtrasflipModule(F, disk), base, `EXTRASFLIP: 🔴 ${F} minus the flip hunk(s) is not ${BASE}:${F}`);
+  assert.strictEqual(unapplyExtrasflipModule(F, disk), base, `🔴 EXTRASFLIP-BASE: ${F} minus the flip hunk(s) is not ${BASE}:${F}`);
   for (const h of HUNKS.filter((x) => x.file === F)) {
     const k = Math.floor(h.now.length / 2);
     assert.throws(() => unapplyExtrasflipModule(F, disk.replace(h.now, h.now.slice(0, k) + '\u0000' + h.now.slice(k + 1))), /occurs 0 times/, `EXTRASFLIP: ${F}: a byte inside a hunk`);
@@ -34,9 +34,9 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} flip hunk(s) === ${BASE.sl
     while ((m = re.exec(s))) if (!/^[^,]+, require\('[./]*tools\/extrasflip-module-inverse'\)\.unapplyExtrasflipModule\(/.test(s.slice(m.index + m[0].length, m.index + m[0].length + 200))) bare.push(`${f}@${m.index}`);
   }
   assert.ok(files.length > 40, `EXTRASFLIP: non-vacuity (${files.length} readers)`);
-  assert.deepStrictEqual(bare, [], `EXTRASFLIP: 🔴 an s3choice peel whose argument is not the extrasflip peel: ${bare.join(', ')}`);
+  assert.deepStrictEqual(bare, [], `🔴 EXTRASFLIP-PEEL: an s3choice peel whose argument is not the extrasflip peel: ${bare.join(', ')}`);
   ok(`every s3choice peel in ${files.length} readers peels the extrasflip layer first (directly inside it)`);
 }
-assert.deepStrictEqual(require('./catalog/platform-structure').structureCapabilities(), { extrasCatalog: true, choiceEdit: false, sections: false }, 'EXTRASFLIP: 🔴 the flip turns ON extrasCatalog ONLY (choiceEdit and sections stay OFF)');
+assert.deepStrictEqual(require('./catalog/platform-structure').structureCapabilities(), { extrasCatalog: true, choiceEdit: false, sections: false }, '🔴 EXTRASFLIP-SWITCH: the flip turns ON extrasCatalog ONLY (choiceEdit and sections stay OFF)');
 ok('the switch: extrasCatalog ON; choiceEdit OFF; sections OFF');
 console.log(`extrasflip-wiring guard: OK (${n})`);

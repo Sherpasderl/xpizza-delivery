@@ -111,12 +111,12 @@ function formPrepare(rid, inForce) {
     try {
       const t = removed(base('la_musa'), 'soft_01'); delete t.structure.exposure.item_overrides.rice_03;
       const { r } = await save('la_musa', t, [stamp('la_musa', 'soft_01')]);
-      assert.strictEqual(r.status, 200, `RDR-OTHER-ON: the detach saves beside the removal (${show(r)})`);
+      assert.strictEqual(r.status, 200, `🔴 RDR-OTHER-ON: the detach saves beside the removal (${show(r)})`);
       const rows = (r.body.diff && r.body.diff.attachments) || [];
-      assert.deepStrictEqual(rows, [{ group: 'Proteínas', scope: 'item', target: 'rice_03', change: 'detached' }], `RDR-OTHER-ON: the review diff shows exactly the detach (${JSON.stringify(r.body.diff).slice(0, 300)})`);
+      assert.deepStrictEqual(rows, [{ group: 'Proteínas', scope: 'item', target: 'rice_03', change: 'detached' }], `🔴 RDR-OTHER-ON: the review diff shows exactly the detach (${JSON.stringify(r.body.diff).slice(0, 300)})`);
       const u = removed(base('la_musa'), 'soft_01'); u.structure.exposure.item_overrides.rice_03 = { add: ['Proteínas'], deny: ['rice_white'] };   // a SINGLE-extra entry: not a writer transition
       const { r: r3 } = await save('la_musa', u, [stamp('la_musa', 'soft_01')]);
-      assert.ok(r3.status >= 400 && r3.body.error === 'structure_changed', `RDR-OTHER-ON: a single-extra entry on another dish beside a removal is still refused (${show(r3)})`);
+      assert.ok(r3.status >= 400 && r3.body.error === 'structure_changed', `🔴 RDR-OTHER-ON: a single-extra entry on another dish beside a removal is still refused (${show(r3)})`);
     } finally { STRUCT.extrasCatalog = null; }
     ok('ON: another dish\'s whole-group detach saves beside a removal and shows in the review diff; a single-extra entry is still refused');
   }
