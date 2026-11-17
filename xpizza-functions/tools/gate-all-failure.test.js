@@ -70,21 +70,62 @@ try {
   fs.copyFileSync(GATE_SRC, path.join(tree, 'tools', 'gate-all.js'));
   fs.copyFileSync(path.join(__dirname, 'count-marks.js'), path.join(tree, 'tools', 'count-marks.js'));
   fs.copyFileSync(path.join(TMP, 'fx.test.mjs'), path.join(tree, 'fx.test.mjs'));
-  fs.writeFileSync(path.join(tree, 'package.json'), JSON.stringify({ name: 'gate-all-fixture', private: true, scripts: { 'test:fx': 'node --test fx.test.mjs' } }));
+  /* Codex #121 P1: failures with no TAP and no keyword — a stderr-only fatal, a segfault (a REAL SIGSEGV, re-raised by
+     npm), a silent SIGKILL with no output at all */
+  fs.writeFileSync(path.join(tree, 'package.json'), JSON.stringify({ name: 'gate-all-fixture', private: true, scripts: {
+    'test:fx': 'node --test fx.test.mjs',
+    'test:fatal': `node -e "process.stderr.write('connecting\\nfatal: connection terminated\\n'); process.exit(3)"`,
+    'test:segv': `node -e "process.stderr.write('Segmentation fault: 11\\n'); process.kill(process.pid, 'SIGSEGV')"`,
+    'test:killed': `node -e "process.kill(process.pid, 'SIGKILL')"`,
+  } }));
   const logDir = path.join(TMP, 'logs');
   const env = { ...childEnv(), GATE_ALL_LOG_DIR: logDir };
-  const g = spawnSync(process.execPath, [path.join(tree, 'tools', 'gate-all.js'), '--only=test:fx'], { cwd: tree, encoding: 'utf8', env, timeout: 120000 });
+  const g = spawnSync(process.execPath, [path.join(tree, 'tools', 'gate-all.js'), '--only=test:fx,test:fatal,test:segv,test:killed'], { cwd: tree, encoding: 'utf8', env, timeout: 120000 });
   const gout = `${g.stdout || ''}${g.stderr || ''}`;
   assert.ok(!/ReferenceError|TypeError|is not defined|is not a function/.test(gout), `🔴 the gate's failure branch crashes: ${gout.slice(-400)}`);
   assert.strictEqual(g.status, 1, `🔴 a red script did not make the gate red (rc ${g.status})`);
-  const section = gout.slice(gout.indexOf('── test:fx'));
+  const sec = (name) => { const a = gout.indexOf(`── ${name} `); assert.ok(a >= 0, `🔴 no failure section for ${name}:\n${gout.slice(-1500)}`); const rest = gout.slice(a + 3); const b = rest.search(/\n── |\ngate-all/); return rest.slice(0, b < 0 ? undefined : b); };
+  const section = sec('test:fx');
   assert.match(section, /not ok \d+ - the real defect[\s\S]*REAL-FAILURE-MARKER/, `🔴 the gate's printed failure block hides the real failure:\n${section.slice(0, 1500)}`);
   const logPath = (/full output: (\S+\.log)/.exec(section) || [])[1];
   assert.ok(logPath, `🔴 the gate prints no full-output log path for the failing script:\n${section.slice(0, 1500)}`);
-  assert.strictEqual(path.dirname(logPath), logDir, 'the log lands in GATE_ALL_LOG_DIR');
+  const runDir = path.dirname(logPath);
+  assert.strictEqual(path.dirname(runDir), logDir, 'the run\'s log dir is made INSIDE GATE_ALL_LOG_DIR (the parent)');
+  assert.match(section, /exit code 1 · full output:/, '🔴 the exit code is not printed beside the log path');
   const logged = fs.readFileSync(logPath, 'utf8');
   assert.match(logged, /a row the gate REFUSED 4[\s\S]*the real defect[\s\S]*NESTED-MARKER/, '🔴 the log does not hold the full output');
-  ok(`gate-all's main path on a red script prints the real \`not ok\` with its message and a full-output log (${path.basename(logPath)}) that holds every line`);
+  ok(`gate-all's main path on a red script prints the real \`not ok\` with its message, its exit code and a full-output log (${path.basename(logPath)}) that holds every line`);
+
+  // 6. Codex #121 P1: no TAP, no keyword — the block is the output's last lines, and the exit code / signal is ALWAYS said
+  const fatal = sec('test:fatal');
+  assert.match(fatal, /fatal: connection terminated/, `🔴 a stderr-only fatal gives an empty block:\n${fatal}`);
+  assert.match(fatal, /exit code 3 · full output:/, `🔴 the stderr-only failure's exit code is not printed:\n${fatal}`);
+  const segv = sec('test:segv');
+  assert.match(segv, /Segmentation fault: 11/, `🔴 a segfault message gives an empty block:\n${segv}`);
+  assert.match(segv, /killed by SIGSEGV · full output:/, `🔴 the segfault's signal is not printed:\n${segv}`);
+  const killed = sec('test:killed');
+  assert.match(killed, /\(no output at all\)/, `🔴 a silent kill does not say it printed nothing:\n${killed}`);
+  assert.match(killed, /killed by SIGKILL · full output:/, `🔴 a silent kill's signal is not printed:\n${killed}`);
+  assert.deepStrictEqual(G.failureBlock('a\n\nb\n'), ['a', 'b'], 'the tail keeps non-empty lines only');
+  assert.strictEqual(G.failureBlock(Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')).length, 12, '🔴 the tail is not bounded');
+  ok('a stderr-only «fatal», a real SIGSEGV and a silent SIGKILL each print their last lines (or «no output at all») and «exit code 3» / «killed by SIGSEGV» / «killed by SIGKILL»; the tail is bounded at 12');
+
+  // 7. Codex #121 P2: the logs are PRIVATE — a 0700 run dir, 0600 files, and an existing path is never opened
+  assert.strictEqual(fs.statSync(runDir).mode & 0o777, 0o700, `🔴 the run's log dir is not private (0${(fs.statSync(runDir).mode & 0o777).toString(8)})`);
+  assert.strictEqual(fs.statSync(logPath).mode & 0o777, 0o600, `🔴 a log file is not private (0${(fs.statSync(logPath).mode & 0o777).toString(8)})`);
+  const d2 = G.makeLogDir(TMP);
+  const victim = path.join(TMP, 'victim.txt');
+  fs.writeFileSync(victim, 'VICTIM');
+  fs.symlinkSync(victim, path.join(d2, 'test_a.log'));
+  fs.writeFileSync(path.join(d2, 'test_b.log'), 'PLANTED');
+  const pa = G.writeFailureLog(d2, 'test:a', 'OUT-A');
+  const pb = G.writeFailureLog(d2, 'test:b', 'OUT-B');
+  assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'VICTIM', '🔴 a planted symlink was followed and its target overwritten');
+  assert.strictEqual(fs.readFileSync(path.join(d2, 'test_b.log'), 'utf8'), 'PLANTED', '🔴 an existing log file was overwritten');
+  assert.deepStrictEqual([path.basename(pa), path.basename(pb)], ['test_a.2.log', 'test_b.2.log'], '🔴 a taken name did not get a numbered sibling');
+  assert.strictEqual(fs.readFileSync(pa, 'utf8'), 'OUT-A', 'the sibling holds the output');
+  assert.match(G.writeFailureLog(path.join(TMP, 'no-such-dir'), 'test:c', 'x'), /^\(could not write the full output: /, 'an unwritable dir is said, never fatal');
+  ok('logs are private (run dir 0700, files 0600); a planted symlink or file at the name is never followed or overwritten (numbered sibling); an unwritable dir is said, not thrown');
 } finally {
   fs.rmSync(TMP, { recursive: true, force: true });
 }
