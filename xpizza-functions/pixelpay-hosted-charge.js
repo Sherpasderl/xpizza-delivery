@@ -212,7 +212,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
           hosted_expires_at: expiresAt,
           poll_token: pollToken,
           total_cents: pendingOrderRecord.total_cents,
-          ...(ledgerSnap ? { ledger: ledgerSnap } : {})   // LEDGER S1: the frozen allocation snapshot rides the exclusive claim (create-once)
+          ...(ledgerSnap ? { ledger: require('./ledger/alloc-snapshot').withCommittedCreatedAt(ledgerSnap, committed.created_at) } : {})   // LEDGER S1: the frozen allocation snapshot rides the exclusive claim (create-once), timed by the committed order
         };
       });
       if (!claim.committed) continue;                                   // another request claimed it → re-read (→ in_progress)

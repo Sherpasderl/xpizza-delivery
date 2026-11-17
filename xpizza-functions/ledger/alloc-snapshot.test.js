@@ -11,6 +11,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const cell = (label, fn) => { try { fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); };
 
 const OID = 'xpz_s1_1';
+const TS = require('firebase-admin/database').ServerValue.TIMESTAMP;   // what the cash + hosted writers pass as `now` (index.js:1094, :1981)
 const FIELDS = { customer_name: 'Ana', customer_phone: '99990000', items_text: '1x Margherita', notes: '—', payment_method: 'cash',
   address_detected: '', address_details: '', address_area: null, pickup_time: 'standard' };
 const recordOf = (over = {}, fields = {}) => {
@@ -21,6 +22,7 @@ const recordOf = (over = {}, fields = {}) => {
 };
 // the Firebase-validity a multi-path update enforces: no undefined / NaN / Infinity / function anywhere, no forbidden key chars
 function firebaseValid(v, at = '$') {
+  if (at === '$.created_at' && v && typeof v === 'object' && JSON.stringify(v) === JSON.stringify(TS)) return;   // the server-timestamp sentinel, resolved by the same write
   if (v === null || typeof v === 'boolean' || typeof v === 'string') return;
   if (typeof v === 'number') { assert.ok(Number.isFinite(v), `${at}: non-finite number`); return; }
   assert.ok(v && typeof v === 'object' && !Array.isArray(v), `${at}: ${v === undefined ? 'undefined' : typeof v}`);
@@ -87,6 +89,26 @@ cell('S1-FALLBACK: a builder throw (a hostile getter) ⇒ the fixed valid { v:1,
   assert.deepStrictEqual(s, { v: 1, mode: 'unknown' }, '🔴 S1-FALLBACK');
   assert.deepStrictEqual(LA.snapshotOf(null, null), { v: 1, mode: 'unknown' });
   firebaseValid(LA.FALLBACK);
+});
+
+cell('S1-TIMESTAMP (Codex #110): the REAL writers pass created_at = ServerValue.TIMESTAMP — the snapshot carries the SAME sentinel (the same atomic write resolves it), never 0', () => {
+  const rec = recordOf({ created_at: TS });
+  const s = LA.snapshotOf(rec, LA.modeOf({ body: {}, clientHdr: HDR_FORM }));
+  assert.deepStrictEqual(s.created_at, { '.sv': 'timestamp' }, '🔴 S1-TIMESTAMP: the sentinel is carried, not normalized to a number');
+  assert.notStrictEqual(s.mode, 'unknown', 'S1-TIMESTAMP: a valid snapshot, not the fallback');
+  firebaseValid(s);
+  for (const bad of [0, -5, 1.5, '1763300000000', { '.sv': 'increment' }, { '.sv': 'timestamp', x: 1 }, null, undefined]) {
+    assert.deepStrictEqual(LA.snapshotOf(recordOf({ created_at: bad }), LA.modeOf({ body: {}, clientHdr: HDR_FORM })), LA.FALLBACK, `🔴 S1-TIMESTAMP: created_at ${JSON.stringify(bad)} ⇒ the quarantined fallback`);
+  }
+});
+
+cell('S1-COMMITTED-AT (Codex #110): withCommittedCreatedAt swaps the sentinel for the committed order timestamp the hosted claim already has; a missing one ⇒ the fallback', () => {
+  const s = LA.snapshotOf(recordOf({ created_at: TS }), LA.modeOf({ body: {}, clientHdr: HDR_FORM }));
+  assert.strictEqual(LA.withCommittedCreatedAt(s, 1763300000123).created_at, 1763300000123, '🔴 S1-COMMITTED-AT');
+  assert.deepStrictEqual(LA.withCommittedCreatedAt(s, undefined), LA.FALLBACK, '🔴 S1-COMMITTED-AT: no committed time ⇒ fallback');
+  const num = LA.snapshotOf(recordOf(), LA.modeOf({ body: {}, clientHdr: HDR_FORM }));
+  assert.strictEqual(LA.withCommittedCreatedAt(num, 1), num, 'a numeric created_at is kept as is');
+  assert.strictEqual(LA.withCommittedCreatedAt(null, 1), null);
 });
 
 cell('S1-VALIDATE: validate() rejects undefined, NaN, Infinity, functions and arrays anywhere', () => {

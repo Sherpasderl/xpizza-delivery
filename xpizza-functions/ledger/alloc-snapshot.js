@@ -20,6 +20,15 @@ const keySafe = (x) => (typeof x === 'string' && KEY_SAFE.test(x) ? x : null);
 const text = (x, max) => (typeof x === 'string' && x.length <= max ? x : null);
 const req = (x) => (Number.isSafeInteger(x) ? x : 0);
 const opt = (x) => (Number.isSafeInteger(x) ? x : null);
+// created_at (Codex #110): the cash + hosted writers pass ServerValue.TIMESTAMP ({'.sv':'timestamp'}, index.js:1094/:1981). The snapshot
+// carries that SAME sentinel (the same atomic write resolves it); the hosted claim swaps it for the committed order time
+// (withCommittedCreatedAt). A positive safe integer is kept; anything else throws ⇒ the quarantined FALLBACK (never a silent 0).
+const isServerTimestamp = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).length === 1 && x['.sv'] === 'timestamp';
+function createdAtOf(x) {
+  if (Number.isSafeInteger(x) && x > 0) return x;
+  if (isServerTimestamp(x)) return { '.sv': 'timestamp' };
+  throw new Error('ledger snapshot: created_at is neither a time nor the server-timestamp sentinel');
+}
 
 function modeOf({ sdk = false, body, clientHdr } = {}) {
   const h = clientHdr && typeof clientHdr === 'object' ? clientHdr : {};
@@ -42,6 +51,7 @@ function offerOf(o) {
 }
 
 function validate(v, at = 'snapshot') {
+  if (at === 'snapshot.created_at' && isServerTimestamp(v)) return;   // the one place the server-timestamp sentinel is allowed
   if (v === null || typeof v === 'boolean' || typeof v === 'string') return;
   if (typeof v === 'number') { if (!Number.isFinite(v)) throw new Error(`ledger snapshot: ${at} is not finite`); return; }
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`ledger snapshot: ${at} is ${Array.isArray(v) ? 'an array' : typeof v}`);
@@ -58,7 +68,7 @@ function snapshotOf(record, m) {
     const snap = {
       v: 1, mode: m.mode === 'sdk' || m.mode === 'app' || m.mode === 'direct' ? m.mode : 'unknown', mismatch: m.mismatch === true,
       evidence: { client_app: keySafe(m.evidence && m.evidence.client_app), client_deployment: keySafe(m.evidence && m.evidence.client_deployment) },
-      rid: keySafe(record.restaurant_id), created_at: req(record.created_at), payment_method: keySafe(record.payment_method),
+      rid: keySafe(record.restaurant_id), created_at: createdAtOf(record.created_at), payment_method: keySafe(record.payment_method),
       order_type: keySafe(record.order_type), total_cents: req(record.total_cents),
       food: { subtotal_cents: req(record.subtotal_cents), tax_cents: req(record.tax_cents), desc_rebaja_cents: opt(record.desc_rebaja_cents) },
       envio: { delivery_cents: opt(record.delivery_cents), promo_discount_cents: opt(record.promo_discount_cents), delivery_discount_funder: keySafe(record.delivery_discount_funder) },
@@ -75,4 +85,10 @@ function snapshotOf(record, m) {
 
 const allocPath = (orderId) => `ledger_alloc/${orderId}`;
 
-module.exports = { modeOf, snapshotOf, validate, allocPath, FALLBACK };
+// the hosted claim (a transaction — no server-value sentinel there): the committed order record's created_at, already in hand
+function withCommittedCreatedAt(snap, committedAt) {
+  if (!snap || typeof snap !== 'object' || !isServerTimestamp(snap.created_at)) return snap;
+  return Number.isSafeInteger(committedAt) && committedAt > 0 ? { ...snap, created_at: committedAt } : FALLBACK;
+}
+
+module.exports = { modeOf, snapshotOf, validate, allocPath, withCommittedCreatedAt, FALLBACK };

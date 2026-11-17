@@ -32,7 +32,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "pixelpay-hosted-charge.js",
-  "now": "          total_cents: pendingOrderRecord.total_cents,\n          ...(ledgerSnap ? { ledger: ledgerSnap } : {})   // LEDGER S1: the frozen allocation snapshot rides the exclusive claim (create-once)\n",
+  "now": "          total_cents: pendingOrderRecord.total_cents,\n          ...(ledgerSnap ? { ledger: require('./ledger/alloc-snapshot').withCommittedCreatedAt(ledgerSnap, committed.created_at) } : {})   // LEDGER S1: the frozen allocation snapshot rides the exclusive claim (create-once), timed by the committed order\n",
   "was": "          total_cents: pendingOrderRecord.total_cents\n"
  }
 ]);

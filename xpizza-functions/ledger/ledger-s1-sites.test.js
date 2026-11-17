@@ -11,8 +11,9 @@ const HC = require('../pixelpay-hosted-charge');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 async function cell(label, fn) { try { await fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); }
 
+// created_at = ServerValue.TIMESTAMP, exactly as chargeOnlineOrder's pendingOrderRecord (index.js:1981) — Codex #110
 const PENDING = { order_id: 'tb_o1', restaurant_id: 'tb_rest', status: 'pending_payment', payment_status: 'pending', payment_method: 'online', order_type: 'pickup',
-  created_at: 900, total_cents: 10000, subtotal_cents: 8696, tax_cents: 1304 };
+  created_at: require('firebase-admin/database').ServerValue.TIMESTAMP, total_cents: 10000, subtotal_cents: 8696, tax_cents: 1304 };
 const acquire = (db, snap, k = { n: 0 }) => HC.acquireHostedAttempt(db, 'tb_o1', PENDING, 'fp1', 1000, [], () => `aid${++k.n}`, () => 'tok',
   null, false, false, false, false, null, null, 0, false, null, snap);
 const attempts = (db) => db.getAt('payment_attempts') || {};
@@ -26,7 +27,9 @@ const stored = (v) => { if (v === null || typeof v !== 'object') return v; const
     const out = await acquire(db, snap);
     assert.strictEqual(out.outcome, 'claimed', JSON.stringify(out));
     const a = attempts(db)[out.attempt_id];
-    assert.deepStrictEqual(a.ledger, stored(snap), '🔴 S1-HOSTED: the claimed attempt carries the snapshot (as RTDB stores it)');
+    const orderAt = db.getAt('orders/tb_o1/created_at');
+    assert.ok(Number.isSafeInteger(orderAt) && orderAt > 0, 'premise: the order\'s created_at resolved to a number');
+    assert.deepStrictEqual(a.ledger, stored({ ...snap, created_at: orderAt }), '🔴 S1-HOSTED: the claimed attempt carries the snapshot with the COMMITTED order time (as RTDB stores it)');
     assert.deepStrictEqual([a.ledger.mode, a.ledger.total_cents, a.ledger.order_type], ['app', 10000, 'pickup']);
     assert.strictEqual(db.getAt('orders/tb_o1/ledger'), null, '🔴 S1-HOSTED: never on the dispatcher-writable order');
   });
@@ -45,7 +48,7 @@ const stored = (v) => { if (v === null || typeof v !== 'object') return v; const
     const out = await acquire(db, first, k);
     const other = LA.snapshotOf({ ...PENDING, total_cents: 1 }, LA.modeOf({ body: {}, clientHdr: {} }));
     await acquire(db, other, { n: 0 });   // the same attempt id is generated again → the claim exists → aborts / re-reads
-    assert.deepStrictEqual(attempts(db)[out.attempt_id].ledger, stored(first), '🔴 S1-HOSTED-ONCE: the first snapshot stands');
+    assert.deepStrictEqual(attempts(db)[out.attempt_id].ledger, stored({ ...first, created_at: db.getAt('orders/tb_o1/created_at') }), '🔴 S1-HOSTED-ONCE: the first snapshot stands');
   });
 
   await cell('S1-SDK: the snapshot (mode sdk, trusted) rides the payment_sdk record create through the REAL placeOriginal', async () => {

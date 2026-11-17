@@ -40,7 +40,7 @@ assert.ok(IDX.indexOf('await db.ref().update(updates);', live) - live < 400 && I
 lineOf(/LA\(\)\.snapshotOf\(pendingOrderRecord, LA\(\)\.modeOf\(\{ body, clientHdr \}\)\)/);
 const HC = fs.readFileSync(path.join(__dirname, 'pixelpay-hosted-charge.js'), 'utf8');
 const claim = HC.indexOf("const claim = await db.ref(`payment_attempts/${attemptId}`).transaction((cur) => {");
-assert.ok(claim > 0 && HC.indexOf('...(ledgerSnap ? { ledger: ledgerSnap } : {})', claim) > claim && HC.indexOf('...(ledgerSnap ? { ledger: ledgerSnap } : {})', claim) - claim < 900, '🔴 the hosted snapshot rides the exclusive claim');
+assert.ok(claim > 0 && HC.indexOf("...(ledgerSnap ? { ledger: require('./ledger/alloc-snapshot').withCommittedCreatedAt(ledgerSnap, committed.created_at) } : {})", claim) > claim && HC.indexOf("...(ledgerSnap ? { ledger: require('./ledger/alloc-snapshot').withCommittedCreatedAt(ledgerSnap, committed.created_at) } : {})", claim) - claim < 900, '🔴 the hosted snapshot rides the exclusive claim');
 const CO = fs.readFileSync(path.join(__dirname, 'payments/sdk/coordinator.js'), 'utf8');
 assert.ok(/await R\.createRecord\(deps\.db, orderId, \{ flow: 'sdk_auth_v1', phase: 'open', [^\n]*ledger: require\('\.\.\/\.\.\/ledger\/alloc-snapshot'\)\.snapshotOf\(order, require\('\.\.\/\.\.\/ledger\/alloc-snapshot'\)\.modeOf\(\{ sdk: true/.test(CO), '🔴 the SDK snapshot rides the open record create (mode sdk)');
 ok('the cash held + ASAP snapshots ride their multi-path updates; the hosted one the exclusive claim; the SDK one the record create (mode sdk)');

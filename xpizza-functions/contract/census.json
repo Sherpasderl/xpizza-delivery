@@ -55,7 +55,7 @@
   "sendSites": 24,
   "fieldsWritten": 121,
   "opaqueWrites": 28,
-  "opaque": 176,
+  "opaque": 177,
   "projections": 156,
   "sentinel": 39,
   "timers": {
@@ -17059,7 +17059,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#offerOf#discount_cents#0",
-   "line": 38,
+   "line": 47,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -17069,7 +17069,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#restaurant_id#0",
-   "line": 61,
+   "line": 71,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -17079,7 +17079,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#payment_method#0",
-   "line": 61,
+   "line": 71,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -17092,7 +17092,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#order_type#0",
-   "line": 62,
+   "line": 72,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -17102,7 +17102,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#total_cents#0",
-   "line": 62,
+   "line": 72,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -17114,7 +17114,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#subtotal_cents#0",
-   "line": 63,
+   "line": 73,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -17124,7 +17124,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#tax_cents#0",
-   "line": 63,
+   "line": 73,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -17134,7 +17134,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#desc_rebaja_cents#0",
-   "line": 63,
+   "line": 73,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -17144,7 +17144,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#redemption#0",
-   "line": 67,
+   "line": 77,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -17154,7 +17154,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#redemption#1",
-   "line": 67,
+   "line": 77,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -17164,7 +17164,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#discount_cents#0",
-   "line": 67,
+   "line": 77,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -17174,7 +17174,7 @@
   },
   {
    "id": "xpizza-functions/ledger/alloc-snapshot.js#snapshotOf#redemption#2",
-   "line": 67,
+   "line": 77,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -57585,6 +57585,14 @@
    "rule": "server:payment"
   },
   {
+   "file": "xpizza-functions/ledger/alloc-snapshot.js",
+   "fn": "withCommittedCreatedAt",
+   "base": "snap",
+   "line": 91,
+   "how": "spread",
+   "rule": "server:intake"
+  },
+  {
    "file": "xpizza-functions/lib/driver-admin-ops.js",
    "fn": "ownedNonterminalTasks",
    "base": "orders",
@@ -58990,7 +58998,7 @@
    "file": "xpizza-functions/ledger/alloc-snapshot.js",
    "alias": "rid",
    "field": "restaurant_id",
-   "line": 61,
+   "line": 71,
    "round": 1
   },
   {
@@ -58998,7 +59006,7 @@
    "file": "xpizza-functions/ledger/alloc-snapshot.js",
    "alias": "reward_discount_cents",
    "field": "discount_cents",
-   "line": 67,
+   "line": 77,
    "round": 1
   },
   {
@@ -60039,7 +60047,7 @@
    "file": "xpizza-functions/ledger/alloc-snapshot.js",
    "fn": "snapshotOf",
    "key": "tip_cents",
-   "line": 65,
+   "line": 75,
    "how": "object-key",
    "exempt": true
   },

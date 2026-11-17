@@ -534,6 +534,7 @@
   "tip.js#refuse": "intake",
   "ledger/alloc-snapshot.js#snapshotOf": "intake",
   "ledger/alloc-snapshot.js#offerOf": "intake",
+  "ledger/alloc-snapshot.js#withCommittedCreatedAt": "intake",
   "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
