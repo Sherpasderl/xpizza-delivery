@@ -31,6 +31,21 @@ for (const f of files) {
 assert.deepStrictEqual(found, ALLOW, '🔴 LEDGER-WRITES: an unreviewed ledger write site (or a reviewed one went missing)');
 ok(`ledger writes only at the ${Object.values(ALLOW).reduce((a, b) => a + b, 0)} reviewed sites in ${Object.keys(ALLOW).length} files`);
 
+// LEDGER S2: the capture evidence — written ONLY by the two void paths' existing post-void updates, through the non-throwing builder
+{
+  const EV_RE = /capture_evidence\/|capture-evidence'\)\.evidenceOf\(/g;
+  const ev = {};
+  for (const f of files) { const c = (fs.readFileSync(path.join(__dirname, f), 'utf8').match(EV_RE) || []).length; if (c) ev[f] = c; }
+  assert.deepStrictEqual(ev, { 'ledger/capture-evidence.js': 1, 'pixelpay-confirm.js': 2, 'pixelpay-hosted-webhook.js': 2 }, '🔴 LEDGER-WRITES: an unreviewed capture_evidence writer (or a reviewed one went missing)');
+  const CF = fs.readFileSync(path.join(__dirname, 'pixelpay-confirm.js'), 'utf8');
+  const vd = CF.indexOf("voidReason: 'xpizza_mismatch_void'"); const evc = CF.indexOf("'capture_evidence/confirm'");
+  assert.ok(vd > 0 && evc > vd && evc - vd < 900, '🔴 LEDGER-WRITES: the confirm evidence rides the post-void attempt update (void first)');
+  const WH = fs.readFileSync(path.join(__dirname, 'pixelpay-hosted-webhook.js'), 'utf8');
+  const vp = WH.indexOf('await deps.voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId: hostedOrderId'); const evw = WH.indexOf("'capture_evidence/webhook'");
+  assert.ok(vp > 0 && evw > vp && evw - vp < 600, '🔴 LEDGER-WRITES: the webhook evidence rides voidPaid\'s post-void attempt update (void first)');
+  ok('capture_evidence: only the confirm mismatch void and the webhook voidPaid write it, each in its post-void update');
+}
+
 const IDX = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const lineOf = (re) => { const m = IDX.match(re); assert.ok(m, `🔴 LEDGER-WRITES: missing ${re}`); return m.index; };
 const held = lineOf(/heldUpdates\[LA\(\)\.allocPath\(orderId\)\] = LA\(\)\.snapshotOf\(heldUpdates\[`orders\/\$\{orderId\}`\], LA\(\)\.modeOf\(\{ body, clientHdr \}\)\);/);

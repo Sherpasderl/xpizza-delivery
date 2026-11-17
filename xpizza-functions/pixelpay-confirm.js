@@ -189,7 +189,8 @@ async function confirmOnlinePayment(deps, { orderId, paymentUuid, now, trackingT
       voided = !!vd.ok;
     } catch (_) { /* void failed → refund_pending below */ }
     if (!voided) await holdRedemptionForManual(db, { orderId, order, now, alert: deps.alert });   // unconfirmed void → money may still be held → secure the hold
-    await attemptRef.update({ status: voided ? 'voided' : 'refund_pending', mismatch_reason: v.reason, failed_at: now });
+    await attemptRef.update({ status: voided ? 'voided' : 'refund_pending', mismatch_reason: v.reason, failed_at: now,
+      'capture_evidence/confirm': require('./ledger/capture-evidence').evidenceOf({ capture: cap, paymentUuid: uuid, at: now, verified: false, approved: v.approved, mismatchReason: v.reason }) });   // LEDGER S2: the provider-reported facts, AFTER the void (non-throwing)
     await orderRef.update({ payment_status: voided ? 'failed' : 'refund_pending' });
     deps.alert && deps.alert('capture_mismatch', { orderId, attemptId, uuid, reason: v.reason, voided });
     return { outcome: 'mismatch_voided', voided, reason: v.reason };

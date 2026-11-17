@@ -2929,6 +2929,7 @@
   "hosted-charge-flow.js",
   "index.js",
   "ledger/alloc-snapshot.js",
+  "ledger/capture-evidence.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
@@ -7158,6 +7159,12 @@
    "pins": [],
    "lifts": []
   },
+  "ledger/capture-evidence.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
+  },
   "lib/driver-admin-ops.js": {
    "pins": [],
    "lifts": []
@@ -7730,6 +7737,7 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7739,6 +7747,7 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7749,6 +7758,7 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7756,6 +7766,7 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -7792,12 +7803,14 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
    "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },
