@@ -7,12 +7,19 @@
 //   · transactions follow the Admin SDK: the first call sees the cached value (null when uncached) and returning undefined
 //     there ABORTS; a value is sent and, if the server value differs from what the function saw, the function is RE-RUN with
 //     the server value — and a concurrent write landing while the function ran is a CONFLICT that re-runs it too (up to 25×).
+//   · a write is PREPARED (validated + every server-value sentinel resolved) before anything is COMMITTED, so a refused write —
+//     including every entry of an update — changes nothing; update() refuses a non-object patch and overlapping paths;
+//     {'.sv':'timestamp'} resolves to now(), {'.sv':{increment:n}} to the previous numeric value + n (n when absent / not a number).
 // Optional hooks let a test interleave work deterministically: beforeRead(path, api), beforeTx(path, api),
 // beforeWrite(path, value, api); now() is the clock a {'.sv':'timestamp'} write resolves to.
+// NOT MODELLED (production does not write these — grep-checked 11-16, Codex #112 accepted residual): an overlap with the root ''
+// path, a//b path normalization, .priority / .value keys (the model is STRICTER there: refused), function values, more than 32
+// levels of nesting. Do not assume full SDK fidelity for them.
 const RESERVED = /[.#$[\]/\u0000-\u001f\u007f]/;   // as the Admin SDK: . # $ [ ] / and ASCII control characters
 
 function validateKeys(v, where, seed = false) {
   if (v === undefined) { if (seed) return; throw new Error(`undefined value at ${where} (RTDB refuses undefined)`); }
+  if (typeof v === 'number' && !Number.isFinite(v)) throw new Error(`non-finite number at ${where} (RTDB refuses NaN / Infinity)`);
   if (v === null || typeof v !== 'object') return;
   if (isServerValue(v)) return;
   for (const k of Object.keys(v)) {
@@ -23,11 +30,20 @@ function validateKeys(v, where, seed = false) {
 // A server-value sentinel ({'.sv': 'timestamp'}) is the one dotted key RTDB accepts; the model resolves it to its clock
 // and refuses any other sentinel loudly rather than store something production never would.
 function isServerValue(v) { return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 1 && Object.prototype.hasOwnProperty.call(v, '.sv'); }
-function resolveServerValues(v, now) {
+// prevAt(relativePath) → the value stored at that place BEFORE this write (an increment resolves against it)
+function resolveServerValues(v, now, prevAt = () => null, rel = '') {
   if (v === null || typeof v !== 'object') return v;
-  if (isServerValue(v)) { if (v['.sv'] === 'timestamp') return now; throw new Error(`server value ${JSON.stringify(v)} not modelled`); }
+  if (isServerValue(v)) {
+    const sv = v['.sv'];
+    if (sv === 'timestamp') return now;
+    if (sv && typeof sv === 'object' && Object.keys(sv).length === 1 && typeof sv.increment === 'number' && Number.isFinite(sv.increment)) {
+      const prev = prevAt(rel);
+      return (typeof prev === 'number' ? prev : 0) + sv.increment;
+    }
+    throw new Error(`server value ${JSON.stringify(v)} not modelled`);
+  }
   const out = Array.isArray(v) ? [] : {};
-  for (const [k, x] of Object.entries(v)) out[k] = resolveServerValues(x, now);
+  for (const [k, x] of Object.entries(v)) out[k] = resolveServerValues(x, now, prevAt, rel ? `${rel}/${k}` : k);
   return out;
 }
 function prune(v) {
@@ -46,11 +62,18 @@ function makeHonestDb(initial = {}, hooks = {}) {
   let root = prune(clone(initial)) || {};
   const segs = (p) => (p ? p.split('/') : []);
   const getAt = (p) => { let n = root; for (const k of segs(p)) { if (n == null || typeof n !== 'object') return null; n = n[k]; } return n === undefined ? null : clone(n); };
-  const setAt = (p, val) => {
+  // PREPARE (may throw; touches nothing): the path, the value, and every sentinel resolved against the CURRENT state
+  const prepare = (p, val) => {
     const a = segs(p);
     for (const k of a) if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" in path ${p}`);
     validateKeys(val, p || '/');
-    const v = prune(resolveServerValues(clone(val), hooks.now ? hooks.now() : Date.now()));
+    const now = hooks.now ? hooks.now() : Date.now();
+    return prune(resolveServerValues(clone(val), now, (rel) => getAt(rel ? (p ? `${p}/${rel}` : rel) : p)));
+  };
+  const setAt = (p, val) => commit(p, prepare(p, val));
+  // COMMIT (never throws on a prepared value)
+  const commit = (p, v) => {
+    const a = segs(p);
     if (!a.length) { root = v || {}; return; }
     let n = root; const chain = [];
     for (let i = 0; i < a.length - 1; i++) { if (n[a[i]] == null || typeof n[a[i]] !== 'object') n[a[i]] = {}; chain.push([n, a[i]]); n = n[a[i]]; }
@@ -86,7 +109,21 @@ function makeHonestDb(initial = {}, hooks = {}) {
       },
       async update(patch) {
         if (hooks.beforeWrite) await hooks.beforeWrite(p, patch, api);
-        for (const [k, v] of Object.entries(patch || {})) setAt(p ? `${p}/${k}` : k, v);
+        // As the Admin SDK (Codex #111 P3): the WHOLE patch is validated BEFORE anything is written — every path segment, every value
+        // (undefined / non-finite / a reserved key refused), and no path may be an ancestor of (or equal to) another — so a refused
+        // update writes nothing.
+        if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) throw new Error(`update: the patch must be an object (got ${patch === null ? 'null' : Array.isArray(patch) ? 'an array' : typeof patch})`);
+        const entries = Object.entries(patch).map(([k, v]) => [p ? `${p}/${k}` : k, v]);
+        for (const [full, v] of entries) {
+          for (const k of segs(full)) if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" in path ${full}`);
+          validateKeys(v, full || '/');
+        }
+        const paths = entries.map(([full]) => segs(full).join('/')).sort();
+        for (let i = 0; i < paths.length; i++) for (let j = i + 1; j < paths.length; j++) {
+          if (paths[j] === paths[i] || paths[j].startsWith(`${paths[i]}/`)) throw new Error(`update: path ${paths[i]} is an ancestor of (or equal to) ${paths[j]}`);
+        }
+        const prepared = entries.map(([full, v]) => [full, prepare(full, v)]);   // every sentinel resolved BEFORE the first commit
+        for (const [full, v] of prepared) commit(full, v);
       },
       async set(v) { if (hooks.beforeWrite) await hooks.beforeWrite(p, v, api); setAt(p, v); },
       async push(v) { const k = `k${String(++pk).padStart(6, '0')}`; setAt(p ? `${p}/${k}` : k, v); return { key: k }; },

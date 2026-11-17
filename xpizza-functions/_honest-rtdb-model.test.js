@@ -77,5 +77,57 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   await db6.ref('x').set({ a: [], b: [null], c: [1, 2], keep: 1 });
   assert.deepStrictEqual(db6.getAt('x'), { c: [1, 2], keep: 1 }, `HRM-EMPTY-ARRAY: an empty array is absent, as in RTDB (got ${JSON.stringify(db6.getAt('x'))})`);
   ok('an empty array is pruned');
+  // Codex #111 P3: the model must not be laxer than the Admin SDK's update validation
+  {   // HRM-NONFINITE: NaN / ±Infinity are refused on every write (the SDK refuses a non-finite number)
+    const d = makeHonestDb({});
+    await assert.rejects(d.ref('x').set(NaN), /non-finite/, 'HRM-NONFINITE: set NaN');
+    await assert.rejects(d.ref('x').set({ a: { b: -Infinity } }), /non-finite/, 'HRM-NONFINITE: a nested -Infinity');
+    await assert.rejects(d.ref('x').push({ v: Infinity }), /non-finite/, 'HRM-NONFINITE: push');
+    await assert.rejects(d.ref('x').transaction(() => ({ v: NaN })), /non-finite/, 'HRM-NONFINITE: a transaction result');
+    assert.strictEqual(d.getAt('x'), null, 'HRM-NONFINITE: nothing written');
+  }
+  ok('NaN / Infinity are refused on set, push, update and transaction');
+  {   // HRM-ATOMIC: the WHOLE patch is validated before anything is written
+    const d = makeHonestDb({ k: 0 });
+    for (const [patch, re] of [[{ ok: 1, 'bad.key': 2 }, /invalid RTDB key/], [{ ok: 1, und: undefined }, /undefined value/], [{ ok: 1, n: NaN }, /non-finite/], [{ ok: 1, deep: { x: { y: Infinity } } }, /non-finite/]]) {
+      await assert.rejects(d.ref('').update(patch), re, `HRM-ATOMIC: ${Object.keys(patch).join(',')} refused`);
+      assert.deepStrictEqual(d.getAt(''), { k: 0 }, `HRM-ATOMIC: the valid key of a refused patch was NOT written (${Object.keys(patch).join(',')})`);
+    }
+  }
+  ok('a refused update writes NOTHING — the valid keys beside a bad one are not applied');
+  {   // HRM-OVERLAP: an update whose paths are ancestor / descendant of each other is refused (the SDK: «… is an ancestor of …»), WHOLE
+    const d = makeHonestDb({ a: { keep: 1 } });
+    for (const patch of [{ a: { x: 1 }, 'a/b': 2 }, { 'a/b': 1, 'a/b/c': 2 }, { 'a/b/c': 1, a: null }]) {
+      await assert.rejects(d.ref('').update(patch), /ancestor/, `HRM-OVERLAP: ${JSON.stringify(patch)} is refused`);
+      assert.deepStrictEqual(d.getAt(''), { a: { keep: 1 } }, `HRM-OVERLAP: nothing of ${JSON.stringify(patch)} was written`);
+    }
+    await assert.rejects(d.ref('a').update({ b: 1, 'b/c': 2 }), /ancestor/, 'HRM-OVERLAP: also under a child ref');
+    await d.ref('').update({ 'a/b': 1, 'a/c': 2, 'a/bc': 3 });   // siblings, and a key that only SHARES a prefix ('b' vs 'bc'), are fine
+    assert.deepStrictEqual(d.getAt('a'), { keep: 1, b: 1, c: 2, bc: 3 });
+  }
+  ok('an update with overlapping (ancestor / descendant) paths is refused whole; siblings and prefix-sharing keys are fine');
+  {   // HRM-UPDATE-TYPE (Codex #112): the SDK refuses a non-object update (null, an array, a scalar)
+    const d = makeHonestDb({ k: 1 });
+    for (const bad of [null, undefined, [1], 5, 'x', true]) await assert.rejects(d.ref('').update(bad), /update: /, `HRM-UPDATE-TYPE: ${JSON.stringify(bad)} refused`);
+    assert.deepStrictEqual(d.getAt(''), { k: 1 }, 'HRM-UPDATE-TYPE: nothing written');
+    await d.ref('').update({});   // an empty object is a no-op, as in the SDK
+  }
+  ok('a non-object update (null / array / scalar) is refused');
+  {   // HRM-SENTINEL-ATOMIC (Codex #112): every server-value sentinel is resolved BEFORE anything is written
+    const d = makeHonestDb({ k: 1 });
+    await assert.rejects(d.ref('').update({ ok: 1, bad: { '.sv': 'bogus' } }), /not modelled/, 'HRM-SENTINEL-ATOMIC: an unknown sentinel refused');
+    assert.deepStrictEqual(d.getAt(''), { k: 1 }, 'HRM-SENTINEL-ATOMIC: the valid key beside it was NOT written');
+  }
+  ok('a refused sentinel writes nothing (sentinels resolve before the commit)');
+  {   // HRM-INCREMENT (Codex #112; production: client-version.js, form-signal.js): ServerValue.increment against the previous value
+    const { ServerValue } = require('firebase-admin/database');
+    const d = makeHonestDb({ c: { n: 10, s: 'x' } });
+    await d.ref('').update({ 'c/n': ServerValue.increment(5), 'c/new': ServerValue.increment(1), 'c/s': ServerValue.increment(2) });
+    assert.deepStrictEqual(d.getAt('c'), { n: 15, new: 1, s: 2 }, 'HRM-INCREMENT: numeric prev + n; absent ⇒ n; a non-number ⇒ n');
+    await d.ref('c/new').set(ServerValue.increment(1));
+    await d.ref('c').update({ deep: { x: ServerValue.increment(3) } });
+    assert.deepStrictEqual([d.getAt('c/new'), d.getAt('c/deep/x')], [2, 3], 'HRM-INCREMENT: set and a nested sentinel too');
+  }
+  ok('ServerValue.increment resolves against the previous value (absent / numeric / non-numeric)');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });
