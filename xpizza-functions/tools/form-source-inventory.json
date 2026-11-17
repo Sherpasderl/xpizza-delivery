@@ -422,6 +422,7 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
     "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
@@ -834,6 +835,7 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
     "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
@@ -1334,6 +1336,7 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
     "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
@@ -1748,6 +1751,7 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
     "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
@@ -2930,7 +2934,10 @@
   "index.js",
   "ledger/alloc-snapshot.js",
   "ledger/capture-evidence.js",
+  "ledger/commission-rate.js",
+  "ledger/functions.js",
   "ledger/projector.js",
+  "ledger/rebuild.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
@@ -7166,9 +7173,23 @@
     "xpizza-functions/ledger-writes.guard.test.js"
    ]
   },
+  "ledger/commission-rate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
   "ledger/projector.js": {
    "pins": [],
    "lifts": []
+  },
+  "ledger/rebuild.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
   },
   "lib/driver-admin-ops.js": {
    "pins": [],
