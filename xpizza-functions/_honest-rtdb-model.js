@@ -13,6 +13,7 @@ const RESERVED = /[.#$[\]/\u0000-\u001f\u007f]/;   // as the Admin SDK: . # $ [ 
 
 function validateKeys(v, where, seed = false) {
   if (v === undefined) { if (seed) return; throw new Error(`undefined value at ${where} (RTDB refuses undefined)`); }
+  if (typeof v === 'number' && !Number.isFinite(v)) throw new Error(`non-finite number at ${where} (RTDB refuses NaN / Infinity)`);
   if (v === null || typeof v !== 'object') return;
   if (isServerValue(v)) return;
   for (const k of Object.keys(v)) {
@@ -86,7 +87,19 @@ function makeHonestDb(initial = {}, hooks = {}) {
       },
       async update(patch) {
         if (hooks.beforeWrite) await hooks.beforeWrite(p, patch, api);
-        for (const [k, v] of Object.entries(patch || {})) setAt(p ? `${p}/${k}` : k, v);
+        // As the Admin SDK (Codex #111 P3): the WHOLE patch is validated BEFORE anything is written — every path segment, every value
+        // (undefined / non-finite / a reserved key refused), and no path may be an ancestor of (or equal to) another — so a refused
+        // update writes nothing.
+        const entries = Object.entries(patch || {}).map(([k, v]) => [p ? `${p}/${k}` : k, v]);
+        for (const [full, v] of entries) {
+          for (const k of segs(full)) if (!k || RESERVED.test(k)) throw new Error(`invalid RTDB key "${k}" in path ${full}`);
+          validateKeys(v, full || '/');
+        }
+        const paths = entries.map(([full]) => segs(full).join('/')).sort();
+        for (let i = 0; i < paths.length; i++) for (let j = i + 1; j < paths.length; j++) {
+          if (paths[j] === paths[i] || paths[j].startsWith(`${paths[i]}/`)) throw new Error(`update: path ${paths[i]} is an ancestor of (or equal to) ${paths[j]}`);
+        }
+        for (const [full, v] of entries) setAt(full, v);
       },
       async set(v) { if (hooks.beforeWrite) await hooks.beforeWrite(p, v, api); setAt(p, v); },
       async push(v) { const k = `k${String(++pk).padStart(6, '0')}`; setAt(p ? `${p}/${k}` : k, v); return { key: k }; },
