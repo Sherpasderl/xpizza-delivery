@@ -304,4 +304,19 @@ const PAYLOAD = {
   ok('reward free-item ordering, reward price binding, and wrong-length signatures are each pinned');
 }
 
+// ── 13. 🔴 offer-audience (PLAN r4.1 §3): an EXPIRED token surfaces its SIGNED `aud` block — and nothing else, and only once signed ──────
+{
+  const AUD = { kind: 'new', sel: { offer_id: 'of_x', rev: 2, discount_cents: 5000 }, ids: { p: 'a'.repeat(64), kv: 'v1' } };
+  const withAud = signQuoteToken({ ...PAYLOAD, aud: AUD, expires_at: 1000 }, SEC);
+  assert.deepStrictEqual(verifyQuoteToken(withAud, SEC, 5000), { ok: false, reason: 'expired', payload: null, expired_aud: AUD },
+    '🔴 AUD-EXPIRED: an expired, SIGNED token returns its aud block (never the rest of the payload)');
+  assert.deepStrictEqual(verifyQuoteToken(signQuoteToken({ ...PAYLOAD, expires_at: 1000 }, SEC), SEC, 5000), { ok: false, reason: 'expired', payload: null },
+    '🔴 AUD-EXPIRED-NONE: an expired token without aud is byte-identical to before (no expired_aud key)');
+  const forged = verifyQuoteToken(signQuoteToken({ ...PAYLOAD, aud: AUD, expires_at: 1000 }, 'attacker-secret'), SEC, 5000);
+  assert.deepStrictEqual(forged, { ok: false, reason: 'bad_signature', payload: null }, '🔴 AUD-FORGED: a forged expired aud token is a forgery — no aud surfaces');
+  assert.strictEqual('expired_aud' in verifyQuoteToken(withAud, SEC, NaN), false, 'AUD-CLOCK: an unclocked verify surfaces nothing (the payload is not judged)');
+  assert.deepStrictEqual(verifyQuoteToken(signQuoteToken({ ...PAYLOAD, aud: AUD }, SEC), SEC, 5000).payload.aud, AUD, 'AUD-VALID: a fresh token carries aud in its payload');
+  ok('an expired signed token surfaces exactly its aud; forged / unclocked / aud-less results unchanged');
+}
+
 console.log(`\nquote-token: OK (${n})`);

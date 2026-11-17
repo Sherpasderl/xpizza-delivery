@@ -8,7 +8,10 @@
 //   · OFF (`offers_enabled !== true`) ⇒ null before the mirror is touched; a redemption on the order ⇒ null (no stacking).
 //   · Every amount is a WHOLE lempira (Q1): a pct discount is floored to whole lempiras, and an entry whose cents fields are not
 //     multiples of 100 is malformed. `max_cents` absent = no max; 0 or anything non-positive is malformed (Q2: no sentinel 0).
-//   · Phase 1 applies audience 'all' only; 'new' / 'returning' / nuevos fail closed (Q5: no admission-safe «new customer» fact yet).
+//   · Audiences (offer-audience PLAN r4.1 §1, BRIEF §1): 'all' prices for everyone; 'new' / 'returning' (and the `nuevos` type, always
+//     'new') price ONLY while the audience program is ON (config audienceEnabled — 3a's one test) AND the customer's KIND (decided at the
+//     quote by marketing/audience, signed, honoured at placement) equals the offer's audience. kind 'none' (guest / unresolved / any read
+//     failure) never gets one. OFF ⇒ an audience projection still in the mirror is skipped (rollback = OFF, 3a never sweeps it).
 //   · envío: delivery mode, a fee, food ≥ min, and Sherpa's own promo NOT applied (ruling 4757: they never combine) ⇒ the whole fee.
 //   · bogo (Q4): the eligible units (dish table price; extras are paid) dearest first, every 2nd unit free, ≤ free_per_order — priced
 //     per line by computeServerTotal itself and asserted to sum to the base total (a mismatch ⇒ no offer, never a 2nd price source).
@@ -16,7 +19,8 @@
 //   The mirror outlives an offer's end (no job removes it): the schedule is evaluated HERE, in HN (UTC−6, no DST).
 // Brand-agnostic: no rid / brand literal. No PII.
 const OM = require('./offer-model');
-const OR = require('./offer-rules');   // the ONE offer rules, shared with the capp (bogoSaving, inWindow)
+const OR = require('./offer-rules');
+const CFG = require('./config');   // the ONE offer rules, shared with the capp (bogoSaving, inWindow)
 const { computeServerTotal, resolvePriceTables, itemPricingKey, keyModeOfTables } = require('../menu-pricing');
 const { isServerDeliveryCtx } = require('../delivery/delivery-pricing');
 
@@ -53,9 +57,15 @@ function entryOf(id, e) {
   } else if (e.type === 'envio') {
     if (p.min_cents == null || whole(p.min_cents, 0)) params = { min_cents: p.min_cents == null ? 0 : p.min_cents };
   } else if (e.type === 'nuevos') {
-    params = { never: true };   // phase 1: audience 'new' only, and no admission-safe «new customer» fact exists (Q5)
+    // exactly one of off_cents (whole lempiras) or pct (pct_min..pct_max, step pct_step); no minimum (3a offer-model paramsOf)
+    const hasOff = 'off_cents' in p, hasPct = 'pct' in p;
+    if (hasOff !== hasPct && Object.keys(p).length === 1) {
+      if (hasOff && whole(p.off_cents)) params = { off_cents: p.off_cents };
+      else if (hasPct && Number.isInteger(p.pct) && p.pct >= OM.LIMITS.pct_min && p.pct <= OM.LIMITS.pct_max && p.pct % OM.LIMITS.pct_step === 0) params = { pct: p.pct };
+    }
   }
   if (!params) return null;
+  if (!OM.AUDIENCES.includes(e.audience) || (e.type === 'nuevos' && e.audience !== 'new')) return null;   // a stored audience only; nuevos is always 'new'
   // offers v1 (owner 11-15, limits = A): no caps — 3a's v1 projection carries none, and a legacy entry's `caps` is ignored, never read
   return { id, rev: e.rev, type: e.type, name: e.name, audience: e.audience, params, schedule: { start, end, days: s.days, window } };
 }
@@ -85,7 +95,7 @@ function dishUnitsOf(items, rid, tables, baseTotalL) {
 
 // One candidate's saving for this order → { discount_cents, waived_envio_cents } or null (not eligible / zero).
 function savingOf(c, f) {
-  if (c.audience !== 'all') return null;
+  if (c.audience !== 'all' && !(f.audienceOn && f.kind === c.audience)) return null;   // an audience offer: program ON and the customer's kind
   let d = 0, w = 0;
   if (c.type === 'pct') { d = Math.floor((f.food * c.params.pct) / (100 * L)) * L; if (c.params.max_cents !== null) d = Math.min(d, c.params.max_cents); }
   else if (c.type === 'lps') { d = f.food >= c.params.min_cents ? c.params.off_cents : 0; }
@@ -93,6 +103,8 @@ function savingOf(c, f) {
     const units = f.units();
     if (!units) return null;
     d = OR.bogoSaving(units.filter((u) => c.params.items.has(u.key)).map((u) => u.unit), c.params.free_per_order);   // the ONE pairing rule (offer-rules.js)
+  } else if (c.type === 'nuevos') {
+    d = 'pct' in c.params ? Math.floor((f.food * c.params.pct) / (100 * L)) * L : c.params.off_cents;   // no max; floored + capped below
   } else if (c.type === 'envio') {
     const ctx = f.delivery;
     if (ctx && ctx.mode === 'delivery' && Number.isSafeInteger(ctx.delivery_cents) && ctx.delivery_cents > 0 && ctx.promo_discount_cents === 0 && f.food >= c.params.min_cents) w = ctx.delivery_cents;
@@ -101,19 +113,20 @@ function savingOf(c, f) {
   return d > 0 || w > 0 ? { discount_cents: d, waived_envio_cents: w } : null;
 }
 
+const AUD_KINDS = Object.freeze(['new', 'returning']);   // a customer's kind; anything else is 'none'
 const SERVER_OFFER = new WeakSet();
 const isServerOfferCtx = (o) => !!o && typeof o === 'object' && SERVER_OFFER.has(o);
 const mint = (o) => { SERVER_OFFER.add(Object.freeze(o)); return o; };
 
 // The cart offerFor AND nextOfferFor price against — ONE setup: the OFF switch, no stacking on a reward, whole lempiras or nothing.
-function cartOf({ cfg, live, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null }) {
+function cartOf({ cfg, live, items, rid, tables = null, baseTotalL, deliveryContext = null, reward = null, kind = 'none' }) {
   if (!cfg || cfg.offers_enabled !== true) return null;
   if (reward) return null;
   if (!isObj(live) || !Array.isArray(items) || !items.length) return null;
   const food = Math.round(Number(baseTotalL) * L);
   if (!Number.isSafeInteger(food) || food <= 0 || food % L !== 0 || food !== Number(baseTotalL) * L) return null;   // whole lempiras or nothing
   let units;
-  return { food, delivery: isServerDeliveryCtx(deliveryContext) ? deliveryContext : null, units: () => (units === undefined ? (units = dishUnitsOf(items, rid, tables, baseTotalL)) : units) };
+  return { food, audienceOn: CFG.audienceEnabled(cfg), kind: AUD_KINDS.includes(kind) ? kind : 'none', delivery: isServerDeliveryCtx(deliveryContext) ? deliveryContext : null, units: () => (units === undefined ? (units = dishUnitsOf(items, rid, tables, baseTotalL)) : units) };
 }
 
 function offerFor(args) {
@@ -131,7 +144,8 @@ function offerFor(args) {
   }
   if (!best) return null;
   return mint({ offer_id: best.c.id, rev: best.c.rev, type: best.c.type, name: best.c.name, discount_cents: best.s.discount_cents, waived_envio_cents: best.s.waived_envio_cents,
-    ...(best.c.type === 'pct' ? { pct: best.c.params.pct } : {}), ...(best.c.type !== 'envio' && Number.isSafeInteger(best.c.params.min_cents) && best.c.params.min_cents > 0 ? { min_cents: best.c.params.min_cents } : {}) });   // the quote's label facts (advisor 11-14)
+    ...(Number.isInteger(best.c.params.pct) ? { pct: best.c.params.pct } : {}), ...(best.c.type !== 'envio' && Number.isSafeInteger(best.c.params.min_cents) && best.c.params.min_cents > 0 ? { min_cents: best.c.params.min_cents } : {}),   // the quote's label facts (advisor 11-14)
+    ...audienceOf(best.c.audience, f.kind) });
 }
 
 /* offer_next (capp offers Slice A, advisor 11-14): the best live offer whose ONLY unmet condition is its minimum — every other condition
@@ -159,6 +173,9 @@ function nextOfferFor(args) {
     shown: { type: best.c.type, remaining_cents: best.remaining, ...(best.s.discount_cents > 0 ? { off_cents: best.s.discount_cents } : {}), ...(best.s.waived_envio_cents > 0 ? { waived_envio_cents: best.s.waived_envio_cents } : {}) } };
 }
 
+// an audience offer's facts (only priced when kind === audience); an 'all' offer carries none, so every pre-audience ctx is byte-identical
+const audienceOf = (audience, kind) => (audience === 'new' || audience === 'returning' ? { audience, audience_kind: kind } : {});
+
 // The quote's offer (capp Slice A, advisor 11-14): the label facts only — never the name, the id, the rev (minimal data, as the poll).
 function quoteOfferOf(o) {
   return { type: o.type, ...(Number.isInteger(o.pct) ? { pct: o.pct } : {}), ...(Number.isSafeInteger(o.min_cents) ? { min_cents: o.min_cents } : {}), discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents };
@@ -182,11 +199,11 @@ function foodBreakdown(totalL, rid, offer) {
 // The order's frozen fact (PLAN §1.9): what applied, by whom funded — never the mirror's params.
 // Offers v1 (owner 11-15): no usage hold, so no usage fields.
 const frozenOf = (offer) => ({ offer_id: offer.offer_id, rev: offer.rev, type: offer.type, name: offer.name, discount_cents: offer.discount_cents,
-  waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant' });
+  waived_envio_cents: offer.waived_envio_cents, funded_by: 'restaurant', ...audienceOf(offer.audience, offer.audience_kind) });
 
 // A STORED order's frozen offer re-entered as a server ctx (offer-wire storedOfferOf validates the record first) — the card retry path.
-const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo']);   // v1: no envío (owner 11-15)
-const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents });
+const TYPES_PRICED = Object.freeze(['pct', 'lps', 'bogo', 'nuevos']);   // v1: no envío (owner 11-15); nuevos behind the audience program (BRIEF §1)
+const mintStored = (o) => mint({ offer_id: o.offer_id, rev: o.rev, type: o.type, name: o.name, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents, ...audienceOf(o.audience, o.audience_kind) });
 
 // The customer's poll (paymentStatus) shows the STORED offer as what was saved, never how it is tracked: no offer id / rev / usage /
 // funder (plan §1.9, Q9) and no merchant name (advisor 11-14: the capp derives its label from the type and amounts — minimal data).
@@ -195,4 +212,17 @@ const cents = (v) => Number.isSafeInteger(v) && v >= 0;
 const pollOfferOf = (o) => (o && typeof o === 'object' && TYPES_PRICED.includes(o.type) && cents(o.discount_cents) && cents(o.waived_envio_cents)
   ? { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents } : null);
 
-module.exports = { offerFor, nextOfferFor, quoteOfferOf, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };
+/* offerFunder (PLAN r4.1 §4, census-pinned): WHO funds an order's discount — the ONE reader for any payout / statement / stats writer.
+   An audience-'new' offer (incl. nuevos) ⇒ the fulfilment writer's create-if-absent decision orders/{id}/offer_reconcile.funded_by;
+   absent or malformed ⇒ 'sherpa' (absence never means the restaurant: Sherpa absorbs uncertainty). Any other offer ⇒ its frozen
+   funded_by. The frozen offer is never edited. No offer ⇒ null. */
+const FUNDERS = Object.freeze(['restaurant', 'sherpa']);
+function offerFunder(order) {
+  const o = order && order.offer;
+  if (!o || typeof o !== 'object') return null;
+  if (o.audience !== 'new') return o.funded_by;
+  const r = order.offer_reconcile;
+  return r && typeof r === 'object' && FUNDERS.includes(r.funded_by) ? r.funded_by : 'sherpa';
+}
+
+module.exports = { offerFunder, offerFor, nextOfferFor, quoteOfferOf, isServerOfferCtx, entryOf, liveAt, dishUnitsOf, discountOf, foodLempiras, foodBreakdown, frozenOf, mintStored, pollOfferOf, TYPES_PRICED };

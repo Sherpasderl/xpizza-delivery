@@ -212,7 +212,10 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
   // PLAN-3a-capp-member-reads R3.1: the favorites node is REPLACED by the deletion FENCE { _deleted: at } (overriding accountDeleteUpdates'
   // null on the same key, as user_private is) — every setFavorite is a parent transaction that aborts on it, so none outlives the account
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
+  // offer-audience (r4.1 §5): every history order's frozen codes go with the account (their day-index entries are swept at the deadline);
+  // the brand markers are KEPT (owner 5013)
+  const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.
