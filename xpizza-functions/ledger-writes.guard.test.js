@@ -18,7 +18,7 @@ const files = execFileSync('git', ['ls-files', '*.js'], { cwd: __dirname, encodi
 const LEDGER_RE = /['"`]ledger(?:_alloc|_settings|\/)|\bledger: (?:ledgerSnap|require\('[./]*ledger\/alloc-snapshot'\))|allocPath\(/g;
 const ALLOW = {   // file → reviewed sites (S1)
   'ledger/alloc-snapshot.js': 1,          // allocPath's own definition
-  'ledger/rebuild.js': 7,                 // S5: the nightly rebuild — reads ledger_alloc / ledger/open / ledger/orders hash / ledger/run, writes below
+  'ledger/rebuild.js': 10,                // S5: the nightly rebuild — reads ledger_alloc / ledger/open / ledger/orders leaves / ledger/run; the per-order patch (projection | stale_hold) below
   'ledger/commission-rate.js': 1,         // S4: the commission setting's NODE constant (read by the nightly job; written only by the owner CLI below)
   'index.js': 3,                          // cash held + cash ASAP (allocPath) + the hosted acquire argument
   'pixelpay-hosted-charge.js': 1,         // `ledger:` inside the exclusive payment_attempts claim
@@ -86,10 +86,10 @@ ok('ledger_alloc / ledger / ledger_settings: no rule, no root grant, no root wil
 {
   const s = fs.readFileSync(path.join(__dirname, 'ledger/rebuild.js'), 'utf8');
   const count = (re) => (s.match(re) || []).length;
-  assert.deepStrictEqual([count(/\bdb\.ref\(\)\.update\(/g), count(/\.update\(\{/g), count(/\brunRef\.set\(/g), count(/\.set\(/g), count(/\.transaction\(/g), count(/\.remove\(/g), count(/\.ref\([^)]*\)\.push\(/g)],
+  assert.deepStrictEqual([count(/\bdb\.ref\(\)\.update\(/g), count(/\.update\(patch\)/g), count(/\brunRef\.set\(/g), count(/\.set\(/g), count(/\.transaction\(/g), count(/\.remove\(/g), count(/\.ref\([^)]*\)\.push\(/g)],
     [1, 1, 2, 2, 1, 0, 0], '🔴 LEDGER-WRITES: the rebuild gained an unreviewed write');
-  const upd = s.slice(s.indexOf('db.ref().update({'), s.indexOf('});', s.indexOf('db.ref().update({')));
-  assert.deepStrictEqual((upd.match(/\[`([a-z_]+\/[a-z_]+)\//g) || []).map((x) => x.slice(2, -1)), ['ledger/orders', 'ledger/open'], '🔴 LEDGER-WRITES: the per-order update writes only ledger/orders + ledger/open');
+  const fn = s.slice(s.indexOf('async function rebuildOrder('), s.indexOf('\n}\n', s.indexOf('async function rebuildOrder(')));
+  assert.deepStrictEqual((fn.match(/\[`([a-z_]+\/[a-z_]+)\//g) || []).map((x) => x.slice(2, -1)), ['ledger/open', 'ledger/orders', 'ledger/orders', 'ledger/open', 'ledger/orders'], '🔴 LEDGER-WRITES: the per-order patch writes only ledger/orders + ledger/open (the stale_hold leaf, the whole projection; the last is the result check)');
   assert.ok(/const runRef = db\.ref\(`ledger\/run\/\$\{date\}`\)/.test(s) && /db\.ref\(`dispatcher_alerts\/ledger_run_\$\{date\}`\)\.transaction\(\(cur\) => \(cur === null \? payload : undefined\)\)/.test(s), '🔴 LEDGER-WRITES: the run record ref + the create-once alarm');
   ok('the nightly rebuild: one per-order update (ledger/orders + ledger/open), the run record, one create-once alarm — nothing else');
 }

@@ -13,7 +13,7 @@ const RB = require('./rebuild');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 async function cell(label, fn) { try { await fn(); } catch (e) { console.error(`  ✗ ${label}`); throw e; } ok(label); }
 
-const DAY = 86400000;
+const DAY = 86400000; const HR = 3600000;
 const NOW = Date.parse('2026-11-20T09:00:00Z');            // 03:00 HN
 const OLD = NOW - 40 * DAY; const NEW = NOW - 2 * DAY;
 const stored = (v) => { if (v === null || typeof v !== 'object') return v; const o = {}; for (const [k, x] of Object.entries(v)) { const y = stored(x); if (y !== null && !(typeof y === 'object' && !Object.keys(y).length)) o[k] = y; } return Object.keys(o).length ? o : null; };
@@ -226,6 +226,21 @@ const clockAt = (t) => () => t;
       assert.ok(r2.outcome !== 'finished', `${hook}: still unfinished`);
       assert.deepStrictEqual(db.getAt('dispatcher_alerts/ledger_run_2026-11-20/reasons'), ['unfinished'], `🔴 RB-LIFECYCLE (${hook}): the safety slot alarms although the record could not be ${hook === 'beforeRead' ? 'read' : 'written'}`);
     }
+  });
+
+  await cell('RB-STALE-HOLD: a quarantined / unresolved order whose inputs are unchanged for MORE than 60 days leaves the open set and is marked stale_hold (Codex #116 r2 (b)); at 30 days it stays; a later window event re-projects it and it rejoins', async () => {
+    const t0 = NOW;
+    const db = makeHonestDb({ orders: { Q: order('Q', t0, { payment_method: 'cash', status: 'preparing', delivered_at: null }) }, ledger_settings: RATES }, { now: () => t0 });   // no ledger_alloc ⇒ quarantined no_snapshot
+    await RB.runNightly({ db, clock: clockAt(t0) }, { slot: 'run' });
+    assert.deepStrictEqual([db.getAt('ledger/orders/Q/status'), db.getAt('ledger/open/Q')], ['quarantined', true], 'premise: quarantined, in the open set');
+    await RB.runNightly({ db, clock: clockAt(t0 + 30 * DAY) }, { slot: 'run' });
+    assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold')], [true, null], '🔴 RB-STALE-HOLD: at 30 days it stays');
+    await RB.runNightly({ db, clock: clockAt(t0 + 61 * DAY) }, { slot: 'run' });
+    assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold'), db.getAt('ledger/orders/Q/status')], [null, true, 'quarantined'], '🔴 RB-STALE-HOLD: after 60 unchanged days it leaves the open set, marked stale_hold');
+    const t3 = t0 + 70 * DAY;
+    db.setAt('orders/Q/status', 'delivered'); db.setAt('orders/Q/delivered_at', t3 - HR);   // a window event
+    await RB.runNightly({ db, clock: clockAt(t3) }, { slot: 'run' });
+    assert.deepStrictEqual([db.getAt('ledger/open/Q'), db.getAt('ledger/orders/Q/stale_hold'), db.getAt('ledger/orders/Q/computed_at')], [true, null, t3], '🔴 RB-STALE-HOLD: a window event re-projects it (stale_hold cleared, back in the open set)');
   });
 
   await cell('RB-SLOT: the scheduled function picks the slot by the Honduras minute — 03:00 / 03:01 ⇒ run, 03:30 ⇒ safety', async () => {
