@@ -15,12 +15,12 @@ function parseArgs(argv) {
     const a = argv[i]; const eq = a.indexOf('=');
     const name = eq > 0 ? a.slice(0, eq) : a;
     if (!known.has(name)) return { error: `unknown argument ${a}${name === '--allow-past' ? ' (a commission rate is never retro)' : ''}` };
-    if (name === '--apply') { out.apply = true; continue; }
+    if (name === '--apply') { if (eq > 0) return { error: '--apply takes no value (write the bare flag; --apply=false is not a dry run)' }; out.apply = true; continue; }   // Codex #115 #2
     const v = eq > 0 ? a.slice(eq + 1) : argv[++i];
     if (v === undefined) return { error: `${name} needs a value` };
     if (name === '--scope') out.scope = v; else if (name === '--bp') out.bpRaw = v; else if (name === '--effective-from') out.effectiveRaw = v;
   }
-  if (out.scope === undefined || !(out.scope === R.DEFAULT || R.validRid(out.scope))) return { error: `--scope must be ${R.DEFAULT} or one restaurant id ([a-z0-9_], ≤ 64)` };
+  if (out.scope === undefined || !(out.scope === R.DEFAULT || R.validRid(out.scope))) return { error: `--scope must be ${R.DEFAULT} or one restaurant id (the platform grammar: a-z 0-9 _ -, 2–40)` };
   if (out.bpRaw === undefined || !/^(0|[1-9]\d{0,4})$/.test(out.bpRaw) || Number(out.bpRaw) > R.MAX_BP) return { error: `--bp must be an integer from ${R.MIN_BP} to ${R.MAX_BP} (basis points: 1000 = 10 %)` };
   if (out.effectiveRaw === undefined) return { error: '--effective-from is required (ISO date / time; no zone = Honduras time)' };
   const t = parseEffectiveFrom(out.effectiveRaw);
@@ -37,6 +37,7 @@ function planRate(existing, req, now) {
   const refusals = []; const notes = [];
   if (!R.validEntry(entry)) refusals.push(`the entry is out of bounds: bp an integer ${R.MIN_BP}–${R.MAX_BP}, effective_from an integer ms ≥ ${new Date(R.MIN_EFFECTIVE_FROM).toISOString()}`);
   if (entry.effective_from < now) refusals.push('effective_from is in the PAST — a commission rate is never retro (every order placed since then would be re-rated)');
+  else if (entry.effective_from < now + R.MIN_LEAD_MS) refusals.push('effective_from must be at least 1 hour ahead (no race with an order being placed while the rate is written)');
   if (entry.effective_from > now + R.MAX_AHEAD_MS) refusals.push(`effective_from is more than ${R.MAX_AHEAD_MS / 86400000} days ahead`);
   const same = Object.entries(entries).filter(([, e]) => e && e.effective_from === entry.effective_from);
   if (same.length) refusals.push(`an entry of ${req.scope} already takes effect at that instant (${same.map(([k]) => k).join(', ')}) — append-only: pick another effective_from`);
@@ -47,14 +48,17 @@ function planRate(existing, req, now) {
   return { entry, refusals, notes };
 }
 
-// append ONE entry under a NEW key of the scope (never an existing one), then read it back. keyFn() → a fresh push key.
-async function appendRate(db, scope, entry, keyFn, now) {
+// append ONE entry under a NEW key of the scope (never an existing one), then read it back. keyFn() → a fresh push key. clock() is
+// re-read AFTER the existence read, immediately before the write (Codex #115 #1): the 1-hour margin holds at the write, however slow the reads.
+async function appendRate(db, scope, entry, keyFn, clock) {
+  const now = clock();
   if (!(scope === R.DEFAULT || R.validRid(scope))) throw new Error(`refusing: scope ${JSON.stringify(scope)} is not ${R.DEFAULT} or a restaurant id`);
-  if (!R.validEntry(entry) || entry.effective_from < now || entry.effective_from > now + R.MAX_AHEAD_MS) throw new Error(`refusing: ${JSON.stringify(entry)} is out of bounds or in the past (never retro)`);   // backstop
+  if (!R.validEntry(entry) || entry.effective_from > now + R.MAX_AHEAD_MS) throw new Error(`refusing: ${JSON.stringify(entry)} is out of bounds or too far ahead`);   // backstop; the past / under-margin case is refused below, at the write
   const key = keyFn();
   if (typeof key !== 'string' || !key) throw new Error('no push key');
   const ref = db.ref(`${R.NODE}/${scope}/${key}`);
   if ((await ref.once('value')).val() !== null) throw new Error(`refusing: ${R.NODE}/${scope}/${key} already exists (append-only)`);
+  if (entry.effective_from < clock() + R.MIN_LEAD_MS) throw new Error('refusing: effective_from must be at least 1 hour ahead at the write (never retro)');
   await ref.set(entry);
   const back = (await ref.once('value')).val();
   if (!back || back.bp !== entry.bp || back.effective_from !== entry.effective_from) throw new Error(`read-back mismatch at ${R.NODE}/${scope}/${key}: ${JSON.stringify(back)}`);

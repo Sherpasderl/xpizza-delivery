@@ -24,6 +24,8 @@ const NOW = D('2026-11-16T18:00:00Z');
     }
     assert.ok(/not a valid ISO/.test(C.parseArgs(['--scope', '_default', '--bp', '1000', '--effective-from', '2026-02-31']).error));
     assert.ok(/never retro/.test(C.parseArgs(['--scope', '_default', '--bp', '1000', '--effective-from', '2026-11-20', '--allow-past']).error || ''), '🔴 SCR-ARGS: --allow-past is refused AS never-retro (no override exists)');
+    for (const a of ['--apply=false', '--apply=0', '--apply=', '--apply=true']) assert.ok(/--apply takes no value/.test(C.parseArgs(['--scope', '_default', '--bp', '1000', '--effective-from', '2026-11-20', a]).error || ''), `🔴 SCR-ARGS: ${a} must be refused, not read as --apply (Codex #115 #2)`);
+    assert.deepStrictEqual(C.parseArgs(['--scope', 'sushi-sur', '--bp', '700', '--effective-from', '2026-11-20']).scope, 'sushi-sur', '🔴 SCR-ARGS: a hyphenated platform restaurant id is a valid scope (Codex #115 #3)');
   });
 
   const EX = { _default: { '-Na': { bp: 1000, effective_from: D('2026-11-01T06:00:00Z') }, '-Nb': { bp: 1100, effective_from: D('2026-12-01T06:00:00Z') } } };   // one in effect now, one ahead
@@ -37,20 +39,40 @@ const NOW = D('2026-11-16T18:00:00Z');
     assert.deepStrictEqual(C.planRate(EX, req({ scope: 'la_musa', effectiveFrom: D('2026-12-01T06:00:00Z') }), NOW).refusals, [], 'the same instant in ANOTHER scope is fine');
     assert.ok(C.planRate(EX, req({ effectiveFrom: NOW + 367 * 86400000 }), NOW).refusals.some((r) => /366 days/.test(r)), '🔴 SCR-PLAN: too far ahead');
     assert.ok(C.planRate(EX, req({ bp: 10001 }), NOW).refusals.some((r) => /out of bounds/.test(r)), '🔴 SCR-PLAN: out of bounds');
+    assert.ok(C.planRate(EX, req({ effectiveFrom: NOW + 59 * 60000 }), NOW).refusals.some((r) => /at least 1 hour/.test(r)), '🔴 SCR-PLAN: under the 1-hour margin (Codex #115 #1)');
+    assert.deepStrictEqual(C.planRate(EX, req({ effectiveFrom: NOW + 3600000 }), NOW).refusals, [], 'exactly 1 hour ahead is fine');
+    assert.deepStrictEqual(C.planRate(EX, req({ scope: 'sushi-sur' }), NOW).refusals, [], 'a hyphenated restaurant scope plans');
   });
 
   await cell('SCR-APPEND: ONE set at a NEW push key under the scope (old entries untouched), read back; an existing key and an out-of-bounds / past entry are refused before any write', async () => {
     const db = fakeRtdb({ ledger_settings: { commission: JSON.parse(JSON.stringify(EX)) } });
     const e = { bp: 1200, effective_from: D('2027-01-01T06:00:00Z') };
-    assert.strictEqual(await C.appendRate(db, '_default', e, () => '-Nnew', NOW), '-Nnew');
+    assert.strictEqual(await C.appendRate(db, '_default', e, () => '-Nnew', () => NOW), '-Nnew');
     assert.deepStrictEqual(db.get('ledger_settings/commission/_default'), { ...EX._default, '-Nnew': e }, 'old entry untouched');
     assert.deepStrictEqual(db.writes.map((w) => [w[0], w[1]]), [['set', 'ledger_settings/commission/_default/-Nnew']], '🔴 SCR-APPEND: exactly one set at a NEW child');
-    await assert.rejects(C.appendRate(db, '_default', { ...e, effective_from: e.effective_from + 1 }, () => '-Na', NOW), /already exists/, '🔴 SCR-APPEND: an existing key');
+    await assert.rejects(C.appendRate(db, '_default', { ...e, effective_from: e.effective_from + 1 }, () => '-Na', () => NOW), /already exists/, '🔴 SCR-APPEND: an existing key');
     const before = db.writes.length;
-    for (const [bad, sc] of [[{ bp: 10001, effective_from: e.effective_from }, '_default'], [{ bp: 1000, effective_from: NOW - 1 }, '_default'], [e, 'X/Y']]) {
-      await assert.rejects(C.appendRate(db, sc, bad, () => '-Nbad', NOW), /refusing/, `🔴 SCR-APPEND wrote ${JSON.stringify([bad, sc])}`);
+    for (const [bad, sc] of [[{ bp: 10001, effective_from: e.effective_from }, '_default'], [{ bp: 1000, effective_from: NOW - 1 }, '_default'], [{ bp: 1000, effective_from: NOW + 367 * 86400000 }, '_default'], [e, 'X/Y']]) {
+      await assert.rejects(C.appendRate(db, sc, bad, () => '-Nbad', () => NOW), /refusing/, `🔴 SCR-APPEND wrote ${JSON.stringify([bad, sc])}`);
     }
     assert.strictEqual(db.writes.length, before, '🔴 SCR-APPEND: a refused append reached the database');
+  });
+
+  await cell('SCR-DELAY: the 1-hour margin is measured AFTER the reads, immediately before the write — a delayed read that pushes the request under the margin is refused with zero writes (Codex #115 #1)', async () => {
+    const db = fakeRtdb({ ledger_settings: { commission: JSON.parse(JSON.stringify(EX)) } });
+    const e = { bp: 1200, effective_from: NOW + 90 * 60000 };   // 1 h 30 ahead when planned …
+    let t = NOW; const clock = () => t;
+    const slow = { ref: (p) => { const r = db.ref(p); return { once: async (x) => { t = NOW + 45 * 60000; return r.once(x); }, set: (v) => r.set(v) }; } };   // … the read takes 45 min
+    await assert.rejects(C.appendRate(slow, '_default', e, () => '-Nlate', clock), /at least 1 hour/, '🔴 SCR-DELAY: the clock is re-read after the read');
+    assert.deepStrictEqual(db.writes, [], '🔴 SCR-DELAY: zero writes');
+  });
+
+  await cell('SCR-READBACK: a read-back that is missing or differs is a failure, never a success (Codex #115 #4)', async () => {
+    const e = { bp: 1200, effective_from: D('2027-01-01T06:00:00Z') };
+    for (const [label, back] of [['missing', null], ['bp differs', { ...e, bp: 1201 }], ['effective_from differs', { ...e, effective_from: e.effective_from + 1 }]]) {
+      let n2 = 0; const db = { ref: () => ({ once: async () => ({ val: () => (n2++ === 0 ? null : back) }), set: async () => {} }) };
+      await assert.rejects(C.appendRate(db, '_default', e, () => '-Nrb', () => NOW), /read-back mismatch/, `🔴 SCR-READBACK: ${label}`);
+    }
   });
 
   await cell('SCR-CLI: the CLI refuses without a stated --project (an inherited project variable is not enough), and a bad --bp refuses with exit 2 before any read', async () => {
