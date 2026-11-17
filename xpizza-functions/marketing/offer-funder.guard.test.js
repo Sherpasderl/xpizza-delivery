@@ -7,6 +7,10 @@
 //   marketing/offer-wire.js      — storedOfferOf (pricing-record validation of the frozen offer — not a payout reader)
 //   marketing/audience-writer.js — the fulfilment writer's create-if-absent decision (a WRITER)
 //   marketing/audience-sweep.js  — the deadline sweep's create-if-absent 'ids_expired' decision (a WRITER)
+//   ledger/alloc-snapshot.js     — asm11 (advisor ruling, option A): the ledger S1 snapshot records the offer's frozen term ONLY; any
+//                                  funding/payout reader MUST use offerFunder(). Snapshots written between this deploy and the backlog
+//                                  slice that drops the field (a PRE-REQ for the audience switch ON, with the privacy line) still carry
+//                                  funded_by — harmless ONLY because this guard forbids any reader of it
 // A new file (a payout ledger, a statement, stats, the portal) is RED here until it reads through offerFunder and is reviewed in.
 // Run: node marketing/offer-funder.guard.test.js
 const assert = require('assert');
@@ -14,7 +18,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ROOT = path.join(__dirname, '..', '..');
-const ALLOWED = ['xpizza-functions/marketing/offer-price.js', 'xpizza-functions/marketing/offer-wire.js', 'xpizza-functions/marketing/audience-writer.js', 'xpizza-functions/marketing/audience-sweep.js'];
+const ALLOWED = ['xpizza-functions/marketing/offer-price.js', 'xpizza-functions/marketing/offer-wire.js', 'xpizza-functions/marketing/audience-writer.js', 'xpizza-functions/marketing/audience-sweep.js', 'xpizza-functions/ledger/alloc-snapshot.js'];
 
 let hits = [];
 try {
