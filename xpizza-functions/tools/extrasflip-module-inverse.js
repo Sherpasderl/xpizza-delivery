@@ -9,6 +9,21 @@ const HUNKS = Object.freeze([
   "file": "catalog/platform-structure.js",
   "now": "const EXTRAS_CATALOG = true; const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): choiceEdit OFF at ship; flipped in its own commit after the portal's choice editor ships\n",
   "was": "const EXTRAS_CATALOG = false; const CHOICE_EDIT = false;   // S3 (PLAN-structure-S3-r3): choiceEdit OFF at ship; flipped in its own commit after the portal's choice editor ships\n"
+ },
+ {
+  "file": "catalog/platform-structure.js",
+  "now": "// LEGACY-FORM reward pickers (Codex #119 P2): while the legacy order forms remain, a frozen form's reward picker offers EVERY extra of a\n// group that holds a reward-eligible extra (la-musa-orders buildRedeemCatalog), and no new extra is ever server-eligible — so a NEW extra\n// in such a group is refused (reward_group_add_blocked, add-product extrasCatalogClaims). RETIRE with the legacy forms (owner 11-01), beside\n// the S2b renames switch (extra-identity MINT_OPAQUE_EXTRAS): set false, then delete the guard.\nconst LEGACY_FORM_REWARD_PICKERS = true;\nconst legacyFormRewardPickers = () => LEGACY_FORM_REWARD_PICKERS === true;\nmodule.exports = { structureCapabilities, legacyFormRewardPickers };\n",
+  "was": "module.exports = { structureCapabilities };\n"
+ },
+ {
+  "file": "catalog/choice-compare.js",
+  "now": "// Codex #119 P2 — the LEGACY-FORM reward-group guard. While the legacy order forms remain, a group holding an extra listed in the brand's\n// structure.redeem_eligible_extras feeds a frozen form's reward picker (la-musa-orders buildRedeemCatalog offers every extra of its group),\n// and a new extra is never server-eligible: under the Extras switch, a NEW extra in such a group is refused (reward_group_add_blocked).\n// Data-driven (the brand's own eligibility, never a restaurant id); removing / repricing its extras stays allowed. RETIRES with the forms\n// (platform-structure LEGACY_FORM_REWARD_PICKERS, beside the S2b renames switch).\nfunction rewardGroupGuard({ draftBuilt, activeBuilt, extrasCatalog }) {\n  const PS = require('./platform-structure');\n  const legacy = typeof PS.legacyFormRewardPickers === 'function' ? PS.legacyFormRewardPickers() : true;   // fail-closed: the guard holds unless explicitly retired\n  if (!extrasCatalog || !legacy || !draftBuilt || !activeBuilt) return;\n  const activeExtras = Array.isArray(activeBuilt.extras) ? activeBuilt.extras : [];\n  const catOf = new Map(activeExtras.map((e) => [e.key, e && e.display && e.display.cat]));\n  const eligible = activeBuilt.structure && Array.isArray(activeBuilt.structure.redeem_eligible_extras) ? activeBuilt.structure.redeem_eligible_extras : [];\n  const rewardGroups = new Set(eligible.map((k) => catOf.get(k)).filter(Boolean));\n  for (const e of Array.isArray(draftBuilt.extras) ? draftBuilt.extras : []) {\n    const g = e && e.display && e.display.cat;\n    if (e && !catOf.has(e.key) && rewardGroups.has(g)) refuse('reward_group_add_blocked', `the group ${JSON.stringify(g)} feeds a reward picker: no new option can join it yet`, e.key, 'extras');\n  }\n}\n\n",
+  "was": ""
+ },
+ {
+  "file": "catalog/choice-compare.js",
+  "now": "  rewardGroupGuard(args);   // Codex #119 P2: the legacy-form reward-group guard, at every judgment site (save, publish, request)\n",
+  "was": ""
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

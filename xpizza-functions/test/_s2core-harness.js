@@ -11,10 +11,10 @@
 const assert = require('assert');
 const path = require('path');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'p'.repeat(32);
-const SW = { extrasCatalog: true, extrasAuthoring: false, textEdit: true };
+const SW = { extrasCatalog: true, extrasAuthoring: false, textEdit: true, legacyPickers: true };
 const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = require(rel); require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsOf(real) }; };
 stub('../catalog/item-text-edit', (r) => ({ ...r, textEditCapabilities: () => ({ enabled: SW.textEdit }) }));
-stub('../catalog/platform-structure', (r) => ({ ...r, structureCapabilities: () => ({ ...r.structureCapabilities(), extrasCatalog: SW.extrasCatalog }) }));
+stub('../catalog/platform-structure', (r) => ({ ...r, structureCapabilities: () => ({ ...r.structureCapabilities(), extrasCatalog: SW.extrasCatalog }), legacyFormRewardPickers: () => SW.legacyPickers }));
 stub('../catalog/platform-extras', (r) => ({ ...r, extrasCapabilities: () => ({ ...r.extrasCapabilities(), authoring: SW.extrasAuthoring }) }));
 
 const { createFakeDb } = require('../merchant/_fake-db');
