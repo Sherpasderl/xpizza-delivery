@@ -83,6 +83,16 @@ const proj = async (id) => { const v = await read(`ledger/orders/${id}`); return
 
 (async () => {
   await wipe();
+  // the repo's RTDB rules (their .indexOn included) loaded into the namespace the Admin SDK uses — the emulator applies indexes per
+  // namespace, so LR-INDEXED tests the DECLARED indexes, not an empty rule set
+  {
+    const rules = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
+    const u = new URL(rtdb.app.options.databaseURL); const ns = u.searchParams.get('ns') || u.hostname.split('.')[0];
+    const host = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+    assert.match(String(host || ''), /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/, '🔴 refusing: not the RTDB emulator');
+    const put = await fetch(`http://${host}/.settings/rules.json?ns=${encodeURIComponent(ns)}`, { method: 'PUT', headers: { Authorization: 'Bearer owner' }, body: rules });
+    assert.strictEqual(put.status, 200, `premise: the rules load into namespace ${ns} (${put.status} ${await put.text()})`);
+  }
   const NOW = Date.now();
   await fs.collection('restaurants').doc(RID).set({ name: RID, pricing_key_mode: 'name', active: true, schema_version: 2 });
   const seed = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'lr-seed' });

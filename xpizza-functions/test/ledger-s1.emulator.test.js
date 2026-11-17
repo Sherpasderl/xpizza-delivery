@@ -105,7 +105,7 @@ const stored = (v) => { if (v === null || typeof v !== 'object') return v; const
 
   {   // S1-MISMATCH
     await clean(); const b = body();
-    const r = await post(app.createOrder, b, APP_HDR);
+    const r = await post(app.createOrder, b, { ...APP_HDR, 'x-firebase-id-token': 'ls1member' });   // a MEMBER: the app header + no member = the guest gate
     assert.strictEqual(r.status, 200, r.text.slice(0, 200));
     const a = await read(`ledger_alloc/${b.order_id}`);
     assert.deepStrictEqual([a.mode, a.mismatch], ['direct', true], '🔴 S1-MISMATCH: direct pricing with the app deployment header');

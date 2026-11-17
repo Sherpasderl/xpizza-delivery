@@ -117,23 +117,28 @@ async function wipe() {
 }
 // random ids renamed in first-appearance order (type-preserving otherwise)
 // LEDGER S1 (cb008ac98): the TIP's DECLARED snapshot writes — the ledger_alloc/<oid> key of the cash create update and the `ledger` field
-// of the hosted claim transaction — each VERIFIED equal to the real writer's (test/_ledger-declared: alloc-snapshot of the STORED order,
-// the posted body, the sent headers) and then removed from that ONE write; every other byte stays compared. → the number removed
+// of the hosted claim transaction. EACH removed write's OWN payload (Codex #120 #2) is checked against the real writer (test/_ledger-
+// declared: alloc-snapshot of the STORED order, the posted body, the sent headers) and BOUND to this request's order id; the cash
+// payload carries the server-timestamp sentinel as created_at (resolved by the same write), the hosted one the committed order time
+// (bounded). Only that key / that field is removed from that ONE write; every other byte stays compared. → the number removed
 async function declareLedger(writes, body, hdr) {
-  let n = 0;
+  let n = 0; const oid = body && body.order_id;
+  const order = oid ? (await rtdb.ref(`orders/${oid}`).get()).val() : null;
   for (const e of writes) {
     if (e.op === 'update' && e.path === '' && e.value && typeof e.value === 'object') {
       for (const k of Object.keys(e.value)) {
-        if (!/^ledger_alloc\/[^/]+$/.test(k)) continue;
-        const order = (await rtdb.ref(`orders/${k.slice('ledger_alloc/'.length)}`).get()).val();
-        LD.declaredLeaves({ root: k, written: (await rtdb.ref(k).get()).val(), expected: LD.expectedSnapshot(order, { body, headers: hdr }), label: `parity ${k}` });
+        if (!/^ledger_alloc\//.test(k)) continue;
+        assert.strictEqual(k, `ledger_alloc/${oid}`, `🔴 parity: the snapshot key is bound to THIS request's order (${k} vs ${oid})`);
+        const payload = e.value[k]; const expected = LD.expectedSnapshot(order, { body, headers: hdr });
+        assert.deepStrictEqual(payload && payload.created_at, { '.sv': 'timestamp' }, `🔴 parity ${k}: the written created_at is the server-timestamp sentinel`);
+        const { created_at: _p, ...pRest } = payload; const { created_at: _e, ...eRest } = expected;
+        assert.deepStrictEqual(LD.stored(pRest), eRest, `🔴 parity ${k}: the WRITTEN payload is exactly the real writer's (alloc-snapshot of the stored order)`);
         delete e.value[k]; n += 1;
       }
     }
     if (e.op === 'transaction' && /^payment_attempts\/[^/]+$/.test(e.path) && e.value && typeof e.value === 'object' && e.value.ledger) {
-      const att = (await rtdb.ref(e.path).get()).val() || {};
-      const order = (await rtdb.ref(`orders/${att.order_id}`).get()).val();
-      LD.declaredLeaves({ root: `${e.path}/ledger`, written: att.ledger, expected: LD.expectedSnapshot(order, { body, headers: hdr, hosted: true }), label: `parity ${e.path}/ledger` });
+      assert.strictEqual(e.value.order_id, oid, `🔴 parity: the claimed attempt ${e.path} is bound to THIS request's order`);
+      LD.declaredLeaves({ root: `${e.path}/ledger`, written: e.value.ledger, expected: LD.expectedSnapshot(order, { body, headers: hdr, hosted: true }), label: `parity ${e.path}/ledger (the written payload)`, createdAtSkewMs: LD.HOSTED_SKEW_MS });
       delete e.value.ledger; n += 1;
     }
   }

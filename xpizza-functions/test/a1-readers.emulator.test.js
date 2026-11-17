@@ -522,7 +522,7 @@ async function failingOrderWrite(oid, fn) {
           const out = [];
           for (const [aid, a] of Object.entries(after.payment_attempts || {})) {
             if (!a || a.order_id !== oid || !a.ledger) continue;
-            for (const k of LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(order, { body, hosted: true }), label: `${rid}/online step ${step}` })) {
+            for (const k of LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(order, { body, hosted: true }), label: `${rid}/online step ${step}`, createdAtSkewMs: LD.HOSTED_SKEW_MS })) {
               const nk = k.replace(`payment_attempts/${aid}/`, 'payment_attempts/<tok>/'); if (nk in o.changed) out.push(nk);
             }
           }

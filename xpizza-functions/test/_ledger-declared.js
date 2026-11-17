@@ -29,9 +29,10 @@ function expectedSnapshot(order, { body = {}, headers = null, clientHdr = null, 
 }
 
 // a flat Map(path → value) (a DB «leaves» tree) → the subtree at `root` as an object (null when absent)
-function subtreeOf(flat, root) {
+// decode: for a leaves map that stores STRINGIFIED values (JSON.stringify per leaf), pass JSON.parse
+function subtreeOf(flat, root, decode = (v) => v) {
   let out = null;
-  for (const [k, v] of flat) {
+  for (const [k, v0] of flat) { const v = decode(v0);
     if (!k.startsWith(`${root}/`)) continue;
     out = out || {}; let n = out; const parts = k.slice(root.length + 1).split('/');
     for (let i = 0; i < parts.length - 1; i += 1) n = n[parts[i]] = n[parts[i]] || {};
@@ -42,10 +43,21 @@ function subtreeOf(flat, root) {
 
 // The written subtree at `root` (read from the stored DB state) must EQUAL `expected` exactly; returns the declared leaf keys
 // `${root}/<leaf>` (the only keys a caller may strip). `label` names the cell in the failure message (the 🔴 marker).
-function declaredLeaves({ root, written, expected, label }) {
+// createdAtSkewMs (the HOSTED snapshot only): its created_at is the order time the claim COMMITTED against (withCommittedCreatedAt), which
+// may differ from the stored order's by the server-time estimate (Codex #110 r2 accepted residual) — so it is checked as a safe integer
+// within that bound; EVERY other leaf stays exact
+function declaredLeaves({ root, written, expected, label, createdAtSkewMs = null }) {
   assert.ok(expected && typeof expected === 'object', `🔴 ${label}: premise — the real writer derives a snapshot for ${root}`);
-  assert.deepStrictEqual(stored(written), expected, `🔴 ${label}: the S1 snapshot at ${root} is EXACTLY the real writer's (alloc-snapshot of the stored order)`);
+  const w = stored(written);
+  if (createdAtSkewMs !== null) {
+    assert.ok(w && Number.isSafeInteger(w.created_at) && Math.abs(w.created_at - expected.created_at) <= createdAtSkewMs, `🔴 ${label}: the hosted snapshot's created_at is the committed order time (±${createdAtSkewMs} ms)`);
+    const { created_at: _a, ...wr } = w; const { created_at: _b, ...ex } = expected;
+    assert.deepStrictEqual(wr, ex, `🔴 ${label}: the S1 snapshot at ${root} is EXACTLY the real writer's (alloc-snapshot of the stored order; created_at bounded above)`);
+  } else {
+    assert.deepStrictEqual(w, expected, `🔴 ${label}: the S1 snapshot at ${root} is EXACTLY the real writer's (alloc-snapshot of the stored order)`);
+  }
   return [...leaves(expected).keys()].map((k) => `${root}/${k}`);
 }
 
-module.exports = { expectedSnapshot, declaredLeaves, subtreeOf, clientHdrOf, leaves, stored };
+const HOSTED_SKEW_MS = 60000;
+module.exports = { HOSTED_SKEW_MS, expectedSnapshot, declaredLeaves, subtreeOf, clientHdrOf, leaves, stored };
