@@ -172,6 +172,7 @@ const D = {
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
+  [F('_honest-rtdb-model.test.js')]: 'unit: the Admin SDK only VALIDATES query bounds (synchronous, before any network) for the HRM-BOUNDS differential — an app on a dead-port database URL, never connected, deleted after',
   [F('tools/set-commission-rate.test.js')]: 'unit: drives the set-commission-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/set-driver-rate.test.js')]: 'unit: drives the set-driver-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
