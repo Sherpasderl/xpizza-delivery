@@ -405,10 +405,12 @@ async function traced(oid, rid, request) {
   // the sent headers); only those exact normalized leaves may join a golden's expected change set
   {
     const decl = []; const body0 = LAST_SENT || {}; const hdrs = LAST_HDR || {};
-    const ra = LD.subtreeOf(after, `ledger_alloc/${oid}`, JSON.parse);   // this suite's leaves are JSON-stringified (Codex #120 #1)
+    // only a snapshot THIS request wrote (a leaf differs before → after): an earlier case's snapshot on a reused id is not this request's
+    const touched = (root) => [...new Set([...before.keys(), ...after.keys()])].some((k) => k.startsWith(`${root}/`) && before.get(k) !== after.get(k));
+    const ra = touched(`ledger_alloc/${oid}`) ? LD.subtreeOf(after, `ledger_alloc/${oid}`, JSON.parse) : null;   // this suite's leaves are JSON-stringified (Codex #120 #1)
     if (ra) decl.push(...LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: ra, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs }), label: `ledger_alloc ${oid}` }));
     for (const [aid, a] of Object.entries(LD.subtreeOf(after, 'payment_attempts', JSON.parse) || {})) {
-      if (a && a.order_id === oid && a.ledger) decl.push(...LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs, hosted: true }), label: `attempt ledger ${oid}`, createdAtSkewMs: LD.HOSTED_SKEW_MS }));
+      if (a && a.order_id === oid && a.ledger && touched(`payment_attempts/${aid}/ledger`)) decl.push(...LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs, hosted: true }), label: `attempt ledger ${oid}`, createdAtSkewMs: LD.HOSTED_SKEW_MS }));
     }
     LEDGER_OF.set(out, decl.map(norm).filter((q) => changed.includes(q)));
   }
