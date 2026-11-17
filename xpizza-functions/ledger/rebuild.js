@@ -131,4 +131,4 @@ async function runNightly({ db, clock }, { slot }) {
   return { outcome: finished ? 'finished' : outcome === 'time_cap' ? 'time_cap' : 'error', counts };
 }
 
-module.exports = { runNightly, rebuildOrder, readSources, touchedSet, snapshotOf, hnDate, WINDOW_MS, CAP_MS, ALERT_TYPE, ORDER_TIMES, ATTEMPT_TIMES };
+module.exports = { runNightly, rebuildOrder, readSources, touchedSet, snapshotOf, hnDate, errCode, WINDOW_MS, CAP_MS, ALERT_TYPE, ORDER_TIMES, ATTEMPT_TIMES };

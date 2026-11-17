@@ -44,7 +44,7 @@ function seed() {
       aU: paid('U_OLD_OPEN', OLD, { status: 'capture_unverified' }),
       aX: paid('X_OLD_REVIEW', OLD),
     },
-    ledger: { open: { U_OLD_OPEN: true } },
+    ledger: { open: { U_OLD_OPEN: true, C_OLD_LATE: true } },   // C_OLD_LATE is final now ⇒ it leaves the open set
     ledger_settings: RATES,
   };
 }
@@ -63,10 +63,34 @@ function counting(init, extra = {}) {
 const clockAt = (t) => () => t;
 
 (async () => {
+  await cell('RB-WINDOWS: EACH window alone pulls in an old order — orders by created_at / delivered_at / cancelled_at / refunded_at / fulfilled_offline_at, attempts by paid_at / refunded_at / voided_at / failed_at / uncertain_at / flagged_at — and a time just outside 21 days does not', async () => {
+    for (const c of RB.ORDER_TIMES) {
+      const at = c === 'created_at' ? NEW : OLD;
+      const db = makeHonestDb({ orders: { W: { order_id: 'W', created_at: at, [c]: NEW }, OUT: { order_id: 'OUT', created_at: OLD, [c]: NOW - RB.WINDOW_MS - 1 } } });
+      assert.deepStrictEqual([...(await RB.touchedSet(db, NOW))], ['W'], `🔴 RB-WINDOWS: orders by ${c}`);
+    }
+    for (const c of RB.ATTEMPT_TIMES) {
+      const db = makeHonestDb({ orders: { W: { order_id: 'W', created_at: OLD } }, payment_attempts: { a: { order_id: 'W', [c]: NEW }, b: { order_id: 'OUT', [c]: NOW - RB.WINDOW_MS - 1 } } });
+      assert.deepStrictEqual([...(await RB.touchedSet(db, NOW))], ['W'], `🔴 RB-WINDOWS: attempts by ${c}`);
+    }
+    assert.deepStrictEqual([RB.ORDER_TIMES.length, RB.ATTEMPT_TIMES.length, RB.WINDOW_MS], [5, 6, 21 * DAY], '🔴 RB-WINDOWS: the plan\'s 5 + 6 windows over 21 days');
+  });
+
   await cell('RB-TOUCHED: the touched set = created / delivered / cancelled / refunded / offline in 21 d + attempts paid / refunded / voided / failed / uncertain / flagged in 21 d + the open set + extra_payment_review; an old final order is skipped; a non-numeric time never enters by the window', async () => {
     const { db } = counting(seed());
     const ids = await RB.touchedSet(db, NOW);
     assert.deepStrictEqual([...ids].sort(), ['C_NEW', 'C_OLD_LATE', 'H_NEW', 'H_OLD_REFUND', 'U_OLD_OPEN', 'X_OLD_REVIEW'], `🔴 RB-TOUCHED: ${[...ids].sort()}`);
+  });
+
+  await cell('RB-SNAPSHOT: the money snapshot is ledger_alloc (cash), else the SDK record\'s ledger, else the ACTIVE attempt\'s, else the one distinct attempt snapshot; two different attempt snapshots and no active one ⇒ none (quarantined, never guessed)', async () => {
+    const a1 = allocOf(NEW, CARD); const a2 = allocOf(NEW, { ...CARD, total_cents: 1 });
+    const base = { orders: { O: order('O', NEW, { payment_method: 'online' }) } };
+    const pick = async (x) => (await RB.readSources(makeHonestDb({ ...base, ...x }), 'O')).alloc;
+    assert.deepStrictEqual(await pick({ payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a1 } } }), a1, 'one distinct snapshot');
+    assert.deepStrictEqual(await pick({ orders: { O: order('O', NEW, { active_attempt_id: 'q' }) }, payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a2 } } }), a2, '🔴 RB-SNAPSHOT: the active attempt');
+    assert.strictEqual(await pick({ payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a2 } } }), null, '🔴 RB-SNAPSHOT: ambiguous ⇒ none');
+    assert.deepStrictEqual(await pick({ orders: { O: order('O', NEW, { payment_flow: 'sdk_auth_v1' }) }, payment_sdk: { O: { phase: 'open', ledger: a2 } }, payment_attempts: { p: { order_id: 'O', ledger: a1 } } }), a2, '🔴 RB-SNAPSHOT: the SDK record');
+    assert.deepStrictEqual(await pick({ ledger_alloc: { O: a1 }, payment_attempts: { p: { order_id: 'O', ledger: a2 } } }), a1, '🔴 RB-SNAPSHOT: ledger_alloc first');
   });
 
   await cell('RB-ORACLE: one run writes, for every touched order, EXACTLY projectOrder of its sources (S3 is the oracle) + the open set (open / unresolved in, final / quarantined out) + a finished run record with counts only', async () => {
@@ -111,17 +135,6 @@ const clockAt = (t) => () => t;
     for (const k of seen) { const [p, c] = k.split('#'); assert.ok(((rules[p] && rules[p]['.indexOn']) || []).includes(c), `🔴 RB-INDEX: ${p} by ${c} has no .indexOn`); }
   });
 
-  await cell('RB-SNAPSHOT: the money snapshot is ledger_alloc (cash), else the SDK record\'s ledger, else the ACTIVE attempt\'s, else the one distinct attempt snapshot; two different attempt snapshots and no active one ⇒ none (quarantined, never guessed)', async () => {
-    const a1 = allocOf(NEW, CARD); const a2 = allocOf(NEW, { ...CARD, total_cents: 1 });
-    const base = { orders: { O: order('O', NEW, { payment_method: 'online' }) } };
-    const pick = async (x) => (await RB.readSources(makeHonestDb({ ...base, ...x }), 'O')).alloc;
-    assert.deepStrictEqual(await pick({ payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a1 } } }), a1, 'one distinct snapshot');
-    assert.deepStrictEqual(await pick({ orders: { O: order('O', NEW, { active_attempt_id: 'q' }) }, payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a2 } } }), a2, '🔴 RB-SNAPSHOT: the active attempt');
-    assert.strictEqual(await pick({ payment_attempts: { p: { order_id: 'O', ledger: a1 }, q: { order_id: 'O', ledger: a2 } } }), null, '🔴 RB-SNAPSHOT: ambiguous ⇒ none');
-    assert.deepStrictEqual(await pick({ orders: { O: order('O', NEW, { payment_flow: 'sdk_auth_v1' }) }, payment_sdk: { O: { phase: 'open', ledger: a2 } }, payment_attempts: { p: { order_id: 'O', ledger: a1 } } }), a2, '🔴 RB-SNAPSHOT: the SDK record');
-    assert.deepStrictEqual(await pick({ ledger_alloc: { O: a1 }, payment_attempts: { p: { order_id: 'O', ledger: a2 } } }), a1, '🔴 RB-SNAPSHOT: ledger_alloc first');
-  });
-
   await cell('RB-CAP: past 400 s the run stops (stopped: time_cap, not finished); the 03:30 safety slot RESTARTS FROM SCRATCH (attempt 2) and finishes; after a finished run the safety slot is a no-op that reads nothing', async () => {
     const { db } = counting(seed());
     let t = NOW; const slow = () => { const v = t; t += 150000; return v; };   // each clock read = 150 s later
@@ -153,12 +166,18 @@ const clockAt = (t) => () => t;
     assert.ok(!JSON.stringify(al).includes('9999') && !JSON.stringify(al).includes('secret'), 'counts / codes only');
     fail = false;
     db.setAt('ledger/run/2026-11-20', null);
+    db.setAt('ledger/run/2026-11-19', { finished_at: NOW - DAY, attempt: 1, counts: { touched: 1, written: 1, unchanged: 0, final: 1, open: 0, quarantined: 0, unresolved: 0 } });   // ⇒ this run alarms unresolved_up too
     await RB.runNightly({ db, clock: clockAt(NOW + 1800000) }, { slot: 'safety' });
     assert.deepStrictEqual(Object.keys(db.getAt('dispatcher_alerts')), ['ledger_run_2026-11-20'], '🔴 RB-ALARM: never a second alert the same day');
+    assert.deepStrictEqual(db.getAt('dispatcher_alerts/ledger_run_2026-11-20/reasons'), ['unfinished'], '🔴 RB-ALARM: the first alert of the day is never overwritten (create-once)');
+    assert.strictEqual(RB.errCode(Object.assign(new Error('x'), { code: 'call +504 9999' })), 'error', '🔴 RB-ALARM: an error code that is not a bare code is stored as «error»');
     const { db: d2 } = counting({ ...seed(), ledger: { open: { U_OLD_OPEN: true }, run: { '2026-11-19': { finished_at: NOW - DAY, attempt: 1, counts: { touched: 3, written: 3, unchanged: 0, final: 3, open: 0, quarantined: 0, unresolved: 0 } } } } });
     await RB.runNightly({ db: d2, clock: clockAt(NOW) }, { slot: 'run' });
     const up = d2.getAt('dispatcher_alerts/ledger_run_2026-11-20');
     assert.ok(up && up.reasons.includes('unresolved_up') && up.counts.unresolved === 1, `🔴 RB-ALARM: unresolved went up (${JSON.stringify(up)})`);
+    const { db: d3 } = counting({ ...seed(), ledger: { open: { U_OLD_OPEN: true }, run: { '2026-11-19': { finished_at: NOW - DAY, attempt: 1, counts: { touched: 3, written: 3, unchanged: 0, final: 2, open: 0, quarantined: 0, unresolved: 1 } } } } });
+    await RB.runNightly({ db: d3, clock: clockAt(NOW) }, { slot: 'run' });
+    assert.strictEqual(d3.getAt('dispatcher_alerts'), null, '🔴 RB-ALARM: unresolved unchanged vs yesterday ⇒ no alert');
   });
   await cell('RB-SLOT: the scheduled function picks the slot by the Honduras minute — 03:00 / 03:01 ⇒ run, 03:30 ⇒ safety', async () => {
     const { slotOf } = require('./functions');
