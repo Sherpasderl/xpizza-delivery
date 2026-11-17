@@ -18,6 +18,7 @@ const files = execFileSync('git', ['ls-files', '*.js'], { cwd: __dirname, encodi
 const LEDGER_RE = /['"`]ledger(?:_alloc|_settings|\/)|\bledger: (?:ledgerSnap|require\('[./]*ledger\/alloc-snapshot'\))|allocPath\(/g;
 const ALLOW = {   // file → reviewed sites (S1)
   'ledger/alloc-snapshot.js': 1,          // allocPath's own definition
+  'ledger/commission-rate.js': 1,         // S4: the commission setting's NODE constant (read by the nightly job; written only by the owner CLI below)
   'index.js': 3,                          // cash held + cash ASAP (allocPath) + the hosted acquire argument
   'pixelpay-hosted-charge.js': 1,         // `ledger:` inside the exclusive payment_attempts claim
   'payments/sdk/coordinator.js': 1,       // `ledger:` inside the payment_sdk record create
@@ -64,4 +65,19 @@ const R = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'xpizza-referenc
 assert.ok(!('.read' in R) && !('.write' in R) && !Object.keys(R).some((k) => k.startsWith('$')), 'premise: the root grants nothing, no root wildcard');
 for (const node of ['ledger_alloc', 'ledger', 'ledger_settings']) assert.ok(!(node in R), `🔴 ${node} must stay rule-less (server-only by default deny)`);
 ok('ledger_alloc / ledger / ledger_settings: no rule, no root grant, no root wildcard ⇒ every client denied');
+// LEDGER S4: ledger_settings is written ONLY by the owner's append-only CLI (tools/ is outside the scan above, so it is pinned here)
+{
+  const tools = execFileSync('git', ['ls-files', 'tools/*.js'], { cwd: __dirname, encoding: 'utf8' }).split('\n').filter((f) => f && !/\.test\.js$/.test(f));
+  const users = tools.filter((f) => /ledger_settings|ledger\/commission-rate'\)/.test(fs.readFileSync(path.join(__dirname, f), 'utf8')));
+  assert.deepStrictEqual(users.sort(), ['tools/set-commission-rate-core.js', 'tools/set-commission-rate.js'], '🔴 LEDGER-WRITES: only the owner commission CLI touches ledger_settings');
+  ok('ledger_settings: only tools/set-commission-rate(-core).js (append-only, never retro)');
+}
+// LEDGER S4: the nightly rebuild's window indexes (PLAN-5f-ledger-shadow-s1-r3 §3) — rules-only, on server-only / staff-read nodes
+{
+  const IX = (node) => R[node]['.indexOn'] || [];
+  for (const f of ['created_at', 'delivered_at', 'cancelled_at', 'refunded_at', 'fulfilled_offline_at', 'extra_payment_review']) assert.ok(IX('orders').includes(f), `🔴 LEDGER-WRITES: orders .indexOn ${f}`);
+  for (const f of ['paid_at', 'uncertain_at', 'order_id', 'refunded_at', 'voided_at', 'failed_at', 'flagged_at']) assert.ok(IX('payment_attempts').includes(f), `🔴 LEDGER-WRITES: payment_attempts .indexOn ${f}`);
+  assert.strictEqual(R.payment_attempts['.read'], false, 'premise: payment_attempts stays server-only');
+  ok('the nightly window indexes are declared (orders 6, payment_attempts 7); payment_attempts stays server-only');
+}
 console.log(`ledger-writes.guard: OK (${n})`);

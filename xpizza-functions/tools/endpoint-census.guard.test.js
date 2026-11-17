@@ -90,6 +90,8 @@ const D = {
     'identity-factura-flag', 'driver-return-backfill',
     // PAY RATE — the owner's append-only driver pay-rate CLI: parseArgs, then requireProject({ requireFlag: true }) before any client
     'set-driver-rate',
+    // LEDGER S4 — the owner's append-only commission-rate CLI (never retro): parseArgs, then requireProject({ requireFlag: true }) before any client
+    'set-commission-rate',
     // Calificaciones v2 r6.1 §1 — the owner's ratings-disclosure CLI (dry run unless --apply): requireProject({ requireFlag: true }) before any client
     'ratings-config',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
@@ -170,6 +172,7 @@ const D = {
   [F('tools/access-census.test.js')]: 'unit: drives the access-census CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/kitchen-roster.test.js')]: 'unit: drives the kitchen-roster CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/driver-return-backfill.test.js')]: 'unit: drives the return-backfill CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
+  [F('tools/set-commission-rate.test.js')]: 'unit: drives the set-commission-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/set-driver-rate.test.js')]: 'unit: drives the set-driver-rate CLI into require-project / argument refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-factura-flag.test.js')]: 'unit: drives the factura-flag CLI into require-project refusals — dead-port RTDB host, void credentials (no data I/O); the core runs over an in-memory fake',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
