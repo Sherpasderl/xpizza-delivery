@@ -2,7 +2,8 @@
 // portal-A r1). installDom is copied verbatim from xpizza-portal/app-loads.test.mjs (that file runs its tests on import, so
 // it cannot be imported); loadPortalApp rewrites ONLY app.js's CDN-bound auth import to a stub whose token() returns the
 // caller's token — everything else is the real portal code.
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -81,13 +82,21 @@ export function installDom() {
 }
 
 export async function loadPortalApp(token) {
-  const stub = join(PORTAL, '__auth-stub.emu.mjs');
+  /* The auth stub lives OUTSIDE xpizza-portal/ (a temp dir, imported by URL), so a run killed mid-load can never leave
+     it in the portal folder (advisor asm11/asm12; the same pattern as app-loads.test.mjs). Every write is inside the try,
+     so the finally always cleans up. The app copy stays beside the originals: its other relative imports must resolve. */
+  const stubDir = mkdtempSync(join(tmpdir(), 'portal-auth-stub-'));
+  const stub = join(stubDir, 'auth-stub.mjs');
   const tmp = join(PORTAL, `__app-under-emu.${Date.now()}.mjs`);
-  writeFileSync(stub, `export const token = async () => ${JSON.stringify(token)};\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n`);
-  const src = readFileSync(join(PORTAL, 'app.js'), 'utf8').replace(/from '\.\/auth\.js'/g, "from './__auth-stub.emu.mjs'");
-  writeFileSync(tmp, src);
-  try { return await import(`${pathToFileURL(tmp).href}?t=${Date.now()}`); }
-  finally { try { unlinkSync(tmp); } catch (_) {} try { unlinkSync(stub); } catch (_) {} }
+  try {
+    writeFileSync(stub, `export const token = async () => ${JSON.stringify(token)};\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n`);
+    const src = readFileSync(join(PORTAL, 'app.js'), 'utf8').replace(/from '\.\/auth\.js'/g, `from '${pathToFileURL(stub).href}'`);
+    writeFileSync(tmp, src);
+    return await import(`${pathToFileURL(tmp).href}?t=${Date.now()}`);
+  } finally {
+    try { unlinkSync(tmp); } catch (_) {}
+    try { rmSync(stubDir, { recursive: true, force: true }); } catch (_) {}
+  }
 }
 export const fire = async (n, ev = 'click') => { for (const f of (n.listeners[ev] || [])) await f({ preventDefault() {}, target: n }); };
 export async function setVal(n, v, ev = 'input') { n.value = v; await fire(n, ev); }
