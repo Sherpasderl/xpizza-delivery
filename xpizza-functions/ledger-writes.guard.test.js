@@ -18,6 +18,7 @@ const files = execFileSync('git', ['ls-files', '*.js'], { cwd: __dirname, encodi
 const LEDGER_RE = /['"`]ledger(?:_alloc|_settings|\/)|\bledger: (?:ledgerSnap|require\('[./]*ledger\/alloc-snapshot'\))|allocPath\(/g;
 const ALLOW = {   // file → reviewed sites (S1)
   'ledger/alloc-snapshot.js': 1,          // allocPath's own definition
+  'ledger/rebuild.js': 7,                 // S5: the nightly rebuild — reads ledger_alloc / ledger/open / ledger/orders hash / ledger/run, writes below
   'ledger/commission-rate.js': 1,         // S4: the commission setting's NODE constant (read by the nightly job; written only by the owner CLI below)
   'index.js': 3,                          // cash held + cash ASAP (allocPath) + the hosted acquire argument
   'pixelpay-hosted-charge.js': 1,         // `ledger:` inside the exclusive payment_attempts claim
@@ -79,5 +80,17 @@ ok('ledger_alloc / ledger / ledger_settings: no rule, no root grant, no root wil
   for (const f of ['paid_at', 'uncertain_at', 'order_id', 'refunded_at', 'voided_at', 'failed_at', 'flagged_at']) assert.ok(IX('payment_attempts').includes(f), `🔴 LEDGER-WRITES: payment_attempts .indexOn ${f}`);
   assert.strictEqual(R.payment_attempts['.read'], false, 'premise: payment_attempts stays server-only');
   ok('the nightly window indexes are declared (orders 6, payment_attempts 7); payment_attempts stays server-only');
+}
+// LEDGER S5: the nightly rebuild writes ONLY through ONE multi-path update (ledger/orders/{id} replaced whole + ledger/open/{id}), the
+// run record (two sets on ONE ref) and the create-once alarm transaction — no remove, no push, no other root
+{
+  const s = fs.readFileSync(path.join(__dirname, 'ledger/rebuild.js'), 'utf8');
+  const count = (re) => (s.match(re) || []).length;
+  assert.deepStrictEqual([count(/\bdb\.ref\(\)\.update\(/g), count(/\.update\(\{/g), count(/\brunRef\.set\(/g), count(/\.set\(/g), count(/\.transaction\(/g), count(/\.remove\(/g), count(/\.ref\([^)]*\)\.push\(/g)],
+    [1, 1, 2, 2, 1, 0, 0], '🔴 LEDGER-WRITES: the rebuild gained an unreviewed write');
+  const upd = s.slice(s.indexOf('db.ref().update({'), s.indexOf('});', s.indexOf('db.ref().update({')));
+  assert.deepStrictEqual((upd.match(/\[`([a-z_]+\/[a-z_]+)\//g) || []).map((x) => x.slice(2, -1)), ['ledger/orders', 'ledger/open'], '🔴 LEDGER-WRITES: the per-order update writes only ledger/orders + ledger/open');
+  assert.ok(/const runRef = db\.ref\(`ledger\/run\/\$\{date\}`\)/.test(s) && /db\.ref\(`dispatcher_alerts\/ledger_run_\$\{date\}`\)\.transaction\(\(cur\) => \(cur === null \? payload : undefined\)\)/.test(s), '🔴 LEDGER-WRITES: the run record ref + the create-once alarm');
+  ok('the nightly rebuild: one per-order update (ledger/orders + ledger/open), the run record, one create-once alarm — nothing else');
 }
 console.log(`ledger-writes.guard: OK (${n})`);

@@ -4774,6 +4774,7 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
 });
 
 exports.driverDiagIngest = require('./driver-diag').driverDiagIngest; exports.closeDriverPayWeeks = require('./driver-ledger/functions').closeDriverPayWeeks; exports.getDriverPayWeek = require('./driver-ledger/functions').getDriverPayWeek; exports.markDriverWeekPaid = require('./driver-ledger/functions').markDriverWeekPaid;   // S8 driver payable ledger (driver-ledger/; tools/driver-ledger-inverse.js)
+exports.rebuildLedgerNightly = require('./ledger/functions').rebuildLedgerNightly;   // LEDGER S5: the shadow ledger's nightly rebuild (ledger/rebuild.js)
 
 // clearTrackerMirrorOnDone (Phase A) — when an order leaves 'out_for_delivery' (delivered/cancelled/etc.),
 // null its public tracking node's live-driver fields so no stale location lingers (privacy + hygiene). The
