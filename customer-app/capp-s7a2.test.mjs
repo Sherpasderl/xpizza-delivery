@@ -620,7 +620,7 @@ test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + th
   const S = bootShell({ auth: 'guest', runtime: GR }); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
-  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Efectivo al entregar o al recoger', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección']);
+  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Opción de pago en efectivo y tarjeta', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección'], '🔴 PICKUP-CARD-BENEFIT: the first benefit (owner 11-16, final wording)');
   assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
   // owner 2026-11-01: «Pedidos» IS in launch scope (ORDERS_SCREEN on) ⇒ the guest card keeps v6's «Pedidos · Los de este teléfono» row
   assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);

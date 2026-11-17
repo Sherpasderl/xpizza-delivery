@@ -39060,5 +39060,113 @@
   "kills_with": [
    "NOTIFS-ROW: the email + WhatsApp consent counts"
   ]
+ },
+ {
+  "id": "pickup-01",
+  "slice": "capp-pickup",
+  "label": "the choke point is gone (a pickup flow keeps cash)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';\n",
+  "to": "\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-1: a pickup flow is never cash"
+  ]
+ },
+ {
+  "id": "pickup-02",
+  "slice": "capp-pickup",
+  "label": "the choke point fixes only cash (a pickup with nothing chosen shows a selected card it will not send)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';\n",
+  "to": "      if (pickupFlow() && S.flow.pay === 'cash') S.flow.pay = 'online';\n",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^S2b pickup: the branch row",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-NONE: nothing chosen yet"
+  ]
+ },
+ {
+  "id": "pickup-03",
+  "slice": "capp-pickup",
+  "label": "a member at pickup gets the two-option / collapsed «Pago» again",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const pago = g ? pagoGuest : !del ? pagoPickup : `",
+  "to": "      const pago = g ? pagoGuest : `",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-1",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-1: cash ABSENT at pickup"
+  ]
+ },
+ {
+  "id": "pickup-04",
+  "slice": "capp-pickup",
+  "label": "the hosted decline at pickup offers «Pagar en efectivo»",
+  "file": "../customer-app/capp-ui.js",
+  "from": "cardOnlyGuest() || pickupFlow() ? ERR.payFailedGuest() : ERR.payFailed()",
+  "to": "cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-4",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-4: no cash exit at pickup"
+  ]
+ },
+ {
+  "id": "pickup-05",
+  "slice": "capp-pickup",
+  "label": "the in-app card chooser offers cash at pickup",
+  "file": "../customer-app/capp-ui.js",
+  "from": "cashAllowed: !cardOnlyGuest() && !pickupFlow() });",
+  "to": "cashAllowed: !cardOnlyGuest() });",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^PICKUP-CARD-5",
+   "../customer-app/capp-ui.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-5: no cash in the chooser at pickup"
+  ]
+ },
+ {
+  "id": "pickup-06",
+  "slice": "capp-pickup",
+  "label": "the guest benefit still promises cash at pickup",
+  "file": "../customer-app/capp-home.js",
+  "from": "<span>Opción de pago en efectivo y tarjeta</span>",
+  "to": "<span>Efectivo al entregar o al recoger</span>",
+  "command": [
+   "node",
+   "--test",
+   "--test-timeout=60000",
+   "--test-name-pattern=^G2 frame 5b",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "PICKUP-CARD-BENEFIT: the first benefit"
+  ]
  }
 ]

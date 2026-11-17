@@ -864,6 +864,8 @@
     // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
     // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
     const cardOnlyGuest = () => cfg.guestCardOnly === true && !member();
+    // owner 11-16 (MOCKUP-capp-pickup-card-only): app PICKUP is card only — for everyone, members included
+    const pickupFlow = () => !!S.flow && S.flow.mode === 'pickup';
     // PLAN-intl-phone r2.3 S-picker (MOCKUP-intl-phone-picker-APPROVED-2026-10-27, frames 4–6): the runtime flag cfg.intlPhone (the
     // shell sets it); absent ⇒ today's single «+504» input and the '+504 9999-9999' wire, byte for byte. Present ⇒ the country button +
     // sheet, the national length / local format per country, and E.164 on the wire for EVERY country (+504 included). FLIP
@@ -1264,10 +1266,15 @@
       <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button>
       <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
-      const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>
+      // the ONE card-only «Pago» row (guest frame 1; the member's pickup reuses it EXACTLY), its line below
+      const payOne = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
+      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>`;
+      const pagoGuest = `${payOne}
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
-      const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
+      // pickup (owner 11-16): the same single open row, its line saying why (a member: no sign-up link)
+      const pagoPickup = `${payOne}
+      <p class="paynote">Para recoger se paga con tarjeta.</p></section>`;
+      const pago = g ? pagoGuest : !del ? pagoPickup : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D\u00a0Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
       const sdkC = sdkOn() && !S.desk;   // S2-checkout (v7): the payment row in the bar replaces the «Pago» section (the installed app only)
@@ -1803,7 +1810,7 @@
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
         // «Usar otra tarjeta» needs the whole checkout back: after a return that could not restore it, the generic held state (U3)
-        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
+        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() || pickupFlow() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
@@ -2069,7 +2076,7 @@
     // Codex r1 P1: the saved cards belong to the identity that LISTED them (owner: «u:<uid>» | «guest»); gen drops a late answer
     const sdkOwner = (m) => (m && m.uid != null ? 'u:' + m.uid : 'guest');
     const SDK = { owner: null, gen: 0, cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
-    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
+    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() && !pickupFlow() });
     const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
     const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
     // the saved cards (members) and the card path's availability — read once per mount, when the checkout first shows
@@ -2290,6 +2297,9 @@
 
     function render() {
       if (dead) return;
+      // the ONE choke point (advisor 11-16): a pickup flow is card — never cash, never «nothing chosen» under a drawn selected row —
+      // the mode switch, a new flow, a restore, a reorder all render
+      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';
       // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
       if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip' || S.tipEntry)) {
         const onStep = S.screen === 'tip'; tipLeave();

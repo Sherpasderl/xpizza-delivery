@@ -447,7 +447,7 @@
     const known = vm.auth === 'guest';
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
-      <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
+      <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
     <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
