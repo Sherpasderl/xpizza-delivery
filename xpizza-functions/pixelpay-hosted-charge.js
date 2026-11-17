@@ -87,7 +87,7 @@ function freshIssueRefusal({ controlRefuseFresh = false, menuRefuseFresh = false
   return null;
 }
 
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false, reuseGuard = null) {
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null, textBinding = null, incomingTip = 0, payerRefuseFresh = false, reuseGuard = null, ledgerSnap = null) {
   const canon = once(canonicalFp);
   const a8 = once(textBinding && textBinding.a8Fp);
   const freshFp = (textBinding && textBinding.fresh === 'a8') ? a8() : fingerprint;
@@ -211,7 +211,8 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
           hosted_created_at: now,
           hosted_expires_at: expiresAt,
           poll_token: pollToken,
-          total_cents: pendingOrderRecord.total_cents
+          total_cents: pendingOrderRecord.total_cents,
+          ...(ledgerSnap ? { ledger: ledgerSnap } : {})   // LEDGER S1: the frozen allocation snapshot rides the exclusive claim (create-once)
         };
       });
       if (!claim.committed) continue;                                   // another request claimed it → re-read (→ in_progress)
