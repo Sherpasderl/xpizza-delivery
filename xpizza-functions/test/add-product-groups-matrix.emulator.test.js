@@ -45,6 +45,7 @@ const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { backfillIdentities } = require('../catalog/identity-backfill');
 const { writeKdsManifest } = require('../catalog/kds-manifest');
 const { encodeKey } = require('../catalog/identity-registry');
+const { mintCapabilities, OPAQUE_SYNTAX } = require('../catalog/mint-opaque'); const MINT_ON = mintCapabilities().enabled === true;   // MINT (main 7407138c)
 const A = require('../catalog/add-product');
 const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
 const { buildMaterializeUpdates } = require('../materialize');
@@ -220,12 +221,19 @@ const charge = async (rid, oid, method, key, price, name = key) => {
     if (mode === 'id') await db.doc(`restaurants/${rid}/identity/dish/ids/${key}`).set({ id: key, retired: true });
     const before = await rev(rid);
     const r = await save(rid, withGroup(await draft(rid), rid, FIXTURES.equal));
+    if (MINT_ON) {   // MINT ON (owner 2026-11-09; advisor 11-13): the option is a NEW product under a FRESH i_ key — it saves, and the historical row stays
+      assert.strictEqual(r.status, 200, `${rid}: MINT on — the option saves (${JSON.stringify(r.body).slice(0, 200)})`);
+      const row = r.body.source.items.find((i) => i.display && i.display.name === derived);
+      assert.ok(row && OPAQUE_SYNTAX.test(row.key) && row.key !== key, `${rid}: under a fresh i_ key, never the historical one (${row && row.key})`);
+      assert.deepStrictEqual((await db.doc(`restaurants/${rid}/identity/dish/keys/${encodeKey(key)}`).get()).data(), { key, retired: true }, `${rid}: the historical key row stays`);
+      continue;
+    }
     assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [409, 'name_previously_used', V[2], 'choice'].map((v, i) => (i === 0 ? r.status : v)),
       `🔴 ${rid}: a historical DERIVED option name → name_previously_used on its ref, field choice — ${JSON.stringify(r.body).slice(0, 200)}`);
     assert.ok(r.status >= 400 && r.status < 500, `${rid}: a typed client refusal (${r.status})`);
     assert.strictEqual(await rev(rid), before, `${rid}: nothing written`);
   }
-  ok('SAVE (both brands): an option whose derived name exists in the real identity registry is refused BEFORE allocation commits — name_previously_used on its tmp ref, field choice, nothing written');
+  ok(MINT_ON ? 'SAVE (both brands, MINT on): an option whose derived name exists in the real identity registry saves under a fresh i_ key; the historical row stays' : 'SAVE (both brands): an option whose derived name exists in the real identity registry is refused BEFORE allocation commits — name_previously_used on its tmp ref, field choice, nothing written');
 
   assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;

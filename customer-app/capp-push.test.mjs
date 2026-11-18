@@ -1,0 +1,414 @@
+// Customer app — PUSH, the client core (PLAN-capp-push r1; owner 11-14: build now, «Pedidos» first). capp-push.js is pure: the plugin
+// wrapper, the soft-ask state (never at first launch, never twice in a visit, 30 days after «Ahora no»), enable → permission → the FCM
+// token → the server, forget at sign-out, taps → the order. Dark (a `push` runtime flag, native only). Its UI markup (MOCKUP-capp-push
+// r1, owner-approved 11-14) is pinned below against the mockup's own fragments; the shell's wiring is capp-s7a2's PUSH-SHELL cells.
+// The plugin is a fake of @capacitor/push-notifications 8.1.1 EXACTLY as published (vendored definitions, pinned below).
+// Run: node --test customer-app/capp-push.test.mjs
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { createFakePushPlugin, PUSH_EVENTS, PUSH_METHODS } from './test/fake-push-plugin.mjs';
+
+const require = createRequire(import.meta.url);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const P = require('./capp-push.js');
+const DAY = 864e5;
+const INSTALL7 = 'BwcHBwcHBwcHBwcHBwcHBw';   // base64url of 16 bytes of 7 (mk's deterministic random)
+const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), _m: m }; };
+const fakeApi = () => { const calls = []; return { calls, register: async (b) => { calls.push(['register', b]); return { ok: true, prefs: { pedidos: b.pedidos, promociones: b.promociones } }; }, unregister: async (b) => { calls.push(['unregister', b]); return { ok: true }; } }; };
+const mk = (o = {}) => { const f = createFakePushPlugin(o.fake || {}); let t = o.t0 || 1_800_000_000_000; const store = o.store || memStore(), api = o.api === undefined ? fakeApi() : o.api;
+  const push = P.createPush({ enabled: o.enabled !== false, plugin: o.plugin === undefined ? f.plugin : o.plugin, platform: o.platform || 'android', now: () => t, storage: store, api, appBuild: o.appBuild || '1.0.0+7', random: o.random || ((u) => u.fill(7)) });
+  return { push, f, store, api, adv: (ms) => { t += ms; } }; };
+
+test('PUSH-PIN: the fake is @capacitor/push-notifications 8.1.1 EXACTLY — the vendored definitions (sha-pinned), the same methods and events', () => {
+  const dts = readFileSync(join(HERE, 'test/vendor/capacitor-push-notifications-8.1.1/definitions.d.ts'), 'utf8');
+  assert.equal(createHash('sha256').update(dts).digest('hex'), '412de4d3b20140673aa8b8c1b6e096d7115f2f61876c67f5fcc494ef9777142e', '🔴 PUSH-PIN: the vendored definitions');
+  const iface = dts.slice(dts.indexOf('export interface PushNotificationsPlugin'), dts.indexOf('\n}', dts.indexOf('export interface PushNotificationsPlugin')));
+  const methods = [...new Set([...iface.matchAll(/^\s{4}([a-zA-Z]+)\(/gm)].map((m) => m[1]))].sort();
+  const events = [...iface.matchAll(/addListener\(eventName: '([a-zA-Z]+)'/g)].map((m) => m[1]).sort();
+  assert.deepEqual([...PUSH_METHODS].sort(), methods, '🔴 PUSH-PIN: the fake has exactly the plugin\'s methods');
+  assert.deepEqual([...PUSH_EVENTS].sort(), events, '🔴 PUSH-PIN: the fake has exactly the plugin\'s events');
+  assert.deepEqual(Object.keys(createFakePushPlugin().plugin).sort(), methods, 'and implements every one');
+  assert.match(dts, /export type PermissionState|PermissionState/, 'premise');
+  assert.match(readFileSync(join(HERE, 'test/vendor/capacitor-push-notifications-8.1.1/LICENSE'), 'utf8'), /MIT License/, 'the licence travels with it');
+});
+
+test('PUSH-DARK: off unless enabled, native (ios / android) and the plugin present — no plugin call at all when off', async () => {
+  for (const [what, o] of [['flag off', { enabled: false }], ['web platform', { platform: 'web' }], ['no plugin', { plugin: null }]]) {
+    const { push, f } = mk(o);
+    assert.equal(push.available(), false, `🔴 PUSH-DARK: ${what}`);
+    assert.equal(push.shouldOffer({ ordersPlaced: 3 }), false, `${what}: never offered`);
+    assert.deepEqual(await push.enable(), { ok: false, reason: 'unavailable' }, `${what}: enable refuses`);
+    assert.equal(f.calls.length, 0, `${what}: the plugin is never touched`);
+  }
+});
+
+test('PUSH-ASK: never at first launch; once per visit; «Ahora no» snoozes 30 days; a decision (granted / denied) ends the asking', () => {
+  const s = memStore();
+  const a = mk({ store: s });
+  assert.equal(a.push.shouldOffer({ ordersPlaced: 0 }), false, '🔴 PUSH-ASK: never before a first order');
+  assert.equal(a.push.shouldOffer({ ordersPlaced: 1 }), true, 'after the first order');
+  a.push.markOffered();
+  assert.equal(a.push.shouldOffer({ ordersPlaced: 1 }), false, '🔴 PUSH-ASK: never twice in a visit');
+  const b = mk({ store: s }); b.push.snooze();
+  const c = mk({ store: s, t0: 1_800_000_000_000 + 29 * DAY });
+  assert.equal(c.push.shouldOffer({ ordersPlaced: 2 }), false, '🔴 PUSH-ASK: «Ahora no» holds 30 days');
+  const d = mk({ store: s, t0: 1_800_000_000_000 + 31 * DAY });
+  assert.equal(d.push.shouldOffer({ ordersPlaced: 2 }), true, 'after 30 days, once more');
+});
+test('PUSH-RETURNS (owner Q2, 11-14): after «Ahora no» the card returns AT MOST TWICE, ≥ 30 days apart — a third «Ahora no» ends it; an OS denial ends it at once', async () => {
+  const s = memStore(), T0 = 1_800_000_000_000;
+  const at = (days) => mk({ store: s, t0: T0 + days * DAY });
+  at(0).push.snooze();                                   // the first showing, «Ahora no»
+  assert.equal(at(31).push.shouldOffer({ ordersPlaced: 2 }), true, 'return 1 (≥ 30 days)');
+  at(31).push.snooze();
+  assert.equal(at(50).push.shouldOffer({ ordersPlaced: 3 }), false, '🔴 PUSH-RETURNS: 30 days counted from the LAST «Ahora no»');
+  assert.equal(at(62).push.shouldOffer({ ordersPlaced: 3 }), true, 'return 2');
+  at(62).push.snooze();
+  assert.equal(at(400).push.shouldOffer({ ordersPlaced: 9 }), false, '🔴 PUSH-RETURNS: never a third return');
+  const d = mk({ fake: { onRequest: 'denied' } }); await d.push.enable();
+  assert.equal(mk({ store: d.store, t0: T0 + 365 * DAY }).push.shouldOffer({ ordersPlaced: 9 }), false, '🔴 PUSH-RETURNS: never after an OS denial');
+});
+
+test('PUSH-ENABLE: the system prompt only on enable → granted → register → the FCM token → the server body EXACTLY (Pedidos on, Promociones off)', async () => {
+  const { push, f, api } = mk();
+  const r = await push.enable();
+  assert.equal(f.of('requestPermissions').length, 1, 'the system prompt, once');
+  assert.equal(f.of('register').length, 1);
+  assert.deepEqual(api.calls, [['register', { token: 'fcm_tok_test_0001', platform: 'android', app_build: '1.0.0+7', install_id: INSTALL7, pedidos: true, promociones: false }]], '🔴 PUSH-ENABLE: the 6b contract body');
+  const nb = mk({ appBuild: '1.0.0 (7)' }); await nb.push.enable();
+  assert.equal(nb.api.calls[0][1].app_build, 'unknown', '🔴 PUSH-ENABLE: a build string the server would refuse is sent as "unknown" (3a vBuild)');
+  assert.equal(r.ok, true);
+  assert.deepEqual(push.state(), { state: 'granted', snoozed_at: null, registered: true });
+  assert.equal(push.shouldOffer({ ordersPlaced: 5 }), false, 'decided ⇒ never asked again');
+  assert.equal(f.listenerCount('registration') + f.listenerCount('registrationError'), 0, 'the one-shot listeners are removed');
+  const g = mk({ fake: { permission: 'granted' } }); await g.push.enable();
+  assert.equal(g.f.of('requestPermissions').length, 0, '🔴 PUSH-ENABLE: already granted ⇒ no prompt');
+});
+
+test('PUSH-DENIED: a denied permission is remembered (never asked again), nothing registered, nothing sent', async () => {
+  const { push, f, api } = mk({ fake: { onRequest: 'denied' } });
+  assert.deepEqual(await push.enable(), { ok: false, reason: 'denied' }, '🔴 PUSH-DENIED');
+  assert.equal(f.of('register').length, 0); assert.equal(api.calls.length, 0);
+  assert.equal(push.state().state, 'denied'); assert.equal(push.shouldOffer({ ordersPlaced: 9 }), false);
+});
+
+test('PUSH-REGERR: an OS registration error ⇒ no token, nothing sent (never a half registration)', async () => {
+  const { push, api } = mk({ fake: { registrationError: 'APNs not configured' } });
+  assert.deepEqual(await push.enable(), { ok: false, reason: 'registration_error' }, '🔴 PUSH-REGERR');
+  assert.equal(api.calls.length, 0); assert.equal(push.state().registered, false);
+});
+
+test('PUSH-FORGET (rule 20): sign-out ⇒ the server forgets THIS token (the 6b body) and the device drops it', async () => {
+  const { push, api, store } = mk();
+  await push.enable(); api.calls.length = 0;
+  await push.forget();
+  assert.deepEqual(api.calls, [['unregister', { token: 'fcm_tok_test_0001' }]], '🔴 PUSH-FORGET: unregister exactly');
+  assert.equal(push.state().registered, false, 'the device keeps no token');
+  assert.ok(!String(store.getItem(P.KEY)).includes('fcm_tok_test_0001'), '🔴 PUSH-FORGET: no token left in storage');
+  api.calls.length = 0; await push.forget();
+  assert.equal(api.calls.length, 0, 'nothing to forget ⇒ no call');
+});
+
+test('PUSH-TAP: a tapped ORDER push opens that order; a malformed id or another payload does nothing', () => {
+  const { push, f } = mk(); const got = [];
+  push.onTap((x) => got.push(x));
+  return Promise.resolve().then(() => {   // the fake registers inside addListener's first synchronous run — a microtask, never a real sleep (vclock step 9)
+    f.tap({ order_id: 'XPZ261114-AB12' }); f.tap({ order_id: '../evil' }); f.tap({ campaign: 'c1' }); f.tap(null);
+    assert.deepEqual(got, [{ kind: 'order', order_id: 'XPZ261114-AB12' }], '🔴 PUSH-TAP');
+  });
+});
+
+// ── PLAN-capp-push r1 §6b: the CLIENT against 3a's REAL callables (customer-push.js @ feat/capp-push-tokens-3a 472177443 (approved: per-channel consent, install_id, the prefs rev CAS, register never consents), composed with
+// its whole require closure by refLoader; 3a's own strict RTDB double; the promos consent by the REAL signup writer) ──
+const { refLoader } = await import('./test/ref-require.mjs');
+const { execFileSync } = await import('node:child_process');
+const ROOT = join(HERE, '..');
+const A3P = '4721774431f6c93dd51b7bf3d523e4ac791dc126', R3 = refLoader(ROOT, A3P);
+const CP = R3.require('xpizza-functions/customer-push.js'), SC = R3.require('xpizza-functions/signup-core.js'), { fakeRtdb } = R3.require('xpizza-functions/test/_fake-rtdb-sdk.js');
+const Api = require('./capp-signup-api.js');
+const UID = 'u_' + 'a'.repeat(24), IDT = `id-${UID}`;
+const UID2 = 'u_' + 'b'.repeat(24), IDT2 = `id-${UID2}`;
+function pushServer({ policy } = {}) {
+  const db = fakeRtdb({ platform_config: { legal: { terms_url: 'https://sherpa.hn/t', privacy_url: 'https://sherpa.hn/p', terms_version: 't1', privacy_version: 'p1', promos_copy_version: 'c1' }, ...(policy ? { push: policy } : {}) },
+    user_profiles: { [UID]: { phone: '50499990000', phone_hash: 'ph_a', created_at: 1, last_login: 1 }, [UID2]: { phone: '50499990001', phone_hash: 'ph_b', created_at: 1, last_login: 1 } } }, { strict: true });
+  const auth = { verifyIdToken: async (t) => { const u = t === IDT ? UID : t === IDT2 ? UID2 : null; if (!u) throw new Error('bad token'); return { uid: u, customer: true }; } };
+  const h = CP.makeCustomerPush({ getDatabase: () => db, getAuth: () => auth, now: () => 1_800_000_000_000, checkRateLimit: async () => ({ allowed: true }) });
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    const u = new URL(url), name = u.pathname.split('/').pop(), headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+    calls.push({ name, url, method: init.method, headers, body: init.body ? JSON.parse(init.body) : undefined });
+    const req = { method: init.method || 'GET', query: Object.fromEntries(u.searchParams), body: init.body ? JSON.parse(init.body) : undefined, headers, get: (x) => headers[String(x).toLowerCase()] };
+    const res = { code: 200, body: null, set() { return res; }, status(c) { res.code = c; return res; }, json(b) { res.body = b; return res; } };
+    const e = console.error; console.error = () => {}; try { await h[name](req, res); } finally { console.error = e; }
+    return { status: res.code, json: async () => res.body };
+  };
+  const api = Api.createSignupApi({ fetch, endpoints: Object.fromEntries(Api.ENDPOINTS.map((n) => [n, `https://fn.test/${n}`])) });
+  return { db, api, calls };
+}
+test('PUSH-API-PIN: 3a\'s customer-push.js is the pinned blob at 472177443 (feat/capp-push-tokens-3a, APPROVED), composed with its closure', () => {
+  assert.equal(R3.blob('xpizza-functions/customer-push.js'), execFileSync('git', ['rev-parse', `${A3P}:xpizza-functions/customer-push.js`], { cwd: ROOT, encoding: 'utf8' }).trim());
+  for (const n of ['registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']) assert.ok(Api.ENDPOINTS.includes(n), `🔴 PUSH-API: ${n} is a client endpoint`);
+});
+test('PUSH-API: register → getPrefs → setPrefs → unregister against 3a\'s REAL handlers — the §6b shapes, ?context=platform, the token in a HEADER, the FCM token never in a URL', async () => {
+  const { api, calls, db } = pushServer();
+  const reg = await api.pushRegister({ idToken: IDT, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1.0.0+7', install_id: INSTALL7, pedidos: true, promociones: false });
+  assert.deepEqual(reg, { ok: true, prefs: { pedidos: true, promociones: false, rev: 1 } }, '🔴 PUSH-API: registered (prefs initialized, rev 1)');
+  const g = await api.pushGetPrefs({ idToken: IDT });
+  assert.deepEqual(g.prefs, { pedidos: true, promociones: false, rev: 1 }, 'the prefs as stored (once per person)');
+  assert.ok(g.limits && Number.isSafeInteger(g.limits.quiet_from) && g.limits.quiet_from >= 0 && g.limits.quiet_from <= 1439, '🔴 PUSH-API: the server\'s limits (HN minutes)');
+  assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: false, promociones: false, expected_rev: 1 }), { ok: true, prefs: { pedidos: false, promociones: false, rev: 2 } });
+  assert.deepEqual(await api.pushUnregister({ idToken: IDT, token: 'fcm_tok_test_0001' }), { ok: true });
+  assert.equal(Object.keys(db.get(CP.TOKENS) || {}).length, 0, 'the token is gone server-side');
+  for (const c of calls) {
+    assert.equal(new URL(c.url).searchParams.get('context'), 'platform', `🔴 PUSH-API: ${c.name} ?context=platform`);
+    assert.equal(c.headers['x-firebase-id-token'], IDT, `${c.name}: the ID token in its header`);
+    assert.ok(!c.url.includes('fcm_tok') && !c.url.includes(IDT), `🔴 R20: ${c.name}'s URL carries no token`);
+  }
+});
+// owner ruling 11-14 (advisor, Q4 + consent per channel): «Ofertas de Sherpa» ON calls setPrefs, and setPrefs RECORDS the push-offers
+// consent itself (3a e73a605a2: offers_consent { channel: 'push', copy_version }) — never the email / WhatsApp promos consent
+test('PUSH-CONSENT (ruled 11-14; 3a e73a605a2): «Ofertas de Sherpa» ON = setPrefs alone records the push-offers consent — never the email/WhatsApp one', async () => {
+  const { api, db } = pushServer();
+  await api.pushRegister({ idToken: IDT, token: 'fcm_tok_test_0001', platform: 'ios', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false });
+  const r = await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true, expected_rev: 1 });
+  assert.deepEqual(r, { ok: true, prefs: { pedidos: true, promociones: true, rev: 2 } }, '🔴 PUSH-CONSENT: the switch alone turns push offers on');
+  const sc = db.get(`user_private/${UID}/consent/${SC.PLATFORM_SCOPE}/promos`);
+  assert.ok(!sc || sc.value !== true, '🔴 PUSH-CONSENT: the email/WhatsApp promos consent is NEVER written by the push switch');
+  const oc = (db.get(`${CP.PREFS}/${UID}`) || {}).offers_consent;
+  assert.deepEqual(oc && [oc.channel, oc.value, oc.copy_version], ['push', true, CP.PUSH_OFFERS_COPY_VERSION], '🔴 PUSH-CONSENT: the server recorded the PUSH channel\'s consent, at the shown copy\'s version');
+});
+test('PUSH-API-REV (3a e73a605a2): a register never rewrites prefs; a stale expected_rev ⇒ stale_prefs WITH the current prefs; another installation\'s replay ⇒ token_in_use; an unreadable policy ⇒ unavailable', async () => {
+  const { api, calls } = pushServer();
+  const REG = (o) => api.pushRegister({ idToken: IDT, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false, ...o });
+  const first = await REG({ promociones: true });
+  assert.deepEqual(first.prefs, { pedidos: true, promociones: false, rev: 1 }, '🔴 PUSH-API-REV: a register NEVER consents (3a 472177443) — offers start off whatever the body says');
+  await api.pushSetPrefs({ idToken: IDT, pedidos: false, promociones: true, expected_rev: 1 });
+  assert.deepEqual(await REG({ pedidos: true, promociones: false }), { ok: true, prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: a refresh never re-consents / rewrites');
+  assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true, expected_rev: 1 }), { ok: false, reason: 'stale_prefs', prefs: { pedidos: false, promociones: true, rev: 2 } }, '🔴 PUSH-API-REV: stale ⇒ the current prefs back');
+  const sent0 = calls.length;
+  assert.deepEqual(await api.pushSetPrefs({ idToken: IDT, pedidos: true, promociones: true }), { ok: false, reason: 'bad_request' }, 'no expected_rev ⇒ bad_request');
+  assert.equal(calls.length, sent0, '🔴 PUSH-API-REV: no expected_rev ⇒ never sent');
+  assert.deepEqual(await api.pushRegister({ idToken: IDT2, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: 'another-install-0001', pedidos: true, promociones: false }), { ok: false, reason: 'token_in_use' }, '🔴 PUSH-API-REV: another installation ⇒ token_in_use');
+  assert.equal((await api.pushRegister({ idToken: IDT2, token: 'fcm_tok_test_0001', platform: 'android', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false })).ok, true, 'the SAME installation (a uid switch) moves it');
+  const sent = calls.length;   // 3a ALSO answers bad_request to it: the reply alone cannot tell the client's refusal from the server's
+  assert.deepEqual(await REG({ install_id: 'short' }), { ok: false, reason: 'bad_request' }, 'a malformed install_id ⇒ bad_request');
+  assert.equal(calls.length, sent, '🔴 PUSH-API-REV: a malformed install_id is never sent');
+  const bad = pushServer({ policy: { v: 1, promo_daily_max: -5, promo_weekly_max: 1, quiet_from: 0, quiet_to: 0 } });
+  assert.deepEqual(await bad.api.pushGetPrefs({ idToken: IDT }), { ok: false, reason: 'unavailable' }, '🔴 PUSH-API-REV: an unreadable policy ⇒ unavailable (503)');
+});
+test('PUSH-INSTALL: ONE install_id per installation — made once, kept across sign-outs and re-enables, 3a\'s shape; the real random source', async () => {
+  const { push, api } = mk({ random: ((n) => (u) => u.fill(n++))(7) });   // a NEW value at every draw: only a kept id repeats
+  await push.enable(); await push.forget(); await push.enable();
+  const ids = api.calls.filter((c) => c[0] === 'register').map((c) => c[1].install_id);
+  assert.deepEqual(ids, [INSTALL7, INSTALL7], '🔴 PUSH-INSTALL: stable across a sign-out');
+  const f = createFakePushPlugin(), a2 = fakeApi(), p2 = P.createPush({ enabled: true, plugin: f.plugin, platform: 'ios', now: () => 1, storage: memStore(), api: a2, appBuild: '1' });
+  await p2.enable(); assert.match(a2.calls[0][1].install_id, /^[A-Za-z0-9_-]{16,64}$/, '🔴 PUSH-INSTALL: crypto-random, 3a vInstall');
+  assert.notEqual(a2.calls[0][1].install_id, INSTALL7);
+});
+test('PUSH-API: no ID token ⇒ no call (never an unauthenticated request)', async () => {
+  const { api, calls } = pushServer();
+  assert.deepEqual(await api.pushRegister({ idToken: null, token: 'x', platform: 'ios', app_build: '1', install_id: INSTALL7, pedidos: true, promociones: false }), { ok: false, reason: 'unauthenticated' });
+  assert.equal(calls.length, 0);
+});
+test('PUSH-COPY-VERSION: the «Ofertas de Sherpa» sub-line IS the push-offers consent text — tied to 3a\'s PUSH_OFFERS_COPY_VERSION (change one ⇒ bump the other)', () => {
+  const CONSENT_TEXT = { 'push-offers-1': 'Promociones de los restaurantes' };   // every version 3a has shipped → the exact text it consented to
+  assert.equal(CONSENT_TEXT[CP.PUSH_OFFERS_COPY_VERSION], P.COPY.offersSub, '🔴 PUSH-COPY-VERSION: the shown consent text = the version the server records');
+});
+// THE SHIP GATE (the portal pattern): every push string is owner-approved (MOCKUP-capp-push r1, 11-14), pinned EXACTLY
+test('SHIP GATE (push): no push string ships unapproved — the owner-approved copy, pinned', () => {
+  assert.deepEqual([...P.COPY_PENDING], [], '🔴 placeholders still pending owner approval');
+  assert.deepEqual({ ...P.COPY }, { askTitle: '¿Te avisamos cómo va tu pedido?', askOn: 'Activar avisos', askLater: 'Ahora no', toastOn: 'Avisos activados', orderLinePush: 'Te avisamos con una notificación',
+    screenTitle: 'Notificaciones', groupOrders: 'Pedidos', groupOffers: 'Ofertas', phoneTitle: 'En tu teléfono', ordersSub: 'Cuando cambie el estado', offersSub: 'Promociones de los restaurantes',
+    waTitle: 'Por WhatsApp', waSub: 'Siempre activo: es como te avisamos', promosTitle: 'Por correo y WhatsApp', promosSub: 'A tu correo y a tu WhatsApp',
+    deniedTitle: 'Avisos apagados', deniedSub: 'Activalos en Ajustes del teléfono.', deniedAct: 'Abrir Ajustes',
+    rowOffers: 'Pedidos y ofertas', rowOrdersOnly: 'Solo pedidos', rowDenied: 'Apagadas en tu teléfono' });
+  // owner Q3: no push text says push replaces WhatsApp — only the WhatsApp channel's own rows name it (v6's always-on line, the email + WhatsApp consent)
+  assert.ok(!Object.entries(P.COPY).some(([k, v]) => !['waTitle', 'waSub', 'promosTitle', 'promosSub'].includes(k) && /WhatsApp/i.test(v)), 'owner Q3: no UI text says push replaces WhatsApp');
+});
+
+// ── stage 2 (MOCKUP-capp-push r1): the core's new edges + the UI markup EXACTLY as the approved mockup draws it ──
+test('PUSH-SERVER-ACK: a token the server did not take is never «registered» (the UI never claims «activados»); the next enable retries', async () => {
+  const calls = [];
+  const api = { register: async (b) => { calls.push(b); return calls.length === 1 ? { ok: false, reason: 'unavailable' } : { ok: true, prefs: { pedidos: true, promociones: false } }; }, unregister: async () => ({ ok: true }) };
+  const { push, f } = mk({ api });
+  assert.equal((await push.enable()).ok, false);
+  assert.deepEqual(push.state(), { state: 'granted', snoozed_at: null, registered: false }, '🔴 PUSH-ACK: refused ⇒ not registered');
+  assert.equal((await push.enable()).ok, true); assert.equal(f.of('requestPermissions').length, 1, 'granted already ⇒ no second prompt');
+  assert.equal(push.state().registered, true, '🔴 PUSH-ACK: taken ⇒ registered');
+  const n = mk({ api: null }); await n.push.enable(); assert.equal(n.push.state().registered, false, 'no server in play ⇒ never registered (Codex r1 P2-5)');
+});
+test('PUSH-FORGET-2 (rule 20 + consent per person): sign-out also deletes the token ON THE PHONE (never gated on the server) and ends this device\'s opt-in; an OS denial stays', async () => {
+  const { push, f, api } = mk();
+  await push.enable(); api.calls.length = 0;
+  const seq = []; const un = f.plugin.unregister; f.plugin.unregister = async () => { seq.push('plugin'); return un(); }; const ar = api.unregister; api.unregister = async (b) => { seq.push('server'); return ar(b); };
+  await push.forget();
+  assert.deepEqual([...seq].sort(), ['plugin', 'server'], '🔴 PUSH-FORGET-2: the server forgets it AND the phone deletes it (in parallel — Codex r1 P1-2)');
+  assert.equal(push.state().state, 'never', '🔴 PUSH-FORGET-2: the next member opts in for themselves');
+  seq.length = 0; await push.forget(); assert.deepEqual(seq, [], 'nothing held ⇒ nothing called');
+  const d = mk({ fake: { onRequest: 'denied' } }); await d.push.enable(); await d.push.forget();
+  assert.equal(d.push.state().state, 'denied', '🔴 PUSH-FORGET-2: the phone\'s denial is the phone\'s');
+  const off = mk({ enabled: false }); await off.push.forget(); assert.equal(off.f.calls.length, 0, 'dark ⇒ no plugin call');
+});
+test('PUSH-PERMISSION: the OS permission re-read (Ajustes) — denied ⇒ remembered (the token KEPT: Codex r1 P1-3); allowed again ⇒ the denial cleared', async () => {
+  const { push, f } = mk({ fake: { permission: 'granted' } });
+  await push.enable(); assert.equal(push.state().registered, true, 'premise');
+  f.setPermission('denied'); assert.equal(await push.permission(), 'denied');
+  assert.deepEqual(push.state(), { state: 'denied', snoozed_at: null, registered: true }, '🔴 PUSH-PERMISSION: turned off in Ajustes ⇒ denied (the registration is the sign-out\'s handle — kept)');
+  f.setPermission('granted'); assert.equal(await push.permission(), 'granted');
+  assert.equal(push.state().state, 'granted', '🔴 PUSH-PERMISSION: allowed again ⇒ the switches come back on the same registration');
+  const u = mk({ api: null, fake: { permission: 'granted' } }); await u.push.enable(); u.f.setPermission('denied'); await u.push.permission(); u.f.setPermission('granted'); await u.push.permission();
+  assert.equal(u.push.state().state, 'never', 'allowed again with NO acknowledged registration ⇒ a fresh opt-in');
+  assert.equal(await mk({ enabled: false }).push.permission(), null, 'dark ⇒ null, no call');
+});
+// the approved mockup's own markup (MOCKUP-capp-push r1, extracted verbatim): frame 1 (the card), F2a / F2b (the screen), F2c (denied),
+// F4a / F4b (the Cuenta row). The app adds only its data-act hooks; the row's chevron is the app's own IC.chev (its sibling rows' icon)
+const MOCK = {"ask": "<div class=\"px-ask\" role=\"group\" aria-label=\"Avisos de tu pedido\"><div class=\"hd\"><span class=\"ic\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/></svg></span><div class=\"t\"><b>¿Te avisamos cómo va tu pedido?</b></div></div><div class=\"acts\"><button class=\"primary\">Activar avisos</button><button class=\"btn2\">Ahora no</button></div></div>", "f2a": "<div class=\"topbar\"><button class=\"iconbtn\" data-act=\"back\" aria-label=\"Volver\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M19 12H5\"></path><path d=\"M11 18l-6-6 6-6\"></path></svg></button><h1>Notificaciones</h1><span class=\"sp\"></span></div><div class=\"scroller\"><div class=\"rows\"><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/></svg><span class=\"t\">Mis pedidos<span>Cuando cambie el estado</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Mis pedidos\"></button></div><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 12V4h8l9 9-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1.3\"/></svg><span class=\"t\">Ofertas de Sherpa<span>Promociones de los restaurantes</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-label=\"Ofertas de Sherpa\"></button></div></div></div>", "f2b": "<div class=\"topbar\"><button class=\"iconbtn\" data-act=\"back\" aria-label=\"Volver\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M19 12H5\"></path><path d=\"M11 18l-6-6 6-6\"></path></svg></button><h1>Notificaciones</h1><span class=\"sp\"></span></div><div class=\"scroller\"><div class=\"rows\"><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/></svg><span class=\"t\">Mis pedidos<span>Cuando cambie el estado</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Mis pedidos\"></button></div><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 12V4h8l9 9-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1.3\"/></svg><span class=\"t\">Ofertas de Sherpa<span>Promociones de los restaurantes</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Ofertas de Sherpa\"></button></div></div></div>", "f2c": "<div class=\"topbar\"><button class=\"iconbtn\" data-act=\"back\" aria-label=\"Volver\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M19 12H5\"></path><path d=\"M11 18l-6-6 6-6\"></path></svg></button><h1>Notificaciones</h1><span class=\"sp\"></span></div><div class=\"scroller\"><div class=\"px-quiet\"><span class=\"ic\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8.6 6.4A6 6 0 0 1 18 11v5l1.5 2H9\"/><path d=\"M6 11v5l-1.5 2H5\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/><path d=\"M4 4l16 16\"/></svg></span><div class=\"t\"><b>Avisos apagados</b><span>Activalos en Ajustes del teléfono.</span><button class=\"lnk\">Abrir Ajustes</button></div></div><div class=\"rows\"><div class=\"rowbtn\" aria-disabled=\"true\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/></svg><span class=\"t\">Mis pedidos<span>Cuando cambie el estado</span></span><span class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-disabled=\"true\"></span></div><div class=\"rowbtn\" aria-disabled=\"true\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 12V4h8l9 9-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1.3\"/></svg><span class=\"t\">Ofertas de Sherpa<span>Promociones de los restaurantes</span></span><span class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-disabled=\"true\"></span></div></div></div>", "f4a": "<button class=\"rowbtn\" data-act=\"sub-notifs\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"></path><path d=\"M10 20a2 2 0 0 0 4 0\"></path></svg><span class=\"t\">Notificaciones<span>Mis pedidos activados</span></span><svg class=\"i chev\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 6l6 6-6 6\"></path></svg></button>", "f4b": "<button class=\"rowbtn\" data-act=\"sub-notifs\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"></path><path d=\"M10 20a2 2 0 0 0 4 0\"></path></svg><span class=\"t\">Notificaciones<span>Mis pedidos · Ofertas de Sherpa</span></span><svg class=\"i chev\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 6l6 6-6 6\"></path></svg></button>"};
+const norm = (h) => h.replace(/ data-(act|k)="[^"]*"/g, '').replace(/><\/path>/g, '/>').replace(/class="i chev"/g, 'class="i"');
+test('PUSH-UI-MOCKUP: the soft card is the push mockup\'s markup EXACTLY (frame 1)', () => {
+  assert.equal(norm(P.askHtml()), norm(MOCK.ask), '🔴 PUSH-UI: frame 1 — card A, no sub-line (owner Q1)');
+  assert.match(P.askHtml(), /data-act="push-on">Activar avisos<.*data-act="push-later">Ahora no</, 'the shell\'s hooks');
+});
+// MOCKUP-capp-notificaciones (owner 11-16: 2b), frames 2b / 3 — extracted by RUNNING the mockup's own builders (notifs({}) / notifs({ denied })),
+// the inter-tag whitespace collapsed. ONE string differs, by advisor ruling 11-16: the phone «Ofertas» sub-line keeps the approved push-offers
+// CONSENT text («Promociones de los restaurantes», PUSH-COPY-VERSION) where the frame drew «Avisos de la app» — consent text is never
+// changed by a layout change. The app adds only its hooks (data-act / data-k / data-row) and the screen's own .ntf on its scroller
+const NTF = {"f2b": "<div class=\"topbar\"><button class=\"iconbtn\" aria-label=\"Volver\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M19 12H5\"/><path d=\"M11 18l-6-6 6-6\"/></svg></button><h1>Notificaciones</h1><span class=\"sp\"></span></div><div class=\"scroller\"><h2 class=\"gh\">Pedidos</h2><div class=\"rows\"><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"18\" rx=\"2\"/><path d=\"M11 17h2\"/></svg><span class=\"t\">En tu teléfono<span>Cuando cambie el estado</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"En tu teléfono\"></button></div><div class=\"rowbtn info\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 5h16v11H9l-5 4z\"/></svg><span class=\"t\">Por WhatsApp<span>Siempre activo: es como te avisamos</span></span></div></div><h2 class=\"gh\">Ofertas</h2><div class=\"rows\"><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"18\" rx=\"2\"/><path d=\"M11 17h2\"/></svg><span class=\"t\">En tu teléfono<span>Promociones de los restaurantes</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-label=\"En tu teléfono\"></button></div><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"6\" width=\"13\" height=\"10\" rx=\"2\"/><path d=\"m3 8.5 6.5 4.5L16 8.5\"/><path d=\"M19 10h2v9l-3-2.5h-6\"/></svg><span class=\"t\">Por correo y WhatsApp<span>A tu correo y a tu WhatsApp</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Por correo y WhatsApp\"></button></div></div></div>", "f3": "<div class=\"topbar\"><button class=\"iconbtn\" aria-label=\"Volver\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M19 12H5\"/><path d=\"M11 18l-6-6 6-6\"/></svg></button><h1>Notificaciones</h1><span class=\"sp\"></span></div><div class=\"scroller\"><div class=\"px-quiet\"><span class=\"ic\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8.6 6.4A6 6 0 0 1 18 11v5l1.5 2H9\"/><path d=\"M6 11v5l-1.5 2H5\"/><path d=\"M10 20a2 2 0 0 0 4 0\"/><path d=\"M4 4l16 16\"/></svg></span><div class=\"t\"><b>Avisos apagados</b><span>Activalos en Ajustes del teléfono.</span><button class=\"lnk\">Abrir Ajustes</button></div></div><h2 class=\"gh\">Pedidos</h2><div class=\"rows\"><div class=\"rowbtn\" aria-disabled=\"true\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"18\" rx=\"2\"/><path d=\"M11 17h2\"/></svg><span class=\"t\">En tu teléfono<span>Cuando cambie el estado</span></span><span class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-disabled=\"true\"></span></div><div class=\"rowbtn info\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 5h16v11H9l-5 4z\"/></svg><span class=\"t\">Por WhatsApp<span>Siempre activo: es como te avisamos</span></span></div></div><h2 class=\"gh\">Ofertas</h2><div class=\"rows\"><div class=\"rowbtn\" aria-disabled=\"true\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"7\" y=\"3\" width=\"10\" height=\"18\" rx=\"2\"/><path d=\"M11 17h2\"/></svg><span class=\"t\">En tu teléfono<span>Promociones de los restaurantes</span></span><span class=\"switch\" role=\"switch\" aria-checked=\"false\" aria-disabled=\"true\"></span></div><div class=\"rowbtn\"><svg class=\"i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"6\" width=\"13\" height=\"10\" rx=\"2\"/><path d=\"m3 8.5 6.5 4.5L16 8.5\"/><path d=\"M19 10h2v9l-3-2.5h-6\"/></svg><span class=\"t\">Por correo y WhatsApp<span>A tu correo y a tu WhatsApp</span></span><button class=\"switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Por correo y WhatsApp\"></button></div></div></div>"};
+const nnorm = (h) => norm(h).replace(/ data-row="[^"]*"/g, '').replace(/class="scroller ntf"/g, 'class="scroller"').replace(/class="rowbtn ntf-info"/g, 'class="rowbtn info"');   // .ntf-info: the shell already styles a global .info (the store header, capp.css)
+const VM2B = { app: true, granted: true, pedidos: true, promociones: false, promos: true, settled: true };
+test('NOTIFS-2B: the grouped screen is the approved frame EXACTLY — «Pedidos» (phone + v6\'s WhatsApp line), «Ofertas» (phone + «Por correo y WhatsApp»)', () => {
+  assert.equal(nnorm(P.screenHtml(VM2B)), NTF.f2b, '🔴 NOTIFS-2B: frame 2b');
+  assert.equal(nnorm(P.screenHtml({ app: true, denied: true, granted: true, pedidos: true, promociones: true, promos: true, settled: true })), NTF.f3, '🔴 NOTIFS-2B: frame 3 (denied)');
+  const h = P.screenHtml(VM2B);
+  assert.match(h, /<button class="switch" role="switch" aria-checked="true" aria-label="En tu teléfono" data-act="push-pref" data-k="pedidos"><\/button>/, 'the pedidos switch is push\'s');
+  assert.match(h, /<button class="switch" role="switch" aria-checked="false" aria-label="En tu teléfono" data-act="push-pref" data-k="promociones"><\/button>/, 'the phone offers switch is push\'s');
+  assert.match(h, /<span class="t">En tu teléfono<span>Promociones de los restaurantes<\/span>/, '🔴 NOTIFS-CONSENT: the phone offers row shows the push-offers consent text (PUSH-COPY-VERSION), unchanged');
+  assert.match(h, /<button class="switch" role="switch" aria-checked="true" aria-label="Por correo y WhatsApp" data-act="promos"><\/button>/, '🔴 NOTIFS-PROMOS: «Por correo y WhatsApp» is the promos switch (the G7 consent, data-act promos)');
+});
+test('NOTIFS-WEB (advisor 11-16: a strict subset of 2b): without the app\'s push the screen has NO phone rows and NO permission card — the WhatsApp line and the email + WhatsApp consent only', () => {
+  for (const vm of [{ promos: true, settled: true }, { app: false, denied: true, pedidos: true, promociones: true, promos: false, settled: true }]) {
+    const h = P.screenHtml(vm);
+    assert.ok(!/data-act="push-pref"|data-k=/.test(h) && !/En tu teléfono/.test(h), '🔴 NOTIFS-WEB: no phone rows');
+    assert.ok(!/px-quiet/.test(h), '🔴 NOTIFS-WEB: no permission card');
+    assert.deepEqual([...h.matchAll(/<h2 class="gh">([^<]*)<\/h2>/g)].map((m) => m[1]), ['Pedidos', 'Ofertas'], 'the same two groups');
+    assert.match(h, /<div class="rowbtn ntf-info">[^]*?Por WhatsApp<span>Siempre activo: es como te avisamos<\/span>/, 'v6\'s always-on line');
+    assert.match(h, new RegExp(`aria-checked="${vm.promos}" aria-label="Por correo y WhatsApp" data-act="promos"`), '🔴 NOTIFS-WEB: the consent switch, live at its value');
+  }
+});
+test('NOTIFS-DENIED-SCOPE (frame 3): the phone permission off dims ONLY the phone rows — the email + WhatsApp consent stays live', () => {
+  const h = P.screenHtml({ app: true, denied: true, granted: true, pedidos: true, promociones: true, promos: true, settled: true });
+  // the property this cell is for, FIRST (a mutant that dims the consent must die here, not on a count below)
+  assert.match(h, /<div class="rowbtn" data-row="promos"><svg[^]*?<button class="switch" role="switch" aria-checked="true" aria-label="Por correo y WhatsApp" data-act="promos"><\/button><\/div>/, '🔴 NOTIFS-DENIED: the email + WhatsApp consent is NOT dimmed');
+  assert.equal((h.match(/<div class="rowbtn" aria-disabled="true">/g) || []).length, 2, '🔴 NOTIFS-DENIED: the two phone rows inert');
+  assert.equal(h.match(/data-act="push-pref"/g), null, 'no live phone switch');
+  assert.equal((h.match(/<span class="switch" role="switch" aria-checked="false" aria-disabled="true"><\/span>/g) || []).length, 2, 'both phone switches off + inert');
+  assert.match(h, /<button class="lnk" data-act="push-settings">Abrir Ajustes<\/button>/, '«Abrir Ajustes» is the host\'s settings hook');
+  assert.equal((P.screenHtml({ ...VM2B, busy: true }).match(/data-act="push-pref"[^>]*aria-disabled="true"|aria-disabled="true"[^>]*data-act="push-pref"/g) || []).length, 2, 'a push save in flight ⇒ both phone switches wait');
+});
+test('NOTIFS-PROMOS-INERT (G7 frame 4b, ruling (ii)): no served consent ⇒ the switch INERT — ON-dimmed while loading, OFF-dimmed once settled; never a live «on» without consent', () => {
+  for (const [vm, on] of [[{ promos: null, settled: false }, 'true'], [{ promos: null, settled: true }, 'false']]) {
+    const h = P.screenHtml(vm);
+    assert.match(h, new RegExp(`<div class="rowbtn" data-row="promos" aria-disabled="true">[^]*?<span class="switch" role="switch" aria-checked="${on}" aria-disabled="true"></span></div>`), `🔴 NOTIFS-INERT: ${JSON.stringify(vm)}`);
+    assert.equal(h.match(/data-act="promos"/g), null, 'an inert consent switch has no hook');
+  }
+});
+test('NOTIFS-ROW (the Cuenta row, frame 1 notes): «Pedidos y ofertas» when any offers channel is on; «Solo pedidos» otherwise; «Apagadas en tu teléfono» when the phone permission is denied', () => {
+  assert.equal(P.rowSub({}), 'Solo pedidos', '🔴 NOTIFS-ROW: nothing on ⇒ order alerts only (WhatsApp is always on)');
+  assert.equal(P.rowSub({ promos: true }), 'Pedidos y ofertas', '🔴 NOTIFS-ROW: the email + WhatsApp consent counts');
+  assert.equal(P.rowSub({ granted: true, pedidos: true, promociones: true, promos: false }), 'Pedidos y ofertas', '🔴 NOTIFS-ROW: push offers count');
+  assert.equal(P.rowSub({ granted: false, promociones: true, promos: null }), 'Solo pedidos', 'a push pref without the permission granted is not «on»');
+  assert.equal(P.rowSub({ denied: true, granted: true, pedidos: true, promos: true }), 'Apagadas en tu teléfono', '🔴 PUSH-ROW: denied wins');
+});
+
+// ── Codex r1 (REVISE #1, 11-15) — the core items, RED at 9ecfb0982 ──
+const drain = async (n = 30) => { for (let i = 0; i < n; i++) await null; };   // microtasks only (no real sleep)
+const hangApi = () => { const calls = []; return { calls, register: async (b, c) => { calls.push(['register', b, c]); return { ok: true, prefs: { pedidos: b.pedidos, promociones: b.promociones, rev: 1 } }; },
+  unregister: (b, c) => { calls.push(['unregister', b, c]); return new Promise(() => {}); } }; };   // a server that never answers
+test('PUSH-FORGET-3 (Codex r1 P1-2): the phone\'s invalidation never waits on the server; the token is held in a DURABLE pending record until the server confirms; a failure never reports success', async () => {
+  const a = mk({ api: hangApi() });
+  await a.push.enable({}, { owner: 'u_a' }); a.api.calls.length = 0;
+  a.push.forget();   // never awaited: the server hangs
+  const held = JSON.parse(a.store.getItem(P.KEY));   // BEFORE anything is sent
+  assert.deepEqual((held.pending || []).map((p) => [p.token, p.owner]), [['fcm_tok_test_0001', 'u_a']], '🔴 PUSH-FORGET-3: the token + its owner wait in a durable record (the app may close now)');
+  assert.equal(held.token == null, true, 'and it is no longer the live token');
+  await drain();
+  assert.equal(a.f.of('unregister').length, 1, '🔴 PUSH-FORGET-3: the phone deletes its token without waiting for the server');
+  // the next boot (a new core on the same storage): the server is retried with the OWNER's context; confirmed ⇒ the record goes
+  const api2 = fakeApi(); const ctx = []; const un = api2.unregister; api2.unregister = async (b, c) => { ctx.push(c); return un(b); };
+  const b = mk({ store: a.store, api: api2 });
+  const r = await b.push.settle();
+  assert.deepEqual(api2.calls, [['unregister', { token: 'fcm_tok_test_0001' }]], '🔴 PUSH-FORGET-3: retried at the next boot, the 6b body exactly');
+  assert.deepEqual(ctx, [{ owner: 'u_a' }], 'under the owner\'s context (the shell sends it only with THAT person\'s token)');
+  assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'confirmed ⇒ the record is gone');
+  assert.equal(b.f.of('unregister').length, 0, 'the phone already invalidated it ⇒ not again');
+  // a refusal / a failed native step is never a success, and the record stays for the next try
+  const no = { register: fakeApi().register, unregister: async () => ({ ok: false, reason: 'unavailable' }) };
+  const c = mk({ api: no }); await c.push.enable({}, { owner: 'u_c' });
+  const rc = await c.push.forget();
+  assert.equal(rc.ok, false, '🔴 PUSH-FORGET-3: a server refusal never reports success');
+  assert.equal((JSON.parse(c.store.getItem(P.KEY)).pending || []).length, 1, 'the record stays');
+  const d = mk(); await d.push.enable({}, { owner: 'u_d' }); d.f.plugin.unregister = async () => { throw new Error('native down'); };
+  const rd = await d.push.forget();
+  assert.equal(rd.ok, false, '🔴 PUSH-FORGET-3: a failed native invalidation never reports success');
+  assert.equal((JSON.parse(d.store.getItem(P.KEY)).pending || []).some((p) => p.native !== true), true, 'its native step is still owed');
+});
+test('PUSH-DENIAL-KEEPS (Codex r1 P1-3): an OS denial is UI state only — the token is never dropped except by a completed invalidation; a re-allow restores the opt-in', async () => {
+  const { push, f, api } = mk({ fake: { permission: 'granted' } });
+  await push.enable({}, { owner: 'u_a' }); api.calls.length = 0;
+  f.setPermission('denied'); await push.permission();
+  assert.equal(push.state().state, 'denied', 'premise: the denial shows');
+  await push.forget();
+  assert.deepEqual(api.calls.map((c) => c[0]), ['unregister'], '🔴 PUSH-DENIAL-KEEPS: a sign-out after a denial still invalidates the token (server)');
+  assert.equal(f.of('unregister').length, 1, '🔴 PUSH-DENIAL-KEEPS: and on the phone');
+  const g = mk({ fake: { permission: 'granted' } }); await g.push.enable({}, { owner: 'u_g' });
+  g.f.setPermission('denied'); await g.push.permission(); g.f.setPermission('granted'); await g.push.permission();
+  assert.deepEqual(g.push.state(), { state: 'granted', snoozed_at: null, registered: true }, '🔴 PUSH-DENIAL-KEEPS: allowed again ⇒ the same registration is back (no re-prompt)');
+});
+test('PUSH-ACK-PENDING (Codex r1 P2-5): a register the server has not answered is never «registered»', async () => {
+  let release, called; const inFlight = new Promise((r) => { called = r; });   // an EVENT (the register call), never a sleep
+  const api = { register: (b) => new Promise((r) => { release = () => r({ ok: true, prefs: { pedidos: true, promociones: false, rev: 1 } }); called(); }), unregister: async () => ({ ok: true }) };
+  const { push } = mk({ api });
+  const p = push.enable({}, { owner: 'u_a' }); await inFlight;
+  assert.equal(push.state().registered, false, '🔴 PUSH-ACK-PENDING: in flight ⇒ not registered');
+  release(); await p; assert.equal(push.state().registered, true, 'acknowledged ⇒ registered');
+  const n = mk({ api: null }); await n.push.enable();
+  assert.equal(n.push.state().registered, false, '🔴 PUSH-ACK-PENDING: no server ⇒ never registered');
+});
+const dfr = () => { let r; const p = new Promise((x) => { r = x; }); return { p, r }; };
+test('PUSH-OP-OWN (Codex r2 P1): a completion settles only ITS OWN op — A\'s late cleanup never settles B\'s record for the same FCM token', async () => {
+  // Codex's reproduction: one phone keeps ONE FCM token across accounts. A signs out (its phone delete + server delete are slow), B
+  // signs in on the same phone and gets the SAME token, B signs out: B's phone delete fails and 3a refuses B's server delete. Then A's
+  // cleanup lands — successfully. B's record must stay owed (else B's token outlives B's session, with no retry).
+  const nA = dfr(), sA = dfr(), api = fakeApi();
+  api.unregister = async (b, c) => (c && c.owner === 'u_a' ? sA.p : { ok: false, reason: 'forbidden' });
+  const a = mk({ api });
+  let nat = 0; a.f.plugin.unregister = () => (++nat === 1 ? nA.p : Promise.reject(new Error('native down')));
+  await a.push.enable({}, { owner: 'u_a' });
+  a.push.forget(); await drain();   // A's cleanup is out (never awaited)
+  await a.push.enable({}, { owner: 'u_b' });
+  const tokOf = (o) => JSON.parse(a.store.getItem(P.KEY)).pending.find((p) => p.owner === o).token;
+  a.push.forget(); await drain();   // B's cleanup: the phone refuses, the server refuses
+  assert.equal(tokOf('u_a'), tokOf('u_b'), 'premise: the SAME token, two owners');
+  nA.r(); sA.r({ ok: true }); await drain();
+  const left = JSON.parse(a.store.getItem(P.KEY)).pending || [];
+  assert.deepEqual(left.map((p) => [p.owner, p.native === true, p.server === true]), [['u_b', false, false]], '🔴 PUSH-OP-OWN: B\'s record stays owed (A\'s success is A\'s only)');
+  assert.equal(new Set(JSON.parse(a.store.getItem(P.KEY)).pending.map((p) => p.op)).size, left.length, 'one key per record');
+});
+test('PUSH-SIDE-DURABLE (Codex r2 P2): each side\'s success is durable the moment it lands — a hung phone never holds the server\'s', async () => {
+  const a = mk();
+  a.f.plugin.unregister = () => new Promise(() => {});   // the phone never answers (the app is then closed)
+  await a.push.enable({}, { owner: 'u_a' }); a.api.calls.length = 0;
+  a.push.forget(); await drain();
+  assert.equal(a.api.calls.filter((c) => c[0] === 'unregister').length, 1, 'premise: 3a confirmed the delete');
+  const rec = (JSON.parse(a.store.getItem(P.KEY)).pending || [])[0];
+  assert.equal(rec && rec.server, true, '🔴 PUSH-SIDE-DURABLE: the server\'s success is on disk while the phone hangs');
+  // the next boot: only the phone's step is owed — the server is never asked again
+  const b = mk({ store: a.store });
+  const r = await b.push.settle();
+  assert.equal(b.api.calls.filter((c) => c[0] === 'unregister').length, 0, 'never re-sent to the server');
+  assert.equal(r.ok, true); assert.equal((JSON.parse(a.store.getItem(P.KEY)).pending || []).length, 0, 'both done ⇒ gone');
+});

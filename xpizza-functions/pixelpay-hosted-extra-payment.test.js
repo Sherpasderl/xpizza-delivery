@@ -378,7 +378,10 @@ async function cell(name, fn) { CURRENT = name; resetProvider(); try { await fn(
     assert.ok(rB.outcome === 'cancelled_voided' && voidCalls.length === 1, `${L}: PREMISE — base voids the first payment (got ${rB.outcome}, ${voidCalls.length})`);
     assert.strictEqual(r.outcome, rB.outcome, `${L}: same outcome as base`);
     assert.deepStrictEqual(mine, voidCalls, `${L}: the same provider void request`);
-    assert.deepStrictEqual(db.root, dbB.root, `${L}: the whole database equals base's`);
+    // LEDGER S2: the ONE authorized addition — voidPaid's post-void attempt update carries capture_evidence/webhook
+    const evW = db.root.payment_attempts[AID].capture_evidence; const noEv = (r) => { const c = JSON.parse(JSON.stringify(r)); delete c.payment_attempts[AID].capture_evidence; return c; };
+    assert.ok(evW && evW.webhook && evW.webhook.verified === true, `${L}: the S2 webhook evidence is written`);
+    assert.deepStrictEqual(noEv(db.root), dbB.root, `${L}: the whole database equals base's (minus the S2 capture evidence)`);
   });
 
   await cell('XP-KEY-COLLISION-RESISTANT', async () => {

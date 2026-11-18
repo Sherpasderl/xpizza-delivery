@@ -42,7 +42,7 @@ const TEXT = [
 ];
 // .ops text selectors not in the 1b table above (1a's, plus 1b's quiet callout title): [selector, surface when the rule declares no background]
 const TEXT_1A = [
-  ['.ops .card', null], ['.ops .cmeta', 'card'], ['.ops .cmeta b', 'card'], ['.ops .callout', null], ['.ops .callout b', 'amber-soft'],
+  ['.ops .card', null], ['.ops .cmeta', 'card'], ['.ops .cmeta b', 'card'], ['.ops .callout', null], ['.ops .callout b', 'sand-soft'],   // amber-soft → sand-soft (pastel chips 11-13)
   ['.ops .errbox b', 'red-soft'], ['.ops .errbox p', 'red-soft'], ['.ops .crumb', 'board'], ['.ops .calloutquiet1b b', 'board-2'],
   ['.ops .sec h3 .hint', 'card'], ['.ops .sec p.help', 'card'], ['.ops .fld .lab', 'card'], ['.ops .inval', null], ['.ops .inval.inro', null],
   ['.ops .fnote', 'card'], ['.ops .hrow .d', 'card'], ['.ops .step .val span', 'card'], ['.ops .step .val.miss', 'card'], ['.ops .stepb', null],

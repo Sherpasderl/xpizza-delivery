@@ -93,7 +93,7 @@ const stored = (over = {}) => ({ platform_config: { delivery_pricing: { policy_v
     assert.deepStrictEqual([node.policy_version, node.bands, node.updated_by], [1, BANDS, 'tbowner'], `${L}: the policy`);
     assert.deepStrictEqual(node.history, [{ actor_uid: 'tbowner', prev_version: 0, new_version: 1, new: { bands: BANDS, zones: { count: 0, sha256: require('./zones').sha([]) } }, at: node.updated_at }], `${L}: its history entry, prev_version only (envío step 2: + the zones' count and fingerprint)`);
     const g = await w.get();
-    assert.deepStrictEqual({ ...g.body, branches: undefined }, { policy_version: 1, bands: BANDS, history: node.history, no_delivery_zones: [], zones_editable: false, caps: { max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5, zones_max: 8, points_max: 24, points_min: 3, name_max: 30, bbox_max_km: 20 }, branches: undefined }, `${L}: GET returns it (envío step 2: + no zones; not editable — this world's identities are not routing-valid, so the lock fails closed)`);
+    assert.deepStrictEqual({ ...g.body, branches: undefined }, { policy_version: 1, bands: BANDS, history: node.history, no_delivery_zones: [], zones_editable: false, zones_lock: { reason: 'unavailable', branches: [] }, caps: { max_bands: 20, max_km: 10, max_cents: 15000, km_step: 0.5, zones_max: 8, points_max: 24, points_min: 3, name_max: 30, bbox_max_km: 20 }, branches: undefined }, `${L}: GET returns it (envío step 2: + no zones; not editable — this world's identities are not routing-valid, so the lock fails closed; zones_lock says unavailable)`);
   });
 
   await cell('G2-BRANCHES-FOR-THE-PICKER', async (L) => {

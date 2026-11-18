@@ -284,7 +284,12 @@ test('Part B (b): under intlPhone the .cc is a BUTTON; the country list is a PAN
   await b.click('.phonerow button.cc');
   assert.equal(b.txt('.sg .h1'), 'País del número', '🔴 SP-pane: the country list is a pane of THIS sheet');
   assert.equal(b.txt('.sg .sub'), 'Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
-  assert.equal(b.qa('.sg .clist .crow').length, 10); assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
+  // PLAN-capp-picker-served-countries r1: the rows = the SERVER's countries (xpizza-functions/phone-countries.js), in the picker's order
+  const SRV = require('../xpizza-functions/phone-countries.js').COUNTRIES.map((c) => c.cc);
+  const rows = b.qa('.sg .clist .crow').map((r) => r.dataset.cc);
+  assert.deepEqual(new Set(rows), new Set(SRV), '🔴 PS-su: the sign-in pane offers exactly the server\'s countries');
+  assert.equal(rows.length, SRV.length); assert.ok(!rows.includes('507') && !rows.includes('501'), '🔴 PS-su: no Panamá, no Belice');
+  assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
   assert.ok(b.q('[data-su="back"]'), 'the sheet\'s own ← Atrás'); assert.equal(b.w.document.querySelectorAll('.sheet').length, 1, 'never a second sheet');
   await b.click('[data-su="back"]');
   assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', 'Atrás ⇒ the phone pane');
@@ -364,6 +369,9 @@ test('runtime.signup endpoints: ENDPOINTS is the ONE source — every transport 
   await a.redeemSignupGrant({ grant: 'g', email: 'a@b.test', name: 'A', promos: false });
   await a.getMyOrders({ idToken: 't', limit: 20 });   // «Pedidos» (NOTE-getMyOrders): the member's history read
   await a.getMyRating({ idToken: 't', orderId: 'XPZ-1234' }); await a.rateOrder({ idToken: 't', orderId: 'XPZ-1234', fields: { store: 5 } });   // C-2
+  await a.getMyFavorites({ idToken: 't' }); await a.setFavorite({ idToken: 't', rid: 'x_pizza', on: true });   // C-1b
+  await a.pushRegister({ idToken: 't', token: 'fcm_t', platform: 'ios', app_build: '1', install_id: 'install-census-0001', pedidos: true, promociones: false }); await a.pushUnregister({ idToken: 't', token: 'fcm_t' });   // PLAN-capp-push §6b
+  await a.pushSetPrefs({ idToken: 't', pedidos: true, promociones: false, expected_rev: 0 }); await a.pushGetPrefs({ idToken: 't' });
   assert.deepEqual([...new Set(seen)].sort(), Object.values(EP).sort(), '🔴 SU-endpoints: the requests are exactly the listed endpoints');
 });
 // ── C-2 (PLAN §C-2; 3a's getMyRating 1958b8ed + the S-A1 writer rateOrder): the member transport's two rating calls, against the REAL
@@ -417,7 +425,7 @@ test('C-2 rateOrder: POST { order_id, …fields } with the token; 3a\'s every an
 
 // ── C-3r G1 (advisor 11-13): S-D's v1 price_snapshot reaches the reorder ONLY aligned 1:1 with the row's items. The row comes from the
 // REAL writers: attachCustomerAttribution (user_orders entry + reorderPriceSnapshot) → my-orders.js projectRow (the served Row) ──
-test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-version or non-integer snapshot is DROPPED (never a guessed past price)', async () => {
+test('C-3r v2 rowOf (R3.2, receipt-only): a list row NEVER carries price_snapshot — the real writer\'s snapshot rides the row on the wire, the capp drops it (the reorder reads the receipt)', async () => {
   const FN = createRequire(join(ROOT, 'xpizza-functions/x.js'));
   const CB = FN('./create-order-build.js'), MO = FN('./my-orders.js');
   const u = { 'orders/XP-1': { status: 'new' } };
@@ -427,14 +435,39 @@ test('C-3r G1 rowOf: the real v1 snapshot passes through; a misaligned, another-
   const { createSignupApi } = require('./capp-signup-api.js');
   const served = (e) => createSignupApi({ endpoints: { getMyOrders: 'https://ep.test/getMyOrders' }, fetch: async () => ({ status: 200, json: async () => JSON.parse(JSON.stringify({ ok: true, active: [], past: [MO.projectRow('XP-1', e)], next_cursor: null })) }) })
     .getMyOrders({ idToken: 't' }).then((r) => r.past[0]);
-  assert.deepEqual((await served(entry)).price_snapshot, { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] }, '🔴 G1-row: the aligned v1 snapshot is kept');
+  const row = await served(entry);
+  assert.ok(row && row.order_id === 'XP-1', 'premise: the row itself survives');
+  assert.equal(row.price_snapshot, undefined, '🔴 C3R-V2-LIST: the list row carries no price_snapshot (receipt-only)');
+});
+
+// ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / §4.3; advisor 11-14): the receipt carries 3a's price_snapshot v2 — the fixture is
+// 3a's REAL writer + getMyOrders handler (fixtures/c3r-v2/gen-c3r-v2.mjs at feat/snapshot-v2-3a): { v:2, lines:[{ unit_cents,
+// line_cents, extras?:[{ k, c }] }] }. receiptOf keeps a well-formed v1 / v2 snapshot; snapshotOf(ps, items) keeps it only ALIGNED 1:1
+// with the row's items. Anything else ⇒ dropped (the reorder then shows live prices without a historical note) ──
+const C3V2 = JSON.parse(readFileSync(join(HERE, 'fixtures/c3r-v2/c3r-v2.json'), 'utf8')).scenarios['XP-V1'];
+test('C-3r v2 receipt: 3a\'s real v2 receipt keeps its price_snapshot exactly; v1 still reads; a malformed snapshot is dropped; snapshotOf keeps it only aligned with the row\'s items', async () => {
+  const { createSignupApi, snapshotOf } = require('./capp-signup-api.js');
+  const rcpt = (ps) => createSignupApi({ endpoints: { getMyOrders: 'https://ep.test/getMyOrders' }, fetch: async () => ({ status: 200, json: async () => JSON.parse(JSON.stringify({ ...C3V2.receipt.body, receipt: { ...C3V2.receipt.body.receipt, price_snapshot: ps } })) }) })
+    .getReceipt({ idToken: 't', orderId: 'XP-V1' }).then((r) => r.receipt);
+  assert.deepEqual(C3V2.receipt.body.receipt.price_snapshot, C3V2.price_snapshot, 'premise: the handler served the writer\'s snapshot verbatim');
+  assert.deepEqual((await rcpt(C3V2.price_snapshot)).price_snapshot, C3V2.price_snapshot, '🔴 C3R-V2-RCPT: the v2 snapshot survives the receipt');
+  const v1 = { v: 1, lines: [{ unit_cents: 29900, line_cents: 64800 }] };
+  assert.deepEqual((await rcpt(v1)).price_snapshot, v1, 'an order written before v2: its v1 snapshot still reads');
+  const L = C3V2.price_snapshot.lines[0];
   const bad = {
-    misaligned: { v: 1, lines: [...entry.price_snapshot.lines, { unit_cents: 100, line_cents: 100 }] },
-    v2: { ...entry.price_snapshot, v: 2 },
-    fractional: { v: 1, lines: [{ unit_cents: 299.5, line_cents: 64800 }] },
+    'k not a string': { v: 2, lines: [{ ...L, extras: [{ k: 5, c: 5000 }] }] },
+    'c fractional': { v: 2, lines: [{ ...L, extras: [{ k: 'Mozzarella', c: 50.5 }] }] },
+    'c negative': { v: 2, lines: [{ ...L, extras: [{ k: 'Mozzarella', c: -1 }] }] },
+    'extras an object (never the RTDB-keyed shape)': { v: 2, lines: [{ ...L, extras: { Mozzarella: 5000 } }] },
+    'another version': { ...C3V2.price_snapshot, v: 3 },
+    'a fractional unit': { v: 2, lines: [{ ...L, unit_cents: 299.5 }] },
   };
-  for (const [k, ps] of Object.entries(bad)) assert.equal((await served({ ...entry, price_snapshot: ps })).price_snapshot, undefined, `🔴 G1-row ${k}: dropped`);
-  assert.equal((await served({ ...entry, price_snapshot: undefined })).price_snapshot, undefined, 'no snapshot ⇒ none');
+  for (const [k, ps] of Object.entries(bad)) assert.equal((await rcpt(ps)).price_snapshot, undefined, `🔴 C3R-V2-RCPT ${k}: dropped`);
+  assert.equal(typeof snapshotOf, 'function', '🔴 C3R-V2-ALIGN: the module exposes the alignment check');
+  assert.deepEqual(snapshotOf(C3V2.price_snapshot, C3V2.items), C3V2.price_snapshot, '🔴 C3R-V2-ALIGN: aligned 1:1 ⇒ kept');
+  assert.equal(snapshotOf(C3V2.price_snapshot, [...C3V2.items, C3V2.items[0]]), null, '🔴 C3R-V2-ALIGN: misaligned ⇒ null');
+  const noEx = { v: 2, lines: [{ unit_cents: L.unit_cents, line_cents: L.line_cents }] };
+  assert.deepEqual(snapshotOf(noEx, C3V2.items), noEx, 'absent extras = none (RTDB drops an empty array) — kept as no extras, never invented');
 });
 
 // PLAN-capp-virtual-clock r0 step 0, P2 (advisor 11-13): the resend countdown reads the INJECTED now() (the shell's clock), never
@@ -449,4 +482,34 @@ test('VC-P2 the resend countdown follows the injected now(): «Reenviar en 0:29�
   assert.equal(b.txt('[data-su-left]'), 'Reenviar en 0:09', '🔴 VC-P2: the tick reads the injected now');
   t += 9000; ticks.at(-1)(); await settle();
   assert.ok(b.q('[data-su="resend"]'), '🔴 VC-P2: at 29 s the resend button');
+});
+
+// ── C-1b (3a's getMyFavorites + setFavorite, my-favorites.js @990cf8c4): the member transport, against the REAL handler's bodies
+// generated into fixtures/c1b/favorites-contract.json (3a's own fake RTDB + the real intake writer; rule 29 — never hand-made) ──
+const FC = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/c1b/favorites-contract.json'), 'utf8'));
+const favApi = (reply, seen = []) => require('./capp-signup-api.js').createSignupApi({ endpoints: { getMyFavorites: 'https://ep.test/getMyFavorites', setFavorite: 'https://ep.test/setFavorite' },
+  fetch: async (u, init) => { seen.push({ u: String(u), init }); const r = typeof reply === 'function' ? reply(u, init) : reply; return { status: r.status, json: async () => JSON.parse(JSON.stringify(r.body)) }; } });
+test('C-1b getMyFavorites: a GET ?context=platform with the token in the HEADER; the favorites (newest first), more, and the recent restaurants survive field by field; a refusal is a reason', async () => {
+  const S = FC.scenarios, seen = [];
+  const r = await favApi(S.read_full, seen).getMyFavorites({ idToken: 'tok' });
+  assert.deepEqual(r, { ok: true, favorites: ['x_pizza', 'la_musa'], more: false, recent: S.read_full.body.recent }, '🔴 FAV-READ: the real body');
+  assert.equal(seen[0].u, 'https://ep.test/getMyFavorites?context=platform', '🔴 FAV-READ (rule 20): no token in the URL');
+  assert.equal(seen[0].init.method, 'GET'); assert.equal(seen[0].init.headers['x-firebase-id-token'], 'tok', '🔴 FAV-READ: the header token'); assert.equal(seen[0].init.body, undefined, 'no body');
+  assert.deepEqual(await favApi(S.read_empty).getMyFavorites({ idToken: 'tok' }), { ok: true, favorites: [], more: false, recent: [] });
+  for (const k of ['unauth', 'deleted']) assert.equal((await favApi(S[k]).getMyFavorites({ idToken: 'tok' })).ok, false, k);
+  assert.equal((await favApi(S.deleted).getMyFavorites({ idToken: 'tok' })).reason, 'deleted');
+  const junk = { status: 200, body: { ok: true, favorites: ['x_pizza', 'NOT A RID', 7], more: 'yes', recent: [{ rid: 'la_musa', last_at: 'x' }, { rid: 'la_musa', last_at: 5 }] } };
+  assert.deepEqual(await favApi(junk).getMyFavorites({ idToken: 'tok' }), { ok: true, favorites: ['x_pizza'], more: false, recent: [{ rid: 'la_musa', last_at: 5 }] }, '🔴 FAV-READ: a malformed entry is dropped, never guessed');
+  assert.deepEqual(await favApi(S.read_full).getMyFavorites({}), { ok: false, reason: 'unauthenticated' }, 'no token ⇒ no request');
+});
+test('C-1b setFavorite: a POST { context, rid, on } with the header token; 200 ⇒ { ok, on }; 409 too_many / 404 unknown_restaurant / 403 deleted are their reasons', async () => {
+  const S = FC.scenarios, seen = [];
+  assert.deepEqual(await favApi(S.set_on, seen).setFavorite({ idToken: 'tok', rid: 'x_pizza', on: true }), { ok: true, on: true }, '🔴 FAV-SET: on');
+  assert.deepEqual(JSON.parse(seen[0].init.body), { context: 'platform', rid: 'x_pizza', on: true }, '🔴 FAV-SET: the contract body');
+  assert.equal(seen[0].u, 'https://ep.test/setFavorite'); assert.equal(seen[0].init.headers['x-firebase-id-token'], 'tok', '🔴 FAV-SET: the header token');
+  assert.deepEqual(await favApi(S.set_off).setFavorite({ idToken: 'tok', rid: 'la_musa', on: false }), { ok: true, on: false });
+  assert.deepEqual(await favApi(S.set_too_many).setFavorite({ idToken: 'tok', rid: 'x_pizza', on: true }), { ok: false, reason: 'too_many' }, '🔴 FAV-SET: the cap');
+  assert.deepEqual(await favApi(S.set_unknown).setFavorite({ idToken: 'tok', rid: 'no_such_rid', on: true }), { ok: false, reason: 'unknown_restaurant' });
+  assert.deepEqual(await favApi(S.deleted).setFavorite({ idToken: 'tok', rid: 'x_pizza', on: true }), { ok: false, reason: 'deleted' });
+  for (const bad of [{ rid: 'X PIZZA', on: true }, { rid: 'x_pizza', on: 'yes' }]) assert.deepEqual(await favApi(S.set_on).setFavorite({ idToken: 'tok', ...bad }), { ok: false, reason: 'bad_request' }, 'refused locally');
 });

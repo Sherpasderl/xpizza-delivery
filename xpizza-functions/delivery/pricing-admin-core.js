@@ -175,6 +175,17 @@ function limitRow(cur, rid) {
   return { max_km: max, effective_km: top === null ? null : max === null ? top : Math.min(top, max), above_top: top !== null && max !== null && max > top, limit_invalid: false };
 }
 
+// the read's account of the zones lock (advisor 11-13): null when editable; else the reason — 'open' when any branch is open,
+// 'hours_unknown' when every blocking branch's hours are missing/invalid, 'unavailable' for a 503 or a throw — and the blocking
+// branches by name only ({ rid, name, state }), none for 'unavailable'
+function lockSummary(lock) {
+  if (lock && lock.ok === true) return null;
+  const list = lock && lock.status === 409 && lock.body && Array.isArray(lock.body.branches) ? lock.body.branches : null;
+  if (!list) return { reason: 'unavailable', branches: [] };
+  const branches = list.map((b) => ({ rid: b.rid, name: b.location_name, state: b.reason }));
+  return { reason: branches.some((b) => b.state === 'open') ? 'open' : 'hours_unknown', branches };
+}
+
 async function getDeliveryPricingCore(deps, req) {
   const a = await admit(deps, req);
   if (a.fail) return a.fail;
@@ -184,13 +195,16 @@ async function getDeliveryPricingCore(deps, req) {
   const list = await branchesP;
   const caps = { ...CAPS, ...Z.CAPS };
   const dir = list ? { branches: list.map((r) => ({ ...r, ...limitRow(cur, r.rid) })) } : { branches_unavailable: true };
-  const zones_editable = (await ZL.zonesLock(deps)).ok === true;   // advisory for the portal: the save re-runs the same check
-  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], no_delivery_zones: [], zones_editable, caps, ...dir });
+  let lock;
+  try { lock = await ZL.zonesLock(deps); } catch (_) { lock = { ok: false }; }   // a throwing lock fails closed: not editable, unavailable
+  const zones_editable = lock.ok === true;   // advisory for the portal: the save re-runs the same check
+  const zones_lock = lockSummary(lock);   // advisor 11-13: WHY it is locked, for the Sherpa-admin (this read is admin-only: admit above)
+  if (cur === null || cur === undefined) return reply(200, { policy_version: 0, bands: [], history: [], no_delivery_zones: [], zones_editable, zones_lock, caps, ...dir });
   const pv = isObj(cur) ? cur.policy_version : undefined;
   if (!isObj(cur) || !(okVersion(pv) && pv >= 1) || !bandsOk(cur.bands) || Z.storedProblem(cur.no_delivery_zones)) {
     return reply(200, { current_malformed: true, policy_version_raw: typeof pv === 'number' || typeof pv === 'string' ? pv : null, caps, ...dir });
   }
-  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], no_delivery_zones: Z.toPortal(cur.no_delivery_zones), zones_editable, caps, ...dir });
+  return reply(200, { policy_version: pv, bands: cur.bands, history: historyOk(cur.history) ? cur.history : [], no_delivery_zones: Z.toPortal(cur.no_delivery_zones), zones_editable, zones_lock, caps, ...dir });
 }
 
 async function setDeliveryPricingCore(deps, req) {

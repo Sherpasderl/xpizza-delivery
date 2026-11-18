@@ -8,6 +8,13 @@ const { ticketKey } = require('../../checkout-guest-lib');
 const NOT_FOUND = Object.freeze({ ok: false, status: 404 });
 const GUEST_REQUIRED = Object.freeze({ ok: false, status: 401, error: 'guest_auth_required' });
 
+// the same check, plus the verified member uid on a 404 (cancelSdkPending fences an absent ≡ foreign order for THAT caller: PLAN-sdk-fence-r1).
+// authorizeExistingOrder's own answer is unchanged (no uid on a 404).
+async function authorizeExistingOrderAs(deps, creds = {}, orderId) {
+  let uid = null;
+  const auth = await authorizeExistingOrder({ ...deps, verifyIdToken: async (t) => { const d = await deps.verifyIdToken(t); uid = d && typeof d.uid === 'string' ? d.uid : null; return d; } }, creds, orderId);
+  return { auth, uid: !auth.ok && auth.status === 404 ? uid : null };
+}
 async function authorizeExistingOrder(deps, { authorization, ticket } = {}, orderId) {
   const bearer = typeof authorization === 'string' && /^Bearer\s+\S+$/.test(authorization) ? authorization.replace(/^Bearer\s+/, '') : null;
   const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
@@ -32,4 +39,4 @@ async function authorizeExistingOrder(deps, { authorization, ticket } = {}, orde
   if (valid(checkoutRec) || valid(accessRec)) return { ok: true, guest: true };
   return { ...GUEST_REQUIRED };
 }
-module.exports = { authorizeExistingOrder };
+module.exports = { authorizeExistingOrder, authorizeExistingOrderAs };

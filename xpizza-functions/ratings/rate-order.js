@@ -4,28 +4,33 @@
 // S-A1 (NOTE-S-A-ratings-v2-build, approved 2026-11-01): EVERY write is ratings_v2/{order_id} (one node, one transaction —
 // ratings/rating-v2.js); order_ratings is never written again (prod held zero v1 records).
 //   POST { order_id, thumb:"up"|"down" }   legacy v1 (old clients): legacy_thumb, WRITE-ONCE; status-based eligibility, as before
-//   POST { order_id, store?, dishes?, delivery?, comment? }   v2 (rich): the 7-day window from fulfilled_at; dish votes keyed by the
+//   POST { order_id, store?, dishes?, delivery?, comment?, disclosure? }   v2 (rich): the 7-day window from fulfilled_at; dish votes keyed by the
 //        store's CANONICAL dish id and validated against the member's OWN recipe (user_orders/{uid}/{id}.items keys) mapped through the
 //        ONE resolver (configure({ resolveContext })); an unusable context ⇒ the dish votes are dropped, the rest recorded
 //   POST { order_id, action:"withdraw" }   live → withdrawn
+//   Calificaciones v2 (PLAN-3a-merchant-reviews-v2 r1 §0 B1, r3 §8, r6.2 §1): before either rating transaction, ONE read of
+//   platform_config/ratings (ratings-config.readWriteGate) decides the FIRST submission's stamps: disclosure 1 only when the request
+//   asks AND disclosure_v + policy_ack allow; post_cutover when a cut-over exists. A failed read never refuses the rating: it is
+//   written, stamped post_cutover and left undisclosed.
 //   200 { ok:true[, dishes:'unavailable'] } | 409 { ok:false, error: not_fulfilled | window_closed | not_rated } |
 //   400 { ok:false, error:'dish_not_purchased' } | 403 { ok:false, error:'not_allowed' } (ONE generic refusal)
 const { onRequest } = require('firebase-functions/v2/https');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
-const { attributionUid } = require('../create-order-build');
 const R = require('./rating-core');
 const V2 = require('./rating-v2');
+const RC = require('./ratings-config');
 
 const GENERIC = { httpStatus: 403, body: { ok: false, error: 'not_allowed' } };
 
-// The verified customer uid, or null (any failure → null: the generic refusal)
+// The verified customer uid, or null (any failure → null: the generic refusal). THE member predicate (member-auth.memberUidOf; the
+// advisor's follow-up to PLAN-3a-capp-member-reads R2.1): a customer token, never a handheld (the rules' handheld !== true), and NONE
+// of the three tombstones — deleted_uids, user_private/{uid}/deleted_at and the inactivity sweep's user_profiles/{uid}/deleting_at
+// (before, only deleted_uids was read). Shared by rateOrder, getMyRating and createSupportTicket.
 async function customerUidOf(db, idToken, verifyIdToken) {
-  if (typeof idToken !== 'string' || !idToken) return null;
   try {
-    const dec = await verifyIdToken(idToken);
-    if (!dec || dec.customer !== true || dec.handheld === true || !dec.uid) return null;   // S-A(d) read: a handheld device token never acts as a customer (the rules' handheld !== true)
-    return attributionUid(dec, (await db.ref(`deleted_uids/${dec.uid}`).get()).exists());
+    const r = await require('../member-auth').memberUidOf(db, idToken, verifyIdToken);
+    return r.uid || null;
   } catch (_) { return null; }
 }
 
@@ -77,7 +82,8 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
     const why = R.eligibility(order, uid);                                // status-based, exactly as before
     if (why === 'not_allowed') return GENERIC;
     if (why) return { httpStatus: 409, body: { ok: false, error: why } };
-    await ref.transaction(V2.v1Updater({ thumb: req.thumb, restaurantId: order.restaurant_id, uid, now }, out));
+    const gate = await RC.readWriteGate(db);
+    await ref.transaction(V2.v1Updater({ thumb: req.thumb, restaurantId: order.restaurant_id, uid, now, postCutover: gate.postCutover }, out));
     if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;
     return out.outcome === 'closed' ? GENERIC : { httpStatus: 200, body: { ok: true } };   // recorded or kept — the same answer
   }
@@ -94,7 +100,8 @@ async function rateOrderCore(db, { body, idToken, now, verifyIdToken, resolveCon
     else if (Object.keys(fields.dishes).some((id) => !bought.has(id))) return { httpStatus: 400, body: { ok: false, error: 'dish_not_purchased' } };
   }
   if (!Object.keys(fields).length) return { httpStatus: 200, body: { ok: true, dishes: 'unavailable' } };   // only dish votes, none resolvable
-  await ref.transaction(V2.v2Updater({ fields, uid, now }, out));
+  const gate = await RC.readWriteGate(db);
+  await ref.transaction(V2.v2Updater({ fields, uid, now, disclose: gate.disclose && req.disclosure === 1, postCutover: gate.postCutover }, out));
   if (out.outcome === 'recorded' && await fencedAfterWrite(db, uid, ref, now)) return GENERIC;
   if (out.outcome === 'recorded') return { httpStatus: 200, body: { ok: true, ...(dishesUnavailable ? { dishes: 'unavailable' } : {}) } };
   if (out.outcome === 'closed') return GENERIC;

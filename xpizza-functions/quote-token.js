@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 const crypto = require('node:crypto');
 /* The brand's authoritative pricing key — imported, never reimplemented. See normalizeCartForFingerprint. */
-const { itemPricingKey } = require('./menu-pricing');
+const { itemPricingKey, extraPricingKey } = require('./menu-pricing');
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
 
@@ -101,7 +101,7 @@ function normalizeCartForFingerprint(items, rid, keyMode) {
       const rawExtras = (it && Array.isArray(it.extras)) ? it.extras : [];
       const extras = [];
       for (const e of rawExtras) {
-        const ek = key(e);
+        const ek = (() => { try { const r = extraPricingKey(e, rid, keyMode); return r === undefined || r === null || String(r) === '' ? null : String(r); } catch (_) { return null; } })();   // S2b §2.4: an extra binds by the key it is priced by
         // An option with no explicit qty means one of it — x_pizza's options are a 0/1 toggle and carry
         // no qty at all, so defaulting HERE (where the shape is known) is right, while defaulting inside
         // cartFingerprint (where it is not) was the collision T2 removed.
@@ -226,7 +226,10 @@ function verifyQuoteToken(token, secret, nowMs) {
     // Signed, therefore believable — and only now is expires_at worth reading. `>=` so a token is dead
     // AT its expiry rather than one millisecond later: the boundary belongs to the closed side.
     if (!Number.isFinite(Number(payload.expires_at)) || nowMs >= Number(payload.expires_at)) {
-      return { ok: false, reason: 'expired', payload: null };
+      /* offer-audience (PLAN r4.1 §3): an expired token that SIGNED an audience block surfaces THAT block — only after the HMAC verified
+         above, never the rest of the payload — so the gate can refuse it offer_changed instead of the grace / stale paths (an expired
+         token never grants its discount). A token with no aud returns exactly what it always did. */
+      return { ok: false, reason: 'expired', payload: null, ...('aud' in payload ? { expired_aud: payload.aud } : {}) };
     }
     return { ok: true, reason: 'ok', payload };
   } catch (_) {

@@ -139,10 +139,21 @@ async function wipe() {
     const now = await getActivePointer(db, rid);
     const target = (await db.collection('restaurants').doc(rid).collection('versions').orderBy('created_at').limit(1).get()).docs[0].id;   // the seed version
     assert.notStrictEqual(target, now.version, 'premise: rolling back to an older version');
-    await rollbackVersion(db, rid, target, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: now.version, activeGeneration: now.generation } });
-    const k = await io.syncKds(rid, { versionId: target });
-    assert.strictEqual(k.written, true, `${rid}: the rollback rewrites the KDS list ${JSON.stringify(k)}`);
-    assert.ok(!(await manifest(rid)).some((r) => added.some((a) => a.key === r.key)), `${rid}: after the rollback the kitchen list no longer carries the group`);
+    // S3 shape rule (catalog/choice-rollback.js; Codex S3 build r1 P1-2, ruled refuse; advisor 11-12 ungated): a target WITHOUT
+    // variant_items never replaces a version whose groups map is non-empty. x_pizza's code seed has no variant_items field, so its
+    // rollback is REFUSED (pointer and kitchen list unchanged); la_musa's seed keeps its Pad Thai map, so its rollback proceeds.
+    const seedShape = (await db.collection('restaurants').doc(rid).collection('versions').doc(target).collection('meta').doc('menu_structure').get()).data() || {};
+    if (!Object.prototype.hasOwnProperty.call(seedShape, 'variant_items')) {
+      await assert.rejects(rollbackVersion(db, rid, target, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: now.version, activeGeneration: now.generation } }),
+        (e) => e && e.code === 'choice_groups_would_vanish', `${rid}: a field-less seed never replaces the grouped version (choice_groups_would_vanish)`);
+      assert.strictEqual((await getActivePointer(db, rid)).version, now.version, `${rid}: the refused rollback leaves the pointer`);
+      assert.deepStrictEqual((await manifest(rid)).filter((r) => added.some((a) => a.key === r.key)).map((r) => r.key), added.map((a) => a.key), `${rid}: the refused rollback leaves the kitchen list carrying the group`);
+    } else {
+      await rollbackVersion(db, rid, target, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: now.version, activeGeneration: now.generation } });
+      const k = await io.syncKds(rid, { versionId: target });
+      assert.strictEqual(k.written, true, `${rid}: the rollback rewrites the KDS list ${JSON.stringify(k)}`);
+      assert.ok(!(await manifest(rid)).some((r) => added.some((a) => a.key === r.key)), `${rid}: after the rollback the kitchen list no longer carries the group`);
+    }
   }
   ok('authoring ON, BOTH brands: the same group saves (derived names, no tmp ref), publishes (unequal prices live), is served whole by the public menu ("desde", extras_policy), lands in the KDS as whole-dish + per-choice rows, and a rollback removes it from the catalog and the kitchen list');
 

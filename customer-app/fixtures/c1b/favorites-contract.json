@@ -1,0 +1,83 @@
+{
+ "source": {
+  "commit": "990cf8c4c44cafaf0d318a4052f90549284770e9",
+  "file": "xpizza-functions/my-favorites.js",
+  "clock": 1700000002050,
+  "fav_max": 50,
+  "recent_rows": 10
+ },
+ "scenarios": {
+  "read_empty": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "favorites": [],
+    "more": false,
+    "recent": []
+   }
+  },
+  "set_on": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "on": true
+   }
+  },
+  "read_full": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "favorites": [
+     "x_pizza",
+     "la_musa"
+    ],
+    "more": false,
+    "recent": [
+     {
+      "rid": "x_pizza",
+      "last_at": 1699740802000
+     },
+     {
+      "rid": "merch_a",
+      "last_at": 1699222402000
+     }
+    ]
+   }
+  },
+  "set_off": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "on": false
+   }
+  },
+  "set_unknown": {
+   "status": 404,
+   "body": {
+    "ok": false,
+    "reason": "unknown_restaurant"
+   }
+  },
+  "unauth": {
+   "status": 401,
+   "body": {
+    "ok": false,
+    "reason": "unauthenticated"
+   }
+  },
+  "set_too_many": {
+   "status": 409,
+   "body": {
+    "ok": false,
+    "reason": "too_many"
+   }
+  },
+  "deleted": {
+   "status": 403,
+   "body": {
+    "ok": false,
+    "reason": "deleted"
+   }
+  }
+ }
+}

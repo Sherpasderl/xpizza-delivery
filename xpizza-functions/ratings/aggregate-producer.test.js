@@ -27,38 +27,7 @@ const CTX = { usableAsIdentity: true, objects: Object.entries(DISH_OF).map(([cid
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { process.stderr.write('🔴 aggregate-producer: FAILED — exited without completing (a hang)\n'); process.exitCode = 1; } });
-const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-function fakeDb() {
-  const tree = {}; const reads = [];
-  const parts = (p) => String(p).split('/').filter(Boolean);
-  const get = (p) => parts(p).reduce((o, k) => (o == null ? undefined : o[k]), tree);
-  const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = clone(v); };
-  const prune = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(prune); const o = {}; for (const [k, x] of Object.entries(v)) { const p = prune(x); if (p !== null && p !== undefined && !(typeof p === 'object' && !Object.keys(p).length)) o[k] = p; } return o; };
-  const snap = (v, rows) => ({ exists: () => v != null, val: () => (v == null ? null : clone(v)),
-    forEach: (cb) => { for (const [k, x] of (rows || Object.entries(v || {}))) if (cb({ key: k, val: () => clone(x) }) === true) return true; return false; } });
-  const ref = (p = '') => ({
-    get: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); }, once: async () => { reads.push({ kind: 'get', path: p }); return snap(get(p)); },
-    set: async (v) => set(p, prune(v)), update: async (m) => { for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v === null ? null : prune(v)); },
-    orderByKey: () => { const q = {}; const api = {
-      startAt: (k) => { q.ge = k; return api; }, endAt: (k) => { q.le = k; return api; }, startAfter: (k) => { q.gt = k; return api; }, limitToFirst: (m) => { q.first = m; return api; },
-      once: async () => {
-        reads.push({ kind: 'query', path: p, ...q });
-        let rows = Object.entries(get(p) || {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-        rows = rows.filter(([k]) => (q.ge === undefined || k >= q.ge) && (q.le === undefined || k <= q.le) && (q.gt === undefined || k > q.gt));
-        if (q.first !== undefined) rows = rows.slice(0, q.first);
-        return snap(rows.length ? Object.fromEntries(rows) : null, rows);
-      } }; return api; },
-    orderByChild: (c) => ({ equalTo: (v) => ({ once: async () => { const rows = Object.entries(get(p) || {}).filter(([, r]) => r && r[c] === v); return snap(rows.length ? Object.fromEntries(rows) : null); } }) }),
-    transaction: async (fn) => {
-      const actual = clone(get(p)) ?? null;
-      let next = fn(null);
-      if (next === undefined) return { committed: false, snapshot: snap(get(p)) };
-      if (actual !== null) { next = fn(actual); if (next === undefined) return { committed: false, snapshot: snap(get(p)) }; }
-      set(p, prune(next)); return { committed: true, snapshot: snap(get(p)) };
-    },
-  });
-  return { tree, reads, get, set, ref };
-}
+const { fakeDb } = require('./_rtdb-fake');   // the producer's in-memory RTDB (shared with marketing/anuncio-core.test.js)
 const DAY = AG.DAY_MS;
 const NOW = P.dayRange('2027-03-10')[0] + 4.5 * 3600e3;              // 04:30 HN on 2027-03-10 (the scheduled hour)
 const YDAY = '2027-03-09'; const Y0 = P.dayRange(YDAY)[0];
@@ -78,7 +47,7 @@ async function served(db, { at, phone, dish = { d1: 1 }, uid = null, status = 'd
   assert.deepStrictEqual(u[`orders/${id}`].dish_qty, dish, 'premise: the intake hunk stamped dish_qty');
   await db.ref().update(u);
   db.set(`orders/${id}/status`, status);
-  if (status === 'delivered' || status === 'completed') await stampRatingFulfilment(db, { orderId: id, status, now: at });
+  if (status === 'delivered' || status === 'completed') await stampRatingFulfilment(db, { orderId: id, status, eventTime: at });
   return id;
 }
 const PRICES = { d1: 9000, d2: 5000, d3: 15000 };
@@ -123,8 +92,11 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
     const ors = orderReads(db, mark);
     assert.strictEqual(ors.length, 7 * 4, `🔴 exactly 4 leaf reads × 7 closed-day orders (got ${ors.length})`);
     assert.ok(ors.every((r) => r.kind === 'get' && /^orders\/XPZ-\d+\/(restaurant_id|status|customer_phone|dish_qty)$/.test(r.path)), '🔴 leaf reads only — never an order node, never the orders root');
-    const q = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge);
+    // closeDay's day query (DAY_BUDGET + 1) vs the reviews-v2 bucket builder's own per-day queries (its OWN budget, r3 §2)
+    const q = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge && r.first === P.DAY_BUDGET + 1);
     assert.strictEqual(q.length, 1, 'ONE key-range query for the one closed day'); assert.strictEqual(q[0].first, P.DAY_BUDGET + 1);
+    const rbq = db.reads.slice(mark).filter((r) => r.kind === 'query' && r.path === `rating_index/${R}` && r.ge && r.first !== P.DAY_BUDGET + 1);
+    assert.ok(rbq.length <= 106 && rbq.every((r) => r.first <= require('./review-buckets').REVIEW_WINDOW_BUDGET + 1), `the bucket builder: ≤ 1 day query per range day, each within its budget (${rbq.length})`);
     const m2 = db.reads.length;
     await P.aggregateRestaurant(deps(db, { runId: 'run2' }), R);
     assert.strictEqual(orderReads(db, m2).length, 0, '🔴 a second run the same day reads ZERO orders (the watermark)');
@@ -225,6 +197,27 @@ const orderReads = (db, from = 0) => db.reads.slice(from).filter((r) => /^orders
   }
   ok('prices by canonical id: the guarded tables through the identity map (cents); an unusable context or no tables ⇒ null, never a guess');
 
+  // ── 8. reviews v2 S4 (r3 §2): buildReviewBuckets is its OWN step per rid — a closeDay failure never stops it, and its failure never
+  //       changes public_stats (byte-identical) ──
+  {
+    const seedDay = async (db) => { for (let i = 0; i < 3; i++) await served(db, { at: Y0 + 3600e3 * (1 + i), dish: { d1: 1 } }); };
+    const db = fakeDb(); await seedDay(db);
+    const real = db.ref;
+    db.ref = (p) => { const r = real(p); return String(p).startsWith(`stats_buckets/${R}/`) ? { ...r, set: async () => { throw new Error('closeDay down'); } } : r; };
+    await assert.rejects(() => P.aggregateRestaurant(deps(db), R), /closeDay down/, 'premise: closeDay failed');
+    db.ref = real;
+    assert.strictEqual((db.get(`rating_buckets/${R}/${YDAY}`) || {}).at, NOW, 'a closeDay failure ⇒ the review buckets are still built');
+    const okDb = fakeDb(); seq = 1000; await seedDay(okDb);
+    const badDb = fakeDb(); seq = 1000; await seedDay(badDb);
+    const rb = badDb.ref;
+    badDb.ref = (p) => { const r = rb(p); return String(p).startsWith('rating_buckets/') ? { ...r, set: async () => { throw new Error('buckets down'); }, once: async () => { throw new Error('buckets down'); }, update: async () => { throw new Error('buckets down'); } } : r; };
+    const errs = []; const ce = console.error; console.error = (...a) => errs.push(a.join(' '));
+    try { await P.aggregateRestaurant(deps(okDb), R); await P.aggregateRestaurant(deps(badDb), R); } finally { console.error = ce; }
+    assert.deepStrictEqual(badDb.get(`public_stats/${R}`), okDb.get(`public_stats/${R}`), 'a builder failure ⇒ public_stats byte-identical to a run where it succeeded');
+    assert.ok(errs.some((l) => /review buckets/.test(l)), 'the builder failure is logged');
+  }
+  ok('reviews v2 S4: buildReviewBuckets runs in its own try — a closeDay failure still builds the buckets; a builder failure never touches public_stats');
+
   FINISHED = true;
   console.log(`aggregate-producer: OK (${n})`);
-})().catch((e) => { process.stderr.write(`aggregate-producer: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`aggregate-producer: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

@@ -3,7 +3,8 @@
 // (capp-shell-ui) owns state, the reads (getMyRating) and the write (rateOrder).
 //   · members only (the server has no guest path) — the shell draws no entry for a guest;
 //   · the restaurant 1–5 (+ its word), one thumbs row per DISTINCT purchased dish the store's menu can NAME (never an unlabeled or
-//     unpurchased row), the delivery thumbs on a delivery only («Tu repartidor de Sherpa» — one rule, no name), an optional comment;
+//     unpurchased row), the delivery thumbs on a delivery only («Tu repartidor, {Nombre}» — the rider's first name from the order's row, owner-approved
+//     copy 11-14; no name ⇒ «Tu repartidor de Sherpa»), an optional comment;
 //   · «Enviar» sends ONLY what the customer set (a first rating) or changed (an edit); `dishes` goes WHOLE when any vote changed (the
 //     writer replaces that map), keeping earlier votes the sheet could not show;
 //   · past the 7-day window a rating is shown read-only.
@@ -67,14 +68,14 @@
     return f;
   }
 
-  // vm: { storeName, num, dishes:[{id,name}], delivery:bool, value, initial, editable, sending, error, note }
+  // vm: { storeName, num, dishes:[{id,name}], delivery:bool, driverName:string|null, value, initial, editable, sending, error, note }
   function sheetHtml(vm) {
     const v = vm.value || blank(), ed = vm.editable === true, off = ed ? '' : ' disabled';
     const s = Number.isInteger(v.store) ? v.store : 0;
     const stars = [1, 2, 3, 4, 5].map((i) => `<button class="${i <= s ? 'on' : ''}" data-act="rate-star" data-val="${i}" aria-label="${i} de 5" aria-pressed="${i === s}"${off}>${STAR}</button>`).join('');
     const thumbs = (act, id, val, up, down) => `<span class="thumbs"><button class="${val === 1 ? 'on' : ''}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ''} data-val="1" aria-label="${up}" aria-pressed="${val === 1}"${off}>${THUMB(false)}</button><button class="${val === -1 ? 'on' : ''}" data-act="${act}"${id ? ` data-id="${esc(id)}"` : ''} data-val="-1" aria-label="${down}" aria-pressed="${val === -1}"${off}>${THUMB(true)}</button></span>`;
     const dishes = (vm.dishes || []).length ? `<div><div class="lbl">Los platos</div><div class="rrows">${vm.dishes.map((d) => `<div class="rrow2"><span class="t">${esc(d.name)}</span>${thumbs('rate-dish', d.id, thumb((v.dishes || {})[d.id]), 'Me gustó', 'No me gustó')}</div>`).join('')}</div></div>` : '';
-    const delivery = vm.delivery ? `<div><div class="lbl">La entrega</div><div class="rrows"><div class="rrow2"><span class="t">Tu repartidor de Sherpa</span>${thumbs('rate-del', null, thumb(v.delivery), 'Bien', 'Mal')}</div></div></div>` : '';
+    const delivery = vm.delivery ? `<div><div class="lbl">La entrega</div><div class="rrows"><div class="rrow2"><span class="t">${vm.driverName ? `Tu repartidor, ${esc(vm.driverName)}` : 'Tu repartidor de Sherpa'}</span>${thumbs('rate-del', null, thumb(v.delivery), 'Bien', 'Mal')}</div></div></div>` : '';
     const sendable = ed && !vm.sending && Object.keys(fieldsToSend(vm.initial || null, v, (vm.dishes || []).map((d) => d.id))).length > 0;
     const sub = [vm.storeName, vm.num ? `Orden #${vm.num}` : null].filter(Boolean).map(esc).join(' · ');
     return `<div class="scrim"></div><div class="sheet rate-modal" role="dialog" aria-modal="true" aria-labelledby="rate-h"><div class="grab"></div>

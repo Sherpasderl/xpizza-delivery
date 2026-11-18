@@ -188,7 +188,7 @@ test('editors: per capability on an identity row (all-or-none for real roles; a 
 const LOC = { address_line: 'Calle 1, local 2', address_reference: null, hub: { lat: 1, lng: 2 }, zone_radius_km: 5 };
 const life = (lifecycle, readiness, extra = {}) => ({ rid: 'r_x', brand_id: 'marca_s', role: 'owner', name: 'Sucursal X', lifecycle, location: LOC,
   profile: { location_name: 'Sucursal X', phone: '+50497952893', hours: WEEK(), prep_default_min: 20 }, editable: { prep_default_min: 20 },
-  readonly: { radius_km: 5 }, devices: 0, last_order_today: null, control: { state: 'inactive' }, ...(readiness ? { readiness } : {}), ...extra });
+  readonly: { radius_km: 5 }, app_max_km: 5, limit_invalid: false, devices: 0, last_order_today: null, control: { state: 'inactive' }, ...(readiness ? { readiness } : {}), ...extra });
 
 test('§2c orphan test: every server readiness code / gap maps to EXACTLY one S8 row or to the one S8c notice — no orphans either way', () => {
   const rowFor = (unmet, gaps) => B.readinessRows(life('staged', { unmet, ...(gaps ? { identity_gaps: gaps } : {}) }));

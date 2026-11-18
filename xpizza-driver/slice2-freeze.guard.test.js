@@ -241,6 +241,11 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/capture-earnings.mjs',            // earnings capture harness (SLICE3; Chrome only under --shoot)
   'xpizza-driver/CAPTURE-PLAN-earnings.md',        // one-pass capture plan for #31/#32 + the 7 re-verify scenes (SLICE3)
   'xpizza-driver/rate-subscription.test.js',       // subscribeDriverRate/unsubscribeDriverRate lifecycle test (SLICE3)
+  // shared Figtree pin, owner 11-13 one typeface — the generated css + self-hosted woff2 the driver links (SLICE 5)
+  'xpizza-driver/figtree-fonts.css',
+  'xpizza-driver/fonts-figtree/OFL.txt',
+  'xpizza-driver/fonts-figtree/figtree-latin.8330490a01.woff2',
+  'xpizza-driver/fonts-figtree/figtree-latin-ext.f153aa07c1.woff2',
 ]);
 const REQUIRED_ADDS = ['xpizza-driver/overview-map.js', 'xpizza-driver/stacked-view.js'];
 const ALLOWED_MODIFY = 'xpizza-driver/index.html';

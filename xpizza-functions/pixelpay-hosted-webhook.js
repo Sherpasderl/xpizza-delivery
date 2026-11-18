@@ -197,7 +197,8 @@ async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount,
   } catch (_) { /* void failed → refund_pending (refundReconciler retries) */ }
   await db.ref(`payment_attempts/${attemptId}`).update({
     hosted_state: voided ? 'voided' : 'refund_pending', payment_uuid: uuid,
-    paid_amount_cents: toCents(amount), voided_at: now
+    paid_amount_cents: toCents(amount), voided_at: now,
+    'capture_evidence/webhook': require('./ledger/capture-evidence').evidenceOf({ amountLempiras: amount, paymentUuid: uuid, at: now, verified: true, approved: true, mismatchReason: null })   // LEDGER S2: the verified callback's facts, AFTER the void (non-throwing)
   });
   await db.ref(`orders/${orderId}`).update({ status: 'cancelled', payment_status: voided ? 'refunded' : 'refund_pending' });
   // [C/#18] a late paid callback on a cancelled/abandoned order → the money is voided/refunded, so reverse the

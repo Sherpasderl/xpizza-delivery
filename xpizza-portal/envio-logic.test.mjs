@@ -132,12 +132,10 @@ test('confirmDiff(): rows matched by km — Igual / Cambia / Nuevo / Quitado, in
   assert.deepStrictEqual(confirmDiff([], [{ max_km: 4, cents: 1000 }]).limit, { from: null, to: 4 });
 });
 
-test('limitCallout(): grows (approved copy, no zones clause), shrinks (advisor-approved mirror, 11-10), first policy', () => {
-  assert.strictEqual(limitCallout({ from: 6, to: 10 }),
-    'El límite de entrega pasa de 6 km a 10 km para todos los restaurantes. Las direcciones entre 6 y 10 km ya se pueden pedir desde que guardés.');
-  assert.strictEqual(limitCallout({ from: 10, to: 6 }),
-    'El límite de entrega pasa de 10 km a 6 km para todos los restaurantes. Las direcciones entre 6 y 10 km ya no se pueden pedir desde que guardés.');
-  assert.strictEqual(limitCallout({ from: null, to: 4.5 }), 'El límite de entrega queda en 4.5 km para todos los restaurantes.');
+test('limitCallout(): the table-top line — ENVÍO v3 copy table «Changed» (MOCKUP-portal-envio-v3-limit, owner-approved): grows, shrinks; a first policy keeps step 1\'s line', () => {
+  assert.deepStrictEqual(limitCallout({ from: 6, to: 10 }), ['La distancia máxima de la tabla pasa de 6 km a 10 km.']);
+  assert.deepStrictEqual(limitCallout({ from: 10, to: 6 }), ['La distancia máxima de la tabla pasa de 10 km a 6 km.'], 'per-restaurant reach is the v3 limit callouts\' job (envio-limit.test)');
+  assert.deepStrictEqual(limitCallout({ from: null, to: 4.5 }), ['El límite de entrega queda en 4.5 km para todos los restaurantes.']);
   assert.strictEqual(limitCallout(null), null);
 });
 
@@ -218,8 +216,14 @@ test('startAttempt(): an immutable snapshot (later draft edits can\'t reach it)'
   const src = [{ max_km: 3, cents: 4000 }];
   const a = startAttempt({ uid: 'u1', sessionGen: 4, expectedVersion: 7, bands: src });
   src[0].cents = 1; src.push({ max_km: 5, cents: 1 });
-  assert.deepStrictEqual(a, { uid: 'u1', sessionGen: 4, expectedVersion: 7, sentBands: [{ max_km: 3, cents: 4000 }] });
-  assert.ok(Object.isFrozen(a) && Object.isFrozen(a.sentBands) && Object.isFrozen(a.sentBands[0]));
+  // ENVÍO v3 (§1b): the frozen request also carries the requested limits — none on a bands-only save
+  assert.deepStrictEqual(a, { uid: 'u1', sessionGen: 4, expectedVersion: 7, sentBands: [{ max_km: 3, cents: 4000 }], sentLimits: [] });
+  assert.ok(Object.isFrozen(a) && Object.isFrozen(a.sentBands) && Object.isFrozen(a.sentBands[0]) && Object.isFrozen(a.sentLimits));
+  const lim = [{ rid: 'r1', km: 6 }];
+  const b = startAttempt({ uid: 'u1', sessionGen: 4, expectedVersion: 7, bands: src, limits: lim });
+  lim[0].km = 9;
+  assert.deepStrictEqual(b.sentLimits, [{ rid: 'r1', km: 6 }], 'the requested limits are a snapshot too');
+  assert.ok(Object.isFrozen(b.sentLimits[0]));
   assert.throws(() => startAttempt({ uid: 'u1', sessionGen: 4, expectedVersion: 1e15, bands: src }), /version/);
 });
 

@@ -87,8 +87,8 @@ function issueQuote(args) {
   }
 }
 
-function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now() }) {
-  const net = computeServerNet({ items, reward, deliveryContext, rid, tables });
+function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tables = null, customerId = null, deliveryContext = null, nowMs = Date.now(), offer = null, aud = undefined }) {
+  const net = computeServerNet({ items, reward, deliveryContext, rid, tables, offer });
   if (net.error) return { ok: false, error: net.error };
 
   const result = { ok: true, net_total_cents: net.net_total_cents, components: net.components, quote_token: null };
@@ -98,6 +98,8 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
   // it. The reward's identity comes from the resolved object, the same one the charge path resolves.
   const secret = quoteSecret();
   if (!secret) return result;                    // unprovisioned → price without a token
+  // offer-audience (PLAN r4.1 §3): an audience-exposed quote signs its aud block; a malformed one issues NO token (never a token without it)
+  if (aud !== undefined && !require('./marketing/audience-core').audShapeOk(aud)) return result;
 
   try {
     // Inside the try: normalization promises not to throw, and this is the belt for that braces — a
@@ -110,12 +112,13 @@ function issueQuoteInner({ items, reward = null, redemptionRef = null, rid, tabl
       cart_fingerprint: cartFingerprint(norm, reward),
       net_total_cents: net.net_total_cents,
       components: net.components,
-      redemption_ref: redemptionRef || null,
+      redemption_ref: redemptionRef || null, ...(offer && require('./marketing/offer-price').isServerOfferCtx(offer) && !reward ? { offer: { offer_id: offer.offer_id, rev: offer.rev, discount_cents: offer.discount_cents, waived_envio_cents: offer.waived_envio_cents } } : {}),   // marketing: the offer this net includes (the gate names a change offer_changed); absent ⇒ every pre-offer payload byte-identical
       // S3a: the envío facts this net includes (mode, policy_version, delivery/promo, the priced PLACE and the promo customer —
       // BINDINGS the gate enforces, codex S3a P2-3) — absent when the restaurant is
       // not activated for envío, so every pre-S3 token payload is byte-identical.
-      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, place: deliveryContext.place || null, customer: deliveryContext.customer || null,
+      ...(deliveryContext ? { delivery: { mode: deliveryContext.mode, policy_version: deliveryContext.policy_version, delivery_cents: deliveryContext.delivery_cents, promo_discount_cents: deliveryContext.promo_discount_cents, ...(deliveryContext.promo_discount_cents > 0 && deliveryContext.delivery_discount_funder ? { delivery_discount_funder: deliveryContext.delivery_discount_funder } : {}), place: deliveryContext.place || null, customer: deliveryContext.customer || null,
         ...(tipCentsOf(deliveryContext) > 0 ? { tip_cents: tipCentsOf(deliveryContext) } : {}) } } : {}),   // S2: the SIGNED tip (> 0 only — every no-tip payload and pre-S2 token is byte-identical); the gate binds it (deliveryBindingMismatch)
+      ...(aud !== undefined ? { aud } : {}),   // offer-audience: the kind, the selected offer (or its signed absence) and the codes; absent ⇒ byte-identical
       issued_at: nowMs,
       expires_at: nowMs + EXPIRY_MS,
       quote_id: crypto.randomUUID(),             // a nonce, so two identical quotes are still two quotes

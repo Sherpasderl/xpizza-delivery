@@ -10,7 +10,8 @@
  * not have shown; the loop was the defect. So the list is ENUMERATED from package.json, never typed:
  * a suite added tomorrow is in the gate tomorrow, without anyone remembering to add it.
  *
- *   npm run test:gate               EVERYTHING: npm test + all 44 emulator scripts + test:portal
+ *   npm run test:gate               EVERYTHING: npm test + all 44 emulator scripts + test:portal (the portal's
+ *                                   *.browser.test.mjs files; its other files run per file in test:apps)
  *   npm run test:emulators:all      the emulator subset only (the slow part), by delegation
  *   npm run test:gate -- --list     just show what would run
  *
@@ -150,7 +151,82 @@ function reachesLauncher(body, root = ROOT) {
   });
 }
 
-module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher, makeCollector };
+/* 🔴 THE FAILURE BLOCK SHOWS THE FAILURE, NOT A TEST NAME (advisor asm11; 14d red twice in slots, undiagnosable). It
+   was the first 6 lines matching /FAIL|AssertionError|Error:|REFUSED|not ok/, and portal TEST NAMES match that
+   («…FAILS…», «…REFUSED…»): the same filter over a GREEN run printed the same lines, so the real failing line was
+   cut off. Now, in order:
+     1. TAP `not ok` lines with their YAML diagnostic block (location, error, expected/actual, the stack's top) —
+        leaf failures first: a parent whose only fault is `failureType: 'subtestsFailed'` says nothing new;
+     2. only when there is no `not ok` at all (a suite with its own ✓/✗ convention, or a crash): the keyword
+        lines, never a line that is a PASSING test's name (`ok n`, `# Subtest:`, ✓, ✔);
+     3. when nothing matches either (Codex #121 P1: a stderr-only «fatal: connection terminated», a segfault
+        message): the LAST non-empty lines of the output, which is where a dying process says why.
+   Bounded every way; the whole output is in the log file whose path the gate prints next to it, and the gate
+   always prints the exit code or signal beside it (exitText), so a silent kill still says what happened. */
+const NOT_OK = /^(\s*)not ok \d+ - /;
+const PASSING_NAME = /^\s*(?:ok \d+ |# Subtest:|✓|✔)/;
+const FAIL_WORD = /✗|✖|FAIL|AssertionError|Error:|REFUSED|not ok/;
+function failureBlock(out, { maxFailures = 4, perFailure = 12, maxFallback = 8, maxTail = 12 } = {}) {
+  const lines = String(out || '').split('\n');
+  const fails = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = NOT_OK.exec(lines[i]);
+    if (!m) continue;
+    const ind = m[1].length;
+    const diag = [];
+    let wrapper = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j];
+      if (!l.trim()) continue;
+      if (l.search(/\S/) <= ind) break;             // back at (or above) the not ok's own level: the block ended
+      const t = l.trim();
+      if (/^failureType: 'subtestsFailed'/.test(t)) wrapper = true;
+      if (t === '---' || t === '...' || /^(?:duration_ms|type|failureType|code|name):/.test(t)) continue;   // bookkeeping, not the failure
+      diag.push(t);
+    }
+    fails.push({ head: lines[i].trim(), diag, wrapper });
+  }
+  if (fails.length) {
+    const leaves = fails.filter((f) => !f.wrapper);
+    const show = leaves.length ? leaves : fails;
+    const body = show.slice(0, maxFailures).flatMap((f) => [f.head, ...f.diag.slice(0, perFailure - 1).map((d) => `  ${d}`)]);
+    if (show.length > maxFailures) body.push(`… and ${show.length - maxFailures} more \`not ok\` (see the full output)`);
+    return body;
+  }
+  const words = lines.filter((l) => FAIL_WORD.test(l) && !PASSING_NAME.test(l)).slice(0, maxFallback).map((l) => l.trim());
+  if (words.length) return words;
+  return lines.filter((l) => l.trim()).slice(-maxTail).map((l) => l.trim());
+}
+
+/* the runner's exit, said plainly: `exit code 3`, or `killed by SIGSEGV` (npm re-raises its child's signal) */
+const exitText = (status, signal) => (signal ? `killed by ${signal}` : `exit code ${status}`);
+
+/* Every failing script's FULL output goes to a file and the gate prints its path, so the next red is diagnosable
+   after the fact (the failure block is bounded on purpose). Never fatal: a log that cannot be written is said.
+   PRIVATE (Codex #121 P2): suite output can carry anything, so the run's dir is a fresh mkdtemp (0700) under the
+   parent and each file is created 0600 with 'wx' — never opened if the path exists (a planted file or symlink is
+   not followed or overwritten); a name already taken in this run gets a numbered sibling instead. */
+function makeLogDir(parent) {
+  fs.mkdirSync(parent, { recursive: true, mode: 0o700 });   // a missing parent is made private; an existing one is left as it is
+  return fs.mkdtempSync(path.join(parent, 'gate-all-'));
+}
+function writeFailureLog(dir, name, out) {
+  try {
+    const base = name.replace(/[^\w.-]+/g, '_');
+    for (let k = 1; k <= 50; k++) {
+      const p = path.join(dir, `${base}${k > 1 ? `.${k}` : ''}.log`);
+      let fd;
+      try { fd = fs.openSync(p, 'wx', 0o600); } catch (e) { if (e && e.code === 'EEXIST') continue; throw e; }
+      try { fs.writeSync(fd, String(out || '')); } finally { fs.closeSync(fd); }
+      return p;
+    }
+    return '(could not write the full output: 50 names already taken)';
+  } catch (e) {
+    return `(could not write the full output: ${e && e.message})`;
+  }
+}
+
+module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher, makeCollector, failureBlock, exitText, makeLogDir, writeFailureLog };
 if (require.main !== module) return;
 
 const EMULATORS_ONLY = process.argv.includes('--emulators');
@@ -192,8 +268,11 @@ if (!scripts.length) {
   process.exit(2);
 }
 
+/* KNOWN_RED names are checked against the FULL test-script inventory (Codex fence-build r1 P2), never the --only / emulators
+   selection: an entry for a script the selection merely skipped is not stale (`--only=test:portal` must not exit 2). */
+const inventory = Object.keys(pkgScripts).filter((k) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(pkgScripts[k]).trim());
 for (const name of Object.keys(KNOWN_RED)) {
-  if (!scripts.includes(name) && !EMULATORS_ONLY) {
+  if (!inventory.includes(name)) {
     console.error(`gate-all: KNOWN_RED names "${name}", which is not a test script any more.`);
     console.error('   A stale excuse hides a suite nobody runs. Remove the entry or fix the name.');
     process.exit(2);
@@ -229,8 +308,8 @@ function runScript(name, env) {
     const col = makeCollector({ tee: stream ? (l) => process.stderr.write(`  │ ${name}: ${l}\n`) : null });
     c.stdout.on('data', (d) => col.feed('out', d));
     c.stderr.on('data', (d) => col.feed('err', d));
-    c.on('error', (e) => resolve({ status: 1, out: `${col.text()}\nspawn error: ${e && e.message}` }));
-    c.on('close', (code) => resolve({ status: code, out: col.text() }));
+    c.on('error', (e) => resolve({ status: 1, signal: null, out: `${col.text()}\nspawn error: ${e && e.message}` }));
+    c.on('close', (code, signal) => resolve({ status: code, signal, out: col.text() }));
   });
 }
 
@@ -255,7 +334,7 @@ for (const name of scripts) {
      it turned a number I could not trust into a failure instead of a footnote. */
   const cells = countCells(out);
   const ok = r.status === 0;
-  results.push({ name, ok, cells, secs: ((Date.now() - t0) / 1000).toFixed(1), out });
+  results.push({ name, ok, cells, secs: ((Date.now() - t0) / 1000).toFixed(1), out, status: r.status, signal: r.signal });
 }
 
 const verdict = classify(results, KNOWN_RED);
@@ -266,16 +345,23 @@ for (const r of verdict.rows) {
   console.log(`  ${TAG[r.state].padEnd(26)} ${r.name.padEnd(32)} ${String(r.cells).padStart(3)} cells  ${r.secs.padStart(6)}s`);
 }
 
+let LOG_DIR = null;   // created only when something failed; GATE_ALL_LOG_DIR names the PARENT
+if (results.some((r) => !r.ok)) {
+  try { LOG_DIR = makeLogDir(process.env.GATE_ALL_LOG_DIR || require('os').tmpdir()); } catch (e) { LOG_DIR = null; console.log(`\n(could not create a log dir: ${e && e.message})`); }
+}
+for (const r of results) if (!r.ok) r.log = LOG_DIR ? writeFailureLog(LOG_DIR, r.name, r.out) : '(no log dir)';
+
 for (const r of results) {
   if (r.ok || KNOWN_RED[r.name]) continue;
   console.log(`\n── ${r.name} ─────────────────────────────`);
-  const lines = r.out.split('\n').filter((l) => /FAIL|AssertionError|Error:|REFUSED|not ok/.test(l));
-  console.log(lines.slice(0, 6).map((l) => `   ${l.trim()}`).join('\n') || '   (no recognisable failure line; see the suite output)');
+  const lines = failureBlock(r.out);
+  console.log(lines.map((l) => `   ${l}`).join('\n') || '   (no output at all)');
+  console.log(`   ${exitText(r.status, r.signal)} · full output: ${r.log}`);
 }
 
 if (excused) {
   console.log('\nEXCUSED, each with a reason — these RAN and FAILED, they were not skipped:');
-  for (const r of results) if (!r.ok && KNOWN_RED[r.name]) console.log(`\n  ${r.name}\n    ${KNOWN_RED[r.name].replace(/(.{96}) /g, '$1\n    ')}`);
+  for (const r of results) if (!r.ok && KNOWN_RED[r.name]) console.log(`\n  ${r.name}\n    ${KNOWN_RED[r.name].replace(/(.{96}) /g, '$1\n    ')}\n    ${exitText(r.status, r.signal)} · full output: ${r.log}`);
 }
 if (stale) {
   console.log('\n🔴 A KNOWN-RED SUITE PASSED. Delete its KNOWN_RED entry — an excuse that outlives its');

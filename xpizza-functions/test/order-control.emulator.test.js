@@ -27,6 +27,7 @@ require('./_emulator-required')('database', 'firestore');
 
 const DR = require('./_delivery-read');   // S3a: the declared envío config read
 const assert = require('assert');
+const LD = require('./_ledger-declared');   // LEDGER S1: the declared snapshot writes (exact leaves, value-checked)
 const http = require('http');
 const path = require('path');
 const fsys = require('fs');
@@ -70,6 +71,7 @@ const { preExclusiveClaimOps } = require('../catalog/_hosted-claim-delta');
 const CLAIM_DELTA = { n: 0 };
 let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
+const LEDGER_OF = new WeakMap();   // LEDGER S1: recorded result → the VERIFIED declared snapshot leaves it wrote (normalized; test/_ledger-declared)
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
 let S3_DIFF = 0;
 // R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
@@ -222,6 +224,21 @@ function expectedChangedSD(goldenChanged) {
 // menu_version_id — on a VERSIONED route all of them (a flat-route order stores a null version, which writes no path). Whether the
 // route is versioned comes from the FIXTURE's provenance, never from the observed paths (codex S1d r1 #4). Nothing else is admitted.
 const FIXTURES_VERSIONED = true;   // every order in these suites is priced from a catalog published through publishVersion
+// LEDGER S1: the golden's change set + EXACTLY the verified declared snapshot leaves of this request (LEDGER_OF; never a prefix)
+function expectedChangedLedger(expected, r) {
+  const add = (LEDGER_OF.get(r) || []).filter((q) => !expected.includes(q));
+  return add.length ? [...expected, ...add].sort() : expected;
+}
+// LEDGER S1: the order's own create update carries exactly ONE declared key more, ledger_alloc/<oid> — removed from THAT update's key
+// list only when the write was verified (LEDGER_OF); every other op and key stays compared
+function stripLedger(ops, r) {
+  if (!(LEDGER_OF.get(r) || []).some((q) => q.startsWith('ledger_alloc/<oid>/'))) return ops;
+  let n = 0;
+  const out = ops.map((o) => (o.op === 'update' && Array.isArray(o.keys) && o.keys.includes('ledger_alloc/<oid>') && o.keys.includes('orders/<oid>')
+    ? (n += 1, { ...o, keys: o.keys.filter((k) => k !== 'ledger_alloc/<oid>') }) : o));
+  assert.strictEqual(n, 1, `🔴 ledger S1: exactly ONE create update carries ledger_alloc/<oid> (got ${n})`);
+  return out;
+}
 function expectedChangedS1d(goldenChanged, { versioned }) {
   const add = [];
   for (const p of goldenChanged) {
@@ -311,8 +328,9 @@ async function seed(rid) {
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
 }
 let LAST_SENT = null;   // §3 r2: the body the request actually POSTED — the stamp's real input (bound cases bind to it)
+let LAST_HDR = {};      // LEDGER S1: the headers it sent (the snapshot's mode evidence, read by the real client-floor reader)
 function post(handler, body, headers = {}) {
-  LAST_SENT = body;
+  LAST_SENT = body; LAST_HDR = headers;
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
@@ -382,6 +400,20 @@ async function traced(oid, rid, request) {
   COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
   POST_OF.set(out, post_);
   SENT_OF.set(out, LAST_SENT);
+  // LEDGER S1 (cb008ac98): the DECLARED snapshot writes of this request — ledger_alloc/<oid> (cash create) and the hosted claim's
+  // payment_attempts/<aid>/ledger — each VERIFIED equal to the real writer's (alloc-snapshot of the STORED order, the posted body,
+  // the sent headers); only those exact normalized leaves may join a golden's expected change set
+  {
+    const decl = []; const body0 = LAST_SENT || {}; const hdrs = LAST_HDR || {};
+    // only a snapshot THIS request wrote (a leaf differs before → after): an earlier case's snapshot on a reused id is not this request's
+    const touched = (root) => [...new Set([...before.keys(), ...after.keys()])].some((k) => k.startsWith(`${root}/`) && before.get(k) !== after.get(k));
+    const ra = touched(`ledger_alloc/${oid}`) ? LD.subtreeOf(after, `ledger_alloc/${oid}`, JSON.parse) : null;   // this suite's leaves are JSON-stringified (Codex #120 #1)
+    if (ra) decl.push(...LD.declaredLeaves({ root: `ledger_alloc/${oid}`, written: ra, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs }), label: `ledger_alloc ${oid}` }));
+    for (const [aid, a] of Object.entries(LD.subtreeOf(after, 'payment_attempts', JSON.parse) || {})) {
+      if (a && a.order_id === oid && a.ledger && touched(`payment_attempts/${aid}/ledger`)) decl.push(...LD.declaredLeaves({ root: `payment_attempts/${aid}/ledger`, written: a.ledger, expected: LD.expectedSnapshot(post_, { body: body0, headers: hdrs, hosted: true }), label: `attempt ledger ${oid}`, createdAtSkewMs: LD.HOSTED_SKEW_MS }));
+    }
+    LEDGER_OF.set(out, decl.map(norm).filter((q) => changed.includes(q)));
+  }
   return out;
 }
 
@@ -588,8 +620,9 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
         // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
         const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
-        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(r.ops, key), CLAIM_DELTA) : stripControl(r.ops, key), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
-        if (JSON.stringify(stripControl(r.ops, key)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
+        if (/FRESH/.test(c.name)) assert.ok((LEDGER_OF.get(r) || []).length > 0, `🔴 ${key}: the fresh placement writes S1's declared snapshot (non-vacuity)`);
+        const cs = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripLedger(stripControl(r.ops, key), r), CLAIM_DELTA) : stripLedger(stripControl(r.ops, key), r), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        if (JSON.stringify(stripLedger(stripControl(r.ops, key), r)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read — ${RD.opsDiff(cs.expected, cs.actual)}`);
         if (/^SCHEDULED sweep release \|/.test(key)) {
           O1A_SEEN += 1;
@@ -598,7 +631,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
           const neg = SD.compareShape(c.path === 'card' ? preExclusiveClaimOps(stripControl(planted, key), CLAIM_DELTA) : stripControl(planted, key), goldOps(g.ops),   /* DRYRUN (2e): S3a's stripControl(ops, label) — the label sets DR.without's expected:0 on SCHEDULED cells; without it the negative THROWS instead of diffing */ { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: `${key} (negative)` });
           assert.notDeepStrictEqual(neg.actual, neg.expected, `🔴 ${key}: NEGATIVE — an unexpected extra read must still turn the cell RED`);
         }
-        const ch = SD.changedShape(r.changed, expectedChangedS1d(expectedChangedD12b(g.changed), { versioned: FIXTURES_VERSIONED }), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        const ch = SD.changedShape(r.changed, expectedChangedLedger(expectedChangedS1d(expectedChangedD12b(g.changed), { versioned: FIXTURES_VERSIONED }), r), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
         const post = POST_OF.get(r) || {};
         if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {

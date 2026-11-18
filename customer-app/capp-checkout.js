@@ -49,6 +49,70 @@
     body: 'Tu pedido no se envió.',
     scheduleHint: 'Podés programarlo para el próximo horario disponible.',   // S4 only
   };
+  // PLAN-capp-marketing-offers Slice A (owner-approved MOCKUP-capp-offers-calm-vs-loud 3 A / 5 A + MOCKUP-capp-marketing-offers frame 4;
+  // the COPY owner-approved 11-14 as recommended: Q2 the derived labels, Q3 the offer-changed sheet, Q8 ONE row style for the offer and
+  // the loyalty «Descuento»). The label is derived from the quote's type and amounts, never the merchant-typed name. pct / lps render
+  // their label only once the quote carries `pct` / `min_cents`; until then «Descuento» alone (honest, no guessed type)
+  const OFFER_COPY = Object.freeze({
+    row: 'Descuento', bogo: '2 por 1', pct: (pct) => `${pct} %`, lps: (min) => `Pedido desde ${min}`, nuevos: 'Primer pedido', loyalty: 'Recompensa', envio: 'Envío gratis',
+    saved: (amt, label) => (label ? `Ahorrás ${amt} · ${label}` : `Ahorrás ${amt}`),
+    nudge: (amt, reward) => `Agregá ${amt} para ${reward}`, nextOff: (amt) => `${amt} menos`, nextEnvio: 'envío gratis',   // 3 A under the minimum (frame 3 A)
+    sheetTitle: 'La oferta ya no está disponible', sheetBody: (total) => `Tu total ahora es ${total}.`, sheetConfirm: 'Confirmar', sheetBack: 'Volver',
+  });
+  const OFFER_COPY_PENDING = Object.freeze([]);   // the SHIP GATE: every key the owner has not approved (none since 11-14)
+  const offerLabel = (o, moneyC) => {
+    const t = o && o.type;
+    if (t === 'bogo' || t === 'nuevos' || t === 'loyalty' || t === 'envio') return OFFER_COPY[t];
+    if (t === 'pct') return Number.isSafeInteger(o.pct) && o.pct > 0 && o.pct < 100 ? OFFER_COPY.pct(o.pct) : null;
+    if (t === 'lps') return Number.isSafeInteger(o.min_cents) && o.min_cents > 0 && typeof moneyC === 'function' ? OFFER_COPY.lps(moneyC(o.min_cents)) : null;
+    return null;
+  };
+  const cents0 = (v) => Number.isSafeInteger(v) && v >= 0;
+  // the quote's offer block, as sent (index.js quoteOrder: { type, discount_cents, waived_envio_cents }) — only a well-formed one with a
+  // saving; anything else is no offer (no row, never a guessed amount)
+  function offerOf(resp) {
+    const o = resp && resp.offer;
+    if (!o || typeof o !== 'object' || typeof o.type !== 'string' || !cents0(o.discount_cents) || !cents0(o.waived_envio_cents)) return null;
+    if (o.discount_cents + o.waived_envio_cents <= 0) return null;
+    return { type: o.type, discount_cents: o.discount_cents, waived_envio_cents: o.waived_envio_cents,
+      ...(Number.isSafeInteger(o.pct) ? { pct: o.pct } : {}), ...(Number.isSafeInteger(o.min_cents) ? { min_cents: o.min_cents } : {}) };   // the label's amounts, once 5f sends them
+  }
+  // the quote's offer_next (5f f992c28a7: ONLY on a quote with no applied offer) — { type, remaining_cents, off_cents? | waived_envio_cents? };
+  // only a well-formed one with something left and ONE reward (lps → off_cents, envio → waived_envio_cents); anything else is no line
+  function nextOf(resp) {
+    const n = resp && resp.offer_next;
+    if (!n || typeof n !== 'object' || typeof n.type !== 'string' || !Number.isSafeInteger(n.remaining_cents) || n.remaining_cents <= 0) return null;
+    const off = Number.isSafeInteger(n.off_cents) && n.off_cents > 0, env = Number.isSafeInteger(n.waived_envio_cents) && n.waived_envio_cents > 0;
+    if (off === env) return null;
+    return { type: n.type, remaining_cents: n.remaining_cents, ...(off ? { off_cents: n.off_cents } : { waived_envio_cents: n.waived_envio_cents }) };
+  }
+  // 3 A met state: «Ahorrás L x · {label}» — x = the quote's own saving (food discount + the waived envío), never client arithmetic on a rule
+  const savedLine = (T, moneyC) => (T && T.ready && T.offer ? OFFER_COPY.saved(moneyC(T.offer.discount_cents + T.offer.waived_envio_cents), offerLabel(T.offer, moneyC)) : null);
+  // 3 A, the ONE line above the cart pill: met ⇒ «Ahorrás …»; under the minimum ⇒ «Agregá L {remaining} para {reward}» — every amount the quote's
+  const nudgeLine = (T, moneyC) => {
+    if (!T || !T.ready) return null;
+    if (T.offer) return savedLine(T, moneyC);
+    const n = T.next;
+    return n ? OFFER_COPY.nudge(moneyC(n.remaining_cents), n.off_cents ? OFFER_COPY.nextOff(moneyC(n.off_cents)) : OFFER_COPY.nextEnvio) : null;
+  };
+  // 4 B3 (MOCKUP-capp-offers-calm-vs-loud declutter B3; advisor 11-14 scope): the dish sheet's «L 299 ~~L 598~~» + «2 por 1», ONLY in
+  // the provable case — exactly ONE served offer, a bogo whose items hold this dish's pricing key, in its window NOW, the staged n even
+  // ≥ 2 and a MARGINAL saving > 0 over the current cart's eligible units. The pairing and the window are the SERVER's own rules (`rules`
+  // = OfferRules, 5f's marketing/offer-rules.js synced byte-identical — never a client copy); no rules ⇒ null (today's sheet).
+  // null ⇒ not offered (no pill); { strike: null } ⇒ the pill only; { strike: { pay, was } } (cents) ⇒ the struck price
+  const pricingKeyOf = (d, availIdentity) => (!d ? null : d.item_key ? d.item_key : availIdentity === 'id' ? String(d.id) : availIdentity === 'name' ? d.name : null);   // ≡ menu-pricing itemPricingKey (item_key wins)
+  function bogoPreview({ rules, offers, key, priceCents, n, cartUnits, nowMs }) {
+    if (!rules || typeof rules.bogoSaving !== 'function' || typeof rules.inWindow !== 'function') return null;
+    if (!Array.isArray(offers) || offers.length !== 1) return null;
+    const f = offers[0], p = f && f.params;
+    if (!f || f.type !== 'bogo' || !p || !Array.isArray(p.items) || !Number.isSafeInteger(p.free_per_order) || p.free_per_order < 1) return null;
+    if (typeof key !== 'string' || !key || !p.items.includes(key) || !f.schedule || rules.inWindow(f.schedule, nowMs) !== true) return null;
+    if (!Number.isSafeInteger(priceCents) || priceCents <= 0) return null;
+    if (!Number.isSafeInteger(n) || n < 2 || n % 2 !== 0) return { strike: null };
+    const items = new Set(p.items), held = (Array.isArray(cartUnits) ? cartUnits : []).filter((u) => items.has(u.key)).map((u) => u.unit);
+    const marginal = rules.bogoSaving([...held, ...Array(n).fill(priceCents)], p.free_per_order) - rules.bogoSaving(held, p.free_per_order);
+    return { strike: Number.isSafeInteger(marginal) && marginal > 0 && marginal < n * priceCents ? { pay: n * priceCents - marginal, was: n * priceCents } : null };
+  }
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;   // the prototype's check (:1821)
   const localPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^504/, '');
   // S-picker (PLAN-intl-phone r2.3): a flow with a chosen country (f.cc — set only by the UI's picker, behind the runtime intlPhone)
@@ -243,8 +307,9 @@
     if (r.total_cents !== cartSubtotalCents) return { ready: false, reason: 'subtotal_mismatch' };   // re-quote; never show a guess
     const d = f.mode === 'delivery' && r.delivery ? r.delivery : null;
     const promo = d && Number(d.promo_discount_cents) > 0;
+    const offer = offerOf(r), next = offer ? null : nextOf(r);   // Slice A: present only with an offer / an offer_next (neither ⇒ today's exact object)
     return { ready: true, subtotal: r.total_cents, envio: d ? d.delivery_cents : 0, envioFree: !!promo, promoCents: promo ? d.promo_discount_cents : 0,
-      tip: tipCentsOf(f), total: r.net_total_cents };
+      tip: tipCentsOf(f), total: r.net_total_cents, ...(offer ? { offer } : {}), ...(next ? { next } : {}) };
   }
   // cash change against the QUOTED Total (lempiras in, cents out); null when nothing / too little was entered
   function changeCents(f, totalCents) {
@@ -257,11 +322,13 @@
   // functions). The envelope body carries no transport metadata (the etag is an HTTP header). WebCrypto, so async.
   // PLAN-capp-dish-stats r0 (1): the menu CONTENT leaves out `menu.dish_stats` (1d.4, a daily-moving decoration): a stats-only refresh
   // is the SAME menu — nothing adopted mid-visit (no remount at checkout entry); the new stats show at the next store entry (rule 7)
+  // PLAN-capp-marketing-offers Slice A (3a Q1 d688d8378): the menu CONTENT leaves out `menu.offers` (a minute-moving decoration, the
+  // dish-stats pattern): an offers-only refresh is the SAME menu — nothing adopted mid-visit; no `offers` key ⇒ the same bytes as before
   async function menuFingerprint(envelope) {
     if (!envelope || typeof envelope !== 'object' || !envelope.menu || typeof envelope.menu !== 'object') throw new Error('capp-checkout: no menu in the envelope');
     const subtle = typeof crypto !== 'undefined' && crypto ? crypto.subtle : null;
     if (!subtle) throw new Error('capp-checkout: no WebCrypto');
-    const { dish_stats: _stats, ...content } = envelope.menu;
+    const { dish_stats: _stats, offers: _offers, ...content } = envelope.menu;   // merge-forward 11-18: both decorations out
     const buf = await subtle.digest('SHA-256', new TextEncoder().encode(canonicalJson({ ...envelope, menu: content })));
     return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
@@ -272,5 +339,6 @@
 
   return { TIP_PRESETS, TIP_MAX_LEMPIRAS, TIP_DEFAULT_LEMPIRAS, tipDefault, tipped, ENTRY_MODE, COPY, CLOSED_SHEET, freshFlow, setMode, setPin, chooseTip, tipCentsOf, tipChosen,
     isOpenAt, closingAt, missingStep, canonicalJson, sigInput, cartSig, quoteBody, orderBody, totals, changeCents, fullPhone,
-    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail };
+    areaFromGeocode, routeFrom, applyGeocode, displayArea, addrLine, menuFingerprint, priceNoticeText, validEmail,
+    OFFER_COPY, OFFER_COPY_PENDING, offerLabel, offerOf, nextOf, savedLine, nudgeLine, pricingKeyOf, bogoPreview };
 });

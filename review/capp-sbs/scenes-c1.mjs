@@ -15,7 +15,7 @@ const FN = createRequire(path.join(ROOT, 'xpizza-functions/x.js'));
 const DIRM = FN('./directory/directory.js'), AGG = FN('./ratings/aggregate.js'), RV2 = FN('./ratings/rating-v2.js');
 const DAY = 86400e3, NOW = sbsNow();
 function stats(rid, stars, firstServedAt = null) {
-  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, now: NOW - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: NOW - 4 * DAY + i }, o)(n); });
+  const nodes = stars.map((s, i) => { const o = {}; const n = RV2.fulfilmentUpdater({ restaurantId: rid, fulfilledAt: NOW - 5 * DAY + i }, o)(null); return RV2.v2Updater({ fields: { store: s }, uid: 'u' + i, now: NOW - 4 * DAY + i }, o)(n); });
   return AGG.buildPublicStats({ rid, nowMs: NOW, orders: [], ratings: nodes, priceOf: () => null, firstServedAt });
 }
 // 124 ratings averaging 4.8 (99 fives + 25 fours = 595 / 124 = 4.798 ⇒ 4,8) — the frame's own numbers

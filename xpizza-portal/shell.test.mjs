@@ -63,7 +63,7 @@ test('OWNER: boot makes ONE getEditableCatalog and ZERO getSalesStats; opening V
   assert.equal(P.count('getMyBranches'), 1);
   assert.equal(P.count('getEditableCatalog'), 1, 'the editor opened once');
   assert.equal(P.count('getSalesStats'), 0, 'boot does not load Ventas');
-  assert.deepEqual(ev, [{ rid: 'r_a', sales: true }], 'portal:restaurant fired exactly once, Ventas allowed');
+  assert.deepEqual(ev, [{ rid: 'r_a', sales: true, name: 'R_A' }], 'portal:restaurant fired exactly once, Ventas allowed (P-1: + the branch name)');
   assert.ok(!hasClass(P.byId.get('navventas'), 'hidden'), 'the Ventas nav is shown to the owner');
   P.byId.get('navventas').click();
   await settle(20);
@@ -96,7 +96,7 @@ test('MANAGER WITH the menu permission: the editor once, Ventas never (owner-onl
   const ev = restaurantEvents();
   await signIn('uManager002');
   assert.equal(P.count('getEditableCatalog'), 1);
-  assert.deepEqual(ev, [{ rid: 'r_n', sales: false }]);
+  assert.deepEqual(ev, [{ rid: 'r_n', sales: false, name: 'R_N' }]);
   for (const id of ['navventas', 'mnventas']) P.byId.get(id).click();
   await settle(20);
   assert.equal(P.count('getSalesStats'), 0, 'ventas.js refuses the event with sales:false — no request, even forced');
@@ -276,8 +276,8 @@ test('codex r1 P1-1: a pause request that FAILS after an auth change releases it
   const P = page({ e1: E1([branch('r_a', { control: paused })]), extra: (fn) => (fn === 'setBranchPause' ? h.p : undefined) });
   const mods = await loadModules();
   await signIn('uOwner0103');
-  mods.shell.goto('pausas');
-  byText(P.byId.get('viewpausas'), 'Reanudar pedidos').click();
+  mods.shell.goto('suc', { rid: 'r_a' });   // «Pausar pedidos» lives on the branch page (PLAN-portal-pausar §2.2)
+  byText(P.byId.get('viewsuc'), 'Reanudar pedidos').click();
   await settle(5);
   assert.equal(mods.shell._shellState.busy.size, 1, 'in flight');
   document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uOwner0103' } }));
@@ -474,6 +474,29 @@ test('registerView: hidden while membership_writes_enabled is off; shown (Negoci
   assert.ok(!hasClass(r2.nav, 'hidden') && !hasClass(r2.mn, 'hidden'), 'flag on → nav item, desktop + mobile');
   assert.ok(!hasClass(Q.byId.get('navbiz'), 'hidden'), 'the Negocio label shows');
   assert.equal(textOf(r2.nav), 'Equipo de trabajo');
+});
+
+test('requestNavRefresh: a view whose visibility input changed in the background is re-judged on the NEXT navigation, never under the user', async () => {
+  installStorage();
+  const P = page({ e1: E1([branch('r_a')]) });
+  const mods = await loadModules();
+  const flag = { on: false };
+  mods.shell.registerView({ id: 'marketing', group: 'Negocio', label: 'Marketing', visible: () => flag.on, mount: () => {}, unmount: () => {}, canLeave: () => true });
+  await signIn('uOwner0301');
+  const [r] = mods.shell._registered;
+  assert.ok(hasClass(r.nav, 'hidden'), 'premise: hidden while the input is off');
+  flag.on = true;
+  mods.shell.requestNavRefresh();
+  assert.ok(hasClass(r.nav, 'hidden'), 'requested: nothing moves under the user yet');
+  mods.shell.goto('suc');
+  assert.ok(!hasClass(r.nav, 'hidden') && !hasClass(r.mn, 'hidden'), 'the next navigation applies it (desktop + mobile)');
+  flag.on = false;
+  mods.shell.requestNavRefresh();
+  P.byId.get('navprod').click();
+  assert.ok(hasClass(r.nav, 'hidden'), '…and through the built-in nav handlers too (leaveOps)');
+  flag.on = true;
+  P.byId.get('navprod').click();
+  assert.ok(hasClass(r.nav, 'hidden'), 'without a request, a navigation does not re-judge (no extra work, no surprise)');
 });
 
 test('registerView: an optional icon (one SVG path d) is drawn like the built-ins; absent → label only; anything else refused', async () => {

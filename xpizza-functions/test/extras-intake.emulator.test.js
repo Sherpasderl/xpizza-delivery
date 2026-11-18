@@ -78,12 +78,23 @@ const B = {
 const FREE_ITEM = {};
 const forgedExtra = (rid) => { const l = B[rid].line(B[rid].item, B[rid].denied); l.extras[0] = rid === 'la_musa' ? { ...l.extras[0], name: B[rid].allowed } : { ...l.extras[0], id: B[rid].allowed }; return l; };
 const forgedItem = (rid) => { const l = B[rid].line(B[rid].item, B[rid].denied); if (rid === 'la_musa') l.name = FREE_ITEM[rid]; else l.id = FREE_ITEM[rid]; return l; };
-const order = (rid, oid, method, cart) => ({ restaurant_id: rid, order_id: oid, customer_name: 'Extras Intake', customer_phone: phone(), customer_email: 'xi@example.com',
+// S1 (owner 11-11): the extras check judges APP entries only — the cells below send app requests (APP = true) unless a cell says
+// otherwise; the S1 block re-sends the same denied carts as FORM requests (APP = false) and proves them untouched under enforce
+let APP = true;
+const entry = () => (APP ? { entry_mode: 'app' } : {});
+const order = (rid, oid, method, cart) => ({ ...entry(), restaurant_id: rid, order_id: oid, customer_name: 'Extras Intake', customer_phone: phone(), customer_email: 'xi@example.com',
   items_text: cart.map((c) => `1x ${c.name}`).join(', '), order_type: 'pickup', payment_method: method, items: cart });
 async function cash(rid, extra, tag, { line = null, hdr = {} } = {}) {
   await clean();
   const oid = `xi_${rid}_${tag}_${Date.now()}`;
-  const r = await post(app.createOrder, order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]), hdr);
+  const b = order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]);
+  // OWNER 11-16: an APP pickup is card only (400 pickup_card_only) ⇒ the APP cash path is an app DELIVERY inside the bands (a FORM keeps pickup)
+  if (APP) Object.assign(b, { order_type: 'delivery', lat: 14.1 + 1 / 111.195, lng: -87.2, pin_confirmed: true, address_detected: 'Col. Prueba', address_details: 'Casa 1' });
+  // one placeholder band ONLY around this app delivery (read per request, no cache): the quotes and checkouts below see today's
+  // pricing config (absent), exactly as before
+  if (APP) await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 7, cents: 3000 }], restaurants: {} });
+  const r = await post(app.createOrder, b, hdr);
+  if (APP) await rtdb.ref('platform_config/delivery_pricing').remove();
   return { ...r, oid, written: (await rtdb.ref(`orders/${oid}`).get()).exists() };
 }
 async function card(rid, extra, tag, { line = null, body = null } = {}) {
@@ -94,8 +105,8 @@ async function card(rid, extra, tag, { line = null, body = null } = {}) {
   const all = (await rtdb.ref('payment_attempts').get()).val() || {};
   return { ...r, oid, charged: CHARGED.length, attempts: Object.values(all).filter((a) => a && a.order_id === oid).length };
 }
-async function quote(rid, extra, line = null) { await clean(); return post(app.quoteOrder, { restaurant_id: rid, items: [line || B[rid].line(B[rid].item, extra)] }); }
-async function quoteRed(rid, extra, line = null) { await clean(); return post(app.quoteRedemption, { restaurant_id: rid, items: [line || B[rid].line(B[rid].item, extra)] }, { 'x-firebase-id-token': `xi_${rid}` }); }
+async function quote(rid, extra, line = null) { await clean(); return post(app.quoteOrder, { ...entry(), restaurant_id: rid, items: [line || B[rid].line(B[rid].item, extra)] }); }
+async function quoteRed(rid, extra, line = null) { await clean(); return post(app.quoteRedemption, { ...entry(), restaurant_id: rid, items: [line || B[rid].line(B[rid].item, extra)] }, { 'x-firebase-id-token': `xi_${rid}` }); }
 async function setMode(v) {
   if (v === undefined) await rtdb.ref('platform_config/extras_eligibility').remove(); else await rtdb.ref('platform_config/extras_eligibility').set(v);
   await wait(31000);   // the per-instance mode cache (30 s)
@@ -183,6 +194,21 @@ const GEN_HDR = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-xi', 
     assert.ok(qr.status === 409 && qr.json.ok === false && qr.json.error === 'extra_not_allowed', `${rid} enforce: quoteRedemption refuses 409 (${qr.status} ${qr.text.slice(0, 160)})`);
   }
   ok('mode enforce: a denied extra is refused at cash (409, nothing written), card (409, no attempt, no checkout), quoteOrder and quoteRedemption (409); an allowed extra goes through — both brands');
+
+  // ── S1 (owner 11-11): the SAME denied carts as FORM requests under enforce — untouched (judged as mode off: today's behaviour) ──
+  APP = false;
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const c = await cash(rid, B[rid].denied, 'form-enf');
+    assert.ok(c.status === 200 && c.written, `🔴 ${rid} enforce: a FORM cash cart with a denied extra is NOT refused (${c.status} ${c.text.slice(0, 160)})`);
+    const k = await card(rid, B[rid].denied, 'form-enf');
+    assert.ok(k.status === 200 && k.charged === 1, `🔴 ${rid} enforce: a FORM card cart with a denied extra reaches its checkout (${k.status} charged ${k.charged} ${k.text.slice(0, 160)})`);
+    const q = await quote(rid, B[rid].denied);
+    assert.ok(!(q.json && q.json.error === 'extra_not_allowed') && q.status !== 409, `🔴 ${rid} enforce: a FORM quoteOrder is not refused for its extras (${q.status} ${q.text.slice(0, 160)})`);
+    const qr = await quoteRed(rid, B[rid].denied);
+    assert.ok(!(qr.json && ['extra_not_allowed', 'eligibility_unavailable'].includes(qr.json.error)), `🔴 ${rid} enforce: a FORM quoteRedemption is not refused for its extras (${qr.status} ${qr.text.slice(0, 160)})`);
+  }
+  APP = true;
+  ok('S1: under enforce the SAME denied carts sent as FORM requests are untouched — cash placed, card checkout issued, both quotes not refused for extras (both brands)');
 
   // FORGED id/name (codex r1 P1-1): judged by the key pricing CHARGES — all four intakes, both brands, extra AND item forgery
   for (const rid of ['x_pizza', 'la_musa']) {

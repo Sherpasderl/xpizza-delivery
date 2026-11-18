@@ -33,8 +33,18 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BASE = '1d862e17';
-const CAPP_TIP = '98364d2c';
+// BASE → 827373d6 (advisor 11-15, the forked-lane rule): feat/capp-offers-r20 = the offers line + a MERGE of feat/capp-push (the
+// r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
+// merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
+const BASE = '827373d6';
+const CAPP_TIP = '2b4aae89';
+// ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
+// the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
+// only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
+// form or xpizza-functions/, so the range cells (live forms, server change) lose nothing.
+const ASSEMBLY_STEPS = {
+  '792a3dde73e0bff5181c4082c0e0a6a291afbd02': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs', 'review/capp-sbs/scenes-fx.mjs'],
+};
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
 const paths = (out) => out.split('\0').filter(Boolean);
@@ -65,9 +75,12 @@ const capRange = () => {
   // Both ranges are listed WITHOUT a pathspec (Codex r2 P2-1): a path-limited walk applies git's history simplification, which drops a
   // merge's side when the merge is TREESAME to a parent for that path; each listed commit's OWN paths are then filtered here.
   const skip = new Set(['customer-app/capp-guards.test.mjs', ...synced.map(({ dst }) => dst)]);
-  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%h %s', ...range).split('\x01').filter(Boolean)
-    .map((rec) => { const [head, ...files] = rec.split('\0'); const [subject, first] = head.split('\n'); return { subject, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
-    .filter(({ files }) => files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
+  for (const sha of Object.keys(ASSEMBLY_STEPS)) assert.ok(isAncestor(sha, 'HEAD'), `🔴 stale ASSEMBLY_STEPS entry ${sha.slice(0, 9)} — not in HEAD's history`);
+  const stepOk = (sha, files) => !!ASSEMBLY_STEPS[sha] && [...files].sort().join('\n') === [...ASSEMBLY_STEPS[sha]].sort().join('\n');
+  const touched = (range) => git('log', '--no-merges', '--no-renames', '--name-only', '-z', '--format=%x01%H %s', ...range).split('\x01').filter(Boolean)
+    .map((rec) => { const [head, ...files] = rec.split('\0'); const [line, first] = head.split('\n'); const sha = line.slice(0, 40);
+      return { sha, subject: `${sha.slice(0, 9)}${line.slice(40)}`, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
+    .filter(({ sha, files }) => !stepOk(sha, files) && files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
   const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..HEAD`]), ...touched(['--ancestry-path', `${CAPP_TIP}..HEAD`])])].join('\n');
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
@@ -77,9 +90,9 @@ const capRange = () => {
 // differs from EVERY parent's: equal to parent 2 = the merged-in line's own change, equal to parent 1 = untouched). ONE helper, shared
 // with the evil-merge cell below. A plain BASE..CAPP_TIP diff would count all of main's merged-in work as this lane's.
 const blobAt = (rev, f) => { try { return git('rev-parse', '-q', '--verify', `${rev}:${f}`).trim(); } catch (_) { return null; } };
-const resolutionEdits = (upTo, scopes) => {
+const resolutionEdits = (upTo, scopes, range = ['--first-parent', `${BASE}..${upTo}`]) => {
   const out = [];
-  for (const m of git('rev-list', '--first-parent', '--merges', `${BASE}..${upTo}`).trim().split('\n').filter(Boolean)) {
+  for (const m of git('rev-list', '--merges', ...range).trim().split('\n').filter(Boolean)) {
     const parents = git('log', '-1', '--format=%P', m).trim().split(' ').filter(Boolean);
     for (const f of paths(git('diff', '--no-renames', '--name-only', '-z', `${m}^1`, m, '--', ...scopes))) {
       const b = blobAt(m, f);
@@ -123,6 +136,15 @@ test('no restaurant id or name in customer-app/ code', () => {
   }
 });
 
+// PLAN-capp-picker-served-countries r1: phone-countries.js (the dual-mode tail only — PS-0 pins its node exports) is ALSO the app's
+// served list: a sync-client copy (byte-pinned by capRange), loaded by the shell BEFORE capp-phone.js reads its global
+test('PS-sync: the pickers\' served list is the server\'s phone-countries.js, synced byte for byte and loaded before capp-phone.js', () => {
+  assert.ok(syncedIntoApp().some(({ src, dst }) => src === 'xpizza-functions/phone-countries.js' && dst === 'customer-app/phone-countries.js'), '🔴 PS-sync: sync-client copies the server list into the app');
+  assert.ok(sameBytes('customer-app/phone-countries.js', 'xpizza-functions/phone-countries.js'), '🔴 PS-sync: the copy is byte-identical');
+  const src = [...readFileSync(join(ROOT, 'customer-app/shell.html'), 'utf8').matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+  assert.ok(src.includes('phone-countries.js') && src.indexOf('phone-countries.js') < src.indexOf('capp-phone.js'), '🔴 PS-sync: the shell loads it before capp-phone.js');
+});
+
 test('customer-app/ is the one platform orders deployment, with exactly the approved shape (no host literal)', () => {
   const copies = ['platform/sites.json', 'xpizza-functions/platform/sites.json'].map((p) => readFileSync(join(ROOT, p), 'utf8'));
   assert.equal(copies[0], copies[1], 'premise: the bundled manifest is the canonical one');
@@ -143,7 +165,8 @@ test('customer-app/ is the one platform orders deployment, with exactly the appr
   // + writes version.json itself), fail-closed, published from dist/. assert.ok (never assert.match): the toml carries the public
   // key omit list, and a failure must not dump it
   const toml = readFileSync(join(ROOT, 'customer-app', 'netlify.toml'), 'utf8');
-  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target');
+  // owner 11-14 (PLAN-capp-web-signin r0, accepted): members sign in on the WEBSITE — the web build carries `signup` (phone + WhatsApp)
+  assert.ok(/command = "node \.\.\/platform\/native\/package-capp\.js --target web --env \$CONTEXT --sha \$COMMIT_REF --out dist --flags guestCardOnly,signup"/.test(toml), '🔴 customer-app/netlify.toml must build with the shell packager\'s web target, member sign-in ON (owner 11-14)');
   assert.ok(/^\s*publish = "dist"$/m.test(toml), '🔴 customer-app/netlify.toml must publish dist/');
 });
 
@@ -191,7 +214,7 @@ const S2TIP_SERVER = new Set(['address-area.js', 'create-order-build.js', 'contr
   'tools/s2tip-inverse.js', 'tools/s2tip-module-inverse.js', 'tools/mutation-sweep.mutants.json',
   'contract/census-map.json', 'contract/census.json', 'contract/regions.json',
   'platform/sites.json', 'platform-manifest.js', 'pixelpay-return-url.js', 'tools/sync-client.js', 'tools/s2app-inverse.js',
-  'tools/s3c-module-inverse.js', 'client-floor.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
+  'tools/s3c-module-inverse.js', 'client-floor.js', 'phone-countries.js', 'contract/region-applicability.json', 'tools/form-source-inventory.js', 'tools/item-s3-forms-inverse.js', 'contract/timer-bounds.json', 'contract/outputs/registry.json'].map((f) => `xpizza-functions/${f}`));
 test(`no server change beyond S2-srv-tip + S2-srv-app + colonia: the capp range ${BASE}..${CAPP_TIP} changes xpizza-functions/ only in tests, fixtures, generated inventories, the test chain and the slices' allowlist`, () => {
   const [, tip] = capRange();
   const changed = laneChanged(tip, ['xpizza-functions'])
@@ -233,18 +256,49 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // the resolution itself (equal to parent 2 = the merged-in line's own change; equal to parent 1 = untouched). The sync-client and
 // PORTED copies are exempt (their byte-identity checks own them, re-asserted here); any other hit must sit in MERGE_ALLOW, keyed
 // «<merge sha8> <path>», with a one-line reason — reviewed, and an entry that no longer hits is stale and fails.
+// The walk is the LANE's first-parent line BASE..CAPP_TIP (like every other range cell), plus every merge AFTER the pin that descends
+// from it (--ancestry-path CAPP_TIP..HEAD: the assembly merges that bring the lane in). Walking BASE..HEAD's first-parent line (asm10
+// RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
+// 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
-  // (empty at BASE 1d862e17: the asm2 dry-run entry 1bca1782 and the asm5 S2 × S3 entry 8e6abdf6 named merges that are now BELOW the
-  // base — landed on main with the S1–S4 / S3 range — so their stale check fired once BASE moved; advisor ruling 11-12, option (a))
-  // asm9 (advisor 11-13: ONE capp tip): heldcopy × C-1a both edit capp-ui.js from 579feee4 — a CLEAN 3-way auto-merge (git
-  // merge-file of 579feee4 / ^1 / ^2 reproduces the committed blob byte for byte; no hand edit): heldOther(heldSdk()) + the C-1a acts
-  'db677478 customer-app/capp-ui.js': 'asm9 heldcopy × C-1a: the clean auto-merge of both lines (merge-file-identical), no resolution edit',
+  // feat/capp-offers-r20 (advisor 11-15): every hit proven line by line — the merge's `git show --cc` lines that come from NO parent are
+  // listed in each reason (none, or exactly the ruled lines); PROVISIONAL with the merges until Codex/advisor approve capp-push r2
+  'b63d58a0 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'b63d58a0 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  // asm11 step 5 (advisor 11-17): fc0f3213 = the step-4 overlay drop 792a3dde7 + the lane tip 457066a23 — a clean automerge (git show --cc: 0 hunks)
+  'fc0f3213 customer-app/capp-guards.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  'fc0f3213 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-checkout.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN offer-quote marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '1adc6541 customer-app/capp-s7a2.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN c3r-v2 marker lines (advisor 11-15)',
+  '1adc6541 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api-sdk.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-colour-allowlist.json': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-guards.test.mjs': 'union + ONLY the ruled forked-lane BASE move to 827373d6 (advisor 11-15, ruling (a)): 3 comment lines, the BASE line, 1 blank',
+  '8839193d customer-app/capp-home.js': 'hand-resolved same-line merge of offers desk-hide + push preview-hide; cell CH-ABIERTO-3',
+  '8839193d customer-app/capp-menu.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-signup.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/fixtures/s7a2/gen-directory.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/index.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/shell.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '8839193d customer-app/capp-push.test.mjs': 'union + the PUSH-TAP microtask (vclock step 9 in the merged tree)',
+  '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
+  '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
+  '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
+  // (asm10 RC 2b7e9c53 — ruled in eaca7fc3f — left the walk at asm11: it descends from the old pin b7880d0e, not from the lane pin, so like
+  // every train-only merge it is neither on the lane line nor after the pin)
 };
-test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..HEAD`, () => {
-  const synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
+test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
+  const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} differs from (or is missing beside) its source ${src} — the merge exemption no longer holds`);
   for (const [f, sources] of Object.entries(PORTED)) for (const src of sources) assert.ok(sameBytes(`customer-app/${f}`, src), `🔴 customer-app/${f} differs from (or is missing beside) ${src} — the merge exemption no longer holds`);
-  const hits = resolutionEdits('HEAD', ['customer-app/']).filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
+  const hits = [...resolutionEdits(tip, ['customer-app/']), ...resolutionEdits('HEAD', ['customer-app/'], ['--ancestry-path', `${tip}..HEAD`])].filter(({ f }) => !exempt.has(f)).map(({ m, f }) => `${m.slice(0, 8)} ${f}`);
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
@@ -304,4 +358,22 @@ test('no fixed real sleep in the customer-app suites: no Promise settled by a re
   const bad = Object.entries(found).filter(([f, l]) => !SLEEP_WAIVED[f] || l.length !== SLEEP_WAIVED[f][0]).map(([f, l]) => `${f}:${l.join(',')}`);
   assert.deepEqual(bad, [], '🔴 SLEEP: a fixed real sleep in a customer-app suite (wait on the virtual clock, or on an event)');
   assert.deepEqual(Object.keys(SLEEP_WAIVED).filter((f) => !found[f]), [], '🔴 SLEEP: a stale waiver (its sleep is gone — drop it)');
+});
+
+// rule 20 (owner; PLAN-capp-web-signin r0 — the WEBSITE now signs members in): NO script the web shell loads builds a URL that carries a
+// token — an ID / custom / access token goes in a HEADER, never a query (a URL lands in browser history, devtools, proxy logs). The
+// scan covers every <script src> of shell.html (the packager's web file list, package-capp.js) — a token-shaped query parameter fed
+// from code (`?auth=${…}`, `&token=' + …`) is red; TIP-F4 (capp-ui) pins the one historical offender (last_tip) dynamically
+test('rule 20 (web sign-in): no script of the web shell puts a token in a URL query', () => {
+  const shell = readFileSync(join(ROOT, 'customer-app', 'shell.html'), 'utf8');
+  const scripts = [...shell.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/^https?:/.test(f));
+  assert.ok(scripts.length >= 10 && scripts.includes('capp-api.js') && scripts.includes('capp-signup-api.js'), 'premise: the shell\'s scripts');
+  const TOKQ = /[?&](?:auth|token|id_?token|access_?token|custom_?token|tok)=(?:\$\{|['"`]\s*\+)/i;
+  const hits = [];
+  for (const f of scripts) {
+    const src = readFileSync(join(ROOT, 'customer-app', f), 'utf8');
+    src.split('\n').forEach((ln, i) => { if (TOKQ.test(ln) && !/^\s*\/\//.test(ln)) hits.push(`${f}:${i + 1}`); });
+  }
+  assert.deepEqual(hits, [], '🔴 R20-URL: a token built into a URL query');
+  assert.ok(TOKQ.test("fetch(`${base}/x.json?auth=${encodeURIComponent(tok)}`)") && TOKQ.test("u + '&token=' + t"), 'non-vacuity: the former offender\'s shape is caught');
 });

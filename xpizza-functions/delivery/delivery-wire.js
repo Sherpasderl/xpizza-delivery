@@ -92,7 +92,7 @@ function withDelivery(dq, breakdown) {
     ...breakdown,
     total_cents: breakdown.total_cents + P.netDeliveryCents(c) + tip,
     delivery_cents: c.delivery_cents,
-    promo_discount_cents: c.promo_discount_cents,
+    promo_discount_cents: c.promo_discount_cents, ...(c.promo_discount_cents > 0 && c.delivery_discount_funder ? { delivery_discount_funder: c.delivery_discount_funder } : {}),   // marketing Q3: the funder, explicit
     delivery_snapshot: { mode: c.mode, policy_version: c.policy_version, ...(c.mode === 'delivery' ? { km: c.km, band: c.band, promo: c.promo || null } : {}) },
     ...(tip > 0 ? { tip_cents: tip } : {}),
   };
@@ -104,10 +104,10 @@ const totalLempiras = (dq, foodLempiras) => (ctxOf(dq) ? foodLempiras + (P.netDe
 const waEnvio = (o) => ({ ...(o && Number.isSafeInteger(o.delivery_cents) && o.delivery_cents > 0 ? { envio: { cents: o.delivery_cents, promo_cents: Number.isSafeInteger(o.promo_discount_cents) ? o.promo_discount_cents : 0 } } : {}),
   ...(o && Number.isSafeInteger(o.tip_cents) && o.tip_cents > 0 ? { propina: { cents: o.tip_cents } } : {}) });   // S2: + the «Propina» line
 // The fields the hosted path copies onto the pending order (the cash path spreads the whole breakdown).
-const orderFields = (b) => (b && b.delivery_snapshot ? { delivery_cents: b.delivery_cents, promo_discount_cents: b.promo_discount_cents, delivery_snapshot: b.delivery_snapshot, ...(b.tip_cents > 0 ? { tip_cents: b.tip_cents } : {}) } : {});   // S2: + tip_cents (> 0 only)
+const orderFields = (b) => (b && b.delivery_snapshot ? { delivery_cents: b.delivery_cents, promo_discount_cents: b.promo_discount_cents, ...(b.delivery_discount_funder ? { delivery_discount_funder: b.delivery_discount_funder } : {}), delivery_snapshot: b.delivery_snapshot, ...(b.tip_cents > 0 ? { tip_cents: b.tip_cents } : {}) } : {});   // S2: + tip_cents (> 0 only)
 
 // applyConfirmedNetGate's envío argument (it joins the gate's recompute, so the token is checked against food + envío).
-const gateExtra = (dq) => (ctxOf(dq) ? { deliveryContext: ctxOf(dq) } : {});
+const gateExtra = (dq) => ({ ...(ctxOf(dq) ? { deliveryContext: ctxOf(dq) } : {}), ...(dq && dq.offer ? { offer: dq.offer } : {}) });   // marketing: the offer the recorded total includes joins the gate's recompute
 
 // An ACTIVE refusal at the gate step: release the hold, answer with the typed refusal. null → run the real gate.
 async function refusalGate(dq, releaseHold, orderId) {

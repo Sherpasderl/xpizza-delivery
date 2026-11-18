@@ -134,6 +134,8 @@ export function mountAvailability(ctx) {
       const key = cell.dataset.k.slice('item::'.length);
       const row = cell.parentNode;
       const prev = row.querySelector(':scope > .opsavailcell');
+      // «Quitar del menú» (R3): a dish pending removal shows no pills — inert controls would stay in the tab order
+      if (row.classList.contains('mk-pend')) { if (prev) prev.remove(); continue; }
       const it = items.get(key);
       const sig = it ? `${ctx.sel.scope}|${it.out.join(',')}|${[...V.pending].filter((p) => p.startsWith(`${key}::`)).length}` : '';
       if (prev && prev.dataset.sig === sig) continue;

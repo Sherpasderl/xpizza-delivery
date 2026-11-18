@@ -53,7 +53,8 @@
   const IC = {
     close: I('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
     menu: I('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>'), check: I('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
-    note: I('<path d="M5 4h10l4 4v12H5z"/><path d="M8 12h8M8 16h6"/>'),   // D-3 r3's own path (frame 2a, the aside's notes row)
+    note: I('<path d="M5 4h10l4 4v12H5z"/><path d="M8 12h8M8 16h6"/>'),
+    tag: I('<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="8.5" r="1.3"/>'),   // offers 3 A (MOCKUP-capp-offers-calm-vs-loud #i-tag)   // D-3 r3's own path (frame 2a, the aside's notes row)
     bag: I('<path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>'), clock: I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     info: I('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'), alert: I('<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>'),
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update (owner-approved): an arrow into a tray
@@ -276,7 +277,7 @@
     // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
     // deskcart aside, the checkout's col-b); no view handed over (the single-store page, every phone) ⇒ byte-identical to before
     const view = opts.view && typeof opts.view.desk === 'function' ? opts.view : null;
-    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, trimNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
@@ -310,7 +311,10 @@
     const closesText = () => { const o = range(clock().day); return o ? fmtMin(o[1]) : ''; };
     const opensText = () => { const c = clock(), o = range(c.day); if (o && c.min < o[0]) return 'Abre hoy ' + fmtMin(o[0]); for (let d = 1; d <= 7; d++) { const oo = range((c.day + d) % 7); if (oo) return 'Abre ' + (d === 1 ? 'mañana' : 'el ' + DAYS[(c.day + d) % 7]) + ' ' + fmtMin(oo[0]); } return 'Cerrado por ahora'; };
     const firstSlot = () => { const c = clock(); for (let off = 0; off < 7; off++) { const o = range((c.day + off) % 7); if (!o) continue; let t = off === 0 ? Math.max(c.min + 60, o[0]) : o[0]; t = Math.ceil(t / 15) * 15; if (t + 30 <= o[1] + 15 && t < o[1]) return { off, t }; } return null; };
-    const etaTxt = (mode) => (mode === 'delivery' ? (cfg.etaDel ? `≈ ${cfg.etaDel[0]} min` : '') : (cfg.etaPick ? `Listo en ≈ ${cfg.etaPick[1]} min` : ''));
+    // rule 11 (owed SBS 11-14, advisor ruling — a RECORDED deviation from v6:1276-1277's «≈ 30 min» / «Listo en ≈ 20 min»): the customer
+    // reads an ARRIVAL WINDOW, never a lone figure — «30–45 min», pickup «Listo en 15–20 min»; no proper [a, b] (a < b) ⇒ no time at all
+    const winTxt = (e) => (Array.isArray(e) && Number.isFinite(e[0]) && Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]} min` : '');
+    const etaTxt = (mode) => { const w = winTxt(mode === 'delivery' ? cfg.etaDel : cfg.etaPick); return w && mode !== 'delivery' ? `Listo en ${w}` : w; };
 
     // ── cart reads (capp-cart) ──
     const qtyOf = (id) => { const l = cart.lines().find((x) => x.key === id); return l ? l.qty : 0; };
@@ -328,7 +332,7 @@
       if (!m.ok) { if (m.tooLong) { S.refusal = FULL_CART; showRefusal(); } return false; }
       S.refusal = null;
       if (refused.size) { const inCart = new Set(cart.lines().map((l) => l.key)); for (const k of [...refused]) if (!inCart.has(k)) refused.delete(k); }   // removed ⇒ the refusal clears
-      notifyCart();
+      notifyCart(); offersCartChanged();
       return true;
     }
 
@@ -381,12 +385,19 @@
     const rateFact = () => (SOC && SOC.rating ? `${SOC.rating}<span>·</span>` : '');
     const navOf = () => (doc.defaultView && doc.defaultView.navigator) || null;
     const canShare = () => { const n = navOf(); return !!(SOC && SOC.shareUrl && n && (typeof n.share === 'function' || (n.clipboard && typeof n.clipboard.writeText === 'function'))); };
-    const heartOff = () => (authOf() === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true" tabindex="-1"');
-    const heartBtn = (cls) => (SOC ? `<button${cls ? ` class="${cls}"` : ''} data-act="fav" aria-label="Guardar en favoritos" aria-pressed="false"${heartOff()}>${HEART}</button>` : '');
+    // C-1b: a MEMBER's heart is live (filled = saved; the shell's book through opts.social.isFav); a guest's opens the sign-in;
+    // an unresolved session's slot stays reserved
+    const heartShown = () => { const a = authOf(); return a === 'guest' || (a === 'member' && !!SOC && typeof SOC.isFav === 'function'); };
+    const heartOn = () => authOf() === 'member' && !!SOC && typeof SOC.isFav === 'function' && SOC.isFav() === true;
+    const heartOff = () => (heartShown() ? '' : ' style="visibility:hidden" aria-hidden="true" tabindex="-1"');
+    const heartBtn = (cls) => (SOC ? `<button class="${[cls, heartOn() ? 'on' : ''].filter(Boolean).join(' ')}" data-act="fav" aria-label="${heartOn() ? 'Quitar de favoritos' : 'Guardar en favoritos'}" aria-pressed="${heartOn()}"${heartOff()}>${HEART}</button>` : '');
     const shareBtn = (cls) => (canShare() ? `<button${cls ? ` class="${cls}"` : ''} data-act="share" aria-label="Compartir">${SHARE}</button>` : '');
     function patchHeart() {
-      const g = authOf() === 'guest';
-      for (const h of app.querySelectorAll('[data-act="fav"]')) { if (g) { h.removeAttribute('style'); h.removeAttribute('aria-hidden'); h.removeAttribute('tabindex'); } else { h.setAttribute('style', 'visibility:hidden'); h.setAttribute('aria-hidden', 'true'); h.setAttribute('tabindex', '-1'); } }
+      const g = heartShown(), on = heartOn();
+      for (const h of app.querySelectorAll('[data-act="fav"]')) {
+        if (g) { h.removeAttribute('style'); h.removeAttribute('aria-hidden'); h.removeAttribute('tabindex'); } else { h.setAttribute('style', 'visibility:hidden'); h.setAttribute('aria-hidden', 'true'); h.setAttribute('tabindex', '-1'); }
+        h.classList.toggle('on', on); h.setAttribute('aria-pressed', String(on)); h.setAttribute('aria-label', on ? 'Quitar de favoritos' : 'Guardar en favoritos');
+      }
     }
     async function shareStore() {
       const n = navOf(); if (!n || !SOC || !SOC.shareUrl) return;
@@ -445,6 +456,35 @@
         : !open ? `<div class="closednote">${IC.clock}<span>${fs ? `Podés programar un pedido para ${esc(dayWord(fs.off))}, desde las ${esc(fmtMin(fs.t))}` : 'Sin horarios disponibles · ' + esc(opensText()).toLowerCase()}</span>${fs ? '<button class="lnk" data-act="closed-sched">Programar</button>' : ''}</div>` : '';
     }
     const avatarHtml = () => (cfg.logo ? `<div class="avatar${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="${esc(cfg.name)}" data-initials="${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}"></div>` : `<div class="avatar txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</div>`);
+    // ── offers 3 A (MOCKUP-capp-offers-calm-vs-loud A; advisor 11-14 perf rule): a store with a live offer (menu.offers, 3a Q1) quotes
+    // its cart on the store page — debounced (cartQuoteSoon), newer-wins (capp-api), ONE line above the pill from THAT quote only: met
+    // ⇒ «Ahorrás …», under the minimum ⇒ «Agregá L x para …» (capp-checkout nudgeLine). The slot is reserved (visibility only); while a
+    // newer quote is asked the previous text stays, never past that quote settling; a failed / offer-less quote ⇒ no line. A store
+    // without offers: no flow, no quote, no element — byte-identical
+    const hasOffers = () => !!menu.offers && menu.offers.length > 0;
+    function offerFlow() {   // the store's quote needs a flow: created EXACTLY as openCheckout creates it (the seeded pin), only with offers
+      if (!hasOffers() || !mods() || frozenNow()) return null;
+      seededFlow();
+      if (S.flow.mode !== S.mode) C.setMode(S.flow, S.mode);   // openCheckout's own step, ahead of it
+      return S.flow;
+    }
+    const nudgeHtml = () => (hasOffers() ? `<div class="nudge${S.nudge ? ' on' : ''}" id="offer-nudge" role="status" aria-live="polite">${S.nudge && S.nudge.startsWith('Agregá') ? IC.tag : IC.check}<span>${esc(S.nudge || '')}</span></div>` : '');
+    function paintNudge() { const el = $('offer-nudge'); if (el) el.outerHTML = nudgeHtml(); }
+    // the cart changed on the store: ask (the line keeps its text until THAT quote settles) — or, when nothing will be asked, no line
+    function offersCartChanged() {
+      if (!hasOffers()) return;
+      const f = cart.count() ? offerFlow() : null;
+      if (!f || !cartAddr() || stateKey() === S.cartQErr) { S.nudge = null; paintNudge(); return; }
+      const T = totalsNow();
+      if (T.ready) { S.nudge = C.nudgeLine(T, moneyC); paintNudge(); return; }
+      cartQuoteSoon();
+    }
+    // a store quote settled (landed / failed / refused): the line is what the quote for the CURRENT cart says; a settled OLDER quote
+    // leaves the text to the newer one already asked (one round trip), never longer
+    function nudgeSettle(key) {
+      if (!hasOffers() || key !== stateKey()) return;
+      const T = totalsNow(); S.nudge = T.ready ? C.nudgeLine(T, moneyC) : null; paintNudge();
+    }
     function cartPillHtml() {
       const n = cart.count();
       return `<button class="cart-bar" id="cart-bar" data-act="pill" aria-label="Tu pedido"><span class="cart-icon">${CART_ICON}</span><span class="cart-pill-text">${n ? unitOf(n) : 'Tu pedido'}</span><span class="cart-pill-dot">·</span><span class="cart-pill-text">${money(cartTotal())}</span></button>`;
@@ -467,7 +507,7 @@
     <div class="stick" id="stick"><div class="slim">${S.entry === 'app' ? `<button class="iconbtn" data-act="back" aria-label="Cerrar">${IC.close}</button>` : '<span class="sp"></span>'}<b>${esc(cfg.name || '')}</b><button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button></div>
       <div class="tabsbar"><button class="iconbtn" data-act="menu" aria-label="Ver todo el menú">${IC.menu}</button><nav class="tabs" id="tabs" aria-label="Categorías">${sections.map((s, i) => `<button class="tab" data-act="jump" data-jump="${esc(s.id)}" aria-current="${i === 0}">${esc(s.name)}</button>`).join('')}</nav>${S.entry === 'app' ? '' : `<button class="iconbtn" data-act="ssearch" aria-label="Buscar en el menú">${IC.search}</button>`}</div></div>
     <main class="content" id="content">${content}</main></div>`;
-      return `<div class="storewrap">${scroller}</div>${pill}`;   // v6 :1628 — the PHONE page (the desktop page and its cart aside are storeDeskHtml)
+      return `<div class="storewrap${hasOffers() ? ' offers' : ''}">${scroller}</div>${nudgeHtml()}${pill}`;   // v6 :1628 — the PHONE page (the desktop page and its cart aside are storeDeskHtml)
     }
     // C-6c (MOCKUP-capp-desktop-D3 r3 frames 2a/2b, approved; advisor calls 1–7): the desktop store page — the host's top bar
     // (opts.deskChrome), the wide hero with the logo over it, identity + tools (Delivery/Pickup, the fee and ETA cells, «Buscar en»),
@@ -478,7 +518,7 @@
         + (cfg.addr ? `<span>·</span><span>${esc(cfg.addr)}</span>` : '');
     }
     // the delivery window «a–b min» (rule 11: a window, never one straight-line minute) — the store cell's and the checkout card's
-    const etaWindow = () => { const e = cfg.etaDel; return e && Number.isFinite(e[0]) ? `${Number.isFinite(e[1]) && e[1] > e[0] ? `${e[0]}–${e[1]}` : e[0]} min` : ''; };
+    const etaWindow = () => winTxt(cfg.etaDel);   // rule 11: the window or nothing (no single-figure fallback)
     function deskCellsHtml() {
       if (!isOpen()) return '';
       const cells = [];
@@ -618,6 +658,14 @@
       const sel = q > 0;
       return `<div class="detail-extras-row" data-act="${act}" ${attrs} role="checkbox" aria-checked="${sel}" tabindex="0"><span class="xrow-main"><span class="detail-extras-name">${esc(e.n)}</span><span class="xrow-price">+${money(e.p)}</span></span><div class="detail-extras-toggle ${sel ? 'selected' : ''}">${IC.check.replace('class="i"', '')}</div></div>`;
     }
+    // 4 B3: the server's own rules (OfferRules, synced) over the served offers and the cart's eligible units — null without them
+    const offerRules = () => opts.OfferRules || (typeof self !== 'undefined' && self.OfferRules) || (typeof require === 'function' ? require('./offer-rules.js') : null);   // the server's own module, synced (5f fed4eb9ce)
+    function b3Of(it, n) {
+      if (!hasOffers() || !mods() || it.group || it.parent) return null;
+      const d = menu.dish(it.id), key = C.pricingKeyOf(d, menu.availIdentity);
+      const cartUnits = []; for (const l of cart.lines()) { const cd = menu.dish(l.key), k = C.pricingKeyOf(cd, menu.availIdentity); if (cd && k) for (let i = 0; i < l.qty; i++) cartUnits.push({ key: k, unit: Math.round(cd.price * 100) }); }
+      return C.bogoPreview({ rules: offerRules(), offers: menu.offers, key, priceCents: d ? Math.round(d.price * 100) : null, n, cartUnits, nowMs: now().getTime() });
+    }
     function renderDetail() { renderDetailBody(); applyOrderable(); if (detailHad && lost()) focusTo(refind(detailHad)); detailHad = null; }
     let detailHad = null;
     function renderDetailBody() {
@@ -634,8 +682,8 @@
       // the desk dialog (advisor 11-02, frame 3 a11y): ✕ is the NEXT Tab stop after the focused heading — it follows the h2 in the DOM
       // and is drawn in the header's slot by CSS (.detail-close-slot keeps the header's layout)
       const nameEl = desk ? `<h2 class="detail-name" id="detail-name" tabindex="-1">${esc(it.n)}</h2><button class="detail-close" id="detail-close" data-act="dclose" aria-label="Cerrar">${IC.close}</button>` : `<div class="detail-name">${esc(it.n)}</div>`;
-      const body = (price) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}<div class="detail-price">${price}</div></div>`   // D-3 r3 frame 3: name, description, price
-        : `<div class="detail-body">${nameEl}<div class="detail-price">${price}</div>${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
+      const body = (price, row = `<div class="detail-price">${price}</div>`) => (desk ? `<div class="detail-body">${nameEl}${it.d ? `<p class="detail-desc">${esc(it.d)}</p>` : ''}${row}</div>`   // D-3 r3 frame 3: name, description, price
+        : `<div class="detail-body">${nameEl}${row}${it.d ? `<div class="detail-desc">${esc(it.d)}</div>` : ''}</div>`);
       const groupLabel = (g) => `<div class="detail-cat-label"><span>${esc(g.label)}</span><span class="grp-status ${o.staged.choice ? 'done' : 'req'}">${o.staged.choice ? IC.check.replace('class="i"', '') + 'Requerido' : IC.alert.replace('class="i"', '') + 'Elegí 1 · Requerido'}</span></div>`;
       const variantRows = (g, min) => `<div class="detail-extras-list">${g.choices.map((c) => { const sel = o.staged.choice === c.id, delta = c.p - min > 0 ? c.p - min : null, off = soldOf(c.id); return `<div class="detail-variant-row${sel ? ' sel' : ''}${off ? ' sold-out' : ''}" data-act="variant" data-id="${esc(c.id)}" role="radio" aria-checked="${sel}"${off ? ' aria-disabled="true" style="opacity:.45"' : ''} tabindex="0"><div><span class="detail-extras-name">${esc(c.choice)}</span>${off ? '<span class="detail-extras-price">Agotado</span>' : delta !== null ? `<span class="detail-extras-price">+${money(delta)}</span>` : ''}</div><span class="detail-variant-radio"></span></div>`; }).join('')}</div>`;
       const optLabel = (cat) => `<div class="detail-cat-label"><span>${esc(cat)}</span><span class="grp-status optional">Opcional</span></div>`;
@@ -650,7 +698,8 @@
         for (const grp of extrasByCat(exOfChoice())) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, o.staged.ex[e.id] || 0, 'staged', `data-eid="${esc(e.id)}"`)).join('')}</div>`;
       } else {
         const q = qtyOf(it.id), l = cart.lines().find((x) => x.key === it.id);
-        html += body(money(it.p));
+        const bp = q === 0 ? b3Of(it, o.staged.qty || 1) : null;   // 4 B3: the staged sheet of a provably offered dish
+        html += bp ? body(null, `<div class="detail-pricerow"><div class="detail-price">${bp.strike ? `${moneyC(bp.strike.pay)}<s class="was">${moneyC(bp.strike.was)}</s>` : money(it.p)}</div><span class="tag-offer-fill">${IC.tag}${esc(C.OFFER_COPY.bogo)}</span></div>`) : body(money(it.p));
         if (q > 0 && it.ex.length) for (let inst = 0; inst < q; inst++) {
           if (q > 1) html += `<div class="detail-pizza-header">${esc(unit[0][0].toUpperCase() + unit[0].slice(1))} ${inst + 1}</div>`;
           for (const grp of extrasByCat(it.ex)) html += optLabel(grp.cat) + `<div class="detail-extras-list">${grp.list.map((e) => extraRow(e, (l && l.ex[inst] && l.ex[inst][e.id]) || 0, 'extra', `data-eid="${esc(e.id)}" data-inst="${inst}"`)).join('')}</div>`;
@@ -668,7 +717,7 @@
       if (o.kind === 'launcher') { const c = it.group.choices.find((x) => x.id === o.staged.choice), n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); if (c && (soldOf(c.id) || soldOf(it.id))) { cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; } if (!c) { cta.disabled = true; cta.innerHTML = `<span>Elegí tu ${esc(it.group.label.toLowerCase())}</span>`; } else cta.innerHTML = label('Agregar', n * (c.p + instTotal(o.staged.ex))); return; }
       const q = qtyOf(it.id);
       if (isSold(it)) { const q0 = qtyOf(it.id); step.innerHTML = q0 > 0 ? stepper(q0, true, false) : stepper(o.staged.qty || 1, false, false); cta.disabled = true; cta.innerHTML = '<span>Agotado</span>'; return; }   // Codex perf-core r3 #1: + inert, − live
-      if (q === 0) { const n = o.staged.qty || 1; step.innerHTML = stepper(n, n > 1); cta.innerHTML = label('Agregar', n * it.p); }
+      if (q === 0) { const n = o.staged.qty || 1, bp = b3Of(it, n); step.innerHTML = stepper(n, n > 1); cta.innerHTML = bp && bp.strike ? label('Agregar', bp.strike.pay / 100) : label('Agregar', n * it.p); }   // 4 B3: the button stays clean, at the pair price
       else { const lineSum = cart.groups().filter((g) => g.key === it.id).reduce((a, g) => a + g.total, 0); step.innerHTML = stepper(q, true); cta.innerHTML = label('Guardar', lineSum); }
     }
     function detailAct(t) {
@@ -744,10 +793,17 @@
       const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
       const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
+      // G2 (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy): a deleted extra trimmed off a kept dish — named when the
+      // cart stored the name, else the dish only; its own pill after the dish-gone one. Each note is two sentences, each its OWN
+      // block (owner: «one sentence per line where it fits» — the SBS caught «… disponible. Actualizamos | tu …» at 390)
+      const trimLines = (S.trimNote || []).flatMap((t) => (t.extras.every((n) => typeof n === 'string')
+        ? t.extras.map((n) => [`${n} ya no está disponible.`, `Actualizamos tu ${t.dish}.`])
+        : [[`Un extra de tu ${t.dish} ya no está disponible.`, 'Lo quitamos del pedido.']]));
+      const trimNote = trimLines.length ? `<div class="cartnote" role="status">${IC.info}<span>${trimLines.map((x) => `<span class="cn-l">${x.map((y) => `<span class="cn-s">${esc(y)}</span>`).join(' ')}</span>`).join('')}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
       if (!lines.length && desk) S.upsellDesk = null;
-      if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
+      if (!lines.length) return head + note + trimNote + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
@@ -768,7 +824,7 @@
       const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
       const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
-      return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+      return head + updNote + note + trimNote + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
         + cnote + ups + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
@@ -788,7 +844,8 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      // Codex #117 P2: a pending trim note is cleared only by closing the CART it was shown in — an unrelated layer keeps it
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') { appUpdatedSeen(); S.trimNote = null; } layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
@@ -829,11 +886,13 @@
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
       return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog"${off ? ' disabled' : ''}>+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"${off ? ' disabled' : ''}></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
     }
+    // the rows: the countries the server serves (P.served, PLAN-capp-picker-served-countries r1) + a member's own saved country, so
+    // their number is never re-coded to another country (a guest gets the served list alone)
     function ccSheetHtml() {
-      const P = phoneMod(), cur = ccOf(S.flow);
+      const P = phoneMod(), cur = ccOf(S.flow), m = member(), own = m && m.phone ? P.parseE164(m.phone) : null;
       return `<div class="scrim" data-act="lclose"></div><div class="sheet ccsheet" role="dialog" aria-label="País del número"><div class="grab"></div>
         <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+        ${P.served(own ? own.cc : null).map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
@@ -851,6 +910,8 @@
     // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
     // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
     const cardOnlyGuest = () => cfg.guestCardOnly === true && !member();
+    // owner 11-16 (MOCKUP-capp-pickup-card-only): app PICKUP is card only — for everyone, members included
+    const pickupFlow = () => !!S.flow && S.flow.mode === 'pickup';
     // PLAN-intl-phone r2.3 S-picker (MOCKUP-intl-phone-picker-APPROVED-2026-10-27, frames 4–6): the runtime flag cfg.intlPhone (the
     // shell sets it); absent ⇒ today's single «+504» input and the '+504 9999-9999' wire, byte for byte. Present ⇒ the country button +
     // sheet, the national length / local format per country, and E.164 on the wire for EVERY country (+504 included). FLIP
@@ -932,7 +993,7 @@
     // cents → «L 485» (whole) / «L 485.50»
     const moneyC = (c) => { const n = Number(c) || 0; return n % 100 === 0 ? money(n / 100) : 'L ' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
     const storeLine = () => esc(cfg.name || '') + (cfg.branch ? ' · ' + esc(cfg.branch) : '');
-    const logoChip = (cls) => (cfg.logo ? `<span class="${cls}${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`);
+    const logoChip = (cls) => (cfg.logo ? `<span class="${cls}${cfg.logoWide ? ' wide' : ''}"><img src="${esc(cfg.logo)}" alt="" data-initials="${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}"></span>` : `<span class="${cls} txt" aria-hidden="true">${esc(String(cfg.name || '').split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`);
     const finitePin = (p) => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng);
 
     // ── the order context, the state key (what a quote stands for) and the totals of the CURRENT state ──
@@ -956,15 +1017,20 @@
       if (quiet && S.screen !== 'checkout' && S.screen !== 'tip') {
         if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
         else { S.askedKey = null; S.cartQErr = key; if (r.kind === 'out_of_zone') S.outZone = true; }   // the checkout may still ask (loud)
-        cartRefresh(); return;
+        nudgeSettle(key); cartRefresh(); return;
       }
       // S2b r1 P2-6: a failed quote is never a silent dead end — the key is released and the generic held state offers «Reintentar»
       if (r.kind === 'offline' || r.kind === 'try_again' || r.kind === 'refused') { S.askedKey = null; S.quoteErr = key; quoteFailed(); }
-      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { itemRefused(r); return; } }
+      else if (r.kind === 'menu_changed' || r.kind === 'extra_not_allowed' || r.kind === 'pickup_only') { S.askedKey = null; S.quoteErr = key; if (S.screen === 'checkout' || S.screen === 'tip') { nudgeSettle(key); itemRefused(r); return; } }   // Codex r2: settled before the return
       else S.quoteErr = null;
       if (r.kind === 'ok') { S.q = r.record; S.qKey = key; if (f.mode === 'delivery') { S.outZone = false; if (r.record.resp.delivery) S.lastDelivery = r.record.resp.delivery; } }
       else if (r.kind === 'out_of_zone') { S.outZone = true; }
+      nudgeSettle(key);   // Codex offers-ui r1 P1-2 / r2: EVERY settled quote settles the store line — here, BEFORE the offer_changed sheet's return
       // pin / offline / try_again / refused / update_required: no amount is shown (never a guess); a refused QUOTE has no sheet; the placement's sheets are below (onOutcome)
+      if (S.oc) {   // offers Q3: the re-quote after an offer_changed — the sheet only for a HIGHER Total, from the quote that just landed
+        const from = S.oc.from; S.oc = null; const T = r.kind === 'ok' ? totalsNow() : { ready: false };
+        if (T.ready && from !== null && T.total > from && (S.screen === 'checkout' || S.screen === 'tip')) { render(); showErr(ERR.offerChanged(T.total)); return; }
+      }
       if (S.pinToast && f.mode === 'delivery') { S.pinToast = false; if (r.kind === 'ok') toast('Pin confirmado', TOAST_MS); else if (r.kind === 'out_of_zone') toast('Ese punto queda fuera de la zona', TOAST_MS); }
       if (S.screen === 'checkout' || S.screen === 'tip') render();
     }
@@ -1083,23 +1149,48 @@
         : `<div class="sumrow"><span>Envío${ib} <span class="mute">· según tu dirección</span></span><span></span></div>`) + line;   // no address yet: the amount comes after the pin
       return `<div class="sumrow"><span>Envío${ib}</span><span>${moneyC(T.envio)}</span></div>` + line;
     }
+    // PLAN-capp-marketing-offers Slice A, 5 A (MOCKUP-capp-offers-calm-vs-loud / MOCKUP-capp-marketing-offers frame 1): ONE row between
+    // Envío and Propina/Total, only from a quote carrying a food discount (T.offer, capp-checkout offerOf) — «Descuento» in ink, the
+    // derived type muted, the amount in the v6 «Gratis» green with U+2212; the checkout, the cart sheet and the desk aside alike
+    function discRowHtml(T) {
+      if (!T.ready || !T.offer || !(T.offer.discount_cents > 0)) return '';
+      const lab = C.offerLabel(T.offer, moneyC);
+      return `<div class="sumrow"><span class="lbl">${esc(C.OFFER_COPY.row)}${lab ? `<span class="ty">&nbsp;· ${esc(lab)}</span>` : ''}</span><span class="free">\u2212 ${moneyC(T.offer.discount_cents)}</span></div>`;
+    }
     // G-A (advisor 11-13 option (b)): the cart's rows come from the SAME quote as the checkout — only a quote matching the CURRENT
     // cart (C.totals refuses a subtotal mismatch) and the cart's own mode; else «—» and the same requote(), debounced (rapid edits ⇒
     // ONE request), asked only once an address exists. Total = the quote's net minus its tip (the cart draws no Propina row, v6)
     const cartAddr = () => !!S.flow && S.flow.mode === S.mode && quotable(S.flow);
+    // Codex backfill P2 (ee6dedd6a): an already-CONFIRMED address prices the cart before the checkout, offers or not — the flow is seeded
+    // exactly as openCheckout seeds it; no confirmed seed ⇒ no flow (v6 «según tu dirección», G-A1)
+    function cartFlow() {
+      if (S.flow || !mods() || frozenNow()) return;
+      const sp = seedPin(); if (!sp || sp.confirmed !== true) return;
+      seededFlow(); if (S.flow.mode !== S.mode) C.setMode(S.flow, S.mode);
+    }
     // desk (advisor 11-13 (a), exact to D-3 r3 frame 2a): before a matching quote the Envío cell is the store fee cell's fact «Envío
     // desde L {floor}» (or, for a member under the rule-10 predicate, the struck floor + «Gratis»); priced ⇒ the quote's amount; no
     // guest line (frame 2a's card-only note stands there); the Total follows the cart's rule
     function cartTotsHtml(total, desk = false) {   // total: the cart's shown subtotal, lempiras
       const sub = `<div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div>`;
-      if (S.mode !== 'delivery') return `<div class="ctot">${sub}<div class="sumrow tot"><span>Total</span><span>${money(total)}</span></div></div>`;
+      if (S.mode !== 'delivery' && !hasOffers()) return `<div class="ctot">${sub}<div class="sumrow tot"><span>Total</span><span>${money(total)}</span></div></div>`;
+      if (S.mode !== 'delivery') {   // offers (advisor 11-14 (b)): a pickup cart quotes like delivery — the Total reserved «—» until it lands
+        offerFlow();
+        const P0 = cartAddr() ? totalsNow() : { ready: false }, P = P0.ready && P0.subtotal === Math.round(total * 100) ? P0 : { ready: false };
+        const failed = !P.ready && (!cartAddr() || stateKey() === S.cartQErr);
+        if (!P.ready && !failed) cartQuoteSoon();
+        // Codex offers-ui r1 P1-3: a failed (or unaskable) quote keeps «—» — with an offer live the subtotal is NOT what the order costs, so
+        // the cart never shows a client total; the checkout asks again
+        return `<div class="ctot">${sub}${discRowHtml(P)}<div class="sumrow tot"><span>Total</span><span>${P.ready ? moneyC(P.total - P.tip) : '—'}</span></div></div>`;
+      }
+      cartFlow();
       const addr = cartAddr(), T0 = addr ? totalsNow() : { ready: false };
       const T = T0.ready && T0.subtotal === Math.round(total * 100) ? T0 : { ready: false };
       if (addr && !T.ready) cartQuoteSoon();
       const floor = cfg.feeFromCents != null ? money(cfg.feeFromCents / 100) : null;
       const fee = !desk || T.ready || floor === null ? feeRowHtml(T, false, 'cart', desk)
         : `<div class="sumrow"><span>Envío</span><span class="r">${cfg.promoFree === true && authOf() === 'member' ? `<span class="strike">${floor}</span><span class="free">Gratis</span>` : `Envío desde ${floor}`}</span></div>`;
-      return `<div class="ctot">${sub}${fee}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr ? '—' : money(total)}</span></div></div>`;
+      return `<div class="ctot">${sub}${fee}${discRowHtml(T)}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total - T.tip) : addr || hasOffers() ? '—' : money(total)}</span></div></div>`;   // Codex r2: a store with a served offer never shows a client Total (no pin yet ⇒ «—»); no offers ⇒ today's subtotal (OFF byte-identical)
     }
     const CART_QUOTE_MS = 350;
     let cartQT = null;
@@ -1149,7 +1240,7 @@
       const tipRow = tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : del ? '<div class="sumrow"><span>Propina</span><span class="r mute">Se elige en el siguiente paso</span></div>' : '';   // call 3
       const pedido = `<section class="fsec" aria-label="Resumen del pedido">${extraNoteHtml()}<div class="osum box"><button class="toggle" data-act="sumtoggle" aria-expanded="${open}"><span class="tt">Tu pedido<span> · ${esc(unitOf(nItems))}</span></span>${open ? IC.up : IC.down}</button>
       ${open ? `<div class="lines">${lines.map((d) => `<div class="osline">${lineName(d, 'n')}${lineStep(d)}<span class="p">${money(d.total)}</span></div>`).join('')}<button class="addmore" data-act="addmore">${IC.plus}Agregar más platos</button></div>` : ''}
-      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${discRowHtml(T)}${tipRow}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // call 6: the Terms sentence only with the platform's real (https) Terms link; «Sherpa lo entrega» only on a delivery
       const fine = [terms ? `Al continuar aceptás los <a href="${esc(terms)}" target="_blank" rel="noopener">Términos de Sherpa</a>.` : '', del ? 'El restaurante prepara tu pedido; Sherpa lo entrega.' : ''].filter(Boolean).join(' ');
       return `<div class="flow" id="flow">${bar}<div class="col-a"><h1 class="flowtitle">Entrega &amp; Pago</h1>${entrega}${datos}${pago}</div>
@@ -1213,19 +1304,24 @@
       const tip = T.ready ? T.tip : C.tipCentsOf(f);
       const pedido = `<section class="fsec" aria-label="Resumen del pedido"><h2>Tu pedido</h2>${extraNoteHtml()}
     <div class="osum flat">${sumRow}${sumBody}
-      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
+      <div class="ostot"><div class="sumrow"><span>Subtotal</span><span>${moneyC(T.ready ? T.subtotal : cart.subtotalCents())}</span></div>${feeRowHtml(T, true)}${discRowHtml(T)}${tip ? `<div class="sumrow"><span>Propina</span><span>${moneyC(tip)}</span></div>` : ''}<div class="sumrow tot"><span>Total</span><span>${T.ready ? moneyC(T.total) : '—'}</span></div></div></div></section>`;
       // Pago — row 10: a retained scheduled send fixes its tender (the other option in the drawn disabled .45, as the other slots)
       const lp = lockedPay(); if (lp !== null) f.pay = lp;
       const payOff = (v) => (lp !== null && lp !== v ? ' disabled' : '');
       const payOpts = `<div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button>
+      <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button>
       <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
-      const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D Secure).</span></span></button></div>
+      // the ONE card-only «Pago» row (guest frame 1; the member's pickup reuses it EXACTLY), its line below
+      const payOne = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
+      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>`;
+      const pagoGuest = `${payOne}
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
-      const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
-        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
+      // pickup (owner 11-16): the same single open row, its line saying why (a member: no sign-up link)
+      const pagoPickup = `${payOne}
+      <p class="paynote">Para recoger se paga con tarjeta.</p></section>`;
+      const pago = g ? pagoGuest : !del ? pagoPickup : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
+        ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D\u00a0Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
       const sdkC = sdkOn() && !S.desk;   // S2-checkout (v7): the payment row in the bar replaces the «Pago» section (the installed app only)
       const bar = sdkC ? sdkBar(T, { label: ctaLabel(T), enabled: !ctaOff(T), act: 'confirm', id: 'cta' }) : `<div class="paybar">${ctaBtn}</div>`;
@@ -1643,6 +1739,7 @@
       showErr(ERR.generic('err-requote'));
     }
     const ERR = {
+      offerChanged: (total) => ({ title: C.OFFER_COPY.sheetTitle, body: C.OFFER_COPY.sheetBody(moneyC(total)), icon: 'warn', acts: [{ act: 'oc-confirm', label: C.OFFER_COPY.sheetConfirm, primary: true }, { act: 'lclose', label: C.OFFER_COPY.sheetBack }] }),   // offers Q3
       offline: () => ({ title: 'Sin conexión', body: 'No pudimos enviar tu pedido. Revisá tu conexión e intentá de nuevo; tu pedido está intacto.', icon: 'warn', acts: [{ act: 'err-retry', label: 'Reintentar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }),
       // S2 drops the «Programar» button and the schedule sentence (OWNER 2026-10-26; CLOSED_SHEET.scheduleHint is S4's)
       closed: () => (sched() ? { title: C.CLOSED_SHEET.title(cfg.name || '', closesText()), body: C.CLOSED_SHEET.body + ' ' + C.CLOSED_SHEET.scheduleHint, icon: 'warn', acts: [{ act: 'err-sched', label: 'Programar', primary: true }, { act: 'lclose', label: 'Cerrar' }] }
@@ -1759,7 +1856,7 @@
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
         // «Usar otra tarjeta» needs the whole checkout back: after a return that could not restore it, the generic held state (U3)
-        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
+        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() || pickupFlow() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
@@ -1767,6 +1864,14 @@
       if (k === 'paused') { backTo('checkout'); showErr(ERR.paused()); return; }
       // one sheet for the failures the customer can't tell apart: the card checkout not opened, the payment reference not saved,
       // a generic refusal, an unexpected error
+      // offers Q3 (MOCKUP-capp-marketing-offers frame 4, copy owner-approved 11-14): the offer changed under the order (capp-api's typed
+      // offer_changed, any form) — nothing was charged; «Entrega & Pago» re-quotes, and ONLY a higher re-quoted Total asks «Confirmar» /
+      // «Volver» (a lower or equal one just re-renders the totals). A second offer_changed for the same order state is the generic sheet:
+      // never a loop
+      if (k === 'error' && out.offer_changed && S.ocSeen !== stateKey()) {
+        S.ocSeen = stateKey(); S.oc = { from: S.sendTotals && Number.isFinite(S.sendTotals.total) ? S.sendTotals.total : null };
+        backTo('checkout'); S.askedKey = null; S.quoteErr = null; S.q = null; requote(); return;
+      }
       if (k === 'stash_failed' || k === 'try_again' || k === 'refused' || k === 'error' || k === 'payment_not_completed') { backTo('checkout'); showErr(ERR.generic()); return; }
       // update_required (426) is the shared self-update module's «Actualización pendiente»; price_declined: the ported sheet was answered
       backTo();
@@ -1785,18 +1890,24 @@
     // «Ir al checkout»: THE path into the checkout — a tap, and (D-4a) a URL-driven entry through resumeTo('pago')
     function checkoutTap() { if (!orderable || soldBlock()) return false; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return true; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return false; } emit('checkout', { body, mode: S.mode }); openCheckout(); return true; }
     // ── navigation ──
+    // the flow, created ONCE with its pin decided (S7a-2) — the checkout's and the offers store quote's (Slice A) one creation path
+    function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }
     function openCheckout() {
       if (!mods()) return false;
+      // Codex #117 P2: a trim the customer has not seen yet ⇒ every checkout entry (Programar on a closed store included) shows the CART
+      // first; its own «Ir al checkout» proceeds (the cart is open: reviewed). On the desk store the aside IS the cart, drawn with the note
+      const cartSeen = S.layerKind === 'cart' || (S.desk && S.screen === 'store');
+      if (S.trimNote && !cartSeen) { openLayer('cart'); return false; }
       // S7a-2 (PLAN-capp-S7a r2 §2.2): the flow is created ONCE with its pin decided — a restored return flow, else this mount's
       // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
-      if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); }
+      seededFlow();
       C.setMode(S.flow, S.mode);
       if (cardOnlyGuest()) S.flow.pay = 'online';   // §3.1: one option, card, already selected
       sdkAdopt();   // S2-checkout: a card adopted by an earlier visit is still the tender of a new flow
       // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
       // action (never under a finger); a failure leaves the schedule in hand
       if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
-      S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
+      S.layerKind = null; S.cartNote = null; S.trimNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
       S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
       S.screen = 'checkout'; render();
@@ -1933,6 +2044,7 @@
       }
       if (a === 'store-open') { if (storeNow()) emit('store-open', { url: storeNow().url }); return true; }   // the host leaves for the store; the sheet stays
       if (a === 'err-retry') { closeLayer(); send(); return true; }
+      if (a === 'oc-confirm') { closeLayer(); placeTap(); return true; }   // offers Q3: «Confirmar» = place at the re-quoted Total (placeTap's own gates + window)
       if (a === 'menu-reload') { closeLayer(); emit('menu_reload', { rid: cfg.restaurantId }); return true; }   // S3 A1 → the shell re-fetches and adopts (A2)
       if (a === 'extra-remove') { removeDenied(); return true; }   // S3 B1 → B2   // the SAME placement (capp-api keeps the id)
       if ((a === 'err-sched' || a === 'err-slot') && sched() && S.flow && !canSchedule()) { closeLayer(); backTo('checkout'); scheduleGate(); return true; }   // frame G
@@ -2014,7 +2126,7 @@
     // Codex r1 P1: the saved cards belong to the identity that LISTED them (owner: «u:<uid>» | «guest»); gen drops a late answer
     const sdkOwner = (m) => (m && m.uid != null ? 'u:' + m.uid : 'guest');
     const SDK = { owner: null, gen: 0, cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
-    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
+    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() && !pickupFlow() });
     const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
     const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
     // the saved cards (members) and the card path's availability — read once per mount, when the checkout first shows
@@ -2235,6 +2347,9 @@
 
     function render() {
       if (dead) return;
+      // the ONE choke point (advisor 11-16): a pickup flow is card — never cash, never «nothing chosen» under a drawn selected row —
+      // the mode switch, a new flow, a restore, a reorder all render
+      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';
       // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
       if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip' || S.tipEntry)) {
         const onStep = S.screen === 'tip'; tipLeave();
@@ -2291,11 +2406,11 @@
       if (act === 'rev') { const k = t.dataset.key, g = t.dataset.grp || '', d = descOf(t); if (Number(t.dataset.rev) > 0 && isSold(find(k))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(k, g) : cart.lineDec(k, g))); renderStoreKeep(); renderLayer(); focusTo(refind(d) || [...$('layer').querySelectorAll(FOCUSABLE)].find(reachable)); return; }
       // the sheet's «Editar» closes the sheet ⇒ focus comes back to the cart bar; the desk aside's stays put ⇒ back to ITSELF (Codex D-2 r1 #2)
       if (act === 'edit') { const fromAside = !!t.closest('.deskcart'); S.layerKind = null; renderLayer(); returnTo = fromAside ? descOf(t) : { elId: 'cart-bar', ds: { act: 'pill' } }; openEdit(t.dataset.key, t.dataset.grp || ''); return; }
-      if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); renderStoreKeep(); return; }
+      if (act === 'mode') { if (frozenNow()) return; S.mode = t.dataset.val; notifyCart(); offersCartChanged(); renderStoreKeep(); return; }
       if (act === 'jump') { jumpTo(t.dataset.jump); return; }
       if (act === 'menu') { openLayer('menu'); return; }
       if (act === 'goto') { closeLayer(); jumpTo(t.dataset.goto); return; }
-      if (act === 'fav') { if (SOC && authOf() === 'guest') emit('signin', { ctx: 'favorites' }); return; }   // C-1a: a guest's heart ⇒ the sign-in
+      if (act === 'fav') { const a = authOf(); if (SOC && a === 'guest') emit('signin', { ctx: 'favorites' }); else if (SOC && a === 'member' && typeof SOC.isFav === 'function') emit('fav', { on: !SOC.isFav() }); return; }   // C-1a guest ⇒ sign-in; C-1b member ⇒ the shell's setFav
       if (act === 'share') { shareStore(); return; }
       if (act === 'ssearch') { openLayer('ssearch'); return; }
       if (act === 'back') { emit('back'); return; }
@@ -2307,7 +2422,7 @@
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
         if (canSchedule()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
-        openCheckout(); if (!canSchedule()) scheduleGate();
+        if (openCheckout() && !canSchedule()) scheduleGate();   // a pending trim opened the cart instead: no gate over it
         return;
       }
       if (act === 'closed-sched') { emit('schedule'); return; }
@@ -2420,6 +2535,7 @@
       deviceBack,
       // the host's AUTHORITATIVE availability has been re-read (its Set / function now reflects it): a dispatch refusal yields to it
       availabilityUpdated() { if (dead) return; refused.clear(); render(); },
+      socialUpdated() { if (!dead && SOC) patchHeart(); },   // C-1b: the shell's book changed (the heart's pressed state, in place)
       // S7a-2: the verified menu arrived — the ordering controls turn live IN PLACE (no re-render: boxes, scroll and focus unchanged)
       setOrderable(on) {
         if (dead) return; orderable = on === true;
@@ -2440,6 +2556,9 @@
         if (dead) return;
         const prevCtx = memberCtx;
         memberCtx = m && typeof m === 'object' ? m : null;
+        // Codex offers-ui r1 P1-2: another identity ⇒ the store line is cleared at once (never a saving priced for someone else) and the
+        // cart re-quoted for this one (the uid is in the state key)
+        if (((prevCtx && prevCtx.uid) || null) !== ((memberCtx && memberCtx.uid) || null) && hasOffers()) { S.nudge = null; paintNudge(); offersCartChanged(); }
         if (sdkOwner(prevCtx) !== sdkOwner(memberCtx)) { sdkIdentity(); tipIdentity(); }   // Codex r1 P1: another identity ⇒ its own cards, nothing carried
         if (!memberCtx) S.schedAfterSignin = false;
         const f = S.flow;
@@ -2472,7 +2591,9 @@
         if (rr.blocked) return { blocked: true, step: rr.step };
         if (rr.cleared) { render(); return { cleared: true }; }
         if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
-        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal); return r; },
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.trimNote = r.trimmed || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
+        offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit
+        return r; },
       // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /
       // freeze predicate), never over a cart mid-placement
       replaceCart(snapshot) { if (dead || lockedNow()) return { locked: true }; return this.restore(snapshot); },

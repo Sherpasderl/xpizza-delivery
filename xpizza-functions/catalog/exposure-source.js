@@ -26,6 +26,7 @@
 // a brand that is not listed simply has no exposure to migrate.
 // ---------------------------------------------------------------------------
 const { deriveLegacyMaps, ALL } = require('./extras-exposure');
+const { projectExtrasMaps } = require('./extras-projection');   // S2-core §2.2: the consumer projection the build emits (pure)
 
 // PLAN 4 GATED (G1): "this dish is offered nothing" is DATA — a dish's display.extras_policy 'none' (the reviewed data file
 // authors it for Nutella; the portal can set it) — never a name list here or a name comparison in a renderer.
@@ -122,7 +123,10 @@ function attachExposure(restaurantId, structure, items, { byCategory = null, byI
     if (!exposure) return structure;
     structure.exposure = exposure;
   }
-  const legacy = deriveLegacyMaps(items, exposureCtx(structure.exposure));
+  // S2-core (PLAN-structure-S2core-r3 §2.2): the maps are the CONSUMER PROJECTION — one effective group list per dish, written so the
+  // forms' picker and the capp both render it exactly (a group detached from one dish included); keyed by display id. On today's data it
+  // is today's maps byte for byte (catalog/extras-projection.test.js, step 0).
+  const legacy = projectExtrasMaps({ items, extras: [], structure });
   // Omitted when empty rather than written as {}: an empty map is not a fact about the menu, and a
   // field that exists only sometimes is easier to read than one that is always there and usually blank.
   if (Object.keys(legacy.byCategory).length) structure.extras_by_category = legacy.byCategory;
