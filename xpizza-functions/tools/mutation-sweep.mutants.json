@@ -37200,10 +37200,10 @@
  {
   "id": "rn-02",
   "slice": "c2-rider-name",
-  "label": "the rider's name may split mid-name (no nowrap — owed SBS 11-14, 16b)",
+  "label": "the rider's name a nowrap unit again — overflows the column into the thumbs at 320 px (Codex #143 P2)",
   "file": "../customer-app/capp.css",
-  "from": ".rate .rrow2 .t .who{white-space:nowrap}",
-  "to": ".rate .rrow2 .t .who{white-space:normal}",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{display:inline-block;max-width:100%;white-space:nowrap}",
   "command": [
    "node",
    "--test",
@@ -37211,7 +37211,41 @@
    "../customer-app/capp-s7a2.test.mjs"
   ],
   "kills_with": [
-   "never split inside the name"
+   "RN-FIT: a name wider than the column"
+  ]
+ },
+ {
+  "id": "rn-05",
+  "slice": "c2-rider-name",
+  "label": "the rider's name not a box (inline): a long name splits mid-name while it would fit on its own line",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{max-width:100%}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-UNIT"
+  ]
+ },
+ {
+  "id": "rn-06",
+  "slice": "c2-rider-name",
+  "label": "the rider's name box uncapped (no max-width): a name wider than the column overflows into the thumbs",
+  "file": "../customer-app/capp.css",
+  "from": ".rate .rrow2 .t .who{display:inline-block;max-width:100%}",
+  "to": ".rate .rrow2 .t .who{display:inline-block}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=rider name",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "RN-FIT: the name box is capped"
   ]
  },
  {
