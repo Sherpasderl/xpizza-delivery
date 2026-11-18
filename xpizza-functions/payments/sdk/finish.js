@@ -88,6 +88,12 @@ async function finishSdk(deps, c) {
     await C.cancelSdkOrder(deps, { orderId: c.orderId, kind: 'cancel', pendingOnly: true });   // THIS request's own pending order: no money was asked
     return { status: UNRESOLVED.status, body: { ...UNRESOLVED.body } };
   }
+  // Codex #154 r1: a SAVED card is re-checked against the deletion tombstone right before the charge — a deletion that landed after the
+  // lookup (it tombstones first, then fences) never lets that account's saved token reach the PSP; this request's own order is cancelled
+  if (c.card.kind === 'saved' && await CARDS.isDeletedUid(deps.db, c.uid)) {
+    await C.cancelSdkOrder(deps, { orderId: c.orderId, kind: 'cancel', pendingOnly: true });   // THIS request's own pending order: no money was asked
+    return { status: CARDS.SAVED_CARD_UNAVAILABLE.status, body: { ...CARDS.SAVED_CARD_UNAVAILABLE.body } };
+  }
   // 8. the attempt, at the STORED total (row 20)  9. the §2.4 answer for THIS attempt
   await C.placeOriginal(deps, { orderId: c.orderId, attempt_id: c.attemptId, token, amount_cents: stored.total_cents, authentication_identifier: authenticationIdentifier, card });
   const order = await C.readOrder(deps.db, c.orderId);

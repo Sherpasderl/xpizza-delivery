@@ -26,6 +26,7 @@ async function memberUid(deps, headers = {}) {
 // A3: ONLY the caller's own, usable card; absent / foreign / removed / expired ⇒ null (the handler answers SAVED_CARD_UNAVAILABLE)
 async function resolveSavedCard(deps, uid, cardId) {
   if (typeof uid !== 'string' || !uid || typeof cardId !== 'string' || !CARD_ID_RE.test(cardId)) return null;
+  if (await isDeletedUid(deps.db, uid)) return null;   // Codex #154 r1: a deleted account's cards are refused before (and after) the fence
   const c = (await deps.db.ref(`customer_cards/${uid}/cards/${cardId}`).once('value')).val();
   if (!isObj(c) || typeof c.token !== 'string' || expiredNow(c, deps.clock())) return null;
   return { card_id: cardId, token: c.token, token_hash: c.token_hash, display: { brand: c.brand, last4: c.last4, exp_month: c.exp_month, exp_year: c.exp_year } };
@@ -40,15 +41,13 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
   const now = deps.clock();
   const display = require('./display').sanitizeDisplay(rawDisplay);   // validated AGAIN at the vault write (Codex S3 r4 P1)
   if (!display) return { outcome: 'invalid_display' };
-  let outcome = null; let stale = false;
+  let outcome = null;
   await node(deps.db, uid).transaction((cur) => {
-    outcome = null; stale = false;
+    outcome = null;
     if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion
-    if (isObj(cur) && cur._closing !== undefined && liveClosing(cur._closing, now)) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken
     const c = isObj(cur) ? JSON.parse(JSON.stringify(cur)) : {};
     const t = isObj(c.tomb) ? c.tomb[h] : null;
     if (t && Number.isInteger(t.gen) && t.gen > (Number.isInteger(gen) ? gen : 0)) { outcome = 'dropped'; return cur == null ? null : undefined; }
-    stale = c._closing !== undefined; delete c._closing;   // a STALE mark (a deletion crashed between its mark and its update): cleared here, alerted by the caller
     const existing = isObj(c.by_hash) ? c.by_hash[h] : null;
     if (existing && isObj(c.cards) && isObj(c.cards[existing])) { c.cards[existing].last_used_at = now; outcome = 'reused'; return c; }
     const id = newCardId();
@@ -57,7 +56,7 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
     outcome = 'created';
     return c;
   });
-  return stale && outcome !== 'dropped' ? { outcome, stale_mark: true } : { outcome };
+  return { outcome };
 }
 
 async function removeCard(deps, uid, cardId) {
@@ -92,6 +91,7 @@ async function markExpired(deps, uid, tokenHash) {
 async function listCardsCore(deps, { headers } = {}) {
   const uid = await memberUid(deps, headers);
   if (!uid) return { status: 401, body: { error: 'auth_required' } };
+  if (await isDeletedUid(deps.db, uid)) return { status: 200, body: { cards: [] } };   // Codex #154 r1: nothing listed for a deleted account
   const v = (await node(deps.db, uid).once('value')).val();
   const now = deps.clock();
   const cards = Object.entries(isObj(v) && isObj(v.cards) ? v.cards : {})
@@ -107,6 +107,7 @@ async function removeCardCore(deps, { headers, body } = {}) {
   if (!uid) return { status: 401, body: { error: 'auth_required' } };
   const id = body && body.card_id;
   if (typeof id !== 'string' || !CARD_ID_RE.test(id)) return { status: 404, body: { error: 'not_found' } };
+  if (await isDeletedUid(deps.db, uid)) return { status: 404, body: { error: 'not_found' } };   // Codex #154 r1
   const v = (await node(deps.db, uid).once('value')).val();
   const mine = isObj(v) && ((isObj(v.cards) && isObj(v.cards[id])) || (isObj(v.removed_ids) && v.removed_ids[id] === true));
   if (!mine) return { status: 404, body: { error: 'not_found' } };
@@ -128,48 +129,52 @@ async function completeVaultForOrder(deps, orderId) {
   // the record's token is the WINNING attempt's (claims serialize; the winner is the last claimed) — verified by its hash
   const token = rec.token;
   const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
-  const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };
-  if (r.stale_mark) await require('./coordinator').alertOnce(deps, 'stale_closing_mark', orderId, {});   // fixed code: never the uid
+  // a deleted account never vaults (best-effort cost guard: the fence transaction captures any vault that lands before it anyway)
+  const r = !ok ? { outcome: 'skipped' } : (await isDeletedUid(deps.db, order.customer_uid)) ? { outcome: 'dropped' } : await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen });
   const state = r.outcome === 'dropped' ? 'dropped' : r.outcome === 'skipped' ? 'skipped' : 'done';
   await R.casRecord(deps.db, orderId, (x) => { if (isObj(x.vault) && x.vault.state) return undefined; x.vault = { attempt_id: aid, state, at: deps.clock() }; return x; });
   return { outcome: state };
 }
-// owner ruling 11-18 (card items 1): a deleted account's saved tokens, recorded for the provider-side delete — the multi-path entries
-// { 'card_delete_pending/{uid}/at': at, 'card_delete_pending/{uid}/tokens/{token_hash}': token } from a customer_cards/{uid} node, ridden
-// in the SAME update as the fence (signup-endpoints deleteAccountCore, tools/fence-deleted-cards). Per-key paths: a repeat never clobbers
-// the record. A fence or no card ⇒ {} (no node). Server-only node (no rule grants it); never logged.
-function deletePendingUpdates(uid, at, cur) {
-  const out = {};
-  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {
-    if (!isObj(c) || typeof c.token !== 'string' || !c.token) continue;
-    const h = typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex');
-    out[`card_delete_pending/${uid}/tokens/${h}`] = c.token;
-  }
-  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;
-  return out;
-}
-
-// owner 11-18 «airtight» (PLAN-card-token-cleanup (a).1): the deletion's capture snapshot IS this transaction — it marks the node
-// { ..., _closing: at } and returns the committed value, so every vault after it drops (completeVault) and no token can be saved between
-// the capture and the fence. A fence already there ⇒ unchanged (a repeat deletion captures nothing). The mark is replaced by the fence
-// in the deletion's update; releaseClosing undoes it when that update fails (a live account vaults again).
-// A mark older than this is STALE: no deletion takes 15 min between its mark and its update, so a crash left it — completeVault then
-// vaults, clears it and the caller alerts (silent blocking of a live account is not allowed). A mark from the future beyond it: stale too.
-const CLOSING_STALE_MS = 15 * 60 * 1000;
-const liveClosing = (m, now) => typeof m === 'number' && Number.isFinite(m) && Math.abs(now - m) < CLOSING_STALE_MS;
-async function markClosing(db, uid, at) {
-  const r = await node(db, uid).transaction((cur) => {
-    if (isObj(cur) && cur._deleted !== undefined) return undefined;
-    return { ...(isObj(cur) ? cur : {}), _closing: at };
-  });
-  return r && r.snapshot ? r.snapshot.val() : null;
-}
-async function releaseClosing(db, uid, at) {
+// the account-deletion tombstone (deleted_uids/{uid}, written by the deletion's atomic update — the one source of truth every
+// deleted-uid check reads): a deleted account's saved cards are refused at every admission, before and after the fence lands
+const isDeletedUid = async (db, uid) => (await db.ref(`deleted_uids/${uid}`).once('value')).exists();
+const hashOfCard = (c) => (typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex'));
+// Codex #154 r1 (owner «airtight», design approved 11-18): THE card fence — ONE transaction on customer_cards/{uid}, run by the deletion
+// AFTER its tombstone update. Its committed value is { _deleted: at, tokens: { <token_hash>: <token> } } (no tokens ⇒ { _deleted: at }),
+// the tokens read INSIDE the transaction from the node's current value, so it serializes with completeVault on the same node: a vault
+// before it is captured, a vault after it drops on _deleted. No mark, no window, no expiry. A node already fenced keeps its FIRST
+// instant and its tokens (a repeat or concurrent deletion writes nothing). Then ONE update: card_delete_pending/{uid}/at — the
+// provider-delete WORK LIST (the tokens stay in the fence) — only when tokens exist, and the fence work list card_fence_owed/{uid}
+// cleared. Server-only nodes (rules: customer_cards .read/.write false; the others unruled ⇒ denied). Never logged.
+async function fenceCards(db, uid, at) {
+  let fencedAt = at; let n = 0;
   await node(db, uid).transaction((cur) => {
-    if (!isObj(cur) || cur._deleted !== undefined || cur._closing !== at) return undefined;   // fenced, or another deletion's mark: untouched
-    const c = { ...cur }; delete c._closing;
-    return Object.keys(c).length ? c : null;
+    const prev = isObj(cur) && cur._deleted !== undefined;
+    const toks = prev && isObj(cur.tokens) ? { ...cur.tokens } : {};
+    for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) if (isObj(c) && typeof c.token === 'string' && c.token) toks[hashOfCard(c)] = c.token;
+    fencedAt = prev ? cur._deleted : at; n = Object.keys(toks).length;
+    if (prev) return undefined;   // already fenced (no vault ever writes on a fence): nothing to change
+    return n ? { _deleted: fencedAt, tokens: toks } : { _deleted: fencedAt };
   });
+  await db.ref().update({ ...(n ? { [`card_delete_pending/${uid}/at`]: fencedAt } : {}), [`card_fence_owed/${uid}`]: null });
+  return { at: fencedAt, tokens: n };
+}
+// pruneResidual: finish every fence a deletion opened (card_fence_owed/{uid} = at, in its atomic update) but did not complete — a crash,
+// a timeout or a failed transaction. Bounded (key order, a batch per run) and FAIR: a rotating cursor card_fence_cursor (the last key
+// visited) resumes after it and wraps to the start, so permanently failing entries never starve the rest. Idempotent; codes only in logs.
+const FENCE_BATCH = 50;
+async function drainCardFences(db, { batch = FENCE_BATCH } = {}) {
+  const page = async (after) => { let q = db.ref('card_fence_owed').orderByKey(); if (after != null) q = q.startAfter(after); return Object.entries((await q.limitToFirst(batch).once('value')).val() || {}); };
+  const cursor = (await db.ref('card_fence_cursor').once('value')).val();
+  let rows = await page(typeof cursor === 'string' ? cursor : null);
+  if (!rows.length && typeof cursor === 'string') rows = await page(null);   // past the end: wrap
+  let fenced = 0; let failed = 0;
+  for (const [uid, at] of rows) {
+    if (typeof at !== 'number') continue;
+    try { await fenceCards(db, uid, at); fenced += 1; } catch (e) { failed += 1; console.error(`drainCardFences: fence failed (${e && e.code ? e.code : 'error'}) — retried next run`); }
+  }
+  await db.ref('card_fence_cursor').set(rows.length === batch ? rows[rows.length - 1][0] : null);   // a short page ends the lap
+  return { fenced, failed };
 }
 
-module.exports = { CLOSING_STALE_MS, markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+module.exports = { fenceCards, drainCardFences, isDeletedUid, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

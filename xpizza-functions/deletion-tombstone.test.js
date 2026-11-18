@@ -28,15 +28,16 @@ function fakeDb() {
   const set = (p, v) => { const ks = parts(p); let o = tree; for (const k of ks.slice(0, -1)) { if (o[k] == null || typeof o[k] !== 'object') o[k] = {}; o = o[k]; } if (v === null || v === undefined) { delete o[ks[ks.length - 1]]; prune(ks); } else o[ks[ks.length - 1]] = clone(v); };
   const snap = (v) => { const c = clone(v); return { exists: () => c != null, val: () => (c == null ? null : clone(c)) }; };
   const query = (p, child) => {
-    const filt = { eq: undefined, start: undefined, end: undefined, limit: undefined };
+    const filt = { eq: undefined, start: undefined, after: undefined, end: undefined, limit: undefined };
     const q = {
-      equalTo: (v) => { filt.eq = v; return q; }, startAt: (v) => { filt.start = v; return q; }, endAt: (v) => { filt.end = v; return q; }, limitToFirst: (k) => { filt.limit = k; return q; },
+      equalTo: (v) => { filt.eq = v; return q; }, startAt: (v) => { filt.start = v; return q; }, startAfter: (v) => { filt.after = v; return q; }, endAt: (v) => { filt.end = v; return q; }, limitToFirst: (k) => { filt.limit = k; return q; },
       once: async () => {
         const all = get(p) || {}; const out = {}; let k = 0;
-        for (const [id, row] of Object.entries(all)) {
-          const v = row && row[child];
+        for (const [id, row] of (child === null ? Object.entries(all).sort(([x], [y]) => (x < y ? -1 : 1)) : Object.entries(all))) {
+          const v = child === null ? id : row && row[child];   // orderByKey: the key is the value
           if (filt.eq !== undefined && v !== filt.eq) continue;
           if (filt.start !== undefined && !(v != null && v >= filt.start)) continue;
+          if (filt.after !== undefined && !(v != null && v > filt.after)) continue;
           if (filt.end !== undefined && !(v != null && v <= filt.end)) continue;
           if (filt.limit !== undefined && k >= filt.limit) break;
           out[id] = row; k += 1;
@@ -46,17 +47,19 @@ function fakeDb() {
     };
     return q;
   };
-  const FAIL = { update: false, txnAt: null };   // inject: the next multi-path update throws (nothing applied) / a txn on a path prefix throws
+  const FAIL = { update: false, txnAt: null, txnAlways: new Set() };   // txnAlways: every txn on these exact paths throws (a permanently failing entry)   // inject: the next multi-path update throws (nothing applied) / a txn on a path prefix throws
   const HOOK = { after: null, fn: null };        // run fn ONCE right after the next txn on a path prefix (an interleaving)
+  const AFTER = { fn: null };                    // run fn ONCE right after the next ROOT multi-path update commits (the deletion's step 1)
   const TOUCH = { at: null, fn: null };          // run fn ONCE right after the next read OR txn of EXACTLY this path (the gap after a snapshot)
   const touched = async (p) => { if (TOUCH.at !== null && String(p) === TOUCH.at) { const f = TOUCH.fn; TOUCH.at = null; TOUCH.fn = null; await f(); } };
   const ref = (p = '') => ({
     get: async () => { const s = snap(get(p)); await touched(p); return s; }, once: async () => { const s = snap(get(p)); await touched(p); return s; },
     set: async (v) => set(p, v), remove: async () => set(p, null),
-    update: async (m) => { if (FAIL.update) { FAIL.update = false; throw new Error('injected update failure'); } for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); },
-    orderByChild: (c) => query(p, c),
+    update: async (m) => { if (FAIL.update) { FAIL.update = false; throw new Error('injected update failure'); } for (const [k, v] of Object.entries(m)) set(p ? `${p}/${k}` : k, v); if (AFTER.fn && !p) { const f = AFTER.fn; AFTER.fn = null; await f(); } },
+    orderByChild: (c) => query(p, c), orderByKey: () => query(p, null),
     transaction: async (fn) => {
       if (FAIL.txnAt && String(p).startsWith(FAIL.txnAt)) { FAIL.txnAt = null; throw new Error('injected transaction failure'); }
+      if (FAIL.txnAlways.has(String(p))) throw new Error('injected permanent transaction failure');
       const next = fn(clone(get(p)) ?? null);
       const out = next === undefined ? { committed: false, snapshot: snap(get(p)) } : (set(p, next), { committed: true, snapshot: snap(get(p)) });
       if (HOOK.after && String(p).startsWith(HOOK.after)) { const f = HOOK.fn; HOOK.after = null; HOOK.fn = null; await f(); }
@@ -64,7 +67,7 @@ function fakeDb() {
       return out;
     },
   });
-  return { tree, get, set, ref, FAIL, HOOK, TOUCH };
+  return { tree, get, set, ref, FAIL, HOOK, TOUCH, AFTER };
 }
 const UID = 'u_' + 'a'.repeat(24), PH = 'ph_a';
 const seedAccount = (db, { lastActive = 5 } = {}) => {
@@ -370,89 +373,122 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('the forms claim draws ONLY to create: a returning login ⇒ the existing uid with ZERO draws; a first login ⇒ one draw (Admin-SDK uncached rerun included); a raced entry is adopted, never overwritten');
 
-  // ── fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} becomes the deletion FENCE { _deleted: at } in the
-  //    SAME atomic update; the card is seeded by the REAL vault writer (payments/sdk/cards completeVault), read by the REAL readers ──
+  // ── fix/privacy-gaps-5f + Codex #154 r1 (owner «airtight», design approved 11-18): no saved card outlives the account, and no saved token
+  //    escapes the capture. ORDER: (1) the deletion's atomic update (tombstones, removals) + the work-list entry card_fence_owed/{uid};
+  //    (2) ONE transaction on customer_cards/{uid} (cards.fenceCards) replaces it by the fence { _deleted: at, tokens: { <hash>: token } },
+  //    the tokens read INSIDE the transaction — it serializes with completeVault on the same node (no mark, no window, no expiry); then
+  //    card_delete_pending/{uid}/at (the provider-delete work list, tokens stay in the fence) + the owed entry cleared. A crash after (1)
+  //    is finished by pruneResidual's drainCardFences. Cards seeded by the REAL completeVault, read by the REAL readers ──
   {
     const CARDS = require('./payments/sdk/cards');
     const H = (t) => require('crypto').createHash('sha256').update(t).digest('hex');
     const DISP = { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2099 };
     const cdeps = (db, now) => ({ db, clock: () => now, verifyIdToken: async () => ({ uid: UID }) });
     const AUTH = { authorization: 'Bearer t' };
+    const vault = async (db, tok, now = 10) => (await CARDS.completeVault(cdeps(db, now), { uid: UID, token: tok, token_hash: H(tok), display: DISP, vault_gen: 0 })).outcome;
     const seedCard = async (db, tok = 'tok_A') => {
-      assert.strictEqual((await CARDS.completeVault(cdeps(db, 10), { uid: UID, token: tok, token_hash: H(tok), display: DISP, vault_gen: 0 })).outcome, 'created', 'premise: the real writer vaults the card');
-      return Object.keys(db.get(`customer_cards/${UID}/cards`))[0];
+      assert.strictEqual(await vault(db, tok), 'created', 'premise: the real writer vaults the card');
+      return Object.keys(db.get(`customer_cards/${UID}/cards`)).find((k) => db.get(`customer_cards/${UID}/cards/${k}/token`) === tok);
     };
-    const goneFor = async (db, id, at, label, { exact = true } = {}) => {
+    const TOK = (...ts) => Object.fromEntries(ts.map((t) => [H(t), t]));
+    const FENCE = (at, ...ts) => (ts.length ? { _deleted: at, tokens: TOK(...ts) } : { _deleted: at });
+    const goneFor = async (db, id, label) => {
       const node = db.get(`customer_cards/${UID}`) || {};
-      assert.ok(!node.cards && !node.by_hash && !node.tomb && !node.removed_ids, `🔴 ${label}: no token, hash or card row survives the deletion`);
-      if (exact) assert.deepStrictEqual(node, { _deleted: at }, `🔴 ${label}: customer_cards/{uid} is EXACTLY the deletion fence`);
+      assert.ok(node._deleted !== undefined && !node.cards && !node.by_hash && !node.tomb && !node.removed_ids, `🔴 ${label}: the node is the fence — no card row, hash index or tomb survives`);
       assert.deepStrictEqual((await CARDS.listCardsCore(cdeps(db, 20), { headers: AUTH })).body, { cards: [] }, `🔴 ${label}: listCards is empty`);
       assert.strictEqual(await CARDS.resolveSavedCard(cdeps(db, 20), UID, id), null, `🔴 ${label}: the saved card can no longer be charged`);
     };
-    // owner ruling 11-18 (card items 1): every saved token is CAPTURED for the provider delete in the SAME atomic update as the fence —
-    // card_delete_pending/{uid} = { at: <the deletion instant>, tokens: { <token_hash>: <token> } }; nothing else, never logged
-    const pendingOf = (db) => db.get(`card_delete_pending/${UID}`);
-    const PEND_AB = (at) => ({ at, tokens: { [H('tok_A')]: 'tok_A', [H('tok_B')]: 'tok_B' } });
-    // D1 — user-initiated deletion
+    const del = (db, now, extra = {}) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now, revoke: recorder(), ...extra }));
+    // D1 — user-initiated deletion: every token captured INSIDE the fence; the work lists; never logged
     const db = fakeDb(); seedAccount(db); const id = await seedCard(db); await seedCard(db, 'tok_B');
-    const d1 = await quietly(() => SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 100, revoke: recorder() }));
-    await goneFor(db, id, 100, 'D1', { exact: false });
-    assert.deepStrictEqual(pendingOf(db), PEND_AB(100), '🔴 CARD-PENDING: D1: every saved token is captured with the deletion instant');
-    assert.ok(!d1.logs.some((l) => l.includes('tok_') || l.includes(H('tok_A'))), '🔴 CARD-PENDING: D1: no token or token hash reaches a log');   // the exact fence is pinned AFTER D3: a plain null must die at D3 (the late write)
-    // D3 — a vault write in flight (completeVaultForOrder after `placed`) that lands AFTER the deletion is dropped, the fence stays
-    assert.strictEqual((await CARDS.completeVault(cdeps(db, 150), { uid: UID, token: 'tok_C', token_hash: H('tok_C'), display: DISP, vault_gen: 0 })).outcome, 'dropped', '🔴 D3: a late vault write is dropped');
-    await goneFor(db, id, 100, 'D3');
-    assert.deepStrictEqual(pendingOf(db), PEND_AB(100), '🔴 CARD-PENDING: D3: a dropped late vault adds nothing to the record');
-    // D4 — a repeat deletion keeps the FIRST instant on the fence
-    await SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 300, revoke: recorder() });
-    await goneFor(db, id, 100, 'D4');
-    assert.deepStrictEqual(pendingOf(db), PEND_AB(100), '🔴 CARD-PENDING: D4: a repeat deletion (nothing left to capture) keeps the first record byte-for-byte');
+    const d1 = await del(db, 100);
+    await goneFor(db, id, 'D1');
+    assert.deepStrictEqual(db.get(`customer_cards/${UID}`), FENCE(100, 'tok_A', 'tok_B'), '🔴 CARD-FENCE: D1: the fence holds EVERY saved token, at the deletion instant');
+    assert.deepStrictEqual(db.get(`card_delete_pending/${UID}`), { at: 100 }, '🔴 CARD-FENCE: D1: the provider-delete work list names the uid (no token in it)');
+    assert.strictEqual(db.get(`card_fence_owed/${UID}`), undefined, '🔴 CARD-FENCE: D1: the fence work list is cleared once fenced');
+    assert.ok(!d1.logs.some((l) => l.includes('tok_') || l.includes(H('tok_A'))), '🔴 CARD-FENCE: D1: no token or token hash reaches a log');
+    // D3 — a vault after the fence drops; the fence stays byte-for-byte
+    assert.strictEqual(await vault(db, 'tok_C', 150), 'dropped', '🔴 D3: a late vault write is dropped');
+    assert.deepStrictEqual(db.get(`customer_cards/${UID}`), FENCE(100, 'tok_A', 'tok_B'), '🔴 D3: the fence is unchanged by a late vault');
+    // D4 — a repeat deletion keeps the FIRST instant and the captured tokens
+    await del(db, 300);
+    assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`card_delete_pending/${UID}`)], [FENCE(100, 'tok_A', 'tok_B'), { at: 100 }], '🔴 D4: a repeat deletion keeps the first fence and work list byte-for-byte');
     // D2 — the inactivity sweep (the same core, sweepCutoff)
     const db2 = fakeDb(); seedAccount(db2, { lastActive: 5 }); const id2 = await seedCard(db2);
-    assert.strictEqual(await SE.deleteAccountCore(db2, ACCOUNT, { uid: UID, phoneHash: PH, now: 200, sweepCutoff: 50, revoke: recorder() }), true);
-    await goneFor(db2, id2, 200, 'D2');
-    assert.deepStrictEqual(db2.get(`card_delete_pending/${UID}`), { at: 200, tokens: { [H('tok_A')]: 'tok_A' } }, '🔴 CARD-PENDING: D2: the sweep captures too');
-    // D5 — a failed deletion update leaves the cards untouched (one atomic write)
+    assert.strictEqual((await del(db2, 200, { sweepCutoff: 50 })).r, true);
+    await goneFor(db2, id2, 'D2');
+    assert.deepStrictEqual([db2.get(`customer_cards/${UID}`), db2.get(`card_delete_pending/${UID}`)], [FENCE(200, 'tok_A'), { at: 200 }], '🔴 CARD-FENCE: D2: the sweep fences and captures too');
+    // D5 / D9 — a failed step 1 writes NOTHING: no fence on a live account, cards byte-identical, no work list, and it vaults again
     const db3 = fakeDb(); seedAccount(db3); await seedCard(db3);
     const before = JSON.stringify(db3.get(`customer_cards/${UID}`));
     db3.FAIL.update = true;
-    await assert.rejects(() => SE.deleteAccountCore(db3, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() }), /injected update failure/);
-    assert.strictEqual(JSON.stringify(db3.get(`customer_cards/${UID}`)), before, '🔴 D5: a failed deletion leaves the saved cards exactly as they were');
-    assert.strictEqual(db3.get(`card_delete_pending/${UID}`), undefined, '🔴 CARD-PENDING: D5: a failed deletion records no obligation (one atomic write)');
-    // D7 — an account with no saved card: no obligation node at all
+    await quietly(() => assert.rejects(() => SE.deleteAccountCore(db3, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() }), /injected update failure/));
+    assert.strictEqual(JSON.stringify(db3.get(`customer_cards/${UID}`)), before, '🔴 D5: a failed deletion leaves the saved cards exactly as they were (no fence on a live account)');
+    assert.deepStrictEqual([db3.get(`card_delete_pending/${UID}`), db3.get(`card_fence_owed/${UID}`)], [undefined, undefined], '🔴 D5: a failed deletion records no work list');
+    assert.strictEqual(await vault(db3, 'tok_H', 410), 'created', '🔴 D9: after a failed deletion the live account vaults again');
+    // D7 — no saved card: the fence alone, no provider-delete work list
     const db4 = fakeDb(); seedAccount(db4);
-    await SE.deleteAccountCore(db4, ACCOUNT, { uid: UID, phoneHash: PH, now: 500, revoke: recorder() });
-    assert.strictEqual(db4.get('card_delete_pending'), undefined, '🔴 CARD-PENDING: D7: no saved card ⇒ no card_delete_pending node');
-    // D8 (owner 11-18 «airtight», PLAN (a).1) — a vault that completes in the GAP: right after the deletion's snapshot of customer_cards/{uid}
-    // and before its update. The deletion first marks the node CLOSING in a transaction (the snapshot IS that transaction's), every vault
-    // drops on the mark — so no token is ever saved that the obligation did not capture
+    await del(db4, 500);
+    assert.deepStrictEqual([db4.get(`customer_cards/${UID}`), db4.get('card_delete_pending'), db4.get('card_fence_owed')], [{ _deleted: 500 }, undefined, undefined], '🔴 CARD-FENCE: D7: no saved card ⇒ the fence, no card_delete_pending node');
+    // D8 — a vault that completes in the GAP between step 1 and the fence transaction is CAPTURED by the fence (never lost)
     const db5 = fakeDb(); seedAccount(db5); await seedCard(db5);
     let gap = null;
-    db5.TOUCH.at = `customer_cards/${UID}`;
-    db5.TOUCH.fn = async () => { gap = (await CARDS.completeVault(cdeps(db5, 90), { uid: UID, token: 'tok_G', token_hash: H('tok_G'), display: DISP, vault_gen: 0 })).outcome; };
-    await quietly(() => SE.deleteAccountCore(db5, ACCOUNT, { uid: UID, phoneHash: PH, now: 600, revoke: recorder() }));
-    assert.ok(gap !== null, 'premise: the vault ran in the gap');
-    const p5 = db5.get(`card_delete_pending/${UID}`) || {};
-    assert.ok(gap !== 'created' || (p5.tokens || {})[H('tok_G')] === 'tok_G', `🔴 CARD-CLOSING: D8: a vault that completes between the deletion's read and its update saves a token the obligation never captured (vault ${gap})`);
-    assert.strictEqual(gap, 'dropped', '🔴 CARD-CLOSING: D8: a vault in the gap drops on the closing mark');
-    assert.deepStrictEqual(p5, { at: 600, tokens: { [H('tok_A')]: 'tok_A' } }, '🔴 CARD-CLOSING: D8: the obligation is exactly the cards saved before the mark');
-    assert.deepStrictEqual(db5.get(`customer_cards/${UID}`), { _deleted: 600 }, '🔴 CARD-CLOSING: D8: the node ends EXACTLY the fence (the mark is not left behind)');
-    // D9 — a failed deletion update RELEASES the mark: the live account can save cards again, the cards are untouched
+    db5.AFTER.fn = async () => { gap = await vault(db5, 'tok_G', 590); };
+    await del(db5, 600);
+    assert.strictEqual(gap, 'created', 'premise: the vault ran in the gap (step 1 committed, the fence not yet)');
+    assert.deepStrictEqual(db5.get(`customer_cards/${UID}`), FENCE(600, 'tok_A', 'tok_G'), '🔴 CARD-FENCE: D8: a vault in the gap between the tombstone and the fence is captured by the fence');
+    // D11 — a crash after step 1 (the fence transaction throws): the work list stays; pruneResidual fences + captures
     const db6 = fakeDb(); seedAccount(db6); await seedCard(db6);
-    const before6 = JSON.stringify(db6.get(`customer_cards/${UID}`));
-    db6.FAIL.update = true;
-    await quietly(() => assert.rejects(() => SE.deleteAccountCore(db6, ACCOUNT, { uid: UID, phoneHash: PH, now: 700, revoke: recorder() }), /injected update failure/));
-    assert.strictEqual(JSON.stringify(db6.get(`customer_cards/${UID}`)), before6, '🔴 CARD-CLOSING: D9: a failed deletion releases the closing mark (cards exactly as they were)');
-    assert.strictEqual((await CARDS.completeVault(cdeps(db6, 710), { uid: UID, token: 'tok_H', token_hash: H('tok_H'), display: DISP, vault_gen: 0 })).outcome, 'created', '🔴 CARD-CLOSING: D9: after a failed deletion the live account vaults again');
-    // D10 — the release only undoes ITS OWN mark: a fence (the update did commit) and another deletion's mark are left exactly as they are
-    const db7 = fakeDb(); db7.set(`customer_cards/${UID}`, { _deleted: 800 });
-    await CARDS.releaseClosing(db7, UID, 800);
-    assert.deepStrictEqual(db7.get(`customer_cards/${UID}`), { _deleted: 800 }, '🔴 CARD-CLOSING: D10: a release never touches the fence');
-    db7.set(`customer_cards/${UID}`, { _closing: 900 });
-    await CARDS.releaseClosing(db7, UID, 800);
-    assert.deepStrictEqual(db7.get(`customer_cards/${UID}`), { _closing: 900 }, '🔴 CARD-CLOSING: D10: a release never clears another deletion\'s mark');
+    db6.FAIL.txnAt = `customer_cards/${UID}`;
+    const d11 = await del(db6, 700);
+    assert.ok(db6.get(`deleted_uids/${UID}`) === 700 && db6.get(`card_fence_owed/${UID}`) === 700 && db6.get(`customer_cards/${UID}/cards`), '🔴 CARD-FENCE: D11: after a failed fence the tombstone is committed and the fence work list is OPEN (card_fence_owed, in the deletion\'s atomic update)');
+    assert.ok(!d11.logs.some((l) => l.includes(UID) || l.includes('tok_')), '🔴 CARD-FENCE: D11: the fence failure is logged without uid or token');
+    assert.strictEqual(await vault(db6, 'tok_L', 710), 'created', 'premise: a vault still lands before the drain');
+    await quietly(() => SE.pruneResidual(db6, 800));
+    assert.deepStrictEqual([db6.get(`customer_cards/${UID}`), db6.get(`card_delete_pending/${UID}`), db6.get(`card_fence_owed/${UID}`)], [FENCE(700, 'tok_A', 'tok_L'), { at: 700 }, undefined], '🔴 CARD-FENCE: D11: pruneResidual finishes the fence, capturing every token, at the deletion instant');
+    // D12 — concurrent deletions (A user, B user / B sweep), vaults interleaved: EVERY vault that returned 'created' is in the fence, every
+    // other dropped (nothing lost either way); the FIRST instant kept. B as a sweep stands down on A's tombstone, B as a user fences first
+    for (const B of [{ now: 910 }, { now: 910, sweepCutoff: 50 }]) {
+      const tag = B.sweepCutoff ? 'user × sweep' : 'user × user';
+      const db7 = fakeDb(); seedAccount(db7, { lastActive: 5 }); await seedCard(db7);
+      const outs = {}; let bRan = null;
+      db7.AFTER.fn = async () => { outs.tok_X = await vault(db7, 'tok_X', 905); bRan = (await del(db7, B.now, B.sweepCutoff ? { sweepCutoff: B.sweepCutoff } : {})).r; outs.tok_Y = await vault(db7, 'tok_Y', 915); };
+      await del(db7, 900);
+      assert.ok(bRan === (B.sweepCutoff ? false : true), `premise: B ran as a ${tag} (${bRan})`);
+      const created = ['tok_A', ...Object.keys(outs).filter((t) => outs[t] === 'created')];
+      assert.ok(Object.values(outs).every((o) => o === 'created' || o === 'dropped'), `premise: every vault answered (${JSON.stringify(outs)})`);
+      assert.deepStrictEqual(db7.get(`customer_cards/${UID}`), FENCE(900, ...created), `🔴 CARD-FENCE: D12: concurrent deletions (${tag}) — every saved token is in the fence, none lost (${JSON.stringify(outs)})`);
+      assert.deepStrictEqual(db7.get(`card_delete_pending/${UID}`), { at: 900 }, `🔴 CARD-FENCE: D12: one work list, the first instant (${tag})`);
+    }
+    // D13 — A stalls after step 1 (any length: no expiry), vaults land meanwhile, A's fence runs late: all captured
+    const db8 = fakeDb(); seedAccount(db8); await seedCard(db8);
+    db8.AFTER.fn = async () => { for (const [i, t] of ['tok_S1', 'tok_S2'].entries()) assert.strictEqual(await vault(db8, t, 1000 + 60 * 60 * 1000 * (i + 1)), 'created', 'premise: vaults land during the stall'); };
+    await del(db8, 1000);
+    assert.deepStrictEqual(db8.get(`customer_cards/${UID}`), FENCE(1000, 'tok_A', 'tok_S1', 'tok_S2'), '🔴 CARD-FENCE: D13: a stalled deletion\'s late fence captures every vault of the stall');
+    // D14 — before the fence (step 1 committed), a deleted uid's saved cards are refused at EVERY admission: list, charge lookup, remove
+    const db9 = fakeDb(); seedAccount(db9); const id9 = await seedCard(db9);
+    let seen = null;
+    db9.AFTER.fn = async () => {
+      seen = {
+        list: (await CARDS.listCardsCore(cdeps(db9, 1100), { headers: AUTH })).body,
+        resolve: await CARDS.resolveSavedCard(cdeps(db9, 1100), UID, id9),
+        remove: (await CARDS.removeCardCore(cdeps(db9, 1100), { headers: AUTH, body: { card_id: id9 } })).status,
+      };
+    };
+    await del(db9, 1100);
+    assert.ok(seen, 'premise: the admissions ran between the tombstone and the fence');
+    assert.deepStrictEqual(seen.list, { cards: [] }, '🔴 CARD-ADMIT: D14: listCards refuses a deleted uid before the fence');
+    assert.strictEqual(seen.resolve, null, '🔴 CARD-ADMIT: D14: resolveSavedCard (the charge lookup) refuses a deleted uid before the fence');
+    assert.strictEqual(seen.remove, 404, '🔴 CARD-ADMIT: D14: removeCard refuses a deleted uid before the fence');
+    // D15 — the fence drain is FAIR: permanently failing entries at the head of the work list never starve the rest (a rotating cursor)
+    const dbF = fakeDb(); const U = (c) => 'u_' + c.repeat(24);
+    for (const c of ['1', '2', '3']) dbF.set(`card_fence_owed/${U(c)}`, 50);
+    for (const c of ['1', '2']) dbF.FAIL.txnAlways.add(`customer_cards/${U(c)}`);
+    for (let run = 0; run < 2; run++) await quietly(() => CARDS.drainCardFences(dbF, { batch: 2 }));
+    assert.deepStrictEqual(dbF.get(`customer_cards/${U('3')}`), { _deleted: 50 }, '🔴 CARD-FENCE: D15: an entry behind permanently failing ones is fenced within a bounded number of runs');
+    assert.deepStrictEqual(Object.keys(dbF.get('card_fence_owed') || {}).sort(), [U('1'), U('2')], '🔴 CARD-FENCE: D15: the failing entries stay open (retried), the fenced one is closed');
   }
-  ok('saved cards: deleteAccount and the sweep replace customer_cards/{uid} with the fence { _deleted: at } and capture every token in card_delete_pending/{uid} { at, tokens } atomically (never logged; none ⇒ no node); listCards [] / resolveSavedCard null; a late vault write is dropped; a repeat keeps the first instant; a failed update changes nothing');
+  ok('saved cards (Codex #154 r1): the deletion tombstones first, then ONE transaction fences customer_cards/{uid} with every token captured inside it (a vault in the gap, a stall, concurrent user/sweep deletions — all captured; after it a vault drops); card_delete_pending/{uid} = { at } (none ⇒ no node); a crash is finished by pruneResidual; a failed step 1 writes nothing; a deleted uid is refused at list / charge lookup / remove before the fence');
 
   // ── D6 (Codex #133 r1 HIGH 1): the UPGRADE — an account deleted by the BASE deletion core (before the fence) keeps its cards; the owner's
   //    tools/fence-deleted-cards.js fences exactly the authoritatively deleted ones. Base core = the real signup-endpoints.js minus the
@@ -496,17 +532,17 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     assert.ok(!JSON.stringify(dry).includes('u_'), 'D6: counts only — no uid in the result');
     // apply: the same fence the deletion core writes, at the account's own deletion instant
     const rQ = await quietly(() => FENCE.fence({ rtdb: db, apply: true })); const r = rQ.r;
-    assert.ok(![...dryQ.logs, ...rQ.logs].some((l) => l.includes('tok_')), '🔴 CARD-PENDING: D6: no token reaches a log');
+    assert.ok(![...dryQ.logs, ...rQ.logs].some((l) => l.includes('tok_')), '🔴 CARD-FENCE: D6: no token reaches a log');
     assert.deepStrictEqual(r, { dryRun: false, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 0, fenced: 2 }, '🔴 D6: --apply fences the 2 deleted accounts');
-    assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`customer_cards/${OLD}`)], [{ _deleted: 100 }, { _deleted: 55 }], '🔴 D6: customer_cards/{uid} is EXACTLY the fence at the account\'s own deletion instant');
+    assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`customer_cards/${OLD}`)], [{ _deleted: 100, tokens: { [H('tok_A')]: 'tok_A' } }, { _deleted: 55, tokens: { [H(`tok_${OLD}`)]: `tok_${OLD}` } }], '🔴 D6: customer_cards/{uid} is EXACTLY the fence (the same fenceCards transaction as the core) at the account\'s own deletion instant, its tokens captured inside it');
     assert.deepStrictEqual((await CARDS.listCardsCore(cdeps(db, 200), { headers: AUTH })).body, { cards: [] }, '🔴 D6: listCards is empty after the upgrade');
     assert.strictEqual(await CARDS.resolveSavedCard(cdeps(db, 200), UID, id), null, '🔴 D6: the old saved card can no longer be charged');
     assert.strictEqual(await vault(db, UID, 'tok_LATE', 300), 'dropped', '🔴 D6: a late vault write after the upgrade is dropped');
-    assert.deepStrictEqual(db.get(`customer_cards/${UID}`), { _deleted: 100 }, 'D6: the fence stays exact after the late write');
+    assert.deepStrictEqual(db.get(`customer_cards/${UID}`), { _deleted: 100, tokens: { [H('tok_A')]: 'tok_A' } }, 'D6: the fence stays exact after the late write');
     assert.deepStrictEqual(untouched(), keep, '🔴 D6: live / revived / claimed accounts keep their cards byte-for-byte');
-    assert.deepStrictEqual([db.get(`card_delete_pending/${UID}`), db.get(`card_delete_pending/${OLD}`)], [{ at: 100, tokens: { [H('tok_A')]: 'tok_A' } }, { at: 55, tokens: { [H(`tok_${OLD}`)]: `tok_${OLD}` } }],
-      '🔴 CARD-PENDING: D6: --apply captures each fenced account\'s tokens at its own deletion instant, in the same update as the fence');
-    assert.deepStrictEqual([LV, RV, CL].map((u) => db.get(`card_delete_pending/${u}`)), [undefined, undefined, undefined], '🔴 CARD-PENDING: D6: live / revived / claimed accounts get no obligation');
+    assert.deepStrictEqual([db.get(`card_delete_pending/${UID}`), db.get(`card_delete_pending/${OLD}`)], [{ at: 100 }, { at: 55 }],
+      '🔴 CARD-FENCE: D6: --apply opens each fenced account\'s provider-delete work list at its own deletion instant');
+    assert.deepStrictEqual([LV, RV, CL].map((u) => db.get(`card_delete_pending/${u}`)), [undefined, undefined, undefined], '🔴 CARD-FENCE: D6: live / revived / claimed accounts get no work list');
     // idempotent: a re-run writes nothing
     const again = JSON.stringify(db.tree);
     assert.deepStrictEqual(await FENCE.fence({ rtdb: db, apply: true }), { dryRun: false, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 2, fenced: 0 }, 'D6: a re-run finds both already fenced');
@@ -515,7 +551,7 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
     const db2 = fakeDb(); seedAccount(db2); assert.strictEqual(await vault(db2, UID, 'tok_A'), 'created');
     await SE.deleteAccountCore(db2, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() });
     assert.deepStrictEqual(await FENCE.fence({ rtdb: db2, apply: true }), { dryRun: false, tombstoned: 1, live: 0, noCards: 0, alreadyFenced: 1, fenced: 0 }, 'D6: a fence written by the deletion core is left as is');
-    assert.deepStrictEqual(db2.get(`customer_cards/${UID}`), { _deleted: 400 });
+    assert.deepStrictEqual(db2.get(`customer_cards/${UID}`), { _deleted: 400, tokens: { [H('tok_A')]: 'tok_A' } });
   }
   ok('D6 upgrade: an account deleted by the BASE core keeps its card; fence-deleted-cards (dry run: counts, no write) --apply fences exactly the tombstoned no-profile accounts at their own instant; listCards [] / resolve null / late vault dropped; live, revived and claimed untouched; idempotent');
 
