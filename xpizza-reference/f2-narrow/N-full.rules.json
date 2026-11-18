@@ -815,6 +815,14 @@
       ".read": false,
       ".write": false
     },
+    "payment_sdk_tokens": {
+      ".read": false,
+      ".write": false
+    },
+    "payment_sdk_tokens_cursor": {
+      ".read": false,
+      ".write": false
+    },
     "sdk_checkout_subject": {
       ".read": false,
       ".write": false
