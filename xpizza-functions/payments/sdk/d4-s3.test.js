@@ -186,6 +186,32 @@ const save = (d, uid, token, gen) => K().completeVault(d, { uid, token, token_ha
     assert.strictEqual(Object.keys(w.db.getAt('customer_cards/uid_A/cards') || {}).length, 1, `${L}: the sweeper completes it once — no duplicate card`);
     assert.strictEqual(w.db.getAt(`payment_sdk/${OID}/vault/state`), 'done', `${L}: the record notes the vault done`);
   });
+  // owner 11-18 «airtight» (advisor, privacy closing mark): a deletion's closing mark older than CLOSING_STALE_MS (a crash between the mark
+  // and the deletion's update) is STALE — the vault proceeds, clears it in the same transaction and raises a fixed-code ops alert (no uid);
+  // a LIVE mark still drops the vault. The mark is written by the REAL markClosing; the vault runs through the REAL placement + completion.
+  await cell('SDK-D4-VAULT-STALE-MARK', async (L) => {
+    const w = vworld();
+    assert.ok(K().CLOSING_STALE_MS >= 10 * 60 * 1000, `${L}: premise — the bound is far longer than any deletion's mark→update`);
+    await K().markClosing(w.db, 'uid_A', T0 - K().CLOSING_STALE_MS - 1);
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_stale_00001', token: 'T-s', amount_cents: 100, card: card(true) });
+    await K().completeVaultForOrder(w.deps, OID);
+    const node = w.db.getAt('customer_cards/uid_A') || {};
+    assert.ok(Object.values(node.cards || {}).some((c) => c.token === 'T-s'), `${L}: a STALE mark does not block the live account's vault`);
+    assert.strictEqual(node._closing, undefined, `${L}: the vault clears the stale mark in the same transaction`);
+    const al = w.db.getAt(`dispatcher_alerts/sdkpay_stale_closing_mark_${OID}`);
+    assert.ok(al && al.type === 'payment_sdk_stale_closing_mark', `${L}: the stale mark raises the fixed-code ops alert`);
+    assert.ok(!JSON.stringify(al).includes('uid_A'), `${L}: the alert carries no uid`);
+  });
+  await cell('SDK-D4-VAULT-LIVE-MARK', async (L) => {
+    const w = vworld();
+    await K().markClosing(w.db, 'uid_A', T0 - K().CLOSING_STALE_MS + 60000);
+    await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_vault_live_000001', token: 'T-l', amount_cents: 100, card: card(true) });
+    await K().completeVaultForOrder(w.deps, OID);
+    const node = w.db.getAt('customer_cards/uid_A') || {};
+    assert.ok(!node.cards, `${L}: a LIVE mark (a deletion in progress) still drops the vault`);
+    assert.strictEqual(node._closing, T0 - K().CLOSING_STALE_MS + 60000, `${L}: the live mark is untouched`);
+    assert.strictEqual(w.db.getAt(`dispatcher_alerts/sdkpay_stale_closing_mark_${OID}`), null, `${L}: no alert for a live mark`);
+  });
   await cell('SDK-D4-REMOVE-AFTER-ADMIT', async (L) => {
     const w = vworld();
     await K().completeVault(w.deps, { uid: 'uid_A', token: 'T-saved', token_hash: H('T-saved'), display: DISP, vault_gen: 0 });

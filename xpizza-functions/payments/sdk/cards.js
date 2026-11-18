@@ -40,14 +40,15 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
   const now = deps.clock();
   const display = require('./display').sanitizeDisplay(rawDisplay);   // validated AGAIN at the vault write (Codex S3 r4 P1)
   if (!display) return { outcome: 'invalid_display' };
-  let outcome = null;
+  let outcome = null; let stale = false;
   await node(deps.db, uid).transaction((cur) => {
-    outcome = null;
+    outcome = null; stale = false;
     if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion
-    if (isObj(cur) && cur._closing !== undefined) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken
+    if (isObj(cur) && cur._closing !== undefined && liveClosing(cur._closing, now)) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken
     const c = isObj(cur) ? JSON.parse(JSON.stringify(cur)) : {};
     const t = isObj(c.tomb) ? c.tomb[h] : null;
     if (t && Number.isInteger(t.gen) && t.gen > (Number.isInteger(gen) ? gen : 0)) { outcome = 'dropped'; return cur == null ? null : undefined; }
+    stale = c._closing !== undefined; delete c._closing;   // a STALE mark (a deletion crashed between its mark and its update): cleared here, alerted by the caller
     const existing = isObj(c.by_hash) ? c.by_hash[h] : null;
     if (existing && isObj(c.cards) && isObj(c.cards[existing])) { c.cards[existing].last_used_at = now; outcome = 'reused'; return c; }
     const id = newCardId();
@@ -56,7 +57,7 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
     outcome = 'created';
     return c;
   });
-  return { outcome };
+  return stale && outcome !== 'dropped' ? { outcome, stale_mark: true } : { outcome };
 }
 
 async function removeCard(deps, uid, cardId) {
@@ -128,6 +129,7 @@ async function completeVaultForOrder(deps, orderId) {
   const token = rec.token;
   const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
   const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };
+  if (r.stale_mark) await require('./coordinator').alertOnce(deps, 'stale_closing_mark', orderId, {});   // fixed code: never the uid
   const state = r.outcome === 'dropped' ? 'dropped' : r.outcome === 'skipped' ? 'skipped' : 'done';
   await R.casRecord(deps.db, orderId, (x) => { if (isObj(x.vault) && x.vault.state) return undefined; x.vault = { attempt_id: aid, state, at: deps.clock() }; return x; });
   return { outcome: state };
@@ -151,6 +153,10 @@ function deletePendingUpdates(uid, at, cur) {
 // { ..., _closing: at } and returns the committed value, so every vault after it drops (completeVault) and no token can be saved between
 // the capture and the fence. A fence already there ⇒ unchanged (a repeat deletion captures nothing). The mark is replaced by the fence
 // in the deletion's update; releaseClosing undoes it when that update fails (a live account vaults again).
+// A mark older than this is STALE: no deletion takes 15 min between its mark and its update, so a crash left it — completeVault then
+// vaults, clears it and the caller alerts (silent blocking of a live account is not allowed). A mark from the future beyond it: stale too.
+const CLOSING_STALE_MS = 15 * 60 * 1000;
+const liveClosing = (m, now) => typeof m === 'number' && Number.isFinite(m) && Math.abs(now - m) < CLOSING_STALE_MS;
 async function markClosing(db, uid, at) {
   const r = await node(db, uid).transaction((cur) => {
     if (isObj(cur) && cur._deleted !== undefined) return undefined;
@@ -166,4 +172,4 @@ async function releaseClosing(db, uid, at) {
   });
 }
 
-module.exports = { markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+module.exports = { CLOSING_STALE_MS, markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

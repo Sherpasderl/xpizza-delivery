@@ -59,11 +59,15 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   '8746d49c4cf602528b716ca22554105f8527b07ecc4e0d4e7f5e88bba86ed1a5',   // whatsapp.js
   'b572897d42f5b856b558937b197c773016c8d1d4ea8ffa6b2b0c8f416a2d2cd7',   // whatsapp.js
   'e0dfcb9656ca27a383d0e459fed46a7115b4fb1d1fd6936fa83b64f44d32992a',   // whatsapp.js
-  '471ff9c3d3455f0190662a9706902a05ea4982220c31543fe419c61922617605',   // signup-endpoints.js
-  '65ae1b767c268d6dd09c5a51ea98b950935a02795556c53f8871d0d5968e24de',   // signup-endpoints.js
+  'de70b583c4b4f0f581db2e3e2d4cee47f8573fb28e4e39d1b46f153aa2f111d2',   // signup-endpoints.js
+  'f283d7d59c8e1f7a0e6c677beadd1b5587184a691745ea89c723861c34047f1b',   // signup-endpoints.js
   'a38163cb885c336bda75f3caec54a192918fa2dfff862d5a49225f0003335848',   // payments/sdk/cards.js
-  'f51fe039aa6058f041c455b472129c2dc62fbf365c2b2d0680258f027f2b492e',   // payments/sdk/cards.js
-  'a22bff80504b8e0da7277f2b2245e7b99a210dcdea94a018bf9c66cfc76716e0',   // payments/sdk/cards.js
+  '31ee75d15202437a55058f80fa6e8d28065fed6dd9b20222da598a3111e70fad',   // payments/sdk/cards.js
+  '4fe2ce95ea646e6e0f06ecb81e35e253767b974fef9579abeb80eb0d0f9718f3',   // payments/sdk/cards.js
+  '140a730a568db15ff3dd073de93b52cea5c8aaf70cc885e739c1f4810bf898b0',   // payments/sdk/cards.js
+  'ad9e7202af32b7d131e33879e03a094cabd66b1a006539e660678f4c89cde2d0',   // payments/sdk/cards.js
+  '42fe3d1e94f86937c5370da441a1e95a104468226a5075183b64f98161634ae4',   // payments/sdk/cards.js
+  'fd10611b6cdd6b8ccc310ea9b49e4ee82f96330cd778c8cc20c466cddfba9f24',   // payments/sdk/cards.js
     ],
   });
   const NON_LOG = [
@@ -71,16 +75,24 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["whatsapp.js","now","    const digits = cleaned.length;   // rule 20: never the number itself"],
   ["whatsapp.js","now","      const code = data && data.error ? 'provider_error' : 'http_error';   // rule 20: never the number or the provider's raw response"],
   ["signup-endpoints.js","now","  const CARDS = require('./payments/sdk/cards');"],
-  ["signup-endpoints.js","now","  const cardsGone = CARDS.deletePendingUpdates(uid, at, await CARDS.markClosing(db, uid, at));"],
+  ["signup-endpoints.js","now","  const cardsGone = CARDS.deletePendingUpdates(uid, at, await CARDS.markClosing(db, uid, now));"],
   ["signup-endpoints.js","now","  try {"],
   ["signup-endpoints.js","now","    await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered"],
   ["signup-endpoints.js","now","  } catch (e) {"],
-  ["signup-endpoints.js","now","    try { await CARDS.releaseClosing(db, uid, at); } catch (e2) { console.error(`deleteAccountCore: closing-mark release failed (${e2 && e2.code ? e2.code : 'error'}) — vaults drop until the deletion is retried`); }"],
+  ["signup-endpoints.js","now","    try { await CARDS.releaseClosing(db, uid, now); } catch (e2) { console.error(`deleteAccountCore: closing-mark release failed (${e2 && e2.code ? e2.code : 'error'}) — vaults drop until the deletion is retried`); }"],
   ["signup-endpoints.js","now","    throw e;"],
   ["signup-endpoints.js","now","  }"],
   ["signup-endpoints.js","was","  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered"],
+  ["payments/sdk/cards.js","now","  let outcome = null; let stale = false;"],
+  ["payments/sdk/cards.js","was","  let outcome = null;"],
+  ["payments/sdk/cards.js","now","    outcome = null; stale = false;"],
   ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion"],
-  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._closing !== undefined) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._closing !== undefined && liveClosing(cur._closing, now)) { outcome = 'dropped'; return undefined; }   // a deletion in progress (markClosing): its capture snapshot is already taken"],
+  ["payments/sdk/cards.js","was","    outcome = null;"],
+  ["payments/sdk/cards.js","now","    stale = c._closing !== undefined; delete c._closing;   // a STALE mark (a deletion crashed between its mark and its update): cleared here, alerted by the caller"],
+  ["payments/sdk/cards.js","now","  return stale && outcome !== 'dropped' ? { outcome, stale_mark: true } : { outcome };"],
+  ["payments/sdk/cards.js","was","  return { outcome };"],
+  ["payments/sdk/cards.js","now","  if (r.stale_mark) await require('./coordinator').alertOnce(deps, 'stale_closing_mark', orderId, {});   // fixed code: never the uid"],
   ["payments/sdk/cards.js","now","function deletePendingUpdates(uid, at, cur) {"],
   ["payments/sdk/cards.js","now","  const out = {};"],
   ["payments/sdk/cards.js","now","  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {"],
@@ -91,6 +103,8 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["payments/sdk/cards.js","now","  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;"],
   ["payments/sdk/cards.js","now","  return out;"],
   ["payments/sdk/cards.js","now","}"],
+  ["payments/sdk/cards.js","now","const CLOSING_STALE_MS = 15 * 60 * 1000;"],
+  ["payments/sdk/cards.js","now","const liveClosing = (m, now) => typeof m === 'number' && Number.isFinite(m) && Math.abs(now - m) < CLOSING_STALE_MS;"],
   ["payments/sdk/cards.js","now","async function markClosing(db, uid, at) {"],
   ["payments/sdk/cards.js","now","  const r = await node(db, uid).transaction((cur) => {"],
   ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) return undefined;"],
@@ -102,7 +116,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   ["payments/sdk/cards.js","now","    if (!isObj(cur) || cur._deleted !== undefined || cur._closing !== at) return undefined;   // fenced, or another deletion's mark: untouched"],
   ["payments/sdk/cards.js","now","    const c = { ...cur }; delete c._closing;"],
   ["payments/sdk/cards.js","now","    return Object.keys(c).length ? c : null;"],
-  ["payments/sdk/cards.js","now","module.exports = { markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
+  ["payments/sdk/cards.js","now","module.exports = { CLOSING_STALE_MS, markClosing, releaseClosing, deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ["payments/sdk/cards.js","was","module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ];
   const shaOf = (h) => crypto.createHash('sha256').update(`${h.file}\0${h.now}\0${h.was}`).digest('hex');
