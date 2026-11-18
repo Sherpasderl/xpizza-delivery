@@ -7534,6 +7534,11 @@
   "menu-pricing.js": {
    "pins": [
     {
+     "file": "customer-app/fixtures/dish-stats/gen-dish-stats.mjs",
+     "inverses": [],
+     "provenance": true
+    },
+    {
      "file": "xpizza-functions/avail-identity-wiring.guard.test.js",
      "inverses": [
       "tools/avail-identity-inverse.js",
@@ -8219,7 +8224,13 @@
    "lifts": []
   },
   "ratings/dish-qty.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/dish-stats/gen-dish-stats.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "ratings/merchant-comments.js": {
@@ -8862,6 +8873,24 @@
    "blob": "534c0b1b5785a9179605ba6ff07e2692a1d26aa5",
    "consumer": "customer-app/capp-s7a2.test.mjs",
    "live_differs": true
+  },
+  {
+   "site": "customer-app/fixtures/dish-stats/gen-dish-stats.mjs",
+   "module": "menu-pricing.js",
+   "status": "ok",
+   "sha": "2759d0f4ce1d796d0552977ce585e63392725c6d",
+   "blob": "bfb1bc924d1a33521638fbb5463d2c5883060549",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": false
+  },
+  {
+   "site": "customer-app/fixtures/dish-stats/gen-dish-stats.mjs",
+   "module": "ratings/dish-qty.js",
+   "status": "ok",
+   "sha": "2759d0f4ce1d796d0552977ce585e63392725c6d",
+   "blob": "84c501936783d94de72c6553715d4a5628b5712f",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": false
   }
  ]
 }

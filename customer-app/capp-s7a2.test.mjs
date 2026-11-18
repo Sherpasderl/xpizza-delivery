@@ -5037,6 +5037,7 @@ const DSX = JSON.parse(readFileSync(join(HERE, 'fixtures/dish-stats/dish-stats.j
 const dsEnv = (k) => J(DSX.scenarios[k].envelope);
 const plainOf = (v) => (v === undefined ? undefined : J(v));   // a model built in the jsdom window: compared as plain data (its prototypes are the window's)
 const fpHex = (env) => require('./capp-checkout.js').menuFingerprint(env);
+// PROVENANCE-PIN:BEGIN dish-stats
 test('dish-stats fixture: produced by 3a\'s pinned commit — the contents are the pinned generation; the stats scenarios carry the producer\'s doc as served', () => {
   assert.match(DSX.source.commit, /^[0-9a-f]{40}$/, 'the producing commit');
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
@@ -5044,6 +5045,7 @@ test('dish-stats fixture: produced by 3a\'s pinned commit — the contents are t
   assert.ok(!('dish_stats' in DSX.scenarios.plain.envelope.menu) && DSX.scenarios.plain.envelope.representation_version === '1d.4', 'plain: 1d.4 without stats');
   for (const k of ['stats_a', 'stats_b']) assert.deepEqual(DSX.scenarios[k].envelope.menu.dish_stats, DSX.scenarios[k].produced, `${k}: the producer's dish_stats, served`);
 });
+// PROVENANCE-PIN:END dish-stats
 test('dish-stats (1) F1: a stats-bearing 1d.4 envelope adapts EXACTLY like the same body without stats — plus `dishStats` (the served map, keyed by dish_id); none ⇒ an empty map', () => {
   const pick = (m) => J({ rv: m.representation_version, photos: m.photosAuthoritative, avail: m.availIdentity, dishes: m.dishes, extras: m.extras, categories: m.categories, groups: m.groups });
   const plain = CappMenu.adaptMenu(dsEnv('plain')), a = CappMenu.adaptMenu(dsEnv('stats_a'));
