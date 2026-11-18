@@ -71,3 +71,25 @@ test('ofertas:populated — the 2×1 dishes: getEditableCatalog is the real core
   assert.ok(bogo && Array.isArray(bogo.params.items) && bogo.params.items.length === 2, 'the seeded 2×1 offer carries its two dishes');
   for (const k of bogo.params.items) assert.ok(keys.has(k), `the 2×1 dish ${k} is a dish of the published source`);
 });
+
+// owed-2 slot STOP (advisor 11-18): a core state's drive can fail BECAUSE its own data function was not served (the 2×1 picker never
+// lists dishes when getEditableCatalog 404s) — the recorded own-data 404 is then reported FIRST, with the drive's error kept as the cause;
+// any other drive failure is passed through unchanged. No pre-check before the drive (it would move every state's timing).
+test('a failed drive reports the recorded own-data 404 first; otherwise the drive error is passed through', async () => {
+  const { driveFailure } = await import(pathToFileURL(path.join(ROOT, 'review', 'portal-cores', 'drive-failure.mjs')).href);
+  const err = new Error('premise: .mk5b-row[data-row="prod"] .mk5b-opt never appeared');
+  const e = driveFailure('M-builder-bogo', 'getEditableCatalog', ['getEditableCatalog'], err);
+  assert.match(e.message, /^premise: M-builder-bogo: its own data function getEditableCatalog was not served \(404\) during the capture \(drive\)/, 'the own-data 404 is named first');
+  assert.ok(e.message.includes(err.message), 'the drive failure is still in the message');
+  assert.equal(e.cause, err, 'the drive error is kept as the cause');
+  assert.equal(driveFailure('M-builder-bogo', 'getEditableCatalog', ['getMyBranches'], err), err, 'another function unserved: the drive error unchanged');
+  assert.equal(driveFailure('M-builder-bogo', 'getEditableCatalog', [], err), err, 'nothing unserved: the drive error unchanged');
+  assert.equal(driveFailure('P-drawer', null, ['getEditableCatalog'], err), err, 'a state with no own data function: the drive error unchanged');
+});
+
+test('the census tool routes every drive failure through driveFailure (own data function of a core state, the recorded unserved list)', () => {
+  assert.match(SRC, /^import \{ driveFailure \} from '\.\/review\/portal-cores\/drive-failure\.mjs';$/m, 'the census tool imports driveFailure');
+  assert.match(SRC, /try \{ await def\.drive\(cdp\); \} catch \(e\) \{ throw driveFailure\(stateName, def\.cores \? CORE_DATA\[stateName\]\.fn : null, st\.unserved, e\); \}/,
+    'the drive runs inside the driveFailure catch');
+  assert.equal((SRC.match(/def\.drive\(/g) || []).length, 1, 'there is ONE drive call site');
+});

@@ -29,6 +29,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
+import { driveFailure } from './review/portal-cores/drive-failure.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'xpizza-portal';
@@ -519,7 +520,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     const bootMs = Date.now() - t0;
     for (let i = 0; i < 400 && !(await cdp.ev('!!window.__paintSnap').catch(() => false)); i++) await sleep(25);
     const paintSnap = await cdp.ev('window.__paintSnap || null');
-    await def.drive(cdp); await settle(cdp);
+    try { await def.drive(cdp); } catch (e) { throw driveFailure(stateName, def.cores ? CORE_DATA[stateName].fn : null, st.unserved, e); }   // a failed drive names its own-data 404 first
+    await settle(cdp);
     // FF-typing: the list-row price «1280», caret INSIDE (after «12»), a sentinel caret colour on BOTH sides (byte-identical)
     let caret0 = null;
     if (typing) {
