@@ -97,6 +97,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --deal:#B0245A; --deal-bg:#FCE7F0; --deal-fill:#B0245A; --deal-fill-ink:#FFFFFF;
   --value:#7A5200; --value-bg:#FBEFCB;
   --offer:#0E6A55; --offer-bg:#DFF4ED; --offer-line:#A9E0D0; --offer-fill:#0E6A55; --offer-fill-ink:#FFFFFF;   /* restaurant offers (MOCKUP-capp-offers-calm-vs-loud): deep mint, never --deal (Sherpa promos) */
+  --sand:#7A4A24; --sand-bg:#F7EEE5; --sand-line:#E6D2BE;   /* caution = sand (the portal's sand; MOCKUP-capp-location-off-banner option A, owner 11-18) */
   --promo-bg:linear-gradient(135deg,#E2EBFA 0%,#DCF1EF 100%); --promo-ink:#0D1424; --promo-mute:#3F5377; --promo-line:#C9D8F0;
   /* v4 tip-step illustration (flat shapes; Cuadra tints + the green box, never a restaurant colour) */
   --il-sky-a:#E2EBFA; --il-sky-b:#C5D8F2; --il-sky-c:#D3ECE9; --il-jacket:#1D3F85; --il-pants:#2A3550; --il-skin:#D9A77B; --il-tyre:#1B2537;
@@ -113,6 +114,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
   --value:#F3C86C;--value-bg:#3B2D0A;
   --offer:#7FDCBF;--offer-bg:#102A23;--offer-line:#1E4D40;--offer-fill:#7FDCBF;--offer-fill-ink:#0A0F1C;
+  --sand:#E6BC93;--sand-bg:#2B2119;--sand-line:#51402F;
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}
@@ -122,6 +124,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
   --deal:#FF8FB8;--deal-bg:#3F1A2B;--deal-fill:#FF8FB8;--deal-fill-ink:#0A0F1C;
   --value:#F3C86C;--value-bg:#3B2D0A;
   --offer:#7FDCBF;--offer-bg:#102A23;--offer-line:#1E4D40;--offer-fill:#7FDCBF;--offer-fill-ink:#0A0F1C;
+  --sand:#E6BC93;--sand-bg:#2B2119;--sand-line:#51402F;
   --promo-bg:linear-gradient(135deg,#182A52 0%,#133640 100%);--promo-ink:#EDF1F8;--promo-mute:#A9B8D6;--promo-line:#2B3F66;
   --il-sky-a:#182A52;--il-sky-b:#24427E;--il-sky-c:#17424C;--il-jacket:#4A82E0;--il-pants:#95A3BE;--il-skin:#D9A77B;--il-tyre:#3A4761;
   --a-warm:#1C2230;--a-cool:#172033;--a-green:#182226;--a-rose:#211D25}}
@@ -204,9 +207,9 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .addr-btn>span{min-width:0;flex:1 1 auto}.addr-btn svg{flex:0 0 auto}.addr-btn .v>span{min-width:0}
 .searchbtn{height:46px;border:1px solid var(--line);background:var(--surf);border-radius:12px;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--mute);font-size:15px;font-weight:500;text-align:left;width:100%}
 .searchbtn svg.i{width:18px;height:18px}
-.locrow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--warn-bg);color:var(--warn);font-size:13.5px;font-weight:500}
+.locrow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--sand-bg);color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand-line);font-size:13.5px;font-weight:500}
 .locrow svg.i{width:18px;height:18px}
-.locrow button{margin-left:auto;border:0;background:transparent;color:var(--warn);font-weight:700;font-size:13.5px;padding:6px 0 6px 8px;text-decoration:underline;text-underline-offset:3px}
+.locrow button{margin-left:auto;border:0;background:transparent;color:var(--sand);font-weight:700;font-size:13.5px;padding:6px 0 6px 8px;text-decoration:underline;text-underline-offset:3px}
 .rlist{padding:6px 16px 24px;display:flex;flex-direction:column;gap:22px}
 .rlist h2{font:600 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:8px 0 -8px}
 .rcard{border:0;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;gap:9px;width:100%;color:var(--ink)}
