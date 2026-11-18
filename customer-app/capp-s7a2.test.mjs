@@ -24,8 +24,10 @@ const CappHome = require('./capp-home.js'), CappShell = require('./capp-shell.js
 const { provisionBrand } = await import(join(ROOT, 'xpizza-functions/contract/capp/capture.mjs'));
 const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
 const PROV = { x_pizza: await quiet(() => provisionBrand('x_pizza')), la_musa: await quiet(() => provisionBrand('la_musa')) };
-const FX = JSON.parse(readFileSync(join(HERE, 'fixtures/s7a2/directory.json'), 'utf8'));
-const SC_ALL = FX.scenarios;   // the contract cell reads every scenario; every other read goes through SC (the counterfactual guard)
+// the fixture file: read RAW only by the contract cell and the COUNTERFACTUAL guard (each re-reads it in its own cell). Every other cell sees
+// FX / SC, whose scenarios are the guarded view below — the raw scenario objects live only inside the closure (Codex #127 P2)
+const FX_FILE = join(HERE, 'fixtures/s7a2/directory.json');
+const rawFixture = () => JSON.parse(readFileSync(FX_FILE, 'utf8'));
 // ⚠ COUNTERFACTUAL (advisor 11-17, fork A + ruling (a); gen-directory.mjs): free delivery is OFF by platform policy (delivery/pricing-admin-core.js:4-5,
 // addendum A), so no real writer produces a claim. Two declared scenarios carry ONE hand-set field (promo.free_delivery) — the claim UI's input
 // and RULE 10's unmarked twin. They may be read ONLY inside a cell declared with cfTest(title, its scenarios, fn); any other read throws in that
@@ -33,12 +35,14 @@ const SC_ALL = FX.scenarios;   // the contract cell reads every scenario; every 
 const CF = Object.freeze({ promo_free_counterfactual: 'the free-delivery claim UI', complete_writer_raw: 'RULE 10: an unmarked promo claims nothing' });
 const CF_CELLS = [], CF_READS = [];
 let cfScope = null;
-const SC = new Proxy(SC_ALL, { get(o, k) {
+const guarded = (all) => new Proxy(all, { get(o, k) {
   if (typeof k === 'string' && Object.hasOwn(CF, k)) {
     if (!cfScope || !cfScope.keys.includes(k)) throw new Error(`🔴 COUNTERFACTUAL: «${k}» read outside its declared claim cell${cfScope ? ` (${cfScope.name.slice(0, 60)} declares ${cfScope.keys.join(', ')})` : ''}`);
     CF_READS.push([cfScope.name, k]);
   }
   return o[k]; } });
+const FX = (() => { const raw = rawFixture(); return Object.freeze({ ...raw, scenarios: guarded(raw.scenarios) }); })();
+const SC = FX.scenarios;
 const cfTest = (name, keys, fn) => { CF_CELLS.push({ name, keys }); return test(name, async (t) => { cfScope = { name, keys }; try { return await fn(t); } finally { cfScope = null; } }); };
 // the default directory: the declared cell's (counterfactual) scenario inside a claim cell, else «complete» (the real chain's)
 const defDir = () => [cfScope ? cfScope.keys[0] : 'complete'];
@@ -57,7 +61,8 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   // Codex s7a2 r1 #10: the CONTENTS are pinned — the generator's digest of every scenario, recomputed here and pinned literally (a hand
   // edit, e.g. a fee, fails; a regeneration from the real handler that changes anything must update this line on purpose)
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
-  const digest = createHash('sha256').update(canon(FX.scenarios)).digest('hex');
+  const RAW = rawFixture();   // the contract reads EVERY scenario (counterfactuals included): its own raw read, never FX
+  const digest = createHash('sha256').update(canon(RAW.scenarios)).digest('hex');
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
   // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
   // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
@@ -66,7 +71,7 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   // re-pinned 2026-11-17 (s7a2 alignment, advisor 11-17): no fake — the pricing node by the REAL writer (pricing-admin-core) read through the
   // REAL makePricingView at main 31f05c8a4; the two declared COUNTERFACTUAL scenarios (promo_free_counterfactual + its RULE 10 twin)
   assert.equal(digest, '44ea87daabfee6e5f7f6f2f5d7fec8ff378048ba090a0c63a5fa1196a8c52eeb', '🔴 the fixture contents are the pinned generation');
-  for (const [k, s] of Object.entries(SC_ALL)) {
+  for (const [k, s] of Object.entries(RAW.scenarios)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
     for (const r of s.body.restaurants) assert.deepEqual(Object.keys(r), ENTRY_FIELDS, `${k}: entry schema`);
@@ -5966,8 +5971,11 @@ test('COUNTERFACTUAL guard: promo_free_counterfactual / complete_writer_raw are 
   for (const k of Object.keys(CF)) assert.ok(CF_READS.some(([, x]) => x === k), `🔴 COUNTERFACTUAL: nobody reads ${k} (${CF[k]})`);
   const raw = CF_CELLS.filter((c) => c.keys.includes('complete_writer_raw'));
   assert.deepEqual(raw.map((c) => c.name.slice(0, 8)), ['RULE 10:'], '🔴 COUNTERFACTUAL: complete_writer_raw is the RULE 10 raw cell\'s alone');
-  for (const k of Object.keys(CF)) assert.ok(SC_ALL[k] && SC_ALL[k].status === 200, `premise: the generator wrote ${k}`);
+  const RAW = rawFixture().scenarios;   // the guard's own raw read
+  for (const k of Object.keys(CF)) assert.ok(RAW[k] && RAW[k].status === 200, `premise: the generator wrote ${k}`);
+  const me = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  assert.equal((me.match(/rawFixture\(\)/g) || []).length, 3, '🔴 COUNTERFACTUAL: the raw fixture is read only by the FX closure, the contract cell and this guard');
   const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
   assert.ok(gen.includes('⚠ COUNTERFACTUAL') && gen.includes('pricing-admin-core.js:4-5'), '🔴 COUNTERFACTUAL: the generator labels both scenarios and cites addendum A');
-  assert.equal(Object.keys(SC_ALL).filter((k) => /counterfactual/.test(k)).join(), 'promo_free_counterfactual', 'ONE counterfactual scenario by name (+ its declared RULE 10 twin)');
+  assert.equal(Object.keys(RAW).filter((k) => /counterfactual/.test(k)).join(), 'promo_free_counterfactual', 'ONE counterfactual scenario by name (+ its declared RULE 10 twin)');
 });
