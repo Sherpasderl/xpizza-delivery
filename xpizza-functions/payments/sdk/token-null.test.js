@@ -89,16 +89,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const all = w.fake.calls.filter((c) => c.action === 'authorize').map((c) => c.token);
     assert.strictEqual(all[all.length - 1], placedTok[0], `${L}: a later decrease re-authorizes with the SAME token the placement authorized`);
   });
-  // ── Codex #158 r1 F2 (a): the cancel cleanup removes the due entry while the write-ahead is in flight, then the record create fails —
-  //    an orphan token node with NO due entry; the sweeper's bounded walk of payment_sdk_tokens itself removes it (the order is finished) ──
-  await cell('TN-ORPHAN-NO-DUE', async (L) => {
-    let w = null; let armed = true;
-    w = world({}, { hooks: { beforeTx: async (p) => { if (armed && String(p) === `payment_sdk/${OID}`) { armed = false; await C.cancelSdkOrder(w.deps, { orderId: OID }); await w.db.ref(`payment_sdk_due/${OID}`).set(null); throw Object.assign(new Error('record create failed'), { code: 'unavailable' }); } } } });
-    await assert.rejects(() => C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-nodue', amount_cents: 100, card: card(false) }));
-    assert.ok(w.node() && w.db.getAt(`payment_sdk_due/${OID}`) == null && w.ord().payment_cancel, 'premise: an orphan token node, no due entry, a finished order');
-    await SW.sweepSdkPayments(w.deps);
-    assert.strictEqual(w.node(), null, `${L}: the sweeper's own walk of payment_sdk_tokens removes an orphan no due entry points at`);
-  });
   await cell('TN-NULL-NO-SAVE', async (L) => {
     const w = world(); await place(w, 'T-nosave', false); await deliver(w);
     await SW.visitDueOrder(w.deps, OID);
@@ -144,6 +134,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await SW.visitDueOrder(w.deps, OID);
     await K.nullSpentToken(w.deps, OID);
     assert.strictEqual(w.node(), null, `${L}: a write-ahead token whose order is finished is swept (never outlives the order)`);
+  });
+  // ── Codex #158 r1 F2 (a): the cancel cleanup removes the due entry while the write-ahead is in flight, then the record create fails —
+  //    an orphan token node with NO due entry; the sweeper's bounded walk of payment_sdk_tokens itself removes it (the order is finished) ──
+  await cell('TN-ORPHAN-NO-DUE', async (L) => {
+    let w = null; let armed = true;
+    w = world({}, { hooks: { beforeTx: async (p) => { if (armed && String(p) === `payment_sdk/${OID}`) { armed = false; await C.cancelSdkOrder(w.deps, { orderId: OID }); await w.db.ref(`payment_sdk_due/${OID}`).set(null); throw Object.assign(new Error('record create failed'), { code: 'unavailable' }); } } } });
+    await assert.rejects(() => C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-nodue', amount_cents: 100, card: card(false) }));
+    assert.ok(w.node() && w.db.getAt(`payment_sdk_due/${OID}`) == null && w.ord().payment_cancel, 'premise: an orphan token node, no due entry, a finished order');
+    await SW.sweepSdkPayments(w.deps);
+    assert.strictEqual(w.node(), null, `${L}: the sweeper's own walk of payment_sdk_tokens removes an orphan no due entry points at`);
   });
   // ── a LEGACY record (token on the record, before the migration): the readers fall back inside record-token, the null drops it ──
   await cell('TN-LEGACY-FALLBACK', async (L) => {
