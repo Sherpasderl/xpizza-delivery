@@ -20,7 +20,7 @@
   // an extra label carrying a grammar / reader delimiter (',' driver, '|' groups, '+' extras, '[' ']' brackets) would make two
   // different configurations read — and content-key — the same; such an extra is never offered (capp-serialize refuses it too)
   const LABEL_UNSAFE = /[,|+[\]]/;
-  // the dish_stats thresholds — a COPY of the producer's (xpizza-functions/ratings/aggregate.js T; the server re-allowlists by the same
+  // the dish_stats thresholds — a COPY of the producer's (the functions' ratings/aggregate.js T; the server re-allowlists by the same
   // T): the client fails closed below them too (Codex #145, rule 8 — no fake data). capp-ui.test DS-T fails if any value drifts (rule 4)
   const DS_T = Object.freeze({ DISH_VOTES: 20, DISH_ORDERS: 20, TOP: 3, PAIR: 15, PAIRS_MAX: 3 });
   // S1 = toggles only: `max` absent or exactly 1, and none of the other quantity fields
