@@ -4659,3 +4659,43 @@ test('TRIM-NAV-DESK: on the desk the aside IS the cart — the note shows there,
   assert.equal(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-DESK: the aside\'s checkout proceeds');
   assert.notEqual(b.ui.state.layerKind, 'cart', 'no cart sheet over the desk page');
 });
+
+// ── Codex #145 P2 (11-18): the client FAILS CLOSED on dish_stats below the producer's thresholds (rule 8, no fake data). The server
+// filters today; the adapter must too. The thresholds are the producer's own (xpizza-functions/ratings/aggregate.js T) — the client's
+// copy (CappMenu.DS_T) is pinned to it by DS-T below, never retyped free. Inputs: 3a's real envelopes with ONE decoration degraded ──
+const dsWith = (k, edit) => { const e = dsEnv(k); edit(e.menu.dish_stats); return e; };
+test('dish-stats fail-closed (Codex #145) REC: a «%» from under 20 votes is never drawn — 1/1 is not «100 % lo recomienda», 19/19 neither; a malformed vote set neither', () => {
+  for (const mount of [{}, DESK]) {
+    const where = mount.view ? 'desk' : 'phone', R = DSX.ratings;
+    const b = boot('x_pizza', { envelope: dsWith('stats_a', (ds) => { ds[R.dish_a] = { up: 1, down: 0, votes: 1 }; ds[R.dish_b] = { up: 19, down: 0, votes: 19 }; ds[R.dish_c] = { up: 25, down: 0, votes: 20 }; }), mount });
+    for (const d of [R.dish_a, R.dish_b, R.dish_c]) assert.equal(b.q(`#dish-${keyOfDish(b, d)} .pill.recp`), null, `🔴 DS-FC-REC: below 20 votes / votes ≠ up + down ⇒ no badge (${d}, ${where})`);
+    const ok = boot('x_pizza', { envelope: dsEnv('stats_a'), mount });
+    assert.ok(ok.q(`#dish-${keyOfDish(ok, R.dish_a)} .pill.recp`), `premise: the real 19/20 still badges (${where})`);
+  }
+});
+test('dish-stats fail-closed (Codex #145) POP: «Más pedido» needs the producer\'s ≥ 20 orders behind its top_rank — top_rank with 0 / 19 / no orders is never drawn', () => {
+  for (const mount of [{}, DESK]) {
+    const where = mount.view ? 'desk' : 'phone', O = DSX.orders;
+    const b = boot('x_pizza', { envelope: dsWith('xp_orders', (ds) => { ds[O.a] = { top_rank: 1, orders_30d: 0 }; ds[O.b] = { top_rank: 2, orders_30d: 19 }; ds[O.d] = { top_rank: 3 }; ds[O.e] = { top_rank: 4, orders_30d: 21 }; }), mount });
+    for (const d of [O.a, O.b, O.d, O.e]) assert.equal(b.q(`#dish-${keyOfDish(b, d)} .pill.pop`), null, `🔴 DS-FC-POP: a rank without ≥ 20 orders, or past the top 3 ⇒ no «Más pedido» (${d}, ${where})`);
+    const ok = boot('x_pizza', { envelope: dsEnv('xp_orders'), mount });
+    assert.ok(ok.q(`#dish-${keyOfDish(ok, O.a)} .pill.pop`), `premise: the real top_rank 1 still badges (${where})`);
+  }
+});
+test('dish-stats fail-closed (Codex #145) UPS: a pair under 15 co-orders (or a non-integer count) is never upsold; more than 3 real pairs show 3', () => {
+  const L = DSX.la_musa;
+  const low = boot('la_musa', { envelope: dsWith('lm_pairs', (ds) => { ds[L.main].pairs = [{ dishId: L.toña, count: 14 }, { dishId: L.coca, count: '16' }, { dishId: L.salva, count: 0 }]; }) });
+  low.ui.cart.inc(lmKey(low, L.main)); low.ui.render(); low.click('#cart-bar');
+  assert.deepEqual(upsellCards(low), [], '🔴 DS-FC-UPS: pairs under 15 / malformed ⇒ no «Suelen pedirse juntos» card');
+  const four = boot('la_musa', { envelope: dsWith('lm_pairs', (ds) => { ds[L.main].pairs = [L.toña, L.coca, L.salva, L.agua].map((dishId, i) => ({ dishId, count: 20 - i })); }) });
+  four.ui.cart.inc(lmKey(four, L.main)); four.ui.render(); four.click('#cart-bar');
+  assert.equal(upsellCards(four).length, 3, 'the sheet draws at most 3 (9.5; the renderer\'s own UPSELL_MAX)');
+  const env4 = dsWith('lm_pairs', (ds) => { ds[L.main].pairs = [L.toña, L.coca, L.salva, L.agua].map((dishId, i) => ({ dishId, count: 20 - i })); });
+  assert.equal(require('./capp-menu.js').adaptMenu(env4).dishStats[L.main].pairs.length, 3, '🔴 DS-FC-PAIRS: the model keeps at most the producer\'s PAIRS_MAX (3)');
+});
+test('dish-stats DS-T (rule 4, one source): the client\'s thresholds ARE the producer\'s — CappMenu.DS_T equals ratings/aggregate.js T for every key it carries', () => {
+  const { T } = require('../xpizza-functions/ratings/aggregate.js'), { DS_T } = require('./capp-menu.js');
+  assert.ok(DS_T && typeof DS_T === 'object' && Object.isFrozen(DS_T), '🔴 DS-T: the client exports its frozen copy');
+  assert.deepEqual(Object.keys(DS_T).sort(), ['DISH_ORDERS', 'DISH_VOTES', 'PAIR', 'PAIRS_MAX', 'TOP'], 'the keys the adapter reads');
+  for (const k of Object.keys(DS_T)) assert.equal(DS_T[k], T[k], `🔴 DS-T: ${k} drifted from the producer's (aggregate.js ${T[k]})`);
+});
