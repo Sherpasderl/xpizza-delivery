@@ -146,6 +146,7 @@ const editPrice = async (c) => { await c.ev(`(() => { const i = __q('#detail .pr
 const navAny = (t) => at(`(() => { const b = [...document.querySelectorAll('button.nav, button.mn')].find((x) => x.offsetParent !== null && x.textContent.trim().startsWith(${JSON.stringify(t)})); if (!b) throw new Error('no nav ' + ${JSON.stringify(t)}); b.click(); return true; })()`, 1500);
 const clickSel = (sel, n = 0, ms = 700) => at(`(() => { const e = __q(${JSON.stringify(sel)})[${n}]; if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' #' + ${n}); e.click(); return true; })()`, ms);
 const clickHas = (sel, t, ms = 900) => at(`(() => { const e = __q(${JSON.stringify(sel)}).find((x) => x.offsetParent !== null && x.textContent.includes(${JSON.stringify(t)})); if (!e) throw new Error('premise: no ' + ${JSON.stringify(sel)} + ' with ' + ${JSON.stringify(t)}); e.click(); return true; })()`, ms);
+const waitHas = (sel, t, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].some((x) => x.textContent.includes(${JSON.stringify(t)}))`)) return; await sleep(100); } throw new Error(`premise: ${sel} «${t}» never appeared`); };
 const waitFor = (sel, ms = 6000) => async (c) => { for (let i = 0; i * 100 < ms; i++) { if (await c.ev(`!!document.querySelector(${JSON.stringify(sel)})`)) return; await sleep(100); } throw new Error(`premise: ${sel} never appeared`); };
 const OFERTAS = seq(nav('navsuc'), navAny('Marketing'), waitFor('.mk5-row'));
 const BOGO = seq(OFERTAS, clickHas('.mk5-tabs *', 'Crear campaña'), clickSel('.mk5-card[data-otype="bogo"]'), clickSel('.mk5b-row[data-row="prod"] .mk5b-rowh'),
@@ -225,7 +226,9 @@ const STATES = {
   'M-review-bogo':   { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5r-modal', text: 'Revisá tu oferta',
     drive: seq(BOGO, clickSel('.mk5b-row[data-row="prod"] .mk5b-opt input'), clickSel('.mk5b-go')) },
   'M-detail':        { page: 'index', cores: 'ofertas', scn: 'populated', container: '.mk5d-head', text: 'Almuerzo: 15 % en todo el menú', drive: seq(OFERTAS, clickHas('.mk5-lnk', 'Almuerzo: 15 %')) },
-  'N-envio':         { page: 'index', cores: 'zones', scn: 'closed', container: '.envio', text: 'Tarifas de envío', drive: seq(navAny('Envío'), waitFor('.envio')) },
+  // the map frame posts ONLY to the production portal origin (xpizza-portal-map/map.js → PORTAL_ORIGIN), so here no 'ready' / 'failed'
+  // arrives and envio.js's own 8 s deadline flips the pane mid-census (owed-2 E, 77 → 74 nodes): the drive waits for that outcome
+  'N-envio':         { page: 'index', cores: 'zones', scn: 'closed', container: '.envio', text: 'Tarifas de envío', note: 'measures the map FAILURE pane («No se pudo cargar el mapa.» after the own 8 s deadline in envio.js): the map frame talks only to the production portal origin, so its ready pane cannot be reached here; this is NOT coverage of the ready pane', drive: seq(navAny('Envío'), waitFor('.envio'), waitHas('.envio .mapline:not(.hidden)', 'No se pudo cargar el mapa.', 12000)) },
 };
 
 // ── the router: every external https request answered per state ──
@@ -465,7 +468,7 @@ async function corePremise(cdp, name, def, st, when) {
 
 // #105 r2: every state's threw / unserved / data / unserved sections, written unconditionally (an empty array, never an absent field)
 const recordOf = (byState) => { const m = (k) => Object.fromEntries(Object.entries(byState).map(([n, r]) => [n, r.after[k]]));
-  return { threw: m('threw'), unserved: m('unserved'), served: m('served'), rendered: m('rendered'), data: m('data'), unservedSections: m('sections') }; };
+  return { notes: Object.fromEntries(Object.keys(byState).filter((n) => STATES[n].note).map((n) => [n, STATES[n].note])), threw: m('threw'), unserved: m('unserved'), served: m('served'), rendered: m('rendered'), data: m('data'), unservedSections: m('sections') }; };
 // ── one run: boot an entry page in a state under a font policy ──
 async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'P-editor', deterministic = false, holdMs = 6000, faceChange = false,
   view = 1280, theme = 'light', typing = false }) {

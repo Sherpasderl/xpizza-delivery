@@ -108,3 +108,17 @@ test('the census tool runs every state inside a deadline cell and labels each st
   for (const step of ['boot', 'drive', 'fonts', 'premise', 'census', 'probe', 'end', 'cleanup']) assert.ok(SRC.includes(`where('${step}')`), `run() labels the ${step} step`);
   assert.ok(/where\('drive'\);\s*try \{ await def\.drive\(cdp\);/.test(SRC), 'the drive step is labelled right before the drive');
 });
+
+// N-envio (advisor 11-18, option C): the map frame talks ONLY to the production portal origin (map.js posts to PORTAL_ORIGIN), so off
+// it no 'ready' or 'failed' ever arrives and envio.js's own 8 s deadline flips the pane mid-census (77 → 74 nodes). The drive waits for
+// that deadline's outcome — the real «No se pudo cargar el mapa.» line — so every run reads the same settled FAILURE pane, and the
+// census record says so (notes), so nobody reads it as coverage of the ready pane.
+test('N-envio waits for the map failure line (envio.js\'s own deadline) and the record notes it measures the failure pane', () => {
+  const envio = readFileSync(path.join(ROOT, 'xpizza-portal', 'envio.js'), 'utf8');
+  const mapFail = /mapFail: '([^']+)'/.exec(envio)[1];
+  const line = SRC.split('\n').find((l) => l.startsWith("  'N-envio':"));
+  assert.ok(line.includes(`waitHas('.envio .mapline:not(.hidden)', ${JSON.stringify(mapFail).replace(/"/g, "'")}, 12000)`), `N-envio waits for the map failure line «${mapFail}» (drive: ${line.slice(0, 260)})`);
+  assert.match(line, /note: '[^']*FAILURE pane[^']*ready pane[^']*'/, 'N-envio carries its record note (the failure pane, not the ready pane)');
+  assert.match(SRC, /notes: Object\.fromEntries\(Object\.keys\(byState\)\.filter\(\(n\) => STATES\[n\]\.note\)\.map\(\(n\) => \[n, STATES\[n\]\.note\]\)\)/, 'the record writes every state\'s note');
+  assert.match(SRC, /const waitHas = \(sel, t, ms = 6000\) => /, 'the waitHas verb exists');
+});

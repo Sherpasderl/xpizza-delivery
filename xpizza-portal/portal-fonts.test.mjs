@@ -138,6 +138,7 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
     assert.ok(!c.unserved[s].includes(d.fn), `🔴 ${s}: its own data function ${d.fn} went unserved`);
   }
   assert.ok(Array.isArray(c.owed), '🔴 the census record carries no «owed» list');
+  assert.ok(c.notes && /FAILURE pane/.test(c.notes['N-envio'] || ''), '🔴 the record notes that N-envio measures the map FAILURE pane (advisor 11-18: the ready pane is unreachable off the production origin)');
   assert.deepEqual(c.owed, [], '🔴 a section is owed: its real-data render is measured nowhere (owed 2, advisor 11-18: none may stay owed)');
   // Codex #105 r3: measured only on POSITIVE evidence in the measuredIn state's own record — it was served the function (2xx), never
   // went without it, and rendered that very section (its root measured on that state's pane); an existing state alone proves nothing
