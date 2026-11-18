@@ -3048,6 +3048,7 @@
   "payments/sdk/order-id.js",
   "payments/sdk/pixelpay-adapter.js",
   "payments/sdk/psp-adapter.js",
+  "payments/sdk/record-token.js",
   "payments/sdk/record.js",
   "payments/sdk/recovery.js",
   "payments/sdk/release.js",
@@ -7696,8 +7697,7 @@
   "payments/sdk/coordinator.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/ledger-writes.guard.test.js",
-    "xpizza-functions/payments/sdk/token-null.test.js"
+    "xpizza-functions/ledger-writes.guard.test.js"
    ]
   },
   "payments/sdk/decline-buckets.js": {
@@ -7763,6 +7763,10 @@
    "lifts": []
   },
   "payments/sdk/psp-adapter.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "payments/sdk/record-token.js": {
    "pins": [],
    "lifts": []
   },

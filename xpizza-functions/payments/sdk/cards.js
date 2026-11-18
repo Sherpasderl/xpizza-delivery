@@ -132,7 +132,7 @@ async function completeVaultForOrder(deps, orderId) {
   if (!va) return { outcome: 'none' };
   const { aid, att } = va;
   // the record's token is the WINNING attempt's (claims serialize; the winner is the last claimed) — verified by its hash
-  const token = rec.token;
+  const token = require('./record-token').tokenOf(rec);
   const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
   const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };
   const state = r.outcome === 'dropped' ? 'dropped' : r.outcome === 'skipped' ? 'skipped' : 'done';
@@ -145,7 +145,7 @@ async function completeVaultForOrder(deps, orderId) {
 // unanswered money op) AND the vault owes nothing (no save asked, or vault.state set). ONE CAS; the per-attempt token_hash is KEPT.
 // Returns 'nulled' | 'kept' | 'none' (no token). Called by the sweeper right after the vault step; a lost CAS waits for the next visit.
 async function nullSpentToken(deps, orderId) {
-  const R = require('./record');
+  const R = require('./record'); const T = require('./record-token');
   const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
   // finished: terminal (delivered/completed, or payment_terminal) OR a committed cancel / expiry (payment_cancel — irreversible; the
   // record is then phase 'cancelled', checked below), so an abandoned or cancelled order's token does not stay forever
@@ -153,11 +153,11 @@ async function nullSpentToken(deps, orderId) {
   let out = 'none';
   await R.casRecord(deps.db, orderId, (x) => {
     out = 'none';
-    if (typeof x.token !== 'string') return undefined;
+    if (typeof T.tokenOf(x) !== 'string') return undefined;
     out = 'kept';
     if (!finished || x.phase === 'open' || x.phase === 'adjusting' || x.lock || R.unansweredMoneyOps(x).length) return undefined;
     if (vaultAttemptOf(order, x) && !(isObj(x.vault) && x.vault.state)) return undefined;
-    delete x.token; out = 'nulled';
+    T.dropToken(x); out = 'nulled';
     return x;
   });
   return out;

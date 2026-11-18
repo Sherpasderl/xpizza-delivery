@@ -5,6 +5,7 @@
 // the order's own life (going live, adjusting, cancelling, settling) are won by a transaction on orders/{id} (§4, §4a, §8).
 // deps: { db, psp (makeAdapter), clock(), voidEligible(leg, now), cancelVoidEligible(leg, now), releaseResources(deps, orderId, order), goLive(deps, orderId) }.
 const R = require('./record');
+const T = require('./record-token');   // the ONE owner of the record's token (record-token.guard)
 const F = require('./flow');
 const { boundStatus } = require('./psp-adapter');
 
@@ -178,7 +179,7 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
       legId = newLeg(rec, 'original', amount_cents, now);
       Object.assign(rec.legs[legId], { state: 'sent', attempt_id, pp_ref: ref });
       rec.attempts = { ...(rec.attempts || {}), [attempt_id]: { leg_id: legId, token_hash: tokenHash, card_ref: card && card.card_ref ? card.card_ref : 'new', display, save: !!(card && card.save), vault_gen: card && Number.isInteger(card.vault_gen) ? card.vault_gen : 0, amount_cents, at: now } };
-      rec.token = token;
+      T.setToken(rec, token);
       rec.fulfillment_total_cents = amount_cents;
       return rec;
     },
@@ -535,7 +536,7 @@ async function requestDecrease(deps, { orderId, new_total_cents, revision }) {
     const d = await dispatch(deps, orderId, {
       action: 'auth', legId: () => legId, amount_cents: new_total_cents,
       pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; r.legs[legId].pp_ref = orderId; return r; },   // the provider order id this auth is sent with (its void is signed over it)
-      call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
+      call: (opId) => deps.psp.pspAuthorize({ token: T.tokenOf(rec), amount_cents: new_total_cents, op_id: opId, ref: orderId }),
       apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
     });
     if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
@@ -600,7 +601,7 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
   const d = await dispatch(deps, orderId, {
     action: 'auth', legId: () => legId, amount_cents: need,
     pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'delta', need, now); r.legs[legId].state = 'sent'; return r; },
-    call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: need, op_id: opId, ref: orderId }),
+    call: (opId) => deps.psp.pspAuthorize({ token: T.tokenOf(rec), amount_cents: need, op_id: opId, ref: orderId }),
     apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
   });
   if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
