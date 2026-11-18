@@ -47,6 +47,7 @@ const ASSEMBLY_STEPS = {
   '792a3dde73e0bff5181c4082c0e0a6a291afbd02': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs', 'review/capp-sbs/scenes-fx.mjs'],
   '275dcaf2668dd980f8ef15dd11382524c746f7b8': ['customer-app/capp-ui.test.mjs', 'customer-app/capp.css', 'xpizza-functions/tools/mutation-sweep.mutants.json'],   // pay labels (MOCKUP-capp-pay-labels r0)
   'b1a95926a59c50fd3a79e9b39f2dd5198d5e2602': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs'],   // s7a2 alignment (the real pricing writer + view)
+  'cfc688d868156e7b0c6e6af5039a2ea8d3da9c04': ['customer-app/capp-s7a2.test.mjs'],   // Codex #127 P2 (the counterfactual containment)
 };
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
 // git paths NUL-delimited (-z): a quoted non-ASCII path would never match a blob lookup (Codex r1 P2-3)
