@@ -1323,6 +1323,41 @@ test('X7 [Codex #131, owner option A] one action at a time per offer: while «Pa
   ed.click(); await settle(150);
   assert.ok(dlg(p), 'X7: and it opens the editor');
 });
+test('X8 [Codex #132 note] the HANDLERS refuse while busy, not only the disabled attribute: with «Editar» and «Más acciones» forced enabled (a synthetic click), nothing opens while the move confirms', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState'];
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };
+  p.btn('Pausar').click(); await settle(150);
+  const acts = p.host().querySelector('.mk5d-acts');
+  assert.ok(acts.textContent.includes('Confirmando…'), 'premise: the move is confirming');
+  const ed = [...acts.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  const more = acts.querySelector('.mk5d-more1');
+  ed.disabled = false; more.disabled = false;   // the attribute bypassed: only the handler can refuse now
+  ed.click(); await settle(80);
+  assert.equal(dlg(p), null, 'X8: the «Editar» handler refuses while busy');
+  more.click(); await settle(80);
+  assert.equal(p.host().querySelector('.mk5d-acts .mk5-menu.mk5-open'), null, 'X8: the «Más acciones» handler refuses while busy');
+  assert.equal(p.mods['marketing-detail']._detailState.menu, false, 'X8: the «Más acciones» handler left its menu closed (it would pop open once the move settles)');
+  release(); await settle(300);
+});
+test('X9 [Codex #132 note] a REFUSED move re-enables the actions: «Pausar» refused by the real core (another session paused it first — superseded) ⇒ the error row, «Editar» and «Más acciones» enabled again', async () => {
+  const b = await world();
+  const o = await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, token: b.token })).status, 200, 'premise: another session paused it');
+  p.btn('Pausar').click(); await settle(300);   // our move, at the old rev: a DEFINITE refusal
+  assert.ok(p.host().querySelector('.mk5b-err'), 'premise: refused — the error row');
+  const acts = p.host().querySelector('.mk5d-acts');
+  const ed = [...acts.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  assert.ok(ed && ed.disabled === false, 'X9: «Editar» is enabled again after the refusal');
+  assert.equal(acts.querySelector('.mk5d-more1').disabled, false, 'X9: «Más acciones» too');
+});
 test('S7 cancelled: leaving the page, another account, or a NEW write stops the confirmations — nothing more is sent', async () => {
   for (const how of ['leave', 'account', 'write']) {
     const b = await world();
