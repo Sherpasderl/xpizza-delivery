@@ -40,11 +40,13 @@ function modeOf({ sdk = false, body, clientHdr } = {}) {
   return { mode, mismatch, evidence };
 }
 
-// the frozen offer — exactly marketing/offer-price.js frozenOf's keys (+ the audience keys when present), nothing else
+// the frozen offer — marketing/offer-price.js frozenOf's keys (+ the audience keys when present) MINUS the funder field, nothing else.
+// chore/drop-funded-by-5f: WHO funds a discount is answered ONLY by offerFunder (the reconcile record decides an audience-'new' grant), so the
+// ledger snapshot never records the order's frozen funder (marketing/offer-funder.guard keeps this file out of the funder's set)
 function offerOf(o) {
   if (!o || typeof o !== 'object') return null;
   const out = { offer_id: keySafe(o.offer_id), rev: req(o.rev), type: keySafe(o.type), name: text(o.name, 80),
-    discount_cents: req(o.discount_cents), waived_envio_cents: req(o.waived_envio_cents), funded_by: keySafe(o.funded_by) };
+    discount_cents: req(o.discount_cents), waived_envio_cents: req(o.waived_envio_cents) };
   if (o.audience !== undefined) out.audience = keySafe(o.audience);
   if (o.audience_kind !== undefined) out.audience_kind = keySafe(o.audience_kind);
   return out;
