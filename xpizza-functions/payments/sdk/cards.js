@@ -111,16 +111,26 @@ async function removeCardCore(deps, { headers, body } = {}) {
 // The vault write after `placed` (§6, S3) — from the WINNING attempt ONLY (legs[payment_placed.leg_id].attempt_id): a member, a NEW
 // card, save:true. Idempotent and resumable: the record's `vault.state` (done / dropped / skipped) ends it; the sweeper calls this
 // on every visit (CORE-Δ row 12), so a crash between the card write and the record note completes once (the card is reused).
+// the WINNING attempt when it owes a vault write (a member, a NEW card, save:true), else null — ONE answer for the vault step and the
+// token null below (fix/sdk-token-null-5f)
+function vaultAttemptOf(order, rec) {
+  const R = require('./record');
+  if (!isObj(order) || !isObj(order.payment_placed) || typeof order.customer_uid !== 'string' || !order.customer_uid || !isObj(rec)) return null;
+  const leg = R.legsOfRecord(rec)[order.payment_placed.leg_id];
+  const aid = leg && leg.attempt_id;
+  const att = aid && isObj(rec.attempts) ? rec.attempts[aid] : null;
+  if (!isObj(att) || att.save !== true || att.card_ref !== 'new' || !isObj(att.display)) return null;
+  return { aid, att };
+}
 async function completeVaultForOrder(deps, orderId) {
   const R = require('./record');
   const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
   if (!isObj(order) || !isObj(order.payment_placed) || typeof order.customer_uid !== 'string' || !order.customer_uid) return { outcome: 'none' };
   const rec = (await deps.db.ref(`payment_sdk/${orderId}`).once('value')).val();
   if (!isObj(rec) || (isObj(rec.vault) && ['done', 'dropped', 'skipped'].includes(rec.vault.state))) return { outcome: 'none' };
-  const leg = R.legsOfRecord(rec)[order.payment_placed.leg_id];
-  const aid = leg && leg.attempt_id;
-  const att = aid && isObj(rec.attempts) ? rec.attempts[aid] : null;
-  if (!isObj(att) || att.save !== true || att.card_ref !== 'new' || !isObj(att.display)) return { outcome: 'none' };
+  const va = vaultAttemptOf(order, rec);
+  if (!va) return { outcome: 'none' };
+  const { aid, att } = va;
   // the record's token is the WINNING attempt's (claims serialize; the winner is the last claimed) — verified by its hash
   const token = rec.token;
   const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
@@ -129,4 +139,27 @@ async function completeVaultForOrder(deps, orderId) {
   await R.casRecord(deps.db, orderId, (x) => { if (isObj(x.vault) && x.vault.state) return undefined; x.vault = { attempt_id: aid, state, at: deps.clock() }; return x; });
   return { outcome: state };
 }
-module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+// owner ruling 11-18 (card items 2; PLAN-card-token-cleanup (b)): the record's reusable card token is NULLED once nothing can read it —
+// its readers are the decrease / increase re-authorize (only while the order AND the record are open) and the vault step above. Nulled
+// when the order is finished (terminal, or a committed cancel / expiry) AND the record is closed (not open / adjusting, no lock, no
+// unanswered money op) AND the vault owes nothing (no save asked, or vault.state set). ONE CAS; the per-attempt token_hash is KEPT.
+// Returns 'nulled' | 'kept' | 'none' (no token). Called by the sweeper right after the vault step; a lost CAS waits for the next visit.
+async function nullSpentToken(deps, orderId) {
+  const R = require('./record');
+  const order = (await deps.db.ref(`orders/${orderId}`).once('value')).val();
+  // finished: terminal (delivered/completed, or payment_terminal) OR a committed cancel / expiry (payment_cancel — irreversible; the
+  // record is then phase 'cancelled', checked below), so an abandoned or cancelled order's token does not stay forever
+  const finished = isObj(order) && (R.TERMINAL.includes(order.status) || !!order.payment_terminal || !!order.payment_cancel);
+  let out = 'none';
+  await R.casRecord(deps.db, orderId, (x) => {
+    out = 'none';
+    if (typeof x.token !== 'string') return undefined;
+    out = 'kept';
+    if (!finished || x.phase === 'open' || x.phase === 'adjusting' || x.lock || R.unansweredMoneyOps(x).length) return undefined;
+    if (vaultAttemptOf(order, x) && !(isObj(x.vault) && x.vault.state)) return undefined;
+    delete x.token; out = 'nulled';
+    return x;
+  });
+  return out;
+}
+module.exports = { nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

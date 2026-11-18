@@ -994,6 +994,7 @@
   "payments/sdk/coordinator.js#cancelSdkOrder": "payment",
   "payments/sdk/coordinator.js#cancelSdkOrder>anon": "payment",
   "payments/sdk/sweeper.js#visitDueOrder": "payment",
+  "payments/sdk/cards.js#nullSpentToken": "payment",
   "payments/sdk/coordinator.js#orderRevision": "payment",
   "payments/sdk/flow.js#markerFault": "payment",
   "payments/sdk/flow.js#sdkGoLiveAdmits": "payment",

@@ -48,6 +48,7 @@ async function visitDueOrder(deps, orderId) {
   await C.sweepPendingRoles(deps, orderId);
   await C.trackExpiry(deps, orderId);
   await require('./cards').completeVaultForOrder(deps, orderId);   // D4 row 12: the saved-card vault write, resumable (S3)
+  await require('./cards').nullSpentToken(deps, orderId);   // card items 2 (owner 11-18): the token goes once nothing can read it
   const rec = await C.readRecord(deps.db, orderId);
   order = await C.readOrder(deps.db, orderId);
   if (rec && rec.frozen && order && order.payment_terminal && now - order.payment_terminal.at > CAPTURE_OVERDUE_MS
