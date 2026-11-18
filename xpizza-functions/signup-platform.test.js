@@ -248,7 +248,7 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     t.db.set(`user_profiles/${B}`, { phone: '50488881111', created_at: 5, name: 'Beto' });
     const get = (q, hdr, body) => t.call('getMyProfile', body, { method: 'GET', query: q, headers: hdr ? { 'x-firebase-id-token': hdr } : {} });
     let r = await get({ context: 'platform' }, `cust:${A}`);
-    assert.deepStrictEqual(r.body, { ok: true, name: 'Ana', email: 'a@x.hn', phone: '50499990000', phone_last4: '0000', consent: { terms: true, terms_version: 't1', promos: false }, completion: 'complete', promos: false, addresses: [], default_address: null }, '🔴 getMyProfile\'s body, the book ALWAYS present ([] / null)');   // S-ADDR-1
+    assert.deepStrictEqual(r.body, { ok: true, name: 'Ana', email: 'a@x.hn', phone: '50499990000', phone_last4: '0000', consent: { terms: true, terms_version: 't1', promos: false }, completion: 'complete', promos: false, addresses: [], default_address: null, default_address_rev: 0 }, '🔴 getMyProfile\'s body, the book ALWAYS present ([] / null / rev 0)');   // S-ADDR-1
     assert.strictEqual(r.headers['Cache-Control'], 'no-store');
     for (const [q, why] of [[{ context: 'platform', uid: B }, 'a uid param'], [{ context: 'platform', phone: '50488881111' }, 'a phone param'], [{}, 'no scope'], [{ context: 'x_pizza' }, 'a rid scope']]) {
       r = await get(q, `cust:${A}`); assert.deepStrictEqual([r.statusCode, r.body], [400, { ok: false, reason: 'bad_request' }], `🔴 ${why}`);
@@ -301,6 +301,14 @@ const plat = (o = {}) => ({ phone: PHONE, context: 'platform', ...o });
     r = await get(`cust:${A}`);
     assert.strictEqual(r.body.addresses.length, 20, '🔴 at most 20 served'); assert.strictEqual(r.body.addresses[0].last_used_at, 1024, 'newest use first');
     assert.ok(Buffer.byteLength(JSON.stringify(r.body.addresses)) < 20 * 400, 'a capped book stays small');
+    // PLAN-3a-addr-rev: the selection's revision rides the same profile read — the stored integer, else 0 (absent / malformed: lazy, never a lockout)
+    assert.strictEqual(r.body.default_address_rev, 0, '🔴 PROFILE-REV: a forms-era row (no rev) ⇒ default_address_rev 0');
+    t.db.set(`user_profiles/${A}/default_address_rev`, 7);
+    assert.strictEqual((await get(`cust:${A}`)).body.default_address_rev, 7, '🔴 PROFILE-REV: the stored rev is served');
+    for (const bad of ['7', -2, 1.5, true, { n: 1 }]) {
+      t.db.set(`user_profiles/${A}/default_address_rev`, bad);
+      assert.strictEqual((await get(`cust:${A}`)).body.default_address_rev, 0, `🔴 PROFILE-REV: a malformed stored rev (${JSON.stringify(bad)}) ⇒ 0`);
+    }
     // 0 added reads: the book comes from the profile read getMyProfile already makes
     const reads = []; const orig = t.db.ref; t.db.ref = (p) => { reads.push(p); return orig(p); };
     await get(`cust:${A}`); t.db.ref = orig;

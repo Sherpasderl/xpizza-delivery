@@ -22,8 +22,13 @@ function isValidEntry(id, e) {
     && typeof e.created_at === 'number' && Number.isFinite(e.created_at) && typeof e.last_used_at === 'number' && Number.isFinite(e.last_used_at);
 }
 
-// the SERVED book from a profile → { addresses: [{ id, label, detected, details, lat, lng, last_used_at }], default_address: id | null }
-// newest use first (last_used_at desc, then id); at most BOOK_MAX; default_address only when it names a SERVED entry. Never created_at.
+// PLAN-3a-addr-rev: the selection's revision — user_profiles/{uid}/default_address_rev, server-only (the rules' $other:false). The stored
+// safe integer ≥ 0, else 0: absent (every forms-era row) or malformed reads as 0 — lazy, no migration, never a lockout.
+const revOf = (profile) => { const v = isObj(profile) ? profile.default_address_rev : undefined; return Number.isSafeInteger(v) && v >= 0 ? v : 0; };
+
+// the SERVED book from a profile → { addresses: [{ id, label, detected, details, lat, lng, last_used_at }], default_address: id | null,
+// default_address_rev } — newest use first (last_used_at desc, then id); at most BOOK_MAX; default_address only when it names a SERVED
+// entry. Never created_at.
 function projectBook(profile) {
   const book = isObj(profile) && isObj(profile.addresses) ? profile.addresses : {};
   const rows = Object.keys(book).filter((id) => isValidEntry(id, book[id]))
@@ -31,7 +36,7 @@ function projectBook(profile) {
     .sort((a, b) => (b.last_used_at - a.last_used_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(0, BOOK_MAX);
   const def = isObj(profile) ? profile.default_address : null;
-  return { addresses: rows, default_address: typeof def === 'string' && rows.some((r) => r.id === def) ? def : null };
+  return { addresses: rows, default_address: typeof def === 'string' && rows.some((r) => r.id === def) ? def : null, default_address_rev: revOf(profile) };
 }
 
-module.exports = { projectBook, isValidEntry, ADDR_ID_RE, BOOK_MAX, ENTRY_KEYS };
+module.exports = { projectBook, isValidEntry, revOf, ADDR_ID_RE, BOOK_MAX, ENTRY_KEYS };
