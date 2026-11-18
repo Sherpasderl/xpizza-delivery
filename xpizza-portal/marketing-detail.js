@@ -143,16 +143,19 @@ function paint() {
 function actions(o) {
   const box = el('div', 'mk5d-acts');
   const acts = ML.actionsOf(o);
-  if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.addEventListener('click', () => D.ctx.onEdit(o)); box.append(b); }
+  // Codex #131 / owner option A: ONE action at a time per offer — while a move on it is out (its call or its confirmation), «Editar» and
+  // «Más acciones» are disabled like the move's own button; they come back when it settles
+  if (ML.editable(o) !== 'none' && o.state !== 'draft') { const b = el('button', 'mk5d-btn', 'Editar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => { if (!D.busy) D.ctx.onEdit(o); }); box.append(b); }
   if (o.status === 'live' && acts.includes('pause')) { const b = el('button', 'mk5d-btn', 'Pausar'); b.type = 'button'; b.disabled = D.busy; b.addEventListener('click', () => move('pause')); if (D.confirming) busyLabel(b, 'Pausar'); box.append(b); }
   const menu = [];
   if (acts.includes('repeat')) menu.push(['repeat', 'Repetir campaña']);
   if (acts.includes('end')) menu.push(['end', 'Terminar oferta']);
   if (menu.length) {
     const k = el('div', 'mk5d-kebab');
-    const t = el('button', 'mk5d-more1'); t.type = 'button'; t.setAttribute('aria-label', 'Más acciones'); t.setAttribute('aria-haspopup', 'menu'); t.setAttribute('aria-expanded', D.menu ? 'true' : 'false');
-    t.append(svg(...MORE)); t.addEventListener('click', () => { D.menu = !D.menu; render(); });
-    const m = el('div', `mk5-menu${D.menu ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
+    const open = D.menu && !D.busy;
+    const t = el('button', 'mk5d-more1'); t.type = 'button'; t.disabled = D.busy; t.setAttribute('aria-label', 'Más acciones'); t.setAttribute('aria-haspopup', 'menu'); t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    t.append(svg(...MORE)); t.addEventListener('click', () => { if (D.busy) return; D.menu = !D.menu; render(); });
+    const m = el('div', `mk5-menu${open ? ' mk5-open' : ''}`); m.setAttribute('role', 'menu');
     for (const [a, word] of menu) {
       const b = el('button', a === 'end' ? 'mk5-opt mk5-danger' : 'mk5-opt'); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.dataset.act = a;
       if (a === 'end') b.append(svg(...STOP));
@@ -198,7 +201,8 @@ export async function move(kind) {
     return;
   }
   D.busy = false; D.confirming = false;
-  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown({ retry, wg }); else if (ctx.onChanged) ctx.onChanged(); return; }
+  // render FIRST: the settled move never leaves «Confirmando…» on screen, whatever the list does with the handoff (Codex #131)
+  if (r.outcome === 'unknown') { render(); if (ctx.onUnknown) ctx.onUnknown({ retry, wg }); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
   D.sheet = null;

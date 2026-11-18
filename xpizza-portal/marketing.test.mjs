@@ -1300,6 +1300,29 @@ test('X5 [P2] an OP-JUDGED 400 settles: the offer\'s start passed during the out
   assert.equal(pending(p).length, 0, 'X5: settled — nothing more scheduled');
 });
 
+test('X7 [Codex #131, owner option A] one action at a time per offer: while «Pausar» is confirming, «Editar» and «Más acciones» on that offer are disabled; once it settles they come back and «Editar» opens', async () => {
+  const b = await world();
+  await publish(b, LIVE());
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState'];   // the call never reaches the server …
+  let release; b.net.hold = { fn: 'marketingOfferSetState', until: new Promise((r) => { release = r; }) };   // … its confirmation is held: «Confirmando…»
+  p.btn('Pausar').click(); await settle(150);
+  const acts = () => p.host().querySelector('.mk5d-acts');
+  const edit = () => [...acts().querySelectorAll('button')].find((x) => x.textContent.trim() === 'Editar');
+  assert.ok(acts().textContent.includes('Confirmando…'), 'premise: the move is confirming');
+  assert.equal(edit().disabled, true, 'X7: «Editar» is disabled while the move on this offer is confirming');
+  assert.equal(acts().querySelector('.mk5d-more1').disabled, true, 'X7: «Más acciones» too');
+  edit().click(); await settle(80);
+  assert.equal(dlg(p), null, 'X7: a click on it opens nothing');
+  release(); await settle(300);   // the confirmation lands it: settled
+  assert.equal(toastText(p), 'Oferta pausada. Reanudala cuando querás.', 'premise: settled (landed)');
+  const ed = p.btn('Editar');
+  assert.ok(ed && !ed.disabled, 'X7: after the move settles, «Editar» is back');
+  ed.click(); await settle(150);
+  assert.ok(dlg(p), 'X7: and it opens the editor');
+});
 test('S7 cancelled: leaving the page, another account, or a NEW write stops the confirmations — nothing more is sent', async () => {
   for (const how of ['leave', 'account', 'write']) {
     const b = await world();
