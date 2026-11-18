@@ -1849,9 +1849,19 @@ test('S2 §5.2 — REVIEW-DELETIONS: «Cancelar» keeps the draft and sends noth
 });
 
 // ── STRUCTURE S2 P-6 — extraRefs: after a save, a NEW extra's view state follows it to its allocated key (5f's REAL handler) ──────────
-async function probeOnPage(p, price) {
+// Since 3ceb801f3 (Codex #119 P2, catalog/choice-compare rewardGroupGuard) a NEW extra in a group that feeds a legacy form's reward
+// picker is refused by the real save (reward_group_add_blocked). The probe's group is DERIVED from the published menu's OWN
+// structure.redeem_eligible_extras (never a group name): the first rail group NOT fed by a reward picker, or — for the guard's own cell —
+// the first one that is.
+const rewardGroupsOf = (src) => { const cat = new Map(src.extras.map((e) => [e.key, e.display && e.display.cat]));
+  return new Set(((src.structure && src.structure.redeem_eligible_extras) || []).map((k) => cat.get(k)).filter(Boolean)); };
+async function probeOnPage(p, price, { reward = false } = {}) {
   await p.signIn();
   tabBtn(p, 'Extras').click(); await settle(10);
+  const rg = rewardGroupsOf(REAL_LIVE.src || SRC);
+  const g = railRows(p).find((r) => rg.has(r.dataset.group) === reward);
+  assert.ok(g, `premise: a rail group ${reward ? '' : 'NOT '}fed by a reward picker (reward groups: ${JSON.stringify([...rg])})`);
+  g.click(); await settle(10);
   addBtn(p).click(); await settle(5);
   p.type(newRow(p).querySelector('input[aria-label="Nombre del extra"]'), '  Probe   extra  '); await settle(5);
   const pr = newRow(p).querySelector('.price input'); pr.focus(); p.type(pr, String(price)); await settle(5);
@@ -1875,6 +1885,24 @@ test('S2 P-6 — the owner\u2019s save adopts the server\u2019s keys: the SAME r
     assert.ok(typeof k.key === 'string' && ext && ext.display.name === 'Probe extra', `adopted through extraRefs (Probe extra) — ${JSON.stringify(k)}`);
   } finally { S2_SERVER.on = false; }
 });
+test('S2 Codex #119 P2 end to end — a NEW extra in a group that feeds a reward picker: 5f\u2019s REAL save refuses it (reward_group_add_blocked), the review shows the panel, and the row stays «Nuevo», unkeyed', async () => {
+  S2_SERVER.on = true;
+  try {
+    assert.ok(rewardGroupsOf(SRC).size > 0, 'premise: the seed has a group fed by a reward picker (else this cell proves nothing)');
+    const p = await page({ read: XON, on: { editCatalog: realSave } });
+    const row = await probeOnPage(p, 36, { reward: true });
+    assert.ok(row, 'premise: the new row, in the reward group');
+    const n = realSave.statuses.length;
+    p.d.getElementById('review').click(); await settle(80);
+    assert.deepEqual(realSave.statuses.slice(n), [400], 'the real save refused it');
+    assert.equal(panel(p) && panel(p).title, 'No se pueden agregar extras a este grupo', 'the reward-group panel (d46717502)');
+    p.d.getElementById('pubback').click(); await settle(20);
+    const after = xrows(p).find((r) => r.querySelector('.price input') && r.querySelector('.price input').value === '36');
+    assert.ok(after && after.querySelector('.tag.new'), 'the row is kept, still «Nuevo»');
+    assert.match(after.querySelector('.price input').dataset.k, /"ref":"tmp:/, 'and unkeyed: nothing was allocated');
+  } finally { S2_SERVER.on = false; }
+});
+
 test('S2 P-6 — the manager\u2019s send: focus stays in the SAME row\u2019s price across the adoption (its restore key re-keyed by extraRefs); without the map the view state is dropped, nothing mis-keyed', async () => {
   S2_SERVER.on = true;
   try {
