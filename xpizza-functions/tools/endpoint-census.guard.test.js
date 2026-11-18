@@ -124,6 +124,9 @@ const D = {
     // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
     'repair-revived-tombstones', 'ratings-v1-guard',
+    // owner GO 11-18 (card token off the payment record) — the one-time owner migration payment_sdk.token → payment_sdk_tokens (DRY RUN
+    // unless --apply): requireProject({ requireFlag: true }) before any argument or client
+    'migrate-sdk-tokens',
     // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
     // requireProject({ requireFlag: true }) before any client
     'identity-usable-check',

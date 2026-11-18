@@ -1,6 +1,8 @@
 'use strict';
 // fix/sdk-token-null-5f (owner ruling 11-18, card items 2; D4c-grill/privacy-5f/PLAN-card-token-cleanup.md (b)) — the reusable card
-// token on payment_sdk/{oid}.token is NULLED once nothing can read it: the order is finished (status delivered/completed, payment_terminal,
+// token lives OUTSIDE the record (owner GO 11-18, airtight by construction): payment_sdk_tokens/{oid}/{attempt_id}, written AHEAD of the
+// claim (concurrently with the claim's existing round trips), the record keeping only the pointer token_attempt; only
+// payments/sdk/record-token.js touches it. It is NULLED (the whole node removed, the pointer dropped) once nothing can read it: the order is finished (status delivered/completed, payment_terminal,
 // or a committed cancel / expiry — payment_cancel) AND the record is closed (not open / adjusting, no lock, no unanswered money op) AND the vault no longer owes a
 // read (the winning attempt did not ask to save, or rec.vault.state is set). token_hash (per attempt) is KEPT. ONE CAS on the
 // record, in the sweeper right after the vault step. Real coordinator + real sweeper + real cards on the honest RTDB model; the
@@ -22,27 +24,61 @@ const T0 = 1_800_000_000_000;   // 2027-01-15
 const H = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const DISP = { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 };
 const OID = 'tn_order_1';
-const world = (script = {}) => {
-  const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tn_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: T0 + 900000 } } });
+const world = (script = {}, { eligible = () => false, hooks = {} } = {}) => {
+  const db = makeHonestDb({ orders: { [OID]: { payment_flow: 'sdk_auth_v1', status: 'pending_payment', payment_status: 'pending', restaurant_id: 'tn_rest', customer_uid: 'uid_A', customer_name: 'Ana Pérez', total_cents: 100, pay_deadline_at: T0 + 900000 } } }, { now: () => T0, ...hooks });
   const fake = makeFakePsp(script);
-  const deps = { db, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {}, verifyIdToken: async () => ({ uid: 'uid_A' }) };
-  return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`) };
+  const deps = { db, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: eligible, ppNamespace: 'sandbox', goLive: async () => {}, verifyIdToken: async () => ({ uid: 'uid_A' }) };
+  return { db, fake, deps, rec: () => db.getAt(`payment_sdk/${OID}`), ord: () => db.getAt(`orders/${OID}`), node: () => db.getAt(`payment_sdk_tokens/${OID}`) };
 };
+const ATT = 'att_tn_place_00000001';
 const card = (save) => ({ card_ref: 'new', display: DISP, save, vault_gen: 0 });
-const place = async (w, token, save) => {
-  const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_tn_place_00000001', token, amount_cents: 100, card: card(save) });
+const place = async (w, token, save, att = ATT) => {
+  const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: att, token, amount_cents: 100, card: card(save) });
   assert.strictEqual(p.outcome, 'placed', 'premise: the real coordinator placed the order');
-  assert.strictEqual(w.rec().token, token, 'premise: the record carries the token');
 };
+// the token is GONE: no pointer, no legacy field, no node
+const gone = (w) => { const r = w.rec() || {}; return r.token === undefined && r.token_attempt === undefined && w.node() == null; };
 const deliver = async (w) => { await w.db.ref(`orders/${OID}/status`).set('delivered'); };
 const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_hash);
+const REV = (cents) => ({ items: [{ name: 'tb_item', qty: 1, unit: cents / 100 }], total_cents: cents, delivery_cents: 0 });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
+  // ── the node: the record never holds the token; the claim points at its attempt; the token sits at payment_sdk_tokens/{oid}/{aid} ──
+  await cell('TN-NODE-NOT-RECORD', async (L) => {
+    const w = world(); await place(w, 'T-node', false);
+    assert.ok(!JSON.stringify(w.rec()).includes('T-node'), `${L}: the payment_sdk record holds NO token value`);
+    assert.strictEqual(w.rec().token_attempt, ATT, `${L}: the claim points at its attempt (the last claim wins, as before)`);
+    assert.deepStrictEqual(w.node(), { [ATT]: 'T-node' }, `${L}: the token sits at payment_sdk_tokens/{oid}/{attempt_id}`);
+  });
+  // ── the re-authorize readers use the POINTED attempt's token (the last claim wins), read BEFORE any money op is journaled ──
+  await cell('TN-REAUTH-POINTER', async (L) => {
+    const w = world({ authorize: [{ outcome: 'definitive_decline', code: 'X' }, { outcome: 'approved' }, { outcome: 'approved' }] }, { eligible: () => true });
+    const p1 = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: 'att_tn_first_00000001', token: 'T-loser', amount_cents: 100, card: card(false) });
+    await place(w, 'T-winner', false, 'att_tn_second_0000002');
+    assert.ok(p1.outcome !== 'placed' && w.rec().token_attempt === 'att_tn_second_0000002', `premise: the second attempt placed and is pointed at (${p1.outcome})`);
+    await w.db.ref(`orders/${OID}/status`).set('preparing');
+    const r = await C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) });
+    const auths = w.fake.calls.filter((c) => c.action === 'authorize');
+    assert.ok(r && auths.length === 3, `premise: the decrease re-authorized (${JSON.stringify(r)}, ${auths.length} auths)`);
+    assert.strictEqual(auths[2].token, 'T-winner', `${L}: the decrease re-authorizes with the WINNING attempt's token from the node`);
+  });
+  await cell('TN-READ-BEFORE-JOURNAL', async (L) => {
+    let fail = false;
+    const w = world({ authorize: [{ outcome: 'approved' }] }, { eligible: () => true, hooks: { beforeRead: async (p) => { if (fail && String(p).startsWith('payment_sdk_tokens')) throw Object.assign(new Error('read failed'), { code: 'unavailable' }); } } });
+    await place(w, 'T-rf', false);
+    await w.db.ref(`orders/${OID}/status`).set('preparing');
+    const ops0 = Object.keys(w.rec().ops || {}).length;
+    fail = true;
+    await assert.rejects(() => C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) }));
+    assert.strictEqual(Object.keys(w.rec().ops || {}).length, ops0, `${L}: a failed token read journals NO money op (the read precedes dispatch)`);
+    assert.strictEqual(w.fake.callCount('authorize'), 1, `${L}: no PSP call`);
+  });
   await cell('TN-NULL-NO-SAVE', async (L) => {
     const w = world(); await place(w, 'T-nosave', false); await deliver(w);
     await SW.visitDueOrder(w.deps, OID);
     assert.ok(w.ord().payment_terminal && w.rec().phase === 'frozen', `${L}: premise — the real sweeper settled the delivered order`);
-    assert.strictEqual(w.rec().token, undefined, `${L}: a terminal, closed order with no save ⇒ the token is gone`);
+    assert.ok(gone(w), `${L}: a terminal, closed order with no save ⇒ the token node and the pointer are gone`);
     assert.deepStrictEqual(hashes(w), [H('T-nosave')], `${L}: the attempt's token_hash is kept`);
   });
   await cell('TN-NULL-AFTER-VAULT', async (L) => {
@@ -50,8 +86,8 @@ const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_h
     await SW.visitDueOrder(w.deps, OID);
     assert.strictEqual(w.rec().vault && w.rec().vault.state, 'done', `${L}: premise — the vault step ran on this visit`);
     const cards = Object.values(w.db.getAt('customer_cards/uid_A/cards') || {});
-    assert.ok(cards.length === 1 && cards[0].token === 'T-save', `${L}: the saved card got the token BEFORE it was nulled`);
-    assert.strictEqual(w.rec().token, undefined, `${L}: the same visit nulls the record's token once the vault is settled`);
+    assert.ok(cards.length === 1 && cards[0].token === 'T-save', `${L}: the saved card got the token (from the node) BEFORE it was nulled`);
+    assert.ok(gone(w), `${L}: the same visit nulls the token once the vault is settled`);
     assert.deepStrictEqual(hashes(w), [H('T-save')], `${L}: token_hash kept`);
   });
   await cell('TN-KEPT-WHILE-VAULT-OWED', async (L) => {
@@ -59,24 +95,49 @@ const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_h
     await C.settleTerminal(w.deps, { orderId: OID });
     assert.ok(w.ord().payment_terminal && !(w.rec().vault && w.rec().vault.state), `${L}: premise — terminal, the vault not yet run`);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: a save still owed ⇒ kept`);
-    assert.strictEqual(w.rec().token, 'T-owed', `${L}: the vault can still read it`);
+    assert.deepStrictEqual(w.node(), { [ATT]: 'T-owed' }, `${L}: the vault can still read it`);
     await K.completeVaultForOrder(w.deps, OID);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'nulled', `${L}: once the vault is settled ⇒ nulled`);
-    assert.strictEqual(w.rec().token, undefined, `${L}: gone`);
+    assert.ok(gone(w), `${L}: gone`);
   });
   await cell('TN-NULL-CANCELLED', async (L) => {
     const w = world(); await place(w, 'T-cancel', false);
     const c = await C.cancelSdkOrder(w.deps, { orderId: OID });
     assert.ok(w.ord().payment_cancel && w.rec().phase === 'cancelled' && !w.ord().payment_terminal, `${L}: premise — a committed cancel (${c && c.outcome}), never payment_terminal`);
     await SW.visitDueOrder(w.deps, OID);
-    assert.strictEqual(w.rec().token, undefined, `${L}: a cancelled order's token does not stay forever`);
+    assert.ok(gone(w), `${L}: a cancelled order's token does not stay forever`);
     assert.deepStrictEqual(hashes(w), [H('T-cancel')], `${L}: token_hash kept`);
+  });
+  // ── an ORPHAN: the write-ahead landed, the claim lost (the order was cancelled between them) ⇒ swept once the order is finished ──
+  await cell('TN-ORPHAN-SWEPT', async (L) => {
+    let n = 0; let w = null;
+    // the REAL cancel commits right before the claim's CAS reads the record (the 2nd transaction on it, after the create)
+    w = world({}, { hooks: { beforeTx: async (p) => { if (String(p) === `payment_sdk/${OID}` && ++n === 2) await C.cancelSdkOrder(w.deps, { orderId: OID }); } } });
+    const p = await C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-orphan', amount_cents: 100, card: card(false) });
+    assert.ok(p.outcome !== 'placed' && !(w.rec() || {}).token_attempt && w.fake.callCount('authorize') === 0, `premise: the claim LOST after the write-ahead (${p.outcome}), nothing dispatched`);
+    assert.deepStrictEqual(w.node(), { [ATT]: 'T-orphan' }, 'premise: the write-ahead token landed');
+    await SW.visitDueOrder(w.deps, OID);
+    await K.nullSpentToken(w.deps, OID);
+    assert.strictEqual(w.node(), null, `${L}: a write-ahead token whose order is finished is swept (never outlives the order)`);
+  });
+  // ── a LEGACY record (token on the record, before the migration): the readers fall back inside record-token, the null drops it ──
+  await cell('TN-LEGACY-FALLBACK', async (L) => {
+    const w = world({ authorize: [{ outcome: 'approved' }, { outcome: 'approved' }] }, { eligible: () => true });
+    await place(w, 'T-legacy', false);
+    await w.db.ref(`payment_sdk/${OID}`).update({ token: 'T-legacy', token_attempt: null }); await w.db.ref(`payment_sdk_tokens/${OID}`).set(null);
+    await w.db.ref(`orders/${OID}/status`).set('preparing');
+    await C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) });
+    const auths = w.fake.calls.filter((c) => c.action === 'authorize');
+    assert.strictEqual(auths[auths.length - 1].token, 'T-legacy', `${L}: a legacy record re-authorizes with its own token (fallback)`);
+    await w.db.ref(`orders/${OID}`).update({ status: 'delivered' }); await C.settleTerminal(w.deps, { orderId: OID });
+    assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'nulled', `${L}: the null recognises a legacy token`);
+    assert.ok(gone(w), `${L}: the legacy token is dropped from the record`);
   });
   await cell('TN-KEPT-WHILE-OPEN', async (L) => {
     const w = world(); await place(w, 'T-open', false);
     await SW.visitDueOrder(w.deps, OID);
     assert.ok(!w.ord().payment_terminal && w.rec().phase === 'open', `${L}: premise — a live (placed, not terminal) order`);
-    assert.strictEqual(w.rec().token, 'T-open', `${L}: an open order keeps its token (a decrease re-authorizes with it)`);
+    assert.deepStrictEqual(w.node(), { [ATT]: 'T-open' }, `${L}: an open order keeps its token (a decrease re-authorizes with it)`);
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: not terminal ⇒ kept`);
   });
   await cell('TN-KEPT-RECORD-NOT-CLOSED', async (L) => {
@@ -84,7 +145,7 @@ const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_h
     await C.settleTerminal(w.deps, { orderId: OID });
     await w.db.ref(`payment_sdk/${OID}/lock`).set({ op_id: 'op_x', at: T0 });   // a money operation in flight
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'kept', `${L}: a locked record ⇒ kept`);
-    assert.strictEqual(w.rec().token, 'T-lock', `${L}: kept`);
+    assert.deepStrictEqual(w.node(), { [ATT]: 'T-lock' }, `${L}: kept`);
   });
   await cell('TN-IDEMPOTENT', async (L) => {
     const w = world(); await place(w, 'T-idem', false); await deliver(w);
@@ -92,7 +153,22 @@ const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_h
     const v = w.rec().version;
     assert.strictEqual(await K.nullSpentToken(w.deps, OID), 'none', `${L}: nothing left to null`);
     await SW.visitDueOrder(w.deps, OID);
-    assert.strictEqual(w.rec().version, v, `${L}: a later visit writes nothing (no version bump)`);
+    assert.strictEqual(w.rec().version, v, `${L}: a later visit writes nothing to the record (no version bump)`);
+  });
+  // ── owner 11-18 «keep our platform fast and seamless»: the write-ahead adds NO sequential round trip to the checkout claim. Every
+  //    database op is delayed D; the REAL placeOriginal is timed with the real write-ahead and with it stubbed to a no-op ──
+  await cell('TN-LATENCY', async (L) => {
+    const RT = require('./record-token'); const real = RT.stashToken; const D = 15;
+    const time = async (i) => { const w = world({}, { hooks: { beforeRead: () => sleep(D), beforeTx: () => sleep(D), beforeWrite: () => sleep(D) } }); const t = Date.now(); await place(w, `T-lat-${i}`, false, `att_tn_latency_${String(i).padStart(7, '0')}`); return Date.now() - t; };
+    const med = (a) => a.sort((x, y) => x - y)[Math.floor(a.length / 2)];
+    const withStash = []; const without = [];
+    try {
+      for (let i = 0; i < 5; i++) { RT.stashToken = real; withStash.push(await time(i)); RT.stashToken = async () => {}; without.push(await time(i + 10)); }
+    } finally { RT.stashToken = real; }
+    const delta = med(withStash) - med(without);
+    console.log(`    latency: claim median ${med(withStash)} ms with the write-ahead vs ${med(without)} ms without (D = ${D} ms/op) — delta ${delta} ms`);
+    assert.ok(typeof real === 'function', `${L}: premise — record-token.stashToken exists`);
+    assert.ok(delta < D / 2, `${L}: the write-ahead runs CONCURRENTLY with the claim's existing round trips (delta ${delta} ms < ${D / 2} ms)`);
   });
   // the reader CENSUS (Codex #149) moved: payment_sdk's token has ONE owner (payments/sdk/record-token.js) and a TREE-WIDE guard,
   // payments/sdk/record-token.guard.test.js (owner 11-18 «airtight», Codex #150) — every token site, record escape and owner call pinned.

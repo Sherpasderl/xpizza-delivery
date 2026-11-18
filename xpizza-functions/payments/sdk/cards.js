@@ -132,7 +132,7 @@ async function completeVaultForOrder(deps, orderId) {
   if (!va) return { outcome: 'none' };
   const { aid, att } = va;
   // the record's token is the WINNING attempt's (claims serialize; the winner is the last claimed) — verified by its hash
-  const token = require('./record-token').tokenOf(rec);
+  const token = await require('./record-token').readAttemptToken(deps.db, orderId, rec, aid);   // the WINNING attempt's token (payment_sdk_tokens)
   const ok = typeof token === 'string' && crypto.createHash('sha256').update(token).digest('hex') === att.token_hash;
   const r = ok ? await completeVault(deps, { uid: order.customer_uid, token, token_hash: att.token_hash, display: att.display, vault_gen: att.vault_gen }) : { outcome: 'skipped' };
   const state = r.outcome === 'dropped' ? 'dropped' : r.outcome === 'skipped' ? 'skipped' : 'done';
@@ -153,13 +153,16 @@ async function nullSpentToken(deps, orderId) {
   let out = 'none';
   await R.casRecord(deps.db, orderId, (x) => {
     out = 'none';
-    if (typeof T.tokenOf(x) !== 'string') return undefined;
+    if (!T.hasToken(x)) return undefined;
     out = 'kept';
     if (!finished || x.phase === 'open' || x.phase === 'adjusting' || x.lock || R.unansweredMoneyOps(x).length) return undefined;
     if (vaultAttemptOf(order, x) && !(isObj(x.vault) && x.vault.state)) return undefined;
-    T.dropToken(x); out = 'nulled';
+    T.dropPointer(x); out = 'nulled';
     return x;
   });
+  // owner GO 11-18: the token NODE goes with the pointer — and a finished order with no pointer sweeps any ORPHAN (a write-ahead whose
+  // claim lost, or a crash between the pointer drop and this remove): nothing at payment_sdk_tokens outlives a finished order
+  if (out === 'nulled' || (out === 'none' && finished && await T.hasTokens(deps.db, orderId))) await T.dropTokens(deps.db, orderId);
   return out;
 }
 module.exports = { nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

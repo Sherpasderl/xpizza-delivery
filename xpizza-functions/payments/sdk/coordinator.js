@@ -160,8 +160,14 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
   const deadline = deadlineOf(order, null);   // enforced IN the claim CAS below (the one authoritative check)
   await enrol(deps, orderId);
   // LEDGER S1: the frozen allocation snapshot (mode sdk — the app marker is forced server-side) rides the record create; `order` is the
-  // order this request created (finish.js), the same read the amount check above trusts
+  // order this request created (finish.js), the same read the amount check above trusts.
+  // owner GO 11-18: the token's WRITE-AHEAD (payment_sdk_tokens/{oid}/{attempt_id}, record-token) runs CONCURRENTLY with the record create
+  // — no added sequential round trip on checkout (token-null TN-LATENCY) — after enrol (an orphan always has a due entry to sweep it).
+  // The stash is STARTED before the create and awaited after it; a failure of either stops the claim (its error is captured, never lost)
+  const stashed = T.stashToken(deps.db, orderId, attempt_id, token).then(() => null, (err) => err);   // started now, awaited after the create
   await R.createRecord(deps.db, orderId, { flow: 'sdk_auth_v1', phase: 'open', committed_revision: 0, fulfillment_total_cents: amount_cents, created_at: now, ttl_at: deadline != null ? deadline : now + R.TTL_MS, ledger: require('../../ledger/alloc-snapshot').snapshotOf(order, require('../../ledger/alloc-snapshot').modeOf({ sdk: true, clientHdr: { app: null, deployment: 'orders-app' } })) });
+  { const err = await stashed; if (err) throw err; }   // the write-ahead has landed before the claim CAS (or the claim never runs)
+
   const ref = ppRef(deps.ppNamespace || 'unconfigured', orderId, attempt_id);
   const tokenHash = require('crypto').createHash('sha256').update(token).digest('hex');
   let legId = null; let replay = null; let late = false;
@@ -179,7 +185,7 @@ async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, a
       legId = newLeg(rec, 'original', amount_cents, now);
       Object.assign(rec.legs[legId], { state: 'sent', attempt_id, pp_ref: ref });
       rec.attempts = { ...(rec.attempts || {}), [attempt_id]: { leg_id: legId, token_hash: tokenHash, card_ref: card && card.card_ref ? card.card_ref : 'new', display, save: !!(card && card.save), vault_gen: card && Number.isInteger(card.vault_gen) ? card.vault_gen : 0, amount_cents, at: now } };
-      T.setToken(rec, token);
+      T.claimFor(rec, attempt_id);   // the record points at its attempt; the token itself is in payment_sdk_tokens
       rec.fulfillment_total_cents = amount_cents;
       return rec;
     },
@@ -533,10 +539,11 @@ async function requestDecrease(deps, { orderId, new_total_cents, revision }) {
   const S = committedLegIds(rec);
   if (S.length && S.every((id) => deps.voidEligible(R.legsOfRecord(rec)[id], now))) {
     let legId = null;
+    const tok = await T.readToken(deps.db, orderId, rec);   // read BEFORE dispatch: a failed read journals no money op
     const d = await dispatch(deps, orderId, {
       action: 'auth', legId: () => legId, amount_cents: new_total_cents,
       pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'replacement', new_total_cents, now); r.legs[legId].state = 'sent'; r.legs[legId].pp_ref = orderId; return r; },   // the provider order id this auth is sent with (its void is signed over it)
-      call: (opId) => deps.psp.pspAuthorize({ token: T.tokenOf(rec), amount_cents: new_total_cents, op_id: opId, ref: orderId }),
+      call: (opId) => deps.psp.pspAuthorize({ token: tok, amount_cents: new_total_cents, op_id: opId, ref: orderId }),
       apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
     });
     if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
@@ -598,10 +605,11 @@ async function applyIncrease(deps, { orderId, adjustment_id, order_revision, new
     return res.outcome === 'committed' ? { outcome: 'committed' } : res;
   }
   let legId = null;
+  const tok = await T.readToken(deps.db, orderId, rec);   // read BEFORE dispatch: a failed read journals no money op
   const d = await dispatch(deps, orderId, {
     action: 'auth', legId: () => legId, amount_cents: need,
     pre: (r) => { if (r.phase !== 'open' || (r.committed_revision || 0) !== base) return undefined; legId = newLeg(r, 'delta', need, now); r.legs[legId].state = 'sent'; return r; },
-    call: (opId) => deps.psp.pspAuthorize({ token: T.tokenOf(rec), amount_cents: need, op_id: opId, ref: orderId }),
+    call: (opId) => deps.psp.pspAuthorize({ token: tok, amount_cents: need, op_id: opId, ref: orderId }),
     apply: (r, l, out, opId) => applyAuth(deps, r, l, out, opId),
   });
   if (!d.dispatched) return { outcome: 'refused', reason: 'locked_or_busy' };
