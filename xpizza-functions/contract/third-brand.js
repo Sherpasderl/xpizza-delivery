@@ -31,7 +31,7 @@ function renameAll(obj, map) {
   return obj;
 }
 
-function thirdBrandSource() {
+function thirdBrandSource(rid = THIRD) {
   const t = JSON.parse(JSON.stringify(buildSourceFromCode('x_pizza')));
   const map = {};
   for (const it of t.items) { if (typeof it.key === 'string') map[it.key] = `R3 ${it.key}`; if (it.display && typeof it.display.name === 'string' && !map[it.display.name]) map[it.display.name] = `R3 ${it.display.name}`; }
@@ -40,6 +40,7 @@ function thirdBrandSource() {
   src.structure = { ...src.structure, extra_categories: [], extras_by_category: Object.fromEntries(Object.keys(src.structure.extras_by_category || {}).map((k) => [k, []])),
     exposure: { ...(src.structure.exposure || {}), category_allow: Object.fromEntries(Object.keys((src.structure.exposure || {}).category_allow || {}).map((k) => [k, []])), item_overrides: {} } };
   for (const it of src.items) { if (it.display) delete it.display.identity_id; }
+  src.restaurant_id = rid;   // fix/third-brand-rid-5f: the copy is THIS brand's source (validateSource refuses a foreign restaurant_id on read)
   return { source: src, renamed: map };
 }
 
@@ -51,7 +52,7 @@ function candidateFromSource(rid, src) {
 
 // publish the third brand's V1 through the real path; returns { versionId, source, renamed }
 async function publishThirdBrand(fs, { rid = THIRD, mirror } = {}) {
-  const { source, renamed } = thirdBrandSource();
+  const { source, renamed } = thirdBrandSource(rid);
   await sourceRefOf(fs, rid).set(canonicalize(source));
   const snap = await sourceRefOf(fs, rid).get();
   const prev = await getActivePointer(fs, rid);
