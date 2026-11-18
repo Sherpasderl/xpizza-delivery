@@ -7696,7 +7696,8 @@
   "payments/sdk/coordinator.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/ledger-writes.guard.test.js"
+    "xpizza-functions/ledger-writes.guard.test.js",
+    "xpizza-functions/payments/sdk/token-null.test.js"
    ]
   },
   "payments/sdk/decline-buckets.js": {

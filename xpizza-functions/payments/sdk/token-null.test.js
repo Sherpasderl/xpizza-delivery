@@ -94,16 +94,66 @@ const hashes = (w) => Object.values(w.rec().attempts || {}).map((a) => a.token_h
     await SW.visitDueOrder(w.deps, OID);
     assert.strictEqual(w.rec().version, v, `${L}: a later visit writes nothing (no version bump)`);
   });
-  // every reader of the record's token is known: a NEW reader must be reviewed against the null rule (PLAN (b))
-  await cell('TN-READERS-PINNED', async (L) => {
-    const dir = __dirname;
-    const got = {};
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js') && !x.endsWith('.test.js'))) {
-      const n = (fs.readFileSync(path.join(dir, f), 'utf8').match(/\brec\.token\b/g) || []).length;
-      if (n) got[f] = n;
+  // every reader of a record's token is known (Codex #149 r1 P2): a CENSUS of every `.token` / `['token']` / destructured `token`
+  // access — ANY receiver (an alias included) — by AST, across EVERY non-test file of xpizza-functions that reads a payment_sdk path
+  // (the literal, or the record / coordinator readers), the file set derived by grep at run time (a new reader file joins it). Each
+  // site is pinned by file + exact line text: a new or moved reader must be reviewed against the null rule (PLAN (b)).
+  const FN = path.join(__dirname, '..', '..');
+  const { execFileSync } = require('child_process');
+  const acorn = require('acorn');
+  const readerFiles = () => [...new Set([
+    ...execFileSync('git', ['grep', '-l', 'payment_sdk', '--', '*.js', ':!*.test.js', ':!test/**'], { cwd: FN, encoding: 'utf8' }).split('\n'),
+    ...execFileSync('git', ['grep', '-l', '-E', "require\\(['\"][./a-z/]*(payments/sdk/)?(record|coordinator)['\"]\\)|readRecord\\(", '--', '*.js', ':!*.test.js', ':!test/**'], { cwd: FN, encoding: 'utf8' }).split('\n'),
+  ])].filter(Boolean).sort();
+  const isTok = (k, computed) => (!computed && k.type === 'Identifier' && k.name === 'token') || (k.type === 'Literal' && k.value === 'token');
+  function tokenSites(files, read) {
+    const out = [];
+    for (const f of files) {
+      const src = read(f); const lines = src.split('\n');
+      const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', allowHashBang: true, locations: true, allowReturnOutsideFunction: true });
+      const walk = (n) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        if (typeof n.type !== 'string') return;
+        if (n.type === 'MemberExpression' && isTok(n.property, n.computed)) out.push(`${f} | ${lines[n.loc.start.line - 1].trim()}`);
+        if (n.type === 'ObjectPattern') for (const q of n.properties) if (q.type === 'Property' && isTok(q.key, q.computed)) out.push(`${f} | ${lines[q.loc.start.line - 1].trim()}`);
+        for (const [k, v] of Object.entries(n)) if (k !== 'loc') walk(v);
+      };
+      walk(ast);
     }
-    assert.deepStrictEqual(got, { 'cards.js': 1, 'coordinator.js': 3 },
-      `${L}: rec.token readers/writers = the claim write + decrease + (refused) increase + the vault — a new one needs the null rule reviewed`);
+    return out.sort();
+  }
+  const REVIEWED = [
+    'payments/sdk/cards.js | async function completeVault(deps, { uid, token, token_hash: h, display: rawDisplay, vault_gen: gen }) {',   // a card write's own argument
+    'payments/sdk/cards.js | const token = rec.token;',                                                                                   // the vault (owed ⇒ kept)
+    'payments/sdk/cards.js | delete x.token; out = \'nulled\';',                                                                         // the null itself
+    'payments/sdk/cards.js | if (!isObj(c) || typeof c.token !== \'string\' || expiredNow(c, deps.clock())) return null;',               // a SAVED card (customer_cards)
+    'payments/sdk/cards.js | if (typeof x.token !== \'string\') return undefined;',                                                      // the null itself
+    'payments/sdk/cards.js | return { card_id: cardId, token: c.token, token_hash: c.token_hash, display: { brand: c.brand, last4: c.last4, exp_month: c.exp_month, exp_year: c.exp_year } };',   // a SAVED card
+    'payments/sdk/coordinator.js | async function placeOriginal(deps, { orderId, attempt_id, token, amount_cents, authentication_identifier = null, card = null }) {',   // the claim's argument
+    'payments/sdk/coordinator.js | call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: need, op_id: opId, ref: orderId }),',   // increase (refused, owner 11-10)
+    'payments/sdk/coordinator.js | call: (opId) => deps.psp.pspAuthorize({ token: rec.token, amount_cents: new_total_cents, op_id: opId, ref: orderId }),',   // decrease (open only)
+    'payments/sdk/coordinator.js | rec.token = token;',                                                                                    // the claim write
+    'payments/sdk/finish.js | token = s.token; card = { display: s.display, save: false, card_ref: `saved:${s.card_id}` };',             // a SAVED card resolved
+  ].sort();
+  const realRead = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
+  await cell('TN-READERS-CENSUS', async (L) => {
+    const files = readerFiles();
+    assert.ok(files.includes('payments/sdk/coordinator.js') && files.includes('ledger/projector.js') && files.length >= 15, `${L}: premise — the reader file set spans the repo (${files.length} files)`);
+    assert.deepStrictEqual(tokenSites(files, realRead), REVIEWED, `${L}: every token access in a payment_sdk reader is a reviewed site (file + exact line) — a new one needs the null rule reviewed`);
+  });
+  // negative controls: each planted reader must change the census
+  const plant = (file, text) => (f) => (f === file ? `${realRead(f)}\n${text}\n` : realRead(f));
+  await cell('TN-READERS-CENSUS-ALIAS', async (L) => {
+    for (const t of ['function z(rec) { const paymentRecord = rec; return paymentRecord.token; }', "function z(rec) { const r2 = rec; return r2['token']; }", 'function z(rec) { const { token } = rec; return token; }', 'function z(rec) { return rec?.token; }']) {
+      assert.notDeepStrictEqual(tokenSites(readerFiles(), plant('payments/sdk/cards.js', t)), REVIEWED, `${L}: an aliased / computed / destructured / optional reader in cards.js is caught: ${t}`);
+    }
+  });
+  await cell('TN-READERS-CENSUS-OUTSIDE', async (L) => {
+    assert.notDeepStrictEqual(tokenSites(readerFiles(), plant('ledger/projector.js', 'function z(snap) { return snap.val().token; }')), REVIEWED, `${L}: a reader outside payments/sdk (ledger) is caught`);
+    const files = [...readerFiles(), 'virtual-new-reader.js'];
+    const read = (f) => (f === 'virtual-new-reader.js' ? "const z = async (db, id) => (await db.ref(`payment_sdk/${id}`).once('value')).val().token;" : realRead(f));
+    assert.notDeepStrictEqual(tokenSites(files, read), REVIEWED, `${L}: a NEW file reading payment_sdk with a token access is caught`);
   });
   console.log(fails.length ? `\nFAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\ntoken-null: OK (${pass})`);
   process.exit(fails.length ? 1 : 0);
