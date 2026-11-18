@@ -114,6 +114,13 @@ const addTo = (group, ref, name, price) => (d) => { const t = XT.apply(d, { op: 
     } finally { Object.defineProperty(H.SW, 'legacyPickers', { configurable: true, writable: true, enumerable: true, value: keep }); }
   });
 
+  await cell('RG-READ-LIVE-UNREADABLE (Codex #136): the guard is on but the live read REJECTS ⇒ rewardGroups [] (fail-closed empty — never absent, which would read as «guard off»); the editor still loads', async (L) => {
+    const r = await H.world('la_musa').editorRead({ liveRead: async () => { throw new Error('live unreadable'); } });
+    assert.strictEqual(r.status, 200, `${L}: the editor still loads (${JSON.stringify(r.body).slice(0, 120)})`);
+    assert.strictEqual(r.body.extrasCatalog, true, `${L}: premise — the switch is on`);
+    assert.deepStrictEqual(r.body.rewardGroups, [], `🔴 RG-READ-LIVE-UNREADABLE: ${JSON.stringify(r.body.rewardGroups)}`);
+  });
+
   if (fails.length) { console.error(`reward-group-guard FAILED: ${fails.join(' | ')}`); process.exit(1); }
   console.log(`\nreward-group-guard: OK (${n})`);
 })().catch((e) => { console.error('reward-group-guard FAILED:', e && e.message); process.exit(1); });

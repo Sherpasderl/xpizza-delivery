@@ -255,16 +255,17 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
 
   /* portal «Agregar extra» R1 (advisor 11-17): the groups whose NEW extra the save refuses (reward_group_add_blocked) — from the SAME
      on-condition and the SAME derivation as the guard (choice-compare rewardGroupGuardOn / rewardGroupsOf), on the SAME live read the save
-     judges against (its extra records + structure). Stated ONLY while the guard is on and the live menu was read (absent ⇒ today's
-     response, and the portal keeps today's drawer); unreadable ⇒ [] (fail-closed empty: «Agregar» shows and the save's refusal stays
-     the safety net). */
+     judges against (its extra records + structure). Stated whenever the guard is on (absent ONLY when it is off ⇒ today's response, and
+     the portal keeps today's drawer); the guard state or the live menu unreadable ⇒ [] (fail-closed empty, Codex #136: never absent,
+     which would read as «guard off» — «Agregar» shows and the save's refusal stays the safety net). */
   let rewardGroups = null;
-  if (liveRead && liveRead.built) {
-    try {
-      const CC = require('./choice-compare');
-      if (CC.rewardGroupGuardOn(extrasCatalog)) rewardGroups = CC.rewardGroupsOf({ extras: liveRead.extraRecords, structure: liveRead.built.structure });
-    } catch (_) { rewardGroups = []; }
-  }
+  try {
+    const CC = require('./choice-compare');
+    if (CC.rewardGroupGuardOn(extrasCatalog)) {
+      rewardGroups = [];
+      if (liveRead && liveRead.built) rewardGroups = CC.rewardGroupsOf({ extras: liveRead.extraRecords, structure: liveRead.built.structure });
+    }
+  } catch (_) { rewardGroups = []; }
 
   /* F-1 (BRIEF-portal-stale-draft-clobber, ruled 2026-11-07) — platform_changes_pending: a SHERPA tool wrote fields into this draft
      (the platform-pending stamp) that live does not carry yet. The portal then shows the calm notice INSTEAD of «Volver al menú

@@ -75,7 +75,7 @@ function world(rid, { live: liveSource = null, reserved = () => require('../cata
   };
   const request = (token) => PR.requestPublishCore({ fs, db: managerDb(rid), now: () => 5000, readActiveBuilt, addProduct, readDraft: (r) => PR.readDraftFrom(fs, r) }, { uid: 'mgrOn01', token: {} }, { restaurantId: rid, token });
   // the REAL editor read (getEditableCatalogCore) on this same world: the same store, the same live read the save judges against
-  const editorRead = async () => { await ready; return require('../catalog/portal-reads').getEditableCatalogCore({ db: {}, fsdb: fs, authorize: owner, readActiveVersionId: async () => 'v1', readActiveBuilt }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer t' }); };
+  const editorRead = async ({ liveRead = readActiveBuilt } = {}) => { await ready; return require('../catalog/portal-reads').getEditableCatalogCore({ db: {}, fsdb: fs, authorize: owner, readActiveVersionId: async () => 'v1', readActiveBuilt: liveRead }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer t' }); };
   const slot = async () => { const s = await PR.requestRefOf(fs, rid).get(); return s.exists ? s.data() : null; };
   return { fs, live, L, save, store, draft, tokenFor, ownerPublish, request, slot, publishes, editorRead };
 }
