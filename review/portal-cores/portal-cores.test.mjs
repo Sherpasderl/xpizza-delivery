@@ -122,3 +122,10 @@ test('N-envio waits for the map failure line (envio.js\'s own deadline) and the 
   assert.match(SRC, /notes: Object\.fromEntries\(Object\.keys\(byState\)\.filter\(\(n\) => STATES\[n\]\.note\)\.map\(\(n\) => \[n, STATES\[n\]\.note\]\)\)/, 'the record writes every state\'s note');
   assert.match(SRC, /const waitHas = \(sel, t, ms = 6000\) => /, 'the waitHas verb exists');
 });
+
+// Codex #159 P2: every census() in the portal tool opts into deadline propagation, so a deadline inside a census is the named state failure
+test('the census tool opts every census() into { deadlines: true }', () => {
+  const calls = SRC.match(/\bcensus\(cdp[^)]*\)/g) || [];
+  assert.ok(calls.length >= 3, `the census() call sites (${calls.length})`);
+  for (const c of calls) assert.equal(c, 'census(cdp, { deadlines: true })', `census() opts in: ${c}`);
+});

@@ -536,7 +536,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
       caret0 = await caretOf(cdp);
     }
     where('before');
-    const before = { nodes: await census(cdp), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls'), caret: caret0 };
+    const before = { nodes: await census(cdp, { deadlines: true }), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls'), caret: caret0 };
     where('fonts'); let heldMs = 0;
     const fontUrls = () => [...rt.seen].filter((u) => isFontUrl(u));
     if (fontGate === 'hold') {
@@ -567,9 +567,9 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     let probe = null;
     const sig = (ns) => ns.map((n) => JSON.stringify([n.path, n.family, n.weight, n.style, n.codepoints, n.fonts]));
     const firstDiff = (a, b) => { const x = sig(a), y = sig(b); const i = x.findIndex((v, k) => v !== y[k]); return i >= 0 ? (a[i] || b[i]).path : (x.length !== y.length ? (b[x.length] || a[y.length]).path : null); };
-    where('census'); after.nodes = await census(cdp);
+    where('census'); after.nodes = await census(cdp, { deadlines: true });
     where('probe'); probe = await attribute(cdp, after.nodes);
-    { const again = await census(cdp), d = firstDiff(after.nodes, again);
+    { const again = await census(cdp, { deadlines: true }), d = firstDiff(after.nodes, again);
       if (d !== null) throw new Error(`capture unstable: ${stateName}: ${d} changed during the census (${after.nodes.length} → ${again.length} nodes)`);
       // r3d (advisor 11-18): a node rewritten faster than the census reads it is gone before its query in BOTH passes — equal lists, so
       // the diff above cannot see it. census() now records it (path only): any vanished node fails the state the same way.

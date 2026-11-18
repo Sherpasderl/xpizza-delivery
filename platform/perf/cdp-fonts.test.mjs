@@ -177,3 +177,23 @@ test('failStateOnDeadline: any other error is rethrown unchanged (premise failur
   const seen = []; await assert.rejects(failStateOnDeadline(async () => { throw err; }, (ok, m) => seen.push([ok, m])), (x) => x === err);
   assert.deepEqual(seen, [], 'no check recorded for a non-deadline error');
 });
+
+// Codex #159 P2 (advisor 11-18): a CDP DEADLINE inside census() was caught as a vanished node, so the portal threw an uncoded «capture
+// unstable» that escaped failStateOnDeadline (the method-specific diagnosis lost, the run stopped). Opt-in { deadlines: true } rethrows
+// a CDP_DEADLINE from either per-node query; the default (every other consumer) records it as vanished exactly as before.
+const deadlineAt = (method, nodeId) => { const base = domCdp(); return { s: async (m, p) => {
+  if (m === method && p.nodeId === nodeId) throw Object.assign(new Error(`cdp: N-envio (candidate) @1280px light · census: ${m} got no answer in 90 s`), { code: 'CDP_DEADLINE' });
+  return base.s(m, p); } }; };
+for (const [method, nodeId] of [['CSS.getComputedStyleForNode', 5], ['CSS.getPlatformFontsForNode', 6]]) {
+  test(`census { deadlines: true }: a ${method} deadline propagates (coded), never a vanished node`, async () => {
+    const e = await census(deadlineAt(method, nodeId), { deadlines: true }).then(() => null, (x) => x);
+    assert.ok(e, 'census rejected');
+    assert.equal(e.code, 'CDP_DEADLINE', 'the deadline itself, coded');
+    assert.match(e.message, new RegExp(`· census: ${method.replace('.', '\\.')} got no answer`), 'its state · step · method kept');
+  });
+  test(`census (default): a ${method} deadline is still recorded as vanished — the other consumers are exact`, async () => {
+    const nodes = await census(deadlineAt(method, nodeId));
+    assert.deepEqual(nodes.vanished, ['>body>span#__mst']);
+    assert.deepEqual(nodes.map((n) => n.path), ['>body>p']);
+  });
+}

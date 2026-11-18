@@ -180,18 +180,21 @@ function transform(text, tt) {
 // aggregates descendants and pseudo-elements, which blurs attribution — calibrated). Covers DOM text, the UA shadow text of inputs
 // (values / placeholders, via pierce) and ::before / ::after content (queried on the pseudo node). Only nodes the renderer reports
 // fonts for (i.e. painted) are kept. → [{ nodeId, path, family, weight, style, clamp, codepoints:[int], spaces, fonts:[…] }]
-export async function census(cdp) {
+// Codex #159 P2: { deadlines: true } (opt-in; portal-fonts) rethrows a CDP_DEADLINE from a per-node query — a deadline is never a
+// vanished node there; by default (every other consumer) it is recorded as vanished exactly as before
+export async function census(cdp, { deadlines = false } = {}) {
   const { s } = cdp;
+  const pass = (e) => { if (deadlines && e && e.code === 'CDP_DEADLINE') throw e; };
   const { root } = await s('DOM.getDocument', { depth: -1, pierce: true });
   // r3d (advisor 11-18): a node it cannot read (gone from the page between the snapshot and its query — a node rewritten faster than the
   // census) is RECORDED by its path in out.vanished, never silently dropped (M-st: a 3 ms rewrite was dropped by BOTH censuses, so the
   // stability re-read compared two equal lists). Path only — never its text. out stays the node list every consumer reads.
   const out = []; const vanished = []; out.vanished = vanished;
-  const styleOf = async (nodeId) => { try { return (await s('CSS.getComputedStyleForNode', { nodeId })).computedStyle; } catch (_) { return null; } };
+  const styleOf = async (nodeId) => { try { return (await s('CSS.getComputedStyleForNode', { nodeId })).computedStyle; } catch (e) { pass(e); return null; } };
   const record = async (fontNodeId, styleNodeId, raw, label) => {
     const props = await styleOf(styleNodeId); if (!props) { vanished.push(label); return; }
     let fonts = [];
-    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (_) { vanished.push(label); return; }
+    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (e) { pass(e); vanished.push(label); return; }
     if (!fonts.length) return;
     const shown = transform(raw, cssText(props, 'text-transform'));
     const clamp = cssText(props, '-webkit-line-clamp');
