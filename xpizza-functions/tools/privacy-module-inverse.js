@@ -7,6 +7,16 @@ const BASE = '31f05c8a40c35fe0c442be8839593954c3afc8b1';
 const HUNKS = Object.freeze([
  {
   "file": "index.js",
+  "now": "    console.warn('createOrder: malformed JSON in request body (parse_failed)');   // rule 20: never err.message — it quotes the body\n",
+  "was": "    console.warn(`createOrder: malformed JSON in request body — ${err.message}`);\n"
+ },
+ {
+  "file": "index.js",
+  "now": "    console.warn('chargeOnlineOrder: malformed JSON (parse_failed)');   // rule 20: never err.message — it quotes the body\n",
+  "was": "    console.warn(`chargeOnlineOrder: malformed JSON — ${err.message}`);\n"
+ },
+ {
+  "file": "index.js",
   "now": "    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent`);\n",
   "was": "    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);\n"
  },
@@ -39,6 +49,11 @@ const HUNKS = Object.freeze([
   "file": "index.js",
   "now": "          console.log(`notifyPreparing: ${orderId} → preparing WhatsApp sent`);\n",
   "was": "          console.log(`notifyPreparing: ${orderId} → preparing WhatsApp sent to ${order.customer_phone}`);\n"
+ },
+ {
+  "file": "index.js",
+  "now": "      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type}`);\n",
+  "was": "      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type} from=${data.from}`);\n"
  },
  {
   "file": "index.js",

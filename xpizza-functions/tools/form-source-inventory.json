@@ -6018,6 +6018,12 @@
      ]
     },
     {
+     "file": "xpizza-functions/privacy-wiring.guard.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/release-race-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
@@ -7381,6 +7387,7 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
+    "xpizza-functions/json-parse-log.test.js",
     "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
@@ -7753,7 +7760,14 @@
    "lifts": []
   },
   "payments/sdk/cards.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/privacy-wiring.guard.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": []
   },
   "payments/sdk/coordinator.js": {
@@ -8611,7 +8625,20 @@
    ]
   },
   "signup-endpoints.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "xpizza-functions/deletion-tombstone.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/privacy-wiring.guard.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
+     ]
+    }
+   ],
    "lifts": [
     "xpizza-functions/customer-push.test.js",
     "xpizza-functions/signup-wiring.guard.test.js"
@@ -8753,6 +8780,12 @@
       "tools/privacy-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3c-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/privacy-wiring.guard.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
      ]
     },
     {

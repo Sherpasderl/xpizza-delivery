@@ -407,6 +407,67 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('saved cards: deleteAccount and the sweep replace customer_cards/{uid} with the fence { _deleted: at } atomically; listCards [] / resolveSavedCard null; a late vault write is dropped; a repeat keeps the first instant; a failed update changes nothing');
 
+  // ── D6 (Codex #133 r1 HIGH 1): the UPGRADE — an account deleted by the BASE deletion core (before the fence) keeps its cards; the owner's
+  //    tools/fence-deleted-cards.js fences exactly the authoritatively deleted ones. Base core = the real signup-endpoints.js minus the
+  //    privacy hunks (tools/privacy-module-inverse), compiled in place; cards seeded by the REAL completeVault, read by the REAL readers ──
+  {
+    const fs = require('fs'); const path = require('path'); const Module = require('module');
+    const CARDS = require('./payments/sdk/cards');
+    const FENCE = require('./tools/fence-deleted-cards');
+    const { unapplyPrivacyModule } = require('./tools/privacy-module-inverse');
+    const f = path.join(__dirname, 'signup-endpoints.js');
+    const baseSrc = unapplyPrivacyModule('signup-endpoints.js', fs.readFileSync(f, 'utf8'));
+    const m = new Module(f, module); m.filename = f; m.paths = Module._nodeModulePaths(__dirname); m._compile(baseSrc, f);
+    const BASE_SE = m.exports;
+    assert.ok(!baseSrc.includes('[`customer_cards/${uid}`]'), 'premise: the base deletion core has no card fence');
+    const H = (t) => require('crypto').createHash('sha256').update(t).digest('hex');
+    const DISP = { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2099 };
+    const cdeps = (db, now, uid = UID) => ({ db, clock: () => now, verifyIdToken: async () => ({ uid }) });
+    const AUTH = { authorization: 'Bearer t' };
+    const vault = async (db, uid, tok, now = 10) => (await CARDS.completeVault(cdeps(db, now, uid), { uid, token: tok, token_hash: H(tok), display: DISP, vault_gen: 0 })).outcome;
+    const db = fakeDb(); seedAccount(db);
+    assert.strictEqual(await vault(db, UID, 'tok_A'), 'created', 'premise: the real writer vaults the card');
+    const id = Object.keys(db.get(`customer_cards/${UID}/cards`))[0];
+    await BASE_SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 100, revoke: recorder() });
+    assert.ok(db.get(`deleted_uids/${UID}`) && !db.get(`user_profiles/${UID}`), 'premise: the base core deleted the account');
+    assert.ok(db.get(`customer_cards/${UID}/cards/${id}/token`), 'premise (the bug): the base core left the saved card behind');
+    // the other accounts the tool must NEVER touch: live, revived (stale tombstone + profile), claimed by a sweep in progress; and an
+    // older deletion known only by user_private.deleted_at (before deleted_uids was written)
+    const LV = 'u_' + 'b'.repeat(24), RV = 'u_' + 'c'.repeat(24), CL = 'u_' + 'd'.repeat(24), OLD = 'u_' + 'e'.repeat(24);
+    for (const u of [LV, RV, CL, OLD]) assert.strictEqual(await vault(db, u, `tok_${u}`), 'created');
+    db.set(`user_profiles/${LV}`, { phone: '1', phone_hash: 'p1', created_at: 1, last_login: 1 });
+    db.set(`user_profiles/${RV}`, { phone: '2', phone_hash: 'p2', created_at: 1, last_login: 900 }); db.set(`deleted_uids/${RV}`, 7); db.set(`user_private/${RV}`, { deleted_at: 7 });
+    db.set(`user_profiles/${CL}`, { phone: '3', phone_hash: 'p3', created_at: 1, last_login: 1, deleting_at: 950 }); db.set(`user_private/${CL}`, { deleted_at: 960 });
+    db.set(`user_private/${OLD}`, { deleted_at: 55 });
+    const untouched = () => [LV, RV, CL].map((u) => JSON.stringify(db.get(`customer_cards/${u}`)));
+    const keep = untouched();
+    // dry run: counts only, writes nothing
+    const before = JSON.stringify(db.tree);
+    const dry = await FENCE.fence({ rtdb: db });
+    assert.deepStrictEqual(dry, { dryRun: true, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 0, fenced: 2 }, '🔴 D6: the dry run counts the 2 deleted accounts with cards, never the live / revived / claimed');
+    assert.strictEqual(JSON.stringify(db.tree), before, '🔴 D6: the dry run writes nothing');
+    assert.ok(!JSON.stringify(dry).includes('u_'), 'D6: counts only — no uid in the result');
+    // apply: the same fence the deletion core writes, at the account's own deletion instant
+    const r = await FENCE.fence({ rtdb: db, apply: true });
+    assert.deepStrictEqual(r, { dryRun: false, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 0, fenced: 2 }, '🔴 D6: --apply fences the 2 deleted accounts');
+    assert.deepStrictEqual([db.get(`customer_cards/${UID}`), db.get(`customer_cards/${OLD}`)], [{ _deleted: 100 }, { _deleted: 55 }], '🔴 D6: customer_cards/{uid} is EXACTLY the fence at the account\'s own deletion instant');
+    assert.deepStrictEqual((await CARDS.listCardsCore(cdeps(db, 200), { headers: AUTH })).body, { cards: [] }, '🔴 D6: listCards is empty after the upgrade');
+    assert.strictEqual(await CARDS.resolveSavedCard(cdeps(db, 200), UID, id), null, '🔴 D6: the old saved card can no longer be charged');
+    assert.strictEqual(await vault(db, UID, 'tok_LATE', 300), 'dropped', '🔴 D6: a late vault write after the upgrade is dropped');
+    assert.deepStrictEqual(db.get(`customer_cards/${UID}`), { _deleted: 100 }, 'D6: the fence stays exact after the late write');
+    assert.deepStrictEqual(untouched(), keep, '🔴 D6: live / revived / claimed accounts keep their cards byte-for-byte');
+    // idempotent: a re-run writes nothing
+    const again = JSON.stringify(db.tree);
+    assert.deepStrictEqual(await FENCE.fence({ rtdb: db, apply: true }), { dryRun: false, tombstoned: 4, live: 2, noCards: 0, alreadyFenced: 2, fenced: 0 }, 'D6: a re-run finds both already fenced');
+    assert.strictEqual(JSON.stringify(db.tree), again, 'D6: a re-run writes nothing');
+    // the current core's own deletion is already fenced: the tool counts it, never rewrites it
+    const db2 = fakeDb(); seedAccount(db2); assert.strictEqual(await vault(db2, UID, 'tok_A'), 'created');
+    await SE.deleteAccountCore(db2, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() });
+    assert.deepStrictEqual(await FENCE.fence({ rtdb: db2, apply: true }), { dryRun: false, tombstoned: 1, live: 0, noCards: 0, alreadyFenced: 1, fenced: 0 }, 'D6: a fence written by the deletion core is left as is');
+    assert.deepStrictEqual(db2.get(`customer_cards/${UID}`), { _deleted: 400 });
+  }
+  ok('D6 upgrade: an account deleted by the BASE core keeps its card; fence-deleted-cards (dry run: counts, no write) --apply fences exactly the tombstoned no-profile accounts at their own instant; listCards [] / resolve null / late vault dropped; live, revived and claimed untouched; idempotent');
+
   FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
 })().catch((e) => { process.stderr.write(`deletion-tombstone: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

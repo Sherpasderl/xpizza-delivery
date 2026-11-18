@@ -1442,7 +1442,7 @@ createOrderApp.all('*', async (req, res) => {
 // If the error isn't a parse failure, fall through to the default handler.
 createOrderApp.use((err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
-    console.warn(`createOrder: malformed JSON in request body — ${err.message}`);
+    console.warn('createOrder: malformed JSON in request body (parse_failed)');   // rule 20: never err.message — it quotes the body
     return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
   }
   // eslint-disable-next-line no-unused-vars
@@ -2430,7 +2430,7 @@ chargeOnlineApp.all('*', async (req, res) => {
 
 chargeOnlineApp.use((err, req, res, next) => {
   if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
-    console.warn(`chargeOnlineOrder: malformed JSON — ${err.message}`);
+    console.warn('chargeOnlineOrder: malformed JSON (parse_failed)');   // rule 20: never err.message — it quotes the body
     return res.status(400).json({ error: 'Bad Request', detail: 'Malformed JSON in request body' });
   }
   // eslint-disable-next-line no-unused-vars
@@ -5788,7 +5788,7 @@ exports.onIncomingWhatsApp = onRequest(
     if (data.type && data.type !== 'chat') {
       // Skip media (images, audio, etc.) — we'd need different handling.
       // Still log it so dispatcher can see something arrived.
-      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type} from=${data.from}`);
+      console.log(`onIncomingWhatsApp: ignored non-chat type=${data.type}`);
       try {
         const db = getDatabase();
         await db.ref('incoming_messages').push({

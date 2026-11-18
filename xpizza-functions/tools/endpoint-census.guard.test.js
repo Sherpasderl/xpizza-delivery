@@ -124,6 +124,9 @@ const D = {
     // security backlog r2 — the one-time owner migration (revived accounts' stale tombstones; DRY RUN unless --apply):
     // requireProject({ requireFlag: true }) before any client
     'repair-revived-tombstones', 'ratings-v1-guard',
+    // fix/privacy-gaps-5f (Codex #133 HIGH 1) — the one-time owner card fence for accounts deleted before the fence (DRY RUN unless --apply):
+    // requireProject({ requireFlag: true }) before any client
+    'fence-deleted-cards',
     // P5a follow-up — the READ-ONLY identity-usable check (booleans/counts per restaurant; Firestore writes patched to throw):
     // requireProject({ requireFlag: true }) before any client
     'identity-usable-check',
