@@ -2,7 +2,7 @@
 // — never hand-written. 3a's tree is not in this base, so this generator runs against an extracted tree of that commit:
 //   git archive <sha> | tar -x -C <dir>;  ln -s <this repo>/xpizza-functions/node_modules <dir>/xpizza-functions/node_modules
 //   node customer-app/fixtures/addr/gen-addr.mjs <dir> <full sha>        (<dir> = the extracted REPO root: the writer is xpizza-orders')
-// Real pieces:
+// Real pieces (Casa is inside x_pizza's 7 km zone, Trabajo ~180 km outside it):
 //   · the book's ONLY writer: the frozen brand form's own saveAddress (xpizza-orders/account.js — newAddrId + saveAddress lifted and run
 //     against this store, exactly as 3a's signup-platform.test.js 8b does): «Casa» (makeDefault) then «Trabajo»;
 //   · signup-platform.js makeSignupPlatform getMyProfile (GET ?context=platform, the header token) — S-ADDR-1's address-book whitelist;
@@ -41,7 +41,8 @@ const UID = 'u_ana';
 const formSaveAddress = new Function('ensureFirebase', 'heal', 'MAX_ADDRESSES', 'window', `${liftFn('function newAddrId()')}\n${liftFn('async function saveAddress(')}\nreturn saveAddress;`)(
   async () => ({ auth: { authStateReady: async () => {}, currentUser: { uid: UID } }, db: null, dbMod: { ref: (_d, p) => p, get: async (p) => db.ref(p).get(), update: async (_r, u) => db.ref().update(u) } }), () => {}, 10, { crypto: webcrypto });
 put(`user_profiles/${UID}`, { phone: '50499990000', created_at: 5, name: 'Ana' });
-const casa = await formSaveAddress({ label: 'Casa', detected: 'Col. Palmira, Tegucigalpa', details: 'Casa azul, portón negro', lat: 14.0937, lng: -87.1838, makeDefault: true });
+// «Casa» INSIDE x_pizza's zone (San Pedro Sula, ~1.7 km from its hub), «Trabajo» far OUTSIDE it (Tegucigalpa) — the checkout seed's two cases
+const casa = await formSaveAddress({ label: 'Casa', detected: 'Col. Trejo, San Pedro Sula', details: 'Casa azul, portón negro', lat: 15.52, lng: -88.03, makeDefault: true });
 await new Promise((r) => setTimeout(r, 5));
 const trabajo = await formSaveAddress({ label: 'Trabajo', detected: 'Blvd. Morazán, Tegucigalpa', details: 'Torre 2, piso 5', lat: 14.1003, lng: -87.1901 });
 if (!casa.ok || !trabajo.ok) throw new Error('premise: the form wrote the book ' + JSON.stringify([casa, trabajo]));
@@ -64,6 +65,7 @@ S.profile_default_casa = await profile();
 clock += 60e3;
 S.use_trabajo = await call(MY.useMyAddress, { method: 'POST', query: { context: 'platform' }, body: { id: trabajo.addrId } });
 S.profile_after_use = await profile();
+S.use_casa = await call(MY.useMyAddress, { method: 'POST', query: { context: 'platform' }, body: { id: casa.addrId } });   // and back
 S.use_unknown = await call(MY.useMyAddress, { method: 'POST', query: { context: 'platform' }, body: { id: 'a_' + '0'.repeat(12) } });
 put(`user_profiles/${UID}/addresses`, null); put(`user_profiles/${UID}/default_address`, null);
 S.profile_empty = await profile();

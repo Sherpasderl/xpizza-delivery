@@ -5084,7 +5084,7 @@ test('C-DIR-1 (v6 :2170): «Direcciones» — one row per address «{label}» (+
     assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 DIR-2: v6\'s top bar');
     assert.deepEqual(dirRows(S), [
       ['addr-use', AID.trabajo, 'Trabajo', 'Blvd. Morazán, Tegucigalpa · Torre 2, piso 5'],
-      ['addr-use', AID.casa, 'Casa · en uso', 'Col. Palmira, Tegucigalpa · Casa azul, portón negro'],
+      ['addr-use', AID.casa, 'Casa · en uso', 'Col. Trejo, San Pedro Sula · Casa azul, portón negro'],
       ['addr-new', null, 'Agregar dirección Poné el pin en tu puerta y describí la referencia', 'Poné el pin en tu puerta y describí la referencia'],
     ], '🔴 DIR-2: exact to v6 :2170');
     for (const r of S.qa('.addrlist [data-act="addr-use"]')) { const pen = r.querySelector('svg.chev'); assert.ok(pen, '🔴 DIR-2: the pencil'); assert.equal(pen.closest('[data-act]'), r, '🔴 DIR-2: the pencil is INERT (no action of its own)'); }
@@ -5111,7 +5111,7 @@ test('C-DIR-1 (v6 :2179-2184): the «Entregar en» sheet lists the saved address
     S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
     const rows = S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null, b.classList.contains('on'), txt(b)]);
     assert.deepEqual(rows, [
-      ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'], ['addr-use', AID.casa, true, 'Casa Col. Palmira, Tegucigalpa'],
+      ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'], ['addr-use', AID.casa, true, 'Casa Col. Trejo, San Pedro Sula'],
       ['loc-use', null, false, 'Usar mi ubicación actual'], ['addr-new', null, false, 'Agregar dirección'],
     ], '🔴 DIR-4: exact to v6 :2181-2183');
     S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
@@ -5150,6 +5150,78 @@ test('C-DIR-1 (isolation): SIGN-OUT removes the member\'s book from the device a
     S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
     assert.deepEqual(S.qa('#layer nav .navrow').map((b) => b.dataset.act), ['loc-use', 'addr-new'], '🔴 DIR-7: the guest\'s sheet — no saved rows');
     assert.notEqual(txt(S.q('.addr-btn .v > span')), 'Casa', 'the pill no longer names her address');
+  } finally { S.w.close(); }
+});
+// ── C-DIR-1 SEED (advisor ruling (A) 11-14, its own commit): a member's SAVED address in use seeds the store's checkout — its pin CONFIRMED,
+// the row «{label} · {detected}», its details — so the checkout agrees with the pill; the quote / zone run on it as on any pin (an
+// out-of-zone address ⇒ today's gate, never another pin); «Ajustar pin» overrides it; a pin / GPS fix chosen after it seeds instead
+// (as today); a sign-out / switch can never leave it seeded. Guests are unchanged (their confirmed location seeds, as before) ──
+async function seedCheckout(o = {}) {
+  const b = await dirBoot(o);
+  if (o.pick) { await toDirecciones(b.S); b.S.click(`.addrlist [data-act="addr-use"][data-id="${o.pick}"]`); await flush(); await flush(); b.S.click('.tabbar [data-tab="home"]'); await flush(); }
+  b.S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+  const ui = b.S.ui.store().ui; ui.cart.inc(ui.menu.dishes.find((d) => !d.launcher && !d.variantOf && !ui.menu.pickupOnlyCats.has(String(d.cat))).key); ui.render();
+  b.S.click('#cart-bar'); b.S.click('[data-act="checkout"]'); await flush(); await flush();
+  return { ...b, ui };
+}
+const casaOf = () => ADX.scenarios.profile_default_casa.body.addresses.find((a) => a.id === AID.casa);
+const addrBold = (S) => txt(S.q('.urow[data-act="pin"] b[data-addr]'));
+test('C-DIR-1 SEED: the member\'s saved address in use (Casa, in x_pizza\'s zone) SEEDS the checkout — its pin confirmed, «Casa · Col. Trejo, San Pedro Sula», its details; no out-of-zone gate', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    const c = casaOf(), p = ui.state.flow.pin;
+    assert.deepEqual({ lat: p.lat, lng: p.lng, confirmed: p.confirmed }, { lat: c.lat, lng: c.lng, confirmed: true }, '🔴 DIR-SEED: the saved pin, confirmed');
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 DIR-SEED: the checkout shows the saved address');
+    assert.equal(ui.state.flow.details, 'Casa azul, portón negro', '🔴 DIR-SEED: its details (v6 :1804)');
+    assert.equal(S.q('.gate[role="alert"]'), null, 'inside the zone: no gate');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: «Ajustar pin» to another point OVERRIDES the saved address — the row no longer names it', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="pin"]'); await flush();
+    ui.state.pinDraft = { lat: 15.531, lng: -88.021 };   // the schematic map has no pan: the draft a live map would report
+    S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.deepEqual([ui.state.flow.pin.lat, ui.state.flow.pin.lng], [15.531, -88.021], 'premise: the customer moved the pin');
+    assert.notEqual(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 DIR-SEED override: the moved pin is no longer «Casa»');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: a saved address OUTSIDE every zone (Trabajo, ~180 km away) in use ⇒ the zone runs on ITS coordinates — Inicio\'s honest «Ningún restaurante entrega en esta dirección», never a fallback to another pin', async () => {
+  const b = await dirBoot({ use: (q) => (q.id === AID.casa ? 'use_casa' : 'use_trabajo') });
+  try {
+    await toDirecciones(b.S); b.S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
+    b.S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(txt(b.S.q('.home-body .empty b')), 'Ningún restaurante entrega en esta dirección', '🔴 DIR-SEED out: the zone on the saved address (frame 4)');
+    b.S.click(`.addr-btn`); await flush(); b.S.click(`#layer [data-act="addr-use"][data-id="${AID.casa}"]`); await flush(); await flush();
+    assert.ok(b.S.q('.rlist .rcard[data-rid="x_pizza"]'), 'back on Casa (inside): the stores return');
+  } finally { b.S.w.close(); }
+});
+test('C-DIR-1 SEED: a device fix chosen AFTER the saved address («Usar mi ubicación actual») takes over — the device location seeds, as today', async () => {
+  const near = { latitude: 15.531, longitude: -88.021 };
+  const st = g7Store(G7_PROFILE({ promos: true })); st.setItem('capp:loc_asked', JSON.stringify(1));
+  const addr = addrServer();
+  const { S } = await pedidosBoot({}, { storage: st, addr, geolocation: { getCurrentPosition: (ok) => ok({ coords: near }) } });
+  try {
+    await flush(); await flush();
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush(); S.click('#layer [data-act="loc-use"]'); await flush(); await flush();
+    S.click('.rlist .rcard[data-rid="x_pizza"]'); await flush();
+    const u = S.ui.store().ui; u.cart.inc(u.menu.dishes.find((d) => !d.launcher && !d.variantOf && !u.menu.pickupOnlyCats.has(String(d.cat))).key); u.render();
+    S.click('#cart-bar'); S.click('[data-act="checkout"]'); await flush(); await flush();
+    assert.deepEqual([u.state.flow.pin.lat, u.state.flow.pin.lng], [near.latitude, near.longitude], '🔴 DIR-SEED device: the later device fix seeds, not the saved address');
+    assert.notEqual(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'the row is not the saved address');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 SEED: a SIGN-OUT with the seeded checkout open never leaves the saved address in it (no pin, no details, no row)', async () => {
+  const { S, ui, fb } = await seedCheckout();
+  try {
+    assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', 'premise: seeded');
+    const { authMod } = await fb.loadSdk(); await authMod.signOut(); await flush(); await flush();
+    const f = S.ui.store() ? S.ui.store().ui.state.flow : null;
+    if (f) {
+      assert.notDeepEqual([f.pin.lat, f.pin.lng], [casaOf().lat, casaOf().lng], '🔴 DIR-SEED sign-out: the saved pin is gone');
+      assert.notEqual(f.details, 'Casa azul, portón negro', '🔴 DIR-SEED sign-out: the saved details are gone');
+    }
+    assert.ok(!/Casa · Col\. Trejo/.test(S.w.document.body.textContent), '🔴 DIR-SEED sign-out: nothing on screen names her address');
   } finally { S.w.close(); }
 });
 

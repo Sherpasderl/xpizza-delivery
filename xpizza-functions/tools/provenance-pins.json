@@ -10,6 +10,6 @@
   { "site": "customer-app/fixtures/c3r-v2/gen-c3r-v2.mjs", "module": "my-orders.js", "fixture": "customer-app/fixtures/c3r-v2/c3r-v2.json", "sha_field": "source.commit", "blobs_field": "source.blobs", "consumer": "customer-app/capp-s7a2.test.mjs",
     "site_sha256": "e0a62c31d79a6af707e7920342a5a08977276971aa2ce8e3e25f15f674abac37", "consumer_region": "c3r-v2", "consumer_sha256": "b2d203bcc25de835142ecc74a81c181f9c3208e5d6c0c2fc5e6c521c80874af0", "reviewed_at": "8839193d9a1be97a173faafe31a2f70361e400a8" },
   { "site": "customer-app/fixtures/addr/gen-addr.mjs", "module": "signup-platform.js", "fixture": "customer-app/fixtures/addr/addr.json", "sha_field": "source.commit", "blobs_field": "source.fn_blobs", "consumer": "customer-app/capp-s7a2.test.mjs",
-    "site_sha256": "dc241148799cad96ce9da3244c820deab0a2b3466ef1f1b7c6259fdd50503b5a", "consumer_region": "addr", "consumer_sha256": "16ed5d90c7e224c328878a21388268d632e9a7fe54d138280377da1032b067f4", "reviewed_at": "pending-codex-direcciones-r2" }
+    "site_sha256": "2eb993e90758f3306a8577f8b49626ecceb45f14d0f20b8836eba2adef1213b3", "consumer_region": "addr", "consumer_sha256": "16ed5d90c7e224c328878a21388268d632e9a7fe54d138280377da1032b067f4", "reviewed_at": "pending-codex-direcciones-r2" }
  ]
 }

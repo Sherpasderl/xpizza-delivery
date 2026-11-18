@@ -217,7 +217,7 @@
       const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid), isFav: () => isFav(entry.rid) };   // C-1b: the member's heart reads the book live
       // ONE clock (PLAN-capp-virtual-clock P1): the store UI runs on the shell's timers unless the host gave it its own
       const ui = CappUI.mount(doc, { ...uo, ...(uo.timers ? {} : { timers: T }), ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => S.loc,
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => seedNow(),
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'fav') { setFav(entry.rid, !!(detail && detail.on)); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -1229,10 +1229,15 @@
     const savedSelId = () => { const a = savedInUse(); return a ? a.id : null; };
     const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };
     const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · ') } : null);   // v6 :2162
+    // C-DIR-1 seed (advisor ruling (A), 11-14): the store's checkout is seeded from the SAVED address in use (its pin confirmed, its label /
+    // detected / details) so it agrees with the pill; otherwise from the device location, exactly as before (guests unchanged). Read LIVE
+    // at checkout entry: after a sign-out / switch there is no book, so nothing of the previous member can seed
+    const seedNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;
       if (S.book && S.book.who === uid) return;
       if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }
+      try { if (S.store && S.store.ui && typeof S.store.ui.forgetSaved === 'function') S.store.ui.forgetSaved(); } catch (_) {}   // a seeded checkout drops it
       bookGen++; S.book = null; dirShown = null; S.locPick = null;
       if (!uid || !suApi || !fbAuth || !suMod || typeof suMod.bookOf !== 'function') return;
       const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 1 ? suMod.bookOf(c) : null;

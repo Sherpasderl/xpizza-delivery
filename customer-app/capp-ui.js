@@ -1070,7 +1070,10 @@
       }).catch(() => land([]));
     }
     // the address text nodes ([data-addr]: the checkout row's bold, «Realizando»'s store sub, «Enviando»'s row bold), in place
+    // C-DIR-1 seed: the saved address's line while the checkout's pin is still the one it seeded
+    const savedLine = (f) => (f && f.saved && f.saved.pinV === f.pinV ? `${f.saved.label} · ${f.saved.detected}` : '');
     function paintAddr() {
+      if (savedLine(S.flow)) return;   // the saved address names the pin (never replaced by its reverse-geocode)
       const line = C.addrLine(S.flow); if (!line) return;   // none: the rendered text already is today's
       for (const el of app.querySelectorAll('[data-addr]')) el.textContent = line;
     }
@@ -1225,7 +1228,7 @@
     ${S.outZone && del ? `<div class="gate" role="alert"><b>${esc(cfg.name || '')} no llega a esta dirección</b><span class="note">${Number.isFinite(zoneKm) && cfg.branch ? `Entregamos hasta ${esc(zoneKm)} km de ${esc(cfg.branch)}. ` : ''}Mové el pin a una dirección dentro de la zona, o recogé en tienda.</span><div class="row2"><button class="btn2" data-act="pin">Cambiar dirección</button><button class="btn2 dark" data-act="type" data-val="pickup">Recoger en tienda</button></div></div>` : ''}`;
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
-      const geoLine = C.addrLine(f);
+      const geoLine = savedLine(f) || C.addrLine(f);
       const addrRow = `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"${fxOff}></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
@@ -1391,7 +1394,7 @@
     const prow = (ic, b, s, mark) => `<div class="prow">${ic}<span class="t"><b${mark === 'b' ? ' data-addr' : ''}>${b}</b>${s ? `<span${mark === 's' ? ' data-addr' : ''}>${s}</span>` : ''}</span></div>`;
     // the delivery address line: the confirmed pin's geo line (S2b-geo frames a / b2); else today's — the customer's own
     // «Detalles adicionales», else «Tu ubicación»
-    const addrText = () => esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación');
+    const addrText = () => esc(savedLine(S.flow) || C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación');
     function placingHtml() {
       const f = S.flow, del = f.mode === 'delivery', T = totalsNow(), lines = displayLines();
       const e = sched() && f.time === 'schedule' && Number.isFinite(f.slot) ? { k: schedMod().slotWhen(servedSched(), now().getTime(), f.slot), v: '' } : etaRange(f.mode);
@@ -1853,7 +1856,23 @@
     function checkoutTap() { if (!orderable || soldBlock()) return false; if (typeof opts.beforeCheckout === 'function' && opts.beforeCheckout() === false) return true; let body = null; try { body = CappSerialize.serialize(cart, menu); } catch (e) { S.refusal = e && e.code === 'cart_text_too_long' ? FULL_CART : null; renderLayer(); return false; } emit('checkout', { body, mode: S.mode }); openCheckout(); return true; }
     // ── navigation ──
     // the flow, created ONCE with its pin decided (S7a-2) — the checkout's and the offers store quote's (Slice A) one creation path
-    function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }
+    function seededFlow() {
+      if (!S.flow) {
+        S.flow = newFlow(); const sp = seedPin();
+        if (sp) {
+          C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true);
+          // C-DIR-1 seed (advisor ruling (A)): a member's SAVED address in use — the checkout shows it («{label} · {detected}») while the
+          // pin is the one it seeded (pinV), and its details fill an EMPTY details field; «Ajustar pin» (a new pin version) overrides it
+          const sv = sp.saved && typeof sp.saved === 'object' ? sp.saved : null;
+          if (sv && typeof sv.label === 'string' && typeof sv.detected === 'string') {
+            const seeded = !(S.flow.details || '').trim() && typeof sv.details === 'string' && sv.details ? sv.details : null;
+            if (seeded) S.flow.details = seeded;
+            S.flow.saved = { label: sv.label, detected: sv.detected, pinV: S.flow.pinV, details: seeded };
+          }
+        }
+      }
+      return S.flow;
+    }
     function openCheckout() {
       if (!mods()) return false;
       // Codex #117 P2: a trim the customer has not seen yet ⇒ every checkout entry (Programar on a closed store included) shows the CART
@@ -2466,6 +2485,14 @@
     if (!returning) sdkResume();   // S2-checkout: a live SDK attempt ⇒ its status first
     return {
       cart, menu, render, state: S, openCheckout, returning,
+      // C-DIR-1 seed (advisor ruling (A)): the shell's identity changed — a checkout seeded from the PREVIOUS member's saved address drops
+      // it: its pin (while still the seeded one), the details it filled, and the row's line (nothing of hers stays on this device's screen)
+      forgetSaved() {
+        const f = S.flow; if (dead || !f || !f.saved) return;
+        if (f.saved.pinV === f.pinV) { f.pin = { lat: null, lng: null, confirmed: false }; f.pinV = (Number(f.pinV) || 0) + 1; f.geo = null; }
+        if (f.saved.details && f.details === f.saved.details) f.details = '';
+        f.saved = null; render();
+      },
       // D-2: the viewport crossed the breakpoint — re-render THIS screen in the other view; every piece of state (cart, screen, flow,
       // open layer, locks, refusals) lives in S / the records and is untouched; render() keeps focus, caret and the checkout scroll
       // Codex D-2 r1 #1: the store's menu scroll is kept, and a focused control that has no twin in the other view lands on its

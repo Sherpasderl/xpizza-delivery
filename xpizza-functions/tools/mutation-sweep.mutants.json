@@ -24855,8 +24855,8 @@
   "slice": "s2b",
   "label": "«Realizando» / «Enviando» ignore the geo line",
   "file": "../customer-app/capp-ui.js",
-  "from": "esc(C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
-  "to": "esc((S.flow.details || '').trim() || 'Tu ubicación')",
+  "from": "esc(savedLine(S.flow) || C.addrLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
+  "to": "esc(savedLine(S.flow) || (S.flow.details || '').trim() || 'Tu ubicación')",
   "command": [
    "node",
    "--test",
@@ -26877,8 +26877,8 @@
   "slice": "s7a2",
   "label": "the guest pin not seeded into a fresh checkout flow",
   "file": "../customer-app/capp-ui.js",
-  "from": "const sp = seedPin(); if (sp) C.setPin(",
-  "to": "const sp = seedPin(); if (false && sp) C.setPin(",
+  "from": "S.flow = newFlow(); const sp = seedPin();\n        if (sp) {",
+  "to": "S.flow = newFlow(); const sp = seedPin();\n        if (false && sp) {",
   "command": [
    "node",
    "--test",
@@ -26941,8 +26941,8 @@
   "slice": "s7a2",
   "label": "an existing checkout flow is re-seeded",
   "file": "../customer-app/capp-ui.js",
-  "from": "function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
-  "to": "function seededFlow() { if (!S.flow) S.flow = newFlow(); { const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }",
+  "from": "      if (!S.flow) {\n        S.flow = newFlow(); const sp = seedPin();",
+  "to": "      if (!S.flow) S.flow = newFlow();\n      {\n        const sp = seedPin();",
   "command": [
    "node",
    "--test",
@@ -41485,6 +41485,108 @@
   ],
   "kills_with": [
    "GUARD-BITES"
+  ]
+ },
+ {
+  "id": "seed-01",
+  "slice": "c-dir-1-seed",
+  "label": "the checkout ignores the saved address in use (the device location seeds: the checkout disagrees with the pill)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };",
+  "to": "return S.loc; };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED: the saved pin"
+  ]
+ },
+ {
+  "id": "seed-02",
+  "slice": "c-dir-1-seed",
+  "label": "the saved line survives a MOVED pin (the row names an address the pin no longer is)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const savedLine = (f) => (f && f.saved && f.saved.pinV === f.pinV ?",
+  "to": "const savedLine = (f) => (f && f.saved ?",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED override"
+  ]
+ },
+ {
+  "id": "seed-03",
+  "slice": "c-dir-1-seed",
+  "label": "forgetSaved does nothing (a signed-out checkout keeps her address)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "const f = S.flow; if (dead || !f || !f.saved) return;\n        if (f.saved.pinV === f.pinV)",
+  "to": "const f = S.flow; return;\n        if (f.saved.pinV === f.pinV)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED sign-out"
+  ]
+ },
+ {
+  "id": "seed-04",
+  "slice": "c-dir-1-seed",
+  "label": "an identity change never tells the open checkout to drop the seed",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "try { if (S.store && S.store.ui && typeof S.store.ui.forgetSaved === 'function') S.store.ui.forgetSaved(); } catch (_) {}",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED sign-out"
+  ]
+ },
+ {
+  "id": "seed-05",
+  "slice": "c-dir-1-seed",
+  "label": "a device fix chosen AFTER the saved address is ignored (the saved address keeps seeding)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);",
+  "to": "const savedInUse = () => (S.member ? bookSel() : null);",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED device"
+  ]
+ },
+ {
+  "id": "seed-06",
+  "slice": "c-dir-1-seed",
+  "label": "the zone ignores the saved address in use (runs on the device location)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };",
+  "to": "const locNow = () => S.loc;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1 SEED",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-SEED out"
   ]
  }
 ]
