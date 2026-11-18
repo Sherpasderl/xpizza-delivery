@@ -6,7 +6,7 @@
 // rec.token until then, inside record-token.js only); a follow-up commit removes that fallback once this has run.
 //
 // Per record holding a string `token`: the attempt is the one whose token_hash is sha256(token) (exact, never guessed — no match ⇒
-// counted «unmatched», left untouched for a person). --apply: the token is written AHEAD to the node, then ONE CAS on the record moves
+// counted «unmatched», left untouched for a person; a token several attempts share with no winner yet is «deferredAmbiguous», kept). --apply: the token is written AHEAD to the node, then ONE CAS on the record moves
 // the pointer and drops `token` — only if the record still holds that same token (a concurrent placement / null wins: «raced»).
 //
 //   node tools/migrate-sdk-tokens.js --project xpizza-delivery            (DRY RUN: counts only; writes nothing)
@@ -17,7 +17,7 @@ const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 async function migrate({ rtdb, apply = false }) {
-  const r = { dryRun: !apply, records: 0, withToken: 0, matched: 0, unmatched: 0, migrated: 0, raced: 0 };
+  const r = { dryRun: !apply, records: 0, withToken: 0, matched: 0, unmatched: 0, migrated: 0, raced: 0, deferredAmbiguous: 0 };
   const all = (await rtdb.ref('payment_sdk').once('value')).val() || {};
   for (const oid of Object.keys(all).sort()) {
     const rec = all[oid];
@@ -29,8 +29,12 @@ async function migrate({ rtdb, apply = false }) {
     const order = (await rtdb.ref(`orders/${oid}`).once('value')).val();
     const legId = isObj(order) && isObj(order.payment_placed) ? order.payment_placed.leg_id : null;
     const win = legId && isObj(rec.legs) && isObj(rec.legs[legId]) ? rec.legs[legId].attempt_id : null;
-    const aid = win && isObj(rec.attempts) && isObj(rec.attempts[win]) && rec.attempts[win].token_hash === h ? win
-      : Object.keys(isObj(rec.attempts) ? rec.attempts : {}).sort().find((a) => isObj(rec.attempts[a]) && rec.attempts[a].token_hash === h);
+    // Codex #161 F3: with no established winner, a token shared by MORE THAN ONE attempt is never guessed (an approved-but-unplaced
+    // attempt may still win on recovery) — DEFERRED: the legacy token stays (record-token's fallback serves it), retried on a later run
+    const matches = Object.keys(isObj(rec.attempts) ? rec.attempts : {}).sort().filter((a) => isObj(rec.attempts[a]) && rec.attempts[a].token_hash === h);
+    const winOk = !!win && matches.includes(win);
+    if (!winOk && matches.length > 1) { r.deferredAmbiguous += 1; continue; }
+    const aid = winOk ? win : matches[0];
     if (!aid) { r.unmatched += 1; continue; }
     r.matched += 1;
     if (!apply) continue;

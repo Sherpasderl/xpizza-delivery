@@ -30,12 +30,12 @@ async function seed(hooks = {}) {
 (async () => {
   const db = await seed(); const before = JSON.stringify(db.root);
   const dry = await M.migrate({ rtdb: db });
-  assert.deepStrictEqual(dry, { dryRun: true, records: 3, withToken: 2, matched: 1, unmatched: 1, migrated: 0, raced: 0 }, '🔴 MIG-DRY: the dry run counts');
+  assert.deepStrictEqual(dry, { dryRun: true, records: 3, withToken: 2, matched: 1, unmatched: 1, migrated: 0, raced: 0, deferredAmbiguous: 0 }, '🔴 MIG-DRY: the dry run counts');
   assert.strictEqual(JSON.stringify(db.root), before, '🔴 MIG-DRY: the dry run writes nothing');
   assert.ok(!JSON.stringify(dry).includes('o_') && !JSON.stringify(dry).includes('T-'), 'MIG-DRY: counts only');
   ok('dry run: counts only (records, legacy tokens, matched to an attempt by hash, unmatched), nothing written');
   const r = await M.migrate({ rtdb: db, apply: true });
-  assert.deepStrictEqual(r, { dryRun: false, records: 3, withToken: 2, matched: 1, unmatched: 1, migrated: 1, raced: 0 }, '🔴 MIG-APPLY: one migrated');
+  assert.deepStrictEqual(r, { dryRun: false, records: 3, withToken: 2, matched: 1, unmatched: 1, migrated: 1, raced: 0, deferredAmbiguous: 0 }, '🔴 MIG-APPLY: one migrated');
   const m = db.getAt('payment_sdk/o_match');
   assert.ok(m.token === undefined && m.token_attempt === 'att_mig_match_000001', '🔴 MIG-APPLY: the record keeps only the pointer to the MATCHING attempt (one CAS)');
   assert.deepStrictEqual(db.getAt('payment_sdk_tokens/o_match'), { att_mig_match_000001: 'T-m' }, '🔴 MIG-APPLY: the token sits at payment_sdk_tokens/{oid}/{attempt}');
@@ -44,7 +44,7 @@ async function seed(hooks = {}) {
   assert.strictEqual(db.getAt('payment_sdk_tokens/o_unmatched'), null, 'MIG-APPLY: nothing written for it');
   ok('--apply: a matched legacy token moves to the node (write-ahead) and the record to the pointer in one CAS; unmatched untouched');
   const again = JSON.stringify(db.root);
-  assert.deepStrictEqual(await M.migrate({ rtdb: db, apply: true }), { dryRun: false, records: 3, withToken: 1, matched: 0, unmatched: 1, migrated: 0, raced: 0 }, '🔴 MIG-IDEMPOTENT');
+  assert.deepStrictEqual(await M.migrate({ rtdb: db, apply: true }), { dryRun: false, records: 3, withToken: 1, matched: 0, unmatched: 1, migrated: 0, raced: 0, deferredAmbiguous: 0 }, '🔴 MIG-IDEMPOTENT');
   assert.strictEqual(JSON.stringify(db.root), again, '🔴 MIG-IDEMPOTENT: a rerun writes nothing');
   ok('idempotent: a rerun finds nothing left to move and writes nothing');
   // a concurrent change between the read and the CAS: the record's token changed ⇒ «raced», the record is left as the other writer made it
@@ -84,6 +84,24 @@ async function seed(hooks = {}) {
     await require('../payments/sdk/sweeper').sweepSdkPayments(depsS);
     assert.strictEqual(dbS.getAt('payment_sdk_tokens/o_match'), null, '🔴 MIG-STALE-ORPHAN: the sweeper\'s walk removes the migration\'s stale write-ahead');
     ok('a stale migration write-ahead (lost CAS after the null) is removed by the sweeper\'s walk');
+  }
+  // Codex #161 F3: A and B share a token, A declined, B APPROVED but stopped before payment_placed committed (the order transaction
+  // failed) — no winner is established yet, so the migration must NOT guess: it DEFERS (the legacy token stays; counted)
+  {
+    let armed = false; let dbA = null;
+    dbA = makeHonestDb({ orders: { o_amb: { ...ORDER } } }, { now: () => T0, beforeTx: async (p) => { if (armed && String(p) === 'orders/o_amb') throw Object.assign(new Error('order commit failed'), { code: 'unavailable' }); } });
+    const fake = makeFakePsp({ authorize: [{ outcome: 'definitive_decline', code: 'X' }, { outcome: 'approved' }] });
+    const deps = { db: dbA, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {} };
+    await C.placeOriginal(deps, { orderId: 'o_amb', attempt_id: 'att_amb_a_first_00001', token: 'T-shared', amount_cents: 100, card: { card_ref: 'new', display: DISP, save: true, vault_gen: 0 } });
+    armed = true;
+    await C.placeOriginal(deps, { orderId: 'o_amb', attempt_id: 'att_amb_b_second_0002', token: 'T-shared', amount_cents: 100, card: { card_ref: 'new', display: DISP, save: true, vault_gen: 0 } }).catch(() => null);
+    armed = false;
+    assert.ok(!dbA.getAt('orders/o_amb/payment_placed') && fake.calls.filter((c) => c.action === 'authorize').length === 2, 'premise: B was approved but payment_placed never committed');
+    await dbA.ref('payment_sdk/o_amb').update({ token: 'T-shared', token_attempt: null }); await dbA.ref('payment_sdk_tokens/o_amb').set(null);
+    const r = await M.migrate({ rtdb: dbA, apply: true });
+    assert.strictEqual(r.deferredAmbiguous, 1, `🔴 MIG-AMBIGUOUS: two matching attempts and no winner ⇒ deferred (${JSON.stringify(r)})`);
+    assert.ok(dbA.getAt('payment_sdk/o_amb/token') === 'T-shared' && dbA.getAt('payment_sdk_tokens/o_amb') == null && dbA.getAt('payment_sdk/o_amb/token_attempt') == null, '🔴 MIG-AMBIGUOUS: the legacy token stays on the record (the fallback still serves it); nothing written');
+    ok('approved-but-unplaced shared token: no winner yet ⇒ the migration defers (legacy token kept, counted)');
   }
   console.log(`migrate-sdk-tokens: OK (${n})`);
 })().catch((e) => { process.stderr.write(`migrate-sdk-tokens: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
