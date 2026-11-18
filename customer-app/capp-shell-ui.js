@@ -136,6 +136,7 @@
       if (S.loc && S.loc.lat === lat && S.loc.lng === lng && S.loc.source === source) return;
       S.loc = { lat, lng, confirmed: true, source, v: (S.loc ? S.loc.v : 0) + 1 }; S.locDenied = false;
       writeJ(LOC_KEY, S.loc);
+      S.locPick = 'device';   // C-DIR-1: a pin / GPS fix chosen now takes over from a saved address
     }
     const geoApi = () => (o.geolocation !== undefined ? o.geolocation : (win && win.navigator && win.navigator.geolocation) || null);
     // «Usar mi ubicación actual» (OWNER 2026-10-21: a detected fix is confirmed); denied / failed ⇒ the drawn locrow, NO fallback pin
@@ -368,7 +369,7 @@
     }
     // ── G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27): the MEMBER's Cuenta, in the shell, under runtime.signup (G6's flag; absent ⇒
     //    the member's Cuenta stays the host's event, byte for byte) ──
-    let suApi = null, suMod = null;   // suMod: the signup-api MODULE (C-3r v2: its snapshotOf, the reorder's alignment check)
+    let suApi = null, suMod = null;   // suMod: the signup-api MODULE (C-3r v2: its snapshotOf, the reorder's alignment check; C-DIR-1: its bookOf, the cached book's one shape rule)
     const promosOv = { uid: null, v: null };   // frame 1b: the optimistic value while setPromos is in flight
     let signingOut = false;
     const phoneShown = (ph) => { const P = typeof CappPhone !== 'undefined' ? CappPhone : (o.CappPhone || null); const raw = String(ph || ''); if (!raw || !P) return raw;
@@ -641,6 +642,7 @@
         // the order screen lives on its order flow's URL (D-3 r3 table: «Checkout, tip, outcome and tracker» = /r/{rid}/pago)
         if (S.tab === 'order' && S.order) return CappRoutes.format({ name: 'store', rid: S.order.rid, step: 'pago' });
         if (S.tab === 'receipt') return CappRoutes.format({ name: 'orders' });   // a past order's receipt is a step of «Pedidos» (no URL of its own)
+        if (S.tab === 'addresses') return CappRoutes.format({ name: 'account' });   // C-DIR-1: «Direcciones» is a step of «Cuenta» (no URL of its own)
         if (S.tab === 'notifs') return CappRoutes.format({ name: 'account' });   // «Notificaciones» is a step of Cuenta (no URL of its own)
         return CappRoutes.format({ name: S.tab === 'search' ? 'search' : S.tab === 'account' ? 'account' : S.tab === 'orders' ? 'orders' : 'home' });
       } catch (_) { return null; }   // an id outside the ONE domain is never written: the URL stays as it is
@@ -657,7 +659,7 @@
       if (S.tab === 'order' && S.order) return CappHome.titleOf({ screen: 'order', status: S.order.status });
       if (S.tab === 'orders' || S.tab === 'receipt') return CappHome.titleOf({ screen: 'orders' });
       if (S.tab === 'search') return CappHome.titleOf({ screen: 'search', q: S.q || '' });
-      if (S.tab === 'account') return CappHome.titleOf({ screen: 'account' });
+      if (S.tab === 'account' || S.tab === 'addresses') return CappHome.titleOf({ screen: 'account' });
       if (S.tab === 'notifs') return CappHome.titleOf({ screen: 'notifs' });
       return CappHome.titleOf({ screen: 'home', platform });
     }
@@ -738,6 +740,7 @@
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
+        if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = S.book.addresses.slice(); renderNow(); return; }   // C-DIR-1: frozen per open
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'notifs') { if (!notifsOk()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; if (pushUi()) pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -845,7 +848,7 @@
       return { updateLine: hidden !== dayOf(Number(nowMs())), updateRow: runtime.store.name };
     }
     // the top bar's two live facts — ONE source for Inicio's vm and the store page's bar (C-6c)
-    const addrVm = () => ({ short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' });
+    const addrVm = () => { const sv = savedInUse(); return sv ? { short: sv.label, line: `${sv.label} · ${sv.detected}` } : { short: 'Tu ubicación', line: S.loc ? 'Tu ubicación' : 'Agregá tu dirección' }; };   // v6 :1507-1508
     const memberInitial = () => (authNow() === 'member' && S.member && S.member.name ? String(S.member.name).trim().charAt(0).toUpperCase() || null : null);
     // C-6c (D-3 r3 frame 2a): the desktop store page carries the shell's top bar — no tab is current there
     const storeChrome = () => CappHome.desknavHtml({ tab: 'store', q: '', addr: addrVm(), memberInitial: memberInitial() });
@@ -866,7 +869,7 @@
       });
       const nCart = v.rows.reduce((a, r) => { const c = cfgOf(r.entry); const s = c && readJ(c.cartKey); return a + (s && Array.isArray(s.lines) ? s.lines.reduce((n, l) => n + (Number(l.qty) || 0), 0) : 0); }, 0);
       return { ...updateVm(), desk: !!(view && view.desk()), featPage: S.featPage || 0, pvPage: S.pvPage || 0, legal: legalVm(), legalPending: legalPending(), memberInitial: memberInitial(), signupOn: !!SU, orders: ordersVm(v.rows), receiptOk: !!(S.member && suApi && fbAuth), helpOk: !!supportWa(), ordersTab: S.ordersTab || 'past', phase: S.heldErr ? 'error' : v.phase, partial: !S.heldErr && v.partial, rows, platform: v.platform, now: clock(), auth: authNow(), promoAuth: admittedAuth(), cuisine: S.cuisine, filters: S.filters,
-        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, S.loc), addr: addrVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
+        schedulingLive: runtime.schedulingLive === true, outOfZone: !S.heldErr && CappHome.allOutOfZone(v.rows, locNow()), addr: addrVm(), dir: dirVm(), locDenied: S.locDenied && !S.loc, tab: S.tab, cartN: nCart, live: liveDot(), paraVos: S.tab === 'home' && !S.heldErr ? paraVosOf(rows) : [], q: S.q, recent: S.recent, ...(SU && S.tab === 'account' ? { acct: acctVm(), notifRow: { title: cappPush().COPY.screenTitle, sub: cappPush().rowSub(notifsVm()) } } : {}) };
     }
     // the in-place re-render keeps every scroll position and the focused control (no jump, no lost caret)
     function saveScreen() {
@@ -892,7 +895,7 @@
       const v = vm();
       const layer = $('layer'), toastEl = $('toast');
       const scr = app.querySelector(':scope > .screen');
-      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
+      const html = S.neutral ? CappHome.neutralReturnHtml(S.neutral.order) : S.tab === 'order' && S.order ? orderScreenHtml(v) : S.tab === 'receipt' && S.receipt ? receiptScreenHtml(v) : S.tab === 'addresses' && S.book ? CappHome.addressesHtml({ ...v, tab: 'account', dir: { rows: dirShown || [], sel: savedSelId() } }) : S.tab === 'notifs' && notifsOk() ? CappHome.shellWrap(v, cappPush().screenHtml(notifsVm())) : S.tab === 'orders' ? CappHome.ordersHtml(v) : S.tab === 'search' ? CappHome.searchHtml(v) : S.tab === 'account' && (runtime.guestCardOnly === true || SU) ? (v.acct ? CappHome.accountMemberHtml(v) : CappHome.accountGuestHtml(v)) : CappHome.homeHtml(v);
       if (scr && layer && toastEl && !rebuild) scr.innerHTML = html;   // the open layer (a live pin map) and a showing toast are never rebuilt
       else { rebuild = false; app.innerHTML = `<div class="screen">${html}</div><div class="layer" id="layer"></div><div class="toast" id="toast" role="status" aria-live="polite"></div>`; renderLayer(); }
       restoreScreen(keep);
@@ -1212,7 +1215,58 @@
       }
       return pvVisit.map((x) => { const row = rows.find((r) => r.rid === x.rid); return row ? { r: CappHome.storeOf(row), fav: isFav(x.rid), again: x.again } : null; }).filter(Boolean);
     }
+    // ── C-DIR-1 (PLAN-capp-direcciones r0 + rulings 11-13; 3a S-ADDR-1 / S-ADDR-2): the member's ADDRESS BOOK. Cached-first per member
+    // (capp:addr:<uid>: the served fields only), ONE getMyProfile read after paint; a sign-out or a member switch REMOVES the previous
+    // member's book from the device. «en uso» = default_address, persisted through useMyAddress (optimistic; a refusal reverts with
+    // the approved G7 line). The «Direcciones» screen and the sheet render a FROZEN copy per open (a read never inserts a row into a
+    // visible list — rule 7). The location in use: the saved address while S.locPick is 'saved'; a pin / GPS fix chosen after it takes over
+    const ADDR_KEY = (uid) => `capp:addr:${uid}`;
+    let bookGen = 0, bookPending = 0, dirShown = null;
+    S.book = null; S.locPick = null;
+    const bookSave = () => { if (S.book && S.book.who) writeJ(ADDR_KEY(S.book.who), { v: 1, addresses: S.book.addresses, default_address: S.book.sel }); };
+    const bookSel = () => (S.book && S.book.sel ? S.book.addresses.find((a) => a.id === S.book.sel) || null : null);
+    const savedInUse = () => (S.member && S.locPick === 'saved' ? bookSel() : null);
+    const savedSelId = () => { const a = savedInUse(); return a ? a.id : null; };
+    const locNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, source: 'saved' } : S.loc; };
+    const dirVm = () => (S.member && S.book ? { labels: S.book.addresses.map((a) => a.label).join(' · ') } : null);   // v6 :2162
+    function bookIdentity() {
+      const uid = S.member && S.member.uid ? S.member.uid : null;
+      if (S.book && S.book.who === uid) return;
+      if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }
+      bookGen++; S.book = null; dirShown = null; S.locPick = null;
+      if (!uid || !suApi || !fbAuth || !suMod || typeof suMod.bookOf !== 'function') return;
+      const c = readJ(ADDR_KEY(uid)), cb = c && c.v === 1 ? suMod.bookOf(c) : null;
+      S.book = { who: uid, addresses: cb ? cb.addresses : [], sel: cb ? cb.default_address : null };
+      if (S.book.sel) S.locPick = 'saved';
+      const gen = bookGen;
+      T.setTimeout(async () => {   // after paint: never awaited by a render
+        if (dead || gen !== bookGen) return;
+        let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+        if (!tok || dead || gen !== bookGen) return;
+        const r = await suApi.getMyProfile({ idToken: tok });
+        const cur = auth && auth.user ? auth.user() : null;
+        if (dead || gen !== bookGen || !r || r.ok !== true || !S.book || !cur || cur.uid !== uid) return;
+        S.book = { who: uid, addresses: r.book.addresses, sel: bookPending ? S.book.sel : r.book.default_address };   // a write in flight keeps its pick
+        if (S.locPick !== 'device') S.locPick = S.book.sel ? 'saved' : null;
+        bookSave(); schedule();
+      }, 0);
+    }
+    async function selectAddr(id) {
+      if (!S.member || !S.book || !S.book.addresses.some((a) => a.id === id) || !suApi || !fbAuth) return;
+      const uid = S.book.who, gen = bookGen, before = { sel: S.book.sel, pick: S.locPick };
+      S.book.sel = id; S.locPick = 'saved'; bookSave();
+      if (S.layer === 'addr') closeLayer();
+      schedule();
+      bookPending++;
+      let tok = null; try { tok = await fbAuth.idToken(); } catch (_) { tok = null; }
+      const r = tok ? await suApi.useMyAddress({ idToken: tok, id }) : { ok: false, reason: 'unauthenticated' };
+      bookPending--;
+      if (dead || gen !== bookGen || !S.book || S.book.who !== uid) return;   // another identity now: never applied to it
+      if (r.ok !== true && S.book.sel === id) { S.book.sel = before.sel; S.locPick = before.pick; bookSave(); toast('No se guardó el cambio. Intentá de nuevo.'); schedule(); }
+    }
     function identityChanged() {
+      bookIdentity();   // C-DIR-1: the previous member's book leaves the device and every surface
+      if (S.tab === 'addresses' && !(S.member && S.book)) nav.tab({ name: 'account' });
       favIdentity();
       ordersGen++; S.ordersRead = null;   // any in-flight history read is void; nothing of the previous identity is shown
       rateGen++; rateCache.clear(); if (S.layer === 'rate') { S.rate = null; closeLayer(); }   // C-2: nothing of the previous identity's ratings
@@ -1726,10 +1780,10 @@
     function renderLayer() {
       const L = $('layer'); if (!L) return;
       pinGen++; pinMap = null;   // any open pin map is obsolete
-      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml() : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
+      L.innerHTML = S.layer === 'payadj' ? paySheetHtml() : S.layer === 'help' && S.help ? CappOrder.helpSheetHtml(S.help) : S.layer === 'rate' && S.rate ? CappRate.sheetHtml(rateVm()) : S.layer === 'forget' ? CappHome.forgetSheetHtml() : S.layer === 'menuerr' ? menuErrHtml() : S.layer === 'addr' ? CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId() } : null) : S.layer === 'softask' ? CappHome.softaskHtml() : S.layer === 'pin' ? CappHome.pinEditorHtml(CappUI.MAP_SVG, !!runtime.mapsKey) : '';
       if (S.layer !== 'pin') return;
       const firstHub = dir.view().rows.map((r) => r.entry).find((e) => Number.isFinite(e.hub_lat) && Number.isFinite(e.hub_lng));
-      pinDraft = S.loc ? { lat: S.loc.lat, lng: S.loc.lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
+      pinDraft = locNow() ? { lat: locNow().lat, lng: locNow().lng } : null;   // the editor's VIEW starts on the city when there is no location — never a pin
       const center = pinDraft || (firstHub ? { lat: firstHub.hub_lat, lng: firstHub.hub_lng } : null);
       const el = L.querySelector('[data-gmap="pin"]'), p = el && center ? CappUI.loadMapsFor(doc, runtime.mapsKey) : null;
       if (!p) return;
@@ -1760,6 +1814,7 @@
       if (el && typeof el.focus === 'function') el.focus();
     }
     function openLayer(k) {
+      if (k === 'addr') dirShown = S.member && S.book ? S.book.addresses.slice() : null;   // C-DIR-1: the sheet's rows are frozen per open (rule 7)
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
@@ -1832,6 +1887,9 @@
       if (a === 'addr') return openLayer('addr');
       if (a === 'lclose') return closeLayer();   // «Cancelar» on the pin editor: the guest location is unchanged
       if (a === 'addr-new') return openLayer('pin');
+      if (a === 'addresses') return void nav.go({ name: 'addresses' });   // C-DIR-1: the member's «Direcciones» (v6 :2170)
+      if (a === 'addresses-back') return void nav.back();
+      if (a === 'addr-use') return void selectAddr(t.dataset.id);   // v6 :2264
       if (a === 'loc-use') { if (!readJ('capp:loc_asked')) return openLayer('softask'); closeLayer(); return geolocate('Usando tu ubicación actual'); }
       if (a === 'loc-allow') { writeJ('capp:loc_asked', true); closeLayer(); return geolocate('Ubicación activada'); }
       if (a === 'loc-deny') { writeJ('capp:loc_asked', true); S.locDenied = true; closeLayer(); return renderNow(); }

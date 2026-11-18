@@ -30,6 +30,7 @@
   // ── icons (the prototype's IC, verbatim) ──
   const I = (d, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const IC = {
+    back: I('<path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/>'), edit: I('<path d="M4 20h4l10-10-4-4L4 16z"/>'),   // v6 (C-DIR-1: the top-bar back, the INERT pencil)
     wa: I('<path d="M4 20l1.3-3.9A8 8 0 1 1 8.2 19z"/><path d="M9.5 9.5c0 3 2 5 5 5l1-1.5-2-1-1 1a4 4 0 0 1-1.5-1.5l1-1-1-2z"/>'),   // v6 P:1204
     update: I('<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>'),   // MOCKUP-capp-native-store-update
     chev: I('<path d="M9 6l6 6-6 6"/>'), left: I('<path d="M15 6l-6 6 6 6"/>'), right: I('<path d="M9 6l6 6-6 6"/>'), down: I('<path d="M6 9l6 6 6-6"/>'), search: I('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>'),
@@ -430,8 +431,10 @@
 
   // ── the guest location layers (P addrSheet :2179-2184 guest rows, the location soft-ask :1766, the full-screen pin step :2186 / capp-ui
   //    pinStepHtml — its store-free sentence; the map is the drawn schematic with a live map inside when a Maps key is configured) ──
-  const addrSheetHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-    <nav><button class="navrow" data-act="loc-use">${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new">${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
+  // C-DIR-1 (v6 :2179-2184): a member's saved addresses head the sheet — «{label}» / «{detected}», the one in use .on (dir: { rows, sel },
+  // the shell's per-open frozen book); a guest's sheet is unchanged
+  const addrSheetHtml = (dir) => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Dirección de entrega"><div class="grab"></div><div class="sheethead"><div><h2>Entregar en</h2><small>La zona de cada restaurante se revisa con esta dirección.</small></div><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
+    <nav>${dir && dir.rows ? dir.rows.map((a) => `<button class="navrow${dir.sel === a.id ? ' on' : ''}" data-act="addr-use" data-id="${esc(a.id)}">${esc(a.label)}<span>${esc(a.detected)}</span></button>`).join('') : ''}<button class="navrow" data-act="loc-use">${IC.nav.replace('class="i"', 'class="i" style="margin-right:10px"')}Usar mi ubicación actual<span></span></button><button class="navrow" data-act="addr-new">${IC.plus.replace('class="i"', 'class="i" style="margin-right:10px"')}Agregar dirección<span></span></button></nav></div>`;
   const softaskHtml = () => `<div class="scrim" data-act="lclose"></div><div class="sheet" role="dialog" aria-label="Ubicación"><div class="grab"></div><div class="softask"><div class="ill">${IC.pin}</div><h2>Encontrá restaurantes cerca de vos</h2><p>Usamos tu ubicación solo para mostrarte quién te entrega y poner el pin donde estás.</p><div class="acts"><button class="primary" data-act="loc-allow">Usar mi ubicación</button><button class="btn2 wide" data-act="loc-deny">Escribir mi dirección</button></div></div></div>`;
   const pinEditorHtml = (mapSvg, live) => `<div class="pinstep" role="dialog" aria-label="Confirmá dónde entregamos"><div class="mapwrap">${mapSvg || ''}${live ? '<div class="gmap" data-gmap="pin" style="position:absolute;inset:0"></div>' : ''}<div class="store-nav" style="position:absolute"><button class="iconbtn" data-act="lclose" aria-label="Cancelar">${IC.close}</button><span></span></div><div class="hint">Mové el mapa hasta que el pin quede en tu puerta</div><span class="pin">${IC.pinfill}</span></div>
     <div class="foot"><b>Confirmá dónde entregamos</b><span class="sub">Las direcciones aquí se describen con referencias: el pin es la dirección, los detalles son la referencia.</span><button class="primary" data-act="pin-done">Listo</button></div></div>`;
@@ -497,7 +500,8 @@
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
-      <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
+      ${vm.dir ? `<button class="rowbtn" data-act="addresses">${IC.pin}<span class="t">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */
+        : `<button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}
       ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
@@ -505,6 +509,15 @@
       <button class="rowbtn" data-act="signout">${IC.out}<span class="t">Cerrar sesión</span></button>
       <button class="rowbtn" data-act="forget">${IC.phone}<span class="t">Olvidar este teléfono<span>Cierra tu sesión y deja de recordar tu número</span></span></button></div>
     <div class="credit ver">v${esc(a.version || '')}</div></div>`);
+  }
+  // C-DIR-1 (v6 :2170, rulings 11-13): «Direcciones» — a step of Cuenta: v6's top bar, one row per saved address «{label}» (+ « · en uso»
+  // on the address in use) / «{detected} · {details}», v6's pencil in the chevron slot (INERT: no action of its own), then «Agregar
+  // dirección» (v6's pin-only step). dir: { rows, sel } — the shell's per-open frozen book (no row inserted while it shows)
+  function addressesHtml(vm) {
+    const d = vm.dir || { rows: [], sel: null };
+    const rows = d.rows.map((a) => `<button class="rowbtn" data-act="addr-use" data-id="${esc(a.id)}">${IC.pin}<span class="t"><b>${esc(a.label)}${d.sel === a.id ? ' · en uso' : ''}</b><span>${esc(a.details ? `${a.detected} · ${a.details}` : a.detected)}</span></span>${IC.edit.replace('class="i"', 'class="i chev"')}</button>`).join('');
+    return shellWrap(vm, `<div class="flow"><div class="topbar"><button class="iconbtn" data-act="addresses-back" aria-label="Volver">${IC.back}</button><h1>Direcciones</h1><span class="sp"></span></div>
+    <div class="rows addrlist">${rows}<button class="rowbtn" data-act="addr-new">${IC.plus}<span class="t">Agregar dirección<span>Poné el pin en tu puerta y describí la referencia</span></span></button></div></div>`);
   }
   // G7 frame 2: «Olvidar este teléfono» — the shell's .errsheet, the calm icon, two exits
   const forgetSheetHtml = () => `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Olvidar este teléfono"><div class="grab"></div>
@@ -518,5 +531,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addressesHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

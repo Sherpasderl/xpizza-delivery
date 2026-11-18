@@ -31251,8 +31251,8 @@
   "slice": "g7",
   "label": "the runtime.signup endpoint set drops setPromos (the host never builds its URL)",
   "file": "../customer-app/capp-signup-api.js",
-  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
-  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);",
+  "from": "'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs', 'getMyProfile', 'useMyAddress']);",
+  "to": "'completeProfile', 'redeemSignupGrant', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs', 'getMyProfile', 'useMyAddress']);",
   "command": [
    "node",
    "--test",
@@ -38718,8 +38718,8 @@
   "slice": "capp-push",
   "label": "the Cuenta row placed before Direcciones",
   "file": "../customer-app/capp-home.js",
-  "from": "      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
-  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      <button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>\n",
+  "from": "      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}\n      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n",
+  "to": "      ${vm.notifRow && vm.notifRow.title ? `<button class=\"rowbtn\" data-act=\"sub-notifs\">${IC.bell}<span class=\"t\">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}\n      ${vm.dir ? `<button class=\"rowbtn\" data-act=\"addresses\">${IC.pin}<span class=\"t\">Direcciones${vm.dir.labels || (vm.addr && vm.addr.line) ? `<span>${esc(vm.dir.labels || vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`   /* v6 :2162 the labels; an empty book keeps the approved line */\n        : `<button class=\"rowbtn\" data-act=\"addr\">${IC.pin}<span class=\"t\">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>`}\n",
   "command": [
    "node",
    "--test",
@@ -41298,6 +41298,176 @@
   ],
   "kills_with": [
    "✗ RB-READ-CAP:"
+  ]
+ },
+ {
+  "id": "dir-01",
+  "slice": "c-dir-1",
+  "label": "«en uso» on EVERY row (not the address in use)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${d.sel === a.id ? ' · en uso' : ''}",
+  "to": "${' · en uso'}",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-02",
+  "slice": "c-dir-1",
+  "label": "the selection never persisted (no useMyAddress)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "const r = tok ? await suApi.useMyAddress({ idToken: tok, id }) : { ok: false, reason: 'unauthenticated' };",
+  "to": "const r = { ok: true };",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-3"
+  ]
+ },
+ {
+  "id": "dir-03",
+  "slice": "c-dir-1",
+  "label": "a refused «en uso» write is not reverted (the screen lies about the server)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (r.ok !== true && S.book.sel === id) {",
+  "to": "if (false && r.ok !== true && S.book.sel === id) {",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-5"
+  ]
+ },
+ {
+  "id": "dir-04",
+  "slice": "c-dir-1",
+  "label": "a sign-out / member switch leaves the previous member's book on the device",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "if (S.book && S.book.who) { try { storage && storage.removeItem(ADDR_KEY(S.book.who)); } catch (_) {} }",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-7"
+  ]
+ },
+ {
+  "id": "dir-05",
+  "slice": "c-dir-1",
+  "label": "the visible «Direcciones» list re-renders LIVE (a row inserted when the read lands — pop-in)",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "dir: { rows: dirShown || [], sel: savedSelId() } }) :",
+  "to": "dir: { rows: S.book.addresses, sel: savedSelId() } }) :",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-6"
+  ]
+ },
+ {
+  "id": "dir-06",
+  "slice": "c-dir-1",
+  "label": "the pencil gets an action of its own (v6 draws it inert)",
+  "file": "../customer-app/capp-home.js",
+  "from": "${IC.edit.replace('class=\"i\"', 'class=\"i chev\"')}</button>`).join('');",
+  "to": "${IC.edit.replace('class=\"i\"', 'class=\"i chev\" data-act=\"addr-edit\"')}</button>`).join('');",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-07",
+  "slice": "c-dir-1",
+  "label": "the «Entregar en» sheet never lists the member's saved addresses",
+  "file": "../customer-app/capp-shell-ui.js",
+  "from": "CappHome.addrSheetHtml(S.member && S.book ? { rows: dirShown || S.book.addresses, sel: savedSelId() } : null)",
+  "to": "CappHome.addrSheetHtml(null)",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-4"
+  ]
+ },
+ {
+  "id": "dir-08",
+  "slice": "c-dir-1",
+  "label": "a default_address naming no kept entry is kept (an «en uso» that is not in the list)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "const d = j && typeof j.default_address === 'string' && addresses.some((a) => a.id === j.default_address) ? j.default_address : null;",
+  "to": "const d = j && typeof j.default_address === 'string' ? j.default_address : null;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-API"
+  ]
+ },
+ {
+  "id": "dir-09",
+  "slice": "c-dir-1",
+  "label": "a malformed entry is kept (no coordinate check)",
+  "file": "../customer-app/capp-signup-api.js",
+  "from": "&& inRange(a.lat, 90) && inRange(a.lng, 180))",
+  "to": ")",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=^C-DIR-1",
+   "../customer-app/capp-signup.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-API"
+  ]
+ },
+ {
+  "id": "dir-pin",
+  "slice": "c-dir-1",
+  "label": "the address fixture is trusted at another 3a ref (the pre-merge addr-use-3a tip) — merge-forward 11-18",
+  "file": "../customer-app/capp-s7a2.test.mjs",
+  "from": "const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';",
+  "to": "const ADDR_REF = 'd1f45ff39b4f3bd161203ab8d88feff1cb474773';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=ADDR-PIN",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "ADDR-PIN: the fixture was generated at the approved 3a ref"
   ]
  }
 ]

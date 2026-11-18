@@ -8541,7 +8541,13 @@
    ]
   },
   "signup-platform.js": {
-   "pins": [],
+   "pins": [
+    {
+     "file": "customer-app/fixtures/addr/gen-addr.mjs",
+     "inverses": [],
+     "provenance": true
+    }
+   ],
    "lifts": []
   },
   "staff-push.js": {
@@ -8860,6 +8866,15 @@
    "status": "ok",
    "sha": "544732baa6ab200cd70892d4f3ffe0dc6948278a",
    "blob": "534c0b1b5785a9179605ba6ff07e2692a1d26aa5",
+   "consumer": "customer-app/capp-s7a2.test.mjs",
+   "live_differs": true
+  },
+  {
+   "site": "customer-app/fixtures/addr/gen-addr.mjs",
+   "module": "signup-platform.js",
+   "status": "ok",
+   "sha": "1856188046a6afac53f05b20ccad27702ef4b376",
+   "blob": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
    "consumer": "customer-app/capp-s7a2.test.mjs",
    "live_differs": true
   }

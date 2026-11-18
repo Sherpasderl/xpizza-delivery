@@ -1,0 +1,131 @@
+{
+ "source": {
+  "commit": "1856188046a6afac53f05b20ccad27702ef4b376",
+  "blobs": {
+   "xpizza-orders/account.js": "43df11e84a06abff6ee3e5f11816a507e22eea4c",
+   "xpizza-functions/signup-platform.js": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
+   "xpizza-functions/address-book.js": "62d3d8f31dd906fb2c7f400ae5f2a7e3d6f6d406",
+   "xpizza-functions/my-address.js": "10ecccb5bd4632480eaca1e8d1e903064ab88a20",
+   "xpizza-functions/member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607"
+  },
+  "fn_blobs": {
+   "signup-platform.js": "6a4912f9823ffabac5a12b3f8c85595178cc5c06",
+   "address-book.js": "62d3d8f31dd906fb2c7f400ae5f2a7e3d6f6d406",
+   "my-address.js": "10ecccb5bd4632480eaca1e8d1e903064ab88a20",
+   "member-auth.js": "7f20b0df5b7f0ed7de78ddeb813b7d6a89539607"
+  }
+ },
+ "ids": {
+  "casa": "a_7e47ab726e1c",
+  "trabajo": "a_8c5e2481eca6"
+ },
+ "scenarios": {
+  "profile_default_casa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_8c5e2481eca6",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1795001069688
+     },
+     {
+      "id": "a_7e47ab726e1c",
+      "label": "Casa",
+      "detected": "Col. Palmira, Tegucigalpa",
+      "details": "Casa azul, portón negro",
+      "lat": 14.0937,
+      "lng": -87.1838,
+      "last_used_at": 1795001069681
+     }
+    ],
+    "default_address": "a_7e47ab726e1c"
+   }
+  },
+  "use_trabajo": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "default_address": "a_8c5e2481eca6"
+   }
+  },
+  "profile_after_use": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [
+     {
+      "id": "a_8c5e2481eca6",
+      "label": "Trabajo",
+      "detected": "Blvd. Morazán, Tegucigalpa",
+      "details": "Torre 2, piso 5",
+      "lat": 14.1003,
+      "lng": -87.1901,
+      "last_used_at": 1800000060000
+     },
+     {
+      "id": "a_7e47ab726e1c",
+      "label": "Casa",
+      "detected": "Col. Palmira, Tegucigalpa",
+      "details": "Casa azul, portón negro",
+      "lat": 14.0937,
+      "lng": -87.1838,
+      "last_used_at": 1795001069681
+     }
+    ],
+    "default_address": "a_8c5e2481eca6"
+   }
+  },
+  "use_unknown": {
+   "status": 404,
+   "body": {
+    "ok": false,
+    "reason": "not_found"
+   }
+  },
+  "profile_empty": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "name": "Ana",
+    "email": null,
+    "phone": "50499990000",
+    "phone_last4": "0000",
+    "consent": {
+     "terms": false,
+     "terms_version": null,
+     "promos": false
+    },
+    "completion": "off",
+    "addresses": [],
+    "default_address": null
+   }
+  }
+ },
+ "scenarios_sha256": "5131dd5c598239a5a34d78fc405944441714009304f89c5e3a25045d3f003482"
+}

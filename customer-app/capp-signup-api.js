@@ -17,7 +17,7 @@
   const CONTEXT = 'platform';
   const TIMEOUT_MS = 12000;
   // the runtime.signup endpoint set — every call below uses one of these keys (capp-signup.test.mjs guard)
-  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs']);
+  const ENDPOINTS = Object.freeze(['requestOtp', 'verifyOtp', 'getSignupConfig', 'googleStart', 'googleSignIn', 'completeProfile', 'redeemSignupGrant', 'setPromos', 'getMyOrders', 'getMyRating', 'rateOrder', 'getMyFavorites', 'setFavorite', 'registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs', 'getMyProfile', 'useMyAddress']);
 
   function createSignupApi(opts) {
     const o = opts || {};
@@ -106,6 +106,25 @@
         const j = r.json;
         if (r.status !== 200 || !j || j.ok !== true || !Array.isArray(j.active) || !Array.isArray(j.past)) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
         return { ok: true, active: j.active.map(rowOf).filter(Boolean), past: j.past.map(rowOf).filter(Boolean), next_cursor: typeof j.next_cursor === 'string' && j.next_cursor ? j.next_cursor : null };
+      },
+      // C-DIR-1 (3a S-ADDR-1): the member's address book from getMyProfile — GET ?context=platform, the token in its header (never a URL
+      // or a body); only the book survives (bookOf); a refusal is a failure, never a guessed book
+      async getMyProfile({ idToken } = {}) {
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        const r = await call(E.getMyProfile, { method: 'GET', idToken, query: 'context=platform' });
+        const j = r.json;
+        if (r.status !== 200 || !j || j.ok !== true) return { ok: false, reason: r.status === 403 ? 'deleted' : reasonOf(r) };
+        return { ok: true, book: bookOf(j) };
+      },
+      // C-DIR-1 (3a S-ADDR-2): «en uso» persisted as default_address — POST ?context=platform, body EXACTLY { id } (an entry the member's
+      // own book holds; the server only SELECTS it); a malformed id never leaves the device
+      async useMyAddress({ idToken, id } = {}) {
+        if (!(typeof id === 'string' && ADDR_ID_RE.test(id))) return { ok: false, reason: 'bad_request' };
+        if (!idToken) return { ok: false, reason: 'unauthenticated' };
+        const r = await call(E.useMyAddress, { method: 'POST', idToken, query: 'context=platform', body: { id } });
+        const j = r.json;
+        if (r.status === 200 && j && j.ok === true && j.default_address === id) return { ok: true, default_address: id };
+        return { ok: false, reason: r.status === 404 ? 'not_found' : r.status === 403 ? 'deleted' : reasonOf(r) };
       },
       // the RECEIPT detail mode (NOTE-getMyOrders-receipt, 3a 75eed212, APPROVED): ONE order of the member's own, ?order_id alone with the
       // same header auth; a uniform 404 for anything not hers ⇒ 'not_found'. Only the contract's receipt whitelist survives (receiptOf)
@@ -206,6 +225,19 @@
     };
   }
 
+  // C-DIR-1: the address book, field by field — the RULES' own shape (3a's address-book.js: id a_[a-f0-9]{6,32}, label 1–40, detected
+  // 1–200, details ≤ 200, lat / lng ranged), in the server's order (newest use first), at most 20; a malformed entry is DROPPED (never
+  // repaired); default_address only when it names a kept entry, else null. Owner-only PII: nothing here is logged
+  const ADDR_ID_RE = /^a_[a-f0-9]{6,32}$/, BOOK_MAX = 20;
+  const strLen = (v, lo, hi) => typeof v === 'string' && v.length >= lo && v.length <= hi;
+  const inRange = (v, lim) => typeof v === 'number' && Number.isFinite(v) && v >= -lim && v <= lim;
+  function bookOf(j) {
+    const addresses = (Array.isArray(j && j.addresses) ? j.addresses : [])
+      .filter((a) => a && typeof a === 'object' && typeof a.id === 'string' && ADDR_ID_RE.test(a.id) && strLen(a.label, 1, 40) && strLen(a.detected, 1, 200) && strLen(a.details, 0, 200) && inRange(a.lat, 90) && inRange(a.lng, 180))
+      .slice(0, BOOK_MAX).map((a) => ({ id: a.id, label: a.label, detected: a.detected, details: a.details, lat: a.lat, lng: a.lng }));
+    const d = j && typeof j.default_address === 'string' && addresses.some((a) => a.id === j.default_address) ? j.default_address : null;
+    return { addresses, default_address: d };
+  }
   // the contract's Row (NOTE-getMyOrders §3), field by field — nothing else survives
   const ORDER_ID_RE = /^[A-Za-z0-9_-]{4,64}$/, RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
   // the reorder price snapshot (C-3r; PLAN-3a-capp-member-reads R2.7 / R3.2): RECEIPT-ONLY (the list row never carries it). S-D's v1
@@ -292,5 +324,5 @@
     if ('dishes' in f) { const d = f.dishes; if (!d || typeof d !== 'object' || Array.isArray(d)) return false; const ids = Object.keys(d); if (ids.length > DISHES_MAX || ids.some((k) => !dishIdOk(k) || !thumbOk(d[k]))) return false; }
     return true;
   }
-  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, snapshotOf, myRatingOf, dishIdOk, RTDB_KEY_UNSAFE };
+  return { createSignupApi, CONTEXT, TIMEOUT_MS, ENDPOINTS, rowOf, receiptOf, snapshotOf, bookOf, myRatingOf, dishIdOk, RTDB_KEY_UNSAFE };
 });

@@ -2353,6 +2353,7 @@ async function pedidosBoot(db, opts = {}) {
   const g = g7Server();
   const fetch = async (u, i) => { const pth = u.split('?')[0];   // C-2: the rating endpoints go to the test's rating server (opts.rate)
     if (opts.rate && (pth.endsWith('/getMyRating') || pth.endsWith('/rateOrder'))) return opts.rate.handler(u, i);
+    if (opts.addr && (pth.endsWith('/getMyProfile') || pth.endsWith('/useMyAddress'))) return opts.addr.handler(u, i);   // C-DIR-1
     if (opts.fav && (pth.endsWith('/getMyFavorites') || pth.endsWith('/setFavorite'))) return opts.fav.handler(u, i);   // C-1b
     if (opts.push && /CustomerPush/.test(pth)) return opts.push.handler(u, i);   // push stage 2: 3a's REAL customer-push handlers
     return pth.endsWith('/getMyOrders') ? mo.handler(u, i) : g.fetch(u, i); };
@@ -3362,14 +3363,14 @@ test('C-6a r2 (Codex r1 #1-#5): the footer\'s Ayuda opens the platform support c
     try { assert.ok(E.q('.home-body footer.dfoot'), '🔴 C6A-5: the footer on Inicio\'s error state too'); } finally { E.w.close(); } }
 });
 
-test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row after «Pedidos», its address line, opening the approved location sheet', async () => {
+test('C-6a «Direcciones» (D-3 r3 frame 6) — superseded by C-DIR-1 (advisor 11-13: v6 :2170 governs): the member\'s Cuenta row after «Pedidos» opens v6\'s «Direcciones» screen', async () => {
   const { S } = await pedidosBoot({});
   try {
     S.click('.tabbar [data-tab="account"]'); await flush(); await flush();
     const rows = S.qa('.rows .rowbtn').map((b) => b.querySelector('.t').firstChild.textContent);
     assert.deepEqual(rows.slice(0, 3), ['Pedidos', 'Direcciones', 'Notificaciones'], '🔴 SEO-dir: the row, between Pedidos and Notificaciones');
-    S.click('.rowbtn[data-act="addr"]'); await flush();
-    assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SEO-dir: the location sheet opens');
+    S.click('.rowbtn[data-act="addresses"]'); await flush();
+    assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 SEO-dir: v6\'s «Direcciones» opens (the interim location-sheet link is superseded)');
   } finally { S.w.close(); }
 });
 // ── C-6b (D-3 r3 f1a/f1b): the desktop top bar and the Inicio heading ──
@@ -5030,6 +5031,128 @@ test('VC-L no shell window outlives the cell that booted it (late responses neve
   assert.deepEqual([...new Set(open)].filter((c) => c !== CUR), [], '🔴 VC-L: a shell left open by an earlier cell');
 });
 
+// ── C-DIR-1 (PLAN-capp-direcciones r0 + rulings; v6 P:2170 / :2179-2184 / :2162 / :1507 / :2264): the member's address book — 3a's getMyProfile
+// (S-ADDR-1) read once after paint, cached per member; «en uso» = default_address, persisted through useMyAddress (S-ADDR-2). The pencil
+// is INERT, «Agregar dirección» is v6's pin-only step. The served bodies are the REAL writer + 3a's REAL handlers (fixtures/addr) ──
+// ADDR_REF = feat/addr-3a-fwd: 3a's S-ADDR-1 + S-ADDR-2 merged onto main 31f05c8a4 (Codex #146 HIGH APPROVED) — the ONE server ref
+// PROVENANCE-PIN:BEGIN addr
+const ADX = JSON.parse(readFileSync(join(HERE, 'fixtures/addr/addr.json'), 'utf8'));
+const ADDR_REF = '1856188046a6afac53f05b20ccad27702ef4b376';
+test('C-DIR-1 ADDR-PIN: the address fixture was produced by 3a\'s REAL handlers at the ONE approved server ref — every recorded blob is that ref\'s', () => {
+  assert.equal(ADX.source.commit, ADDR_REF, '🔴 ADDR-PIN: the fixture was generated at the approved 3a ref');
+  const files = Object.keys(ADX.source.blobs);
+  assert.deepEqual(files.filter((f) => /^xpizza-functions\/(signup-platform|my-address|address-book)\.js$/.test(f)).sort(), ['xpizza-functions/address-book.js', 'xpizza-functions/my-address.js', 'xpizza-functions/signup-platform.js'], 'premise: S-ADDR-1 + S-ADDR-2 + the book module');
+  for (const f of files) assert.equal(ADX.source.blobs[f], execFileSync('git', ['rev-parse', `${ADDR_REF}:${f}`], { cwd: join(HERE, '..'), encoding: 'utf8' }).trim(), `🔴 ADDR-PIN: ${f} is the ref's blob`);
+});
+// PROVENANCE-PIN:END addr
+const AID = ADX.ids;
+function addrServer({ profile = 'profile_default_casa', use = 'use_trabajo', pgate = null } = {}) {
+  const calls = []; let prof = profile;
+  const handler = async (u, i = {}) => {
+    const ep = u.split('?')[0].split('/').pop(); calls.push({ ep, u, method: i.method || 'GET', body: i.body ? JSON.parse(i.body) : null, headers: i.headers || {} });
+    if (ep === 'getMyProfile' && pgate) await pgate;
+    const sc = ADX.scenarios[ep === 'getMyProfile' ? prof : (typeof use === 'function' ? use(JSON.parse(i.body)) : use)];
+    return { status: sc.status, json: async () => J(sc.body) };
+  };
+  return { handler, calls, profile: (p) => { prof = p; } };
+}
+const dirRows = (S) => S.qa('.addrlist .rowbtn').map((b) => [b.dataset.act, b.dataset.id || null, txt(b.querySelector('.t b')) || txt(b.querySelector('.t')), txt(b.querySelector('.t > span'))]);
+async function dirBoot(o = {}) {
+  const addr = addrServer(o);
+  const st = o.storage || g7Store(G7_PROFILE({ promos: true }));
+  const b = await pedidosBoot({}, { storage: st, addr, ...(o.fbOpts ? { fbOpts: o.fbOpts } : {}) });
+  await flush(); await flush();
+  return { ...b, addr, st };
+}
+const toAccount = async (S) => { S.click('.tabbar [data-tab="account"]'); await flush(); };
+const toDirecciones = async (S) => { await toAccount(S); S.click('[data-act="addresses"]'); await flush(); };
+test('C-DIR-1 (v6 :2162): the member\'s Cuenta row «Direcciones» carries the book\'s labels «Trabajo · Casa» (the server\'s order); the read is getMyProfile, after paint, the token in its header', async () => {
+  const { S, addr } = await dirBoot();
+  try {
+    await toAccount(S);
+    const row = S.q('.rows [data-act="addresses"]');
+    assert.ok(row, '🔴 DIR-1: the member\'s row opens «Direcciones»');
+    assert.equal(txt(row.querySelector('.t')), 'Direcciones Trabajo · Casa', '🔴 DIR-1: v6\'s subtitle — the labels joined');
+    const reads = addr.calls.filter((c) => c.ep === 'getMyProfile');
+    assert.equal(reads.length, 1, '🔴 DIR-1: ONE profile read'); assert.ok(reads[0].headers['x-firebase-id-token'] && !/tok|token/i.test(reads[0].u), 'the token in its header, never the URL');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (v6 :2170): «Direcciones» — one row per address «{label}» (+ « · en uso» on the default) / «{detected} · {details}», an INERT pencil, then «Agregar dirección»; back ⇒ Cuenta', async () => {
+  const { S } = await dirBoot();
+  try {
+    await toDirecciones(S);
+    assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 DIR-2: v6\'s top bar');
+    assert.deepEqual(dirRows(S), [
+      ['addr-use', AID.trabajo, 'Trabajo', 'Blvd. Morazán, Tegucigalpa · Torre 2, piso 5'],
+      ['addr-use', AID.casa, 'Casa · en uso', 'Col. Palmira, Tegucigalpa · Casa azul, portón negro'],
+      ['addr-new', null, 'Agregar dirección Poné el pin en tu puerta y describí la referencia', 'Poné el pin en tu puerta y describí la referencia'],
+    ], '🔴 DIR-2: exact to v6 :2170');
+    for (const r of S.qa('.addrlist [data-act="addr-use"]')) { const pen = r.querySelector('svg.chev'); assert.ok(pen, '🔴 DIR-2: the pencil'); assert.equal(pen.closest('[data-act]'), r, '🔴 DIR-2: the pencil is INERT (no action of its own)'); }
+    S.click('.topbar [data-act="addresses-back"]'); await flush();
+    assert.ok(S.q('.rows [data-act="addresses"]'), 'back ⇒ Cuenta');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (v6 :2264): tapping a row makes it «en uso» AT ONCE, persists it through useMyAddress (POST body exactly { id }), and the «Entregar en» pill reads its label', async () => {
+  const { S, addr, st } = await dirBoot();
+  try {
+    await toDirecciones(S);
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
+    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Trabajo · en uso', 'Casa'], '🔴 DIR-3: «en uso» moved');
+    const uses = addr.calls.filter((c) => c.ep === 'useMyAddress');
+    assert.deepEqual(uses.map((c) => [c.method, c.body]), [['POST', { id: AID.trabajo }]], '🔴 DIR-3: persisted (S-ADDR-2)');
+    assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.trabajo, 'the device copy follows (cached-first)');
+    S.click('.tabbar [data-tab="home"]'); await flush();
+    assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', '🔴 DIR-3: the pill reads the selected label (v6 :1507)');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (v6 :2179-2184): the «Entregar en» sheet lists the saved addresses (label / detected; the one in use .on) ABOVE «Usar mi ubicación actual» and «Agregar dirección»; a tap selects and closes', async () => {
+  const { S } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    const rows = S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null, b.classList.contains('on'), txt(b)]);
+    assert.deepEqual(rows, [
+      ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'], ['addr-use', AID.casa, true, 'Casa Col. Palmira, Tegucigalpa'],
+      ['loc-use', null, false, 'Usar mi ubicación actual'], ['addr-new', null, false, 'Agregar dirección'],
+    ], '🔴 DIR-4: exact to v6 :2181-2183');
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
+    assert.equal(S.q('#layer .sheet'), null, '🔴 DIR-4: the sheet closes'); assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', '🔴 DIR-4: the pill follows');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1: a REFUSED «en uso» write (404) reverts the selection, with the approved calm toast; nothing else changes', async () => {
+  const { S, st } = await dirBoot({ use: 'use_unknown' });
+  try {
+    await toDirecciones(S);
+    S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Trabajo', 'Casa · en uso'], '🔴 DIR-5: reverted to the server\'s default');
+    assert.equal(S.q('#toast') && S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 DIR-5: the approved G7 failure line');
+    assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.casa, 'the device copy reverted too');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (rule 7): «Direcciones» opened BEFORE the read lands inserts nothing when it lands; the next open shows the book', async () => {
+  const G = deferred();
+  const { S } = await dirBoot({ pgate: G.p });
+  try {
+    await toDirecciones(S);
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], 'premise: no book yet — only «Agregar dirección»');
+    G.resolve(); await flush(); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-new'], '🔴 DIR-6: nothing inserted into the visible list');
+    S.click('.topbar [data-act="addresses-back"]'); await flush(); S.click('[data-act="addresses"]'); await flush();
+    assert.deepEqual(dirRows(S).map((r) => r[0]), ['addr-use', 'addr-use', 'addr-new'], '🔴 DIR-6: the next open shows it');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (isolation): SIGN-OUT removes the member\'s book from the device and every surface; a guest\'s sheet is today\'s (no saved rows)', async () => {
+  const { S, st } = await dirBoot();
+  try {
+    await toAccount(S);
+    assert.ok(st.getItem('capp:addr:u_ana'), 'premise: the book is on the device');
+    S.click('[data-act="signout"]'); await flush(); await flush();
+    assert.equal(st.getItem('capp:addr:u_ana'), null, '🔴 DIR-7: the previous member\'s book leaves the device');
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => b.dataset.act), ['loc-use', 'addr-new'], '🔴 DIR-7: the guest\'s sheet — no saved rows');
+    assert.notEqual(txt(S.q('.addr-btn .v > span')), 'Casa', 'the pill no longer names her address');
+  } finally { S.w.close(); }
+});
+
 // ── C-3r v2 (PLAN-3a-capp-member-reads R2.7 / R3.2 / R4.3 / §4.3; advisor 11-14): the reorder reads the snapshot from the RECEIPT through
 // readReceipt (cached + de-duplicated; prefetched rows make the tap request-free) under a 1.5 s deadline; ONE owner / generation /
 // navigation check runs before applying EITHER outcome (a late success and a late fallback are both dropped). A v2 snapshot carries the
@@ -5400,7 +5523,12 @@ test('Codex r2 P2 schedule 1: toggle → read STARTS → save succeeds → read 
   const { S } = await pedidosBoot({}, { fav, storage: st, fbOpts: { hold }, noFlush: true });
   try {
     // admit Ana, but keep the book read's OWN token held: the read has not started
-    for (let i = 0; i < 12 && !(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0); i++) { await flush(); if (!S.ui.state.member) for (const r of hold.q.splice(0)) r(); }
+    // C-DIR-1 (merge-forward 11-18): a member's address-book read (capp-shell-ui bookIdentity, after paint) ALSO waits on a token, and
+    // it asks FIRST — wait for both waiters, let the book's (the first) through, and prove the favorites read has still not started
+    for (let i = 0; i < 12 && !(S.ui.state.member && hold.q.length === 2 && fav.reads() === 0); i++) { await flush(); if (!S.ui.state.member) for (const r of hold.q.splice(0)) r(); }
+    assert.ok(S.ui.state.member && hold.q.length === 2, 'premise: admitted; the book read and the favorites read both wait on a token');
+    hold.q.shift()(); await flush(); await flush();
+    assert.equal(fav.reads(), 0, 'premise: the released token was the book read\'s, not the favorites read\'s');
     assert.ok(S.ui.state.member && hold.q.length === 1 && fav.reads() === 0, 'premise: admitted; the read waits on its token');
     const readTok = hold.q.shift();
     await reEnterHome(S); assert.equal(heartOf(S, 'x_pizza'), false, 'premise: the cached row, x_pizza not a favorite');
