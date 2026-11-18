@@ -131,4 +131,19 @@ async function completeVaultForOrder(deps, orderId) {
   await R.casRecord(deps.db, orderId, (x) => { if (isObj(x.vault) && x.vault.state) return undefined; x.vault = { attempt_id: aid, state, at: deps.clock() }; return x; });
   return { outcome: state };
 }
-module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+// owner ruling 11-18 (card items 1): a deleted account's saved tokens, recorded for the provider-side delete — the multi-path entries
+// { 'card_delete_pending/{uid}/at': at, 'card_delete_pending/{uid}/tokens/{token_hash}': token } from a customer_cards/{uid} node, ridden
+// in the SAME update as the fence (signup-endpoints deleteAccountCore, tools/fence-deleted-cards). Per-key paths: a repeat never clobbers
+// the record. A fence or no card ⇒ {} (no node). Server-only node (no rule grants it); never logged.
+function deletePendingUpdates(uid, at, cur) {
+  const out = {};
+  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {
+    if (!isObj(c) || typeof c.token !== 'string' || !c.token) continue;
+    const h = typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex');
+    out[`card_delete_pending/${uid}/tokens/${h}`] = c.token;
+  }
+  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;
+  return out;
+}
+
+module.exports = { deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

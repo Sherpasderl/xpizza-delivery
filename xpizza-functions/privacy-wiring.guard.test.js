@@ -59,19 +59,33 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} privacy hunks === ${BASE.s
   '8746d49c4cf602528b716ca22554105f8527b07ecc4e0d4e7f5e88bba86ed1a5',   // whatsapp.js
   'b572897d42f5b856b558937b197c773016c8d1d4ea8ffa6b2b0c8f416a2d2cd7',   // whatsapp.js
   'e0dfcb9656ca27a383d0e459fed46a7115b4fb1d1fd6936fa83b64f44d32992a',   // whatsapp.js
-  'da325ed91ddc343f305d4c5685ea8c6bdc75cbef0727721834783f5b48f50e10',   // signup-endpoints.js
-  'c8eb1883e14e93c3d36f649da87fee578269a29d1b1a7d64e90b92bfacd5c6cd',   // signup-endpoints.js
+  '9a138005678b065acdf7e59b7335d6bedb52c145a774933ff424b8b34f9e2be3',   // signup-endpoints.js
+  'c7fe4b08763fedbdc9e975c1718db9f8093ae0451bcaa5b1b24d165138e45ebe',   // signup-endpoints.js
   'a38163cb885c336bda75f3caec54a192918fa2dfff862d5a49225f0003335848',   // payments/sdk/cards.js
   '3f3e6520f798f53379963cfcd93ad0c0299eab3c36f42c256009a5254ce1c327',   // payments/sdk/cards.js
+  '87f6f01748e833643ee098a9abebafff731a2a7762e4b78ff738e2ab33861d51',   // payments/sdk/cards.js
     ],
   });
   const NON_LOG = [
-  ["index.js", "now", "    const why = email ? 'not a staff email' : 'no email';   // rule 20: never the address itself"],
-  ["whatsapp.js", "now", "    const digits = cleaned.length;   // rule 20: never the number itself"],
-  ["whatsapp.js", "now", "      const code = data && data.error ? 'provider_error' : 'http_error';   // rule 20: never the number or the provider's raw response"],
-  ["signup-endpoints.js", "now", "  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered"],
-  ["signup-endpoints.js", "was", "  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered"],
-  ["payments/sdk/cards.js", "now", "    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion"],
+  ["index.js","now","    const why = email ? 'not a staff email' : 'no email';   // rule 20: never the address itself"],
+  ["whatsapp.js","now","    const digits = cleaned.length;   // rule 20: never the number itself"],
+  ["whatsapp.js","now","      const code = data && data.error ? 'provider_error' : 'http_error';   // rule 20: never the number or the provider's raw response"],
+  ["signup-endpoints.js","now","  const cardsGone = require('./payments/sdk/cards').deletePendingUpdates(uid, at, (await db.ref(`customer_cards/${uid}`).once('value')).val());"],
+  ["signup-endpoints.js","now","  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered"],
+  ["signup-endpoints.js","was","  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered"],
+  ["payments/sdk/cards.js","now","    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion"],
+  ["payments/sdk/cards.js","now","function deletePendingUpdates(uid, at, cur) {"],
+  ["payments/sdk/cards.js","now","  const out = {};"],
+  ["payments/sdk/cards.js","now","  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {"],
+  ["payments/sdk/cards.js","now","    if (!isObj(c) || typeof c.token !== 'string' || !c.token) continue;"],
+  ["payments/sdk/cards.js","now","    const h = typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex');"],
+  ["payments/sdk/cards.js","now","    out[`card_delete_pending/${uid}/tokens/${h}`] = c.token;"],
+  ["payments/sdk/cards.js","now","  }"],
+  ["payments/sdk/cards.js","now","  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;"],
+  ["payments/sdk/cards.js","now","  return out;"],
+  ["payments/sdk/cards.js","now","}"],
+  ["payments/sdk/cards.js","now","module.exports = { deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
+  ["payments/sdk/cards.js","was","module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };"],
   ];
   const shaOf = (h) => crypto.createHash('sha256').update(`${h.file}\0${h.now}\0${h.was}`).digest('hex');
   // the multiset of lines one side has that the other lacks

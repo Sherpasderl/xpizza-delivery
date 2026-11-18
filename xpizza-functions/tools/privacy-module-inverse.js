@@ -112,12 +112,12 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "signup-endpoints.js",
-  "now": "  // fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} (tokens, hashes, rows) is REPLACED by the deletion\n  // FENCE { _deleted: at } in this same update; every vault write is a transaction on that node and drops on the fence (cards.completeVault),\n  // so a vault in flight (completeVaultForOrder after `placed`) never recreates a card. The provider-side token delete is a follow-up slice.\n",
+  "now": "  // fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} (tokens, hashes, rows) is REPLACED by the deletion\n  // FENCE { _deleted: at } in this same update; every vault write is a transaction on that node and drops on the fence (cards.completeVault),\n  // so a vault in flight (completeVaultForOrder after `placed`) never recreates a card. The provider-side token delete is a follow-up slice.\n  // owner ruling 11-18 (card items 1): the provider-side delete obligation — every saved token is CAPTURED, in this same update, at\n  // card_delete_pending/{uid} = { at, tokens: { <token_hash>: <token> } } (per-key paths: a repeat deletion never clobbers the record).\n  // The drain (the PixelPay delete) is a later slice. Never logged.\n  const cardsGone = require('./payments/sdk/cards').deletePendingUpdates(uid, at, (await db.ref(`customer_cards/${uid}`).once('value')).val());\n",
   "was": ""
  },
  {
   "file": "signup-endpoints.js",
-  "now": "  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered\n",
+  "now": "  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered\n",
   "was": "  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered\n"
  },
  {
@@ -129,6 +129,11 @@ const HUNKS = Object.freeze([
   "file": "payments/sdk/cards.js",
   "now": "    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion\n",
   "was": ""
+ },
+ {
+  "file": "payments/sdk/cards.js",
+  "now": "// owner ruling 11-18 (card items 1): a deleted account's saved tokens, recorded for the provider-side delete — the multi-path entries\n// { 'card_delete_pending/{uid}/at': at, 'card_delete_pending/{uid}/tokens/{token_hash}': token } from a customer_cards/{uid} node, ridden\n// in the SAME update as the fence (signup-endpoints deleteAccountCore, tools/fence-deleted-cards). Per-key paths: a repeat never clobbers\n// the record. A fence or no card ⇒ {} (no node). Server-only node (no rule grants it); never logged.\nfunction deletePendingUpdates(uid, at, cur) {\n  const out = {};\n  for (const c of isObj(cur) && isObj(cur.cards) ? Object.values(cur.cards) : []) {\n    if (!isObj(c) || typeof c.token !== 'string' || !c.token) continue;\n    const h = typeof c.token_hash === 'string' && /^[0-9a-f]{64}$/.test(c.token_hash) ? c.token_hash : crypto.createHash('sha256').update(c.token).digest('hex');\n    out[`card_delete_pending/${uid}/tokens/${h}`] = c.token;\n  }\n  if (Object.keys(out).length) out[`card_delete_pending/${uid}/at`] = at;\n  return out;\n}\n\nmodule.exports = { deletePendingUpdates, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };\n",
+  "was": "module.exports = { completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };\n"
  }
 ]);
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);

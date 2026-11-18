@@ -217,8 +217,12 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} (tokens, hashes, rows) is REPLACED by the deletion
   // FENCE { _deleted: at } in this same update; every vault write is a transaction on that node and drops on the fence (cards.completeVault),
   // so a vault in flight (completeVaultForOrder after `placed`) never recreates a card. The provider-side token delete is a follow-up slice.
+  // owner ruling 11-18 (card items 1): the provider-side delete obligation — every saved token is CAPTURED, in this same update, at
+  // card_delete_pending/{uid} = { at, tokens: { <token_hash>: <token> } } (per-key paths: a repeat deletion never clobbers the record).
+  // The drain (the PixelPay delete) is a later slice. Never logged.
+  const cardsGone = require('./payments/sdk/cards').deletePendingUpdates(uid, at, (await db.ref(`customer_cards/${uid}`).once('value')).val());
   const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone, ...cardsGone });   // r4: `at` only — a fence's version v is never clobbered
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.

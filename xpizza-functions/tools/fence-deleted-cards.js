@@ -9,7 +9,8 @@
 // user_private/{uid}/deleted_at — signup-core isTombstoned) AND no user_profiles/{uid}. A profile present (a live account, a REVIVED
 // one carrying a stale tombstone, or one a sweep has claimed and is deleting now) is NEVER touched — the profile is re-checked right
 // before the write, and no login path ever creates a profile at a tombstoned uid (signup-endpoints loginUid). `at` is the account's own
-// deletion instant (deleted_uids, else user_private.deleted_at). One transaction per node; an existing fence is never rewritten.
+// deletion instant (deleted_uids, else user_private.deleted_at). An existing fence is never rewritten. Every token is captured for the
+// provider delete at card_delete_pending/{uid} in the SAME update as the fence (owner 11-18; the read→write race accepted, ruling 1a).
 //
 //   node tools/fence-deleted-cards.js --project xpizza-delivery            (DRY RUN: counts only; writes nothing)
 //   node tools/fence-deleted-cards.js --project xpizza-delivery --apply    (OWNER-RUN, after the deploy that carries the fence)
@@ -37,14 +38,14 @@ async function fence({ rtdb, apply = false }) {
     if (isObj(cur) && cur._deleted !== undefined) { r.alreadyFenced += 1; continue; }
     if (!apply) { r.fenced += 1; continue; }
     if ((await rtdb.ref(`user_profiles/${uid}`).once('value')).exists()) { r.live += 1; continue; }   // re-checked at apply time
-    let seen = null;
-    await rtdb.ref(`customer_cards/${uid}`).transaction((c) => {
-      seen = null;
-      if (c == null) { seen = 'none'; return null; }   // null-first: a no-op write, retried with the server value
-      if (isObj(c) && c._deleted !== undefined) { seen = 'fenced'; return undefined; }
-      seen = 'cards'; return { _deleted: at };
-    });
-    if (seen === 'cards') r.fenced += 1; else if (seen === 'fenced') r.alreadyFenced += 1; else r.noCards += 1;
+    // owner ruling 11-18 (card items 1; 1a: the read→write race is accepted for this one-time tool): the fence and the provider-delete
+    // obligation card_delete_pending/{uid} (payments/sdk/cards deletePendingUpdates — the deletion core's own capture) go in ONE update,
+    // from the node re-read right before it
+    const c = (await rtdb.ref(`customer_cards/${uid}`).once('value')).val();
+    if (c == null) { r.noCards += 1; continue; }
+    if (isObj(c) && c._deleted !== undefined) { r.alreadyFenced += 1; continue; }
+    await rtdb.ref().update({ [`customer_cards/${uid}`]: { _deleted: at }, ...require('../payments/sdk/cards').deletePendingUpdates(uid, at, c) });
+    r.fenced += 1;
   }
   return r;
 }
