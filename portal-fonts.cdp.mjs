@@ -32,6 +32,7 @@ import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GE
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'xpizza-portal';
+const ML = await import(pathToFileURL(path.join(ROOT, SITE, 'marketing-logic.js')).href);   // the portal's OWN offer words (the 2×1 review's ceiling)
 const BASELINE_REV = process.env.FONTS_BASELINE_REV || 'd23bef66';   // the base this slice stacks on: today's portal (Google Archivo)
 // the hosted face, its pin and its range come from the ONE manifest (never a copy here)
 const MAN = JSON.parse(fs.readFileSync(path.join(ROOT, 'platform/fonts/fonts.manifest.json'), 'utf8')).surfaces.portal;
@@ -378,6 +379,17 @@ const branchAny = (A, review) => served(A, 'getMyBranches', (x) => { const b = (
   return b.length ? [review ? `Las ${b.length}` : `Las ${b.length} sucursales`, `Solo ${b[0].name}`, ...b.map((r) => r.name)] : undefined; });
 // the 2×1 builder's dishes: the served source's dish names, as loadMenu reads them (marketing-builder.js:145 display.name || key)
 const dishNames = (A) => served(A, 'getEditableCatalog', (x) => { const n = ((x.body.source && x.body.source.items) || []).map((i) => (i.display && i.display.name) || i.key).filter(Boolean); return n.length ? n : undefined; });
+// the 2×1 REVIEW draws no dish name — «Productos» is a count (marketing-logic.js:397); the one served value it draws is the ceiling,
+// top price × free_per_order (marketing-logic.js:398–400, printed at marketing-builder.js:545). Each served dish as loadMenu maps it
+// (marketing-builder.js:145, price × 100) × every free_per_order the form allows (1..LIMITS.free_per_order_max — the builder's default is
+// not exported), through the portal's own builderText: the exact «Hasta L N por canje.» it prints
+const ceilingAny = (A) => served(A, 'getEditableCatalog', (x) => { const out = [];
+  for (const i of (x.body.source && x.body.source.items) || []) {
+    if (!(Number.isSafeInteger(i.price) && i.price > 0)) continue;
+    const it = { key: i.key, name: (i.display && i.display.name) || i.key, price_cents: i.price * 100, cat: i.display && i.display.cat };
+    for (let k = 1; k <= ML.LIMITS.free_per_order_max; k++) { const c = ML.builderText({ ...ML.emptyForm('bogo'), items: [it.key], free_per_order: k }, { branches: [], items: [it] }).cost.ceiling; if (c) out.push(c); }
+  }
+  return out.length ? out : undefined; });
 const CORE_DATA = {
   'IN-inicio': { fn: 'getSalesStats', at: (A) => ({ scope: '#viewinicio', any: salesAny(A, true) }) },
   'V-rend':    { fn: 'getSalesStats', at: (A) => ({ scope: '#viewventas', any: salesAny(A, false) }) },
@@ -390,7 +402,7 @@ const CORE_DATA = {
   'M-review':  { fn: 'getMyBranches', at: (A) => ({ scope: '.mk5r-modal', any: branchAny(A, true) }) },
   'M-detail':  { fn: 'getMarketing', at: (A) => ({ scope: '.mk5d-head', any: offerNames(A) }) },
   'M-builder-bogo': { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5b-dlg', any: dishNames(A) }) },
-  'M-review-bogo':  { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5r-modal', any: dishNames(A) }) },
+  'M-review-bogo':  { fn: 'getEditableCatalog', at: (A) => ({ scope: '.mk5r-modal', any: ceilingAny(A) }) },
   // the zone names draw inside the map iframe (its own origin, not in the pane's text); the fee table is the pane's own: every served band
   // as the portal's rowsFromBands writes it into the km / fee inputs, in order (envio.js:634-635)
   'N-envio':   { fn: 'getDeliveryPricing', at: (A) => ({ scope: '.envio', any: [['envio-logic.js', 'rowsFromBands', served(A, 'getDeliveryPricing', (x) => (Array.isArray(x.body.bands) && x.body.bands.length ? x.body.bands : undefined))]] }) },
@@ -406,7 +418,7 @@ const UNSERVED = {
   getEditableCatalog:        [{ section: 'Productos · el menú (rail + detalle)', root: '#viewmenu', measuredIn: 'P-editor' },
                               // marketing-builder.js:138 reads the dishes for «Productos» in a 2×1's builder and its review (owed 2, advisor 11-18)
                               { section: 'Marketing · builder: los platos de la oferta', root: '.mk5b-dlg', measuredIn: 'M-builder-bogo' },
-                              { section: 'Marketing · revisión: los platos de la oferta', root: '.mk5r-modal', measuredIn: 'M-review-bogo' }],
+                              { section: 'Marketing · revisión: el tope por canje de la oferta', root: '.mk5r-modal', measuredIn: 'M-review-bogo' }],   // it draws the ceiling, not the dishes
   getBranchAvailability:     [{ section: 'Productos · agotados por sucursal', root: '#availdrawer', measuredIn: 'A-drawer' }],
   getMarketing:              [{ section: 'Marketing · Ofertas', root: '.mk5-sect', measuredIn: 'M-ofertas' }],
   getMerchantReviews:        [{ section: 'Calificaciones · reseñas', root: '.calif', measuredIn: 'C-calif' }],
