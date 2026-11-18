@@ -41333,5 +41333,22 @@
   "kills_with": [
    "✗ RB-READ-CAP:"
   ]
+ },
+ {
+  "id": "rn-04",
+  "slice": "c2-rider-name",
+  "label": "capp-guards (11-18 re-base, merge-forward): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
  }
 ]
