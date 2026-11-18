@@ -55,7 +55,7 @@
   },
   "sendSites": 24,
   "fieldsWritten": 123,
-  "opaqueWrites": 32,
+  "opaqueWrites": 31,
   "opaque": 180,
   "projections": 157,
   "sentinel": 41,
@@ -20947,7 +20947,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#decidePlacement>anon#status#0",
-   "line": 217,
+   "line": 221,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20960,7 +20960,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#decidePlacement>anon#status#1",
-   "line": 220,
+   "line": 224,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20973,7 +20973,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#consumeFulfilledRedemption#restaurant_id#0",
-   "line": 316,
+   "line": 320,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -20983,7 +20983,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#settleTerminal>anon#status#0",
-   "line": 341,
+   "line": 345,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -20996,7 +20996,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#settleTerminal>anon#status#1",
-   "line": 351,
+   "line": 355,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21009,7 +21009,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#settleTerminal#status#0",
-   "line": 352,
+   "line": 356,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21022,7 +21022,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderOpen#status#0",
-   "line": 409,
+   "line": 413,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21035,7 +21035,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderRevision#items#0",
-   "line": 414,
+   "line": 418,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -21045,7 +21045,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderRevision#items#1",
-   "line": 414,
+   "line": 418,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -21055,7 +21055,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderRevision#items#2",
-   "line": 414,
+   "line": 418,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -21065,7 +21065,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderRevision#total_cents#0",
-   "line": 415,
+   "line": 419,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -21077,7 +21077,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#orderRevision#items#3",
-   "line": 416,
+   "line": 420,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -21087,7 +21087,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#commitProposal>anon#status#0",
-   "line": 438,
+   "line": 442,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21100,7 +21100,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#commitProposal>anon#status#1",
-   "line": 438,
+   "line": 442,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21113,7 +21113,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#classifyLostProposals#status#0",
-   "line": 474,
+   "line": 478,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21126,7 +21126,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#classifyLostProposals#status#1",
-   "line": 474,
+   "line": 478,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21139,7 +21139,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#cancelSdkOrder>anon#status#0",
-   "line": 642,
+   "line": 646,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21152,7 +21152,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#cancelSdkOrder>anon#status#1",
-   "line": 644,
+   "line": 648,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21165,7 +21165,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#cancelSdkOrder>anon#status#2",
-   "line": 647,
+   "line": 651,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -21178,7 +21178,7 @@
   },
   {
    "id": "xpizza-functions/payments/sdk/coordinator.js#cancelSdkOrder#status#0",
-   "line": 653,
+   "line": 657,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -64563,7 +64563,7 @@
    "file": "xpizza-functions/payments/sdk/coordinator.js",
    "fn": "commitProposal",
    "how": "spread-in-order-write",
-   "line": 435,
+   "line": 439,
    "detail": "p.order_revision",
    "resolved": [
     "items",
@@ -64611,14 +64611,6 @@
    "resolved": [
     "sdk_live_pending"
    ]
-  },
-  {
-   "file": "xpizza-functions/payments/sdk/record-token.js",
-   "fn": "stashToken",
-   "how": "dynamic-root-path",
-   "line": 15,
-   "detail": "*",
-   "resolved": []
   },
   {
    "file": "xpizza-functions/ratings/rating-v2.js",

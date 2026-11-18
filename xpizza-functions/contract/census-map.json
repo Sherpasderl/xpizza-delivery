@@ -1877,15 +1877,7 @@
   }
  },
  "opaqueWriteResolutions": [
-  {
-   "file": "xpizza-functions/payments/sdk/record-token.js",
-   "fn": "stashToken",
-   "how": "dynamic-root-path",
-   "detail": "*",
-   "fields": [],
-   "reason": "owner GO 11-18: `payment_sdk_tokens/${orderId}/${attemptId}` — the server-only card-token node outside the payment record (rules .read/.write false), written ahead of the claim; never an /orders path",
-   "count": 1
-  },
+
   {
    "file": "xpizza-functions/index.js",
    "fn": "createOrderApp.all",

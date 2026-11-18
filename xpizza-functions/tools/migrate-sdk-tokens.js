@@ -25,12 +25,17 @@ async function migrate({ rtdb, apply = false }) {
     if (!isObj(rec) || typeof rec.token !== 'string' || !rec.token) continue;
     r.withToken += 1;
     const h = sha(rec.token);
-    const aid = Object.keys(isObj(rec.attempts) ? rec.attempts : {}).sort().find((a) => isObj(rec.attempts[a]) && rec.attempts[a].token_hash === h);
+    // Codex #158 r1 F3: prefer the WINNING attempt (the order's placed leg — the vault's own rule) when its hash matches; else the first match
+    const order = (await rtdb.ref(`orders/${oid}`).once('value')).val();
+    const legId = isObj(order) && isObj(order.payment_placed) ? order.payment_placed.leg_id : null;
+    const win = legId && isObj(rec.legs) && isObj(rec.legs[legId]) ? rec.legs[legId].attempt_id : null;
+    const aid = win && isObj(rec.attempts) && isObj(rec.attempts[win]) && rec.attempts[win].token_hash === h ? win
+      : Object.keys(isObj(rec.attempts) ? rec.attempts : {}).sort().find((a) => isObj(rec.attempts[a]) && rec.attempts[a].token_hash === h);
     if (!aid) { r.unmatched += 1; continue; }
     r.matched += 1;
     if (!apply) continue;
     const token = rec.token;
-    await rtdb.ref(`payment_sdk_tokens/${oid}/${aid}`).set(token);   // the write-ahead, as a placement does
+    if ((await require('../payments/sdk/record-token').stashToken(rtdb, oid, aid, token)) === 'conflict') { r.raced += 1; continue; }   // the write-ahead, CREATE-ONCE as a placement does
     let moved = false;
     await require('../payments/sdk/record').casRecord(rtdb, oid, (x) => {
       moved = false;

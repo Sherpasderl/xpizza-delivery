@@ -54,5 +54,36 @@ async function seed(hooks = {}) {
   const r2 = await M.migrate({ rtdb: raced, apply: true });
   assert.ok(r2.raced === 1 && r2.migrated === 0 && raced.getAt('payment_sdk/o_match/token') === 'T-newer', '🔴 MIG-RACE: a token changed under the migration is left for the next run (never overwritten)');
   ok('a token changed between the read and the CAS is never overwritten (raced)');
+  // Codex #158 r1 F3: two attempts carrying the SAME token (a declined first try, then the placed one) — the migration points at the
+  // WINNING attempt (the order's placed leg), hash-verified, so the vault later reads it (never 'skipped')
+  {
+    const dbW = makeHonestDb({ orders: { o_w: { ...ORDER } } }, { now: () => T0 });
+    const fake = makeFakePsp({ authorize: [{ outcome: 'definitive_decline', code: 'X' }, { outcome: 'approved' }] });
+    const deps = { db: dbW, psp: makeAdapter(fake.impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {} };
+    for (const att of ['att_mig_a_first_00001', 'att_mig_z_second_0002']) await C.placeOriginal(deps, { orderId: 'o_w', attempt_id: att, token: 'T-same', amount_cents: 100, card: { card_ref: 'new', display: DISP, save: true, vault_gen: 0 } });
+    const placedLeg = dbW.getAt('orders/o_w/payment_placed/leg_id');
+    assert.ok(placedLeg && dbW.getAt(`payment_sdk/o_w/legs/${placedLeg}/attempt_id`) === 'att_mig_z_second_0002', 'premise: the SECOND attempt won');
+    await dbW.ref('payment_sdk/o_w').update({ token: 'T-same', token_attempt: null }); await dbW.ref('payment_sdk_tokens/o_w').set(null);
+    await M.migrate({ rtdb: dbW, apply: true });
+    assert.strictEqual(dbW.getAt('payment_sdk/o_w/token_attempt'), 'att_mig_z_second_0002', '🔴 MIG-WINNER: shared token ⇒ the migration points at the WINNING attempt');
+    await dbW.ref('orders/o_w/status').set('delivered'); await C.settleTerminal(deps, { orderId: 'o_w' });
+    await require('../payments/sdk/cards').completeVaultForOrder({ ...deps, verifyIdToken: async () => ({ uid: 'uid_A' }) }, 'o_w');
+    assert.strictEqual(dbW.getAt('payment_sdk/o_w/vault/state'), 'done', '🔴 MIG-WINNER: the vault then reads the winning attempt\'s token (done, never skipped)');
+    ok('shared token across attempts: the migration points at the winning attempt (the vault reads it)');
+  }
+  // Codex #158 r1 F2 (b): the migration's write-ahead lands AFTER the null cleaned the record, and its CAS loses — the orphan it leaves is
+  // removed by the sweeper's walk of payment_sdk_tokens (the order is finished)
+  {
+    let armed = false; let dbS = null; let depsS = null;
+    dbS = await seed({ beforeTx: async (p) => { if (armed && String(p) === 'payment_sdk_tokens/o_match/att_mig_match_000001') { armed = false;
+      await dbS.ref('orders/o_match/status').set('delivered'); await C.settleTerminal(depsS, { orderId: 'o_match' }); await require('../payments/sdk/cards').nullSpentToken(depsS, 'o_match'); } } });
+    depsS = { db: dbS, psp: makeAdapter(makeFakePsp({}).impl), clock: () => T0, voidEligible: () => false, ppNamespace: 'sandbox', goLive: async () => {} };
+    armed = true;
+    const r = await M.migrate({ rtdb: dbS, apply: true });
+    assert.ok(r.raced >= 1 && dbS.getAt('payment_sdk_tokens/o_match'), `premise: the migration lost its CAS and left a stale node (${JSON.stringify(r)})`);
+    await require('../payments/sdk/sweeper').sweepSdkPayments(depsS);
+    assert.strictEqual(dbS.getAt('payment_sdk_tokens/o_match'), null, '🔴 MIG-STALE-ORPHAN: the sweeper\'s walk removes the migration\'s stale write-ahead');
+    ok('a stale migration write-ahead (lost CAS after the null) is removed by the sweeper\'s walk');
+  }
   console.log(`migrate-sdk-tokens: OK (${n})`);
 })().catch((e) => { process.stderr.write(`migrate-sdk-tokens: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

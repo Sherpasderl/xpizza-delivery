@@ -74,6 +74,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     assert.strictEqual(Object.keys(w.rec().ops || {}).length, ops0, `${L}: a failed token read journals NO money op (the read precedes dispatch)`);
     assert.strictEqual(w.fake.callCount('authorize'), 1, `${L}: no PSP call`);
   });
+  // ── Codex #158 r1 F1: two requests with the SAME attempt id and DIFFERENT tokens both pass the replay check — the token is CREATE-ONCE
+  //    per attempt: the second is refused before any claim, so the stored token is always the one the claim authorized ──
+  await cell('TN-ATTEMPT-CONFLICT', async (L) => {
+    const w = world({ authorize: [{ outcome: 'approved' }, { outcome: 'approved' }, { outcome: 'approved' }] }, { eligible: () => true });
+    const go = (tok) => C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: tok, amount_cents: 100, card: card(false) });
+    const [ra, rb] = await Promise.all([go('T-A'), go('T-B')]);
+    const placedTok = w.fake.calls.filter((c) => c.action === 'authorize').map((c) => c.token);
+    assert.ok(placedTok.length === 1, `premise: ONE authorize for the attempt (${JSON.stringify([ra.outcome, rb.outcome])})`);
+    assert.deepStrictEqual(w.node(), { [ATT]: placedTok[0] }, `${L}: the stored token is the one the placement authorized (never overwritten by a same-id request)`);
+    assert.ok([ra, rb].some((r) => r.outcome === 'refused' && r.reason === 'attempt_token_conflict') || [ra, rb].every((r) => r.outcome !== 'refused'), `${L}: a same-id request with a DIFFERENT token is refused (attempt_token_conflict) (${JSON.stringify([ra, rb])})`);
+    await w.db.ref(`orders/${OID}/status`).set('preparing');
+    await C.requestDecrease(w.deps, { orderId: OID, new_total_cents: 80, revision: REV(80) });
+    const all = w.fake.calls.filter((c) => c.action === 'authorize').map((c) => c.token);
+    assert.strictEqual(all[all.length - 1], placedTok[0], `${L}: a later decrease re-authorizes with the SAME token the placement authorized`);
+  });
+  // ── Codex #158 r1 F2 (a): the cancel cleanup removes the due entry while the write-ahead is in flight, then the record create fails —
+  //    an orphan token node with NO due entry; the sweeper's bounded walk of payment_sdk_tokens itself removes it (the order is finished) ──
+  await cell('TN-ORPHAN-NO-DUE', async (L) => {
+    let w = null; let armed = true;
+    w = world({}, { hooks: { beforeTx: async (p) => { if (armed && String(p) === `payment_sdk/${OID}`) { armed = false; await C.cancelSdkOrder(w.deps, { orderId: OID }); await w.db.ref(`payment_sdk_due/${OID}`).set(null); throw Object.assign(new Error('record create failed'), { code: 'unavailable' }); } } } });
+    await assert.rejects(() => C.placeOriginal(w.deps, { orderId: OID, attempt_id: ATT, token: 'T-nodue', amount_cents: 100, card: card(false) }));
+    assert.ok(w.node() && w.db.getAt(`payment_sdk_due/${OID}`) == null && w.ord().payment_cancel, 'premise: an orphan token node, no due entry, a finished order');
+    await SW.sweepSdkPayments(w.deps);
+    assert.strictEqual(w.node(), null, `${L}: the sweeper's own walk of payment_sdk_tokens removes an orphan no due entry points at`);
+  });
   await cell('TN-NULL-NO-SAVE', async (L) => {
     const w = world(); await place(w, 'T-nosave', false); await deliver(w);
     await SW.visitDueOrder(w.deps, OID);

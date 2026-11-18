@@ -162,7 +162,17 @@ async function nullSpentToken(deps, orderId) {
   });
   // owner GO 11-18: the token NODE goes with the pointer — and a finished order with no pointer sweeps any ORPHAN (a write-ahead whose
   // claim lost, or a crash between the pointer drop and this remove): nothing at payment_sdk_tokens outlives a finished order
-  if (out === 'nulled' || (out === 'none' && finished && await T.hasTokens(deps.db, orderId))) await T.dropTokens(deps.db, orderId);
+  if (out === 'nulled' || (out === 'none' && (finished || !isObj(order)) && await T.hasTokens(deps.db, orderId))) await T.dropTokens(deps.db, orderId);
   return out;
 }
-module.exports = { nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };
+// Codex #158 r1 F2: an orphan token node may have NO due entry (a cancel cleanup raced a failing placement; a migration write-ahead lost its
+// CAS after the null) — the sweeper also walks payment_sdk_tokens itself, bounded (a page per run behind a rotating cursor), and applies the
+// SAME safe-close rule per order (nullSpentToken: a node whose order is finished — or gone — and whose record holds no live pointer)
+const TOKEN_SWEEP_BATCH = 50;
+async function sweepTokenOrphans(deps, { batch = TOKEN_SWEEP_BATCH } = {}) {
+  const ids = await require('./record-token').pageTokenOrders(deps.db, batch);
+  let checked = 0; let failed = 0;
+  for (const oid of ids) { try { await nullSpentToken(deps, oid); checked += 1; } catch (_) { failed += 1; } }
+  return { checked, failed };
+}
+module.exports = { sweepTokenOrphans, nullSpentToken, completeVaultForOrder, resolveSavedCard, vaultGenOf, completeVault, removeCard, markExpired, listCardsCore, removeCardCore, memberUid, SAVED_CARD_UNAVAILABLE };

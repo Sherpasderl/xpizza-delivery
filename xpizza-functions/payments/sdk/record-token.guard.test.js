@@ -18,7 +18,7 @@ let pass = 0; const fails = [];
 const cell = (L, fn) => { try { fn(L); pass += 1; console.log(`  ✓ ${L}`); } catch (e) { fails.push(L); console.log(`  ✗ ${L}: ${String((e && e.message) || e).split('\n')[0]}`); } };
 const OWNER = 'payments/sdk/record-token.js';
 const MIGRATION = 'tools/migrate-sdk-tokens.js';
-const PATH_ALLOWED = [OWNER, MIGRATION, 'payments/sdk/rules-clauses.js'];
+const PATH_ALLOWED = [OWNER, 'payments/sdk/rules-clauses.js'];   // Codex #158: the migration writes through record-token.stashToken
 const POINTER_ALLOWED = [OWNER, MIGRATION];
 const FILES = execFileSync('git', ['ls-files', '*.js', ':!*.test.js', ':!test/**', ':!**/node_modules/**'], { cwd: FN, encoding: 'utf8' }).split('\n').filter(Boolean);
 const real = (f) => fs.readFileSync(path.join(FN, f), 'utf8');
@@ -46,7 +46,8 @@ function scan(files, read) {
       const building = (x) => x && (x.type === 'Literal' || x.type === 'TemplateLiteral' || (x.type === 'BinaryExpression' && x.operator === '+'));
       if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /sdk_tokens/.test(staticText(n))) pathSites.add(f);
       if (n.type === 'Identifier' && n.name === 'token_attempt') pointerSites.add(f);
-      if (n.type === 'Literal' && n.value === 'token_attempt') pointerSites.add(f);
+      // Codex #158 r1 F4: the pointer key by static evaluation — a literal, a template or a `+` join of literal pieces
+      if (building(n) && !(parent && parent.type === 'BinaryExpression' && parent.operator === '+' && building(parent)) && /token_attempt/.test(staticText(n))) pointerSites.add(f);
       for (const [k, v] of Object.entries(n)) if (k !== 'start' && k !== 'end') walk(v, n);
     };
     walk(ast, null);
@@ -55,18 +56,19 @@ function scan(files, read) {
 }
 const S = scan(FILES, real);
 
-cell('RT-PATH', (L) => assert.deepStrictEqual(S.path, [...PATH_ALLOWED].sort(), `${L}: payment_sdk_tokens is named ONLY by record-token.js, the migration tool and the rules clause list`));
+cell('RT-PATH', (L) => assert.deepStrictEqual(S.path, [...PATH_ALLOWED].sort(), `${L}: payment_sdk_tokens is named ONLY by record-token.js and the rules clause list`));
 cell('RT-POINTER', (L) => assert.deepStrictEqual(S.pointer, [...POINTER_ALLOWED].sort(), `${L}: the record's token pointer is touched ONLY by record-token.js and the migration tool`));
 cell('RT-OWNER', (L) => {
   const ex = Object.keys(require(path.join(FN, OWNER))).sort();
-  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'dropTokens', 'hasToken', 'hasTokens', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
+  assert.deepStrictEqual(ex, ['claimFor', 'dropPointer', 'dropTokens', 'hasToken', 'hasTokens', 'pageTokenOrders', 'readAttemptToken', 'readToken', 'stashToken'], `${L}: the owner's exports are exactly the reviewed surface`);
   assert.ok(FILES.length > 500 && FILES.includes('index.js') && FILES.includes(OWNER), `${L}: premise — the scan spans the whole tree (${FILES.length} files)`);
 });
 cell('RT-RULES', (L) => {
   const rules = JSON.parse(fs.readFileSync(path.join(FN, '..', 'xpizza-reference', 'database.rules.json'), 'utf8')).rules;
   assert.deepStrictEqual(rules.payment_sdk_tokens, { '.read': false, '.write': false }, `${L}: the canonical rules deny payment_sdk_tokens to every client`);
+  assert.deepStrictEqual(rules.payment_sdk_tokens_cursor, { '.read': false, '.write': false }, `${L}: the orphan-sweep cursor is server-only too`);
   assert.ok(rules['.read'] === undefined && rules['.write'] === undefined && !Object.keys(rules).some((k) => k.startsWith('$')), `${L}: no root grant or root wildcard re-opens it`);
-  assert.ok(require(path.join(FN, 'payments/sdk/rules-clauses')).D4_SERVER_ONLY.includes('payment_sdk_tokens'), `${L}: the server-only clause list names it (sdk-pay-rules.guard + the emulator deny cells)`);
+  assert.ok(require(path.join(FN, 'payments/sdk/rules-clauses')).D4_SERVER_ONLY.includes('payment_sdk_tokens') && require(path.join(FN, 'payments/sdk/rules-clauses')).D4_SERVER_ONLY.includes('payment_sdk_tokens_cursor'), `${L}: the server-only clause list names it (sdk-pay-rules.guard + the emulator deny cells)`);
 });
 // ── negatives: each planted bypass must surface ──
 const plant = (extra) => (f) => (extra[f] !== undefined ? extra[f] : real(f));
@@ -84,6 +86,8 @@ cell('RT-NEG-POINTER', (L) => {
   const f = 'payments/sdk/cards.js';
   assert.ok(scan(FILES, plant({ [f]: `${real(f)}\nconst zp = (rec) => rec.token_attempt;\n` })).pointer.includes(f), `${L}: the pointer read outside the owner is caught`);
   assert.ok(scan(FILES, plant({ [f]: `${real(f)}\nconst zq = (rec) => rec['token_attempt'];\n` })).pointer.includes(f), `${L}: a computed pointer read is caught`);
+  assert.ok(scan(FILES, plant({ [f]: `${real(f)}\nconst zt = (rec) => rec[\`token_attempt\`];\n` })).pointer.includes(f), `${L}: a template-key pointer read is caught (Codex #158 F4)`);
+  assert.ok(scan(FILES, plant({ [f]: `${real(f)}\nconst zc = (rec) => rec['token_' + 'attempt'];\n` })).pointer.includes(f), `${L}: a concatenated pointer key is caught (Codex #158 F4)`);
 });
 console.log(fails.length ? `\nrecord-token.guard: FAILED ${fails.length} cell(s): ${fails.join(', ')}` : `\nrecord-token.guard: OK (${pass})`);
 process.exit(fails.length ? 1 : 0);

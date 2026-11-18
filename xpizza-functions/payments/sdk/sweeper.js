@@ -81,6 +81,8 @@ async function sweepSdkPayments(deps) {
       out.closed += 1;
     }
   }
+  // Codex #158 r1 F2: the token nodes no due entry points at (isolated: a failure never fails the due pass)
+  try { out.tokens = await require('./cards').sweepTokenOrphans(deps); } catch (_) { out.tokens = { error: true }; }
   return out;
 }
 
