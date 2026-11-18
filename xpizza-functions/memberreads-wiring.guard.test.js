@@ -14,7 +14,7 @@ const { BASE, HUNKS, FILES, unapplyMemberReadsModule } = require('./tools/member
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 assert.strictEqual(BASE, '604e96ab5', 'the base is train asm9 (the RC asm9b branches from)');
 assert.deepStrictEqual([...FILES], ['index.js', 'catalog/public-menu.js'], 'the owned files');
-const src = require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));   // marketing price (5f, the newest layer) peeled first
+const src = require('./tools/mktprice-module-inverse').unapplyMktPriceModule('index.js', require('./tools/audience-module-inverse').unapplyAudienceModule('index.js', require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module('index.js', require('./tools/dirwire-module-inverse').unapplyDirwireModule('index.js', fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8')))));   // marketing price (5f, the newest layer) peeled first
 const b = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 assert.notStrictEqual(src, b, 'non-vacuity: index.js differs from the base');
 assert.strictEqual(unapplyMemberReadsModule('index.js', src), b, `🔴 index.js minus the member-reads hunks is not ${BASE}:index.js`);
@@ -56,6 +56,29 @@ for (const [name, mod] of [['getMyFavorites', 'my-favorites'], ['setFavorite', '
   assert.ok(src.includes(`require('./${mod}')`), `🔴 ${mod} require missing`);
 }
 ok('wired: getMyFavorites, setFavorite and getMyLastTip are onRequest exports over my-favorites / my-last-tip');
+// PLAN-3a-capp-push-tokens r0 §2 (advisor GO 11-16): the 4 customer-push endpoints the capp's api calls by name, each an onRequest over the
+// ONE makeCustomerPush factory with the account origins (the over-HTTP behaviour: test/customer-push-wiring.emulator.test.js)
+{
+  const PUSH = ['registerCustomerPushToken', 'unregisterCustomerPushToken', 'setCustomerPushPrefs', 'getCustomerPushPrefs'];
+  const made = src.match(/require\('\.\/customer-push'\)\.makeCustomerPush\(\{ getDatabase, getAuth, checkRateLimit \}\)/g) || [];
+  assert.strictEqual(made.length, 1, '🔴 PW-FACTORY: index.js builds the customer-push handlers ONCE, from makeCustomerPush with its own getDatabase / getAuth / checkRateLimit');
+  for (const name of PUSH) {
+    const re = new RegExp(`exports\\.${name} = onRequest\\(\\n  \\{ region: 'us-central1', cors: ACCOUNT_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 \\},\\n  CUSTOMER_PUSH\\.${name},\\n\\);`);
+    assert.ok(re.test(src), `🔴 PW-EXPORT ${name}: an onRequest (account origins) over CUSTOMER_PUSH.${name}`);
+  }
+  ok('wired: the 4 customer-push endpoints are onRequest exports (account origins) over ONE makeCustomerPush');
+}
+// unapplyAfter (the later-pinned guards, mktprice @aaeb8f277): peels EXACTLY the hunks marked after that revision — the push block — and
+// nothing else; an unknown revision peels nothing
+{
+  const { HUNKS: H, unapplyAfter } = require('./tools/memberreads-module-inverse');
+  const after = H.filter((h) => h.after === 'aaeb8f277');
+  assert.deepStrictEqual(after.map((h) => h.commit), ['capp-push-wiring'], 'premise: only the push block is marked after aaeb8f277');
+  assert.strictEqual(unapplyAfter('index.js', src, 'aaeb8f277'), src.replace(after[0].now, ''), '🔴 PW-AFTER: unapplyAfter peels exactly the push block');
+  assert.strictEqual(unapplyAfter('index.js', src, 'f00ba4'), src, '🔴 PW-AFTER: an unknown revision peels nothing');
+  assert.throws(() => unapplyAfter('index.js', src + after[0].now, 'aaeb8f277'), /occurs 2 times/, '🔴 PW-AFTER: a duplicated push block is detected');
+  ok('unapplyAfter(index.js, aaeb8f277) peels exactly the push block; an unknown revision peels nothing; a duplicate is detected');
+}
 
 // registration: the fold guards that pin index.js to a fixed train revision compose this layer (the s2bext / s1srv pattern)
 {

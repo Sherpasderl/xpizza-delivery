@@ -9,6 +9,10 @@
 //      proof on the real Firestore is test/extra-price-edit.emulator.test.js.)
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
+// the Extras page switch (platform-structure extrasCatalog) is ON in production since the extras switch-on (5f, 11-16). This file's cells
+// prove the OFF add-only path and its harness has no addProduct I/O (ON routes a new / mis-keyed extra to the allocator); it pins the
+// switch OFF. The ON allocator (client_supplied_key, name_taken, …) is proven by the s2core-* suites on harnesses with that I/O.
+{ const p = require.resolve('./platform-structure'); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: false }) } }; }
 const { canonicalize, sourceToBuildInputs } = require('./source-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { buildCatalogV2 } = require('./form-menu-source');

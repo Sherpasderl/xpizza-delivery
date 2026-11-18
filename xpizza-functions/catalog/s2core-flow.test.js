@@ -7,7 +7,8 @@ process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 // the platform extras-authoring switch, made settable (shipped OFF; cell 4 turns it ON) — before the handlers load it
 const EXTRAS = { authoring: false };
 const STRUCT = { extrasCatalog: true };
-{ const p = require.resolve('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { structureCapabilities: () => ({ extrasCatalog: STRUCT.extrasCatalog, choiceEdit: false, sections: false }) } }; }
+// the legacy-form reward-group guard (Codex #119) is retired here: this suite pins another rule; the guard has its own test (catalog/reward-group-guard.test.js)
+{ const p = require.resolve('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { legacyFormRewardPickers: () => false, structureCapabilities: () => ({ extrasCatalog: STRUCT.extrasCatalog, choiceEdit: false, sections: false }) } }; }
 { const p = require.resolve('./platform-extras'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { extrasCapabilities: () => ({ ...EXTRAS }) } }; }
 const { editCatalogCore } = require('./edit-catalog-handler');
 const { publishEditedCore } = require('./publish-edited-handler');

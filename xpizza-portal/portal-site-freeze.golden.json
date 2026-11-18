@@ -33,6 +33,7 @@
   "branches-view.js",
   "calificaciones-harness.mjs",
   "calificaciones-logic.js",
+  "calificaciones-skeleton-fit.browser.test.mjs",
   "calificaciones-view.js",
   "calificaciones.js",
   "calificaciones.test.mjs",
@@ -125,6 +126,8 @@
   "review-products.test.mjs",
   "review.js",
   "review.test.mjs",
+  "reviews-v2-frozen-response.fixture.json",
+  "rgb-fold.mjs",
   "rp-fold.mjs",
   "s1-fold.mjs",
   "s2-fold.mjs",
@@ -151,6 +154,7 @@
   "ventas-tab.test.mjs",
   "ventas.js",
   "ventas.test.mjs",
+  "whoami-fit.test.mjs",
   "wiring-ast.mjs"
  ],
  "bytes": {
@@ -195,8 +199,8 @@
    "bytes": 1072
   },
   "package.json": {
-   "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
-   "bytes": 443
+   "sha256": "9aa8cd0a81eaa4327c954b634b641f2b67bca6210b73ce3ebd6559fe43236920",
+   "bytes": 444
   },
   "perf/portal.origins.json": {
    "sha256": "740f32b569d578e82f0749e48c180c482232ac2e109bbc19a21ae1376ce29d7d",
@@ -210,9 +214,13 @@
    "sha256": "7eb5d5f0db0b58401358b3dabe9d4579405b3178542961afe62a5a4a0b84657d",
    "bytes": 35199
   },
+  "reviews-v2-frozen-response.fixture.json": {
+   "sha256": "8203d9b5cc961e19353cf0e90a99e6c9d8737e8812018806cf2ed864c181fb76",
+   "bytes": 841
+  },
   "styles.css": {
-   "sha256": "b2d928e44b8068446211efe3e164927dcd8b654f7f382ea314f93454bfd4df1f",
-   "bytes": 226226
+   "sha256": "4f1448da708ac3379be7d3a47fc833edf452235257915d3aa59a7f2e82b2e4b4",
+   "bytes": 226452
   }
  },
  "diff_aid": {

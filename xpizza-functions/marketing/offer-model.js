@@ -14,10 +14,13 @@ const TYPES = Object.freeze(['pct', 'lps', 'bogo', 'envio', 'nuevos']);   // eve
 const V1_TYPES = Object.freeze(['pct', 'lps', 'bogo', 'nuevos']);
 const typeSupported = (type) => V1_TYPES.includes(type);
 const AUDIENCES = Object.freeze(['all', 'new', 'returning']);   // every audience a STORED record may carry (the field is kept)
-// THE v1 audience gate (Codex #93 F4, owner 11-15): the price path applies 'all' only, so v1 may author, activate and project only
-// these. New / returning come very close to v1 ship (5f's eligibility plan): widening is this one list.
+// THE audience gate (Codex #93 F4 → PLAN-5f-offer-audience r2 §5, advisor 11-16): while the `audience_enabled` switch is OFF
+// (marketing/config audienceEnabled) only 'all' may be authored, activated and projected; ON widens it to every known audience —
+// new / returning, and with them the `nuevos` type (always 'new'). `enabled` is the caller's switch reading, never defaulted ON.
 const V1_AUDIENCES = Object.freeze(['all']);
-const audienceSupported = (audience) => V1_AUDIENCES.includes(audience);
+const audienceSupported = (audience, enabled = false) => (enabled === true ? AUDIENCES : V1_AUDIENCES).includes(audience);
+// new vs returning never meet the same customer: two such offers are neither a duplicate nor an overlap; 'all' meets both
+const audiencesDisjoint = (a, b) => a !== b && a !== 'all' && b !== 'all';
 const STATES = Object.freeze(['draft', 'active', 'paused_owner', 'ended']);   // (r3: a refused program is never a record — its claim carries the refusal)
 const LIMITS = Object.freeze({
   name_max: 40, branches_max: 10, items_max: 10, cats_max: 2, free_per_order_max: 3,
@@ -136,8 +139,7 @@ function validateAuthored(input, { isRid, stored = false }) {
   if (!stored && !typeSupported(input.type)) return fail('type', 'type_not_supported');
   const params = paramsOf(input.type, input.params, stored);
   if (params === null) return fail('params', 'bad_params');
-  if (!AUDIENCES.includes(input.audience)) return fail('audience', 'bad_audience');
-  if (!stored && !audienceSupported(input.audience)) return fail('audience', 'audience_not_supported');
+  if (!AUDIENCES.includes(input.audience)) return fail('audience', 'bad_audience');   // the switch (audience_not_enabled) is judged by the cores
   if (input.type === 'nuevos' && input.audience !== 'new') return fail('audience', 'nuevos_is_new');   // «Para clientes nuevos»
   const b = input.branches;
   if (!Array.isArray(b) || b.length < 1 || b.length > LIMITS.branches_max || !b.every((r) => isRid(r)) || !uniq(b)) return fail('branches', 'bad_branches');
@@ -207,11 +209,11 @@ function resolveCats(menu, cats) {
   return { ok: true, items: [...new Set(out)].sort() };
 }
 
-// The compact record the PRICE PATH reads — present only while state === 'active', for a v1 type AND a v1 audience (else null ⇒ a
-// tombstone). `name` rides for the overlap refusal's wording.
+// The compact record the PRICE PATH reads — present only while state === 'active', for a v1 type AND an audience the switch allows
+// (`audienceOn`: the audience_enabled reading; else null ⇒ a tombstone). `name` rides for the overlap refusal's wording.
 // A category offer projects onto branch `rid` with THAT branch's own dishes only (Codex #93 F1) — never the union; no list for `rid` ⇒ null.
-function liveProjection(rec, brandId, rid) {
-  if (!typeSupported(rec.type) || !audienceSupported(rec.audience)) return null;
+function liveProjection(rec, brandId, rid, audienceOn = false) {
+  if (!typeSupported(rec.type) || !audienceSupported(rec.audience, audienceOn)) return null;
   let params = rec.params;
   if (usesCats(rec)) {
     const own = isObj(rec.params.by_branch) ? rec.params.by_branch[rid] : undefined;
@@ -258,7 +260,7 @@ const hnDow = (ms) => new Date(ms - HN_OFFSET_MS).getUTCDay();
 
 module.exports = {
   TYPES, AUDIENCES, STATES, LIMITS, OFFER_ID_RE, AUTHORED,
-  V1_TYPES, typeSupported, V1_AUDIENCES, audienceSupported, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
+  V1_TYPES, typeSupported, V1_AUDIENCES, audienceSupported, audiencesDisjoint, validateAuthored, validatePublishable, authoredOf, recordOk, stripNulls, liveEditProblem, liveProjection,
   weeklyIntervals, schedulesOverlap, dishesOf, dishesAt, usesCats, resolveCats, statusOf, hnDow,
   paramsOf, scheduleOf,   // the ONE params / schedule rule, for the public offers read (catalog/offers-serve.js)
 };

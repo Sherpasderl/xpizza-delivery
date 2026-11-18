@@ -1,8 +1,16 @@
-'use strict';
 // ── PLAN-guest-checkout-server §1.2 — the SERVER-side phone country allowlist (the login-country allowlist of PLAN-intl-phone) ──
 // The order forms' client list is PHONE_COUNTRIES (xpizza-orders/index.html:6073, la-musa-orders/index.html:6413); until now
 // the server had NO allowlist (intl phone was client-only). This is the one server source; 5f's intl S-core owns it next.
 // A wire phone is QUALIFIED E.164: '+' then the country code then exactly that country's national length.
+// PLAN-capp-picker-served-countries r1: ALSO the customer app's served list — tools/sync-client.js copies this file byte for byte
+// into customer-app/ (capp-guards pins the copy), where the phone pickers offer only these countries. Dual-mode, like avail-key.js:
+// node gets the SAME module.exports as before; a page gets the global PhoneCountries (and no other global).
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.PhoneCountries = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+'use strict';
 const COUNTRIES = Object.freeze([
   { cc: '504', len: 8 },   // Honduras
   { cc: '1', len: 10 },    // Estados Unidos
@@ -28,4 +36,5 @@ function parseE164(raw) {
   return null;
 }
 
-module.exports = { COUNTRIES, parseE164 };
+return { COUNTRIES, parseE164 };
+});

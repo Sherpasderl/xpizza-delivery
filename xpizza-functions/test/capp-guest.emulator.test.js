@@ -188,8 +188,10 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
 
   // ═══ C — createOrder refuses every capp guest; zero mutation ═══
   for (const rid of ['x_pizza', 'la_musa']) {
-    const c = capp(rid, `c_${rid}`, { pay: 'cash' });
-    const t = await ticketFor(capp(rid, `c_${rid}`), '+50499550001');
+    // asm11 (advisor ruling A): the guest gate's cells send a DELIVERY body — an app PICKUP paid non-online is answered by the pickup
+    // seam (pickup_card_only, owner 11-16), whose precedence vs this gate differs per handler (backlog B)
+    const c = capp(rid, `c_${rid}`, { pay: 'cash', mode: 'delivery' });
+    const t = await ticketFor(capp(rid, `c_${rid}`, { mode: 'delivery' }), '+50499550001');
     for (const [label, body, why] of [['cash', c.body, 'guest_cash_not_allowed'], ['card_delivery', { ...c.body, payment_method: 'card_delivery' }, 'guest_cash_not_allowed'],
       ['cash + a ticket', { ...c.body, checkout_ticket: t }, 'guest_ticket_invalid'], ['scheduled cash', { ...c.body, scheduled_for: Date.now() + 3 * 3600e3 }, 'guest_cash_not_allowed']]) {
       await rtdb.ref('rate_limits').remove();
@@ -205,10 +207,13 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
     const c = capp(rid, `r_${rid}`);
     const t = await ticketFor(c, '+50499550001');
     const good = { ...c.body, checkout_ticket: t };
+    const cd = capp(rid, `rd_${rid}`, { mode: 'delivery' });   // asm11: the guest gate's non-online cells on a DELIVERY body (see C)
+    const goodD = { ...cd.body, checkout_ticket: await ticketFor(cd, '+50499550001') };
     const noEmail = { ...good }; delete noEmail.customer_email;
     const other = capp(rid, `r2_${rid}`);
     const tOther = await ticketFor(other, '+50499550001');
-    for (const [label, body, why] of [['cash', { ...good, payment_method: 'cash' }, 'guest_cash_not_allowed'], ['card_delivery', { ...good, payment_method: 'card_delivery' }, 'guest_cash_not_allowed'], ['scheduled', { ...good, scheduled_for: Date.now() + 3 * 3600e3 }, 'guest_schedule_requires_account'],
+    for (const [label, body, why] of [['cash', { ...goodD, payment_method: 'cash' }, 'guest_cash_not_allowed'], ['card_delivery', { ...goodD, payment_method: 'card_delivery' }, 'guest_cash_not_allowed'],
+      ['an app PICKUP paid cash (the pickup seam answers first in the charge — owner 11-16; backlog B)', { ...good, payment_method: 'cash' }, 'pickup_card_only'], ['scheduled', { ...good, scheduled_for: Date.now() + 3 * 3600e3 }, 'guest_schedule_requires_account'],
       ['no email', noEmail, 'guest_email_required'], ['no ticket', { ...c.body }, 'guest_ticket_invalid'], ['unknown ticket', { ...good, checkout_ticket: 'ct_' + 'f'.repeat(32) }, 'guest_ticket_invalid'],
       ['another order\'s ticket', { ...good, checkout_ticket: tOther }, 'guest_ticket_invalid'], ['a changed cart', { ...good, items: [{ ...good.items[0], qty: 2 }], items_text: good.items_text }, 'guest_ticket_invalid'],
       ['another phone', { ...good, customer_phone: '+504 9955-0099' }, 'guest_ticket_invalid']]) {
@@ -253,18 +258,20 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
     const A = winners[rid];
     const cB = capp(rid, `s_${rid}`, { phone: '9955-0002' });
     const tB = await ticketFor(cB, '+50499550002');   // a VALID ticket for the same O / rid / cart, B's own phone
-    for (const [leg, call, body] of [['online', charge, { ...cB.body, checkout_ticket: tB }], ['cash', cash, { ...cB.body, payment_method: 'cash', checkout_ticket: tB }]]) {
+    // asm11 (advisor ruling A): B must reuse O's cart — an app PICKUP — so its cash leg (ticket-bearing: past the guest cash gate) is
+    // answered by the pickup seam (pickup_card_only, owner 11-16) before the ticket check; still refused, nothing written (backlog B)
+    for (const [leg, call, body, why] of [['online', charge, { ...cB.body, checkout_ticket: tB }, 'guest_ticket_invalid'], ['cash', cash, { ...cB.body, payment_method: 'cash', checkout_ticket: tB }, 'pickup_card_only']]) {
       await rtdb.ref('rate_limits').remove();
       const before = await tree();
       const r = await call(body);
-      is400(r, 'guest_ticket_invalid', `${rid} B ${leg}`);
+      is400(r, why, `${rid} B ${leg}`);
       assert.ok(!r.text.includes('pay.test') && !r.text.includes('signup_grant'), 'no checkout, no grant');
       assert.strictEqual(await tree(), before, `🔴 ${rid} B ${leg}: the database changed`);
     }
     assert.strictEqual((await rtdb.ref(`orders/s_${rid}/guest_verified/phone`).get()).val(), '50499550001', 'O keeps A\'s phone');
     void A;
   }
-  ok('B Codex\'s A/B: B\'s VALID ticket for A\'s order ⇒ 400 guest_ticket_invalid with no checkout / grant / order data on BOTH legs; database unchanged; O keeps A\'s phone');
+  ok('B Codex\'s A/B: B\'s VALID ticket for A\'s order ⇒ 400 with no checkout / grant / order data on BOTH legs (online: guest_ticket_invalid; cash on the app-pickup cart: pickup_card_only); database unchanged; O keeps A\'s phone');
 
   // ═══ X — N concurrent same-id guest charges ⇒ one order ═══
   {
@@ -292,7 +299,10 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
     const t = await ticketFor(c, '+50499550004');
     const subs = (oid) => [[oid, '<oid>'], [G.ticketKey(t), '<ticketKey>'], [OTP.phoneHash('50499550004'), '<phoneHash>'], [rateLimitKey(c.body.customer_phone), '<phoneKey>']];
     await rtdb.ref('rate_limits').remove();
-    const cr = await recorded(() => cash({ ...c.body, payment_method: 'cash' }), subs('t_trace'));
+    // asm11 (advisor ruling A): the guest gate's createOrder refusal is traced on a DELIVERY body (same order id + phone) — an app PICKUP
+    // paid cash is the pickup seam's (pickup_card_only, owner 11-16; backlog B); the reviewed create_refusal golden is unchanged
+    const cdT = capp('x_pizza', 't_trace', { phone: '9955-0004', mode: 'delivery' });
+    const cr = await recorded(() => cash({ ...cdT.body, payment_method: 'cash' }), subs('t_trace'));
     is400(cr.r, 'guest_cash_not_allowed', 'trace createOrder');
     assert.deepStrictEqual(cr.trace.filter((e) => WRITES.has(e.op)), [], '🔴 createOrder wrote for a capp guest');
     assert.ok(!cr.trace.some((e) => e.path === 'orders/<oid>'), '🔴 createOrder read the order (the gate must precede the existence read)');
@@ -332,13 +342,16 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
       assert.strictEqual((await rtdb.ref(`orders/f_${rid}_${label.length}/guest_verified`).get()).val(), null, 'no guest_verified outside the capp-guest path');
       await rtdb.ref('rate_limits').remove();
       const rc = await cash({ ...c.body, order_id: `fc_${rid}_${label.length}`, payment_method: 'cash' }, hh);
-      assert.strictEqual(rc.status, 200, `${rid} ${label} cash: ${rc.text.slice(0, 200)}`);
+      // asm11 (advisor ruling A): this body is an APP PICKUP (the capp body carries the app marker), so cash is the pickup seam's for
+      // every caller (owner 11-16: an app pickup is card only; a real FORM body has no app marker and keeps cash) — refused, nothing written
+      is400(rc, 'pickup_card_only', `${rid} ${label} cash`);
+      assert.strictEqual((await rtdb.ref(`orders/fc_${rid}_${label.length}`).get()).val(), null, `🔴 ${rid} ${label} cash: no order`);
     }
   }
   // Codex r1 P2-4 differential: a NON-online body to chargeOnlineOrder — the form, header-less and a member (even with the
   // orders-app header) get the generic online-only answer, byte-identical to each other; only the capp guest gets its reason
   for (const rid of ['x_pizza', 'la_musa']) {
-    const c = capp(rid, `m_${rid}`, { pay: 'cash' });
+    const c = capp(rid, `m_${rid}`, { pay: 'cash', mode: 'delivery' });   // asm11: a DELIVERY body — an app pickup paid cash is the pickup seam's (pickup_card_only) for every caller
     const answers = [];
     for (const [h, tok] of [[FORM_H(rid === 'x_pizza' ? 'orders-xpizza' : 'orders-lamusa'), null], [{}, null], [APP_H, `u_${rid}`]]) {
       await rtdb.ref('rate_limits').remove();
@@ -351,7 +364,7 @@ const is400 = (r, reason, label) => { assert.strictEqual(r.status, 400, `${label
     await rtdb.ref('rate_limits').remove();
     is400(await charge({ ...c.body, payment_method: 'cash' }), 'guest_cash_not_allowed', `${rid}: the capp guest's typed reason is reachable`);
   }
-  ok('F forms / header-less / members (even with the orders-app header) are untouched: cash + online accepted as today, no grant, no guest_verified; a non-online charge body gets the same generic answer for all of them, the capp guest its typed reason');
+  ok('F forms / header-less / members (even with the orders-app header) are untouched: online accepted as today (cash on an app-pickup body is refused by the pickup seam), no grant, no guest_verified; a non-online charge body gets the same generic answer for all of them, the capp guest its typed reason');
 
   FINISHED = true;
   console.log(`\ncapp-guest(emulator): OK (${n})`);

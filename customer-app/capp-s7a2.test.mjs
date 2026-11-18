@@ -33,11 +33,11 @@ const J = (x) => JSON.parse(JSON.stringify(x));
 // ── the contract fake ──
 // the 5f allowlist, in output order (directory.js ENTRY_FIELDS / BODY_FIELDS at the pinned commit)
 const ENTRY_FIELDS = ['restaurant_id', 'name', 'kicker', 'unit', 'cuisines', 'logo_url', 'logo_wide', 'hero_url', 'asset_base', 'branch', 'pickup_addr', 'coverage_km', 'hub_lat', 'hub_lng',
-  'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'degraded'];
+  'eta_delivery_min', 'eta_pickup_min', 'payments', 'pickup', 'schedule', 'schedule_state', 'fee', 'promo', 'order_id_prefix', 'house', 'meals', 'ratings', 'degraded'];
 const BODY_FIELDS = ['representation_version', 'complete', 'platform', 'restaurants', 'unavailable'];
 test('contract fake: produced by the pinned 5f commit; every 200 body is exactly the 5f schema; the declared statuses / validators', () => {
-  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419');
-  assert.equal(FX.source.blobs['directory/directory.js'], 'b462c1b21704e47565e5907e86b80fed8de9ed3a', 'the handler blob the fixture came from');
+  assert.equal(FX.source.commit, '968dd888d4cf9947734f7a31e3d78847d6f17cfa');
+  assert.equal(FX.source.blobs['directory/directory.js'], 'b4be099618835c502838a2600c0807be9c956e08', 'the handler blob the fixture came from');
   // Codex s7a2 r1 #10: the CONTENTS are pinned — the generator's digest of every scenario, recomputed here and pinned literally (a hand
   // edit, e.g. a fee, fails; a regeneration from the real handler that changes anything must update this line on purpose)
   const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
@@ -45,7 +45,9 @@ test('contract fake: produced by the pinned 5f commit; every 200 body is exactly
   assert.equal(digest, FX.scenarios_sha256, '🔴 the fixture contents match the digest its generator wrote');
   // regenerated 2026-11-13 (rule 10): + the labelled «5f marker overlay» (promo.basis) and complete_writer_raw — see gen-directory.mjs
   // merged 2026-11-15 (feat/capp-offers-r20): the union generator — both lines' scenarios (complete_writer_raw + five_stores, fake_extra_stores)
-  assert.equal(digest, 'a432b4a948ad18b04d7e6425e9b015d8051d21f69a4962eeb9e05aba048bffc9', '🔴 the fixture contents are the pinned generation');
+  // re-pinned 2026-11-17 (asm11 step 4): the writer at 968dd888d emits the pricing marker itself — the overlay is dropped; directory-2
+  // (ratings: null); complete_writer_raw is now the writer's own output for a promo without the marker
+  assert.equal(digest, 'e30b67cd9a63f9261ea0025c638749c0e3fc87486ca499b769d70d934a81e23c', '🔴 the fixture contents are the pinned generation');
   for (const [k, s] of Object.entries(SC)) {
     if (s.status !== 200) continue;
     assert.deepEqual(Object.keys(s.body), BODY_FIELDS, `${k}: body schema`);
@@ -277,7 +279,7 @@ function bootShell({ realFrames = false, dirScript = ['complete'], envelope = 'o
   if (preMount) preMount(w);   // a host object present BEFORE the shell mounts (the installed app's Capacitor bridge)
   if (stampedDir) { w.fetch = pageFetch; w.eval(readFileSync(join(stampedDir, 'sherpa-client.js'), 'utf8')); }   // the page's FIRST script
   for (const f of ['capp-version.js', 'capp-menu.js', 'capp-cart.js', 'capp-serialize.js', 'capp-confirm-quote.js', 'capp-checkout.js', 'capp-api.js', 'capp-theme.js', 'capp-ui.js', 'capp-eligibility.js', 'capp-auth-state.js',
-    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
+    'capp-menu-cache.js', 'capp-directory.js', 'capp-splash.js', 'capp-shell.js', 'capp-shell-nav.js', 'capp-home.js', 'capp-device-account.js', 'capp-auth-firebase.js', 'capp-signup-api.js', 'capp-signup.js', 'capp-schedule.js', 'phone-countries.js', 'capp-phone.js', 'capp-routes.js', 'capp-view.js', 'form-order-number.js', 'status-view.js', 'form-live-status.js', 'capp-order.js', 'capp-rate.js', 'capp-pay-adjust.js', 'capp-push.js', 'capp-shell-ui.js']) w.eval(readFileSync(join(HERE, f), 'utf8'));
   const dirCalls = [], envCalls = [], pend = {}, events = [];
   const fetchDirectory = async (etag) => { dirCalls.push(etag); const n = dirScript.length > 1 ? dirScript.shift() : dirScript[0]; if (n === 'hang') return new Promise(() => {}); if (n && n.p) return n.p; return typeof n === 'string' ? resp(n) : n; };
   const fetchEnvelope = (rid, etag) => {
@@ -619,7 +621,7 @@ test('G2 frame 5b: a guest\'s Cuenta tab = ONE «Entrá o creá tu cuenta» + th
   const S = bootShell({ auth: 'guest', runtime: GR }); await flush();
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(txt(S.q('.flowbar h1')), 'Cuenta');
-  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Efectivo al entregar o al recoger', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección']);
+  assert.deepEqual(S.qa('.guestcard li').map((l) => txt(l)), ['Opción de pago en efectivo y tarjeta', 'Recompensas, promos y envío gratis', 'Programá pedidos y guardá tu dirección'], '🔴 PICKUP-CARD-BENEFIT: the first benefit (owner 11-16, final wording)');
   assert.equal(S.qa('.guestcard button.primary').length, 1); assert.equal(txt(S.q('.guestcard .primary')), 'Entrá o creá tu cuenta');
   // owner 2026-11-01: «Pedidos» IS in launch scope (ORDERS_SCREEN on) ⇒ the guest card keeps v6's «Pedidos · Los de este teléfono» row
   assert.deepEqual(S.qa('.rows .rowbtn').map((b) => txt(b)), ['Pedidos Los de este teléfono', 'Ayuda']);
@@ -1007,38 +1009,46 @@ async function g7Boot({ profile = G7_PROFILE({ promos: true }), srv = g7Server()
   return { S, fb, srv, store };
 }
 const g7Rows = (S) => S.qa('.flow .rows .rowbtn').map((b) => txt(b));
-test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host\'s tab event', async () => {
+// MOCKUP-capp-notificaciones 2b (owner 11-16): the email + WhatsApp consent switch lives on the «Notificaciones» screen (the ONE Cuenta row)
+const toNotifsG7 = async (S) => { S.click('[data-act="sub-notifs"]'); await flush(); await flush(); };
+const promosRow = (S) => S.q('[data-row="promos"]'), promosSw = (S) => { const r = promosRow(S); return r && r.querySelector('.switch'); };
+test('G7 frame 1 / 4a: the member\'s Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Notificaciones · Ayuda (2b: ONE row, no «Promociones»), the session group, «v0.1.0»; never the host\'s tab event', async () => {
   const { S } = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' } });
   assert.equal(S.events.filter((e) => e[0] === 'tab').length, 0, '🔴 G7-shell: the member\'s Cuenta is the shell\'s (no host event)');
   assert.equal(txt(S.q('.acct-hero .av')), 'A');
   assert.deepEqual([...S.qa('.acct-hero .t > *')].map((x) => x.textContent), ['Ana Pérez', '+504 9612-3344', 'ana.perez@gmail.com'], '🔴 G7-hero: name, phone, email on three lines');
   // owner 11-01: «Pedidos» in scope ⇒ its row first (v6)
-  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones Agregá tu dirección', 'Promociones Ofertas por correo y WhatsApp', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número']);   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
+  assert.deepEqual(g7Rows(S), ['Pedidos', 'Direcciones Agregá tu dirección', 'Notificaciones Pedidos y ofertas', 'Ayuda', 'Cerrar sesión', 'Olvidar este teléfono Cierra tu sesión y deja de recordar tu número'], '🔴 NOTIFS-ONE-ROW: the web member\'s Cuenta — ONE «Notificaciones» row, no «Promociones»');   // + «Direcciones» (C-6a, D-3 r3 DECIDED)
+  assert.equal(S.qa('.flow [data-act="sub-notifs"]').length, 1, '🔴 NOTIFS-ONE-ROW: one row'); assert.equal(S.q('.flow [data-act="promos"], .flow [data-row="promos"]'), null, '🔴 NOTIFS-ONE-ROW: the consent is not on the Cuenta');
   assert.equal(S.qa('.flow .rows').length, 2); assert.ok(S.q('.flow .rows.sess'));
-  const sw = S.q('[data-act="promos"] .switch');
-  assert.equal(sw.getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null);
+  const pref = S.q('.flow').textContent;
+  await toNotifsG7(S);
+  assert.equal(txt(S.q('.topbar h1')), 'Notificaciones', '🔴 NOTIFS-WEB-SHELL: the web member opens the screen (no push needed)');
+  assert.equal(S.q('[data-act="push-pref"]'), null, 'the web ⇒ no phone rows'); assert.equal(S.q('.px-quiet'), null, 'the web ⇒ no permission card');
+  assert.equal(promosSw(S).getAttribute('aria-checked'), 'true', '🔴 G7-promos: the cached value'); assert.equal(promosRow(S).getAttribute('aria-disabled'), null);
+  S.click('[data-act="notifs-back"]'); await flush(); assert.equal(S.q('.flow').textContent, pref, 'back to the same Cuenta');
   assert.equal(S.q('.flow .credit.ver').textContent, 'v0.1.0', '🔴 G7-version: SYSTEM_VERSION');
   assert.ok(!/recompens/i.test(txt(S.q('.flow'))), 'no rewards row (decision 1)');
 });
 test('G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»', async () => {
-  const ok = await g7Boot();
+  const ok = await g7Boot(); await toNotifsG7(ok.S);
   ok.S.click('[data-act="promos"]');
-  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false', '🔴 G7-optimistic: the new value at once');
+  assert.equal(promosSw(ok.S).getAttribute('aria-checked'), 'false', '🔴 G7-optimistic: the new value at once');
   await flush();
   const call = ok.srv.sent.find((x) => x[0] === 'setPromos');
-  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, TOK('u_ana')], '🔴 G7-setPromos: contract §6');
-  assert.equal(ok.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'false');
+  assert.deepEqual([call[1], call[2]], [{ context: 'platform', value: false }, TOK('u_ana')], '🔴 G7-setPromos: contract §6 — «Por correo y WhatsApp» writes the SAME consent with the SAME body as G7\'s «Promociones» (setPromos, the 3a-strict fake)');
+  assert.equal(ok.srv.sent.filter((x) => x[0] === 'setPromos').length, 1, 'one write'); assert.equal(promosSw(ok.S).getAttribute('aria-checked'), 'false');
   assert.equal(JSON.parse(ok.store.getItem('capp:member_profile')).promos, false, 'the cache follows a confirmed change');
-  const bad = await g7Boot({ srv: g7Server(false) });
+  const bad = await g7Boot({ srv: g7Server(false) }); await toNotifsG7(bad.S);
   bad.S.click('[data-act="promos"]'); await flush();
-  assert.equal(bad.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-revert: back to its value');
+  assert.equal(promosSw(bad.S).getAttribute('aria-checked'), 'true', '🔴 G7-revert: back to its value');
   assert.equal(bad.S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 G7-toast');
   assert.equal(JSON.parse(bad.store.getItem('capp:member_profile')).promos, true);
 });
 test('G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable', async () => {
-  const noVal = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, profile: G7_PROFILE() });
-  assert.equal(noVal.S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', '🔴 G7-inert: no value served ⇒ inert');
-  noVal.S.click('[data-act="promos"]'); await flush();
+  const noVal = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, profile: G7_PROFILE() }); await toNotifsG7(noVal.S);
+  assert.equal(promosRow(noVal.S).getAttribute('aria-disabled'), 'true', '🔴 G7-inert: no value served ⇒ inert');
+  noVal.S.click(promosSw(noVal.S)); await flush();
   assert.equal(noVal.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, 'an inert switch sends nothing');
   const bare = await g7Boot({ runtime: { ...G7_RUNTIME, supportWhatsapp: '50497952893' }, profile: null });
   assert.equal(bare.S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-placeholder: three static bars'); assert.ok(bare.S.q('.acct-hero .av.ph'));
@@ -1060,8 +1070,8 @@ async function g7SignIn(verify, { complete } = {}) {
     S.click(h.querySelector('[data-su="save"]')); await flush(); await flush();
   }
   S.click(h.querySelector('[data-su="finish"]')); await flush(); await flush();
-  S.click('.tabbar [data-tab="account"]'); await flush();
-  const row = S.q('[data-act="promos"]'), sw = row && row.querySelector('.switch');
+  S.click('.tabbar [data-tab="account"]'); await flush(); await toNotifsG7(S);
+  const row = promosRow(S), sw = promosSw(S);
   return { S, srv, storage, row, live: !!row && row.getAttribute('aria-disabled') === null, on: sw ? sw.getAttribute('aria-checked') : null };
 }
 test('G7 Codex r1 #3: an EXISTING account\'s stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server\'s value, cached', async () => {
@@ -1080,16 +1090,16 @@ test('G7 Codex r1 #3: a LEGACY account (completion \'off\', no consent stored �
   const r = await g7SignIn({ ...ANA, completion: 'off', profile: { name: 'Ana Pérez', email: 'ana@gmail.com' } });
   assert.equal(r.live, false, '🔴 G7-legacy: no stored consent ⇒ the switch is never live');
   assert.equal(r.on, 'false', '🔴 G7-legacy: settled with no stored consent ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING) — never «ON» without consent');
-  r.S.click('[data-act="promos"]'); await flush();
+  r.S.click(promosSw(r.S)); await flush();
   assert.equal(r.srv.sent.filter((x) => x[0] === 'setPromos').length, 0, '🔴 G7-legacy: a tap sends nothing');
 });
 test('G7 Codex r1 #3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent', async () => {
   const srv = g7Server(); const f0 = srv.fetch;
   srv.fetch = async (u, i) => (u.split('?')[0].endsWith('/setPromos') ? (srv.sent.push(['setPromos', JSON.parse(i.body), i.headers['x-firebase-id-token']]), { status: 200, json: async () => ({ ok: true, value: true }) }) : f0(u, i));
-  const r = await g7Boot({ srv });
+  const r = await g7Boot({ srv }); await toNotifsG7(r.S);
   r.S.click('[data-act="promos"]'); await flush(); await flush();
   assert.equal(srv.sent.find((x) => x[0] === 'setPromos')[1].value, false, 'premise: the tap sent «off»');
-  assert.equal(r.S.q('[data-act="promos"] .switch').getAttribute('aria-checked'), 'true', '🔴 G7-readback: the committed value wins');
+  assert.equal(promosSw(r.S).getAttribute('aria-checked'), 'true', '🔴 G7-readback: the committed value wins');
   assert.equal(JSON.parse(r.store.getItem('capp:member_profile')).promos, true, '🔴 G7-readback: cached as committed');
 });
 // Codex G7 r1 #2 (P1 privacy) + #5, advisor ruling 2026-10-31: a cached profile is SHOWN only once the SDK's first auth state names
@@ -1104,7 +1114,8 @@ test('G7 decision 7 / Codex r1 #2: while the session RESOLVES, a profile on this
   S.click('.tabbar [data-tab="account"]');
   assert.equal(S.qa('.acct-hero .t .bar').length, 3, '🔴 G7-privacy: the member geometry, as placeholders, before the SDK answers');
   assert.equal(anaText(S), false, '🔴 G7-privacy: no cached personal data before the SDK names the uid');
-  assert.deepEqual([S.q('[data-act="promos"]').getAttribute('aria-disabled'), S.q('[data-act="promos"] .switch').getAttribute('aria-checked')], ['true', 'true'], 'loading ⇒ frame 4b\'s ON-dimmed placeholder');
+  assert.ok(g7Rows(S).some((r) => r.startsWith('Notificaciones')), 'the member geometry includes the ONE «Notificaciones» row (2b)');
+  S.click('[data-act="sub-notifs"]'); assert.equal(S.q('[data-row="promos"]'), null, '🔴 NOTIFS-PENDING: before the SDK names the member, the row opens nothing (the consent is the applied member\'s only)');
   await flush(); await flush();
   assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', 'the SDK named u_ana ⇒ her cached profile');
   const G = bootShell({ auth: 'unresolved', storage: memStorage(), runtime: G7_RUNTIME, mountExtra: { loadSdk: fakeFirebase({}).loadSdk, signupFetch: g7Server().fetch } });
@@ -1138,11 +1149,12 @@ test('G7 Codex r1 #5: auth says member, the ID token still pending — the Cuent
   S.click('.tabbar [data-tab="account"]'); await flush();
   assert.equal(S.q('.guestcard'), null, '🔴 G7-pending: never the guest card for a member whose token is pending');
   assert.equal(S.q('.acct-hero .t b') && S.q('.acct-hero .t b').textContent, 'Ana Pérez', '🔴 G7-pending: the uid-validated cache at once');
-  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), 'true', 'the switch waits for the applied member');
+  S.click('[data-act="sub-notifs"]'); await flush(); assert.equal(S.q('[data-row="promos"]'), null, 'the consent waits for the applied member (the screen does not open)');
   const hero0 = S.q('.acct-hero');
   hold.on = false; hold.q.splice(0).forEach((f) => f()); await flush(); await flush();
   assert.equal(S.q('.guestcard'), null); assert.equal(S.q('.acct-hero .t b').textContent, 'Ana Pérez');
-  assert.equal(S.q('[data-act="promos"]').getAttribute('aria-disabled'), null, '🔴 G7-pending: live once applied');
+  await toNotifsG7(S); assert.equal(promosRow(S).getAttribute('aria-disabled'), null, '🔴 G7-pending: live once applied');
+  S.click('[data-act="notifs-back"]'); await flush();
   assert.ok(hero0, 'the member geometry throughout');
 });
 test('G7 frame 3: «Cerrar sesión» — no confirmation; the guest\'s Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT', async () => {
@@ -3090,6 +3102,19 @@ test('Volver a pedir r2 — «+» (Codex VP r1 #5/#7/#8): an existing line the l
   { const { S, st } = await againBoot({ seed: (st) => st.setItem('capp:avail:x_pizza', JSON.stringify([String(marg.dish_id)])) });
     try { await plus(S); assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 VP-17: a sold-out dish ⇒ its store'); const c = cartOfSt(st, 'x_pizza'); assert.ok(!c || !c.lines.some((l) => l.key === String(marg.dish_id) && l.qty > 0), '🔴 VP-17: nothing added to the cart (C-3r W1: no longer `|| true`)'); assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 VP-17: nothing added'); } finally { S.w.close(); } }
 });
+// G2 (advisor 11-16): an existing line whose EXTRA the live menu no longer offers is TRIMMED by the restore — never a silent
+// «Agregado» over that changed cart either: the store opens and discloses (its own extra-removed note)
+test('TRIM-ADDPAST: «+» on a past dish over a cart whose extra was deleted ⇒ the store opens (its own disclosure); no silent «Agregado»', async () => {
+  const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
+  const TRIMMED = JSON.stringify({ v: 2, lines: [{ key: String(marg.dish_id), qty: 1, ex: [{ GONE_EXTRA: 1 }], added: 1, xn: { GONE_EXTRA: 'Queso extra' } }], rid: 'x_pizza', mode: 'delivery' });
+  const { S } = await againBoot({ seed: (st) => st.setItem('capp:x_pizza:cart', TRIMMED) });
+  try {
+    S.click('.tabbar [data-tab="orders"]'); await flush(); await flush(); S.click('.otabs [data-val="again"]'); await flush(); await flush();
+    S.click(`.agains [data-act="add-past"][data-id="${marg.dish_id}"]`); await flush(); await flush();
+    assert.ok(S.ui.store() && S.ui.store().rid === 'x_pizza', '🔴 TRIM-ADDPAST: the store opens (its own disclosure)');
+    assert.ok(!(S.q('#toast') && S.q('#toast').textContent.startsWith('Agregado')), '🔴 TRIM-ADDPAST: no silent «Agregado» over a trimmed cart');
+  } finally { S.w.close(); }
+});
 test('Volver a pedir r2 (Codex VP r1 #6): the rebuilt cart records the prices ON SHOW (provenance) — a later change is the cart\'s own priceChanges()', async () => {
   const marg = PROV.x_pizza.envelope.menu.dishes.find((d) => d.name === 'Margherita');
   const { S, st } = await againBoot();
@@ -3342,7 +3367,7 @@ test('C-6a «Direcciones» (D-3 r3 frame 6, DECIDED): the member\'s Cuenta row a
   try {
     S.click('.tabbar [data-tab="account"]'); await flush(); await flush();
     const rows = S.qa('.rows .rowbtn').map((b) => b.querySelector('.t').firstChild.textContent);
-    assert.deepEqual(rows.slice(0, 3), ['Pedidos', 'Direcciones', 'Promociones'], '🔴 SEO-dir: the row, between Pedidos and Promociones');
+    assert.deepEqual(rows.slice(0, 3), ['Pedidos', 'Direcciones', 'Notificaciones'], '🔴 SEO-dir: the row, between Pedidos and Notificaciones');
     S.click('.rowbtn[data-act="addr"]'); await flush();
     assert.ok(S.q('#layer .sheet, #layer [role="dialog"]'), '🔴 SEO-dir: the location sheet opens');
   } finally { S.w.close(); }
@@ -4888,10 +4913,10 @@ test('G-B (frame 2a): the DESK aside carries «Agregar notas al restaurante» af
 });
 
 // ── RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — the ONE predicate (CappShell.configFor
-// promoFree) requires 5f's `basis: 'pricing'` marker. complete_writer_raw is what the pinned 5f directory writer emits TODAY ──
+// promoFree) requires 5f's `basis: 'pricing'` marker. complete_writer_raw is the pinned writer's output for a promo NOT from the quote's read ──
 const RAWDIR = { status: SC.complete_writer_raw.status, body: SC.complete_writer_raw.body, etag: SC.complete_writer_raw.headers.ETag };
 const CLAIM = /Envío gratis|envío es gratis|Gratis/;
-test('RULE 10: what the pinned directory writer emits TODAY (a promo without the pricing marker) ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', async () => {
+test('RULE 10: what the pinned directory writer emits for a promo without the pricing marker ⇒ ZERO free-delivery claims on Inicio and the store, guest and admitted member; the marked promo shows them', async () => {
   const rawX = SC.complete_writer_raw.body.restaurants.find((e) => e.restaurant_id === 'x_pizza'), markX = SC.complete.body.restaurants.find((e) => e.restaurant_id === 'x_pizza');
   assert.ok(rawX.promo && rawX.promo.free_delivery === true && !('basis' in rawX.promo), 'premise: the writer\'s own promo — free_delivery, no marker');
   assert.equal(CappShell.configFor(markX, RUNTIME).promoFree, true, 'premise: the marked promo is a claim (the cell is not vacuous)');
@@ -4917,10 +4942,11 @@ test('RULE 10: what the pinned directory writer emits TODAY (a promo without the
     } finally { S.w.close(); }
   }
 });
-test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb6d9558 AND that writer still emits no marker itself', () => {
+test('RULE 10 bridge EXPIRY (advisor 11-13): the generator\'s «5f MARKER OVERLAY» may exist ONLY while its pinned writer is eb3d1cb9c AND that writer still emits no marker itself', () => {
   const gen = readFileSync(join(HERE, 'fixtures/s7a2/gen-directory.mjs'), 'utf8');
   if (!gen.includes('5f MARKER OVERLAY')) return;   // the bridge is gone: nothing left to expire
-  assert.equal(FX.source.commit, 'eb6d9558d2bea94bbb2d0a1829db3be72d07a419', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
+  // re-anchored eb6d9558 → eb3d1cb9c (advisor ruling 11-16): the deployed writer still emits no marker; the next re-pin trips this again
+  assert.equal(FX.source.commit, 'eb3d1cb9c9f06491b00d73c5477865775ef7b178', '🔴 bridge EXPIRED: the generator re-pinned — drop the 5f marker overlay (the writer is the source now)');
   const rawPromos = SC.complete_writer_raw.body.restaurants.map((e) => e.promo).filter(Boolean);
   assert.ok(rawPromos.length > 0, 'premise: the raw writer emits a promo');
   assert.ok(rawPromos.every((p) => !('basis' in p)), '🔴 bridge EXPIRED: the pinned writer emits the marker itself — drop the overlay');
@@ -5606,25 +5632,25 @@ test('PUSH-SHELL-2: «Ahora no» ⇒ the card goes, nothing asks the OS, the sno
     assert.notEqual(txt(D.S.q('#toast')), 'Avisos activados');
   } finally { D.S.w.close(); }
 });
-test('PUSH-SHELL-3 (frames 2 + 4): ONE «Notificaciones» row right after Direcciones (frame 4\'s subtitles); its screen — the switches are the consent (setPrefs under the member\'s token); a refused save reverts', async () => {
+test('PUSH-SHELL-3 (notificaciones 2b, owner 11-16): ONE «Notificaciones» row right after Direcciones, no «Promociones»; its grouped screen — the phone switches are the push consent (setPrefs under the member\'s token); a refused save reverts', async () => {
   const { S, srv } = await pushBoot();
   try {
     S.click('.tabbar [data-tab="account"]'); await flush();
-    const rows = g7Rows(S); assert.equal(rows[rows.indexOf(rows.find((r) => r.startsWith('Direcciones'))) + 1], 'Notificaciones Estado del pedido por WhatsApp', '🔴 PUSH-SHELL-3: right after Direcciones, v6\'s subtitle before push');
-    assert.equal(rows.filter((r) => r.startsWith('Notificaciones')).length, 1, 'ONE row'); assert.ok(rows.some((r) => r.startsWith('Promociones')), 'G7\'s «Promociones» untouched');
+    const rows = g7Rows(S); assert.equal(rows[rows.indexOf(rows.find((r) => r.startsWith('Direcciones'))) + 1], 'Notificaciones Pedidos y ofertas', '🔴 PUSH-SHELL-3: right after Direcciones (the email + WhatsApp consent is on ⇒ «Pedidos y ofertas»)');
+    assert.equal(rows.filter((r) => r.startsWith('Notificaciones')).length, 1, '🔴 NOTIFS-ONE-ROW: ONE row'); assert.ok(!rows.some((r) => r.startsWith('Promociones')), '🔴 NOTIFS-ONE-ROW: no «Promociones» row');
     S.click('[data-act="sub-notifs"]'); await flush(); await flush();
     assert.equal(txt(S.q('.topbar h1')), 'Notificaciones'); assert.equal(S.w.document.title, 'Notificaciones · Sherpa');
     const sw = (k) => S.q(`.switch[data-k="${k}"]`);
     assert.deepEqual([sw('pedidos').getAttribute('aria-checked'), sw('promociones').getAttribute('aria-checked')], ['false', 'false'], 'not registered ⇒ both off');
     S.click(sw('pedidos')); await until(() => srv.calls.some((c) => c.name === 'registerCustomerPushToken'));
     await until(() => sw('pedidos') && sw('pedidos').getAttribute('aria-checked') === 'true');
-    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.pedidos, true, '🔴 PUSH-SHELL-3: «Mis pedidos» on = the opt-in');
+    assert.deepEqual(srv.calls.find((c) => c.name === 'registerCustomerPushToken').body.pedidos, true, '🔴 PUSH-SHELL-3: «Pedidos · En tu teléfono» on = the opt-in');
     S.click(sw('promociones')); await until(() => srv.calls.some((c) => c.name === 'setCustomerPushPrefs')); await flush();
-    assert.deepEqual(srv.calls.find((c) => c.name === 'setCustomerPushPrefs').body, { pedidos: true, promociones: true, expected_rev: 1 }, '🔴 PUSH-SHELL-3: «Ofertas de Sherpa» on = setPrefs (consent per channel), on the rev it was drawn from');
+    assert.deepEqual(srv.calls.find((c) => c.name === 'setCustomerPushPrefs').body, { pedidos: true, promociones: true, expected_rev: 1 }, '🔴 PUSH-SHELL-3: «Ofertas · En tu teléfono» on = setPrefs (consent per channel), on the rev it was drawn from');
     assert.deepEqual([(srv.db.get(`${PUSH_3A.CP.PREFS}/u_ana`) || {}).offers_consent].map((o) => o && [o.channel, o.value]), [['push', true]], '3a recorded the push-offers consent');
     assert.equal(sw('promociones').getAttribute('aria-checked'), 'true');
     S.click('[data-act="notifs-back"]'); await flush();
-    assert.ok(g7Rows(S).includes('Notificaciones Mis pedidos · Ofertas de Sherpa'), '🔴 PUSH-SHELL-3: F4b\'s subtitle');
+    assert.ok(g7Rows(S).includes('Notificaciones Pedidos y ofertas'), '🔴 PUSH-SHELL-3: the row\'s subtitle');
   } finally { S.w.close(); }
   const F = await pushBoot({ srv: pushServer3a({ failSet: true }), fake: { permission: 'granted' } });
   try {
@@ -5635,12 +5661,25 @@ test('PUSH-SHELL-3 (frames 2 + 4): ONE «Notificaciones» row right after Direcc
     assert.equal(txt(F.S.q('#toast')), 'No se guardó el cambio. Intentá de nuevo.');
   } finally { F.S.w.close(); }
 });
+test('NOTIFS-SAME-CONSENT (2b, native): «Por correo y WhatsApp» writes ONLY G7\'s consent (setPromos, the same body) and the phone «Ofertas» ONLY the push prefs — never each other\'s', async () => {
+  const { S, srv, g } = await pushBoot({ fake: { permission: 'granted' } });
+  try {
+    S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await flush(); await until(() => S.q('.switch[data-k="pedidos"]') && S.q('.switch[data-k="pedidos"]').getAttribute('aria-disabled') === null);
+    const pushN = () => srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length;
+    const p0 = pushN(); S.click('[data-act="promos"]'); await flush(); await flush();
+    assert.deepEqual(g.sent.filter((x) => x[0] === 'setPromos').map((x) => [x[1], x[2]]), [[{ context: 'platform', value: false }, TOK('u_ana')]], '🔴 NOTIFS-SAME-CONSENT: the email + WhatsApp switch = setPromos, G7\'s body');
+    assert.equal(pushN(), p0, '🔴 NOTIFS-SAME-CONSENT: no push call for the email + WhatsApp consent');
+    S.click('.switch[data-k="promociones"]'); await until(() => srv.calls.some((c) => c.name === 'registerCustomerPushToken' || c.name === 'setCustomerPushPrefs')); await flush(); await flush();
+    assert.equal(g.sent.filter((x) => x[0] === 'setPromos').length, 1, '🔴 NOTIFS-SAME-CONSENT: the phone offers switch never writes the email + WhatsApp consent');
+  } finally { S.w.close(); }
+});
 test('PUSH-SHELL-4 (frame 2 denied, owner Q5): the OS denied ⇒ the quiet card, both switches off + inert; «Abrir Ajustes» is the host event open-os-settings; the row reads «Apagadas en tu teléfono»', async () => {
   const { S, srv } = await pushBoot({ fake: { permission: 'denied' } });
   try {
     S.click('.tabbar [data-tab="account"]'); await flush(); S.click('[data-act="sub-notifs"]'); await until(() => S.q('.px-quiet'));
     assert.equal(txt(S.q('.px-quiet .t b')), 'Avisos apagados');
-    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2); assert.equal(S.q('[data-act="push-pref"]'), null, '🔴 PUSH-SHELL-4: no live switch');
+    assert.equal(S.qa('.switch[aria-disabled="true"]').length, 2); assert.equal(S.q('[data-act="push-pref"]'), null, '🔴 PUSH-SHELL-4: no live phone switch');
+    assert.ok(S.q('button.switch[data-act="promos"]') && promosRow(S).getAttribute('aria-disabled') === null, '🔴 NOTIFS-DENIED-SHELL: the email + WhatsApp consent stays live');
     S.click('.px-quiet [data-act="push-settings"]'); await flush();
     assert.deepEqual(S.events.filter((e) => e[0] === 'open-os-settings'), [['open-os-settings', {}]], '🔴 PUSH-SHELL-4: the host opens Ajustes');
     S.click('[data-act="notifs-back"]'); await flush();
@@ -5648,14 +5687,16 @@ test('PUSH-SHELL-4 (frame 2 denied, owner Q5): the OS denied ⇒ the quiet card,
     assert.equal(srv.calls.filter((c) => c.name !== 'getCustomerPushPrefs').length, 0, 'nothing registered');
   } finally { S.w.close(); }
 });
-test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — flag off, the web, a guest or no bridge ⇒ no card, no row, no screen, no denied card, not one plugin call', async () => {
+test('PUSH-SHELL-GATE: the push UI renders ONLY behind the native push flag — flag off, the web, a guest or no bridge ⇒ no card, no phone rows, no denied card, not one plugin call (the member\'s «Notificaciones» row and screen stay: 2b, advisor 11-16)', async () => {
   for (const [what, o] of [['flag off', { runtime: { ...PUSH_RT, push: undefined } }], ['web', { platform: 'web' }], ['no bridge', { noBridge: true }], ['denied, flag off', { runtime: { ...PUSH_RT, push: undefined }, fake: { permission: 'denied' } }]]) {
     const { S, f, srv } = await pushBoot(o);
     try {
       await shellPlaceTolerant(S); await until(() => S.q('.mk-num'));
       assert.equal(S.q('.px-ask'), null, `🔴 PUSH-GATE ${what}: no card`); assert.equal(pushTxt(S), '· Te avisamos por WhatsApp', `${what}: v6's line`);
       S.click('[data-act="order-close"]'); await flush(); S.click('.tabbar [data-tab="account"]'); await flush();
-      assert.ok(!g7Rows(S).some((r) => r.startsWith('Notificaciones')), `🔴 PUSH-GATE ${what}: no row`);
+      assert.ok(g7Rows(S).includes('Notificaciones Pedidos y ofertas'), `🔴 NOTIFS-ONE-ROW ${what}: the member's ONE row (no push in its subtitle)`);
+      S.click('[data-act="sub-notifs"]'); await flush(); await flush();
+      assert.equal(S.q('[data-act="push-pref"]'), null, `🔴 PUSH-GATE ${what}: no phone rows`); assert.ok(S.q('button.switch[data-act="promos"]'), `${what}: the consent switch`);
       assert.equal(S.q('.px-quiet'), null, `🔴 PUSH-GATE ${what}: no denied card`);
       assert.equal(f.calls.length + srv.calls.length, 0, `🔴 PUSH-GATE ${what}: no plugin / server call`);
     } finally { S.w.close(); }

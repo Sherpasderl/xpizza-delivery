@@ -603,17 +603,15 @@ test('S2b G0: a closed store — ASAP «No disponible · cerrado» disabled and 
   assert.ok(b.q('#cta').disabled);
 });
 
-test('S2b pickup: the branch row; «Confirmar pedido · L x» (cash) / «Pagar · L x» (card) from the QUOTED Total', async () => {
+test('S2b pickup: the branch row; «Pagar · L x» from the QUOTED Total — card only (owner 11-16: no «Confirmar pedido» cash at pickup)', async () => {
   const b = bootCo(); await toCheckout(b);
   await b.click('[data-act="type"][data-val="pickup"]');
   assert.equal(b.text('.urows .urow b'), `${CONFIG.x_pizza.name} · Centro`);
   assert.equal(b.srv.of('quoteOrder').at(-1).body.mode, 'pickup', 're-quoted on the mode change');
   await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000');
-  await b.click('[data-act="pay"][data-val="cash"]');
+  assert.equal(b.q('[data-act="pay"][data-val="cash"]'), null, 'owner 11-16: no cash option at pickup');
   const net = b.plain.price * 100 + 7;
-  assert.equal(cta(b), `Confirmar pedido · ${L_(net)}`);
-  await b.click('[data-act="pay"][data-val="online"]');
-  assert.equal(cta(b), `Pagar · ${L_(net)}`);
+  assert.equal(cta(b), `Pagar · ${L_(net)}`, '🔴 PICKUP-CARD-NONE: nothing chosen yet ⇒ the drawn selected card IS the tender (never «Elegí cómo pagar»)');
   assert.ok(!b.text('.ostot').includes('Envío'), 'no Envío row for pickup');
 });
 
@@ -1213,7 +1211,7 @@ test('S2b r1 intake key: createOrder and chargeOnlineOrder carry it, the quote a
   assert.equal(n.srv.of('createOrder').length + n.srv.of('chargeOnlineOrder').length, 0, '🔴 nothing is sent');
   assert.equal(n.storage.getItem('capp:rid_a:pending_place'), null, 'no dispatch ⇒ the record stays clean');
   const pk = bootCo({ config: { intakeKey: '' } }); await toCheckout(pk); await pk.click('[data-act="type"][data-val="pickup"]'); await settle();
-  await pk.type('#f-name', 'Ana'); await pk.type('#f-phone', '9999 0000'); await pk.click('[data-act="pay"][data-val="cash"]'); await settle();
+  await pk.type('#f-name', 'Ana'); await pk.type('#f-phone', '9999 0000'); await settle();   // pickup is card only (owner 11-16)
   assert.ok(pk.q('#cta').disabled, 'the pickup CTA (it places) is disabled too');
 });
 
@@ -1889,16 +1887,16 @@ test('perf r2-2: a function-form availability input is overridden by the fresh d
   b.timers.flush(); await settle();
   assert.equal(b.srv.of('createOrder').length, 0, '🔴 the fresh read says sold ⇒ nothing sent');
 });
-test('perf r2-2 (pickup): a known-unavailable line disables «Confirmar pedido» on «Entrega & Pago» (pickup places from there)', async () => {
+test('perf r2-2 (pickup): a known-unavailable line disables the pickup CTA («Pagar · L x», card only) on «Entrega & Pago» (pickup places from there)', async () => {
   const sold = new Set();
   const b = bootCo({ mountOpts: { unavailable: sold, readAvailability: () => Promise.resolve([...sold]) } });
   await toCheckout(b); await b.click('[data-act="type"][data-val="pickup"]');
-  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000'); await b.click('[data-act="pay"][data-val="cash"]');
+  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '99990000'); await settle();   // pickup is card only (owner 11-16)
   assert.equal(b.q('#cta').disabled, false, 'premise: ready to place');
   sold.add(b.plain.key); b.ui.render(); await settle();
   assert.equal(b.q('#cta').disabled, true, '🔴 the pickup CTA is disabled for an unavailable line');
   await b.click('#cta'); b.timers.flush(); await settle();
-  assert.equal(b.srv.of('createOrder').length, 0, 'nothing is dispatched');
+  assert.equal(b.srv.of('createOrder').length + b.srv.of('chargeOnlineOrder').length, 0, 'nothing is dispatched');
 });
 
 // ── Codex perf-core r1 fixes #3 / #4 / #7 + the owner's frame 14 (MOCKUP-capp-S7a-states.html, approved 2026-10-27) ──
@@ -2466,7 +2464,7 @@ test('Codex guest r2 #2: a browser / device BACK while the verification waits �
 
 // ── S-picker (PLAN-intl-phone r2.3; MOCKUP-intl-phone-picker-APPROVED-2026-10-27 frames 4–6): behind the runtime intlPhone ──
 const INTL = { intlPhone: true };
-const loadPhone = (w) => w.eval(readFileSync(join(HERE, 'capp-phone.js'), 'utf8'));   // the page loads it (shell.html), as here
+const loadPhone = (w) => { for (const f of ['phone-countries.js', 'capp-phone.js']) w.eval(readFileSync(join(HERE, f), 'utf8')); };   // the page loads them (shell.html), in its order
 const bootIntl = (o = {}) => bootCo({ ...o, config: { ...INTL, ...(o.config || {}) }, pre: loadPhone });
 async function intlFilled(b, cc, digits, pay = null) {
   await toCheckout(b); await b.click('[data-act="pin"]'); await b.click('[data-act="pin-done"]');
@@ -2485,12 +2483,12 @@ test('S-picker frame 4: the WhatsApp field = the country button «+504» + the i
   assert.equal(o.ui.state.screen, 'checkout', '🔴 off: the page never reaches for the picker module (its checkout opens)');
   assert.equal(o.q('.fld .phonerow'), null, '🔴 off: no picker without the runtime flag'); assert.equal(o.q('#f-phone').getAttribute('placeholder'), '+504 9999-9999', 'off: unchanged');
 });
-test('S-picker frame 5: the country sheet — «País del número» + its line, the ten countries in order, the current one in accent with a check; the button shows it open', async () => {
+test('S-picker frame 5: the country sheet — «País del número» + its line, the served countries in order, the current one in accent with a check; the button shows it open', async () => {
   const b = bootIntl(); await toCheckout(b); await b.click('[data-act="cc"]');
   assert.equal(b.q('#layer .sheet').getAttribute('aria-label'), 'País del número');
   assert.equal(b.text('#layer .sheethead h2'), 'País del número Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
   assert.deepEqual(b.qa('#layer .crow').map((r) => [b.text(r), r.classList.contains('on')]), [['Honduras +504', true], ['Estados Unidos +1', false], ['México +52', false], ['Guatemala +502', false],
-    ['El Salvador +503', false], ['Nicaragua +505', false], ['Costa Rica +506', false], ['Panamá +507', false], ['Belice +501', false], ['España +34', false]]);
+    ['El Salvador +503', false], ['Nicaragua +505', false], ['Costa Rica +506', false], ['España +34', false]], '🔴 PS-co: a guest gets the server\'s countries (no Panamá, no Belice)');
   assert.ok(b.q('#layer .crow.on svg'), 'the check'); assert.equal(b.q('#layer .crow.on').getAttribute('aria-pressed'), 'true');
   assert.ok(b.q('.fld .cc').classList.contains('focus'), 'the button shows the sheet open');
   await b.click('#layer [data-act="lclose"]'); assert.equal(b.q('#layer .sheet'), null); assert.equal(b.text('.fld .cc'), '+504', 'closing changes nothing');
@@ -2503,8 +2501,8 @@ test('S-picker frame 6: Estados Unidos ⇒ «+1», «(555) 123-4567», «Estados
   await b.type('#f-phone', '305555014799');
   assert.equal(b.q('#f-phone').value, '(305) 555-0147', '🔴 the local format, capped at 10');
   assert.equal(b.text('#f-phone-cc'), 'Estados Unidos · 10 dígitos · se guarda como +1 (305) 555-0147');
-  await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="501"]');
-  assert.equal(b.q('#f-phone').value, '305-5550', 'another country keeps the digits, capped to ITS length (Belice 7)');
+  await b.click('[data-act="cc"]'); await b.click('#layer [data-act="cc-pick"][data-cc="34"]');
+  assert.equal(b.q('#f-phone').value, '305 55 50 14', 'another country keeps the digits, capped to ITS length (España 9)');
 });
 test('S-picker wire: the order carries the chosen country\'s E.164 (+504 too, with the picker on); flag absent ⇒ «+504 9999-0000» as today', async () => {
   const b = bootIntl({ script: { createOrder: [OK_CASH_UI] } }); await intlFilled(b, '1', '3055550147', 'cash');
@@ -2529,6 +2527,19 @@ test('S-picker restore + member: a stored E.164 keeps its country (the return\'s
   await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+1'); assert.equal(b.q('#f-phone').value, '(305) 555-0147');
   const l = bootIntl({ member: { ...m, phone: '96123344' } }); await toCheckout(l); await l.click('[data-act="editwho"]');
   assert.equal(l.text('.fld .cc'), '+504'); assert.equal(l.q('#f-phone').value, '9612-3344');
+});
+test('PS-co member (PLAN-capp-picker-served-countries r1): a member\'s own saved non-served country stays a row of THEIR picker, selected — never re-coded; a +504 member gets the served list', async () => {
+  const SRV = require('../xpizza-functions/phone-countries.js').COUNTRIES.map((c) => c.cc);
+  const m = { uid: 'u1', name: 'Ana', phone: '+50769999999', email: 'a@b.co' };
+  const b = bootIntl({ member: m }); await toCheckout(b);
+  assert.match(b.text(b.q('[data-act="editwho"]').closest('.urow')), /\+507 6999-9999/, 'the saved number shows as before');
+  await b.click('[data-act="editwho"]'); assert.equal(b.text('.fld .cc'), '+507'); await b.click('[data-act="cc"]');
+  const rows = b.qa('#layer [data-act="cc-pick"]').map((r) => r.dataset.cc);
+  assert.deepEqual(rows, ['504', '1', '52', '502', '503', '505', '506', '507', '34'], '🔴 PS-co: the served list + Panamá, in order');
+  assert.equal(b.q('#layer .crow.on').dataset.cc, '507', '🔴 PS-co: their own country selected');
+  const h = bootIntl({ member: { ...m, phone: '+50499990000' } }); await toCheckout(h); await h.click('[data-act="editwho"]'); await h.click('[data-act="cc"]');
+  const hr = h.qa('#layer [data-act="cc-pick"]').map((r) => r.dataset.cc);
+  assert.deepEqual(new Set(hr), new Set(SRV), '🔴 PS-co: a +504 member gets exactly the server\'s countries'); assert.equal(hr.length, SRV.length);
 });
 test('S-picker member path (5f intl recon): a member\'s non-HN number is sent as ITS E.164; an unreadable one opens «Tus datos» in edit and is never sent as a +504 guess', async () => {
   const m = { uid: 'u1', name: 'Ana', phone: '+13055550147', email: 'a@b.co', idToken: 'tok' };
@@ -3503,14 +3514,14 @@ test('Codex r2 P2: a reload DURING a pending cash switch restores the checkout\'
   assert.ok(Number.isFinite(co.body.lat) && Number.isFinite(co.body.lng), 'the restored inputs (the pin) rode along');
 });
 
-test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after a reload places the stored recipient and notes — never the fresh member defaults', async () => {
+test('Codex r3 P2-4 repro (advisor r3 C): a member\'s cash switch completed after a reload places the stored recipient and notes — never the fresh member defaults', async () => {
   const storage = memStore(), HOST = HOSTED_KEYS;
   const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
     cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
-  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
-  await b1.click('[data-act="type"][data-val="pickup"]'); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
+  // owner 11-16: pickup is card only (no cash switch) — the cash switch is exercised on a DELIVERY (same restore path)
+  await sdkCheckout(b1); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
   await b1.click('[data-act="more"]'); await b1.type('#f-notes', 'Sin cebolla'); await settle();
-  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  await sdkPlace(b1);
   assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
   await b1.click('#layer [data-act="decl-cash"]'); await settle();
   const b2 = bootSdk({ storage, config: HOST, script: { cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, true) }], placeSdkStatus: [(_, url) => SDK_R('expired', { order_id: new URL(url).searchParams.get('order_id'), safe_to_switch: true })], createOrder: [(body) => ({ status: 200, json: { ok: true, order_id: body.order_id, tracking_token: 'tt' } })] } });
@@ -3518,7 +3529,7 @@ test('Codex r3 P2-4 repro (advisor r3 C): a PICKUP member switch completed after
   await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
   const co = b2.srv.of('createOrder')[0];
   assert.ok(co, 'premise: the completed switch placed the cash order');
-  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
+  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['delivery', 'Otra persona', 'Sin cebolla'], '🔴 SDKUI-restore: the stored recipient and notes win over the fresh defaults');
 });
 
 // vclock step-8a F-1 (advisor 11-14): the two cells above cannot tell the switch's stored inputs from the card order's own (sdkRestore
@@ -3528,15 +3539,16 @@ test('vclock F-1: the recipient and notes edited AFTER the decline ride the cash
   const storage = memStore(), HOST = HOSTED_KEYS;
   const b1 = bootSdk({ storage, config: HOST, script: { placeSdkOrder: [(body) => SDK_R('declined', { order_id: body.order_id, attempt_id: body.attempt_id, decline: 'retryable', pay_deadline_at: NOON().getTime() + 600e3 })],
     cancelSdkPending: [{ status: 200, json: SDKF.cancelPending(true, false) }], placeSdkStatus: ['network'] } });
-  await b1.click(`.qty-add-btn[data-id="${b1.plain.key}"]`); b1.ui.render(); await b1.click('#cart-bar'); await b1.click('[data-act="checkout"]'); await settle();
-  await b1.click('[data-act="type"][data-val="pickup"]'); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
+  // owner 11-16: pickup is card only (no cash switch) — the cash switch is exercised on a DELIVERY (same restore path)
+  await sdkCheckout(b1); await b1.click('[data-act="editwho"]'); await b1.type('#f-name', 'Otra persona');
   await b1.click('[data-act="more"]'); await b1.type('#f-notes', 'Sin cebolla'); await settle();
-  await b1.click('#cta'); await b1.click('#layer [data-act="placing-go"]'); await settle();
+  await sdkPlace(b1);
   assert.equal(b1.text('#layer .errsheet h2'), 'Tu banco no autorizó el pago', 'premise: declined');
   const old = b1.srv.of('placeSdkOrder')[0].body.order_id;
   assert.deepEqual([b1.srv.of('placeSdkOrder')[0].body.customer_name, b1.srv.of('placeSdkOrder')[0].body.notes], ['Otra persona', 'Sin cebolla'], 'premise: the card order carries the first inputs');
   // «Probar otra tarjeta» → the chooser, closed → the checkout: the customer changes the recipient and the notes, then picks cash
   await b1.click('#layer [data-act="decl-other_card"]'); await b1.click('#layer [data-act="paysheet-close"]'); await settle();
+  if (b1.ui.state.screen === 'tip') { await b1.click('[data-act="back"]'); await settle(); }   // a card delivery declined on the tip step: «‹» back to «Entrega & Pago»
   assert.ok(b1.q('#f-name') && b1.q('#f-notes'), 'premise: back on the checkout, the recipient and notes fields still open');
   await b1.type('#f-name', 'Tercera persona');
   await b1.type('#f-notes', 'Sin tomate'); await settle();
@@ -3548,7 +3560,7 @@ test('vclock F-1: the recipient and notes edited AFTER the decline ride the cash
   await settle(); b2.timers.flush(); await settle(); b2.timers.flush(); await settle();
   const co = b2.srv.of('createOrder')[0];
   assert.ok(co && co.body.replaces_order_id === old && co.body.payment_method === 'cash', 'premise: the completed switch placed the NEW cash order');
-  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['pickup', 'Tercera persona', 'Sin tomate'], '🔴 SDKUI-F1: the switch\'s stored inputs (edited after the decline) win over the card order\'s');
+  assert.deepEqual([co.body.order_type, co.body.customer_name, co.body.notes], ['delivery', 'Tercera persona', 'Sin tomate'], '🔴 SDKUI-F1: the switch\'s stored inputs (edited after the decline) win over the card order\'s');
 });
 
 
@@ -3682,13 +3694,14 @@ test('tip r6 identity: a DEFAULT applied for A is cleared when B signs in (B\'s 
 });
 
 test('tip r6 pickup: never reaches the step and carries no tip_choice', async () => {
-  const b = bootTip({ script: { createOrder: [{ status: 200, json: { ok: true, order_id: 'X', tracking_token: 'tt' } }] } });
+  const b = bootTip({ script: { chargeOnlineOrder: [CHECKOUT] } });
   await toCheckout(b); await b.click('[data-act="type"][data-val="pickup"]'); await settle();
-  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await b.click('[data-act="pay"][data-val="cash"]'); await settle();
+  await b.type('#f-name', 'Ana'); await b.type('#f-phone', '9999 0000'); await settle();   // pickup is card only (owner 11-16)
   await b.click('#cta'); b.timers.flush(); await settle();
-  assert.notEqual(b.ui.state.screen, 'tip', 'TIP-P: no tip step');
-  const body = b.srv.of('createOrder')[0] && b.srv.of('createOrder')[0].body;
-  if (body) assert.ok(!('tip_choice' in body), '🔴 TIP-P: pickup ⇒ no marker');
+  assert.notEqual(b.ui.state.screen, 'tip', 'TIP-P: no tip step');   // the flushed timers already ran the «Realizando pedido…» card
+  const body = b.srv.of('chargeOnlineOrder')[0] && b.srv.of('chargeOnlineOrder')[0].body;
+  assert.ok(body, 'premise: the pickup card order was sent');
+  assert.ok(!('tip_choice' in body), '🔴 TIP-P: pickup ⇒ no marker');
 });
 
 
@@ -4358,4 +4371,139 @@ test('rule 11 guard: no lone «≈ N min» / «N min» on the store (phone + des
     assert.deepEqual(loneTimes(card), [], `🔴 R11-CHECKOUT: «Lo antes posible» ${mode}: ${card}`);
     assert.ok(/\d+–\d+ min/.test(card), `the card carries the window (${mode}): ${card}`);
   }
+});
+
+// ── PICKUP IS CARD ONLY (owner 11-16; MOCKUP-capp-pickup-card-only, advisor rulings 11-16). ONE choke point: a pickup flow is never
+//    cash — the mode switch, a new flow, a restore, a reorder. A member's lastPay stays stored; back at delivery it is offered, not
+//    re-selected. The member's pickup «Pago» = guest frame 1's single open row + «Para recoger se paga con tarjeta.» (no «Recomendado»).
+const PK_MEMBER = () => ({ ...MEMBER_LIKE(), lastPay: 'cash' });
+const payOpts = (b) => b.qa('[aria-label="Pago"] [data-act="pay"]').map((x) => [x.dataset.val, x.getAttribute('aria-pressed')]);
+test('PICKUP-CARD-1: a cash member who switches to Pickup sees ONE open option (card, selected), no «Recomendado», and the line «Para recoger se paga con tarjeta.»', async () => {
+  const b = bootCo({ member: PK_MEMBER() });
+  await toCheckout(b); await settle();
+  assert.equal(b.ui.state.flow.pay, 'cash', 'premise: the member\'s last method (cash) is preselected at delivery');
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  assert.equal(b.ui.state.flow.pay, 'online', '🔴 PICKUP-CARD-1: a pickup flow is never cash');
+  assert.deepEqual(payOpts(b), [['online', 'true']], '🔴 PICKUP-CARD-1: cash ABSENT at pickup (not dimmed), card selected, the row open');
+  assert.equal(b.text('[aria-label="Pago"] [data-act="pay"] .txt b'), 'Pagar en línea', 'one option ⇒ no «Recomendado»');
+  assert.equal(b.text('[aria-label="Pago"] .paynote'), 'Para recoger se paga con tarjeta.', '🔴 PICKUP-CARD-1: the why-line');
+  assert.ok(!/efectivo/i.test(b.text('[aria-label="Pago"]')), 'no cash anywhere in «Pago» at pickup');
+  assert.ok(!b.q('[aria-label="Pago"] .paynote [data-act="signin"]'), 'a member\'s line has no sign-up link');
+});
+test('PICKUP-CARD-2: back to Delivery, cash is OFFERED again but not re-selected (the state is what the screen shows)', async () => {
+  const b = bootCo({ member: PK_MEMBER() });
+  await toCheckout(b); await settle();
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  await b.click('[data-act="type"][data-val="delivery"]'); await settle();
+  assert.equal(b.ui.state.flow.pay, 'online', '🔴 PICKUP-CARD-2: no hidden flip back to cash');
+  if (b.q('[aria-label="Pago"] [data-act="showpay"]')) { await b.click('[aria-label="Pago"] [data-act="showpay"]'); await settle(); }
+  assert.deepEqual(payOpts(b), [['online', 'true'], ['cash', 'false']], '🔴 PICKUP-CARD-2: cash offered at delivery, card still selected');
+  assert.ok(!b.q('[aria-label="Pago"] .paynote'), 'the pickup line is gone at delivery');
+});
+test('PICKUP-CARD-3: a pickup flow carrying cash (a restore, a reorder, a stale tender) is card at the next render — and the send is the card charge, never a cash createOrder', async () => {
+  const b = bootCo({ member: PK_MEMBER(), script: { chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(b); await settle();
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  b.ui.state.flow.pay = 'cash'; b.ui.render(); await settle();   // as a restore / reorder / stale state would leave it
+  assert.equal(b.ui.state.flow.pay, 'online', '🔴 PICKUP-CARD-3: the choke point');
+  await ctaPlace(b); await b.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(b.srv.of('createOrder').length, 0, '🔴 PICKUP-CARD-3: no cash order is sent');
+  assert.equal(b.srv.of('chargeOnlineOrder').length, 1, 'the card charge');
+  assert.equal(b.srv.of('chargeOnlineOrder')[0].body.payment_method, 'online');
+});
+test('PICKUP-CARD-4: a card declined at pickup ⇒ the card-only «Pago no completado» (payFailedGuest): NO «Pagar en efectivo»', async () => {
+  const storage = memStore();
+  const a = bootCo({ storage, member: PK_MEMBER(), script: { chargeOnlineOrder: [CHECKOUT] } });
+  await toCheckout(a); await settle(); await a.click('[data-act="type"][data-val="pickup"]'); await settle();
+  await ctaPlace(a); await a.click('#layer [data-act="placing-go"]'); await settle();
+  assert.equal(a.srv.of('chargeOnlineOrder').length, 1, 'premise: the pickup card send');
+  const id = a.srv.of('chargeOnlineOrder')[0].body.order_id; const snap = J(a.ui.cart.snapshot()); a.ui.destroy();
+  const c = bootCo({ storage, member: PK_MEMBER(), search: RET('cancel', id), script: { paymentStatus: [{ status: 200, json: { ok: true, state: 'failed' } }] } });
+  c.ui.restore(snap); await c.ui.returning; await settle();
+  assert.equal(c.text('#layer .errsheet h2'), 'Pago no completado', 'premise: the decline sheet');
+  assert.equal(c.ui.state.flow.mode, 'pickup', 'premise: the pickup checkout restored');
+  assert.deepEqual(c.qa('#layer .errsheet button').map((x) => [x.textContent, x.dataset.act]), [['Usar otra tarjeta', 'err-card']], '🔴 PICKUP-CARD-4: no cash exit at pickup');
+  assert.ok(!/efectivo/i.test(c.text('#layer')), 'no cash anywhere on the sheet');
+});
+test('PICKUP-CARD-5: the in-app card chooser at pickup lists NO «Efectivo» (cashAllowed = mode !== pickup); at delivery it does', async () => {
+  const b = bootSdk({ member: { ...SDK_MEMBER(), lastPay: 'cash' } });
+  await sdkCheckout(b);
+  await b.click('[data-act="type"][data-val="pickup"]'); await settle();
+  assert.equal(b.ui.state.flow.pay, 'online', '🔴 PICKUP-CARD-5: the SDK flow at pickup is card');
+  b.ui.state.flow.pay = '';   // no card chosen yet ⇒ the bar opens the chooser
+  b.ui.render(); await settle();
+  await b.click('.paybar.pay [data-act="paysheet"]'); await settle();
+  assert.equal(b.text('#layer .sheet .topbar h2'), 'Elegí cómo pagar', 'premise: the chooser');
+  assert.equal(b.q('#layer [data-act="paypick"][data-card="cash"]'), null, '🔴 PICKUP-CARD-5: no cash in the chooser at pickup');
+  await b.click('#layer [data-act="paysheet-close"]'); await settle();
+  await b.click('[data-act="type"][data-val="delivery"]'); await settle();
+  await b.click('.paybar.pay [data-act="paysheet"]'); await settle();
+  assert.ok(b.q('#layer [data-act="paypick"][data-card="cash"]'), 'at delivery the chooser offers cash again');
+});
+
+// ── EXTRA REMOVED, the cart note (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy). The adoption path the shell takes
+//    after «Recargar» (adoptInto: the carried snapshot restored on the fresh body, then openCart) — here the fresh body is the REAL
+//    x_pizza envelope with one extra left out, as getPublicMenu serves it once the restaurant deletes it.
+const XM = () => require('./capp-menu.js').adaptMenu(PROV.x_pizza.envelope);
+const xTrimDish = () => { const m = XM(); const d = m.dishes.find((x) => !x.launcher && m.extrasFor(x.key).length >= 1); return { d, e: m.extrasFor(d.key)[0] }; };
+const envWithout = (key) => { const env = PROV.x_pizza.envelope; return { ...env, menu: { ...env.menu, extras: env.menu.extras.filter((e) => String(e.extra_id) !== key) } }; };
+const noteTexts = (b) => b.qa('#layer .cartnote').map((n) => n.textContent.trim());
+async function adoptedWithout(config, extraLines = []) {
+  const { d, e } = xTrimDish();
+  const a = bootCo({ config }); a.ui.cart.add(d.key, [e.key], 1);
+  const carried = J(a.ui.snapshot()); a.ui.destroy();
+  carried.lines.push(...extraLines);
+  const b = bootCo({ config, envelope: envWithout(e.key) });
+  b.ui.restore(carried); await settle(); b.ui.openCart(); await settle();
+  return { b, d, e };
+}
+test('TRIM-NOTE-B: the restaurant deleted an extra ⇒ the dish stays in the cart and ONE note names both: «{Extra} ya no está disponible. Actualizamos tu {Plato}.»', async () => {
+  const { b, d, e } = await adoptedWithout(HOSTED_KEYS);
+  assert.equal(b.ui.cart.count(), 1, 'the dish is still in the cart');
+  assert.deepEqual(noteTexts(b), [`${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-B: the named note, owner 11-16 final');
+  // owner 11-16 «one sentence per line where it fits» (the SBS caught a mid-line join at 390): each sentence is its own block
+  assert.deepEqual(b.qa('#layer .cartnote .cn-s').map((x) => x.textContent), [`${e.name} ya no está disponible.`, `Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-SENTENCES: one block per sentence');
+  assert.ok(!/platos? ya no est/.test(b.text('#layer')), 'never the dish-gone note for a kept dish');
+});
+test('TRIM-NOTE-A: a cart saved without the extra\'s name (the S2 / link cart) ⇒ «Un extra de tu {Plato} ya no está disponible. Lo quitamos del pedido.»', async () => {
+  const { b, d } = await adoptedWithout({});
+  assert.equal(b.ui.cart.count(), 1);
+  assert.deepEqual(noteTexts(b), [`Un extra de tu ${d.name} ya no está disponible. Lo quitamos del pedido.`], '🔴 TRIM-NOTE-A: the fallback note');
+});
+test('TRIM-NOTE-STACK: a deleted dish AND a deleted extra ⇒ the existing dish-gone pill first, then the extra pill (two pills, mockup «stack»)', async () => {
+  const { b, d, e } = await adoptedWithout(HOSTED_KEYS, [{ key: 'gone', qty: 1, ex: [{}], added: 99 }]);
+  assert.deepEqual(noteTexts(b), ['1 plato ya no está disponible', `${e.name} ya no está disponible. Actualizamos tu ${d.name}.`], '🔴 TRIM-NOTE-STACK: both pills, in order');
+});
+
+// ── Codex #117 P2 (advisor 11-16): a PENDING trim disclosure survives until the customer has seen the cart — every checkout entry
+//    goes through the cart first while it is pending, and an unrelated layer (the store search) never clears it ──
+const TRIM_SNAP = () => { const d = PROV.x_pizza.envelope.menu.dishes.find((x) => x.name === 'Carnivora');
+  return { v: 2, lines: [{ key: String(d.dish_id), qty: 1, ex: [{ GONE_EXTRA: 1 }], added: 1, xn: { GONE_EXTRA: 'Queso extra' } }], mode: 'delivery' }; };
+const TRIM_TEXT = 'Queso extra ya no está disponible. Actualizamos tu Carnivora.';
+test('TRIM-NAV-PROGRAMAR: «Programar» on a closed store with a pending trim opens the CART (the note) first — never straight to «Entrega & Pago»; then «Ir al checkout» proceeds', async () => {
+  const b = bootS4({ at: hnT(20, 3, 0), config: HOSTED_KEYS });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  assert.ok(b.q('[data-act="closed-sched"]'), 'premise: the closed store offers «Programar»');
+  await b.click('[data-act="closed-sched"]'); await settle();
+  assert.notEqual(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-PROGRAMAR: not straight to checkout while the trim is unseen');
+  assert.deepEqual(noteTexts(b), [TRIM_TEXT], '🔴 TRIM-NAV-PROGRAMAR: the cart opens with the note');
+  await b.click('#layer [data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', 'reviewed ⇒ the checkout opens');
+});
+test('TRIM-NAV-SEARCH: opening and closing the store search keeps a pending trim — the cart opened afterwards still shows the note', async () => {
+  const b = bootCo({ config: HOSTED_KEYS });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  await b.click('[data-act="ssearch"]'); await settle();
+  assert.equal(b.ui.state.layerKind, 'ssearch', 'premise: the search is open');
+  await b.click('#layer [data-act="lclose"]'); await settle();
+  b.ui.openCart(); await settle();
+  assert.deepEqual(noteTexts(b), [TRIM_TEXT], '🔴 TRIM-NAV-SEARCH: an unrelated layer never clears the pending note');
+});
+test('TRIM-NAV-DESK: on the desk the aside IS the cart — the note shows there, and its «Ir al checkout» proceeds (no cart sheet stacked over the page)', async () => {
+  const b = bootCo({ config: HOSTED_KEYS, mountOpts: { view: { desk: () => true } } });
+  b.ui.restore(TRIM_SNAP()); await settle();
+  assert.deepEqual(b.qa('.deskcart .cartnote').map((n) => n.textContent.trim()), [TRIM_TEXT], 'premise: the aside shows the note');
+  await b.click('.deskcart [data-act="checkout"]'); await settle();
+  assert.equal(b.ui.state.screen, 'checkout', '🔴 TRIM-NAV-DESK: the aside\'s checkout proceeds');
+  assert.notEqual(b.ui.state.layerKind, 'cart', 'no cart sheet over the desk page');
 });

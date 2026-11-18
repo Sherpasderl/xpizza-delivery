@@ -21,6 +21,8 @@ const FB = read('firebase.js');
 const SDK_VER = /firebasejs\/([0-9.]+)\//.exec(FB)[1];
 const API_KEY = /apiKey: '([^']+)'/.exec(FB)[1];   // the public web key the page ships; used as the persistence key, NEVER printed
 const PROJECT = /projectId: '([^']+)'/.exec(FB)[1];
+// the portal lands on Inicio (owner 11-13); the editor states use its own one-shot «menu» landing (shell.js LAND_KEY), read from the source
+const LAND_KEY = ((m) => { if (!m) throw new Error('premise: shell.js no longer declares LAND_KEY = (uid) => `…${uid}`'); return (uid) => m[1] + uid; })(/const LAND_KEY = \(uid\) => `([^`$]+)\$\{uid\}`/.exec(read('shell.js')));
 const FN_ORIGIN = new URL(/const BASE = '([^']+)'/.exec(read('api.js'))[1]).origin;
 const SDK_DIR = path.join(ROOT, 'platform/perf/sdk/firebasejs', SDK_VER);
 const SDK_PIN = path.join(SDK_DIR, 'sdk.pin.json');
@@ -139,14 +141,14 @@ const MARK = (expr) => `(() => { window.__marker = null; const test = () => { tr
   document.addEventListener('DOMContentLoaded', hit); })();`;
 const STATES = {
   T1: { page: 'index.html', session: null, marker: 'login', admits: false },
-  T2: { page: 'index.html', session: 'fresh', marker: 'editor', admits: true },
-  T3: { page: 'index.html', session: 'expired', marker: 'editor', admits: false },
+  T2: { page: 'index.html', session: 'fresh', marker: 'editor', admits: true, land: 'menu' },
+  T3: { page: 'index.html', session: 'expired', marker: 'editor', admits: false, land: 'menu' },
   T4: { page: `aceptar.html?invite=${INVITE_ID}&mode=signIn&oobCode=fixture&apiKey=fixture&lang=es`, session: null, marker: 'invite', admits: true },
 };
 
 // Codex r1 P2-2 NEGATIVE CONTROL: a page exception thrown AFTER the marker (inside the recorded window) must fail the trace
 const THROW_AFTER_MARKER = `(() => { const t = setInterval(() => { if (window.__marker) { clearInterval(t); setTimeout(() => { throw new Error('ORIGINS_CONTROL: thrown after the marker'); }, 200); } }, 20); })();`;
-async function trace(name, { throwAfterMarker = false } = {}) {
+async function trace(name, { throwAfterMarker = false, land = STATES[name].land } = {}) {
   const st = STATES[name];
   const srv = await serveDir(ROOT);
   const cdp = await launch({ width: 1280, height: 900, dpr: 1 });   // a fresh profile per state ⇒ cold caches
@@ -159,6 +161,7 @@ async function trace(name, { throwAfterMarker = false } = {}) {
       await cdp.s('Page.navigate', { url: `${srv.base}/${SITE}/fonts/OFL.txt` });
       for (let i = 0; i < 200 && (await cdp.ev('document.readyState').catch(() => '')) !== 'complete'; i++) await sleep(25);
       await cdp.ev(SEED(sessionRecord(st.session)));
+      if (land) await cdp.ev(`sessionStorage.setItem(${JSON.stringify(LAND_KEY(USER.uid))}, ${JSON.stringify(JSON.stringify(land))}), true`);   // what select({ land }) stores
     }
     await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: MARK(MARKERS[st.marker]) });
     if (throwAfterMarker) await cdp.s('Page.addScriptToEvaluateOnNewDocument', { source: THROW_AFTER_MARKER });
@@ -169,6 +172,10 @@ async function trace(name, { throwAfterMarker = false } = {}) {
     if (!marker) {
       const wrong = st.marker === 'invite' ? await cdp.ev(MARKERS.wrongInvitePane).catch(() => []) : [];
       throw new Error(`${name}: the useful-paint marker (${st.marker}) never became true in 15 s${wrong.length ? ` — the page showed ${wrong.join(', ')} instead` : ''}${errs.length ? `; ${errs.slice(0, 2).join(' | ')}` : ''}`);
+    }
+    if (land) {   // premise: the page really took the seeded landing — the editor, not the home (else the marker could time Inicio)
+      const at = await cdp.ev(`(() => { const v = ${visible}; return { inicio: v(document.getElementById('viewinicio')), key: sessionStorage.getItem(${JSON.stringify(LAND_KEY(USER.uid))}) }; })()`);
+      if (at.inicio || at.key !== null) throw new Error(`${name}: premise — the seeded «${land}» landing did not land on the editor (${at.inicio ? 'Inicio is showing' : 'the landing was never consumed'})`);
     }
     await sleep(1500);   // keep recording past the marker: late-path requests are listed (not hinted)
     const timeOrigin = await cdp.ev('performance.timeOrigin');
@@ -195,6 +202,11 @@ fails.push(...pageErrorFails(runs));
   const ok = seen.some((e) => /ORIGINS_CONTROL/.test(e));
   console.log(`${ok ? '✓' : '✗'} page-exception control: an exception thrown after the marker FAILS the trace (${seen.length} recorded${ok ? '' : ' — the check is blind'})`);
   if (!ok) fails.push('page-exception control: an exception thrown after the marker was NOT recorded — the page-error check is blind'); }
+// the landing CONTROL: without the seeded landing the portal opens on Inicio, so the editor marker must NOT be reached
+{ let err = null; try { await trace('T2', { land: null }); } catch (e) { err = e; }
+  const ok = !!err && /T2: the useful-paint marker \(editor\) never became true/.test(err.message);
+  console.log(`${ok ? '✓' : '✗'} landing control: T2 without the seeded «menu» landing never reaches the editor (${err ? err.message.slice(0, 90) : 'it DID — the landing is not what the marker depends on'})`);
+  if (!ok) fails.push('landing control: T2 reached the editor without the seeded landing — the seeding is not what puts the page on the editor'); }
 if (unexpected.length) fails.push(`unexpected request(s), fulfilled empty: ${[...new Set(unexpected.map((u) => u.replace(/([?&]key=)[^&]+/, '$1<apiKey>')))].join(', ')}`);
 const early = (name) => runs[name].map((r) => new Set(r.origins.filter((o) => o.beforeMarker).map((o) => o.origin)));
 for (const name of Object.keys(STATES)) {

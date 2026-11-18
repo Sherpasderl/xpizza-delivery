@@ -408,3 +408,48 @@ test('S3 deny list: a renamed dish\'s denied extra (the eligibility deny keyed b
   assert.ok(!m.extrasFor(d.key).some((e) => e.key === victim.key), '🔴 the extra denied under the item_key is not offered (S3-CAPP-DENY)');
   assert.equal(m.extrasFor(d.key).length, offered.length - 1, 'only that one');
 });
+
+// ── EXTRA REMOVED (advisor 11-16 G2; OWNER-APPROVED MOCKUP-capp-extra-removed): a restaurant deleted ONE extra. The served menu is the
+//    REAL envelope with that extra left out (as getPublicMenu serves it once the extra is gone). Only `extra_not_offered` trims: the
+//    dish stays, re-priced from the menu, identical configurations merge; everything else keeps the whole-line drop. The cart
+//    stores each extra's NAME beside its key (xn, provenance carts only — the S2 / link snapshots stay byte-identical) so the note
+//    can name it; a cart saved before that has no name ⇒ the A fallback (null).
+const servedWithout = (rid, key) => { const env = PROV[rid].envelope; return adaptMenu({ ...env, menu: { ...env.menu, extras: env.menu.extras.filter((e) => String(e.extra_id) !== key) } }); };
+test('TRIM-B: a deleted extra is trimmed off its dish — the dish stays, re-priced; the stored name rides the snapshot (xn) and names it', () => {
+  for (const rid of BRANDS) {
+    const m = MENU[rid]; const d = configurable(m); const [e1] = m.extrasFor(d.key);
+    const c = createCart(m, { provenance: true }); c.add(d.key, [e1.key], 1);
+    const snap = JSON.parse(JSON.stringify(c.snapshot()));
+    assert.deepEqual(snap.lines[0].xn, { [e1.key]: e1.name }, `🔴 TRIM-NAME: the provenance snapshot stores the extra's name (${rid})`);
+    const cut = servedWithout(rid, e1.key);
+    assert.ok(cut.dish(d.key) && !cut.extrasFor(d.key).some((x) => x.key === e1.key), 'premise: the dish is served, the extra is not');
+    const h = createCart(cut, { provenance: true }); const r = h.hydrate(snap);
+    assert.deepEqual(r, { dropped: 0, trimmed: [{ key: d.key, dish: d.name, extras: [e1.name] }] }, `🔴 TRIM-B: the dish kept, the extra named (${rid})`);
+    assert.deepEqual(h.lines().map((l) => [l.key, l.qty, l.ex]), [[d.key, 1, [{}]]], 'the instance without the extra');
+    assert.equal(h.subtotalCents(), Math.round(d.price * 100), 're-priced from the served menu (the dish alone)');
+  }
+});
+test('TRIM-A: a cart saved WITHOUT names (an S2 / link cart, or one saved before the names) ⇒ the trim still happens, the extra unnamed (null) — and that snapshot is byte-identical to before (no xn)', () => {
+  const m = MENU.la_musa; const d = configurable(m); const [e1] = m.extrasFor(d.key);
+  const c = createCart(m); c.add(d.key, [e1.key], 1);
+  const snap = JSON.parse(JSON.stringify(c.snapshot()));
+  assert.ok(!('xn' in snap.lines[0]), '🔴 TRIM-BYTES: without provenance the snapshot carries no new field');
+  const r = createCart(servedWithout('la_musa', e1.key)).hydrate(snap);
+  assert.deepEqual(r, { dropped: 0, trimmed: [{ key: d.key, dish: d.name, extras: [null] }] }, '🔴 TRIM-A: kept, the extra unnamed');
+});
+test('TRIM-MERGE: instances that become the same configuration merge through the one write point; another extra on the same instance is kept', () => {
+  const m = MENU.la_musa; const d = configurable(m); const [e1, e2] = m.extrasFor(d.key);
+  const c = createCart(m, { provenance: true }); c.add(d.key, [e1.key, e2.key], 1); c.add(d.key, [e1.key], 1); c.inc(d.key);
+  const h = createCart(servedWithout('la_musa', e1.key), { provenance: true });
+  const r = h.hydrate(JSON.parse(JSON.stringify(c.snapshot())));
+  assert.deepEqual(r, { dropped: 0, trimmed: [{ key: d.key, dish: d.name, extras: [e1.name] }] }, '🔴 TRIM-MERGE: ONE note for the dish, the name once');
+  assert.deepEqual(h.groups().map((g) => [g.sig, g.n]), [[e2.key, 1], ['', 2]], '🔴 TRIM-MERGE: {e2} kept; the trimmed {e1} merges with the plain one');
+});
+test('TRIM-NEVER-GUESS: everything that is not «an extra no longer offered» keeps the whole-line drop — an unsupported quantity on the deleted extra, an unknown dish, a launcher', () => {
+  const m = MENU.la_musa; const d = configurable(m); const [e1] = m.extrasFor(d.key); const [lk] = Object.keys(m.groups);
+  const cut = servedWithout('la_musa', e1.key);
+  const snap = { v: 2, lines: [{ key: d.key, qty: 1, ex: [{ [e1.key]: 2 }], added: 1 }, { key: 'gone', qty: 1, ex: [{}], added: 2 }, { key: lk, qty: 1, ex: [{}], added: 3 }] };
+  const h = createCart(cut); const r = h.hydrate(snap);
+  assert.deepEqual(r, { dropped: 3 }, '🔴 TRIM-NEVER-GUESS: whole-line drops, nothing trimmed');
+  assert.equal(h.count(), 0);
+});

@@ -1799,3 +1799,18 @@ test('T3 16b: the auto «Nombre» value reads the same words in two parts — th
   assert.equal(r.querySelector('.mk5b-val').textContent, 'L 50 en pedidos desde L 300 · se armó solo', 'the same words as before');
   assert.ok(readFileSync(join(DIR, 'styles.css'), 'utf8').includes('@media(max-width:920px){.mk5b-vseg{display:block}.mk5b-vsep{display:none}}'), 'a phone: one line per part');
 });
+test('T4 16b (advisor 11-16, post-RC SBS): the «Revisá tu oferta» Horario reads the builder\'s two parts — days · hours, then the dates — one line each on a phone (was «sin fecha / de fin» at 390)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'pct');
+  const built = [...p.host().querySelectorAll('.mk5b-row[data-row="sch"] .mk5b-val > .mk5b-vseg')].map((x) => x.textContent);
+  assert.equal(built.length, 2, 'premise: the builder row has its two parts (T1)');
+  dlg(p).querySelector('.mk5b-go').click(); await settle();
+  const r = [...p.host().querySelectorAll('.mk5r-modal .mk5r-row')].find((x) => x.querySelector('.mk5r-sl').textContent === 'Horario');
+  assert.ok(r, 'premise: the review sheet has its Horario line');
+  const segs = [...r.querySelectorAll('.mk5r-sv > .mk5b-vseg')].map((x) => x.textContent);
+  assert.deepEqual(segs, built, 'T4: the review value is the SAME two parts as the builder row (the separator hidden on a phone)');
+  assert.match(segs[1], /^ · desde el \d{1,2} \w{3}, sin fecha de fin$/, 'part 2 starts at the segment point, never mid-phrase');
+  assert.equal(r.querySelector('.mk5r-sv').textContent, rowVal(p, 'sch'), 'the same words as before');
+});

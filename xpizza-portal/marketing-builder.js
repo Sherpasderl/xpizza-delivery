@@ -208,14 +208,17 @@ const ICONS_OF = (k) => ({ 'i-percent': ['M19 5 5 19', { tag: 'circle', cx: 6.5,
 // a date («27 nov», «2 nov 2026») never breaks across lines: each is its own no-wrap token, the rest of the text unchanged (16b, slot 11-15)
 const DATE_TOKEN = /(\d{1,2} (?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)(?: \d{4})?)/;
 function dateSafe(text) { return String(text).split(DATE_TOKEN).filter((x) => x !== '').map((x, i, a) => (DATE_TOKEN.test(x) ? el('span', 'mk5b-nw', x) : document.createTextNode(x))); }
+// a row value: a string, or an array of parts — each part its own segment, one line per part on a phone (16b); the builder rows and the review sheet both
+function valueNodes(value) {
+  if (!Array.isArray(value)) return dateSafe(value);
+  return value.map((part, i) => { const sg = el('span', 'mk5b-vseg'); if (i) sg.append(el('span', 'mk5b-vsep', ' · ')); sg.append(...dateSafe(part)); return sg; });
+}
 function row(id, label, value, bodyNode, icon = null) {
   const open = B.row === id;
   const r = el('div', `mk5b-row${open ? ' mk5b-open' : ''}`); r.dataset.row = id;
   const h = el('button', 'mk5b-rowh'); h.type = 'button'; h.setAttribute('aria-expanded', open ? 'true' : 'false');
   const ic = el('span', 'mk5b-ico'); ic.append(svg(...(icon || ROW_ICON[id] || [SPARK])));
-  const val = el('span', 'mk5b-val');
-  if (Array.isArray(value)) value.forEach((part, i) => { const sg = el('span', 'mk5b-vseg'); if (i) sg.append(el('span', 'mk5b-vsep', ' · ')); sg.append(...dateSafe(part)); val.append(sg); });   // 16b: one line per part on a phone
-  else val.append(...dateSafe(value));
+  const val = el('span', 'mk5b-val'); val.append(...valueNodes(value));
   const tx = el('span', 'mk5b-txt'); tx.append(el('span', 'mk5b-rlbl', label), val);
   const ch = el('span', 'mk5b-chev'); ch.append(svg(DOWN));
   h.append(ic, tx, ch);
@@ -532,12 +535,12 @@ function reviewSheet(w) {
   mh.append(mt, el('div', 'mk5r-ms', 'Así queda. Si algo no cuadra, volvé y cambialo.'));
   const mb = el('div', 'mk5r-mb');
   const rows = el('div', 'mk5r-rows');
-  const add = (l, v) => { const r = el('div', 'mk5r-row'); r.append(el('span', 'mk5r-sl', l), el('span', 'mk5r-sv', v)); rows.append(r); };
+  const add = (l, v) => { const r = el('div', 'mk5r-row'); const sv = el('span', 'mk5r-sv'); if (Array.isArray(v)) sv.append(...valueNodes(v)); else sv.textContent = v; r.append(el('span', 'mk5r-sl', l), sv); rows.append(r); };
   add('Oferta', `${w.typeLabel} · ${/^L \d/.test(w.sumType) ? w.sumType : `${w.sumType.charAt(0).toLowerCase()}${w.sumType.slice(1)}`}`);   // v5 lower-cases the first word — never the currency «L»
   if (B.form.type === 'bogo') add('Productos', w.prodSummary);
   add('Sucursales', /^Las \d+ sucursales$/.test(w.branchText) ? w.branchText.slice(0, -' sucursales'.length) : w.branchText);   // v5's review: «Las 3»
   if (ML.audienceShown(B.form)) add('Clientes', (AUD.find(([k]) => k === B.form.audience) || AUD[0])[1].replace(' los clientes', ''));
-  add('Horario', w.sumSched);
+  add('Horario', w.sumSchedParts);   // 16b (post-RC SBS 11-16): the builder's two parts, so a phone breaks only between them
   add('Nombre', w.name);
   const fine = el('p', 'mk5r-fine', `${w.cost.lead} `); if (w.cost.ceiling) fine.append(el('span', 'mk5b-nb', w.cost.ceiling));
   mb.append(rows, fine);

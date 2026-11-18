@@ -1,14 +1,14 @@
 {
   "source": {
-    "commit": "eb6d9558d2bea94bbb2d0a1829db3be72d07a419",
+    "commit": "968dd888d4cf9947734f7a31e3d78847d6f17cfa",
     "blobs": {
-      "directory/directory.js": "b462c1b21704e47565e5907e86b80fed8de9ed3a",
-      "directory/directory-deps.js": "d14c2f0000a444baeb90a1f2b21dc27c6e9888f9",
+      "directory/directory.js": "b4be099618835c502838a2600c0807be9c956e08",
+      "directory/directory-deps.js": "3fe20428ce5acf66784ebe1688f10397c65e13cb",
       "directory/presentation-shape.js": "efb6bae1ba6bf6896fc6186324c12d699a18c088",
       "directory/platform-config.js": "2cb1bcd6fe8136012c67360de4f4aa7a5d515cfe",
       "schedule/schedule-only.js": "2d22fae620360e404e2f456b707f93e815dea22e",
       "schedule/load-schedule.js": "dcca8290713b16c4bd7c9c5aabd5a24ab03834d0",
-      "tools/seed-presentation.js": "ba7f3f580d2e22d4e896dffd899ac9ff0201158a",
+      "tools/seed-presentation.js": "f2a9ef8f99210151660b841ad933af3b51b1e329",
       "seed_identity.js": "e9375ee4c0cd5e555742e73b716f8550ecd85e8b"
     }
   },
@@ -20,7 +20,8 @@
       },
       "promo": {
         "free_delivery": true,
-        "label": "promoción de lanzamiento"
+        "label": "promoción de lanzamiento",
+        "basis": "pricing"
       },
       "coverage_km": 7
     },
@@ -289,12 +290,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"a933437a880f3f7157d70f8cd532418181aa56bcd54c78c1fb0725b0985d10c0\"",
+        "ETag": "\"9fdd02903ab18799554d45747a0475f489e465f6bbae1d0c30c070d6de5cb886\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -437,6 +438,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -532,6 +534,7 @@
               "dim_sum": "compartir",
               "starters": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -547,7 +550,7 @@
       "status": 304,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"a933437a880f3f7157d70f8cd532418181aa56bcd54c78c1fb0725b0985d10c0\"",
+        "ETag": "\"9fdd02903ab18799554d45747a0475f489e465f6bbae1d0c30c070d6de5cb886\"",
         "Cache-Control": "public, max-age=30"
       },
       "body": null
@@ -560,7 +563,7 @@
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": false,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -703,6 +706,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -780,6 +784,7 @@
             "order_id_prefix": null,
             "house": null,
             "meals": null,
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -811,7 +816,7 @@
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": false,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -954,6 +959,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -969,12 +975,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"5bd088aea30519f8a7235835274a18529dffbf73fc1b023b34beddc4d6f556b4\"",
+        "ETag": "\"61032843a1065cf71805525bf6778b1dc3869ba16ddbb3b891ed25c80ae00496\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -1037,12 +1043,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"86152463a4723a31cbdd205b8f5d870b30d1af67e1923e9dd614c6736353dc8e\"",
+        "ETag": "\"f154d98b84a182452ab1a441ca867547ebed8edc2118cf8f9e0340d5595f0c41\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -1185,6 +1191,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -1198,12 +1205,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"e8fe2bd77efa6e57b7c785f095462c4357c1e1e790709259f50a52798621612c\"",
+        "ETag": "\"a3a193ce1197ec80ea9b78dbb624204bcd2a2174667861d30cbad874e4592328\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -1346,6 +1353,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -1441,6 +1449,7 @@
               "dim_sum": "compartir",
               "starters": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -1534,6 +1543,7 @@
             "order_id_prefix": "TCX",
             "house": null,
             "meals": null,
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -1628,6 +1638,7 @@
             "order_id_prefix": "TDX",
             "house": null,
             "meals": null,
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -1722,6 +1733,7 @@
             "order_id_prefix": "TEX",
             "house": null,
             "meals": null,
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -1738,12 +1750,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"d6b6f5e96eadbab42c54dc67b85095c61025282bc13cad14b08a931113f42bae\"",
+        "ETag": "\"8f69d732a797852e7caeda2d85041ad3a62fa151c74bfef1a5466c491a482dbc\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -1886,6 +1898,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -1980,6 +1993,7 @@
               "dim_sum": "compartir",
               "starters": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -1995,12 +2009,12 @@
       "status": 200,
       "headers": {
         "Access-Control-Expose-Headers": "ETag",
-        "ETag": "\"a933437a880f3f7157d70f8cd532418181aa56bcd54c78c1fb0725b0985d10c0\"",
+        "ETag": "\"03ae809f3756fc07d6a65cef6bb2badfc227aae721a5268b9b71bdf9626cd4c8\"",
         "Cache-Control": "public, max-age=30",
         "Content-Type": "application/json; charset=utf-8"
       },
       "body": {
-        "representation_version": "directory-1",
+        "representation_version": "directory-2",
         "complete": true,
         "platform": {
           "city_label": "San Pedro Sula",
@@ -2142,6 +2156,7 @@
             "meals": {
               "ny": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "branch",
               "pickup_addr"
@@ -2237,6 +2252,7 @@
               "dim_sum": "compartir",
               "starters": "compartir"
             },
+            "ratings": null,
             "degraded": [
               "asset_base",
               "branch",
@@ -2249,5 +2265,5 @@
       }
     }
   },
-  "scenarios_sha256": "a432b4a948ad18b04d7e6425e9b015d8051d21f69a4962eeb9e05aba048bffc9"
+  "scenarios_sha256": "e30b67cd9a63f9261ea0025c638749c0e3fc87486ca499b769d70d934a81e23c"
 }

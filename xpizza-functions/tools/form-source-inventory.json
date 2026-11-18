@@ -183,6 +183,7 @@
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/review-diff.test.js",
+    "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
@@ -251,6 +252,7 @@
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
+    "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/directory/directory-off.golden.test.js",
     "xpizza-functions/directory/directory-offer.test.js",
     "xpizza-functions/directory/directory-sponsored.test.js",
@@ -281,6 +283,10 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-deletion.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
+    "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -385,6 +391,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -422,6 +429,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -429,6 +438,7 @@
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/mirror-keys.emulator.test.js",
+    "xpizza-functions/test/offer-audience.emulator.test.js",
     "xpizza-functions/test/orch-o1b.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
@@ -479,6 +489,7 @@
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
     "xpizza-functions/tippref-wiring.guard.test.js",
+    "xpizza-functions/tools/audience-backfill.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -626,6 +637,7 @@
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/review-diff.test.js",
+    "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
@@ -685,6 +697,7 @@
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
+    "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/directory/directory-off.golden.test.js",
     "xpizza-functions/directory/directory-offer.test.js",
     "xpizza-functions/directory/directory-sponsored.test.js",
@@ -709,6 +722,10 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-deletion.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
+    "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -796,6 +813,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -833,6 +851,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -840,6 +860,7 @@
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/mirror-keys.emulator.test.js",
+    "xpizza-functions/test/offer-audience.emulator.test.js",
     "xpizza-functions/test/orch-o1b.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
@@ -886,6 +907,7 @@
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
     "xpizza-functions/tippref-wiring.guard.test.js",
+    "xpizza-functions/tools/audience-backfill.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1093,6 +1115,7 @@
     "xpizza-functions/catalog/resolve-lines-s2.test.js",
     "xpizza-functions/catalog/resolve-lines.test.js",
     "xpizza-functions/catalog/review-diff.test.js",
+    "xpizza-functions/catalog/reward-group-guard.test.js",
     "xpizza-functions/catalog/reward-removed.test.js",
     "xpizza-functions/catalog/s1-extras-review.test.js",
     "xpizza-functions/catalog/s1-portal-reads.test.js",
@@ -1162,6 +1185,7 @@
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
+    "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/directory/directory-off.golden.test.js",
     "xpizza-functions/directory/directory-offer.test.js",
     "xpizza-functions/directory/directory-sponsored.test.js",
@@ -1192,6 +1216,10 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-deletion.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
+    "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -1295,6 +1323,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -1332,6 +1361,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -1339,6 +1370,7 @@
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/mirror-keys.emulator.test.js",
+    "xpizza-functions/test/offer-audience.emulator.test.js",
     "xpizza-functions/test/orch-o1b.emulator.test.js",
     "xpizza-functions/test/order-control.emulator.test.js",
     "xpizza-functions/test/order-exists.emulator.test.js",
@@ -1389,6 +1421,7 @@
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
     "xpizza-functions/tippref-wiring.guard.test.js",
+    "xpizza-functions/tools/audience-backfill.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1597,6 +1630,7 @@
     "xpizza-functions/delivery/zones-writer.test.js",
     "xpizza-functions/deploy-params.guard.test.js",
     "xpizza-functions/directory-wiring.guard.test.js",
+    "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/directory/directory-off.golden.test.js",
     "xpizza-functions/directory/directory-offer.test.js",
     "xpizza-functions/directory/directory-sponsored.test.js",
@@ -1621,6 +1655,10 @@
     "xpizza-functions/kds-ticket-names.test.js",
     "xpizza-functions/keymode-wiring.guard.test.js",
     "xpizza-functions/marketing/anuncio-core.test.js",
+    "xpizza-functions/marketing/audience-deletion.test.js",
+    "xpizza-functions/marketing/audience-sweep.test.js",
+    "xpizza-functions/marketing/audience-wire.test.js",
+    "xpizza-functions/marketing/audience-writer.test.js",
     "xpizza-functions/marketing/brand-of.test.js",
     "xpizza-functions/marketing/offer-price.test.js",
     "xpizza-functions/marketing/offer-wire.test.js",
@@ -1708,6 +1746,7 @@
     "xpizza-functions/test/claim-prefill.emulator.test.js",
     "xpizza-functions/test/client-floor-http.emulator.test.js",
     "xpizza-functions/test/client-version.emulator.test.js",
+    "xpizza-functions/test/customer-push-wiring.emulator.test.js",
     "xpizza-functions/test/d4b-charge-trace.emulator.test.js",
     "xpizza-functions/test/d4b-readers.emulator.test.js",
     "xpizza-functions/test/d4p1-activation.emulator.test.js",
@@ -1745,6 +1784,8 @@
     "xpizza-functions/test/keymode-publish.emulator.test.js",
     "xpizza-functions/test/kitchen-floor-ops.emulator.test.js",
     "xpizza-functions/test/labels-routes.emulator.test.js",
+    "xpizza-functions/test/ledger-rebuild.emulator.test.js",
+    "xpizza-functions/test/ledger-s1.emulator.test.js",
     "xpizza-functions/test/marketing-off.golden.emulator.test.js",
     "xpizza-functions/test/marketing-price.emulator.test.js",
     "xpizza-functions/test/marketing-rules.emulator.test.js",
@@ -1752,6 +1793,7 @@
     "xpizza-functions/test/merchant-assign-hold.emulator.test.js",
     "xpizza-functions/test/merchant-push.emulator.test.js",
     "xpizza-functions/test/mirror-keys.emulator.test.js",
+    "xpizza-functions/test/offer-audience.emulator.test.js",
     "xpizza-functions/test/orch-o1b.emulator.test.js",
     "xpizza-functions/test/otp-brand.emulator.test.js",
     "xpizza-functions/test/paid-after-close-notify.emulator.test.js",
@@ -1799,6 +1841,7 @@
     "xpizza-functions/test/verify-first-group.emulator.test.js",
     "xpizza-functions/test/zones.emulator.test.js",
     "xpizza-functions/tippref-wiring.guard.test.js",
+    "xpizza-functions/tools/audience-backfill.test.js",
     "xpizza-functions/tools/bake-form-bundle.test.js",
     "xpizza-functions/tools/draft-drift-report.test.js",
     "xpizza-functions/tools/emulator-endpoint.test.js",
@@ -1834,6 +1877,7 @@
     "customer-app/capp-readers.test.mjs",
     "d4b-availability.test.mjs",
     "s2b-paid-text.test.mjs",
+    "tools/netlify-deploy.test.js",
     "xpizza-functions/branches-rules.guard.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",
@@ -2338,6 +2382,7 @@
   "xpizza-functions/contract/version-witness.js",
   "xpizza-functions/delivery/pricing-admin-core.js",
   "xpizza-functions/directory/directory-deps.js",
+  "xpizza-functions/directory/directory-endpoint.js",
   "xpizza-functions/index.js",
   "xpizza-functions/marketing/anuncio-core.js",
   "xpizza-functions/marketing/anuncio-model.js",
@@ -2351,6 +2396,7 @@
   "xpizza-functions/ratings/aggregate-producer.js",
   "xpizza-functions/seed-kitchen-staff.mjs",
   "xpizza-functions/test/_anuncio-world.js",
+  "xpizza-functions/test/_audience-seed.js",
   "xpizza-functions/test/_c2b-fixture.js",
   "xpizza-functions/test/_kds-sdk-loader.mjs",
   "xpizza-functions/test/_marketing-price-seed.js",
@@ -2908,9 +2954,11 @@
   "delivery/zones-lock.js",
   "delivery/zones.js",
   "directory/directory-deps.js",
+  "directory/directory-endpoint.js",
   "directory/directory.js",
   "directory/platform-config.js",
   "directory/presentation-shape.js",
+  "directory/pricing-view.js",
   "driver-ingest.js",
   "driver-ledger/functions.js",
   "driver-ledger/ledger-core.js",
@@ -2924,6 +2972,12 @@
   "form-signal.js",
   "hosted-charge-flow.js",
   "index.js",
+  "ledger/alloc-snapshot.js",
+  "ledger/capture-evidence.js",
+  "ledger/commission-rate.js",
+  "ledger/functions.js",
+  "ledger/projector.js",
+  "ledger/rebuild.js",
   "lib/driver-admin-ops.js",
   "lib/driver-callable-guard.js",
   "lib/emulator-endpoint.js",
@@ -2931,6 +2985,11 @@
   "manual-resolve.js",
   "marketing/anuncio-core.js",
   "marketing/anuncio-model.js",
+  "marketing/audience-core.js",
+  "marketing/audience-place.js",
+  "marketing/audience-read.js",
+  "marketing/audience-sweep.js",
+  "marketing/audience-writer.js",
   "marketing/brand-of.js",
   "marketing/config.js",
   "marketing/functions.js",
@@ -3009,6 +3068,7 @@
   "phone/intl.js",
   "phone/login-gate.js",
   "phone/match.js",
+  "phone/normalize-phone.js",
   "phone/wire.js",
   "photos/branch-photos.js",
   "photos/buckets.js",
@@ -3034,6 +3094,7 @@
   "photos/sweep-core.js",
   "photos/sweep-io.js",
   "photos/upload-start.js",
+  "pickup-card-only.js",
   "pixelpay-cancel.js",
   "pixelpay-charge.js",
   "pixelpay-client.js",
@@ -4145,9 +4206,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "delivery/delivery-wire.js": {
    "pins": [
@@ -4174,9 +4233,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "delivery/limits.js": {
    "pins": [],
@@ -4208,6 +4265,10 @@
    "pins": [],
    "lifts": []
   },
+  "directory/directory-endpoint.js": {
+   "pins": [],
+   "lifts": []
+  },
   "directory/directory.js": {
    "pins": [],
    "lifts": []
@@ -4217,6 +4278,10 @@
    "lifts": []
   },
   "directory/presentation-shape.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "directory/pricing-view.js": {
    "pins": [],
    "lifts": []
   },
@@ -4293,10 +4358,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4310,6 +4377,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4353,12 +4421,14 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4374,6 +4444,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4421,12 +4492,14 @@
       "tools/a1-inverse.js",
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4442,6 +4515,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4488,10 +4562,12 @@
      "inverses": [
       "tools/area-charge-inputs-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -4501,6 +4577,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4529,10 +4606,12 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4544,6 +4623,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4582,6 +4662,7 @@
       "tools/a1-inverse.js",
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
@@ -4590,6 +4671,7 @@
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4605,6 +4687,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4649,14 +4732,17 @@
     {
      "file": "xpizza-functions/checkout-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -4676,9 +4762,12 @@
     {
      "file": "xpizza-functions/confirmretire-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4691,11 +4780,13 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4711,6 +4802,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4755,8 +4847,11 @@
     {
      "file": "xpizza-functions/d4-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4764,12 +4859,24 @@
      ]
     },
     {
+     "file": "xpizza-functions/dirwire-wiring.guard.test.js",
+     "inverses": [
+      "tools/audience-module-inverse.js",
+      "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
+      "tools/memberreads-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/dlite-push-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4781,6 +4888,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -4816,10 +4924,13 @@
     {
      "file": "xpizza-functions/dpao-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4831,9 +4942,11 @@
      "file": "xpizza-functions/driver-ledger-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4844,6 +4957,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -4878,9 +4992,11 @@
      "file": "xpizza-functions/drvc-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4890,6 +5006,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -4921,9 +5038,11 @@
      "file": "xpizza-functions/drvf-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -4934,6 +5053,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -4964,9 +5084,12 @@
     {
      "file": "xpizza-functions/envlim-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4978,10 +5101,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -4997,6 +5122,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5041,9 +5167,11 @@
      "file": "xpizza-functions/formbake-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5054,6 +5182,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5087,9 +5216,11 @@
      "file": "xpizza-functions/formsignal-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/envlim-module-inverse.js",
@@ -5098,6 +5229,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5129,10 +5261,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5147,6 +5281,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5190,10 +5325,12 @@
      "file": "xpizza-functions/h1-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5207,6 +5344,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5247,10 +5385,12 @@
      "file": "xpizza-functions/h1c-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5263,6 +5403,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5302,12 +5443,15 @@
     {
      "file": "xpizza-functions/hostedrace-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/hostedrace-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -5326,13 +5470,16 @@
     {
      "file": "xpizza-functions/intl-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5349,11 +5496,14 @@
     {
      "file": "xpizza-functions/keymode-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5377,6 +5527,9 @@
     {
      "file": "xpizza-functions/memberreads-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
+      "tools/dirwire-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js"
      ]
@@ -5385,9 +5538,11 @@
      "file": "xpizza-functions/membership-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5398,6 +5553,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5434,9 +5590,11 @@
      "file": "xpizza-functions/menu-warm-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5447,6 +5605,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -5481,9 +5640,11 @@
      "file": "xpizza-functions/o1b-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5494,6 +5655,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -5529,6 +5691,7 @@
       "tools/a1-inverse.js",
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
@@ -5536,6 +5699,7 @@
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5551,6 +5715,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5595,11 +5760,14 @@
     {
      "file": "xpizza-functions/p5a-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
@@ -5619,9 +5787,11 @@
      "file": "xpizza-functions/pausa-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5632,6 +5802,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -5665,12 +5836,15 @@
     {
      "file": "xpizza-functions/photos-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -5688,6 +5862,7 @@
       "tools/a1-inverse.js",
       "tools/addproduct-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
@@ -5696,6 +5871,7 @@
       "tools/d4c2b-inverse.js",
       "tools/d4c4-inverse.js",
       "tools/d4c5-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5711,6 +5887,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5756,9 +5933,11 @@
      "file": "xpizza-functions/portalui-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -5769,6 +5948,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5805,10 +5985,12 @@
      "file": "xpizza-functions/release-race-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5820,6 +6002,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5858,10 +6041,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5875,6 +6060,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5919,10 +6105,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -5936,6 +6124,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -5978,10 +6167,13 @@
     {
      "file": "xpizza-functions/s1d-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5995,10 +6187,13 @@
     {
      "file": "xpizza-functions/s1srv-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6009,10 +6204,13 @@
     {
      "file": "xpizza-functions/s2-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6026,9 +6224,11 @@
      "file": "xpizza-functions/s2app-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6038,6 +6238,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6068,11 +6269,13 @@
      "inverses": [
       "tools/area-charge-inputs-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-charge-inputs-inverse.js",
       "tools/checkout-inverse.js",
       "tools/checkout-pixelpay-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6082,6 +6285,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6113,9 +6317,11 @@
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6125,6 +6331,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6159,9 +6366,11 @@
      "file": "xpizza-functions/s3b-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6171,6 +6380,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6204,9 +6414,11 @@
      "file": "xpizza-functions/s3c-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6216,6 +6428,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6248,15 +6461,18 @@
      "file": "xpizza-functions/s4hours-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/formbake-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -6286,10 +6502,12 @@
      "file": "xpizza-functions/s5-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6303,6 +6521,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6344,9 +6563,11 @@
      "file": "xpizza-functions/s5r-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/drvc-inverse.js",
       "tools/drvf-inverse.js",
@@ -6356,6 +6577,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6386,12 +6608,15 @@
     {
      "file": "xpizza-functions/sb-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6408,12 +6633,15 @@
     {
      "file": "xpizza-functions/sd-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6430,11 +6658,14 @@
     {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -6452,10 +6683,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6470,6 +6703,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6514,10 +6748,12 @@
      "file": "xpizza-functions/signup-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6529,6 +6765,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6570,12 +6807,14 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d12b-inverse.js",
       "tools/d4-intake-inverse.js",
       "tools/d4c2b-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6591,6 +6830,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6636,9 +6876,11 @@
      "file": "xpizza-functions/stackseq-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/drvc-inverse.js",
@@ -6649,6 +6891,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -6686,11 +6929,14 @@
     {
      "file": "xpizza-functions/tippref-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
@@ -6739,13 +6985,16 @@
     {
      "file": "xpizza-functions/tools/mem512-inverse.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/envlim-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/menu-warm-inverse.js",
@@ -6797,10 +7046,12 @@
      "file": "xpizza-functions/tracker-fixes-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6812,6 +7063,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6850,10 +7102,12 @@
      "file": "xpizza-functions/unassign-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6865,6 +7119,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6905,10 +7160,12 @@
      "inverses": [
       "tools/a1-inverse.js",
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dlite-push-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
@@ -6924,6 +7181,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/membership-inverse.js",
@@ -6969,9 +7227,11 @@
      "file": "xpizza-functions/wahealth-wiring.guard.test.js",
      "inverses": [
       "tools/area-inverse.js",
+      "tools/audience-module-inverse.js",
       "tools/checkout-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/dpao-module-inverse.js",
       "tools/driver-ledger-inverse.js",
       "tools/envlim-module-inverse.js",
@@ -6980,6 +7240,7 @@
       "tools/hostedrace-module-inverse.js",
       "tools/intl-inverse.js",
       "tools/keymode-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/lifecycle-inverse.js",
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
@@ -7010,9 +7271,12 @@
     {
      "file": "xpizza-functions/zones-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/confirmretire-module-inverse.js",
       "tools/d4-intake-inverse.js",
+      "tools/dirwire-module-inverse.js",
       "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7027,6 +7291,7 @@
     "customer-app/fixtures/offer-quote/gen-offer-quote.mjs",
     "s2b-paid-text.test.mjs",
     "xpizza-functions/attribution-refire.test.js",
+    "xpizza-functions/audience-wiring.guard.test.js",
     "xpizza-functions/catalog/charge-inputs.test.js",
     "xpizza-functions/catalog/context-guards.test.js",
     "xpizza-functions/catalog/gate-wiring.test.js",
@@ -7044,6 +7309,7 @@
     "xpizza-functions/contract/p1a-journey.emulator.test.mjs",
     "xpizza-functions/contract/scenario-state.js",
     "xpizza-functions/createorder-idempotent.test.js",
+    "xpizza-functions/directory/directory-endpoint.test.js",
     "xpizza-functions/driver-callable-guard-coverage.guard.test.js",
     "xpizza-functions/factura-catalog-cutover.test.js",
     "xpizza-functions/fail-closed-reject.test.js",
@@ -7051,9 +7317,9 @@
     "xpizza-functions/identity-shadow-placement.test.js",
     "xpizza-functions/intake-gate-placement.test.js",
     "xpizza-functions/intl-intake-wire-sync.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js",
     "xpizza-functions/merchant-no-money.guard.test.js",
-    "xpizza-functions/mktprice-wiring.guard.test.js",
     "xpizza-functions/n2-paid-strand-decision.test.js",
     "xpizza-functions/order-creators.guard.test.js",
     "xpizza-functions/order-exists-census.guard.test.js",
@@ -7090,6 +7356,34 @@
     "xpizza-functions/whatsapp-brand.test.js"
    ]
   },
+  "ledger/alloc-snapshot.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/capture-evidence.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
+  },
+  "ledger/commission-rate.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/functions.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/projector.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "ledger/rebuild.js": {
+   "pins": [],
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
+  },
   "lib/driver-admin-ops.js": {
    "pins": [],
    "lifts": []
@@ -7117,6 +7411,26 @@
    "lifts": []
   },
   "marketing/anuncio-model.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-core.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-place.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-read.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-sweep.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "marketing/audience-writer.js": {
    "pins": [],
    "lifts": []
   },
@@ -7381,7 +7695,9 @@
   },
   "payments/sdk/coordinator.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js"
+   ]
   },
   "payments/sdk/decline-buckets.js": {
    "pins": [],
@@ -7507,7 +7823,11 @@
   },
   "phone-countries.js": {
    "pins": [],
-   "lifts": []
+   "lifts": [
+    "customer-app/capp-guards.test.mjs",
+    "customer-app/capp-phone.test.mjs",
+    "customer-app/capp-ui.test.mjs"
+   ]
   },
   "phone/flag.js": {
    "pins": [],
@@ -7526,6 +7846,10 @@
    "lifts": []
   },
   "phone/match.js": {
+   "pins": [],
+   "lifts": []
+  },
+  "phone/normalize-phone.js": {
    "pins": [],
    "lifts": []
   },
@@ -7631,6 +7955,10 @@
    "pins": [],
    "lifts": []
   },
+  "pickup-card-only.js": {
+   "pins": [],
+   "lifts": []
+  },
   "pixelpay-cancel.js": {
    "pins": [
     {
@@ -7660,6 +7988,7 @@
      "file": "xpizza-functions/alertsan-wiring.guard.test.js",
      "inverses": [
       "tools/alertsan-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7669,6 +7998,7 @@
      "inverses": [
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7679,6 +8009,7 @@
       "tools/alertsan-module-inverse.js",
       "tools/brand-server-inverse.js",
       "tools/d12-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
@@ -7686,6 +8017,7 @@
    ],
    "lifts": [
     "xpizza-functions/a1-wiring.guard.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/materialize-hub.test.js"
    ]
   },
@@ -7695,7 +8027,8 @@
      "file": "xpizza-functions/envlim-wiring.guard.test.js",
      "inverses": [
       "tools/d4-intake-inverse.js",
-      "tools/envlim-module-inverse.js"
+      "tools/envlim-module-inverse.js",
+      "tools/ledgers1-module-inverse.js"
      ]
     },
     {
@@ -7710,7 +8043,8 @@
     "xpizza-functions/addproduct-wiring.guard.test.js",
     "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/delivery/envlim-callers.guard.test.js",
-    "xpizza-functions/extras-wiring.guard.test.js"
+    "xpizza-functions/extras-wiring.guard.test.js",
+    "xpizza-functions/ledger-writes.guard.test.js"
    ]
   },
   "pixelpay-hosted-webhook.js": {
@@ -7720,12 +8054,14 @@
      "inverses": [
       "tools/h0-inverse.js",
       "tools/hostedrace-module-inverse.js",
+      "tools/ledgers1-module-inverse.js",
       "tools/p5a-inverse.js",
       "tools/sdkpay-module-inverse.js"
      ]
     }
    ],
    "lifts": [
+    "xpizza-functions/ledger-writes.guard.test.js",
     "xpizza-functions/pixelpay-hosted-extra-payment.test.js"
    ]
   },
@@ -7843,6 +8179,7 @@
     {
      "file": "xpizza-functions/catalog/identity-record-guards.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
@@ -7852,6 +8189,7 @@
     {
      "file": "xpizza-functions/s3a-wiring.guard.test.js",
      "inverses": [
+      "tools/audience-module-inverse.js",
       "tools/keymode-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/s2tip-module-inverse.js",
@@ -7859,9 +8197,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/mktprice-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "quote-token.js": {
    "pins": [],
@@ -8251,8 +8587,7 @@
    ],
    "lifts": [
     "xpizza-functions/catalog/charge-inputs.test.js",
-    "xpizza-functions/charge-gate-placement.test.js",
-    "xpizza-functions/mktprice-wiring.guard.test.js"
+    "xpizza-functions/charge-gate-placement.test.js"
    ]
   },
   "tracking/claims-txn.js": {

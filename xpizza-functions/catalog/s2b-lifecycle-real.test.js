@@ -7,7 +7,8 @@
 // shipped OFF). Run: node catalog/s2b-lifecycle-real.test.js
 const assert = require('assert');
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'l'.repeat(32);
-{ const p = require.resolve('./platform-structure'); const real = require('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: true }) } }; }
+// the legacy-form reward-group guard (Codex #119) is retired here: this suite pins another rule; the guard has its own test (catalog/reward-group-guard.test.js)
+{ const p = require.resolve('./platform-structure'); const real = require('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, legacyFormRewardPickers: () => false, structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: true }) } }; }
 { const p = require.resolve('./extra-identity'); const real = require('./extra-identity'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, extraIdentityCapabilities: () => ({ mintExtras: true }) } }; }
 const { makeDb } = require('./firestore-fake');
 const { createFakeDb } = require('../merchant/_fake-db');

@@ -277,7 +277,7 @@
     // PLAN-capp-desktop-website r2 D-2: the host's viewport (capp-view.js) — DESKTOP ⇒ the APPROVED v6 desk view's DOM (the store's
     // deskcart aside, the checkout's col-b); no view handed over (the single-store page, every phone) ⇒ byte-identical to before
     const view = opts.view && typeof opts.view.desk === 'function' ? opts.view : null;
-    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
+    const S = { desk: view ? !!view.desk() : false, mode: 'delivery', expanded: new Set(), open: null, layerKind: null, cartNote: null, trimNote: null, refusal: null, activeSec: '', searchQ: '', entry: cfg.entry === 'app' ? 'app' : 'link',
       // S2b
       screen: 'store', stack: [], flow: null, q: null, qKey: null, askedKey: null, outZone: false, closedRefused: false, geo: null, err: null, tipDraft: '',
       backScreen: null, sendHint: null, sendTotals: null, pinDraft: null, pinToast: false, pinStepOk: false, lastDelivery: null };
@@ -758,9 +758,16 @@
       const upd = appUpdated() && lines.length > 0;   // state 4: only over a cart that survived the update
       const updNote = upd ? `<div class="cartnote" role="status">${IC.info}<span>App actualizada. Tu carrito sigue aquí.</span></div>` : '';
       const note = S.cartNote ? `<div class="cartnote">${IC.info}<span>${S.cartNote === 1 ? '1 plato ya no está disponible' : S.cartNote + ' platos ya no están disponibles'}</span></div>` : '';
+      // G2 (OWNER-APPROVED MOCKUP-capp-extra-removed, owner 11-16 final copy): a deleted extra trimmed off a kept dish — named when the
+      // cart stored the name, else the dish only; its own pill after the dish-gone one. Each note is two sentences, each its OWN
+      // block (owner: «one sentence per line where it fits» — the SBS caught «… disponible. Actualizamos | tu …» at 390)
+      const trimLines = (S.trimNote || []).flatMap((t) => (t.extras.every((n) => typeof n === 'string')
+        ? t.extras.map((n) => [`${n} ya no está disponible.`, `Actualizamos tu ${t.dish}.`])
+        : [[`Un extra de tu ${t.dish} ya no está disponible.`, 'Lo quitamos del pedido.']]));
+      const trimNote = trimLines.length ? `<div class="cartnote" role="status">${IC.info}<span>${trimLines.map((x) => `<span class="cn-l">${x.map((y) => `<span class="cn-s">${esc(y)}</span>`).join(' ')}</span>`).join('')}</span></div>` : '';
       const over = tooLong();
       const refusal = S.refusal || over ? `<div class="cartnote">${IC.info}<span>${esc(over ? FULL_CART : S.refusal)}</span></div>` : '';
-      if (!lines.length) return head + note + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
+      if (!lines.length) return head + note + trimNote + (desk && S.desk ? `<div class="empty">${IC.bag}<b>Tu pedido está vacío</b><span>Agregá platos del menú y aparecen aquí.</span></div>` : `<div class="empty">${IC.bag}<span>Tu pedido está vacío.</span>${desk ? '' : '<button class="btn2" data-act="cartclose">Ver el menú</button>'}</div>`);
       const soldNote = soldDishes.length ? `<div class="cartnote" role="status">${IC.info}<span>${soldDishes.map((n) => `<span class="cn-l">${esc(n)} se agotó. Quitalo para enviar tu pedido.</span>`).join('')}</span></div>` : '';
       // the owner's frame 10 (approved 2026-10-27): a cart FROZEN for a placement (S7a-1 r3 §1.1) is read-only — one calm note,
       // the lines' controls at the drawn .45 (disabled), and «Ver estado del pedido»: the placement's STATUS (poll with its stored
@@ -779,7 +786,7 @@
       const confName = (c) => c.name + (c.sig ? ' + ' + c.sig.split(',').map((k) => (menu.extra(k) || { name: k }).name).join(', ') : '');
       const priceNote = changes.length && mods() ? `<div class="cartnote" role="status">${IC.info}<span>${changes.map((c) => `<span class="cn-l">${esc(C.priceNoticeText({ name: confName(c), from: c.fromCents / 100, to: c.toCents / 100 }))}</span>`).join('')}</span></div>` : '';
       const oldOf = (d) => { const cs = changes.filter((c) => c.key === d.key && c.sig === d.g); return cs.length ? d.total - cs.reduce((a, c) => a + (c.newSubtotalCents - c.oldSubtotalCents) / 100, 0) : null; };
-      return head + updNote + note + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
+      return head + updNote + note + trimNote + refusal + soldNote + priceNote + lines.map((d) => { const so = soldOfLine(d), old = so ? null : oldOf(d);
         return `<div class="cline${so ? ' sold-out' : ''}">${lineName(d, 'cl-txt')}${lineStep(d, so)}<span class="cl-p">${so ? 'Agotado' : old !== null ? `<s class="cl-old">${money(old)}</s>${money(d.total)}` : money(d.total)}</span></div>`; }).join('')
         + (desk && S.desk ? `<button class="cnotes" data-act="cartnotes"${off ? ' disabled aria-disabled="true"' : ''}>${IC.note}<span class="cl-txt"><span class="ln-n">Agregar notas al restaurante</span><span class="ln-x">Sin cebolla, bien cocida…</span></span>${IC.chev}</button>` : '')   // G-B: frame 2a
         + cnote + (soldDishes.length ? `<div class="ctot"><div class="sumrow"><span>Subtotal</span><span>${money(total)}</span></div></div>` : cartTotsHtml(total, desk && S.desk))
@@ -799,7 +806,8 @@
       if (k === 'pin') dropPinMap();
     }
     function closeLayer() {
-      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') appUpdatedSeen(); layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
+      // Codex #117 P2: a pending trim note is cleared only by closing the CART it was shown in — an unrelated layer keeps it
+      if (S.layerKind === 'placing') placingStop(); if (S.layerKind === 'cart') { appUpdatedSeen(); S.trimNote = null; } layerTeardown(); S.layerKind = null; S.cartNote = null; S.refusal = null; S.err = null; renderLayer(); const back = refind(returnTo); returnTo = null; focusTo(back || $('cart-bar') || $('cta')); closeLayerThen(); }
     // a quote that failed while another layer was open: its sheet once that layer closes (still the same failed state)
     function closeLayerThen() { if (S.quoteErrSheet && !S.layerKind && (S.screen === 'checkout' || S.screen === 'tip')) { S.quoteErrSheet = false; if (S.quoteErr && S.quoteErr === stateKey()) showErr(ERR.generic('err-requote')); } }
     const T_report = () => { if (typeof queueMicrotask === 'function') queueMicrotask(reportRoute); else reportRoute(); };   // after the sheet's state is set
@@ -840,11 +848,13 @@
       const P = phoneMod(), cc = ccOf(f), c = P.byCc(cc), open = S.layerKind === 'cc', note = ccNote(f);
       return `<div class="fld"><label for="f-phone">WhatsApp <span class="req">*</span></label><div class="phonerow"><button type="button" class="cc${open ? ' focus' : ''}" data-act="cc" aria-label="País del número: ${esc(c.name)} +${cc}" aria-haspopup="dialog"${off ? ' disabled' : ''}>+${cc} ${open ? IC.up : IC.down}</button><input id="f-phone" data-field="phone" type="tel" inputmode="numeric" value="${esc(P.format(cc, f.phone))}" placeholder="${esc(c.ph)}" autocomplete="tel"${off ? ' disabled' : ''}></div><div class="note" id="f-phone-cc"${note ? '' : ' hidden'}>${note}</div>${extra}</div>`;
     }
+    // the rows: the countries the server serves (P.served, PLAN-capp-picker-served-countries r1) + a member's own saved country, so
+    // their number is never re-coded to another country (a guest gets the served list alone)
     function ccSheetHtml() {
-      const P = phoneMod(), cur = ccOf(S.flow);
+      const P = phoneMod(), cur = ccOf(S.flow), m = member(), own = m && m.phone ? P.parseE164(m.phone) : null;
       return `<div class="scrim" data-act="lclose"></div><div class="sheet ccsheet" role="dialog" aria-label="País del número"><div class="grab"></div>
         <div class="sheethead"><h2>País del número <small>Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</small></h2><button class="iconbtn" data-act="lclose" aria-label="Cerrar">${IC.close}</button></div>
-        ${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+        ${P.served(own ? own.cc : null).map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-act="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"${hasSlotLock() ? ' disabled tabindex="-1"' : ''}><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
 
     // ═══ S2b: CHECKOUT ═══
@@ -862,6 +872,8 @@
     // runtime flag cfg.guestCardOnly (the shell sets it); absent ⇒ today's S2 checkout byte for byte. ONE invariant for every
     // dispatch / restore / retry: a guest's effective tender is ONLINE, else it is refused locally (frame 6) — nothing is sent.
     const cardOnlyGuest = () => cfg.guestCardOnly === true && !member();
+    // owner 11-16 (MOCKUP-capp-pickup-card-only): app PICKUP is card only — for everyone, members included
+    const pickupFlow = () => !!S.flow && S.flow.mode === 'pickup';
     // PLAN-intl-phone r2.3 S-picker (MOCKUP-intl-phone-picker-APPROVED-2026-10-27, frames 4–6): the runtime flag cfg.intlPhone (the
     // shell sets it); absent ⇒ today's single «+504» input and the '+504 9999-9999' wire, byte for byte. Present ⇒ the country button +
     // sheet, the national length / local format per country, and E.164 on the wire for EVERY country (+504 included). FLIP
@@ -1262,10 +1274,15 @@
       <button class="opt" aria-pressed="${f.pay === 'online'}" data-act="pay" data-val="online"${payOff('online')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea<span class="rec">Recomendado</span></b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button>
       <button class="opt" aria-pressed="${f.pay === 'cash'}" data-act="pay" data-val="cash"${payOff('cash')}><span class="radio" aria-hidden="true"></span><span class="txt"><b>Efectivo ${del ? 'al entregar' : 'al recoger'}</b><span>${del ? 'Pagás cuando llegue tu pedido.' : 'Pagás en tienda al recoger.'}</span></span></button></div>`;
       // §3.1 (frame 1): a guest has ONE option — card, already selected (cash ABSENT, not dimmed) — and the fixed line with the why
-      const pagoGuest = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
-      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>
+      // the ONE card-only «Pago» row (guest frame 1; the member's pickup reuses it EXACTLY), its line below
+      const payOne = `<section class="fsec" aria-label="Pago"><h2>Pago</h2><div class="optrow" role="radiogroup" aria-label="Forma de pago">
+      <button class="opt" aria-pressed="true" data-act="pay" data-val="online"><span class="radio" aria-hidden="true"></span><span class="txt"><b>Pagar en línea</b><span>Con tarjeta, en la página segura de PixelPay (3D\u00a0Secure).</span></span></button></div>`;
+      const pagoGuest = `${payOne}
       <p class="paynote">Pagás con tarjeta. <button class="lnk" data-act="signin" data-ctx="paynote">Creá una cuenta</button> para pagar en efectivo y sumar recompensas.</p></section>`;
-      const pago = g ? pagoGuest : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
+      // pickup (owner 11-16): the same single open row, its line saying why (a member: no sign-up link)
+      const pagoPickup = `${payOne}
+      <p class="paynote">Para recoger se paga con tarjeta.</p></section>`;
+      const pago = g ? pagoGuest : !del ? pagoPickup : `<section class="fsec" aria-label="Pago"><h2>Pago</h2>${m && f.pay && !S.showPay
         ? `<div class="urows"><div class="urow">${f.pay === 'cash' ? IC.cash : IC.card}<span class="t"><b>${f.pay === 'cash' ? 'Efectivo ' + (del ? 'al entregar' : 'al recoger') : 'Tarjeta · PixelPay'}</b><span>${f.pay === 'cash' ? 'Como tu último pedido' : 'Página segura, 3D\u00a0Secure'}</span></span><button class="act" data-act="showpay"${lp !== null ? ' disabled' : ''}>Cambiar</button></div></div>` : payOpts}${cashPanel(T)}</section>`;
       const ctaBtn = `<button class="primary" id="cta" data-act="confirm"${ctaOff(T) ? ' disabled' : ''}>${esc(ctaLabel(T))}</button>`;
       const sdkC = sdkOn() && !S.desk;   // S2-checkout (v7): the payment row in the bar replaces the «Pago» section (the installed app only)
@@ -1801,7 +1818,7 @@
         backTo('checkout');   // P pixelPay :2016 — back() to «Entrega & Pago», then the sheet
         if (out.clearable === false) { showErr(ERR.pending()); return; }   // a cancel return the server still calls pending: the order stays locked
         // «Usar otra tarjeta» needs the whole checkout back: after a return that could not restore it, the generic held state (U3)
-        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() ? ERR.payFailedGuest() : ERR.payFailed()); return;
+        showErr(S.returning && !contextRestored() ? ERR.generic() : cardOnlyGuest() || pickupFlow() ? ERR.payFailedGuest() : ERR.payFailed()); return;
       }
       if (k === 'refunded') { backTo('checkout'); showErr(ERR.refunded(out.refunded_total_cents)); return; }
       if (k === 'existing_order') { backTo('checkout'); showErr(ERR.exists(out.reference)); return; }   // also a kept identity after a 426 (update_required: true)
@@ -1839,6 +1856,10 @@
     function seededFlow() { if (!S.flow) { S.flow = newFlow(); const sp = seedPin(); if (sp) C.setPin(S.flow, sp.lat, sp.lng, sp.confirmed === true); } return S.flow; }
     function openCheckout() {
       if (!mods()) return false;
+      // Codex #117 P2: a trim the customer has not seen yet ⇒ every checkout entry (Programar on a closed store included) shows the CART
+      // first; its own «Ir al checkout» proceeds (the cart is open: reviewed). On the desk store the aside IS the cart, drawn with the note
+      const cartSeen = S.layerKind === 'cart' || (S.desk && S.screen === 'store');
+      if (S.trimNote && !cartSeen) { openLayer('cart'); return false; }
       // S7a-2 (PLAN-capp-S7a r2 §2.2): the flow is created ONCE with its pin decided — a restored return flow, else this mount's
       // own flow, else SEEDED from the shell's guest location (same coordinates ⇒ the same pin version) — before any render can geocode
       seededFlow();
@@ -1848,7 +1869,7 @@
       // S4 P2: the schedule revalidated in the background, never awaited; a CHANGED one is held and applied at the next user picker
       // action (never under a finger); a failure leaves the schedule in hand
       if (sched() && api && typeof api.scheduleOnly === 'function') { const at = cfg.restaurantId; api.scheduleOnly().then((x) => { if (!dead && x && at === cfg.restaurantId && JSON.stringify(x) !== JSON.stringify(servedSched())) S.schedHeld = x; }, () => {}); }
-      S.layerKind = null; S.cartNote = null; S.refusal = null; returnTo = null;
+      S.layerKind = null; S.cartNote = null; S.trimNote = null; S.refusal = null; returnTo = null;
       // the cart stays on the stack: device back from «Entrega & Pago» reopens it (P :2298-2301)
       S.stack.push({ screen: 'store', layer: 'cart' }); S.stack = S.stack.slice(-12); pushHist();
       S.screen = 'checkout'; render();
@@ -2067,7 +2088,7 @@
     // Codex r1 P1: the saved cards belong to the identity that LISTED them (owner: «u:<uid>» | «guest»); gen drops a late answer
     const sdkOwner = (m) => (m && m.uid != null ? 'u:' + m.uid : 'guest');
     const SDK = { owner: null, gen: 0, cards: null, avail: null, sel: null, loading: false, loaded: false, decl: null, declId: null, proc: null, pollT: null, pollN: 0, save: true, form: {}, replaces: null, back: null };
-    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() });
+    const sdkCtx = () => ({ guest: !member(), cashAllowed: !cardOnlyGuest() && !pickupFlow() });
     const sdkHost = () => (opts.paySdk && opts.paySdk.fieldHost && typeof opts.paySdk.fieldHost.input === 'function' ? opts.paySdk.fieldHost : null);
     const sdkAuth = () => ({ checkoutTicket: cardOnlyGuest() ? S.ticket : undefined });
     // the saved cards (members) and the card path's availability — read once per mount, when the checkout first shows
@@ -2288,6 +2309,9 @@
 
     function render() {
       if (dead) return;
+      // the ONE choke point (advisor 11-16): a pickup flow is card — never cash, never «nothing chosen» under a drawn selected row —
+      // the mode switch, a new flow, a restore, a reorder all render
+      if (pickupFlow() && S.flow.pay !== 'online') S.flow.pay = 'online';
       // r7 (owner 11-09): the tip is card-only — a cash flow holds no tip choice; a switch to cash ON the step returns to the checkout
       if (S.flow && S.flow.mode === 'delivery' && S.flow.pay === 'cash' && (S.flow.tipChoice !== null || S.screen === 'tip' || S.tipEntry)) {
         const onStep = S.screen === 'tip'; tipLeave();
@@ -2359,7 +2383,7 @@
         if (!cart.count()) { toast('Agregá platos y programá al final'); return; }
         if (!S.flow) S.flow = newFlow();
         if (canSchedule()) { S.flow.time = 'schedule'; S.flow.slot = null; } else S.schedAfterSignin = false;
-        openCheckout(); if (!canSchedule()) scheduleGate();
+        if (openCheckout() && !canSchedule()) scheduleGate();   // a pending trim opened the cart instead: no gate over it
         return;
       }
       if (act === 'closed-sched') { emit('schedule'); return; }
@@ -2528,7 +2552,7 @@
         if (rr.blocked) return { blocked: true, step: rr.step };
         if (rr.cleared) { render(); return { cleared: true }; }
         if (rr.mode) { S.mode = rr.mode; if (S.flow && C) C.setMode(S.flow, S.mode); }
-        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
+        const r = rr.hydrated; notifyCart(); S.cartNote = r.dropped || null; S.trimNote = r.trimmed || null; S.refusal = tooLong() ? FULL_CART : null; render(); if (S.refusal) toast(S.refusal);
         offersCartChanged();   // Codex offers-ui r1 P2: a restored cart asks the same debounced store-page quote as an edit
         return r; },
       // «Volver a pedir»: replace the cart through the SAME restore path — refused exactly where the store refuses an edit (its lock /

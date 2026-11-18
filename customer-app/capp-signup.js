@@ -78,7 +78,7 @@
     }
     function countryPane() {
       const cur = ccNow();
-      return `<div class="h1">País del número</div><p class="sub">Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</p><div class="clist">${P.COUNTRIES.map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-su="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
+      return `<div class="h1">País del número</div><p class="sub">Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.</p><div class="clist">${P.served().map((c) => `<button class="crow${c.cc === cur ? ' on' : ''}" data-su="cc-pick" data-cc="${c.cc}" aria-pressed="${c.cc === cur}"><span class="nm">${esc(c.name)}</span><span class="code">+${c.cc}</span>${c.cc === cur ? IC.check : ''}</button>`).join('')}</div>`;
     }
     function codePane() {
       const left = Math.max(0, Math.ceil((S.resendAt - now()) / 1000));

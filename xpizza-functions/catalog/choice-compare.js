@@ -21,8 +21,28 @@ const refuse = (code, detail, key = null, field = 'choices') => { throw new AP.A
 const withoutMark = (tags) => (Array.isArray(tags) ? tags.filter((t) => t !== TAG) : []);
 const chars = (s) => [...String(s)].length;
 
+// Codex #119 P2 — the LEGACY-FORM reward-group guard. While the legacy order forms remain, a group holding an extra listed in the brand's
+// structure.redeem_eligible_extras feeds a frozen form's reward picker (la-musa-orders buildRedeemCatalog offers every extra of its group),
+// and a new extra is never server-eligible: under the Extras switch, a NEW extra in such a group is refused (reward_group_add_blocked).
+// Data-driven (the brand's own eligibility, never a restaurant id); removing / repricing its extras stays allowed. RETIRES with the forms
+// (platform-structure LEGACY_FORM_REWARD_PICKERS, beside the S2b renames switch).
+function rewardGroupGuard({ draftBuilt, activeBuilt, extrasCatalog }) {
+  const PS = require('./platform-structure');
+  const legacy = typeof PS.legacyFormRewardPickers === 'function' ? PS.legacyFormRewardPickers() : true;   // fail-closed: the guard holds unless explicitly retired
+  if (!extrasCatalog || !legacy || !draftBuilt || !activeBuilt) return;
+  const activeExtras = Array.isArray(activeBuilt.extras) ? activeBuilt.extras : [];
+  const catOf = new Map(activeExtras.map((e) => [e.key, e && e.display && e.display.cat]));
+  const eligible = activeBuilt.structure && Array.isArray(activeBuilt.structure.redeem_eligible_extras) ? activeBuilt.structure.redeem_eligible_extras : [];
+  const rewardGroups = new Set(eligible.map((k) => catOf.get(k)).filter(Boolean));
+  for (const e of Array.isArray(draftBuilt.extras) ? draftBuilt.extras : []) {
+    const g = e && e.display && e.display.cat;
+    if (e && !catOf.has(e.key) && rewardGroups.has(g)) refuse('reward_group_add_blocked', `the group ${JSON.stringify(g)} feeds a reward picker: no new option can join it yet`, e.key, 'extras');
+  }
+}
+
 function compareToActive(rid, args0) {
   const args = { ...args0, extraRenames: require('./extra-identity').extraIdentityCapabilities().mintExtras };   // S2b §0: an extra rename (the dark switch) at every judgment site
+  rewardGroupGuard(args);   // Codex #119 P2: the legacy-form reward-group guard, at every judgment site (save, publish, request)
   if (!require('./platform-structure').structureCapabilities().choiceEdit) return AP.compareToActive(args);
   const A = args.activeBuilt; const D = args.draftBuilt;
   const ia = groupIndexFrom(A); const id = groupIndexFrom(D);

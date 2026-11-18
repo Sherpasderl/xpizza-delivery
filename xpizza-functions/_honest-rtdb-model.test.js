@@ -77,5 +77,92 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   await db6.ref('x').set({ a: [], b: [null], c: [1, 2], keep: 1 });
   assert.deepStrictEqual(db6.getAt('x'), { c: [1, 2], keep: 1 }, `HRM-EMPTY-ARRAY: an empty array is absent, as in RTDB (got ${JSON.stringify(db6.getAt('x'))})`);
   ok('an empty array is pruned');
+  // Codex #111 P3: the model must not be laxer than the Admin SDK's update validation
+  {   // HRM-NONFINITE: NaN / ±Infinity are refused on every write (the SDK refuses a non-finite number)
+    const d = makeHonestDb({});
+    await assert.rejects(d.ref('x').set(NaN), /non-finite/, 'HRM-NONFINITE: set NaN');
+    await assert.rejects(d.ref('x').set({ a: { b: -Infinity } }), /non-finite/, 'HRM-NONFINITE: a nested -Infinity');
+    await assert.rejects(d.ref('x').push({ v: Infinity }), /non-finite/, 'HRM-NONFINITE: push');
+    await assert.rejects(d.ref('x').transaction(() => ({ v: NaN })), /non-finite/, 'HRM-NONFINITE: a transaction result');
+    assert.strictEqual(d.getAt('x'), null, 'HRM-NONFINITE: nothing written');
+  }
+  ok('NaN / Infinity are refused on set, push, update and transaction');
+  {   // HRM-ATOMIC: the WHOLE patch is validated before anything is written
+    const d = makeHonestDb({ k: 0 });
+    for (const [patch, re] of [[{ ok: 1, 'bad.key': 2 }, /invalid RTDB key/], [{ ok: 1, und: undefined }, /undefined value/], [{ ok: 1, n: NaN }, /non-finite/], [{ ok: 1, deep: { x: { y: Infinity } } }, /non-finite/]]) {
+      await assert.rejects(d.ref('').update(patch), re, `HRM-ATOMIC: ${Object.keys(patch).join(',')} refused`);
+      assert.deepStrictEqual(d.getAt(''), { k: 0 }, `HRM-ATOMIC: the valid key of a refused patch was NOT written (${Object.keys(patch).join(',')})`);
+    }
+  }
+  ok('a refused update writes NOTHING — the valid keys beside a bad one are not applied');
+  {   // HRM-OVERLAP: an update whose paths are ancestor / descendant of each other is refused (the SDK: «… is an ancestor of …»), WHOLE
+    const d = makeHonestDb({ a: { keep: 1 } });
+    for (const patch of [{ a: { x: 1 }, 'a/b': 2 }, { 'a/b': 1, 'a/b/c': 2 }, { 'a/b/c': 1, a: null }]) {
+      await assert.rejects(d.ref('').update(patch), /ancestor/, `HRM-OVERLAP: ${JSON.stringify(patch)} is refused`);
+      assert.deepStrictEqual(d.getAt(''), { a: { keep: 1 } }, `HRM-OVERLAP: nothing of ${JSON.stringify(patch)} was written`);
+    }
+    await assert.rejects(d.ref('a').update({ b: 1, 'b/c': 2 }), /ancestor/, 'HRM-OVERLAP: also under a child ref');
+    await d.ref('').update({ 'a/b': 1, 'a/c': 2, 'a/bc': 3 });   // siblings, and a key that only SHARES a prefix ('b' vs 'bc'), are fine
+    assert.deepStrictEqual(d.getAt('a'), { keep: 1, b: 1, c: 2, bc: 3 });
+  }
+  ok('an update with overlapping (ancestor / descendant) paths is refused whole; siblings and prefix-sharing keys are fine');
+  {   // HRM-UPDATE-TYPE (Codex #112): the SDK refuses a non-object update (null, an array, a scalar)
+    const d = makeHonestDb({ k: 1 });
+    for (const bad of [null, undefined, [1], 5, 'x', true]) await assert.rejects(d.ref('').update(bad), /update: /, `HRM-UPDATE-TYPE: ${JSON.stringify(bad)} refused`);
+    assert.deepStrictEqual(d.getAt(''), { k: 1 }, 'HRM-UPDATE-TYPE: nothing written');
+    await d.ref('').update({});   // an empty object is a no-op, as in the SDK
+  }
+  ok('a non-object update (null / array / scalar) is refused');
+  {   // HRM-SENTINEL-ATOMIC (Codex #112): every server-value sentinel is resolved BEFORE anything is written
+    const d = makeHonestDb({ k: 1 });
+    await assert.rejects(d.ref('').update({ ok: 1, bad: { '.sv': 'bogus' } }), /not modelled/, 'HRM-SENTINEL-ATOMIC: an unknown sentinel refused');
+    assert.deepStrictEqual(d.getAt(''), { k: 1 }, 'HRM-SENTINEL-ATOMIC: the valid key beside it was NOT written');
+  }
+  ok('a refused sentinel writes nothing (sentinels resolve before the commit)');
+  {   // HRM-INCREMENT (Codex #112; production: client-version.js, form-signal.js): ServerValue.increment against the previous value
+    const { ServerValue } = require('firebase-admin/database');
+    const d = makeHonestDb({ c: { n: 10, s: 'x' } });
+    await d.ref('').update({ 'c/n': ServerValue.increment(5), 'c/new': ServerValue.increment(1), 'c/s': ServerValue.increment(2) });
+    assert.deepStrictEqual(d.getAt('c'), { n: 15, new: 1, s: 2 }, 'HRM-INCREMENT: numeric prev + n; absent ⇒ n; a non-number ⇒ n');
+    await d.ref('c/new').set(ServerValue.increment(1));
+    await d.ref('c').update({ deep: { x: ServerValue.increment(3) } });
+    assert.deepStrictEqual([d.getAt('c/new'), d.getAt('c/deep/x')], [2, 3], 'HRM-INCREMENT: set and a nested sentinel too');
+  }
+  ok('ServerValue.increment resolves against the previous value (absent / numeric / non-numeric)');
+  // LEDGER S5: the nightly rebuild's queries — orderByChild(c).startAt(x) / .equalTo(x) and orderByKey().startAt(a).endAt(b) — in
+  // RTDB's VALUE order (absent < false < true < numbers < strings < objects): a startAt(number) ALSO returns string / object values,
+  // as production does, so a reader must re-check the type. Every query is logged (db.queries) for the index cross-check.
+  const db7 = makeHonestDb({ o: { a: { t: 5 }, b: { t: 10 }, c: { t: 'x' }, d: {}, e: { t: { n: 1 } }, f: { t: 10, r: true }, g: { r: false } } });
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('t').startAt(10).once('value')).val()), ['b', 'f', 'c', 'e'], '🔴 HRM-CHILD-START: numbers ≥ 10, then strings, then objects (value order, ties by key)');
+  assert.deepStrictEqual(Object.keys((await db7.ref('o').orderByChild('r').equalTo(true).once('value')).val()), ['f'], '🔴 HRM-CHILD-EQ: equalTo(true) is exact');
+  assert.strictEqual((await db7.ref('o').orderByChild('t').equalTo(11).once('value')).val(), null, '🔴 HRM-CHILD-EQ: no match ⇒ null');
+  const db8 = makeHonestDb({ r: { 'A-1': 1, 'A-2': 2, 'AB-1': 3, 'B-1': 4 } });
+  assert.deepStrictEqual(Object.keys((await db8.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-KEY-RANGE: a key prefix range, inclusive');
+  assert.deepStrictEqual(db7.queries.map((q) => [q.path, q.child]), [['o', 't'], ['o', 'r'], ['o', 't']], '🔴 HRM-QUERY-LOG: every child query is logged');
+  ok('orderByChild startAt / equalTo in RTDB value order; orderByKey startAt/endAt; child queries logged');
+  // Codex #116 #4: the query bounds DIFFERENTIALLY against the installed Admin SDK (it validates a bound synchronously, before any network)
+  {
+    const sdkApp = require('firebase-admin').initializeApp({ projectId: 'demo-hrm', databaseURL: 'http://127.0.0.1:1?ns=demo-hrm' }, 'hrm-bounds');
+    const sdk = sdkApp.database();
+    const db9 = makeHonestDb({ o: { a: { t: 1 }, b: { u: 1 }, c: { t: 'x' } } });
+    const BOUNDS = [['NaN', NaN], ['Infinity', Infinity], ['-Infinity', -Infinity], ['null', null], ['undefined', undefined], ['1', 1], ['"x"', 'x'], ['true', true], ['{}', { a: 1 }], ['[]', [1]]];
+    const throws = (f) => { try { f(); return false; } catch (_) { return true; } };
+    for (const m of ['startAt', 'equalTo']) for (const [label, v] of BOUNDS) {
+      assert.strictEqual(throws(() => db9.ref('o').orderByChild('t')[m](v)), throws(() => sdk.ref('o').orderByChild('t')[m](v)), `🔴 HRM-BOUNDS: orderByChild().${m}(${label}) — the model must accept / refuse as the Admin SDK does`);
+    }
+    for (const [label, v] of BOUNDS) assert.strictEqual(throws(() => db9.ref('o').orderByKey().startAt(v)), throws(() => sdk.ref('o').orderByKey().startAt(v)), `🔴 HRM-BOUNDS: orderByKey().startAt(${label})`);
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').startAt(null).once('value')).val()), ['b', 'a', 'c'], '🔴 HRM-BOUNDS: startAt(null) keeps every child (absent first)');
+    assert.deepStrictEqual(Object.keys((await db9.ref('o').orderByChild('t').equalTo(null).once('value')).val()), ['b'], '🔴 HRM-BOUNDS: equalTo(null) = the children without the value');
+    await sdkApp.delete();
+  }
+  ok('query bounds accepted / refused exactly as the Admin SDK (differential); null bounds behave as RTDB');
+  // LEDGER S6 r3 (Codex #118 r2 #2): the bounded reads — limitToFirst after equalTo / startAt and after a key range, in the query's order
+  {
+    const db10 = makeHonestDb({ p: { a: { o: 'X' }, b: { o: 'X' }, c: { o: 'Y' }, d: { o: 'X' } }, r: { 'A-1': 1, 'A-2': 2, 'A-3': 3 } });
+    assert.deepStrictEqual(Object.keys((await db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(2).once('value')).val()), ['a', 'b'], '🔴 HRM-LIMIT: equalTo(…).limitToFirst(2)');
+    assert.deepStrictEqual(Object.keys((await db10.ref('r').orderByKey().startAt('A-').endAt('A-\uf8ff').limitToFirst(2).once('value')).val()), ['A-1', 'A-2'], '🔴 HRM-LIMIT: a key range .limitToFirst(2)');
+    assert.throws(() => db10.ref('p').orderByChild('o').equalTo('X').limitToFirst(0), /limitToFirst/, '🔴 HRM-LIMIT: a non-positive limit throws');
+  }
+  ok('limitToFirst after a child equalTo / startAt and after a key range (bounded reads)');
   console.log(`\nhonest-rtdb-model: OK (${n})`);
 })().catch((e) => { console.error('TEST FAILED:', e && e.message); process.exit(1); });

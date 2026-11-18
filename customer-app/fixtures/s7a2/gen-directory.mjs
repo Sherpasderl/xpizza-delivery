@@ -5,7 +5,7 @@
 // Real pieces: handleDirectory + makeDirectoryDeps (activityWithSource → getIdentity, loadSchedule, the presentation and platform
 // readers), createRestaurantRegistry().readNow, the identities seed_identity.js exports (assertIdentityShape), presentation
 // written through tools/seed-presentation.js run(), all over a minimal in-memory RTDB (below: arrays read back as arrays, empty values dropped, as RTDB does). The ONE fake dependency is
-// pricingView: 5f wires the Sherpa delivery readers later (directory-deps.js), so its values are declared below.
+// pricingView: its production reader is directory/pricing-view.js makePricingView (the quote's own read), wired by 5f later, so its values are declared below in that reader's shape.
 // Output: directory.json — each scenario's status, headers and raw body exactly as handleDirectory wrote them.
 import { createRequire } from 'node:module';
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -55,9 +55,11 @@ const EXTRA_PRESENTATION = Object.fromEntries(EXTRA.map((rid, i) => [rid, { kick
 const PLATFORM = { city_label: 'San Pedro Sula',
   cuisines: [['pizza', 'Pizza'], ['italiana', 'Italiana'], ['asiatica', 'Asiática'], ['mariscos', 'Mariscos'], ['cafe', 'Café'], ['desayuno', 'Desayuno']].map(([id, label]) => ({ id, label })),
   meals: { desayuno: 'Para el desayuno', compartir: 'Para compartir' }, social: { min_reorders: 50, min_ratings: 20 }, value: { median_up_to_cents: 20000 } };
-// DECLARED FAKE (wired by 5f later): the Sherpa delivery readers' view — the prototype's bands' first amount, its launch promo
+// DECLARED FAKE (wired by 5f later): the Sherpa delivery readers' view — the prototype's bands' first amount, its launch promo, marked
+// basis 'pricing' as makePricingView marks every promo it reads (rule 10: the quote's own read)
+const LAUNCH = { free_delivery: true, label: 'promoción de lanzamiento' };
 const PRICING = {
-  x_pizza: { fee: { state: 'priced', from_cents: 4500 }, promo: { free_delivery: true, label: 'promoción de lanzamiento' }, coverage_km: 7 },
+  x_pizza: { fee: { state: 'priced', from_cents: 4500 }, promo: { ...LAUNCH, basis: 'pricing' }, coverage_km: 7 },
   la_musa: { fee: { state: 'priced', from_cents: 4500 }, promo: null, coverage_km: 9.66 },
 };
 const EXTRA_PRICING = Object.fromEntries(EXTRA.map((rid) => [rid, { fee: { state: 'priced', from_cents: 4500 }, promo: null, coverage_km: 9.66 }]));
@@ -99,12 +101,9 @@ S.unavailable_503 = await call(await world({ registryFails: true }));
 S.tombstone = await call(await world({ inactive: ['la_musa'] }));
 S.five_stores = await call(await world({ ids: ['x_pizza', 'la_musa', ...EXTRA], extra: true, pricing: { ...PRICING, ...EXTRA_PRICING } }));   // C1b-P3: the desk «Para vos» past 4
 S.fee_none = await call(await world({ pricing: { ...PRICING, la_musa: { fee: { state: 'none' }, promo: null, coverage_km: 9.66 } } }));
-// RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses — 5f's directory will derive promo from the SAME
-// pricing read and mark it `basis: 'pricing'`; this pinned writer's promoOf keeps only {free_delivery, label}. «5f MARKER OVERLAY —
-// drop when this generator moves to 5f's commit»: every promo here comes from the declared pricing view (the ONE fake), so it is
-// marked pricing-derived. complete_writer_raw keeps the writer's own output (no marker) — what this directory emits TODAY.
-S.complete_writer_raw = JSON.parse(JSON.stringify(S.complete));
-for (const sc of Object.values(S)) for (const e of (sc.body && sc.body.restaurants) || []) if (sc !== S.complete_writer_raw && e.promo && e.promo.free_delivery === true) e.promo = { ...e.promo, basis: 'pricing' };
+// RULE 10 (advisor 11-13): a free-delivery claim needs the promo the QUOTE uses. complete_writer_raw = the writer's output for a promo that
+// did NOT come from the quote's pricing read (no basis): promoOf passes the marker only when the view supplies it — zero claims
+S.complete_writer_raw = await call(await world({ pricing: { ...PRICING, x_pizza: { ...PRICING.x_pizza, promo: { ...LAUNCH } } } }));
 // the CONTENT pin (Codex s7a2 r1 #10): sha-256 over the canonical JSON (sorted keys) of every scenario — a hand edit fails the test
 const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}` : JSON.stringify(v));
 out.scenarios_sha256 = createHash('sha256').update(canon(out.scenarios)).digest('hex');

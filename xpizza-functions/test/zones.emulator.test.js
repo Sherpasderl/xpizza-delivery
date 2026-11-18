@@ -238,7 +238,7 @@ const reserved = async () => ((await rtdb.ref(`user_rewards/${MEMBER}/${RID}/res
 
   // ── Z5/Z6. pickup with the pin inside → accepted; a FORM delivery inside → today's answer ──
   {
-    const pk = await post(app.createOrder, appBody('zp1', { type: 'pickup' }));
+    const pk = await post(app.chargeOnlineOrder, appBody('zp1', { type: 'pickup', method: 'online' }));   // an app pickup is card only (owner 11-16)
     assert.deepStrictEqual([pk.status, (await recOf('zp1')).order_type], [200, 'pickup'], `Z5 pickup (${pk.text.slice(0, 160)})`);
     const fm = await post(app.createOrder, formBody('zf1'));
     const fr = await recOf('zf1');
@@ -279,7 +279,7 @@ const reserved = async () => ((await rtdb.ref(`user_rewards/${MEMBER}/${RID}/res
   // ── Z7. malformed zones + valid bands (F5): app pickup priced, app delivery 503, a FORM untouched (the one direct corruption) ──
   {
     await rtdb.ref(`${PATH}/no_delivery_zones`).set([{ id: 'z_bbbbbbbb', name: 'Rota', points: [[14.1, -87.2], [14.2, -87.2]] }]);
-    const pk = await post(app.createOrder, appBody('zm1', { type: 'pickup' }));
+    const pk = await post(app.chargeOnlineOrder, appBody('zm1', { type: 'pickup', method: 'online' }));   // an app pickup is card only (owner 11-16)
     assert.strictEqual(pk.status, 200, `Z7 app pickup (${pk.text.slice(0, 160)})`);
     const dl = await post(app.createOrder, appBody('zm2', { km: 1 }));
     assert.deepStrictEqual([dl.status, dl.json && dl.json.error, await recOf('zm2')], [503, 'delivery_zones_invalid', null], `Z7 app delivery fails closed (${dl.text.slice(0, 160)})`);

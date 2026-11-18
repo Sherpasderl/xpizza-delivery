@@ -188,11 +188,16 @@ const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s4_pending_pay`
   {
     await clean();
     const slot = slotFrom(HOURS, 'pickup');
-    const pg = page('x_pizza'); const f = flowOf('cash', { mode: 'pickup', slot });
+    // OWNER 11-16: an APP pickup is card only ⇒ the scheduled pickup is placed by card and held after the VERIFIED paid callback
+    CHARGED.length = 0;
+    const pg = page('x_pizza'); const f = flowOf('online', { mode: 'pickup', slot });
     const { out } = await quoteAndPlace(pg, f, cartOf('x_pizza'));
+    assert.strictEqual(out.kind, 'redirect', JSON.stringify(out));
+    const cb = await paidCallback(out.order_id);
+    assert.ok(cb && cb.code === 200, `premise: the verified callback (${JSON.stringify(cb)})`);
     const o = await order(out.order_id);
-    assert.deepStrictEqual([out.kind, o.status, o.release_at], ['placed', 'scheduled', slot - 30 * 60000], '🔴 S-3 pickup: release_at = slot − 30');
-    ok('S-3 a scheduled pickup is held with release_at = slot − 30');
+    assert.deepStrictEqual([o.status, o.release_at], ['scheduled', slot - 30 * 60000], '🔴 S-3 pickup: release_at = slot − 30');
+    ok('S-3 a scheduled (card) pickup is held with release_at = slot − 30');
   }
 
   // ── S-2: card scheduled — the VERIFIED paid callback, scheduled_paid, release keeps charged_at, ONE checkout ──
@@ -217,16 +222,16 @@ const stashOf = (pg) => JSON.parse(pg.storage.getItem(`${pg.rid}_s4_pending_pay`
     ok('S-2 card scheduled: the REAL verified callback → held → paymentStatus scheduled_paid → placed{scheduled}; release keeps charged_at; one checkout');
   }
 
-  // ── S-4 (handler side): every app slot of the day the app offers is accepted by the REAL createOrder ──
+  // ── S-4 (handler side): every app pickup slot the app offers is accepted by the REAL charge (an app pickup is card only, owner 11-16) ──
   {
     await clean();
     const all = K.slots(served(HOURS), Date.now(), 'pickup');
     for (const slot of [all[0], all[Math.floor(all.length / 2)], all[all.length - 1]]) {
-      const { out } = await quoteAndPlace(page('x_pizza'), flowOf('cash', { mode: 'pickup', slot }), cartOf('x_pizza'));
-      assert.strictEqual(out.kind, 'placed', `🔴 S-4 the app's slot ${new Date(slot).toISOString()} is accepted (${JSON.stringify(out)})`);
+      const { out } = await quoteAndPlace(page('x_pizza'), flowOf('online', { mode: 'pickup', slot }), cartOf('x_pizza'));
+      assert.strictEqual(out.kind, 'redirect', `🔴 S-4 the app's slot ${new Date(slot).toISOString()} is accepted (${JSON.stringify(out)})`);
       await clean();
     }
-    ok('S-4 (handler side) the first, a middle and the LAST offered slot (the 7th local date) are each accepted by the REAL createOrder');
+    ok('S-4 (handler side) the first, a middle and the LAST offered pickup slot (the 7th local date) are each accepted by the REAL charge');
   }
 
   // ── S-5 + S-6: a closed store — ASAP refused; scheduled cash AND card place ──

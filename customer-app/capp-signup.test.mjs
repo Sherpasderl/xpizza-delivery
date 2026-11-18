@@ -284,7 +284,12 @@ test('Part B (b): under intlPhone the .cc is a BUTTON; the country list is a PAN
   await b.click('.phonerow button.cc');
   assert.equal(b.txt('.sg .h1'), 'País del número', '🔴 SP-pane: the country list is a pane of THIS sheet');
   assert.equal(b.txt('.sg .sub'), 'Solo cambia el código de tu WhatsApp. Entregamos únicamente en Honduras.');
-  assert.equal(b.qa('.sg .clist .crow').length, 10); assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
+  // PLAN-capp-picker-served-countries r1: the rows = the SERVER's countries (xpizza-functions/phone-countries.js), in the picker's order
+  const SRV = require('../xpizza-functions/phone-countries.js').COUNTRIES.map((c) => c.cc);
+  const rows = b.qa('.sg .clist .crow').map((r) => r.dataset.cc);
+  assert.deepEqual(new Set(rows), new Set(SRV), '🔴 PS-su: the sign-in pane offers exactly the server\'s countries');
+  assert.equal(rows.length, SRV.length); assert.ok(!rows.includes('507') && !rows.includes('501'), '🔴 PS-su: no Panamá, no Belice');
+  assert.deepEqual([b.txt('.crow.on .nm'), b.txt('.crow.on .code')], ['Honduras', '+504']); assert.ok(b.q('.crow.on svg'));
   assert.ok(b.q('[data-su="back"]'), 'the sheet\'s own ← Atrás'); assert.equal(b.w.document.querySelectorAll('.sheet').length, 1, 'never a second sheet');
   await b.click('[data-su="back"]');
   assert.equal(b.txt('.sg .h1'), 'Entrá a tu cuenta', 'Atrás ⇒ the phone pane');
