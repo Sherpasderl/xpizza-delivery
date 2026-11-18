@@ -827,6 +827,7 @@
       else if (k === 'placing') L.innerHTML = placingHtml();
       else if (k === 'tipother') L.innerHTML = tipOtherHtml();
       else if (k === 'pin') L.innerHTML = pinStepHtml();
+      else if (k === 'addrpick') L.innerHTML = addrPicker() && S.pickDir ? addrPicker().sheetHtml(S.pickDir) : '';   // C-DIR-1 (b): the host's ONE renderer (CappHome.addrSheetHtml)
       else if (k === 'feeinfo') L.innerHTML = feeInfoHtml();
       else if (k === 'cc') L.innerHTML = ccSheetHtml();
       else if (k === 'paysheet') L.innerHTML = sdkChooserHtml();   // S2-checkout 2
@@ -1079,6 +1080,26 @@
     }
     // S7a-2: the shell's guest location (opts.seedPin: { lat, lng, confirmed } or a function returning it); a pin the customer
     // confirms here is reported back (onEvent 'pin') so the shell's guest location follows it
+    // C-DIR-1 (b): the host's address picker { rows(), sel(), sheetHtml(dir), use(id) → seed { lat, lng, confirmed, saved } | null }
+    const addrPicker = () => { const p = opts.addressPicker; return p && typeof p.rows === 'function' && typeof p.sel === 'function' && typeof p.sheetHtml === 'function' && typeof p.use === 'function' ? p : null; };
+    // a saved address picked over the open checkout RE-SEEDS it: its pin (a new pin version — «Tocá el mapa…» until the pin step), its line,
+    // and its details ONLY when the field still holds what the previous saved address filled (or is empty) — an edit is never replaced
+    function reseedSaved(sp) {
+      const f = S.flow; if (dead || !f || !sp || !finitePin(sp) || !sp.saved || typeof sp.saved.label !== 'string') return;
+      const unedited = !(f.details || '').trim() || (f.saved && f.saved.details && f.details === f.saved.details);
+      C.setPin(f, sp.lat, sp.lng, sp.confirmed === true); S.pinStepOk = false; S.outZone = false;
+      const det = unedited && typeof sp.saved.details === 'string' && sp.saved.details ? sp.saved.details : null;
+      if (unedited) f.details = det || '';
+      f.saved = { label: sp.saved.label, detected: String(sp.saved.detected || ''), pinV: f.pinV, details: det };
+      render();   // the checkout asks ONE quote per state (the new pin is a new state key); totalsNow refuses the old pin's quote — never a stale Total
+    }
+    // «Usar mi ubicación actual»: the pin step centred on the device's fix (no fix ⇒ on the current pin / the branch)
+    function pinAtDevice() {
+      const f = S.flow, g = geoApi(), here = () => (finitePin(f.pin) ? { lat: f.pin.lat, lng: f.pin.lng } : cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null);
+      const open = (d) => { if (dead) return; S.pinDraft = d; openLayer('pin'); };
+      if (!g || typeof g.getCurrentPosition !== 'function') { open(here()); return; }
+      try { g.getCurrentPosition((pos) => { S.geo = 'ok'; open({ lat: pos.coords.latitude, lng: pos.coords.longitude }); }, () => open(here()), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }); } catch (_) { open(here()); }
+    }
     const seedPin = () => { let p = null; try { p = typeof opts.seedPin === 'function' ? opts.seedPin() : opts.seedPin; } catch (_) { p = null; } return p && finitePin(p) ? p : null; };
     // the device location (unconfirmed until «Listo»); denied / unavailable ⇒ the drawn «Ubicación desactivada» row
     const geoApi = () => (opts.geolocation !== undefined ? opts.geolocation : (doc.defaultView && doc.defaultView.navigator && doc.defaultView.navigator.geolocation) || null);
@@ -1229,7 +1250,13 @@
       // a guest's address line (S2b-geo, MOCKUP-capp-S2b-geo-address.html A1 / b / b2): the confirmed pin's reverse-geocode; c (none,
       // pending, superseded) keeps today's copy byte for byte
       const geoLine = savedLine(f) || C.addrLine(f);
-      const addrRow = `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
+      // C-DIR-1 (b) (owed SBS 11-14, advisor: build v6 :1845's MEMBER variant): a member's saved address in use is the plain row
+      // «{label} · {detected}», «Pin confirmado» (confirmed on the pin step) or «Tocá el mapa para ajustar el pin», and «Cambiar» — the
+      // «Entregar en» sheet over the checkout (the host's picker). RECORDED deviation (advisor-approved): never v6's «Pin en el
+      // restaurante» here — a saved address's pin is the address's own (rule 8). A guest keeps the pin button (v6 :1846)
+      const sl = m ? savedLine(f) : '';
+      const addrRow = sl ? `<div class="urow">${IC.pin}<span class="t"><b data-addr>${esc(sl)}</b><span>${pinOk ? 'Pin confirmado' : 'Tocá el mapa para ajustar el pin'}</span></span>${addrPicker() ? `<button class="act" data-act="co-addr"${fxOff}>Cambiar</button>` : ''}</div>`
+        : `<button class="urow" data-act="pin"${fxOff}>${IC.pin}<span class="t"><b data-addr>${geoLine ? esc(geoLine) : geoDenied ? 'Mové el pin a tu puerta' : 'Tu ubicación'}</b><span>${pinOk ? 'Pin confirmado' : 'Ajustá el pin a tu dirección'}</span></span>${chev}</button>`;
       const detailsFld = `<div class="fld"><label for="f-details">Detalles adicionales <span class="req">*</span></label><input id="f-details" data-field="details" value="${esc(f.details)}" placeholder="Colonia, portón, piso, referencia…" autocomplete="off"${fxOff}></div>`;
       const detailsRow = m && !S.editDetails && (f.details || '').trim().length >= 3 ? `<div class="urow">${IC.home}<span class="t"><b>${esc(f.details)}</b><span>Detalles adicionales</span></span><button class="act" data-act="editdetails"${fxOff}>Cambiar</button></div>` : '';
       const entrega = `<section class="fsec" aria-label="Entrega"><h2>Entrega</h2>
@@ -1980,6 +2007,7 @@
       if (a === 'tender') { f.tendered = v; render(); return true; }
       if (a === 'addmore') { toStore(); return true; }
       if (a === 'time') return true;   // ASAP is the only option in S2
+      if (a === 'co-addr') { const p = addrPicker(); if (!p || frozenNow()) return true; S.pickDir = { rows: p.rows(), sel: p.sel() }; openLayer('addrpick'); return true; }   // C-DIR-1 (b): rows frozen per open (rule 7)
       if (a === 'pin') { S.pinDraft = finitePin(f.pin) ? { lat: f.pin.lat, lng: f.pin.lng } : (cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null); openLayer('pin'); return true; }
       if (a === 'loc-on') { S.geo = null; requestGeo(); return true; }
       if (a === 'feeinfo') { openLayer('feeinfo'); return true; }
@@ -2008,6 +2036,13 @@
       const a = t.dataset.act;
       if (a === 'tk') { const v = t.dataset.val; S.tipDraft = v === 'del' ? (S.tipDraft || '').slice(0, -1) : capDraft((S.tipDraft || '') + v, S.tipDraft || ''); renderLayer(); return true; }
       if (a === 'tip-save') { const n = Number(S.tipDraft) || 0; C.chooseTip(S.flow, { other: Math.min(n, C.TIP_MAX_LEMPIRAS) }); S.tipDefaultFlow = null; closeLayer(); render(); return true; }
+      // C-DIR-1 (b) (advisor 11-14): the «Entregar en» sheet over the checkout, v6's exact rows — a saved address re-seeds THIS flow; «Usar
+      // mi ubicación actual» = the store's pin step at the device fix; «Agregar dirección» = the pin step, empty (no Inicio hop, no new flow)
+      if (S.layerKind === 'addrpick') {
+        if (a === 'addr-use') { const p = addrPicker(), sp = p ? p.use(t.dataset.id) : null; closeLayer(); if (sp) reseedSaved(sp); return true; }
+        if (a === 'loc-use') { closeLayer(); pinAtDevice(); return true; }
+        if (a === 'addr-new') { closeLayer(); S.pinDraft = cfg.loc && finitePin(cfg.loc) ? { lat: cfg.loc.lat, lng: cfg.loc.lng } : null; openLayer('pin'); return true; }
+      }
       if (a === 'placing-go') { placingGo(); return true; }
       if (a === 'placing-back') { placingStop(); closeLayer(); return true; }
       if (a === 'pin-done') {
@@ -2369,7 +2404,7 @@
       if (act === 'dclose') { closeDetail(); return; }
       if (cfg.sdkCheckout === true && /^(paysheet|paypick|addcard|savecard|cvv-info|decl-|sdk-retry)/.test(act) && sdkAct(t)) return;   // S2-checkout
       // S2b: the open layer's controls, then the current screen's
-      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp', 'cc'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
+      if (S.layerKind && ['err', 'placing', 'tipother', 'pin', 'feeinfo', 'otp', 'cc', 'addrpick'].includes(S.layerKind)) { if (act === 'lclose') { closeLayer(); return; } if (layerAct(t)) return; }
       if (S.screen === 'checkout' && !S.layerKind) {
         if (act === 'rev') { if (Number(t.dataset.rev) > 0 && isSold(find(t.dataset.key))) return; mutate(() => (Number(t.dataset.rev) > 0 ? cart.lineInc(t.dataset.key, t.dataset.grp || '') : cart.lineDec(t.dataset.key, t.dataset.grp || ''))); if (!cart.count()) toStore(); else render(); return; }
         if (checkoutAct(t)) return;

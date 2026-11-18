@@ -41622,5 +41622,39 @@
   "kills_with": [
    "DIR-NOTE"
   ]
+ },
+ {
+  "id": "dir-33",
+  "slice": "c-dir-1",
+  "label": "the member's saved address drawn as the guest pin button (v6 :1846, not :1845)",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const sl = m ? savedLine(f) : '';",
+  "to": "      const sl = '';",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1 \\(b\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-B-ROW"
+  ]
+ },
+ {
+  "id": "dir-34",
+  "slice": "c-dir-1",
+  "label": "a pick replaces details the customer typed",
+  "file": "../customer-app/capp-ui.js",
+  "from": "      const unedited = !(f.details || '').trim() || (f.saved && f.saved.details && f.details === f.saved.details);",
+  "to": "      const unedited = true;",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1 \\(b\\)",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-B-EDITED"
+  ]
  }
 ]

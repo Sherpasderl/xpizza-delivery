@@ -217,7 +217,7 @@
       const social = { rating: CappHome.ratingHtml(row.entry && row.entry.ratings, nowMs()), shareUrl: storeUrl(entry.rid), isFav: () => isFav(entry.rid) };   // C-1b: the member's heart reads the book live
       // ONE clock (PLAN-capp-virtual-clock P1): the store UI runs on the shell's timers unless the host gave it its own
       const ui = CappUI.mount(doc, { ...uo, ...(uo.timers ? {} : { timers: T }), ...updOpts, social, ...(view ? { view, deskChrome: storeChrome, deskBrand: CappHome.brandLockHtml, deskTerms: () => { const l = legalVm(); return l && CappHome.legalUrl(l.terms) ? l.terms : null; } } : {}), guestCardOnly: runtime.guestCardOnly === true,
-        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => seedNow(),
+        onRoute: (r) => { if (!S.store || S.store.ui !== ui || !r) return; if (pendingRoute && pendingRoute.mounted && r.step !== 'store') cancelRoute(); storeRoute = r; reflect(); if (pendingRoute && pendingRoute.mounted) tryRoute(); }, ...(S.member ? { member: S.member } : {}), authState: admittedAuth, search: ret ? ret.search : '', apiOpts, orderable, deviceAccount: () => CappDeviceAccount.read(storage), beforeCheckout: () => adoptBeforeCheckout(), envelope: e.body, config: cfg, unavailable: availOf(entry.rid), now: clock, history: nav.adapterFor(entry), seedPin: () => seedNow(), addressPicker: addressPicker(),
         readAvailability: () => readAvail(entry.rid, ui && ui.menu),
         onCartChange: (snap) => { writeJ(cfg.cartKey, snap); if (typeof uo.onCartChange === 'function') uo.onCartChange(snap); },
         onEvent: (name, detail) => { if (name === 'menu_reload') { if (S.store && S.store.ui === ui) reloadMenu(S.store); return; } if (name === 'outcome') { settleRet(entry.rid, detail); return; } if (name === 'signin' && SU) { openSignin(detail || {}); return; } if (name === 'fav') { setFav(entry.rid, !!(detail && detail.on)); return; } if (name === 'back') { nav.back(); return; } if (name === 'home') { nav.tab({ name: 'home' }); return; } if (name === 'pin') { setLoc(detail.lat, detail.lng, detail.source === 'gps' ? 'gps' : 'pin'); return; } if (name === 'store-open') { if (runtime.store && detail && detail.url === runtime.store.url) { keepHandoff(entry.rid); openExternal(runtime.store.url); } return; } if ((name === 'placed') && detail && detail.order) showOrder(entry.rid, detail); emit(name, { rid: entry.rid, ...(detail || {}) }); } });
@@ -1232,6 +1232,13 @@
     // C-DIR-1 seed (advisor ruling (A), 11-14): the store's checkout is seeded from the SAVED address in use (its pin confirmed, its label /
     // detected / details) so it agrees with the pill; otherwise from the device location, exactly as before (guests unchanged). Read LIVE
     // at checkout entry: after a sign-out / switch there is no book, so nothing of the previous member can seed
+    // C-DIR-1 (b) (advisor 11-14): the «Entregar en» sheet over a store's checkout — the member's book in its order (in use first), the ONE
+    // renderer (CappHome.addrSheetHtml, v6's exact rows), and the pick: selectAddr (persisted; «en uso» at once) then the seed of the
+    // address now in use, which the store re-seeds its open flow with. A guest has no rows (the store never offers «Cambiar» to one)
+    function addressPicker() {   // a function declaration: a store mounted during boot (a restored route) reaches it before this line runs
+      return { rows: () => (S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : []), sel: () => savedSelId(),
+        sheetHtml: (dir) => CappHome.addrSheetHtml(dir), use: (id) => { if (!(S.member && S.book && S.book.addresses.some((a) => a.id === id))) return null; selectAddr(id); return seedNow(); } };
+    }
     const seedNow = () => { const a = savedInUse(); return a ? { lat: a.lat, lng: a.lng, confirmed: true, saved: { label: a.label, detected: a.detected, details: a.details } } : S.loc; };
     function bookIdentity() {
       const uid = S.member && S.member.uid ? S.member.uid : null;

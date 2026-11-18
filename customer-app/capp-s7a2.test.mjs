@@ -5173,7 +5173,7 @@ async function seedCheckout(o = {}) {
   return { ...b, ui };
 }
 const casaOf = () => ADX.scenarios.profile_default_casa.body.addresses.find((a) => a.id === AID.casa);
-const addrBold = (S) => txt(S.q('.urow[data-act="pin"] b[data-addr]'));
+const addrBold = (S) => txt(S.q('.urow b[data-addr]'));   // the member's saved row (a plain .urow, v6 :1845) or the pin button (v6 :1846)
 test('C-DIR-1 SEED: the member\'s saved address in use (Casa, in x_pizza\'s zone) SEEDS the checkout — its pin confirmed, «Casa · Col. Trejo, San Pedro Sula», its details; no out-of-zone gate', async () => {
   const { S, ui } = await seedCheckout();
   try {
@@ -5182,6 +5182,61 @@ test('C-DIR-1 SEED: the member\'s saved address in use (Casa, in x_pizza\'s zone
     assert.equal(addrBold(S), 'Casa · Col. Trejo, San Pedro Sula', '🔴 DIR-SEED: the checkout shows the saved address');
     assert.equal(ui.state.flow.details, 'Casa azul, portón negro', '🔴 DIR-SEED: its details (v6 :1804)');
     assert.equal(S.q('.gate[role="alert"]'), null, 'inside the zone: no gate');
+  } finally { S.w.close(); }
+});
+// ── C-DIR-1 (b) (owed SBS 11-14, advisor: v6 :1845's MEMBER row + the host-provided «Entregar en» picker over the checkout) ──
+const trabajoOf = () => ADX.scenarios.profile_default_casa.body.addresses.find((a) => a.id === AID.trabajo);
+const addrRowOf = (S) => S.q('.urows .urow:has(b[data-addr])');
+test('C-DIR-1 (b) ROW (v6 :1845): a member\'s saved address in use ⇒ the plain row «Casa · …», «Tocá el mapa para ajustar el pin», «Cambiar»; «Pin confirmado» after the pin step; never «Pin en el restaurante»', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    const row = addrRowOf(S);
+    assert.ok(row && !row.matches('[data-act]'), '🔴 DIR-B-ROW: the plain .urow (no pin button)');
+    assert.equal(txt(row), 'Casa · Col. Trejo, San Pedro Sula Tocá el mapa para ajustar el pin Cambiar', '🔴 DIR-B-ROW: v6 :1845 exactly');
+    assert.ok(row.querySelector('button.act[data-act="co-addr"]'), '🔴 DIR-B-ROW: «Cambiar»');
+    S.click('.map[data-act="pin"]'); await flush(); ui.state.pinDraft = { lat: casaOf().lat, lng: casaOf().lng };
+    S.click('[data-act="pin-done"]'); await flush(); await flush();
+    assert.match(txt(addrRowOf(S)), /Pin confirmado/, '🔴 DIR-B-ROW: confirmed on the pin step');
+    assert.ok(!/Pin en el restaurante/.test(S.q('.flow').textContent), 'the recorded deviation: never v6\'s «Pin en el restaurante» for a saved address');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) PICK: «Cambiar» opens v6\'s «Entregar en» sheet over the checkout (in use first, then «Usar mi ubicación actual» / «Agregar dirección»); picking Trabajo RE-SEEDS the flow and asks a NEW quote (the old one dropped)', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="co-addr"]'); await flush();
+    assert.equal(ui.state.layerKind, 'addrpick', 'over the checkout (the store\'s own layer)');
+    assert.deepEqual(S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null]), [['addr-use', AID.casa], ['addr-use', AID.trabajo], ['loc-use', null], ['addr-new', null]], '🔴 DIR-B-PICK: v6\'s exact rows, in use first');
+    const oldQ = ui.state.q;
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush();
+    const t = trabajoOf(), p = ui.state.flow.pin;
+    assert.equal(ui.state.layerKind, null, 'the sheet closes');
+    assert.deepEqual([p.lat, p.lng], [t.lat, t.lng], '🔴 DIR-B-PICK: the flow re-seeded on Trabajo\'s pin');
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', '🔴 DIR-B-PICK: the row names Trabajo');
+    assert.equal(ui.state.flow.details, 'Torre 2, piso 5', '🔴 DIR-B-PICK: the unedited details follow the address');
+    assert.ok(ui.state.q === null || ui.state.q !== oldQ, '🔴 DIR-B-PICK: the old quote is never kept');
+    assert.ok(String(ui.state.askedKey).includes(String(t.lat)), '🔴 DIR-B-PICK: a new quote asked for the new pin');
+    assert.match(txt(addrRowOf(S)), /Tocá el mapa para ajustar el pin/, 'a new pin version: not confirmed on the pin step yet');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) EDITED: details the customer TYPED are never replaced by a pick', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    ui.state.flow.details = 'Portón verde, segunda casa'; ui.render(); await flush();
+    S.click('[data-act="co-addr"]'); await flush();
+    S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush();
+    assert.equal(ui.state.flow.details, 'Portón verde, segunda casa', '🔴 DIR-B-EDITED: an edit is kept');
+    assert.equal(addrBold(S), 'Trabajo · Blvd. Morazán, Tegucigalpa', 'the address still moved');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (b) ROUTES: «Usar mi ubicación actual» = the store\'s pin step at the device fix; «Agregar dirección» = the pin step at the branch (no Inicio hop)', async () => {
+  const { S, ui } = await seedCheckout();
+  try {
+    S.click('[data-act="co-addr"]'); await flush(); S.click('#layer [data-act="loc-use"]'); await flush();
+    assert.equal(ui.state.layerKind, 'pin', '🔴 DIR-B-ROUTE: the pin step (loc-use)'); assert.ok(ui.state.pinDraft && Number.isFinite(ui.state.pinDraft.lat), 'centred on a fix');
+    assert.ok(S.ui.store(), 'still in the store (no Inicio hop)');
+    S.click('[data-act="lclose"]'); await flush();
+    S.click('[data-act="co-addr"]'); await flush(); S.click('#layer [data-act="addr-new"]'); await flush();
+    assert.equal(ui.state.layerKind, 'pin', '🔴 DIR-B-ROUTE: the pin step (addr-new)'); assert.ok(S.ui.store(), 'still in the store');
   } finally { S.w.close(); }
 });
 test('C-DIR-1 SEED: «Ajustar pin» to another point OVERRIDES the saved address — the row no longer names it', async () => {
