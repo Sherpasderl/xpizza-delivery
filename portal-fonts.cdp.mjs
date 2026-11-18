@@ -28,7 +28,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { launch, serveDir, router, census, attribute, runsOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
+import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const SITE = 'xpizza-portal';
@@ -632,6 +632,8 @@ function gateB(byState, decls, reqW, without = new Set()) {
 function gateD(r) {
   const ranges = primaryDecls().flatMap((d) => d.range); const bad = [];
   for (const n of r.after.nodes) {
+    // Codex #140 P2: a key the face wait ran out on (the space included) is never a pass, whatever the node's stack
+    for (const k of deadlineKeysOf(n, r.probe)) bad.push(`${n.path.slice(-50)}: (deadline) — the face wait ran out for U+${Number(k.split('|')[3]).toString(16).toUpperCase().padStart(4, '0')}`);
     if (!hostedOf(firstFamily(n.family))) continue;
     for (const run of runsOf(n, r.probe).runs) if (!hostedOf(run.familyName) && run.codepoints.some((cp) => inRange(cp, ranges)))
       bad.push(`${n.path.slice(-50)}: ${run.familyName} draws ${JSON.stringify(String.fromCodePoint(...run.codepoints.filter((cp) => inRange(cp, ranges))))} inside ${FACE}'s ranges`);

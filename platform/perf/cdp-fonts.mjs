@@ -80,8 +80,10 @@ export function session(ws, { deadlineMs = Number(process.env.FONTS_CDP_DEADLINE
   });
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id;
     const timer = setTimeout(() => { if (pend.delete(i)) reject(new Error(`cdp: ${method} got no answer in ${deadlineMs / 1000} s`)); }, deadlineMs);
-    pend.set(i, { resolve, reject, method, timer }); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
-  return { send, handlers };
+    pend.set(i, { resolve, reject, method, timer });
+    // Codex #140: a send that throws at once (serialisation, a closed socket) leaves nothing waiting for the deadline
+    try { ws.send(JSON.stringify({ id: i, method, params, sessionId })); } catch (err) { clearTimeout(timer); pend.delete(i); reject(err); } });
+  return { send, handlers, pending: () => pend.size };
 }
 
 export async function launch({ width = 390, height = 844, dpr = 2, throttle = false, args = [] } = {}) {
@@ -201,7 +203,8 @@ export async function census(cdp) {
     const label = node.nodeType === 1 ? `${trail}>${node.localName}${(node.attributes || []).reduce((a, v, i, arr) => (i % 2 === 0 && v === 'id' ? `${a}#${arr[i + 1]}` : a), '')}` : trail;
     if (node.pseudoType) {
       const props = await styleOf(node.nodeId);
-      const m = props && cssText(props, 'content').match(/^"(.*)"$/);
+      if (!props) { vanished.push(`${trail}::${node.pseudoType}`); return; }   // Codex #140 P1: an unreadable pseudo is recorded too
+      const m = cssText(props, 'content').match(/^"(.*)"$/);
       if (m && m[1].trim()) await record(node.nodeId, node.nodeId, m[1], `${trail}::${node.pseudoType}`);
       return;
     }
@@ -272,6 +275,12 @@ export async function attribute(cdp, nodes, { settleMs = Number(process.env.FONT
 
 // Runs per node, from the probe: [{ familyName, codepoints:[int] }]; plus the fidelity check (probe counts per font == the node's own
 // glyph counts). A node's mismatch is returned, never silently ignored.
+// Codex #140 P2: every key of this node the face wait ran out on — its codepoints AND its stack's space (a node with no spaces never
+// meets the space key in its runs, so a '(deadline)' space would otherwise pass). Fidelity fails on any; the portal gate (d) too.
+export function deadlineKeysOf(node, probe) {
+  const keys = [...new Set([...node.codepoints, 32])].map((cp) => `${node.family}|${node.weight}|${node.style}|${cp}`);
+  return keys.filter((k) => probe.get(k) === '(deadline)');
+}
 export function runsOf(node, probe) {
   const runs = new Map();
   for (const cp of node.codepoints) { const f = probe.get(`${node.family}|${node.weight}|${node.style}|${cp}`); if (!runs.has(f)) runs.set(f, []); runs.get(f).push(cp); }
@@ -281,6 +290,8 @@ export function runsOf(node, probe) {
   // a space for this stack, and at most one per raw whitespace run (collapsing / line-edge trimming can only remove spaces).
   const spaceFont = probe.get(`${node.family}|${node.weight}|${node.style}|32`);
   const problems = [];
+  const late = deadlineKeysOf(node, probe);
+  if (late.length) problems.push(`(deadline): the face wait ran out for ${late.map((k) => `U+${Number(k.split('|')[3]).toString(16).toUpperCase().padStart(4, '0')}`).join(', ')} — never read`);
   for (const f of new Set([...Object.keys(probeCounts), ...Object.keys(nodeCounts)])) {
     const extra = (nodeCounts[f] || 0) - (probeCounts[f] || 0);
     const allowed = f === spaceFont ? node.spaces : 0;

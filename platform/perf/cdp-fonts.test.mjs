@@ -5,7 +5,7 @@
 // decide routes exactly as before. Run: node --test platform/perf/cdp-fonts.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { router, census, attribute, session } from './cdp-fonts.mjs';
+import { router, census, attribute, session, runsOf, deadlineKeysOf } from './cdp-fonts.mjs';
 
 async function drive(decide, request = { url: 'https://us-central1-x.cloudfunctions.net/getThing', method: 'POST', headers: {} }) {
   const handlers = {}; const sent = [];
@@ -111,4 +111,33 @@ test('session: an answered command resolves with its result (the deadline never 
   let onMsg = null; const ws = { addEventListener: (ev, fn) => { if (ev === 'message') onMsg = fn; }, send: (d) => { const { id } = JSON.parse(d); setTimeout(() => onMsg({ data: JSON.stringify({ id, result: { ok: 1 } }) }), 5); } };
   const { send } = session(ws, { deadlineMs: 200 });
   assert.deepEqual(await send('DOM.enable'), { ok: 1 });
+});
+
+// Codex #140 r1 (advisor 11-18): three holes in r3d's deadlines / vanished record.
+test('census (#140 P1): a pseudo-element whose style query fails is recorded in .vanished as <trail>::<pseudo> — a fallback cannot hide there', async () => {
+  const tree = { nodeId: 1, nodeType: 9, children: [{ nodeId: 2, nodeType: 1, localName: 'body', attributes: [], children: [
+    { nodeId: 3, nodeType: 1, localName: 'p', attributes: [], pseudoElements: [{ nodeId: 7, nodeType: 1, pseudoType: 'before' }], children: [{ nodeId: 4, nodeType: 3, nodeValue: 'Hola' }] }] }] };
+  const style = [{ name: 'font-family', value: 'Figtree' }, { name: 'font-weight', value: '750' }, { name: 'font-style', value: 'normal' }];
+  const nodes = await census({ s: async (m, p) => {
+    if (m === 'DOM.getDocument') return { root: tree };
+    if (m === 'CSS.getComputedStyleForNode') { if (p.nodeId === 7) throw new Error('CSS.getComputedStyleForNode: No node with given id found'); return { computedStyle: style }; }
+    if (m === 'CSS.getPlatformFontsForNode') return { fonts: [{ familyName: 'Figtree', isCustomFont: true, glyphCount: 4 }] };
+    throw new Error(`unexpected ${m}`);
+  } });
+  assert.deepEqual(nodes.map((n) => n.path), ['>body>p']);
+  assert.deepEqual(nodes.vanished, ['>body>p::before'], 'the unreadable pseudo-element is named');
+});
+test('runsOf (#140 P2): a \'(deadline)\' SPACE key on a node with no spaces still fails fidelity, naming it (deadlineKeysOf lists every such key)', () => {
+  const node = { family: 'Figtree', weight: '750', style: 'normal', codepoints: [72], spaces: 0, ligatures: 0, clamp: null, fonts: [{ familyName: 'Figtree', glyphCount: 1 }] };
+  const probe = new Map([['Figtree|750|normal|72', 'Figtree'], ['Figtree|750|normal|32', '(deadline)']]);
+  assert.deepEqual(deadlineKeysOf(node, probe), ['Figtree|750|normal|32']);
+  const { fidelity } = runsOf(node, probe);
+  assert.ok(fidelity.some((f) => /\(deadline\).*U\+0020/.test(f)), `fidelity names the deadline key (got ${JSON.stringify(fidelity)})`);
+  assert.deepEqual(runsOf(node, new Map([['Figtree|750|normal|72', 'Figtree'], ['Figtree|750|normal|32', 'Figtree']])).fidelity, [], 'control: settled ⇒ no problem');
+});
+test('session (#140 P2): a send that throws synchronously rejects with that error AND leaves no pending entry or live timer', { timeout: 5000 }, async () => {
+  const ws = { addEventListener: () => {}, send: () => { throw new Error('socket closed'); } };
+  const sess = session(ws, { deadlineMs: 60000 });
+  await assert.rejects(sess.send('DOM.enable'), /socket closed/);
+  assert.equal(sess.pending(), 0, 'nothing left waiting for the 60 s deadline');
 });
