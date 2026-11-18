@@ -267,10 +267,18 @@ test('an op_id edit replay at a NEWER rev is SAVED (it is our operation); withou
   assert.equal(ML.classifyWrite({ op: 'save', offerId: o.id, expectedRev: o.rev }, again).outcome, 'unknown', 'without one: rev + 2 is never taken as ours');
   assert.equal(ML.classifyWrite({ ...a, offerId: 'o_aaaaaaaaaaaaaaaaaaaaaaaa' }, again).outcome, 'unknown', 'another offer\'s record: never ours');
 });
-// SHIP-GATE (owner 11-15, confirm every save): the ONE fallback string — shown only when a save could not be confirmed (MOCKUP v5b 1c)
-test('SHIP-GATE copy: an UNCONFIRMED outcome reads exactly «No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.»; no old unknown string ships anywhere in xpizza-portal/', () => {
-  assert.equal(ML.UNKNOWN_WORD, 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.');
-  const OLD = ['Revisá tu lista antes de intentar de nuevo', 'Volvé a la lista antes de intentar de nuevo', 'No sabemos si se guardó'];
+// SHIP-GATE (owner 11-17, MOCKUP-portal-marketing-unknown APPROVED as recommended; supersedes v5b 1c): the list's words, exact
+test('SHIP-GATE copy: U1 «Confirmando», U4 the fallback, U4b the button, U3/U3b «No se guardó»; no old unknown string ships anywhere in xpizza-portal/', () => {
+  assert.equal(ML.CONFIRMING_WORD, 'La conexión tardó. Estamos confirmando que se guardó.', 'U1 = the approved 11-15 line');
+  assert.equal(ML.UNKNOWN_WORD, 'Todavía no pudimos confirmar tu cambio. Revisá la oferta en la lista en unos minutos antes de repetirlo.', 'U4 (owner Q1)');
+  assert.equal(ML.RECONFIRM_WORD, 'Volver a confirmar', 'U4b (owner Q2: keep)');
+  assert.equal(ML.notSavedWord('save', null), 'No se guardó el cambio. Podés intentarlo de nuevo.', 'U3b');
+  assert.equal(ML.notSavedWord('create', 'Ya tenés el máximo de ofertas activas en una sucursal. Terminá una para programar esta.'),
+    'No se guardó la oferta. Ya tenés el máximo de ofertas activas en una sucursal. Terminá una para programar esta.', 'U3: a create / repeat names «la oferta»');
+  assert.equal(ML.notSavedWord('state', 'X.'), 'No se guardó el cambio. X.', 'U3: an edit / move names «el cambio»');
+  assert.deepEqual(ML.CONFIRM_DELAYS, [3000, 10000, 30000], 'the schedule: +3 s, +10 s, +30 s, then stop');
+  const OLD = ['Revisá tu lista antes de intentar de nuevo', 'Volvé a la lista antes de intentar de nuevo', 'No sabemos si se guardó',
+    'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.'];   // v5b 1c's line, replaced by U4
   const files = readdirSync(DIR).filter((f) => /\.(js|html)$/.test(f) && !f.startsWith('__'));
   assert.ok(files.includes('marketing-builder.js') && files.includes('marketing-detail.js'), 'premise: the screens are scanned');
   for (const f of files) { const t = readFileSync(join(DIR, f), 'utf8'); for (const o of OLD) assert.ok(!t.includes(o), `${f}: the old unknown string «${o}» is gone`); }

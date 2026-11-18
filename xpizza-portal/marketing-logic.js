@@ -289,10 +289,23 @@ export function refusalOf(status, b) {
 }
 
 // An UNKNOWN write (r6.1, advisor 11-15): the client never classifies it — no recovery read, no inference from rev, content or state
-// (a CAS may still commit; a live mirror may still roll back). The screen closes, the list re-reads, and it says exactly this:
-// owner 11-15 (MOCKUP v5b 1c): the calm fallback — a save the page could not confirm (a create / repeat / draft after its ONE
-// confirmation, an edit / move at once). A neutral notice, never the error style.
-export const UNKNOWN_WORD = 'No pudimos confirmar el cambio. Revisá la oferta en la lista antes de volver a intentarlo.';
+// (a CAS may still commit; a live mirror may still roll back). The screen closes and the list re-reads.
+// owner 11-17 (MOCKUP-portal-marketing-unknown, APPROVED as recommended): the LIST keeps confirming. The page holds the attempt in memory
+// (never stored) and re-sends the SAME request — the SAME op_id, so 3a's claim replays it or lands it now, exactly once (a claim lives
+// 7 days) — at +3 s, +10 s, +30 s, then stops. Only an answer the server gives under that op_id settles it (classifyConfirmation):
+//   U1 while confirming — CONFIRMING_WORD (the approved 11-15 line)
+//   U2 landed           — the dialog's own success word, as a toast; the notice goes
+//   U3 / U3b not landed — notSavedWord: «No se guardó …» + the refusal's own sentence (owner Q3), else the generic line; NEUTRAL
+//   U4 can't tell       — UNKNOWN_WORD (owner Q1) + U4b RECONFIRM_WORD (owner Q2: one more same-op_id try, while the page holds it)
+// Every notice is the calm neutral callout, never the error style. Leaving the page, another account / brand or a new write cancels.
+export const CONFIRM_DELAYS = Object.freeze([3000, 10000, 30000]);
+export const CONFIRMING_WORD = 'La conexión tardó. Estamos confirmando que se guardó.';
+export const UNKNOWN_WORD = 'Todavía no pudimos confirmar tu cambio. Revisá la oferta en la lista en unos minutos antes de repetirlo.';
+export const RECONFIRM_WORD = 'Volver a confirmar';
+const NOT_SAVED = 'No se guardó el cambio. Podés intentarlo de nuevo.';
+// op: the attempt's kind — a create / repeat names «la oferta», an edit / move «el cambio»; reason: the dialog's own sentence | null
+export const notSavedWord = (op, reason) => (typeof reason === 'string' && reason
+  ? `${op === 'create' || op === 'repeat' ? 'No se guardó la oferta.' : 'No se guardó el cambio.'} ${reason}` : NOT_SAVED);
 
 // ── O1 · the «Campañas» list (MOCKUP-portal-marketing v5 s-home, owner-approved 11-14) ─────────────────────────────────────────
 // Each row: the type icon, the name (+ «N de M sucursales» when narrowed), the status as a dot + word, «Horario» in plain words.

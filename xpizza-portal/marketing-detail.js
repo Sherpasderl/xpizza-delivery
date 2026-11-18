@@ -178,23 +178,29 @@ export async function move(kind) {
   if (D.busy) return;
   const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, opId = newOpId();
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
+  if (typeof ctx.onWrite === 'function') ctx.onWrite();   // a NEW write: the attempt the list still holds is dropped (owner 11-17)
   D.busy = true; D.err = null; render();
   const a = { op: 'state', opId, offerId: o.id, expectedRev: o.rev, to };
   const send = (classify) => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
+  const landed = (x) => ML.stateToast(x.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
   let r = await send(ML.classifyWrite);
   if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(ML.classifyConfirmation); }   // Codex #93 F2
+  // owner 11-17 (MOCKUP-portal-marketing-unknown): the list keeps confirming the SAME request (the SAME op_id); a move's refusal has no
+  // sentence of its own here (errWord is generic) ⇒ U3b. op_id_conflict (our bug) is never re-sent.
+  const retry = r.conflict ? null : { op: 'state', resend: () => send(ML.classifyConfirmation),
+    onLanded: (x) => { const w = landed(x); if (w && ctx.toast) ctx.toast(w); }, reason: () => null, onDuplicate: null };
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
     // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
-    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true }); else if (ctx.onChanged) ctx.onChanged();
+    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry }); else if (ctx.onChanged) ctx.onChanged();
     return;
   }
   D.busy = false; D.confirming = false;
-  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown(); else if (ctx.onChanged) ctx.onChanged(); return; }
+  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown({ retry }); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
   D.sheet = null;
   const c = D.ctx;
-  const word = ML.stateToast(D.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
+  const word = landed({ offer: D.offer });
   if (word) c.toast(word);
   render();
   c.onChanged && c.onChanged();
