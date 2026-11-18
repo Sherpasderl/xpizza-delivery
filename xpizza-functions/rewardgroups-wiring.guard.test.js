@@ -58,7 +58,7 @@ ok(`${FILES.length} file(s) minus the ${HUNKS.length} reward-groups hunks === ${
   for (const f of files) {
     const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
     if (f === 'extrasflip-wiring.guard.test.js') {   // the layer guard's own raw read
-      if (!/const disk = require\('\.\/tools\/rewardgroups-module-inverse'\)\.unapplyRewardGroupsModule\(F, fs\.readFileSync\(/.test(s)) bare.push(`${f}: its raw read`);
+      if (!/const disk = require\('\.\/tools\/rewardgroups-module-inverse'\)\.unapplyRewardGroupsModule\(F, require\('\.\/tools\/statscmp-module-inverse'\)\.unapplyStatsCmpModule\(F, require\('\.\/tools\/dirwire-module-inverse'\)\.unapplyDirwireModule\(F, require\('\.\/tools\/salesmulti-module-inverse'\)\.unapplySalesMultiModule\(F, require\('\.\/tools\/d4-intake-inverse'\)\.unapplyD4Module\(F, /.test(s)) bare.push(`${f}: its raw read`);
       continue;
     }
     const re = /unapplyExtrasflipModule\(/g; let m;

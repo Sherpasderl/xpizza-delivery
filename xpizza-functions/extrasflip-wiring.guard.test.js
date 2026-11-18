@@ -12,7 +12,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'EXTRASFLIP: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = require('./tools/rewardgroups-module-inverse').unapplyRewardGroupsModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // feat/reward-groups-5f: the newer layer peels first
+  const disk = require('./tools/rewardgroups-module-inverse').unapplyRewardGroupsModule(F, require('./tools/statscmp-module-inverse').unapplyStatsCmpModule(F, require('./tools/dirwire-module-inverse').unapplyDirwireModule(F, require('./tools/salesmulti-module-inverse').unapplySalesMultiModule(F, require('./tools/d4-intake-inverse').unapplyD4Module(F, require('./tools/mktprice-module-inverse').unapplyMktPriceModule(F, require('./tools/audience-module-inverse').unapplyAudienceModule(F, require('./tools/ledgers1-module-inverse').unapplyLedgerS1Module(F, fs.readFileSync(path.join(__dirname, F), 'utf8')))))))));   // feat/reward-groups-5f: the newer layer peels first, over the D4 peel chain the d4/mktprice/salesmulti/dirwire/statscmp guards require (identity on this file)
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `EXTRASFLIP: non-vacuity — ${F} carries the flip hunk(s)`);
   assert.strictEqual(unapplyExtrasflipModule(F, disk), base, `🔴 EXTRASFLIP-BASE: ${F} minus the flip hunk(s) is not ${BASE}:${F}`);
