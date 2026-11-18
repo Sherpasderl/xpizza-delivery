@@ -41469,5 +41469,22 @@
   "kills_with": [
    "ADDR-PIN: the fixture was generated at the approved 3a ref"
   ]
+ },
+ {
+  "id": "dir-guard",
+  "slice": "c-dir-1",
+  "label": "capp-guards (11-18 re-base, direcciones-r2): a capp commit after CAPP_TIP no longer fails the range",
+  "file": "../customer-app/capp-guards.test.mjs",
+  "from": "  assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP",
+  "to": "  assert.equal('', '', `🔴 capp commit(s) after CAPP_TIP",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=still bites",
+   "../customer-app/capp-guards.test.mjs"
+  ],
+  "kills_with": [
+   "GUARD-BITES"
+  ]
  }
 ]
