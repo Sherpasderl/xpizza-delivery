@@ -75,7 +75,15 @@ test('slot-owed 11-18 (16b): the WhatsApp number in «Ingresá el código» neve
 });
 
 test('slot-owed 11-18 (16b): no orphaned last word — the sign-in subtitle («vez.»), the desk guest line («tarjeta.»), the desk dish cards («Chili» / «sauce»)', () => {
-  for (const sel of ['.sg .sub', '.app.desk .guestline', '.app.desk .icard .nm', '.app.desk .icard .ds']) assert.ok(wraps(sel), `🔴 TF-ORPHAN: \`${sel}\` balances its lines (text-wrap)`);
+  for (const sel of ['.sg .sub', '.app.desk .guestline', '.app.desk .icard .nm', '.app.desk .icard .ds', '.fld .note']) assert.ok(wraps(sel), `🔴 TF-ORPHAN: \`${sel}\` balances its lines (text-wrap)`);
+});
+
+// slot 11-18 (Chrome, R11-store-desk-1440): `text-wrap: pretty` is NOT applied to the 2-line CLAMPED description (a -webkit-box) — «…fresh
+// / mozzarella» still orphaned; the clamped box takes `balance`. The phone checkout's field hint «…sobre este / pedido.» (OF-disc-390) is a
+// .fld .note — balanced too (advisor 11-18: in scope). The Chrome proof is the SBS fit probe at the next slot.
+test('slot 11-18 (16b, Chrome-proven): the clamped desk dish description BALANCES (pretty is ignored on a -webkit-box); the field hint balances', () => {
+  assert.ok(/(^|;)\s*text-wrap\s*:\s*balance\b/.test(ruleBody('.app.desk .icard .ds')), '🔴 TF-CLAMP: `.app.desk .icard .ds` is text-wrap:balance (pretty left «mozzarella» alone in Chrome)');
+  assert.ok(/(^|;)\s*text-wrap\s*:\s*balance\b/.test(ruleBody('.fld .note')), '🔴 TF-NOTE: `.fld .note` is text-wrap:balance («pedido.» alone at 390)');
 });
 
 test('slot-owed 11-18 (advisor GO 10): the centred desktop modal shows no drag handle (a phone-sheet affordance)', () => {

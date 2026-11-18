@@ -41369,7 +41369,7 @@
   "slice": "textfit",
   "label": "16b: the desk dish-card description wraps one word («sauce»)",
   "file": "../customer-app/capp.css",
-  "from": "-webkit-line-clamp:2;text-wrap:pretty}",
+  "from": "-webkit-line-clamp:2;text-wrap:balance}",
   "to": "-webkit-line-clamp:2}",
   "command": [
    "node",
@@ -41378,6 +41378,38 @@
   ],
   "kills_with": [
    "TF-ORPHAN: `.app.desk .icard .ds`"
+  ]
+ },
+ {
+  "slice": "textfit",
+  "file": "../customer-app/capp.css",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "id": "tf-08",
+  "label": "16b: the clamped desk description back on `pretty` — Chrome ignores it on a -webkit-box («mozzarella» alone, slot 11-18)",
+  "from": "-webkit-line-clamp:2;text-wrap:balance}",
+  "to": "-webkit-line-clamp:2;text-wrap:pretty}",
+  "kills_with": [
+   "TF-CLAMP"
+  ]
+ },
+ {
+  "slice": "textfit",
+  "file": "../customer-app/capp.css",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "id": "tf-09",
+  "label": "16b: the field hint unbalanced again («pedido.» alone at 390, slot 11-18)",
+  "from": ".fld .note{text-wrap:balance}",
+  "to": ".fld .note{}",
+  "kills_with": [
+   "TF-NOTE"
   ]
  },
  {
