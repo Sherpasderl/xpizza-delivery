@@ -34,5 +34,22 @@
    "🔴 P3: GET with stored 200001"
   ],
   "run": "from xpizza-functions: node tools/mutation-sweep.js --mutants=../../review/capp-sbs/fixtures.mutants.json (harness-scoped: SBS-1 keeps the shared catalogue harness-free; not covered by the shared anchors guard — advisor 11-13 accepted)"
+ },
+ {
+  "id": "sbsq-01",
+  "slice": "s7a2-align",
+  "label": "the SBS quote bypasses loadPricing's policy override (free delivery granted from a pricing it builds itself)",
+  "file": "../review/capp-sbs/fixtures.mjs",
+  "from": "      pricingP: pricingDb().then((db) => DW.loadPricing(db, rid)),",
+  "to": "      pricingP: pricingDb().then(async (db) => { const lp = await DW.loadPricing(db, rid); return { ...lp, pricing: { ...lp.pricing, free_delivery: true } }; }),",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=quoteOrder \\(SBS\\)",
+   "../review/capp-sbs/fixtures.probe.test.mjs"
+  ],
+  "kills_with": [
+   "🔴 SBS-QUOTE-POLICY"
+  ]
  }
 ]

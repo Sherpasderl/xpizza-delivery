@@ -76,17 +76,26 @@ const json = (body, status = 200, headers = []) => ({ status, body, type: 'appli
 // quoteOrder from the REAL pieces the handler composes (index.js quoteOrder; Codex r1 P2-6: the old fake trusted client subtotals and
 // always priced a delivery): the food = computeServerTotal over the PUBLISHED catalog's tables (provisionBrand) → orderBreakdownCents,
 // an unknown item → the handler's 200 {ok:false, error:'bad_cart'}; the envío = delivery-wire quoteDeliveryFor itself (mode, pin,
-// coverage, member promo, refusals) over a pricing config matching the s7a2 directory (from L 45; x_pizza free for members; each
-// identity's hub + radius = the directory row's hub / coverage_km). Only the I/O is stubbed: the config read, the identity read, and
+// coverage, member promo, refusals) over the pricing node the REAL writer commits from the s7a2 fixture's declared seed (FX.pricing_save:
+// from L 45; free delivery OFF by policy, addendum A), read the order path's own way (delivery-wire loadPricing — s7a2 alignment, advisor
+// 11-17); each identity's hub + radius = the directory row's hub / coverage_km. Only the I/O is stubbed: the config read, the identity read, and
 // the ID-token check (the harness's member token → u_ana, anything else a guest — as getAuth refuses a foreign token). The signed-quote
 // fields come from the REAL issuer (quote-issue.js issueQuote, as the handler calls it): with no QUOTE_TOKEN_SECRET in the harness it
 // takes its own fallback — net_total_cents, quote_token null (omitted, as the handler spreads only a truthy token). Not the rate
 // limit, extras gate or redemption path.
 const FN = path.join(ROOT, 'xpizza-functions'), freq = createRequire(path.join(FN, 'index.js'));
-const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), { issueQuote } = freq('./quote-issue.js'), DW = freq('./delivery/delivery-wire.js'), DP = freq('./delivery/delivery-pricing.js');
+const { computeServerTotal } = freq('./menu-pricing.js'), { orderBreakdownCents } = freq('./order-money.js'), { issueQuote } = freq('./quote-issue.js'), DW = freq('./delivery/delivery-wire.js');
 const ROWS = Object.fromEntries(FX.scenarios.complete.body.restaurants.map((r) => [r.restaurant_id, r]));
-const PRICING_RAW = { policy_version: 1, bands: [{ max_km: 4, cents: 4500 }, { max_km: 10, cents: 6500 }],
-  restaurants: Object.fromEntries(Object.values(ROWS).map((r) => [r.restaurant_id, { active: true, free_delivery: !!(r.promo && r.promo.free_delivery) }])) };
+// the pricing node: setDeliveryPricingCore (the owner's «Envío» save) on the strict fake RTDB, once per run; quotes read it via loadPricing
+let PRICING_DB_ = null;
+const pricingDb = () => PRICING_DB_ || (PRICING_DB_ = (async () => {
+  const { fakeRtdb } = freq('./test/_fake-rtdb-sdk.js'), PA = freq('./delivery/pricing-admin-core.js');
+  const db = fakeRtdb({ platform_admins: { sbs_owner: true }, restaurants: Object.fromEntries(Object.values(ROWS).map((r) => [r.restaurant_id, { identity: { name: r.name, hub_lat: r.hub_lat, hub_lng: r.hub_lng } }])) }, { strict: true });
+  const r = await PA.setDeliveryPricingCore({ db, verifyIdToken: async (t) => { if (t !== 'tok_owner') throw new Error('bad token'); return { uid: 'sbs_owner' }; }, timestamp: () => 1762800000000,
+    readRegistry: async () => ({ ok: true, fresh: true, ids: Object.keys(ROWS) }) }, { get: (h) => (String(h).toLowerCase() === 'authorization' ? 'Bearer tok_owner' : null), body: FX.pricing_save });
+  if (r.status !== 200) throw new Error(`SBS: the pricing writer refused the s7a2 seed: ${r.status} ${JSON.stringify(r.body)}`);
+  return { ref: (p) => ({ get: () => db.ref(p).once('value') }) };   // the order path reads with ref(p).get()
+})());
 async function quoteOrder(req) {
   let body; try { body = JSON.parse(req.postData || ''); } catch (_) { return json({ ok: false, error: 'bad_request' }, 400); }
   const rid = body && body.restaurant_id, prov = PROV[rid], row = ROWS[rid];
@@ -97,7 +106,7 @@ async function quoteOrder(req) {
   const tok = Object.entries(req.headers || {}).find(([k]) => k.toLowerCase() === 'x-firebase-id-token');
   const dq = await DW.quoteDeliveryFor({ get: (h) => (h.toLowerCase() === 'x-firebase-id-token' && tok ? tok[1] : undefined) },
     { ref: () => ({ get: async () => ({ exists: () => false, val: () => null }) }) }, rid, body, {
-      pricingP: Promise.resolve({ pricing: DP.readPricing(PRICING_RAW, rid) }),
+      pricingP: pricingDb().then((db) => DW.loadPricing(db, rid)),
       getIdentity: async () => ({ hub_lat: row.hub_lat, hub_lng: row.hub_lng, delivery_radius_km: row.coverage_km }),
       getAuth: () => ({ verifyIdToken: async (t) => { if (t !== MEMBER_TOKEN) throw new Error('foreign token'); return { uid: 'u_ana', customer: true }; } }),
       attributionUid: (dec, deleted) => (deleted ? null : dec.uid) });
