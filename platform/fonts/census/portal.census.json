@@ -1,7 +1,7 @@
 {
  "plan": "PLAN-portal-fonts r1.1 §4 (+ PLAN-font-figtree-portal-r0)",
  "harness": "portal-fonts.cdp.mjs",
- "runAt": "tree b2d35b2834ce on 864cc166a (feat/portal-fonts-census-gaps, Codex #105 r2, uncommitted)",
+ "runAt": "tree af04ebd9fbba on c60034b38 (feat/portal-fonts-census-gaps, Codex #105 r3d, committed)",
  "repeats": 3,
  "repeatsAgree": true,
  "view": 1280,
@@ -172,6 +172,748 @@
    "getSalesStats",
    "getMarketing"
   ]
+ },
+ "served": {
+  "L-login": [],
+  "L-error": [],
+  "I-email": [],
+  "I-busy": [],
+  "I-busy-retry": [],
+  "I-busy-fallback": [],
+  "I-password": [],
+  "I-reset-sent": [],
+  "I-error": [],
+  "I-invalid": [],
+  "P-editor": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "P-drawer": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "P-review": [
+   "editCatalog",
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "P-receipt": [
+   "editCatalog",
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "publishEdited"
+  ],
+  "P-conflict": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "P-readonly": [
+   "getBranchAvailability",
+   "getMyBranches"
+  ],
+  "A-drawer": [
+   "getBranchAvailability",
+   "getMyBranches"
+  ],
+  "S-list": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "S-detail": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "Z-pause": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "E-devices": [
+   "getBranchAvailability",
+   "getBranchDevices",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "E-unlink": [
+   "getBranchAvailability",
+   "getBranchDevices",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "V-ventas": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "T-team": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "memberList"
+  ],
+  "T-invite": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "memberList"
+  ],
+  "T-edit": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "memberList"
+  ],
+  "T-sent": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "memberInvite",
+   "memberList"
+  ],
+  "T-remove": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats",
+   "memberList"
+  ],
+  "P-crop": [
+   "getBranchAvailability",
+   "getEditableCatalog",
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "IN-inicio": [
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "V-rend": [
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "V-detail": [
+   "getMyBranches",
+   "getSalesStats"
+  ],
+  "C-calif": [
+   "getMerchantRatingComments",
+   "getMerchantReviews",
+   "getMyBranches"
+  ],
+  "C-filters": [
+   "getMerchantRatingComments",
+   "getMerchantReviews",
+   "getMyBranches"
+  ],
+  "C-earlier": [
+   "getMerchantRatingComments",
+   "getMerchantReviews",
+   "getMyBranches"
+  ],
+  "M-ofertas": [
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "M-builder": [
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "M-review": [
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "M-detail": [
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "N-envio": [
+   "getDeliveryPricing",
+   "getMyBranches"
+  ]
+ },
+ "rendered": {
+  "L-login": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "L-error": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-email": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-busy": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-busy-retry": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-busy-fallback": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-password": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-reset-sent": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-error": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "I-invalid": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-editor": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": true,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-drawer": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-review": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-receipt": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-conflict": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "P-readonly": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": true,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "A-drawer": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": true,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "S-list": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "S-detail": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "Z-pause": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "E-devices": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": true
+  },
+  "E-unlink": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "V-ventas": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": true,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "T-team": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": true,
+   "Equipos": false
+  },
+  "T-invite": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": true,
+   "Equipos": false
+  },
+  "T-edit": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": true,
+   "Equipos": false
+  },
+  "T-sent": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": true,
+   "Equipos": false
+  },
+  "T-remove": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": true,
+   "Equipos": false
+  },
+  "P-crop": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "IN-inicio": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": true,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "V-rend": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": true,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "V-detail": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": true,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "C-calif": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": true,
+   "Calificaciones · comentarios anteriores": true,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "C-filters": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": true,
+   "Calificaciones · comentarios anteriores": true,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "C-earlier": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": true,
+   "Calificaciones · comentarios anteriores": true,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-ofertas": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": true,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-builder": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": true,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-review": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": true,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-detail": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "N-envio": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: los platos de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": true,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  }
  },
  "data": {
   "L-login": null,
@@ -23911,13 +24653,57 @@
     ]
    },
    {
-    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
     "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "weight": "650",
     "runs": [
      {
       "font": "Figtree Light",
-      "cps": 49
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
      }
     ]
    },
