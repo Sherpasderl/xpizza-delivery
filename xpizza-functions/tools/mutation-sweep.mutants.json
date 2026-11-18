@@ -41299,5 +41299,101 @@
   "kills_with": [
    "✗ RB-READ-CAP:"
   ]
+ },
+ {
+  "id": "tf-01",
+  "slice": "textfit",
+  "label": "16b: the WhatsApp number may break at its hyphen again (no nowrap on .sg .sub b)",
+  "file": "../customer-app/capp.css",
+  "from": ".sg .sub b{white-space:nowrap}",
+  "to": "",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-PHONE"
+  ]
+ },
+ {
+  "id": "tf-02",
+  "slice": "textfit",
+  "label": "16b: the sign-in subtitle leaves «vez.» orphaned (no text-wrap)",
+  "file": "../customer-app/capp.css",
+  "from": "line-height:1.5;max-width:34ch;text-wrap:balance}",
+  "to": "line-height:1.5;max-width:34ch}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.sg .sub`"
+  ]
+ },
+ {
+  "id": "tf-03",
+  "slice": "textfit",
+  "label": "16b: the desk guest line leaves «tarjeta.» orphaned",
+  "file": "../customer-app/capp.css",
+  "from": "color:var(--mute);text-wrap:balance}\n.app.desk .guestline b",
+  "to": "color:var(--mute)}\n.app.desk .guestline b",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .guestline`"
+  ]
+ },
+ {
+  "id": "tf-04",
+  "slice": "textfit",
+  "label": "16b: the desk dish-card name wraps one word («Chili»)",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .icard .nm{font-size:15.5px;text-wrap:balance}",
+  "to": ".app.desk .icard .nm{font-size:15.5px}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .icard .nm`"
+  ]
+ },
+ {
+  "id": "tf-05",
+  "slice": "textfit",
+  "label": "16b: the desk dish-card description wraps one word («sauce»)",
+  "file": "../customer-app/capp.css",
+  "from": "-webkit-line-clamp:2;text-wrap:pretty}",
+  "to": "-webkit-line-clamp:2}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-ORPHAN: `.app.desk .icard .ds`"
+  ]
+ },
+ {
+  "id": "tf-06",
+  "slice": "textfit",
+  "label": "GO 10: the centred desktop modal shows the phone sheet's drag handle again",
+  "file": "../customer-app/capp.css",
+  "from": ".app.desk .sheet .grab{display:none}",
+  "to": ".app.desk .sheet .grab{}",
+  "command": [
+   "node",
+   "--test",
+   "../customer-app/capp-sbs-fixes.test.mjs"
+  ],
+  "kills_with": [
+   "TF-GRAB"
+  ]
  }
 ]

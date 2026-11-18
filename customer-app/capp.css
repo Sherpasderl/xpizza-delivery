@@ -850,7 +850,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .sg .topb{display:flex;align-items:center;justify-content:space-between;height:44px;margin:0 -8px}
 .sg .topb .bm{font-family:var(--name);font-weight:var(--name-weight);font-size:17px;flex:1;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
 .sg .h1{font:800 25px/1.12 var(--sans);letter-spacing:-.02em}
-.sg .sub{color:var(--mute);font-size:14.5px;line-height:1.5;max-width:34ch}
+.sg .sub{color:var(--mute);font-size:14.5px;line-height:1.5;max-width:34ch;text-wrap:balance}   /* 16b slot-owed 11-18: no orphaned «vez.» */
+.sg .sub b{white-space:nowrap}   /* 16b: the WhatsApp number never breaks at its hyphen */
 .sg .ml{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
 .sg .inp{height:56px;border:1.5px solid var(--line2);border-radius:14px;background:var(--surf2);padding:0 16px;font:550 17px var(--sans);color:var(--ink);outline:none;width:100%}
 .sg .inp:focus{border-color:var(--ink)}
@@ -1029,6 +1030,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .detail-modal{left:50%;top:48px;bottom:48px;right:auto;width:520px;transform:translate(-50%,24px);opacity:0;border-radius:18px;transition:transform .22s ease-out,opacity .22s ease-out}
 .app.desk .detail-modal.open{transform:translate(-50%,0);opacity:1}
 .app.desk .sheet{left:50%;right:auto;bottom:auto;top:50%;width:460px;max-height:86%;transform:translate(-50%,-50%);border-radius:20px;animation:popIn .22s ease-out}
+.app.desk .sheet .grab{display:none}   /* a centred modal is not dragged (advisor GO 10, slot-owed 11-18) */
 @keyframes popIn{from{transform:translate(-50%,-48%);opacity:0}}
 .app.desk .flow{display:grid;grid-template-columns:minmax(0,560px) minmax(300px,420px);gap:0 40px;align-content:start;justify-content:center;padding:0 24px}
 .app.desk .flowbar{grid-column:1/-1;position:static}
@@ -1205,8 +1207,8 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .icard{position:relative;display:flex;gap:12px;min-height:128px;border:1px solid var(--line);border-radius:14px;padding:14px 0 14px 16px;background:var(--bg);color:var(--ink);overflow:hidden}
 .app.desk .icard:hover{box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px -14px rgba(0,0,0,.28)}
 .app.desk .icard .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-right:16px;cursor:pointer}
-.app.desk .icard .nm{font-size:15.5px}
-.app.desk .icard .ds{font-size:13.5px;-webkit-line-clamp:2}
+.app.desk .icard .nm{font-size:15.5px;text-wrap:balance}
+.app.desk .icard .ds{font-size:13.5px;-webkit-line-clamp:2;text-wrap:pretty}
 .app.desk .icard .pr{font-size:14.5px}
 .app.desk .icard .thumb{width:128px;height:auto;align-self:stretch;margin:-14px 0}
 .app.desk .icard .thumb .openimg{display:block;width:100%;height:100%;padding:0;border:0;background:transparent}
@@ -1293,7 +1295,7 @@ footer.rail-foot{color:var(--pg-muted);font-size:.8rem;padding:0 0 40px}
 .app.desk .osum.box .ostot{border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
 .app.desk .flow .col-b .finenote{font-size:12.5px;color:var(--mute);line-height:1.45;padding:0 2px;margin:0}
 .app.desk .flow .col-b .finenote a{color:inherit;text-decoration:underline;text-underline-offset:2px}
-.app.desk .guestline{padding:12px 14px;border-radius:12px;background:var(--surf);font-size:13.5px;line-height:1.45;color:var(--mute)}
+.app.desk .guestline{padding:12px 14px;border-radius:12px;background:var(--surf);font-size:13.5px;line-height:1.45;color:var(--mute);text-wrap:balance}
 .app.desk .guestline b{color:var(--ink);font-weight:600}
 /* C-6d (frame 5): the desktop order panel reads left-aligned (the phone centres its title because its sheet is narrow); the «new»
    status line carries an inline centre from the shared renderer, hence the one !important */

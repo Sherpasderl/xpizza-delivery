@@ -61,3 +61,24 @@ test('Codex P3: logoFallback returns its cleanup and the shell\'s destroy() remo
   assert.ok(d.querySelector('img'), 'removed ⇒ inert');
   assert.ok(/logoOff\(\)/.test(readFileSync(join(HERE, 'capp-shell-ui.js'), 'utf8')), '🔴 P3: the shell\'s destroy() calls it');
 });
+
+// slot-owed 11-18 (rule 16b, advisor GO 1–4 + 10): text-fit defects the SBS showed at 390 and 1440, light and dark — CSS only.
+// The DOM cannot measure a wrap; these pin the rules, and the SBS fit probe (orphan count 0) is the gate at the next slot.
+const CSS_NC = CSS.replace(/\/\*[\s\S]*?\*\//g, '');   // comments stripped (a trailing comment would join the next selector)
+const ruleBody = (sel) => { const m = [...CSS_NC.matchAll(/(?<=^|[{}])\s*([^{}@]+)\{([^{}]*)\}/g)].filter((x) => x[1].split(',').map((s) => s.trim()).includes(sel)); return m.map((x) => x[2]).join(';'); };
+const wraps = (sel) => /(^|;)\s*text-wrap\s*:\s*(balance|pretty)\b/.test(ruleBody(sel));
+
+test('slot-owed 11-18 (16b): the WhatsApp number in «Ingresá el código» never breaks at its hyphen («+504 9612-» / «3344.»)', () => {
+  const src = readFileSync(join(HERE, 'capp-signup.js'), 'utf8') + readFileSync(join(HERE, 'capp-ui.js'), 'utf8');
+  assert.equal([...src.matchAll(/<p class="sub">Te lo enviamos por WhatsApp al <b>\$\{esc\(/g)].length, 2, 'premise: both code sheets put the number in a <b> of .sg .sub');
+  assert.ok(/(^|;)\s*white-space\s*:\s*nowrap\b/.test(ruleBody('.sg .sub b')), '🔴 TF-PHONE: `.sg .sub b` is white-space:nowrap');
+});
+
+test('slot-owed 11-18 (16b): no orphaned last word — the sign-in subtitle («vez.»), the desk guest line («tarjeta.»), the desk dish cards («Chili» / «sauce»)', () => {
+  for (const sel of ['.sg .sub', '.app.desk .guestline', '.app.desk .icard .nm', '.app.desk .icard .ds']) assert.ok(wraps(sel), `🔴 TF-ORPHAN: \`${sel}\` balances its lines (text-wrap)`);
+});
+
+test('slot-owed 11-18 (advisor GO 10): the centred desktop modal shows no drag handle (a phone-sheet affordance)', () => {
+  assert.ok(/(^|;)\s*display\s*:\s*none\b/.test(ruleBody('.app.desk .sheet .grab')), '🔴 TF-GRAB: `.app.desk .sheet .grab` is display:none');
+  assert.ok(!/display\s*:\s*none/.test(ruleBody('.grab')), 'the phone sheet keeps its handle');
+});
