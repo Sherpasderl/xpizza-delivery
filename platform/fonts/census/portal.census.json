@@ -1,9 +1,12 @@
 {
  "plan": "PLAN-portal-fonts r1.1 §4 (+ PLAN-font-figtree-portal-r0)",
  "harness": "portal-fonts.cdp.mjs",
- "runAt": "tree af04ebd9fbba on c60034b38 (feat/portal-fonts-census-gaps, Codex #105 r3d, committed)",
+ "runAt": "tree 379bfd8eff63 on fbfa8a0c6 (feat/portal-fonts-owed-dishes, owed 2)",
  "repeats": 3,
  "repeatsAgree": true,
+ "notes": {
+  "N-envio": "measures the map FAILURE pane («No se pudo cargar el mapa.» after the own 8 s deadline in envio.js): the map frame talks only to the production portal origin, so its ready pane cannot be reached here; this is NOT coverage of the ready pane"
+ },
  "view": 1280,
  "theme": "light",
  "gateB": [
@@ -83,6 +86,8 @@
   "M-ofertas": [],
   "M-builder": [],
   "M-review": [],
+  "M-builder-bogo": [],
+  "M-review-bogo": [],
   "M-detail": [],
   "N-envio": []
  },
@@ -147,22 +152,26 @@
    "getSalesStats"
   ],
   "M-ofertas": [
-   "getEditableCatalog",
    "getBranchAvailability",
    "getSalesStats"
   ],
   "M-builder": [
-   "getEditableCatalog",
    "getBranchAvailability",
    "getSalesStats"
   ],
   "M-review": [
-   "getEditableCatalog",
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-builder-bogo": [
+   "getBranchAvailability",
+   "getSalesStats"
+  ],
+  "M-review-bogo": [
    "getBranchAvailability",
    "getSalesStats"
   ],
   "M-detail": [
-   "getEditableCatalog",
    "getBranchAvailability",
    "getSalesStats"
   ],
@@ -333,18 +342,32 @@
    "getMyBranches"
   ],
   "M-ofertas": [
+   "getEditableCatalog",
    "getMarketing",
    "getMyBranches"
   ],
   "M-builder": [
+   "getEditableCatalog",
    "getMarketing",
    "getMyBranches"
   ],
   "M-review": [
+   "getEditableCatalog",
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "M-builder-bogo": [
+   "getEditableCatalog",
+   "getMarketing",
+   "getMyBranches"
+  ],
+  "M-review-bogo": [
+   "getEditableCatalog",
    "getMarketing",
    "getMyBranches"
   ],
   "M-detail": [
+   "getEditableCatalog",
    "getMarketing",
    "getMyBranches"
   ],
@@ -359,7 +382,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -373,7 +396,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -387,7 +410,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -401,7 +424,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -415,7 +438,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -429,7 +452,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -443,7 +466,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -457,7 +480,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -471,7 +494,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -485,7 +508,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -499,7 +522,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": true,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -513,7 +536,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -527,7 +550,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -541,7 +564,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -555,7 +578,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -569,7 +592,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": true,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -583,7 +606,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": true,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -597,7 +620,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -611,7 +634,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -625,7 +648,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -639,7 +662,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -653,7 +676,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -667,7 +690,7 @@
    "Ventas · rendimiento": true,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -681,7 +704,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -695,7 +718,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -709,7 +732,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -723,7 +746,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -737,7 +760,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -751,7 +774,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -765,7 +788,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -779,7 +802,7 @@
    "Ventas · rendimiento": true,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -793,7 +816,7 @@
    "Ventas · rendimiento": true,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -807,7 +830,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": true,
@@ -821,7 +844,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": true,
@@ -835,7 +858,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": true,
@@ -849,7 +872,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": true,
    "Calificaciones · reseñas": false,
@@ -863,7 +886,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": true,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -877,7 +900,35 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": true,
+   "Marketing · revisión: el tope por canje de la oferta": true,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-builder-bogo": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": true,
+   "Marketing · revisión: el tope por canje de la oferta": false,
+   "Productos · agotados por sucursal": false,
+   "Marketing · Ofertas": false,
+   "Calificaciones · reseñas": false,
+   "Calificaciones · comentarios anteriores": false,
+   "Envío · tarifas y zonas": false,
+   "Equipo de trabajo": false,
+   "Equipos": false
+  },
+  "M-review-bogo": {
+   "Inicio · Ventas / Pedidos / Ticket promedio": false,
+   "Ventas · rendimiento": false,
+   "Productos · el menú (rail + detalle)": false,
+   "Marketing · builder: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": true,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -891,7 +942,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -905,7 +956,7 @@
    "Ventas · rendimiento": false,
    "Productos · el menú (rail + detalle)": false,
    "Marketing · builder: los platos de la oferta": false,
-   "Marketing · revisión: los platos de la oferta": false,
+   "Marketing · revisión: el tope por canje de la oferta": false,
    "Productos · agotados por sucursal": false,
    "Marketing · Ofertas": false,
    "Calificaciones · reseñas": false,
@@ -1026,6 +1077,24 @@
     "Las 3"
    ]
   },
+  "M-builder-bogo": {
+   "fn": "getEditableCatalog",
+   "shown": "R3 Carnivora",
+   "shownByRepeat": [
+    "R3 Carnivora",
+    "R3 Carnivora",
+    "R3 Carnivora"
+   ]
+  },
+  "M-review-bogo": {
+   "fn": "getEditableCatalog",
+   "shown": "Hasta L 340 por canje.",
+   "shownByRepeat": [
+    "Hasta L 340 por canje.",
+    "Hasta L 340 por canje.",
+    "Hasta L 340 por canje."
+   ]
+  },
   "M-detail": {
    "fn": "getMarketing",
    "shown": "Almuerzo: 15 % en todo el menú",
@@ -1085,13 +1154,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1117,13 +1186,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1149,13 +1218,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1181,13 +1250,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1219,13 +1288,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1257,13 +1326,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1287,24 +1356,6 @@
   ],
   "M-ofertas": [
    {
-    "fn": "getEditableCatalog",
-    "section": "Productos · el menú (rail + detalle)",
-    "measuredIn": "P-editor",
-    "onPane": false
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": false
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": false
-   },
-   {
     "fn": "getBranchAvailability",
     "section": "Productos · agotados por sucursal",
     "measuredIn": "A-drawer",
@@ -1324,24 +1375,6 @@
    }
   ],
   "M-builder": [
-   {
-    "fn": "getEditableCatalog",
-    "section": "Productos · el menú (rail + detalle)",
-    "measuredIn": "P-editor",
-    "onPane": false
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": true
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": false
-   },
    {
     "fn": "getBranchAvailability",
     "section": "Productos · agotados por sucursal",
@@ -1363,23 +1396,45 @@
   ],
   "M-review": [
    {
-    "fn": "getEditableCatalog",
-    "section": "Productos · el menú (rail + detalle)",
-    "measuredIn": "P-editor",
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
     "onPane": false
    },
    {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
     "onPane": false
    },
    {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": true
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-builder-bogo": [
+   {
+    "fn": "getBranchAvailability",
+    "section": "Productos · agotados por sucursal",
+    "measuredIn": "A-drawer",
+    "onPane": false
    },
+   {
+    "fn": "getSalesStats",
+    "section": "Inicio · Ventas / Pedidos / Ticket promedio",
+    "measuredIn": "IN-inicio",
+    "onPane": false
+   },
+   {
+    "fn": "getSalesStats",
+    "section": "Ventas · rendimiento",
+    "measuredIn": "V-rend",
+    "onPane": false
+   }
+  ],
+  "M-review-bogo": [
    {
     "fn": "getBranchAvailability",
     "section": "Productos · agotados por sucursal",
@@ -1400,24 +1455,6 @@
    }
   ],
   "M-detail": [
-   {
-    "fn": "getEditableCatalog",
-    "section": "Productos · el menú (rail + detalle)",
-    "measuredIn": "P-editor",
-    "onPane": false
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": false
-   },
-   {
-    "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
-    "onPane": false
-   },
    {
     "fn": "getBranchAvailability",
     "section": "Productos · agotados por sucursal",
@@ -1447,13 +1484,13 @@
    {
     "fn": "getEditableCatalog",
     "section": "Marketing · builder: los platos de la oferta",
-    "measuredIn": null,
+    "measuredIn": "M-builder-bogo",
     "onPane": false
    },
    {
     "fn": "getEditableCatalog",
-    "section": "Marketing · revisión: los platos de la oferta",
-    "measuredIn": null,
+    "section": "Marketing · revisión: el tope por canje de la oferta",
+    "measuredIn": "M-review-bogo",
     "onPane": false
    },
    {
@@ -1482,44 +1519,7 @@
    }
   ]
  },
- "owed": [
-  {
-   "fn": "getEditableCatalog",
-   "section": "Marketing · builder: los platos de la oferta",
-   "why": "measured nowhere",
-   "states": [
-    "C-calif",
-    "C-earlier",
-    "C-filters",
-    "IN-inicio",
-    "M-builder",
-    "M-detail",
-    "M-ofertas",
-    "M-review",
-    "N-envio",
-    "V-detail",
-    "V-rend"
-   ]
-  },
-  {
-   "fn": "getEditableCatalog",
-   "section": "Marketing · revisión: los platos de la oferta",
-   "why": "measured nowhere",
-   "states": [
-    "C-calif",
-    "C-earlier",
-    "C-filters",
-    "IN-inicio",
-    "M-builder",
-    "M-detail",
-    "M-ofertas",
-    "M-review",
-    "N-envio",
-    "V-detail",
-    "V-rend"
-   ]
-  }
- ],
+ "owed": [],
  "states": {
   "L-login": [
    {
@@ -24796,6 +24796,2738 @@
     ]
    }
   ],
+  "M-builder-bogo": [
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>b#shopname",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>span#shopsub",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navinicio",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navmenulabel",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navprod",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navopslabel",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuctext",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuccount",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span#navequiposcount",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navbiz",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navventas",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div#avatar",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>b#whoami",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>span#whorole",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>h1",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 37
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>nav>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>nav>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>h2",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 89
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 41
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 33
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 28
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 26
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 38
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 3
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 25
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 54
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 31
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>h2#ofT",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 44
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 25
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 21
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button>small",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button>small",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 26
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 20
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 21
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 20
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 23
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 13
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>label>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 17
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 48
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 17
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 36
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>b",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 37
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 40
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucdiscard",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucsave",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   }
+  ],
+  "M-review-bogo": [
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>b#shopname",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>button#switcher>div>span#shopsub",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#scopewrap>button#scopebtn>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": ".SF NS",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navinicio",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navmenulabel",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navprod",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navopslabel",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuctext",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navsuc>span#navsuccount",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navequipos>span#navequiposcount",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div#navbiz",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button#navventas",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>button>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div#avatar",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>b#whoami",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>aside>div>div>span#whorole",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>h1",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 37
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>nav>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>nav>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>h2",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 89
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 41
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 33
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 28
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 26
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 38
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 3
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>h3",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 25
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 54
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 31
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>h2#ofT",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 44
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 25
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 21
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button>small",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 12
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button>small",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>div>button>span>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 48
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>p>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 17
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "600",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "500",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>b",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 36
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 8
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 11
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "750",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "700",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>aside>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 40
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div#revT",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "800",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 39
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 47
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 10
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 4
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 22
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 14
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 1
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span>span>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 5
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>div>div>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 16
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 48
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>p>span",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "400",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 18
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 6
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>main>div>div>div>div>button",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 15
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucdiscard",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 9
+     }
+    ]
+   },
+   {
+    "path": ">html>body>div#app>div#sucbar>div>button#sucsave",
+    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
+    "weight": "650",
+    "runs": [
+     {
+      "font": "Figtree Light",
+      "cps": 7
+     }
+    ]
+   }
+  ],
   "M-detail": [
    {
     "path": ">html>body>div#app>aside>div>div",
@@ -25856,46 +28588,13 @@
     ]
    },
    {
-    "path": ">html>body>div#app>main>div>div>div>section>div>div>button",
+    "path": ">html>body>div#app>main>div>div>div>section>div>p",
     "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "650",
+    "weight": "600",
     "runs": [
      {
       "font": "Figtree Light",
-      "cps": 6
-     }
-    ]
-   },
-   {
-    "path": ">html>body>div#app>main>div>div>div>section>div>div>button",
-    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "650",
-    "runs": [
-     {
-      "font": "Figtree Light",
-      "cps": 4
-     }
-    ]
-   },
-   {
-    "path": ">html>body>div#app>main>div>div>div>section>div>div>button",
-    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "650",
-    "runs": [
-     {
-      "font": "Figtree Light",
-      "cps": 8
-     }
-    ]
-   },
-   {
-    "path": ">html>body>div#app>main>div>div>div>section>div>span",
-    "family": "Figtree, \"Figtree Fallback\", \"Figtree Fallback Roboto\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
-    "weight": "650",
-    "runs": [
-     {
-      "font": "Figtree Light",
-      "cps": 43
+      "cps": 21
      }
     ]
    },
