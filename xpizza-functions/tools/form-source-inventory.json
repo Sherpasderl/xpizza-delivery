@@ -3171,6 +3171,7 @@
   "staff-push.js",
   "stats/stats-api.js",
   "stats/stats-build.js",
+  "stats/stats-identity.js",
   "support/support-tickets.js",
   "test-push-core.js",
   "tip-pref.js",
@@ -8634,6 +8635,10 @@
    "pins": [],
    "lifts": []
   },
+  "stats/stats-identity.js": {
+   "pins": [],
+   "lifts": []
+  },
   "support/support-tickets.js": {
    "pins": [],
    "lifts": []
@@ -8769,6 +8774,12 @@
      "file": "xpizza-functions/tools/s3c-module-inverse.js",
      "inverses": [
       "tools/s3c-module-inverse.js"
+     ]
+    },
+    {
+     "file": "xpizza-functions/whatsapp-arrived.test.js",
+     "inverses": [
+      "tools/privacy-module-inverse.js"
      ]
     }
    ],

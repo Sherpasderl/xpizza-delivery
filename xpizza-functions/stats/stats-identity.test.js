@@ -44,8 +44,11 @@ function capture(fn) {
   assert.strictEqual(seen.length, 0, `stats identity wrote output: ${seen.join(' | ')}`);
   // Non-vacuity: the capture DOES see a log when one is made (so an empty capture means silence).
   const W = require('../whatsapp');
+  // fix/privacy-gaps-5f: whatsapp.js now logs only the DIGIT COUNT of a bad phone (rule 20), never the number — the control still
+  // proves the capture sees a log (an empty capture fails it), and that the number is not in what it saw
   const control = capture(() => W.normalizePhone('123'));
-  assert(control.some((l) => l.includes('123')), 'control: whatsapp.js logs the raw phone, and the capture sees it');
+  assert(control.length > 0 && control.some((l) => l.includes('whatsapp: phone normalized to 3 digits')), 'control: whatsapp.js logs a bad phone (its digit count), and the capture sees it');
+  assert(!control.some((l) => l.includes('123')), 'control: the logged line never carries the number itself');
   ok('normalizer + keyer are SILENT (capture proven non-vacuous against whatsapp.js:98)');
 }
 
