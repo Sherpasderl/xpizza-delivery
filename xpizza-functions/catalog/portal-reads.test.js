@@ -707,7 +707,7 @@ const TWO = {
       const same = await call(rid, live, act);
       assert.strictEqual(same.status, 200);
       assert.ok(!('pendingRenames' in same.body) && !('pendingOther' in same.body), `${rid}: nothing pending → no new field`);
-      assert.deepStrictEqual(Object.keys(same.body).sort(), ['activeVersionId', 'choiceBadges', 'choiceEdit', 'deletionBase', 'deletionClaim', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'].filter((k) => k in same.body).sort(),
+      assert.deepStrictEqual(Object.keys(same.body).sort(), ['activeVersionId', 'choiceBadges', 'choiceEdit', 'deletionBase', 'deletionClaim', 'extrasAuthoring', 'extrasCatalog', 'groupAuthoring', 'publish_via_request', 'renderedCategories', 'restaurantName', 'rewardGroups', 'source', 'sourceUpdateTime', 'textEditEnabled', 'usesPlatformFactura'].filter((k) => k in same.body).sort(),
         `${rid}: the response keys are exactly today's (+ S2's declared textEditEnabled, S1's extrasAuthoring, S2-core's extrasCatalog / deletionBase / deletionClaim, S3 B1's choiceEdit)`);
       // rename-only (every section named: x_pizza's names are all-or-nothing)
       const ren = JSON.parse(JSON.stringify(live)); ren.structure.categories.forEach((c, i) => { c.name = `Sección ${i + 1}`; });

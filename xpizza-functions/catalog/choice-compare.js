@@ -26,14 +26,25 @@ const chars = (s) => [...String(s)].length;
 // and a new extra is never server-eligible: under the Extras switch, a NEW extra in such a group is refused (reward_group_add_blocked).
 // Data-driven (the brand's own eligibility, never a restaurant id); removing / repricing its extras stays allowed. RETIRES with the forms
 // (platform-structure LEGACY_FORM_REWARD_PICKERS, beside the S2b renames switch).
-function rewardGroupGuard({ draftBuilt, activeBuilt, extrasCatalog }) {
+// portal «Agregar extra» R1 (advisor 11-17): rewardGroupGuardOn / rewardGroupsOf are the ONE answer for the guard below AND the portal's
+// editor read (portal-reads getEditableCatalog rewardGroups), so the portal hides «Agregar extra» exactly where a save would refuse.
+// on: the Extras switch is on AND the legacy pickers are not retired (fail-closed: the guard holds unless explicitly retired)
+function rewardGroupGuardOn(extrasCatalog) {
   const PS = require('./platform-structure');
-  const legacy = typeof PS.legacyFormRewardPickers === 'function' ? PS.legacyFormRewardPickers() : true;   // fail-closed: the guard holds unless explicitly retired
-  if (!extrasCatalog || !legacy || !draftBuilt || !activeBuilt) return;
-  const activeExtras = Array.isArray(activeBuilt.extras) ? activeBuilt.extras : [];
+  const legacy = typeof PS.legacyFormRewardPickers === 'function' ? PS.legacyFormRewardPickers() : true;
+  return !!(extrasCatalog && legacy);
+}
+// the reward groups of the LIVE menu: every group (display.cat) holding an extra the brand lists in structure.redeem_eligible_extras; sorted
+function rewardGroupsOf(activeBuilt) {
+  const activeExtras = activeBuilt && Array.isArray(activeBuilt.extras) ? activeBuilt.extras : [];
   const catOf = new Map(activeExtras.map((e) => [e.key, e && e.display && e.display.cat]));
-  const eligible = activeBuilt.structure && Array.isArray(activeBuilt.structure.redeem_eligible_extras) ? activeBuilt.structure.redeem_eligible_extras : [];
-  const rewardGroups = new Set(eligible.map((k) => catOf.get(k)).filter(Boolean));
+  const eligible = activeBuilt && activeBuilt.structure && Array.isArray(activeBuilt.structure.redeem_eligible_extras) ? activeBuilt.structure.redeem_eligible_extras : [];
+  return [...new Set(eligible.map((k) => catOf.get(k)).filter(Boolean))].sort();
+}
+function rewardGroupGuard({ draftBuilt, activeBuilt, extrasCatalog }) {
+  if (!rewardGroupGuardOn(extrasCatalog) || !draftBuilt || !activeBuilt) return;
+  const catOf = new Set((Array.isArray(activeBuilt.extras) ? activeBuilt.extras : []).map((e) => e.key));
+  const rewardGroups = new Set(rewardGroupsOf(activeBuilt));
   for (const e of Array.isArray(draftBuilt.extras) ? draftBuilt.extras : []) {
     const g = e && e.display && e.display.cat;
     if (e && !catOf.has(e.key) && rewardGroups.has(g)) refuse('reward_group_add_blocked', `the group ${JSON.stringify(g)} feeds a reward picker: no new option can join it yet`, e.key, 'extras');
@@ -134,4 +145,4 @@ function prepareExistingGroups(source, { fieldProblem = () => null } = {}) {
   return out;
 }
 
-module.exports = { compareToActive, prepareExistingGroups };
+module.exports = { compareToActive, prepareExistingGroups, rewardGroupsOf, rewardGroupGuardOn };

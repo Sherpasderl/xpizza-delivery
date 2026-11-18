@@ -12,7 +12,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.ok(FILES.length >= 1 && HUNKS.length >= 1, 'EXTRASFLIP: non-vacuity — the layer owns files');
 for (const F of FILES) {
-  const disk = fs.readFileSync(path.join(__dirname, F), 'utf8');
+  const disk = require('./tools/rewardgroups-module-inverse').unapplyRewardGroupsModule(F, fs.readFileSync(path.join(__dirname, F), 'utf8'));   // feat/reward-groups-5f: the newer layer peels first
   const base = git(['show', `${BASE}:xpizza-functions/${F}`]);
   assert.notStrictEqual(disk, base, `EXTRASFLIP: non-vacuity — ${F} carries the flip hunk(s)`);
   assert.strictEqual(unapplyExtrasflipModule(F, disk), base, `🔴 EXTRASFLIP-BASE: ${F} minus the flip hunk(s) is not ${BASE}:${F}`);

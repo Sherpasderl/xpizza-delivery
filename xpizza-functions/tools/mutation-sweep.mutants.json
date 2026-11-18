@@ -39430,8 +39430,8 @@
   "slice": "extras-flip",
   "label": "extras switch-on: a group holding a reward-eligible extra is a reward group",
   "file": "catalog/choice-compare.js",
-  "from": "const rewardGroups = new Set(eligible.map((k) => catOf.get(k)).filter(Boolean));",
-  "to": "const rewardGroups = new Set();",
+  "from": "return [...new Set(eligible.map((k) => catOf.get(k)).filter(Boolean))].sort();",
+  "to": "return [];",
   "command": [
    "node",
    "catalog/reward-group-guard.test.js"
@@ -39460,8 +39460,8 @@
   "slice": "extras-flip",
   "label": "extras switch-on: the guard retires with LEGACY_FORM_REWARD_PICKERS",
   "file": "catalog/choice-compare.js",
-  "from": "if (!extrasCatalog || !legacy || !draftBuilt || !activeBuilt) return;",
-  "to": "if (!extrasCatalog || !draftBuilt || !activeBuilt) return;",
+  "from": "return !!(extrasCatalog && legacy);",
+  "to": "return !!extrasCatalog;",
   "command": [
    "node",
    "catalog/reward-group-guard.test.js"

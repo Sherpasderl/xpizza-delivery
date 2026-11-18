@@ -78,6 +78,42 @@ const addTo = (group, ref, name, price) => (d) => { const t = XT.apply(d, { op: 
     } finally { H.SW.legacyPickers = true; }
   });
 
+  // ── portal «Agregar extra» R1 (advisor 11-17): the editor read serves the reward groups from the ONE derivation the guard uses
+  //    (choice-compare rewardGroupsOf), so the portal hides «Agregar extra» exactly where the save would refuse ──
+  await cell('RG-READ-ONE-SOURCE: getEditableCatalog serves rewardGroups = exactly the groups whose NEW extra the save refuses (every served group refused, every other group 200) — La Musa, and X. Pizza with a group made a reward group by its own data', async (L) => {
+    const xs = buildSourceFromCode('x_pizza'); const g0 = xs.structure.extra_categories[0];
+    xs.structure.redeem_eligible_extras = [xs.extras.find((e) => e.display && e.display.cat === g0).key];
+    for (const [rid, opts] of [['la_musa', {}], ['x_pizza', { live: xs }]]) {
+      const w = H.world(rid, opts);
+      const r = await w.editorRead();
+      assert.strictEqual(r.status, 200, `${L} ${rid}: ${JSON.stringify(r.body).slice(0, 160)}`);
+      assert.ok(Array.isArray(r.body.rewardGroups) && r.body.rewardGroups.length >= 1, `🔴 RG-READ-ONE-SOURCE ${rid}: rewardGroups served (${JSON.stringify(r.body.rewardGroups)})`);
+      const groups = w.live.structure.extra_categories;
+      for (const [i, g] of groups.entries()) {
+        const s = await H.world(rid, opts).save(addTo(g, `tmp:rg-probe-${i}`, `Extra Probe ${i}`, 20));
+        const refused = s.status === 400 && s.body.error === 'reward_group_add_blocked';
+        assert.strictEqual(refused, r.body.rewardGroups.includes(g), `🔴 RG-READ-ONE-SOURCE ${rid} «${g}»: served ${r.body.rewardGroups.includes(g)}, save ${s.status} ${s.body.error || ''}`);
+      }
+    }
+  });
+  await cell('RG-READ-OFF: the Extras switch OFF, or the legacy pickers retired ⇒ rewardGroups ABSENT (today\'s response; the guard does not apply)', async (L) => {
+    try {
+      H.SW.extrasCatalog = false;
+      assert.ok(!('rewardGroups' in (await H.world('la_musa').editorRead()).body), `🔴 RG-READ-OFF: switch off ⇒ absent`);
+      H.SW.extrasCatalog = true; H.SW.legacyPickers = false;
+      assert.ok(!('rewardGroups' in (await H.world('la_musa').editorRead()).body), `🔴 RG-READ-OFF: pickers retired ⇒ absent`);
+    } finally { H.SW.extrasCatalog = true; H.SW.legacyPickers = true; }
+  });
+  await cell('RG-READ-FAIL-CLOSED: the guard state cannot be read ⇒ rewardGroups [] (fail-closed empty: «Agregar» shows and the save stays the safety net); the editor still loads', async (L) => {
+    const keep = H.SW.legacyPickers;
+    try {
+      Object.defineProperty(H.SW, 'legacyPickers', { configurable: true, get() { throw new Error('unreadable'); } });
+      const r = await H.world('la_musa').editorRead();
+      assert.strictEqual(r.status, 200, `${L}: the editor still loads`);
+      assert.deepStrictEqual(r.body.rewardGroups, [], `🔴 RG-READ-FAIL-CLOSED: ${JSON.stringify(r.body.rewardGroups)}`);
+    } finally { Object.defineProperty(H.SW, 'legacyPickers', { configurable: true, writable: true, enumerable: true, value: keep }); }
+  });
+
   if (fails.length) { console.error(`reward-group-guard FAILED: ${fails.join(' | ')}`); process.exit(1); }
   console.log(`\nreward-group-guard: OK (${n})`);
 })().catch((e) => { console.error('reward-group-guard FAILED:', e && e.message); process.exit(1); });
