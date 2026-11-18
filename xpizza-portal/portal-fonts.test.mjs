@@ -125,7 +125,7 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
   // Codex #105 r2 (advisor ruling 11-16): no core THREW in any state; every core state showed a value from the answer its OWN data
   // function served; every state carries its `unserved` calls (an empty array, never absent); and every unserved section whose
   // real-data render is measured nowhere in this record is in «owed» — no silent hole
-  for (const k of ['threw', 'unserved', 'data', 'unservedSections']) {
+  for (const k of ['threw', 'unserved', 'served', 'rendered', 'data', 'unservedSections']) {
     assert.ok(c[k] && typeof c[k] === 'object', `🔴 the census record carries no measured ${k} (re-capture with the fixed tool)`);
     assert.deepEqual(Object.keys(c[k]).sort(), Object.keys(c.states).sort(), `a ${k} entry for exactly every state`);
   }
@@ -137,7 +137,10 @@ test('the committed census (platform/fonts/census/portal.census.json): gate (b) 
     assert.ok(!c.unserved[s].includes(d.fn), `🔴 ${s}: its own data function ${d.fn} went unserved`);
   }
   assert.ok(Array.isArray(c.owed), '🔴 the census record carries no «owed» list');
-  const measured = (x) => x.section !== null && x.measuredIn !== null && !!c.states[x.measuredIn] && !c.unserved[x.measuredIn].includes(x.fn);
+  // Codex #105 r3: measured only on POSITIVE evidence in the measuredIn state's own record — it was served the function (2xx), never
+  // went without it, and rendered that very section (its root measured on that state's pane); an existing state alone proves nothing
+  const measured = (x) => x.section !== null && x.measuredIn !== null && !!c.states[x.measuredIn] && !c.unserved[x.measuredIn].includes(x.fn)
+    && c.served[x.measuredIn].includes(x.fn) && c.rendered[x.measuredIn][x.section] === true;
   for (const [s, xs] of Object.entries(c.unservedSections)) {
     assert.deepEqual([...new Set(xs.map((x) => x.fn))].sort(), [...c.unserved[s]].sort(), `${s}: a section entry for exactly every unserved function`);
     for (const x of xs) assert.equal(c.owed.some((o) => o.fn === x.fn && o.section === x.section), !measured(x), `${s} ${x.fn} «${x.section}»: in «owed» exactly when its real-data render is measured nowhere`);

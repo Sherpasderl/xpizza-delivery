@@ -68,6 +68,22 @@ export async function waitForLoad({ maxLoad = 30, pollMs = 60000, maxWaitMs = 30
   }
 }
 
+// The CDP wire over one browser socket: command ids → their answers, events → their handlers.
+// r3d (advisor 11-18): every command has a BACKSTOP — one Chrome never answers (a promise that can't settle under paused virtual time)
+// rejects naming its method, instead of hanging the run until its process kill (M-probe-*: 600 s).
+export function session(ws, { deadlineMs = Number(process.env.FONTS_CDP_DEADLINE_MS) || 90000 } = {}) {
+  let id = 0; const pend = new Map(); const handlers = new Map();
+  ws.addEventListener('message', (e) => {
+    const m = JSON.parse(e.data);
+    if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); clearTimeout(p.timer); m.error ? p.reject(new Error(`${p.method}: ${m.error.message}`)) : p.resolve(m.result); return; }
+    if (m.method) for (const fn of handlers.get(m.method) || []) { try { fn(m.params); } catch (err) { console.error(err); } }
+  });
+  const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id;
+    const timer = setTimeout(() => { if (pend.delete(i)) reject(new Error(`cdp: ${method} got no answer in ${deadlineMs / 1000} s`)); }, deadlineMs);
+    pend.set(i, { resolve, reject, method, timer }); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
+  return { send, handlers };
+}
+
 export async function launch({ width = 390, height = 844, dpr = 2, throttle = false, args = [] } = {}) {
   await waitForLoad();
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-fonts-'));
@@ -82,13 +98,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
       chrome.stderr.on('data', (d) => { b += d; const m = b.match(/DevTools listening on (ws:\/\/\S+)/); if (m) { clearTimeout(t); resolve(m[1]); } });
     });
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-    let id = 0; const pend = new Map(); const handlers = new Map();
-    ws.addEventListener('message', (e) => {
-      const m = JSON.parse(e.data);
-      if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); m.error ? p.reject(new Error(`${p.method}: ${m.error.message}`)) : p.resolve(m.result); return; }
-      if (m.method) for (const fn of handlers.get(m.method) || []) { try { fn(m.params); } catch (err) { console.error(err); } }
-    });
-    const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id; pend.set(i, { resolve, reject, method }); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
+    const { send, handlers } = session(ws);
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const s = (m, p) => send(m, p, sessionId);
@@ -163,12 +173,15 @@ function transform(text, tt) {
 export async function census(cdp) {
   const { s } = cdp;
   const { root } = await s('DOM.getDocument', { depth: -1, pierce: true });
-  const out = [];
+  // r3d (advisor 11-18): a node it cannot read (gone from the page between the snapshot and its query — a node rewritten faster than the
+  // census) is RECORDED by its path in out.vanished, never silently dropped (M-st: a 3 ms rewrite was dropped by BOTH censuses, so the
+  // stability re-read compared two equal lists). Path only — never its text. out stays the node list every consumer reads.
+  const out = []; const vanished = []; out.vanished = vanished;
   const styleOf = async (nodeId) => { try { return (await s('CSS.getComputedStyleForNode', { nodeId })).computedStyle; } catch (_) { return null; } };
   const record = async (fontNodeId, styleNodeId, raw, label) => {
-    const props = await styleOf(styleNodeId); if (!props) return;
+    const props = await styleOf(styleNodeId); if (!props) { vanished.push(label); return; }
     let fonts = [];
-    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (_) { return; }
+    try { ({ fonts } = await s('CSS.getPlatformFontsForNode', { nodeId: fontNodeId })); } catch (_) { vanished.push(label); return; }
     if (!fonts.length) return;
     const shown = transform(raw, cssText(props, 'text-transform'));
     const clamp = cssText(props, '-webkit-line-clamp');
@@ -203,8 +216,21 @@ export async function census(cdp) {
 // The per-codepoint probe. For each distinct (family stack, weight, style, codepoint) among the nodes, render it alone in an off-screen
 // span carrying exactly that computed font and read the ONE platform font that draws it. Mutates nothing visible; removes its probes.
 // → Map(`${family}|${weight}|${style}|${cp}` → familyName)
-export async function attribute(cdp, nodes) {
+export async function attribute(cdp, nodes, { settleMs = Number(process.env.FONTS_SETTLE_MS) || 5000 } = {}) {
   const { s, ev } = cdp;
+  // portal census r3 (advisor 11-16): a fresh probe span's face is resolved ASYNCHRONOUSLY — read before that, the renderer reports NO
+  // font for it ('(none)'), which read as a fidelity / gate (d) failure on a page that drew the codepoint in the hosted face (r3c V: the
+  // page frozen and stable, the probe still '(none)'). So every read waits for the faces it asks about: document.fonts.load per
+  // (style, weight, family stack) with exactly the probed characters, then document.fonts.ready. A WAIT for the renderer's own event,
+  // never a retry: a stack whose face cannot draw a codepoint still resolves to its fallback, and the per-node checks still fail it.
+  const waitFaces = (keys) => ev(`(async () => { const want = new Map();
+    for (const k of ${JSON.stringify(keys)}) { const [fam, w, st, cp] = k.split('|'); const f = st + ' ' + w + ' 32px ' + fam; want.set(f, (want.get(f) || '') + String.fromCodePoint(Number(cp))); }
+    await Promise.all([...want].map(([f, t]) => document.fonts.load(f, t).catch(() => null))); await document.fonts.ready; return true; })()`);
+  // r3d (advisor 11-18): the wait races a NODE-side deadline (page timers stop under paused virtual time, so it cannot live in the page).
+  // false ⇒ it ran out: the caller reads those keys as '(deadline)' — never the renderer's unsettled answer — so the per-node fidelity
+  // check and gate (d) FAIL naming them. A late answer (or the session backstop's rejection) is absorbed; an early rejection still throws.
+  const settleFaces = (keys) => { const w = waitFaces(keys); let t;
+    return Promise.race([w.then(() => true), new Promise((r) => { t = setTimeout(() => { w.catch(() => {}); r(false); }, settleMs); })]).finally(() => clearTimeout(t)); };
   const keys = [...new Set(nodes.flatMap((n) => [...n.codepoints, 32].map((cp) => `${n.family}|${n.weight}|${n.style}|${cp}`)))];
   const map = new Map();
   for (let i = 0; i < keys.length; i += 200) {
@@ -214,8 +240,10 @@ export async function attribute(cdp, nodes) {
         e.id = '__fp' + j; e.style.cssText = 'white-space:pre;font-size:32px'; e.style.fontFamily = fam; e.style.fontWeight = w; e.style.fontStyle = st;
         e.textContent = String.fromCodePoint(Number(cp)); host.appendChild(e); }
       document.documentElement.appendChild(host); return true; })()`);
+    const settled = await settleFaces(batch);
     const { root } = await s('DOM.getDocument', { depth: 0 });
     for (let j = 0; j < batch.length; j++) {
+      if (!settled) { map.set(batch[j], '(deadline)'); continue; }
       const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: `#__fp${j}` });
       const { fonts } = await s('CSS.getPlatformFontsForNode', { nodeId });
       map.set(batch[j], fonts.length === 1 ? fonts[0].familyName : fonts.map((f) => f.familyName).join('+') || '(none)');
@@ -231,6 +259,7 @@ export async function attribute(cdp, nodes) {
     await ev(`(() => { const e = document.createElement('span'); e.id = '__fp1'; e.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;white-space:pre;font-size:32px';
       e.style.fontFamily = ${JSON.stringify(fam)}; e.style.fontWeight = ${JSON.stringify(w)}; e.style.fontStyle = ${JSON.stringify(st)}; e.textContent = String.fromCodePoint(${Number(cp)});
       document.documentElement.appendChild(e); return true; })()`);
+    if (!(await settleFaces([k]))) { map.set(k, '(deadline)'); await ev(`document.getElementById('__fp1').remove(), true`); continue; }
     await new Promise((r) => setTimeout(r, 50));
     const { root } = await s('DOM.getDocument', { depth: 0 });
     const { nodeId } = await s('DOM.querySelector', { nodeId: root.nodeId, selector: '#__fp1' });

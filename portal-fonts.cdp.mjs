@@ -223,7 +223,7 @@ const STATES = {
 function decideFor(st) {
   const ok = (body) => ({ body: JSON.stringify(body) });
   const coreFn = (url) => { const fn = fnOf(url); return st.backend && fn && fn !== 'reportClientVersion' ? fn : null; };
-  const d = (url, req) => {
+  const d0 = (url, req) => {
     if (/fonts\.googleapis\.com\/css2/.test(url)) return st.baseline ? { body: BASELINE_CSS, headers: { 'content-type': 'text/css' } } : 'fail';
     if (/fonts\.gstatic\.com\/s\//.test(url)) {
       const f = st.baseline && PIN.files.find((x) => x.url === url.split('?')[0]);
@@ -247,6 +247,10 @@ function decideFor(st) {
     if (!st.unserved.includes(fn)) st.unserved.push(fn);   // advisor 11-16 (#105 r2): recorded, never silent
     return { status: 404, body: JSON.stringify({ error: 'not_found' }) };
   };
+  // Codex #105 r3: POSITIVE evidence per state — every function the page was answered with a 2xx (a core's or the canned router's;
+  // never a CORS preflight), so a section counts as measured only where its function was really served
+  const note = (fn, req, r) => { if (fn && req.method !== 'OPTIONS' && r && typeof r === 'object' && !(r.status >= 300) && !st.served.includes(fn)) st.served.push(fn); return r; };
+  const d = (url, req) => { const r = d0(url, req), fn = fnOf(url); return r && typeof r.then === 'function' ? r.then((x) => note(fn, req, x)) : note(fn, req, r); };
   d.peek = (url, req) => (coreFn(url) ? 'core' : d(url, req));   // a second listener's look: never a second call into a core
   return d;
 }
@@ -264,7 +268,10 @@ async function answerCore(st, fn, url, req) {
     const headers = Object.fromEntries(Object.entries(req.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
     let body; try { body = req.postData ? JSON.parse(req.postData) : undefined; } catch (_) { body = undefined; }
     const r = await st.backend.call({ fn, method: req.method, query: queryOf(url), headers, body });
-    if (!r) { if (!st.unserved.includes(fn)) st.unserved.push(fn); return { status: 404, body: JSON.stringify({ error: 'not_found' }) }; }
+    if (!r || r.status === 404) {   // not served: no answer, or the core's own explicit 404 (Codex #105 r3) — both recorded
+      if (!st.unserved.includes(fn)) st.unserved.push(fn);
+      return { status: 404, body: r ? (typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? { error: 'not_found' })) : JSON.stringify({ error: 'not_found' }) };
+    }
     if (r.status >= 200 && r.status < 300 && !r.contentType) (st.answers[fn] ||= []).push({ query: queryOf(url), body: typeof r.body === 'string' ? JSON.parse(r.body) : r.body });   // what the page was served (the data premise reads it)
     return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body), headers: { ...(r.contentType ? { 'content-type': r.contentType } : {}), ...(r.headers || {}) } };
   } catch (e) { st.threw.push(`${fn}: the core threw (${String(e && e.message).slice(0, 120)})`); return { status: 500, body: JSON.stringify({ error: 'core_threw' }) }; }
@@ -409,6 +416,13 @@ async function unservedSections(cdp, def, st) {   // measured on the captured pa
   }
   return out;
 }
+// Codex #105 r3: every declared section, MEASURED in every state: its root visible and inside / around the captured container
+const SECTION_ROOTS = [...new Map(Object.values(UNSERVED).flat().map((x) => [x.section, x.root])).entries()];
+const renderedSections = (cdp, def) => cdp.ev(`(() => { const c = document.querySelector(${JSON.stringify(def.container)}), out = {};
+  for (const [s, root] of ${JSON.stringify(SECTION_ROOTS)}) { const r = document.querySelector(root); let on = false;
+    if (c && r) { const b = r.getBoundingClientRect(), cs = getComputedStyle(r); on = !(cs.display === 'none' || cs.visibility === 'hidden' || b.width === 0 || b.height === 0) && (c.contains(r) || r.contains(c)); }
+    out[s] = on; }
+  return out; })()`);
 for (const [n, d] of Object.entries(STATES)) if (d.cores && !CORE_DATA[n]) throw new Error(`premise: core state ${n} has no data premise (CORE_DATA)`);   // refused before any launch
 async function corePremise(cdp, name, def, st, when) {
   if (!def.cores) return;
@@ -428,7 +442,7 @@ async function corePremise(cdp, name, def, st, when) {
 
 // #105 r2: every state's threw / unserved / data / unserved sections, written unconditionally (an empty array, never an absent field)
 const recordOf = (byState) => { const m = (k) => Object.fromEntries(Object.entries(byState).map(([n, r]) => [n, r.after[k]]));
-  return { threw: m('threw'), unserved: m('unserved'), data: m('data'), unservedSections: m('sections') }; };
+  return { threw: m('threw'), unserved: m('unserved'), served: m('served'), rendered: m('rendered'), data: m('data'), unservedSections: m('sections') }; };
 // ── one run: boot an entry page in a state under a font policy ──
 async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy = false, stateName = 'P-editor', deterministic = false, holdMs = 6000, faceChange = false,
   view = 1280, theme = 'light', typing = false }) {
@@ -436,7 +450,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
   const load1 = os.loadavg()[0];   // the slot rule: load1 > 45 ⇒ UNTRUSTED STOP (checked before EVERY run, not only at launch)
   LOAD_MAX = Math.max(LOAD_MAX, load1);
   if (load1 > 45) { console.log(`\nUNTRUSTED STOP: 1-min load ${load1.toFixed(2)} > 45 before ${side} ${stateName} @${view}px`); process.exit(3); }
-  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, threw: [], unserved: [], answers: {}, data: null };
+  const st = { ...def, baseline: side === 'baseline', fontGate, name: stateName, threw: [], unserved: [], served: [], answers: {}, data: null };
   if (def.cores) { st.backend = await coreBackend(def.cores); await st.backend.reset(def.scn); }   // census-gaps: a fresh REAL world per run
   const root = side === 'baseline' ? baselineRoot() : ROOT;
   const srv = await serveDir(root, {
@@ -510,15 +524,32 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     const sections = await unservedSections(cdp, def, st);
     const caret1 = typing ? await caretOf(cdp) : null;
     const typedValue = typing ? await cdp.ev(`document.getElementById('__typing').value`) : null;
-    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: await census(cdp), geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
+    const after = { heldMs, bootMs, paintSnap, paintGeo: paintSnap ? paintSnap.geo : null, errs, refused: [...rt.refused], nodes: null, geo, cls: await cdp.ev('window.__cls'), shifts: await cdp.ev('window.__shiftSrc'), fontEv: await cdp.ev('window.__fontEv'), fontRes: await cdp.ev(FONT_RES),
       fontsFailed: fontUrls().filter((u) => rt.finished.get(u) === 'failed').length, caret: caret1, typedValue };
     const shot = async () => Buffer.from((await cdp.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })).data, 'base64');
     const raw = deterministic ? await shot() : null;
     if (deterministic) { await cdp.ev(`(async () => { const ff = new FontFace('__Invalidate', "local('Arial')"); document.fonts.add(ff); await ff.load(); return true; })()`); await settle(cdp); await sleep(300); }
     const png = deterministic ? await shot() : null;
-    const probe = await attribute(cdp, after.nodes);
+    // Codex #105 r3 (advisor 11-16): census → probe → a SECOND census; the two must be identical, else the state FAILS as «capture
+    // unstable» — never retried, never passed (census() takes its text from one DOM snapshot but each node's glyph counts from the live
+    // render). The r3c freeze (Emulation.setVirtualTimePolicy) proved the page stable and was dropped: the '(none)' failures were the
+    // probe's unsettled spans (cdp-fonts.mjs attribute() now waits for its faces).
+    let probe = null;
+    const sig = (ns) => ns.map((n) => JSON.stringify([n.path, n.family, n.weight, n.style, n.codepoints, n.fonts]));
+    const firstDiff = (a, b) => { const x = sig(a), y = sig(b); const i = x.findIndex((v, k) => v !== y[k]); return i >= 0 ? (a[i] || b[i]).path : (x.length !== y.length ? (b[x.length] || a[y.length]).path : null); };
+    after.nodes = await census(cdp);
+    probe = await attribute(cdp, after.nodes);
+    { const again = await census(cdp), d = firstDiff(after.nodes, again);
+      if (d !== null) throw new Error(`capture unstable: ${stateName}: ${d} changed during the census (${after.nodes.length} → ${again.length} nodes)`);
+      // r3d (advisor 11-18): a node rewritten faster than the census reads it is gone before its query in BOTH passes — equal lists, so
+      // the diff above cannot see it. census() now records it (path only): any vanished node fails the state the same way.
+      const v = [...new Set([...after.nodes.vanished, ...again.vanished])];
+      if (v.length) throw new Error(`capture unstable: ${stateName}: ${v[0]} vanished during the census (${v.length} node${v.length === 1 ? '' : 's'})`); }
+    // #105 r3: read AFTER the probe, so the node census and the probe stay back to back on the settled pane (r3 diag: 1/5 fidelity fails
+    // with it between them, 0/5 without)
+    const rendered = await renderedSections(cdp, def);
     await corePremise(cdp, stateName, def, st, 'end');   // a core call that failed AFTER the pane check still fails the state
-    Object.assign(after, { threw: [...st.threw], unserved: [...st.unserved], sections, data: st.data });   // #105 r2: recorded UNCONDITIONALLY
+    Object.assign(after, { threw: [...st.threw], unserved: [...st.unserved], served: [...st.served].sort(), rendered, sections, data: st.data });   // #105 r2: recorded UNCONDITIONALLY
     return { before, after, probe, png, raw };
   } finally {
     try { if (rtRef) await rtRef.failHeld(() => true); } catch (_) {}
