@@ -190,15 +190,15 @@ export async function move(kind) {
   // owner 11-17 (MOCKUP-portal-marketing-unknown): the list keeps confirming the SAME request (the SAME op_id); a move's refusal has no
   // sentence of its own here (errWord is generic) ⇒ U3b. op_id_conflict (our bug) is never re-sent.
   // a move judged a DUPLICATE on a re-send opens the existing offer, as the list's own duplicate does (Codex #129 P2-3)
-  const retry = r.conflict ? null : { op: 'state', wg, resend: (live) => send(ML.classifyConfirmation, live),
+  const retry = r.conflict ? null : { op: 'state', resend: (live) => send(ML.classifyConfirmation, live),
     onLanded: (x) => { const w = landed(x); if (w && ctx.toast) ctx.toast(w); }, reason: () => null, onDuplicate: ctx.onDuplicate || null };
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
     // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
-    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry }); else if (ctx.onChanged) ctx.onChanged();
+    if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry, wg }); else if (ctx.onChanged) ctx.onChanged();
     return;
   }
   D.busy = false; D.confirming = false;
-  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown({ retry }); else if (ctx.onChanged) ctx.onChanged(); return; }
+  if (r.outcome === 'unknown') { if (ctx.onUnknown) ctx.onUnknown({ retry, wg }); else if (ctx.onChanged) ctx.onChanged(); return; }
   if (r.outcome !== 'saved') { D.err = errWord(r); render(); return; }
   D.offer = r.offer || o;
   D.sheet = null;

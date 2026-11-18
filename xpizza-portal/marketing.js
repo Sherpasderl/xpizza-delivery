@@ -330,15 +330,17 @@ function builderCtx() {
 // r6.1 (owner 11-15): a write whose outcome is UNKNOWN — every dialog / sheet / detail closes, «Campañas» RE-READS (no cached row paints
 // meanwhile, nor after a failed read) and the banner says so. The list is the truth. A write whose dialog was DISMISSED first still
 // lands here (Codex r6.1-build P1-1) — the dialog now open (another opening) stays; only another account / brand (or no page) drops it.
-function afterUnknown(origin, { dismissed = false, retry = null } = {}) {
+function afterUnknown(origin, { dismissed = false, retry = null, wg = null } = {}) {
   if (!origin || origin.uid !== S.uid || !S.sel || origin.brandId !== S.sel.brandId || !S.body) return;
+  // Codex #129 P1-2 / #130: a handoff from a write that a NEWER one superseded changes NOTHING — checked FIRST: no drop of the newer
+  // write's held attempt, no notice, no re-read (it could only strand «Confirmando» or revive the old write beside the new one)
+  if (wg !== null && wg !== S.wgen) return;
   if (!dismissed) closeBuilder();
   closeDetail();
   dropConfirm();
   S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = retry ? ML.CONFIRMING_WORD : ML.UNKNOWN_WORD;
   render();
   load();
-  if (retry && retry.wg !== S.wgen) retry = null;   // Codex #129 P1-2: a write that a NEWER one superseded is never held (it could land beside it)
   if (retry) { C.pend = { g: snap(), retry, step: 0, t0: _confirmTimers.now(), timer: null, busy: false, done: false }; nextConfirm(C.pend); }
 }
 // ── owner 11-17 (MOCKUP-portal-marketing-unknown, APPROVED as recommended): the list keeps confirming the SAME op_id ───────────────

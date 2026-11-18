@@ -1219,6 +1219,42 @@ test('X2 [P1] a LATE UNKNOWN from an older write never revives it: A dismissed w
   assert.equal(pending(p).length, 0, 'X2: a superseded write is never held — no confirmation is scheduled for A');
   assert.equal(reconf(p), null, 'X2: and no «Volver a confirmar» can re-send it');
   assert.equal(offersNamed(b, LPS).length, 0, 'X2: A was never created beside B');
+  assert.equal(notice(p), null, 'X2 (Codex #130): the stale handoff changed NOTHING — no «Confirmando» stranded over the list');
+});
+test('X6 [Codex #130 P2] a STALE handoff changes nothing: B is held (its call + confirmation dropped), then A\'s late UNKNOWN arrives ⇒ B\'s schedule is intact, B\'s notice stays, A is invisible; B\'s re-send still goes out', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  const f0 = globalThis.fetch; let n = 0, gateOpen; const gate = new Promise((r) => { gateOpen = r; }); const ops = [];   // ops[i]: the (i+1)-th save's op_id
+  globalThis.fetch = async (url, opts) => {   // A: the call dropped, its confirmation gated then dropped · B: the call + its confirmation dropped
+    if (String(url).endsWith('/marketingOfferSave')) { n += 1; ops.push(JSON.parse(opts.body).op_id); if (n === 1 || n === 3 || n === 4) throw new TypeError('Failed to fetch'); if (n === 2) { await gate; throw new TypeError('Failed to fetch'); } }
+    return f0(url, opts);
+  };
+  let bt;
+  try {
+    p.btn('Programar oferta', sh).click(); await settle(80);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    assert.equal(n, 2, 'premise: A dismissed, its confirmation out');
+    await openCard(p, 'pct');
+    p.btn('Programar oferta', await toReview(p)).click(); await settle(300);   // B: both ambiguous ⇒ held
+    assert.equal(noticeWord(p), CONFIRMING, 'premise: B held (U1)');
+    bt = pending(p)[0];
+    assert.ok(bt, 'premise: B\'s confirmation scheduled');
+    gateOpen(); await settle(300);                                             // A's late UNKNOWN: a stale handoff
+  } finally { globalThis.fetch = f0; }
+  assert.equal(bt.on, true, 'X6: B\'s schedule is intact — the stale handoff dropped nothing');
+  assert.equal(pending(p).length, 1, 'X6: and nothing of A was scheduled');
+  assert.equal(noticeWord(p), CONFIRMING, 'X6: B\'s notice stays');
+  const before = saves(b).length;
+  await fire(p);
+  const sent = saves(b).slice(before);
+  assert.equal(sent.length, 1, 'X6: B\'s re-send went out');
+  assert.notEqual(ops[2], ops[0], 'premise: A and B are two submissions');
+  assert.equal(sent[0].body.op_id, ops[2], 'X6: under B\'s op_id (never A\'s)');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X6: A is invisible — never created');
 });
 test('X3 [P2] a MOVE\'s re-send judged a DUPLICATE (an identical offer went live meanwhile) ⇒ that existing offer opens, as the dialog does — never the generic «No se guardó»', async () => {
   const b = await world();
