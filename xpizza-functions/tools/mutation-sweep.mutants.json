@@ -41588,5 +41588,39 @@
   "kills_with": [
    "DIR-SEED out"
   ]
+ },
+ {
+  "id": "dir-31",
+  "slice": "c-dir-1",
+  "label": "the book in the server's order (the address in use not first — advisor 11-14)",
+  "file": "../customer-app/capp-home.js",
+  "from": "  const bookOrder = (addresses, sel) => addresses.map((a, i) => ({ a, i })).sort((x, y) => ((y.a.id === sel) - (x.a.id === sel)) || (lastUsed(y.a) - lastUsed(x.a)) || (x.i - y.i)).map((e) => e.a);",
+  "to": "  const bookOrder = (addresses, sel) => addresses.slice();",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-2"
+  ]
+ },
+ {
+  "id": "dir-32",
+  "slice": "c-dir-1",
+  "label": "«dirección.» orphaned again (a plain space, 16b)",
+  "file": "../customer-app/capp-home.js",
+  "from": "se revisa con esta&nbsp;dirección.</small>",
+  "to": "se revisa con esta dirección.</small>",
+  "command": [
+   "node",
+   "--test",
+   "--test-name-pattern=C-DIR-1",
+   "../customer-app/capp-s7a2.test.mjs"
+  ],
+  "kills_with": [
+   "DIR-NOTE"
+  ]
  }
 ]

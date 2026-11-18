@@ -5082,9 +5082,9 @@ test('C-DIR-1 (v6 :2170): «Direcciones» — one row per address «{label}» (+
   try {
     await toDirecciones(S);
     assert.equal(txt(S.q('.topbar h1')), 'Direcciones', '🔴 DIR-2: v6\'s top bar');
-    assert.deepEqual(dirRows(S), [
-      ['addr-use', AID.trabajo, 'Trabajo', 'Blvd. Morazán, Tegucigalpa · Torre 2, piso 5'],
+    assert.deepEqual(dirRows(S), [   // advisor 11-14 (owed SBS): the address in use FIRST, then last_used_at descending (the server sends Trabajo first)
       ['addr-use', AID.casa, 'Casa · en uso', 'Col. Trejo, San Pedro Sula · Casa azul, portón negro'],
+      ['addr-use', AID.trabajo, 'Trabajo', 'Blvd. Morazán, Tegucigalpa · Torre 2, piso 5'],
       ['addr-new', null, 'Agregar dirección Poné el pin en tu puerta y describí la referencia', 'Poné el pin en tu puerta y describí la referencia'],
     ], '🔴 DIR-2: exact to v6 :2170');
     for (const r of S.qa('.addrlist [data-act="addr-use"]')) { const pen = r.querySelector('svg.chev'); assert.ok(pen, '🔴 DIR-2: the pencil'); assert.equal(pen.closest('[data-act]'), r, '🔴 DIR-2: the pencil is INERT (no action of its own)'); }
@@ -5097,7 +5097,7 @@ test('C-DIR-1 (v6 :2264): tapping a row makes it «en uso» AT ONCE, persists it
   try {
     await toDirecciones(S);
     S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
-    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Trabajo · en uso', 'Casa'], '🔴 DIR-3: «en uso» moved');
+    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Casa', 'Trabajo · en uso'], '🔴 DIR-3: «en uso» moved — the rows stay where they were (frozen per open, rule 7)');
     const uses = addr.calls.filter((c) => c.ep === 'useMyAddress');
     assert.deepEqual(uses.map((c) => [c.method, c.body]), [['POST', { id: AID.trabajo }]], '🔴 DIR-3: persisted (S-ADDR-2)');
     assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.trabajo, 'the device copy follows (cached-first)');
@@ -5111,11 +5111,19 @@ test('C-DIR-1 (v6 :2179-2184): the «Entregar en» sheet lists the saved address
     S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
     const rows = S.qa('#layer nav .navrow').map((b) => [b.dataset.act, b.dataset.id || null, b.classList.contains('on'), txt(b)]);
     assert.deepEqual(rows, [
-      ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'], ['addr-use', AID.casa, true, 'Casa Col. Trejo, San Pedro Sula'],
+      ['addr-use', AID.casa, true, 'Casa Col. Trejo, San Pedro Sula'], ['addr-use', AID.trabajo, false, 'Trabajo Blvd. Morazán, Tegucigalpa'],   // in use first (advisor 11-14)
       ['loc-use', null, false, 'Usar mi ubicación actual'], ['addr-new', null, false, 'Agregar dirección'],
     ], '🔴 DIR-4: exact to v6 :2181-2183');
     S.click(`#layer [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush();
     assert.equal(S.q('#layer .sheet'), null, '🔴 DIR-4: the sheet closes'); assert.equal(txt(S.q('.addr-btn .v > span')), 'Trabajo', '🔴 DIR-4: the pill follows');
+  } finally { S.w.close(); }
+});
+test('C-DIR-1 (16b, owed SBS 11-14): the «Entregar en» note never leaves «dirección.» alone — «esta dirección.» is one unit (the mockup\'s line 2)', async () => {
+  const { S } = await dirBoot();
+  try {
+    S.click('.tabbar [data-tab="home"]'); await flush(); S.click('.addr-btn'); await flush();
+    const note = S.q('#layer .sheethead small');
+    assert.equal(note.textContent, 'La zona de cada restaurante se revisa con esta dirección.', '🔴 DIR-NOTE: «esta» and «dirección.» held together (no-break space)');
   } finally { S.w.close(); }
 });
 test('C-DIR-1: a REFUSED «en uso» write (404) reverts the selection, with the approved calm toast; nothing else changes', async () => {
@@ -5123,7 +5131,7 @@ test('C-DIR-1: a REFUSED «en uso» write (404) reverts the selection, with the 
   try {
     await toDirecciones(S);
     S.click(`.addrlist [data-act="addr-use"][data-id="${AID.trabajo}"]`); await flush(); await flush(); await flush();
-    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Trabajo', 'Casa · en uso'], '🔴 DIR-5: reverted to the server\'s default');
+    assert.deepEqual(dirRows(S).slice(0, 2).map((r) => r[2]), ['Casa · en uso', 'Trabajo'], '🔴 DIR-5: reverted to the server\'s default (rows frozen in the open\'s order: in use first)');
     assert.equal(S.q('#toast') && S.q('#toast').textContent, 'No se guardó el cambio. Intentá de nuevo.', '🔴 DIR-5: the approved G7 failure line');
     assert.equal(JSON.parse(st.getItem('capp:addr:u_ana')).default_address, AID.casa, 'the device copy reverted too');
   } finally { S.w.close(); }

@@ -740,7 +740,7 @@
         if (entry.name === 'store') { storeRoute = { step: 'store' }; if (!mountStore(entry)) T.setTimeout(() => nav.back(), 0); else if (S.reopenCart === entry.rid && S.store) { S.reopenCart = null; clearHandoff(); S.store.ui.openCart(); S.store.ui.resumeVerification(); } else if (S.reorderOpen === entry.rid && S.store) { S.reorderOpen = null; S.store.ui.openCart(); toast('Pedido cargado en tu carrito'); } reflect(); return; }
         if (entry.name !== 'store') { S.reorder = null; S.held = null; S.carry = null; }   // the customer went elsewhere: a held tap / «Volver a pedir» is void (Codex VP r2 #3)
         if (entry.name === 'order') { S.tab = 'order'; resumeOrder(); renderNow(); return; }
-        if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = S.book.addresses.slice(); renderNow(); return; }   // C-DIR-1: frozen per open
+        if (entry.name === 'addresses') { if (!(S.member && S.book)) { T.setTimeout(() => nav.tab({ name: 'account' }), 0); return; } S.tab = 'addresses'; dirShown = CappHome.bookOrder(S.book.addresses, S.book.sel); renderNow(); return; }   // C-DIR-1: frozen per open, in use first
         if (entry.name === 'receipt') { if (!openReceipt(entry.oid)) { T.setTimeout(() => nav.tab({ name: 'orders' }), 0); return; } S.tab = 'receipt'; renderNow(); return; }
         if (entry.name === 'notifs') { if (!notifsOk()) { T.setTimeout(() => nav.back(), 0); return; } S.tab = 'notifs'; if (pushUi()) pushRefresh(); renderNow(); return; }
         if (entry.name === 'orders') { S.tab = 'orders'; loadOrders(); resumeOrder(); dir.visit(); renderNow(); return; }
@@ -1819,7 +1819,7 @@
       if (el && typeof el.focus === 'function') el.focus();
     }
     function openLayer(k) {
-      if (k === 'addr') dirShown = S.member && S.book ? S.book.addresses.slice() : null;   // C-DIR-1: the sheet's rows are frozen per open (rule 7)
+      if (k === 'addr') dirShown = S.member && S.book ? CappHome.bookOrder(S.book.addresses, S.book.sel) : null;   // C-DIR-1: the sheet's rows are frozen per open (rule 7), in use first
       if (MODAL.has(k) && !MODAL.has(S.layer)) { const ae = doc.activeElement; layerOpener = (ae && ae.dataset && ae.dataset.act ? { act: ae.dataset.act, oid: ae.dataset.oid || null } : null) || lastTap; }
       S.layer = k; renderLayer(); containLayer();
     }
