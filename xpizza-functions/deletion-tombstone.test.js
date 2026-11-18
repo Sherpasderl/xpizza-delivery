@@ -365,6 +365,48 @@ const quietly = async (f) => { const e = console.error, w = console.warn; const 
   }
   ok('the forms claim draws ONLY to create: a returning login ⇒ the existing uid with ZERO draws; a first login ⇒ one draw (Admin-SDK uncached rerun included); a raced entry is adopted, never overwritten');
 
+  // ── fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} becomes the deletion FENCE { _deleted: at } in the
+  //    SAME atomic update; the card is seeded by the REAL vault writer (payments/sdk/cards completeVault), read by the REAL readers ──
+  {
+    const CARDS = require('./payments/sdk/cards');
+    const H = (t) => require('crypto').createHash('sha256').update(t).digest('hex');
+    const DISP = { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2099 };
+    const cdeps = (db, now) => ({ db, clock: () => now, verifyIdToken: async () => ({ uid: UID }) });
+    const AUTH = { authorization: 'Bearer t' };
+    const seedCard = async (db, tok = 'tok_A') => {
+      assert.strictEqual((await CARDS.completeVault(cdeps(db, 10), { uid: UID, token: tok, token_hash: H(tok), display: DISP, vault_gen: 0 })).outcome, 'created', 'premise: the real writer vaults the card');
+      return Object.keys(db.get(`customer_cards/${UID}/cards`))[0];
+    };
+    const goneFor = async (db, id, at, label, { exact = true } = {}) => {
+      const node = db.get(`customer_cards/${UID}`) || {};
+      assert.ok(!node.cards && !node.by_hash && !node.tomb && !node.removed_ids, `🔴 ${label}: no token, hash or card row survives the deletion`);
+      if (exact) assert.deepStrictEqual(node, { _deleted: at }, `🔴 ${label}: customer_cards/{uid} is EXACTLY the deletion fence`);
+      assert.deepStrictEqual((await CARDS.listCardsCore(cdeps(db, 20), { headers: AUTH })).body, { cards: [] }, `🔴 ${label}: listCards is empty`);
+      assert.strictEqual(await CARDS.resolveSavedCard(cdeps(db, 20), UID, id), null, `🔴 ${label}: the saved card can no longer be charged`);
+    };
+    // D1 — user-initiated deletion
+    const db = fakeDb(); seedAccount(db); const id = await seedCard(db); await seedCard(db, 'tok_B');
+    await SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 100, revoke: recorder() });
+    await goneFor(db, id, 100, 'D1', { exact: false });   // the exact fence is pinned AFTER D3: a plain null must die at D3 (the late write)
+    // D3 — a vault write in flight (completeVaultForOrder after `placed`) that lands AFTER the deletion is dropped, the fence stays
+    assert.strictEqual((await CARDS.completeVault(cdeps(db, 150), { uid: UID, token: 'tok_C', token_hash: H('tok_C'), display: DISP, vault_gen: 0 })).outcome, 'dropped', '🔴 D3: a late vault write is dropped');
+    await goneFor(db, id, 100, 'D3');
+    // D4 — a repeat deletion keeps the FIRST instant on the fence
+    await SE.deleteAccountCore(db, ACCOUNT, { uid: UID, phoneHash: PH, now: 300, revoke: recorder() });
+    await goneFor(db, id, 100, 'D4');
+    // D2 — the inactivity sweep (the same core, sweepCutoff)
+    const db2 = fakeDb(); seedAccount(db2, { lastActive: 5 }); const id2 = await seedCard(db2);
+    assert.strictEqual(await SE.deleteAccountCore(db2, ACCOUNT, { uid: UID, phoneHash: PH, now: 200, sweepCutoff: 50, revoke: recorder() }), true);
+    await goneFor(db2, id2, 200, 'D2');
+    // D5 — a failed deletion update leaves the cards untouched (one atomic write)
+    const db3 = fakeDb(); seedAccount(db3); await seedCard(db3);
+    const before = JSON.stringify(db3.get(`customer_cards/${UID}`));
+    db3.FAIL.update = true;
+    await assert.rejects(() => SE.deleteAccountCore(db3, ACCOUNT, { uid: UID, phoneHash: PH, now: 400, revoke: recorder() }), /injected update failure/);
+    assert.strictEqual(JSON.stringify(db3.get(`customer_cards/${UID}`)), before, '🔴 D5: a failed deletion leaves the saved cards exactly as they were');
+  }
+  ok('saved cards: deleteAccount and the sweep replace customer_cards/{uid} with the fence { _deleted: at } atomically; listCards [] / resolveSavedCard null; a late vault write is dropped; a repeat keeps the first instant; a failed update changes nothing');
+
   FINISHED = true;
   console.log(`\ndeletion-tombstone: OK (${n})`);
 })().catch((e) => { process.stderr.write(`deletion-tombstone: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

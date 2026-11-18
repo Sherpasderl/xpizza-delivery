@@ -135,7 +135,8 @@ function normalizePhone(raw) {
   if (cleaned.length === 8) cleaned = DEFAULT_COUNTRY_CODE + cleaned;
   // Validation: must be 10-15 digits to be plausibly an international number
   if (cleaned.length < 10 || cleaned.length > 15) {
-    console.warn(`whatsapp: phone "${raw}" normalized to "${cleaned}" — looks invalid, skipping`);
+    const digits = cleaned.length;   // rule 20: never the number itself
+    console.warn(`whatsapp: phone normalized to ${digits} digits — looks invalid, skipping`);
     return null;
   }
   return cleaned;
@@ -179,13 +180,14 @@ async function sendMessage(toPhone, body, restaurantId = 'x_pizza', deps = {}) {
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.error) {
-      console.error(`whatsapp: send to ${normalized} failed`, resp.status, data);
+      const code = data && data.error ? 'provider_error' : 'http_error';   // rule 20: never the number or the provider's raw response
+      console.error(`whatsapp: send failed (http ${resp.status}, ${code})`);
       return null;
     }
-    console.log(`whatsapp: sent to ${normalized}, msg id=${data.id || 'n/a'}`);
+    console.log(`whatsapp: sent, msg id=${data.id || 'n/a'}`);
     return data;
   } catch (e) {
-    console.error(`whatsapp: send to ${toPhone} threw`, e.message);
+    console.error('whatsapp: send threw', e.message);
     return null;
   }
 }

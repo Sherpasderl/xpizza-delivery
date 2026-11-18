@@ -214,8 +214,11 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // null on the same key, as user_private is) — every setFavorite is a parent transaction that aborts on it, so none outlives the account
   // offer-audience (r4.1 §5): every history order's frozen codes go with the account (their day-index entries are swept at the deadline);
   // the brand markers are KEPT (owner 5013)
+  // fix/privacy-gaps-5f: no saved card outlives the account — customer_cards/{uid} (tokens, hashes, rows) is REPLACED by the deletion
+  // FENCE { _deleted: at } in this same update; every vault write is a transaction on that node and drops on the fence (cards.completeVault),
+  // so a vault in flight (completeVaultForOrder after `placed`) never recreates a card. The provider-side token delete is a follow-up slice.
   const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`customer_cards/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
   // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
   // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
   // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.

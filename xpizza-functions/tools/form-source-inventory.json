@@ -3538,8 +3538,7 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/addproduct-b-wiring.guard.test.js",
-    "xpizza-functions/d4-wiring.guard.test.js"
+    "xpizza-functions/addproduct-b-wiring.guard.test.js"
    ]
   },
   "catalog/choice-activation.js": {
@@ -4389,6 +4388,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1b-inverse.js",
@@ -4456,6 +4456,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4527,6 +4528,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4586,6 +4588,7 @@
       "tools/p5a-inverse.js",
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4635,6 +4638,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4699,6 +4703,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4747,6 +4752,7 @@
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4770,6 +4776,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4814,6 +4821,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -4854,6 +4862,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -4865,7 +4874,8 @@
       "tools/d4-intake-inverse.js",
       "tools/dirwire-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
-      "tools/memberreads-module-inverse.js"
+      "tools/memberreads-module-inverse.js",
+      "tools/privacy-module-inverse.js"
      ]
     },
     {
@@ -4900,6 +4910,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -4933,6 +4944,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -4967,6 +4979,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5014,6 +5027,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5061,6 +5075,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5092,6 +5107,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js"
      ]
@@ -5134,6 +5150,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5191,6 +5208,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5237,6 +5255,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5293,6 +5312,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5356,6 +5376,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5415,6 +5436,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -5455,6 +5477,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5484,6 +5507,7 @@
       "tools/mem512-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5506,6 +5530,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5531,7 +5556,8 @@
       "tools/dirwire-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
-      "tools/mktprice-module-inverse.js"
+      "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js"
      ]
     },
     {
@@ -5565,6 +5591,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5615,6 +5642,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5664,6 +5692,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5727,6 +5756,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5771,6 +5801,7 @@
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/p5a-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5812,6 +5843,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5847,6 +5879,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -5899,6 +5932,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -5960,6 +5994,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6014,6 +6049,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6072,6 +6108,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6136,6 +6173,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6176,6 +6214,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
@@ -6196,6 +6235,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -6213,6 +6253,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2-module-inverse.js",
       "tools/s2bext-module-inverse.js",
@@ -6248,6 +6289,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6295,6 +6337,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6341,6 +6384,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6390,6 +6434,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6438,6 +6483,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6479,6 +6525,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6533,6 +6580,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6587,6 +6635,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6618,6 +6667,7 @@
       "tools/keymode-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6643,6 +6693,7 @@
       "tools/keymode-module-inverse.js",
       "tools/ledgers1-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6668,6 +6719,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6715,6 +6767,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6777,6 +6830,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -6842,6 +6896,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -6899,6 +6954,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -6939,6 +6995,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7000,6 +7057,7 @@
       "tools/menu-warm-inverse.js",
       "tools/mktprice-module-inverse.js",
       "tools/photos-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7075,6 +7133,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -7131,6 +7190,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
@@ -7193,6 +7253,7 @@
       "tools/photos-inverse.js",
       "tools/portalui-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/release-race-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1a-inverse.js",
@@ -7248,6 +7309,7 @@
       "tools/pausa-inverse.js",
       "tools/photos-inverse.js",
       "tools/pp-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/resolvelines-module-inverse.js",
       "tools/s1d-module-inverse.js",
       "tools/s1srv-module-inverse.js",
@@ -7279,6 +7341,7 @@
       "tools/ledgers1-module-inverse.js",
       "tools/memberreads-module-inverse.js",
       "tools/mktprice-module-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s1srv-module-inverse.js",
       "tools/s2bext-module-inverse.js",
       "tools/zones-module-inverse.js"
@@ -7567,8 +7630,7 @@
     }
    ],
    "lifts": [
-    "xpizza-functions/keymode-wiring.guard.test.js",
-    "xpizza-functions/s2bext-wiring.guard.test.js"
+    "xpizza-functions/keymode-wiring.guard.test.js"
    ]
   },
   "merchant/_fake-db.js": {
@@ -8024,6 +8086,13 @@
   "pixelpay-hosted-charge.js": {
    "pins": [
     {
+     "file": "xpizza-functions/d4-wiring.guard.test.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js",
+      "tools/ledgers1-module-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/envlim-wiring.guard.test.js",
      "inverses": [
       "tools/d4-intake-inverse.js",
@@ -8041,7 +8110,6 @@
    "lifts": [
     "xpizza-functions/addproduct-b-wiring.guard.test.js",
     "xpizza-functions/addproduct-wiring.guard.test.js",
-    "xpizza-functions/d4-wiring.guard.test.js",
     "xpizza-functions/delivery/envlim-callers.guard.test.js",
     "xpizza-functions/extras-wiring.guard.test.js",
     "xpizza-functions/ledger-writes.guard.test.js"
@@ -8202,8 +8270,7 @@
   "quote-token.js": {
    "pins": [],
    "lifts": [
-    "xpizza-functions/quote-token.test.js",
-    "xpizza-functions/s2bext-wiring.guard.test.js"
+    "xpizza-functions/quote-token.test.js"
    ]
   },
   "ratings/_rtdb-fake.js": {
@@ -8375,13 +8442,18 @@
       "tools/s2tip-module-inverse.js",
       "tools/s3a-module-inverse.js"
      ]
+    },
+    {
+     "file": "xpizza-functions/s2bext-wiring.guard.test.js",
+     "inverses": [
+      "tools/s2bext-module-inverse.js"
+     ]
     }
    ],
    "lifts": [
     "s2b-paid-text.test.mjs",
     "xpizza-functions/kdsnames-wiring.guard.test.js",
     "xpizza-functions/rewards-catalog-cutover.test.js",
-    "xpizza-functions/s2bext-wiring.guard.test.js",
     "xpizza-functions/serial3-wiring.guard.test.js"
    ]
   },
@@ -8406,6 +8478,12 @@
   "rewards-reserve.js": {
    "pins": [
     {
+     "file": "xpizza-functions/d4-wiring.guard.test.js",
+     "inverses": [
+      "tools/d4-intake-inverse.js"
+     ]
+    },
+    {
      "file": "xpizza-functions/sdkpay-wiring.guard.test.js",
      "inverses": [
       "tools/d4-intake-inverse.js",
@@ -8419,9 +8497,7 @@
      ]
     }
    ],
-   "lifts": [
-    "xpizza-functions/d4-wiring.guard.test.js"
-   ]
+   "lifts": []
   },
   "schedule/hours-grammar.js": {
    "pins": [],
@@ -8660,6 +8736,7 @@
      "file": "xpizza-functions/brand-server-wiring.guard.test.js",
      "inverses": [
       "tools/drvc-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3c-module-inverse.js"
      ]
@@ -8668,6 +8745,7 @@
      "file": "xpizza-functions/drvc-wiring.guard.test.js",
      "inverses": [
       "tools/drvc-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3c-module-inverse.js"
      ]
@@ -8676,6 +8754,7 @@
      "file": "xpizza-functions/s3c-wiring.guard.test.js",
      "inverses": [
       "tools/drvc-inverse.js",
+      "tools/privacy-module-inverse.js",
       "tools/s2tip-module-inverse.js",
       "tools/s3c-module-inverse.js"
      ]

@@ -3,6 +3,7 @@
 //   customer_cards/{uid} = { cards: { <card_id>: { token, token_hash, brand, last4, exp_month, exp_year, display_source,
 //                                                  created_at, last_used_at, expired_at? } },
 //                            by_hash: { <token_hash>: <card_id> }, tomb: { <token_hash>: { gen, removed_at } }, removed_ids: { <card_id>: true } }
+//   — or, once the account is deleted, EXACTLY the fence { _deleted: at } (signup-endpoints deleteAccountCore): no card is ever written on it
 // Admission (A3) reads it; completion, removal and expiry are each ONE transaction of it — never a second write elsewhere, so a
 // removal cannot be raced by a completion. tomb.gen only grows: a completion admitted at an older generation is DROPPED, a fresh
 // save admitted after the removal creates the card again. Never a token or hash in any response.
@@ -42,6 +43,7 @@ async function completeVault(deps, { uid, token, token_hash: h, display: rawDisp
   let outcome = null;
   await node(deps.db, uid).transaction((cur) => {
     outcome = null;
+    if (isObj(cur) && cur._deleted !== undefined) { outcome = 'dropped'; return undefined; }   // the account-deletion fence (signup-endpoints deleteAccountCore): never a card after deletion
     const c = isObj(cur) ? JSON.parse(JSON.stringify(cur)) : {};
     const t = isObj(c.tomb) ? c.tomb[h] : null;
     if (t && Number.isInteger(t.gen) && t.gen > (Number.isInteger(gen) ? gen : 0)) { outcome = 'dropped'; return cur == null ? null : undefined; }
