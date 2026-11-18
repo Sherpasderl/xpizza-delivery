@@ -141,3 +141,39 @@ test('session (#140 P2): a send that throws synchronously rejects with that erro
   await assert.rejects(sess.send('DOM.enable'), /socket closed/);
   assert.equal(sess.pending(), 0, 'nothing left waiting for the 60 s deadline');
 });
+
+// owed-2 E STOP (advisor 11-18, runs/20261118-100155-portalui-owed2): a Runtime.evaluate never answered at 390 light and the deadline's
+// rejection ended the WHOLE census unnamed. Now: (1) the deadline names the state, the step and the method (the session's label);
+// (2) inside a state it FAILS THAT STATE (a ✗ named by that message) — the run goes on and prints its summary, rc 1. Any other error is
+// rethrown unchanged (the premise semantics stay).
+test('session: a deadline names the label (state · step) and the method, coded CDP_DEADLINE', { timeout: 5000 }, async () => {
+  const sess = session(silentWs(), { deadlineMs: 50 });
+  sess.at('M-review (candidate) @390px light · drive');
+  const e = await sess.send('Runtime.evaluate', { expression: '1' }).catch((x) => x);
+  assert.equal(e.message, 'cdp: M-review (candidate) @390px light · drive: Runtime.evaluate got no answer in 0.05 s');
+  assert.equal(e.code, 'CDP_DEADLINE');
+});
+test('failStateOnDeadline: a never-answered evaluate inside a state is a NAMED state failure; the process lives, prints its summary, rc 1', { timeout: 15000 }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  const mod = new URL('./cdp-fonts.mjs', import.meta.url).href;
+  const src = `import { session, failStateOnDeadline } from ${JSON.stringify(mod)};
+    const fails = []; let CHECKS = 0; const check = (ok, msg) => { CHECKS++; console.log(\`  \${ok ? '✓' : '✗'} \${msg}\`); if (!ok) fails.push(msg); };
+    const ws = { addEventListener: () => {}, send: () => {} }; const sess = session(ws, { deadlineMs: 50 });
+    await failStateOnDeadline(async () => { sess.at('M-review (candidate) @390px light · drive'); await sess.send('Runtime.evaluate', {}); check(true, 'M-review: never reached'); }, check);
+    await failStateOnDeadline(async () => { check(true, 'M-detail: ran after the failed state'); }, check);
+    console.log(fails.length ? \`SUMMARY: \${fails.length} FAILED (\${CHECKS} checks)\` : 'SUMMARY: OK'); process.exit(fails.length ? 1 : 0);`;
+  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', src], { encoding: 'utf8', env, timeout: 10000 });
+  assert.equal(r.status, 1, `rc 1 (got ${r.status}; stderr ${r.stderr.slice(0, 300)})`);
+  assert.ok(r.stdout.includes('  ✗ cdp: M-review (candidate) @390px light · drive: Runtime.evaluate got no answer in 0.05 s'), `the state fails, named (stdout ${r.stdout})`);
+  assert.ok(!r.stdout.includes('never reached'), 'the state stopped at the deadline');
+  assert.ok(r.stdout.includes('✓ M-detail: ran after the failed state'), 'the next state still ran');
+  assert.ok(r.stdout.includes('SUMMARY: 1 FAILED (2 checks)'), 'the process lived to print its summary');
+  assert.ok(!/Uncaught|unhandled/i.test(r.stderr), `no uncaught rejection (stderr ${r.stderr.slice(0, 300)})`);
+});
+test('failStateOnDeadline: any other error is rethrown unchanged (premise failures still end the run)', { timeout: 5000 }, async () => {
+  const { failStateOnDeadline } = await import('./cdp-fonts.mjs');
+  const err = new Error('premise: M-builder-bogo: its own data function getEditableCatalog was not served (404)');
+  const seen = []; await assert.rejects(failStateOnDeadline(async () => { throw err; }, (ok, m) => seen.push([ok, m])), (x) => x === err);
+  assert.deepEqual(seen, [], 'no check recorded for a non-deadline error');
+});

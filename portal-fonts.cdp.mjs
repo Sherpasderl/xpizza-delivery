@@ -28,7 +28,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GEO, OBSERVER, sleep } from './platform/perf/cdp-fonts.mjs';
+import { launch, serveDir, router, census, attribute, runsOf, deadlineKeysOf, GEO, OBSERVER, sleep, failStateOnDeadline } from './platform/perf/cdp-fonts.mjs';
 import { driveFailure } from './review/portal-cores/drive-failure.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -490,6 +490,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     },
   });
   const cdp = await launch({ width: view, height: view < 600 ? 844 : 900, dpr: view < 600 ? 2 : 1, throttle });
+  const where = (step) => cdp.at(`${stateName} (${side}) @${view}px ${theme} · ${step}`); where('boot');   // a CDP deadline names the state + step
   let rtRef = null;
   try {
     const errs = [];
@@ -520,7 +521,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     const bootMs = Date.now() - t0;
     for (let i = 0; i < 400 && !(await cdp.ev('!!window.__paintSnap').catch(() => false)); i++) await sleep(25);
     const paintSnap = await cdp.ev('window.__paintSnap || null');
-    try { await def.drive(cdp); } catch (e) { throw driveFailure(stateName, def.cores ? CORE_DATA[stateName].fn : null, st.unserved, e); }   // a failed drive names its own-data 404 first
+    where('drive'); try { await def.drive(cdp); } catch (e) { throw driveFailure(stateName, def.cores ? CORE_DATA[stateName].fn : null, st.unserved, e); }   // a failed drive names its own-data 404 first
     await settle(cdp);
     // FF-typing: the list-row price «1280», caret INSIDE (after «12»), a sentinel caret colour on BOTH sides (byte-identical)
     let caret0 = null;
@@ -531,8 +532,9 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
         i.focus(); i.setSelectionRange(2, 2); return true; })()`);
       caret0 = await caretOf(cdp);
     }
+    where('before');
     const before = { nodes: await census(cdp), geo: await cdp.ev(GEO), bootMs, cls: await cdp.ev('window.__cls'), caret: caret0 };
-    let heldMs = 0;
+    where('fonts'); let heldMs = 0;
     const fontUrls = () => [...rt.seen].filter((u) => isFontUrl(u));
     if (fontGate === 'hold') {
       if (srv.heldCount() + rt.holds.size === 0 && !fontUrls().length) throw new Error('premise: no font request was held — the cell would prove nothing');
@@ -543,6 +545,7 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     for (let i = 0; ; i++) { const open = fontUrls().filter((u) => !rt.finished.has(u)); if (!open.length) break; if (i > 1200) throw new Error(`font requests never completed: ${open.join(', ')}`); await sleep(25); }
     await cdp.ev('document.fonts.ready.then(() => true)'); await sleep(250);
     let geo = await cdp.ev(GEO); for (let i = 0; i < 20; i++) { await settle(cdp); const g = await cdp.ev(GEO); if (JSON.stringify(g) === JSON.stringify(geo)) break; geo = g; }
+    where('premise');
     await premisePane(cdp, def.container, def.text, [...st.threw, ...st.unserved.map((f) => `${f}: not served (404)`)]);
     await corePremise(cdp, stateName, def, st, 'pane');
     const sections = await unservedSections(cdp, def, st);
@@ -561,8 +564,8 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
     let probe = null;
     const sig = (ns) => ns.map((n) => JSON.stringify([n.path, n.family, n.weight, n.style, n.codepoints, n.fonts]));
     const firstDiff = (a, b) => { const x = sig(a), y = sig(b); const i = x.findIndex((v, k) => v !== y[k]); return i >= 0 ? (a[i] || b[i]).path : (x.length !== y.length ? (b[x.length] || a[y.length]).path : null); };
-    after.nodes = await census(cdp);
-    probe = await attribute(cdp, after.nodes);
+    where('census'); after.nodes = await census(cdp);
+    where('probe'); probe = await attribute(cdp, after.nodes);
     { const again = await census(cdp), d = firstDiff(after.nodes, again);
       if (d !== null) throw new Error(`capture unstable: ${stateName}: ${d} changed during the census (${after.nodes.length} → ${again.length} nodes)`);
       // r3d (advisor 11-18): a node rewritten faster than the census reads it is gone before its query in BOTH passes — equal lists, so
@@ -571,11 +574,12 @@ async function run({ side = 'candidate', fontGate, throttle = false, oldPolicy =
       if (v.length) throw new Error(`capture unstable: ${stateName}: ${v[0]} vanished during the census (${v.length} node${v.length === 1 ? '' : 's'})`); }
     // #105 r3: read AFTER the probe, so the node census and the probe stay back to back on the settled pane (r3 diag: 1/5 fidelity fails
     // with it between them, 0/5 without)
-    const rendered = await renderedSections(cdp, def);
+    where('end'); const rendered = await renderedSections(cdp, def);
     await corePremise(cdp, stateName, def, st, 'end');   // a core call that failed AFTER the pane check still fails the state
     Object.assign(after, { threw: [...st.threw], unserved: [...st.unserved], served: [...st.served].sort(), rendered, sections, data: st.data });   // #105 r2: recorded UNCONDITIONALLY
     return { before, after, probe, png, raw };
   } finally {
+    where('cleanup');
     try { if (rtRef) await rtRef.failHeld(() => true); } catch (_) {}
     cdp.close(); srv.close();
   }
@@ -667,6 +671,9 @@ function gateD(r) {
 const hostedPainted = (nodes) => nodes.some((n) => n.fonts.some((f) => hostedOf(f.familyName) && f.glyphCount > 0));
 const moved = (a, b) => (a.length === b.length ? a.filter((g, i) => g !== b[i]).length : -1);
 const fails = []; let CHECKS = 0; const check = (ok, msg) => { CHECKS++; console.log(`  ${ok ? '✓' : '✗'} ${msg}`); if (!ok) fails.push(msg); };
+// owed-2 E (advisor 11-18): every cell / state runs in a deadline cell — a CDP call never answered fails THAT state, named (state · step ·
+// method), and the run goes on to its summary; any other error ends the run as before
+const cell = (fn) => failStateOnDeadline(fn, check);
 { const st = arg('states'); if (st) { if (!st.length || st.some((x) => !x)) refuse('--states selects no state'); for (const x of st) if (!STATES[x]) refuse(`unknown state ${JSON.stringify(x)}`); } }
 const fidelity = (r, label) => { const bad = r.after.nodes.flatMap((n) => runsOf(n, r.probe).fidelity.map((f) => `${n.path.slice(-40)} ${f}`)); check(!bad.length, `${label}: probe fidelity (${bad.length ? bad.slice(0, 3).join('; ') : 'every node'})`); };
 const expectedErr = (e, r) => typeof e === 'object' && /^Failed to load resource/.test(e.log) && (isFontUrl(e.url) || r.after.refused.includes(e.url));
@@ -688,7 +695,7 @@ for (let rep = 1; rep <= REPEATS; rep++) {
   for (const view of VIEWS) {
     console.log(`\n== repeat ${rep} · ${view}px`);
     for (const [page, stateName] of Object.entries(CELL_STATES)) {
-      if (CELLS.includes('fast')) {
+      if (CELLS.includes('fast')) await cell(async () => {
         const r = await run({ side: process.env.FONTS_FAST_SIDE || 'candidate', stateName, view, throttle: !!process.env.FONTS_FAST_THROTTLE });   // FONTS_FAST_THROTTLE=1: diagnostic (CPU 4× + Slow 4G, fonts NOT held)   // FONTS_FAST_SIDE=baseline: today's portal, the diagnostic reference
         check(hostedPainted(r.after.nodes), `[${page}] FF-fast: ${FACE} paints (census)`);
         check(!!r.after.paintSnap && r.after.paintGeo.length > 20, `[${page}] FF-fast premise: geometry captured in-page at FCP + 1 rAF (FCP ${r.after.paintSnap && Math.round(r.after.paintSnap.fcp)} ms; ${FACE} loaded then: ${r.after.paintSnap ? r.after.paintSnap.loaded.length : '?'})`);
@@ -706,22 +713,22 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         check(fontCls === 0, `[${page}] FF-fast: FONT-ATTRIBUTED CLS 0 over the whole window from navigation start (${+fontCls.toPrecision(3)}; total ${r.after.cls})`);
         if (shellCls) { console.log(`    · logged against FINDING-portal-shell-late-shift.md: shell-content CLS ${+shellCls.toFixed(4)}`); SHELL_LOG.push({ page, view, rep, cls: shellCls }); }
         if (cls.length) showShifts(cls);
-      }
-      if (CELLS.includes('clsctrl') && page === 'aceptar') {   // NEGATIVE CONTROL for the geometry rule: old policy ⇒ a box VISIBLE at first paint moves ⇒ FAIL
+      });
+      if (CELLS.includes('clsctrl') && page === 'aceptar') await cell(async () => {   // NEGATIVE CONTROL for the geometry rule: old policy ⇒ a box VISIBLE at first paint moves ⇒ FAIL
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
         const g = visMoved(r);
         check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes) && g.visible > 20, `[${page}] GEO-ctrl premise: first paint on the fallback with ${g.visible} rendered boxes; the old policy swapped at release (${r.after.heldMs} ms)`);
         check(!g.countChanged && g.moved.length > 0, `[${page}] GEO-ctrl: boxes RENDERED at first paint MOVE under the swap, so the FF-fast geometry rule FAILS it (${g.moved.length} moved; e.g. ${(g.moved[0] || '').slice(0, 90)})`);
-      }
-      if (CELLS.includes('clsctrl') && page === 'index') {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
+      });
+      if (CELLS.includes('clsctrl') && page === 'index') await cell(async () => {   // NEGATIVE CONTROL for the ruling: a deliberate font SWAP inside #viewmenu must FAIL it
         const r = await run({ stateName, view, fontGate: 'hold', holdMs: 2500, oldPolicy: true });
         const cls = classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes), font = cls.filter((x) => x.font);
         const inside = font.filter((x) => x.sources.some((s) => s.inViewmenu));
         check(hostedPainted(r.after.nodes) && !hostedPainted(r.before.nodes), `[${page}] CLS-ctrl premise: the old policy swapped fallback → ${FACE} at release (${r.after.heldMs} ms)`);
         check(inside.length > 0 && font.reduce((a, x) => a + x.v, 0) > 0, `[${page}] CLS-ctrl: the swap's shift inside #viewmenu is FONT-ATTRIBUTED, so the FF-fast rule FAILS it (${inside.length} entr${inside.length === 1 ? 'y' : 'ies'}; arm (a) ${inside.filter((x) => x.armA).length}, arm (b) ${inside.filter((x) => x.armB).length}; font CLS ${+font.reduce((a, x) => a + x.v, 0).toPrecision(3)})`);
         showShifts(cls);
-      }
-      if (CELLS.includes('slow')) {
+      });
+      if (CELLS.includes('slow')) await cell(async () => {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true });
         check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-slow premise: NO ${FACE} loaded at the FCP snapshot (${r.after.paintSnap ? JSON.stringify(r.after.paintSnap.loaded) : 'no snapshot'}) — else VOID`);
         check(!hostedPainted(r.before.nodes), `[${page}] FF-slow premise: the fallback is painted before release (fonts released at ${r.after.heldMs} ms)`);
@@ -729,24 +736,24 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         const m = moved(r.before.geo, r.after.geo);
         check(r.after.geo.length > 20 && m === 0, `[${page}] FF-slow: 0 of ${r.after.geo.length} boxes moved (${m})`);
         check(r.after.cls - r.before.cls === 0, `[${page}] FF-slow: CLS across the font window 0 (${r.after.cls - r.before.cls})`); if (r.after.cls) showShifts(classifyShifts(r.after.shifts, r.after.fontEv, r.after.fontRes));
-      }
-      if (CELLS.includes('failed')) {
+      });
+      if (CELLS.includes('failed')) await cell(async () => {
         const r = await run({ stateName: page === 'index' ? 'P-drawer' : 'I-password', view, fontGate: 'fail' });
         check(r.after.fontsFailed > 0, `[${page}] FF-failed premise: the font requests really failed (${r.after.fontsFailed})`);
         check(!hostedPainted(r.after.nodes), `[${page}] FF-failed: the fallback paints and is kept`);
         check(moved(r.before.geo, r.after.geo) === 0, `[${page}] FF-failed: 0 boxes move; usable (${page === 'index' ? 'a drawer opened' : 'the email step submitted → password'})`);
         const unexpected = r.after.errs.filter((e) => !expectedErr(e, r)).map((e) => (typeof e === 'object' ? `log: ${e.log} ${e.url}` : e));
         check(unexpected.length === 0, `[${page}] FF-failed: no page exceptions / console errors beyond the expected font failures (${unexpected.length ? unexpected.slice(0, 4).join(' | ') : 'none'})`);
-      }
-      if (CELLS.includes('ctrl')) {
+      });
+      if (CELLS.includes('ctrl')) await cell(async () => {
         const r = await run({ stateName, view, fontGate: 'hold', throttle: true, oldPolicy: true });
         check(!!r.after.paintSnap && r.after.paintSnap.loaded.length === 0, `[${page}] FF-ctrl premise: NO ${FACE} loaded at the FCP snapshot — else VOID`);
         check(!hostedPainted(r.before.nodes) && hostedPainted(r.after.nodes), `[${page}] FF-ctrl: the OLD policy swaps (fallback → ${FACE})`);
         const m = moved(r.before.geo, r.after.geo);
         check(m > 0, `[${page}] FF-ctrl: the geometry check SEES it — ${m} of ${r.after.geo.length} boxes moved`);
-      }
+      });
     }
-    if (CELLS.includes('typing')) {
+    if (CELLS.includes('typing')) await cell(async () => {
       const r = await run({ stateName: 'P-editor', view, fontGate: 'hold', throttle: true, typing: true });
       check(!!r.before.caret && !!r.after.caret, `[typing] FF-typing premise: the caret rendered before and after (x ${r.before.caret && r.before.caret.x} → ${r.after.caret && r.after.caret.x})`);
       check(r.after.caret && r.before.caret && r.after.caret.x === r.before.caret.x, `[typing] FF-typing: the RENDERED caret did not move (0 px)`);
@@ -755,15 +762,15 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       check(moved(r.before.geo, r.after.geo) === 0, '[typing] FF-typing: 0 boxes move');
       const c = await run({ stateName: 'P-editor', view, fontGate: 'hold', throttle: true, typing: true, oldPolicy: true });
       check(c.after.caret && c.before.caret && c.after.caret.x !== c.before.caret.x, `[typing] FF-typing control: the SAME caret MOVES under the old policy (${c.before.caret && c.before.caret.x} → ${c.after.caret && c.after.caret.x}) — else the 0 above is void`);
-    }
+    });
   }
   if (CELLS.includes('same')) {
     for (const view of VIEWS) for (const theme of THEMES) {
       console.log(`\n== FF-same · repeat ${rep} · ${view}px · ${theme}`);
       const byState = {};
       const states = Object.keys(STATES).filter((s) => !arg('states') || arg('states').includes(s));
-      for (const stn of states) {
-        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); continue; }
+      for (const stn of states) await cell(async () => {
+        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); return; }
         const base = await run({ side: 'baseline', stateName: stn, deterministic: true, view, theme });
         const cand = await run({ side: process.env.FONTS_SELF_CONTROL ? 'baseline' : 'candidate', stateName: stn, deterministic: true, view, theme });
         byState[stn] = cand;
@@ -775,12 +782,12 @@ for (let rep = 1; rep <= REPEATS; rep++) {
         if (d || process.env.FONTS_SAVE) for (const [k, b] of [['base', base.png], ['cand', cand.png]]) fs.writeFileSync(path.join(OUT, `${stn}-${view}-${theme}-${k}.png`), b);
         check(d === 0, `${stn} gate (c): pixel-exact, equalized history (${d} differing pixels; raw ${dRaw}, informational)`);
         for (const [side, r] of [['baseline', base], ['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `${stn} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
-      }
-      if (byState['P-drawer']) {   // FC-ctrl: a REAL face change survives the normalization ⇒ the gate must fail
+      });
+      if (byState['P-drawer']) await cell(async () => {   // FC-ctrl: a REAL face change survives the normalization ⇒ the gate must fail
         const b0 = await run({ side: 'baseline', stateName: 'P-editor', deterministic: true, view, theme });
         const c0 = await run({ side: 'candidate', stateName: 'P-editor', deterministic: true, view, theme, faceChange: true });
         check(pixelDiff(b0.png, c0.png) > 0, 'FC-ctrl: a deliberate face change (.nm → the 600 weight) FAILS the normalized pixel gate');
-      }
+      });
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);
       for (const v of vb) check(!/^FAIL/.test(v.verdict), `gate (b) ${v.family} ${v.weight} ${v.raw.slice(0, 18)}…: ${v.verdict}`);
@@ -802,14 +809,14 @@ for (let rep = 1; rep <= REPEATS; rep++) {
       console.log(`\n== FF-census · repeat ${rep} · ${view}px · ${theme}`);
       const byState = {};
       const states = Object.keys(STATES).filter((s) => !arg('states') || arg('states').includes(s));
-      for (const stn of states) {
-        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); continue; }
+      for (const stn of states) await cell(async () => {
+        if (STATES[stn].requires && !fs.existsSync(path.join(ROOT, STATES[stn].requires))) { console.log(`    · ${stn}: N/A — ${STATES[stn].requires} is not in this tip (listed, skipped)`); return; }
         const cand = await run({ side: 'candidate', stateName: stn, deterministic: true, view, theme });
         byState[stn] = cand;
         fidelity(cand, `${stn} candidate`);
         check(hostedPainted(cand.after.nodes), `${stn}: ${FACE} paints`);
         for (const [side, r] of [['candidate', cand]]) { const bad = gateD(r); check(!bad.length, `${stn} gate (d) ${side}: no silent fallback${bad.length ? ` — ${bad.slice(0, 3).join('; ')}` : ''}`); }
-      }
+      });
       const decls = primaryDecls(), reqW = requestedWeights();
       const vb = gateB(byState, decls, reqW);
       for (const v of vb) check(!/^FAIL/.test(v.verdict), `gate (b) ${v.family} ${v.weight} ${v.raw.slice(0, 18)}…: ${v.verdict}`);

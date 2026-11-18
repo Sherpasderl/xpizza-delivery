@@ -93,3 +93,18 @@ test('the census tool routes every drive failure through driveFailure (own data 
     'the drive runs inside the driveFailure catch');
   assert.equal((SRC.match(/def\.drive\(/g) || []).length, 1, 'there is ONE drive call site');
 });
+
+// owed-2 E STOP (advisor 11-18): every run() lives inside a failStateOnDeadline cell (each per-page cell block, and each state of the
+// FF-same / FF-census loops), and run() labels its session with the state and the step before each phase, so a CDP deadline is a named
+// state failure, never a process kill.
+test('the census tool runs every state inside a deadline cell and labels each step', () => {
+  assert.match(SRC, /^import \{[^}]*\bfailStateOnDeadline\b[^}]*\} from '\.\/platform\/perf\/cdp-fonts\.mjs';$/m, 'the census tool imports failStateOnDeadline');
+  const lines = SRC.split('\n'), runs = lines.map((l, i) => [l, i]).filter(([l]) => /await run\(/.test(l));
+  assert.ok(runs.length >= 12, `the run() call sites (${runs.length})`);
+  for (const [l, i] of runs) {   // the nearest enclosing opener above it is a cell
+    let j = i - 1, open = null; for (; j >= 0; j--) if (/^ {4,6}(if \(CELLS\.includes|for \(const stn of states\)|if \(byState\[)/.test(lines[j])) { open = lines[j]; break; }
+    assert.ok(open && /await cell\(async \(\) => \{\s*(\/\/.*)?$/.test(open), `run() at line ${i + 1} is inside a deadline cell (opener: ${open})`);
+  }
+  for (const step of ['boot', 'drive', 'fonts', 'premise', 'census', 'probe', 'end', 'cleanup']) assert.ok(SRC.includes(`where('${step}')`), `run() labels the ${step} step`);
+  assert.ok(/where\('drive'\);\s*try \{ await def\.drive\(cdp\);/.test(SRC), 'the drive step is labelled right before the drive');
+});

@@ -71,19 +71,27 @@ export async function waitForLoad({ maxLoad = 30, pollMs = 60000, maxWaitMs = 30
 // The CDP wire over one browser socket: command ids → their answers, events → their handlers.
 // r3d (advisor 11-18): every command has a BACKSTOP — one Chrome never answers (a promise that can't settle under paused virtual time)
 // rejects naming its method, instead of hanging the run until its process kill (M-probe-*: 600 s).
+// owed-2 E (advisor 11-18): the deadline names WHERE — the label the caller sets (state · step) — and is coded CDP_DEADLINE, so a census
+// fails THAT state (failStateOnDeadline below), never the whole run.
 export function session(ws, { deadlineMs = Number(process.env.FONTS_CDP_DEADLINE_MS) || 90000 } = {}) {
-  let id = 0; const pend = new Map(); const handlers = new Map();
+  let id = 0, label = ''; const pend = new Map(); const handlers = new Map();
   ws.addEventListener('message', (e) => {
     const m = JSON.parse(e.data);
     if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); clearTimeout(p.timer); m.error ? p.reject(new Error(`${p.method}: ${m.error.message}`)) : p.resolve(m.result); return; }
     if (m.method) for (const fn of handlers.get(m.method) || []) { try { fn(m.params); } catch (err) { console.error(err); } }
   });
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => { const i = ++id;
-    const timer = setTimeout(() => { if (pend.delete(i)) reject(new Error(`cdp: ${method} got no answer in ${deadlineMs / 1000} s`)); }, deadlineMs);
+    const timer = setTimeout(() => { if (pend.delete(i)) reject(Object.assign(new Error(`cdp: ${label ? `${label}: ` : ''}${method} got no answer in ${deadlineMs / 1000} s`), { code: 'CDP_DEADLINE' })); }, deadlineMs);
     pend.set(i, { resolve, reject, method, timer });
     // Codex #140: a send that throws at once (serialisation, a closed socket) leaves nothing waiting for the deadline
     try { ws.send(JSON.stringify({ id: i, method, params, sessionId })); } catch (err) { clearTimeout(timer); pend.delete(i); reject(err); } });
-  return { send, handlers, pending: () => pend.size };
+  return { send, handlers, pending: () => pend.size, at: (l) => { label = String(l || ''); } };
+}
+
+// One state (or cell) of a census: a CDP deadline inside it is a ✗ named by the deadline's message (state · step · method) and the run
+// goes on to its summary; any other error is rethrown unchanged.
+export async function failStateOnDeadline(fn, check) {
+  try { return await fn(); } catch (e) { if (!e || e.code !== 'CDP_DEADLINE') throw e; check(false, e.message); return null; }
 }
 
 export async function launch({ width = 390, height = 844, dpr = 2, throttle = false, args = [] } = {}) {
@@ -100,7 +108,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
       chrome.stderr.on('data', (d) => { b += d; const m = b.match(/DevTools listening on (ws:\/\/\S+)/); if (m) { clearTimeout(t); resolve(m[1]); } });
     });
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-    const { send, handlers } = session(ws);
+    const { send, handlers, at } = session(ws);
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const s = (m, p) => send(m, p, sessionId);
@@ -117,7 +125,7 @@ export async function launch({ width = 390, height = 844, dpr = 2, throttle = fa
       if (r.exceptionDetails) throw new Error(`page threw: ${JSON.stringify(r.exceptionDetails).slice(0, 400)}`);
       return r.result.value;
     };
-    return { s, on, ev, close: () => { try { ws.close(); } catch (_) {} close(); } };
+    return { s, on, ev, at, close: () => { try { ws.close(); } catch (_) {} close(); } };
   } catch (e) { close(); throw e; }
 }
 
