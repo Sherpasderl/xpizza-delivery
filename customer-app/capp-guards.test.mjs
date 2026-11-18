@@ -24,7 +24,8 @@
 // Run: node --test customer-app/capp-guards.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
@@ -33,15 +34,17 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-// BASE → 827373d6 (advisor 11-15, the forked-lane rule): feat/capp-offers-r20 = the offers line + a MERGE of feat/capp-push (the
-// r20 / push line, 604e96ab-based). The range is the offers line's first-parent commits since the merge base 827373d6 plus the
-// merge's own resolution; the push line arrives as the merge's SECOND parent (its own guard pins it at 604e96ab..CAPP_TIP)
-const BASE = '827373d6';
-const CAPP_TIP = '2b4aae89';
+// BASE → 31f05c8a4 (advisor 11-18, ruling (A); feat/capp-dish-stats merged forward onto it at 0895a17c): a capp lane on post-asm11 main pins its OWN range — BASE = its merge base with
+// origin/main as a LITERAL sha (never computed at run time, so the guard cannot drift lax), CAPP_TIP = the lane tip. The offers-r20 /
+// push pins (827373d6..2b4aae89) and their merges landed on main with asm11 and sit below BASE now (MERGE_ALLOW pruned to above BASE).
+const BASE = '31f05c8a';
+const CAPP_TIP = '0895a17c';
 // ASSEMBLY STEPS (asm11 step 4, advisor 11-17): a capp commit made ON THE TRAIN line, before the lane's merge — it can't be the pin (a pin on
 // the train line pulls the train into the lane range). Each is listed by full sha with its EXACT file set: excused from the «after the pin» walk
 // only while that set is unchanged, and only while it is in HEAD's history (a step that left the tree is a stale entry). None touches a live
 // form or xpizza-functions/, so the range cells (live forms, server change) lose nothing.
+// Lanes cut from 31f05c8a4 each carry their own BASE / CAPP_TIP: at the train their pins collide — assembly resolves them here, per
+// ASSEMBLY_STEPS, and the NEWEST lane tip wins the pin (advisor 11-18).
 const ASSEMBLY_STEPS = {
   '792a3dde73e0bff5181c4082c0e0a6a291afbd02': ['customer-app/capp-s7a2.test.mjs', 'customer-app/fixtures/s7a2/directory.json', 'customer-app/fixtures/s7a2/gen-directory.mjs', 'review/capp-sbs/scenes-fx.mjs'],
 };
@@ -63,10 +66,10 @@ const syncedIntoApp = () => {
   assert.ok(into.some(({ dst }) => dst === 'customer-app/sherpa-client.js'), 'non-vacuity: sync-client writes customer-app/sherpa-client.js');
   return into;
 };
-const capRange = () => {
+const capRange = (head = 'HEAD') => {
   for (const sha of [BASE, CAPP_TIP]) assert.equal(git('cat-file', '-t', sha).trim(), 'commit', `🔴 ${sha} is not a commit`);
   assert.ok(isAncestor(BASE, CAPP_TIP), `🔴 ${BASE} is not an ancestor of ${CAPP_TIP} — not the capp range`);
-  assert.ok(isAncestor(CAPP_TIP, 'HEAD'), `🔴 ${CAPP_TIP} is not in HEAD's history — the capp range is not part of this tree`);
+  assert.ok(isAncestor(CAPP_TIP, head), `🔴 ${CAPP_TIP} is not in ${head}'s history — the capp range is not part of this tree`);
   const synced = syncedIntoApp();
   for (const { src, dst } of synced) assert.ok(sameBytes(dst, src), `🔴 ${dst} is a sync-client copy but differs from (or is missing beside) its source ${src} — an edit hidden in a synced file`);
   // the lane's first-parent commits AND every descendant of the pin (--ancestry-path): a lane commit after the pin that comes in as a
@@ -81,7 +84,7 @@ const capRange = () => {
     .map((rec) => { const [head, ...files] = rec.split('\0'); const [line, first] = head.split('\n'); const sha = line.slice(0, 40);
       return { sha, subject: `${sha.slice(0, 9)}${line.slice(40)}`, files: [first, ...files].map((f) => (f || '').replace(/^\n+/, '')).filter(Boolean) }; })
     .filter(({ sha, files }) => !stepOk(sha, files) && files.some((f) => f.startsWith('customer-app/') && !skip.has(f))).map(({ subject }) => subject);
-  const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..HEAD`]), ...touched(['--ancestry-path', `${CAPP_TIP}..HEAD`])])].join('\n');
+  const later = [...new Set([...touched(['--first-parent', `${CAPP_TIP}..${head}`]), ...touched(['--ancestry-path', `${CAPP_TIP}..${head}`])])].join('\n');
   assert.equal(later, '', `🔴 capp commit(s) after CAPP_TIP ${CAPP_TIP} — re-point CAPP_TIP to the newest of them:\n${later}`);
   return [BASE, CAPP_TIP];
 };
@@ -261,38 +264,14 @@ test('the intake key: one builder in the app, no literal; each real-handler suit
 // RC 75c1bccea) followed the TRAIN once the lane came in as a merge's second parent — it flagged train/asm8 + asm9 merges (195147ff,
 // 11273d0c: not capp resolutions) and silently dropped the lane's own merges below.
 const MERGE_ALLOW = {
-  // feat/capp-offers-r20 (advisor 11-15): every hit proven line by line — the merge's `git show --cc` lines that come from NO parent are
-  // listed in each reason (none, or exactly the ruled lines); PROVISIONAL with the merges until Codex/advisor approve capp-push r2
-  'b63d58a0 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  'b63d58a0 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  'b63d58a0 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  // asm11 step 5 (advisor 11-17): fc0f3213 = the step-4 overlay drop 792a3dde7 + the lane tip 457066a23 — a clean automerge (git show --cc: 0 hunks)
-  'fc0f3213 customer-app/capp-guards.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  'fc0f3213 customer-app/capp-s7a2.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '1adc6541 customer-app/capp-checkout.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN offer-quote marker lines (advisor 11-15)',
-  '1adc6541 customer-app/capp-push.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '1adc6541 customer-app/capp-s7a2.test.mjs': 'union + ONLY the 2 ruled PROVENANCE-PIN c3r-v2 marker lines (advisor 11-15)',
-  '1adc6541 customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-api-sdk.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-colour-allowlist.json': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-guards.test.mjs': 'union + ONLY the ruled forked-lane BASE move to 827373d6 (advisor 11-15, ruling (a)): 3 comment lines, the BASE line, 1 blank',
-  '8839193d customer-app/capp-home.js': 'hand-resolved same-line merge of offers desk-hide + push preview-hide; cell CH-ABIERTO-3',
-  '8839193d customer-app/capp-menu.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-shell-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-signup-api.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-signup.test.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-ui.js': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/fixtures/s7a2/gen-directory.mjs': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/index.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/shell.html': 'pure union of both parents (git show --cc: 0 lines from no parent)',
-  '8839193d customer-app/capp-push.test.mjs': 'union + the PUSH-TAP microtask (vclock step 9 in the merged tree)',
-  '8839193d customer-app/capp-s7a2.test.mjs': 'union + the union fixture digest pin (= directory.json scenarios_sha256) + its comment',
-  '8839193d customer-app/fixtures/s7a2/directory.json': 'generator output: gen-directory.mjs @ eb6d9558d reproduces it byte-identical',
-  '8839193d customer-app/capp-ui.test.mjs': 'union + one blank separator line',
-  // (asm10 RC 2b7e9c53 — ruled in eaca7fc3f — left the walk at asm11: it descends from the old pin b7880d0e, not from the lane pin, so like
-  // every train-only merge it is neither on the lane line nor after the pin)
+  // above BASE 31f05c8a only (advisor 11-18): 31f05c8a (advisor 11-18): the offers-r20 / push / asm11 entries (b63d58a0, fc0f3213, 1adc6541, 8839193d) landed with asm11
+  // feat/capp-dish-stats merge-forward 0895a17c (advisor 11-18): each hunk resolved alone; `git show --cc` lines from NO parent listed
+  '0895a17c customer-app/capp-checkout.js': 'the fingerprint leaves out BOTH decorations: 1 line from no parent — `const { dish_stats: _stats, offers: _offers, ...content } = envelope.menu;` (+ both parents\' comments); of-13 / ds1-fp',
+  '0895a17c customer-app/capp-menu.js': 'the lane\'s `dishStats,` line + main\'s `offers` block — both parents\' lines, 0 from no parent',
+  '0895a17c customer-app/capp-ui.js': 'the lane\'s `S.upsellDesk = null` reset + main\'s empty-cart return with `trimNote` — both parents\' lines, 0 from no parent',
+  '0895a17c customer-app/capp.css': 'pure union of both parents (git show --cc: 0 lines from no parent)',
+  '0895a17c customer-app/capp-s7a2.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
+  '0895a17c customer-app/capp-ui.test.mjs': 'end-of-file appends on an empty base: union (the lane\'s dish-stats cells + main\'s), 0 from no parent',
 };
 test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}..${CAPP_TIP} + the merges after the pin`, () => {
   const [, tip] = capRange(), synced = syncedIntoApp(), exempt = new Set([...synced.map(({ dst }) => dst), ...Object.keys(PORTED).map((f) => `customer-app/${f}`)]);
@@ -302,6 +281,19 @@ test(`no capp edit hidden in a merge resolution: first-parent merges in ${BASE}.
   const unlisted = hits.filter((h) => !(h in MERGE_ALLOW)), stale = Object.keys(MERGE_ALLOW).filter((k) => !hits.includes(k));
   assert.equal(unlisted.join('\n'), '', `🔴 customer-app/ edit(s) made in a merge resolution (differ from every parent; not in MERGE_ALLOW):\n${unlisted.join('\n')}`);
   assert.equal(stale.join('\n'), '', `🔴 stale MERGE_ALLOW entr(ies) — no longer a resolution edit:\n${stale.join('\n')}`);
+});
+
+// The re-based pin still BITES (advisor 11-18): a planted, unreviewed customer-app/ commit on top of HEAD — objects only (git commit-tree
+// over a scratch index; no ref, no worktree file changes) — must fail the range; the same plant touching ONLY this guard file is the
+// exempt re-pin and passes.
+test('capp-guards still bites after the 11-18 re-base: a planted capp commit after CAPP_TIP goes RED', () => {
+  const plant = (f, extra) => { const idx = join(tmpdir(), `capp-plant-${process.pid}-${Date.now()}.idx`), env = { ...process.env, GIT_INDEX_FILE: idx, GIT_AUTHOR_NAME: 'plant', GIT_AUTHOR_EMAIL: 'plant@invalid', GIT_COMMITTER_NAME: 'plant', GIT_COMMITTER_EMAIL: 'plant@invalid' };
+    const g = (args, input) => execFileSync('git', args, { cwd: ROOT, env, input, encoding: 'utf8' }).trim();
+    try { g(['read-tree', 'HEAD']); const blob = g(['hash-object', '-w', '--stdin'], g(['show', `HEAD:${f}`]) + extra); g(['update-index', '--cacheinfo', `100644,${blob},${f}`]);
+      return g(['commit-tree', g(['write-tree']), '-p', 'HEAD', '-m', 'planted unreviewed capp commit']); } finally { rmSync(idx, { force: true }); } };
+  assert.doesNotThrow(() => capRange('HEAD'), 'premise: the committed tip is in range');
+  assert.throws(() => capRange(plant('customer-app/capp.css', '\n/* planted */\n')), /capp commit\(s\) after CAPP_TIP/, '🔴 GUARD-BITES: an unreviewed capp commit after the pin fails');
+  assert.doesNotThrow(() => capRange(plant('customer-app/capp-guards.test.mjs', '\n// planted re-pin\n')), 'the guard file alone is the exempt re-pin');
 });
 
 // S2 SBS method (A), advisor 11-09: the side-by-side harness renders the SDK checkout with TWO stated injections — runtime mode 'native'
