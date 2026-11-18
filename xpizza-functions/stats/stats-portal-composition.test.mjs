@@ -89,64 +89,62 @@ async function serve(url, opts) {
   return { ok: out.status >= 200 && out.status < 300, status: out.status, text: async () => text, json: async () => JSON.parse(text), headers: { get: (h) => headers.get(h.toLowerCase()) || null } };
 }
 
-// The page's clock is pinned to the server's (ventas.js reads Date.now() for "today"): a test-only rewrite.
-const pinClock = (s) => s.replace(/Date\.now\(\)/g, String(NOW));
+// The page's clock is pinned to the server's for EVERY module the page loads, however it is loaded (ventas.js, and what it
+// imports — ventas-tab.js computes the period, rend-data.js …): the global Date itself, frozen at NOW — never a per-module
+// rewrite (a hand-kept module list let ventas-tab.js read the real clock and ask a server living on TODAY for a future day).
+const RealDate = Date;
+globalThis.Date = class PinnedDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(NOW); } static now() { return NOW; } };
 
 const byId = H.installDom();
 const dl = H.captureDownloads();
 globalThis.fetch = serve;
 byId.get('shopname').textContent = 'X. Pizza';
-await H.loadModules(['ventas'], { ventas: pinClock });
+await H.loadModules(['ventas']);
 document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: 'uA' } }));
 document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid: 'r_a' } }));
 byId.get('navventas').click();
 await H.settle(30);
 
-// 1. the page asked the real server for the default period, and rendered ITS numbers
+// 1. the page asked the real server for the default period, and the real answer carries what the page reads (the WIRE half)
+// The cell's DOM half read the RETIRED Ventas page (ventas.js handed it to ventas-tab.js, c27397ed6); none of its classes exist
+// in any page now. Each retired read → the Rendimiento cell that composes the SAME real server answer today (advisor 11-15):
+//   vkval  (Ventas · Pedidos · Ticket promedio = the server's kpis) → xpizza-portal/rend-data.test.mjs:217 (exact values from the
+//          REAL body) + xpizza-portal/ventas-tab.test.mjs:47 (the three figures on the page)
+//   vdl    (deltas = the server's)                                  → xpizza-portal/ventas-tab.test.mjs:236 (the comparison line
+//          from the REAL deltas, exact)
+//   viname (top products, the server's order)                      → xpizza-portal/rend-data.test.mjs:217 (ranked by sales, exact)
+//   «Actualizado: en vivo.» (freshness from days[].computed_at)    → xpizza-portal/rend-data.test.mjs:197 + ventas-tab.test.mjs:246
+//   r_b's sale nowhere on r_a's page                               → xpizza-functions/stats/stats-api.test.js:149 (cell 4: r_a's
+//          kpis exact in a world holding r_b's L 999 — the server scopes by restaurantId; the page renders only that answer)
+//   vhc / vth (the Mon–Sun × hours grid) + «pico:»                 → xpizza-portal/ventas-tab.test.mjs:246 (7 day rows, the peak
+//          sentence) · NOT carried: the full-grid count 7 × hours (that cell pins the 7 day rows, not the vd-hc cells per vd-hh hour)
+//   vbig   (delivery / pickup share of ALL sales)                  → xpizza-portal/ventas-tab.test.mjs:246 (the «· N %» rows) ·
+//          NOT carried: the exact share value against the server's cents (no Rendimiento cell pins it — reported to the advisor)
+//   vcsub / vcnote (customer shares «de las ventas», «Sin clasificar») → xpizza-portal/ventas-tab.test.mjs:246 (Nuevos /
+//          Recurrentes rows) · NOT carried: the exact shares and the remainder note of rend-logic.js:212-213 (reported likewise)
 {
   const json = served.find((s) => !s.query.format);
   assert.ok(json, 'non-vacuity: the page requested the stats');
+  assert.strictEqual(json.query.to, TODAY, 'non-vacuity: the page asked for the PINNED today (a module reading the real clock escapes the pin)');
   assert.strictEqual(json.out.status, 200);
-  assert.deepStrictEqual([json.query.from, json.query.to, json.query.compare], ['2026-10-14', TODAY, 'previous']);
+  // the approved Rendimiento default: the two weeks ending today, no comparison
+  assert.deepStrictEqual([json.query.from, json.query.to, json.query.compare], [T.addDays(TODAY, -13), TODAY, 'none']);
   const b = json.out.body;
   assert.ok(b.kpis.orders >= 4 && b.kpis.sales_cents > 0, 'non-vacuity: the world has sales in the period');
-  const page = byId.get('viewventas');
-  const text = H.textOf(page);
-  const kpiVals = H.byClass(page, 'vkval').map(H.textOf);
-  assert.deepStrictEqual(kpiVals, [L.lempiras(b.kpis.sales_cents), L.count(b.kpis.orders), L.lempiras(b.kpis.average_paid_ticket_cents)],
-    'the three KPI values are the server\'s kpis, formatted');
-  assert.ok(kpiVals[0] !== '—' && kpiVals[2] !== '—', '…and every field name the page reads exists on the real response');
-  const pills = H.byClass(page, 'vdl').map(H.textOf);
-  assert.deepStrictEqual(pills, [b.deltas.sales_pct, b.deltas.orders_pct, b.deltas.average_paid_ticket_pct].map(L.pct1), 'the deltas are the server\'s');
-  const top = H.byClass(page, 'viname').map(H.textOf);
-  assert.deepStrictEqual(top, b.items.filter((i) => !i.reward && i.cents > 0).slice(0, 5).map((i) => i.name), 'top products, in the server\'s order');
-  assert.ok(top.includes('Pepperoni 12″') && top.includes('Pan de ajo'));
-  assert.ok(text.includes('Actualizado: en vivo.'), 'the period includes today → "en vivo" (from the real days[].computed_at)');
-  assert.ok(!text.includes('99,900') && !text.includes('L 999'), 'r_b\'s sale is nowhere on r_a\'s page');
-  const heatCells = H.byClass(page, 'vhc');
-  assert.strictEqual(heatCells.length, 7 * H.byClass(page, 'vth').length, 'a full Mon–Sun × hours grid');
-  assert.ok(text.includes('pico:'), 'a peak is named from the real heatmap');
-  const types = H.byClass(page, 'vbig').map(H.textOf);
-  const dl$ = b.by_type.delivery.cents, pk$ = b.by_type.pickup.cents;
-  assert.strictEqual(types[0], `${Math.round((dl$ / b.kpis.sales_cents) * 100)}% · ${L.lempiras(dl$)}`, 'type shares are of ALL sales');
-  assert.strictEqual(types[1], `${Math.round((pk$ / b.kpis.sales_cents) * 100)}% · ${L.lempiras(pk$)}`);
-  // customers: shares of ALL sales, from the server's own fields (independent of the page's arithmetic)
   assert.ok(b.customers.anonymous_orders >= 1, 'non-vacuity: the period has an anonymous Sale');
-  const cu = b.customers;
-  const shares = H.byClass(page, 'vcsub').map(H.textOf);
-  assert.deepStrictEqual(shares, [cu.new.cents, cu.returning.cents].map((c) => `${Math.round((c / b.kpis.sales_cents) * 100)}% de las ventas`), '🔴 "de las ventas" = of ALL sales');
-  const rest = b.kpis.sales_cents - cu.new.cents - cu.returning.cents;
-  assert.ok(rest >= 25000, 'the anonymous L250 is in the remainder');
-  assert.strictEqual(H.textOf(H.byClass(page, 'vcnote')[0]), `Sin clasificar: ${Math.round((rest / b.kpis.sales_cents) * 100)}% de las ventas · ${cu.anonymous_orders} ${cu.anonymous_orders === 1 ? 'pedido' : 'pedidos'} sin teléfono`);
-  ok('JSON: KPIs, deltas, top products, delivery split, heatmap and "en vivo" render the REAL server answer');
+  ok('JSON: the page asks the PINNED today for the approved default (two weeks, no comparison); the real server answers it');
 }
 
 // 2. both CSV kinds: the real server header passes the portal allowlist, and the saved file IS the server body
 {
-  const [daily, ordersBtn] = H.byClass(byId.get('viewventas'), 'btn');
-  daily.click();
+  // the exports live on «Más detalle» → «Descargar» (Rendimiento V3b): the same two server kinds, clicked as the owner does
+  const host = byId.get('viewventas');
+  H.byClass(host, 'vd-more')[0].click();
+  await H.settle(60);
+  const link = (title) => { const row = H.byClass(host, 'vd-file').find((r) => H.textOf(H.byClass(r, 'vd-fileb')[0]) === title); assert.ok(row, `the «${title}» export is offered`); return H.byClass(row, 'vd-lnk')[0]; };
+  link('Resumen diario (CSV)').click();
   await H.settle(30);
-  ordersBtn.click();
+  link('Pedidos (CSV)').click();
   await H.settle(30);
   await dl.read();
   const csvServed = served.filter((s) => s.query.format === 'csv');

@@ -1302,6 +1302,30 @@ function cartAdapterOf(rid, itemKeys) {
   assert.strictEqual(codeHasIdentity('const s = `${x.identity_id}`;'), true, '🔴 a template use was NOT a hit');
   ok(`identity_id is read nowhere on the money path: ${scanned.length} modules in the require-closure of index.js (${Object.keys(OWNS_IDENTITY).length} allowlisted, each proven reachable) plus ${formFiles} local form scripts and both forms' inline code — discovery is an ALLOWLIST of two loader shapes with ${acceptedLoaderReads.length} pinned read, proven in both directions: the accepted shapes (spaced require, quasi-free template, literal ESM import) are FOLLOWED, while module.require, module["require"], module[k], an aliased require, require.call, a non-literal specifier and a dynamic import() each FAIL BY NAME with file:line; the form is read from the DOM so the data-src trap cannot hide a local script; and prose is ignored while a property read, a string key and a template use are each caught; specifiers are classified by RESOLUTION rather than by a leading dot, with ${nonRelativeLocals.length} non-relative local edge(s) — so an absolute local specifier is followed and named instead of being assumed to be a package; and the one accepted require.main read is matched on its exact AST context, so any other comparison, assignment or call on it fails by name. THE BROWSER GRAPH is walked under the SAME allowlist and is transitive: ${formFiles} local scripts plus both forms' inline blocks and anything they import (${browserImports.length} local browser import(s) followed, ${browserFollowed} file(s) reached only that way), resolved with BROWSER semantics — so a bare specifier, a site-absolute path, an unresolvable local import, importScripts, new Worker/SharedWorker, a non-literal source and a require in browser code each FAIL BY NAME with file:line; browser loaders are decided by TOKEN INVENTORY rather than by any AST position — ${loaderTokenHits.length} token(s) named Worker/SharedWorker/importScripts anywhere in browser code, in any form (identifier, property, destructuring key, string, template chunk), so an aliased, member-qualified, string-keyed or destructured loader cannot hide where a call-shape or reference rule let it; ${dynamicSites.length} dynamic import(s) are accepted ONLY when the file's identifier-token count for the base equals one declaration plus its interpolations, that single non-interpolation token is the id of a const declarator holding an https literal, and the declaration structurally ENCLOSES every site using it — then PINNED by site+text+folded URL, so a new one fails even where the proof would accept it; and ${countByText(computedGlobalSites).length} pinned spelling(s) of an opaque key on a global are recorded by text rather than ignored`);
 
+  /* PLAN-3a-capp-member-reads (3) §3.3 — THE FROZEN FORMS ACCEPT A 1d.4 BODY CARRYING dish_stats. Served through the real
+     buildPublicMenu (certified, so the overlay applied and the decoration joined), then through each form's OWN lifted
+     liveMenuPrepare: it must not refuse the body, and what it accepts must equal the same body without the field. */
+  for (const rid of BRANDS) {
+    const db = makeDb();
+    await sourceRefOf(db, rid).set(canonicalize(buildSourceFromCode(rid)));
+    const { input, expected } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'dish-stats' });
+    await publishVersion(db, rid, input, { expected });
+    await bootstrapIdentityStamps(db, rid, { attempt: 'dish-stats' });
+    const ids = (await buildPublicMenu(db, rid, { ...deps, dishStats: { memo: new Map(), inflight: new Map(), read: async () => null } })).body.dishes.map((d) => d.dish_id);
+    const doc = Object.fromEntries(ids.slice(0, 2).map((id, i) => [id, { orders_30d: 40 - i, top_rank: i + 1, pairs: [{ dishId: ids[1 - i], count: 20 }] }]));
+    const st = { memo: new Map(), inflight: new Map(), read: async () => doc };   // non-blocking: the first call starts the read, the next serves it
+    await buildPublicMenu(db, rid, { ...deps, dishStats: st }); await (st.inflight.get(rid) || Promise.resolve());
+    const withStats = (await buildPublicMenu(db, rid, { ...deps, dishStats: st })).body;
+    assert.ok(withStats.dish_stats && Object.keys(withStats.dish_stats).length === 2, `premise — ${rid}: the served 1d.4 body carries dish_stats`);
+    const { fn: prepare } = livePrepareOf(rid, withStats);
+    let a1, a0;
+    assert.doesNotThrow(() => { a1 = prepare(withStats); }, `🔴 ${rid}: the form's own liveMenuPrepare REFUSED a body carrying dish_stats`);
+    const { dish_stats: _ds, ...without } = withStats;
+    a0 = prepare(without);
+    assert.deepStrictEqual([a1.MENU, a1.EXTRAS], [a0.MENU, a0.EXTRAS], `🔴 ${rid}: dish_stats changes nothing the form accepts`);
+  }
+  ok('(3) the frozen forms: each form\'s own liveMenuPrepare accepts a 1d.4 body carrying dish_stats, and accepts exactly what it accepts without it');
+
   /* 🔴 THE NUMBER IN THE LABEL MUST BE THE NUMBER ASSERTED. The loader-token counter is shared with the
      fixtures, and my first snapshot captured its length AFTER the walk, so the restore was a no-op: the
      assertion above passed at 0 (it runs before the fixtures) while the label printed 11. A count that is

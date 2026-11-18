@@ -5,6 +5,8 @@
 // name_taken; a reused retired name mints; frozen_extra_keys is server-owned (a client entry refused, an omitted map restored).
 // Run: node catalog/s2b-save.test.js
 const assert = require('assert');
+// the first extra of a group holding NO reward-eligible extra (redeem_eligible_extras) — Codex #119's guard refuses new options in a reward group
+const plainExtra = (src) => { const el = new Set((src.structure && src.structure.redeem_eligible_extras) || []); const reward = new Set(src.extras.filter((e) => el.has(e.key)).map((e) => e.display && e.display.cat)); return src.extras.find((e) => !reward.has(e.display && e.display.cat)); };
 process.env.EDIT_TOKEN_SECRET = process.env.EDIT_TOKEN_SECRET || 'x'.repeat(32);
 const XI = { mintExtras: false };
 { const p = require.resolve('./platform-structure'); const real = require('./platform-structure'); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: true }) } }; }
@@ -72,7 +74,7 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
       assert.deepStrictEqual(db.state.source.data.frozen_extra_keys, stored.frozen_extra_keys, `S2BS-OWNED ${rid}: restored`); }
     { // Codex S2b r1 P1-1 / P1-4: ON, an i_… name (new or renamed) is extra_name_opaque; a NEW extra named like another extra's ACTIVE key is name_taken
       XI.mintExtras = true;
-      const g = live.extras[0].display.cat;
+      const g = plainExtra(live).display.cat;   // a group with no reward-eligible extra (a reward group refuses any new option first — Codex #119)
       const opq = XT.apply(live, { op: 'extra.add', group: g, ref: 'tmp:opaque-name-01', name: 'i_abcdefghijkl', price: 10 }).source;
       const { r } = await save(rid, live, live, opq);
       assert.deepStrictEqual([r.status, r.body.error], [400, 'extra_name_opaque'], `S2BS-OPAQUE-NEW ${rid}: ${show(r)}`);
@@ -99,8 +101,8 @@ const show = (r) => `${r.status} ${JSON.stringify(r.body).slice(0, 220)}`;
   }
   { // a RETIRED name re-added through the real save mints (switch ON) — name_needs_new_id OFF
     for (const rid of ['x_pizza', 'la_musa']) {
-      const base = buildSourceFromCode(rid); const gone = base.extras[0];
-      const live = clone(base); live.extras = live.extras.slice(1);
+      const base = buildSourceFromCode(rid); const gone = plainExtra(base);   // re-added: so from a non-reward group (Codex #119)
+      const live = clone(base); live.extras = live.extras.filter((e) => e.key !== gone.key);
       if (Array.isArray(live.structure.extra_order)) live.structure.extra_order = live.structure.extra_order.filter((k) => k !== gone.key);
       for (const f of ['extras_by_category', 'extras_by_item']) if (live.structure[f]) for (const v of Object.values(live.structure[f])) if (Array.isArray(v)) { const i = v.indexOf(gone.key); if (i >= 0) v.splice(i, 1); }
       if (Array.isArray(live.structure.redeem_eligible_extras)) live.structure.redeem_eligible_extras = live.structure.redeem_eligible_extras.filter((k) => k !== gone.key);

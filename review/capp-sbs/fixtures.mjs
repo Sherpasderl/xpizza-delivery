@@ -107,7 +107,7 @@ async function quoteOrder(req) {
   return json({ ok: true, total_cents: bd.total_cents, subtotal_cents: bd.subtotal_cents, tax_cents: bd.tax_cents,
     ...(issued.ok ? { net_total_cents: issued.net_total_cents } : {}), ...(issued.ok && issued.quote_token ? { quote_token: issued.quote_token } : {}), ...DW.quoteFields(dq.ctx) });
 }
-// opts: { directory: 'complete' | <scenario>, sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
+// opts: { directory: 'complete' | <scenario>, failLogos: bool (fx D6), sold: { rid: <item_availability node from kdsSoldNode> }, quote: true }
 export function router(opts = {}) {
   // C-1a SBS: a scene may serve a directory-2 body it built with the REAL ratings chain (scenes-c1.mjs) instead of a pinned scenario
   const scen = opts.directoryBody ? { status: 200, body: opts.directoryBody, headers: { ETag: opts.directoryEtag || '"sbs-c1"' } } : FX.scenarios[opts.directory || 'complete'];
@@ -142,6 +142,7 @@ export function router(opts = {}) {
       return null;
     }
     if (ORDER_SITES.has(u.origin)) return orderSiteFile(u.origin, p);
+    if (opts.failLogos && req.url.startsWith(ASSET_SBS) && /-logo\.[a-z]+(\?|$)/.test(req.url)) return { status: 404, body: '', type: 'text/plain' };   // fx D6: the logo FAILS to load (the browser's real error event)
     if (req.url.startsWith(ASSET_SBS)) return assetFile(decodeURIComponent(req.url.slice(ASSET_SBS.length).split('?')[0]));
     if (host === 'maps.googleapis.com') return { status: 503, body: '', type: 'text/javascript' };
     if (opts.extra) { const x = opts.extra(req, u); if (x) return x; }
@@ -211,7 +212,8 @@ export function memberActive() {
 }
 // snapshots: { [order_id]: S-D price_snapshot } — C-3r SBS: a past row carries the snapshot of its OWN charge (a v1 shape, aligned
 // 1:1 with that row's items), so «Volver a pedir» against today's menu shows frame 13
-export function memberExtra({ receiptDelay = 0, active = false, snapshots = null } = {}) {
+// lastTip: cents (≥ 0) | null — 3a's getMyLastTip (rule 20: the token in the x-firebase-id-token HEADER; a URL token or a body ⇒ 400)
+export function memberExtra({ receiptDelay = 0, active = false, snapshots = null, lastTip = null } = {}) {
   const rows = memberRows().map((r) => (snapshots && snapshots[r.order_id] ? { ...r, price_snapshot: snapshots[r.order_id] } : r)), live = active ? [memberActive()] : [], W = 7 * 24 * 3600e3;
   return (req, u) => {
     if (u.host === 'identitytoolkit.googleapis.com' && u.pathname.endsWith('/accounts:lookup')) return json({ kind: 'identitytoolkit#GetAccountInfoResponse', users: [{ localId: 'u_ana', email: 'ana.perez@gmail.com', emailVerified: true, providerUserInfo: [], validSince: '0', lastLoginAt: String(nowMs()), createdAt: '1' }] });
@@ -221,6 +223,13 @@ export function memberExtra({ receiptDelay = 0, active = false, snapshots = null
       const oid = u.searchParams.get('order_id');
       if (oid) { const row = rows.find((r) => r.order_id === oid); const res = row ? json({ ok: true, receipt: RECEIPT(row) }) : json({ ok: false, reason: 'not_found' }, 404); return receiptDelay ? { ...res, delay: receiptDelay } : res; }
       return json({ ok: true, active: live, past: rows, next_cursor: null });
+    }
+    if (u.pathname.endsWith('/getMyLastTip')) {   // my-last-tip.js @990cf8c4: GET ?context=platform only, the member token in the header
+      const hdr = Object.entries(req.headers || {}).find(([k]) => k.toLowerCase() === 'x-firebase-id-token');
+      if (req.method !== 'GET') return json({ ok: false, reason: 'method_not_allowed' }, 405);   // the handler's order (Codex asm9b P3)
+      if ([...u.searchParams.keys()].join() !== 'context' || u.searchParams.get('context') !== 'platform' || req.postData) return json({ ok: false, reason: 'bad_request' }, 400);
+      if (!hdr || hdr[1] !== memberToken()) return json({ ok: false, reason: 'unauthenticated' }, 401);
+      return json({ ok: true, cents: Number.isSafeInteger(lastTip) && lastTip >= 0 && lastTip <= 200000 ? lastTip : null });   // CENTS_MAX: outside ⇒ null
     }
     if (u.pathname.endsWith('/getMyRating') && req.method === 'GET') {
       const oid = u.searchParams.get('order_id'), row = rows.find((r) => r.order_id === oid);
@@ -264,7 +273,7 @@ export const S2_VIEWS = {
   F: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('expired') }),
   G: () => PAYF.payView({ total_cents: 58500, card: S2_CARD, consent: consentOf('declined') }),
 };
-// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
+// opts: { cards: [listCards rows], available: bool, place: <outcome> | 'slow' | 'network', decline: bucket, view: <S2_VIEWS key> (default plain; null = no node), status: tracking status }
 // the priced-order fields placeSdkOrder requires — CONTRACT-sdk-checkout §2.1 «as chargeOnlineOrder»: read from the server's OWN
 // validateOrderPayload `required` list (index.js), never a copy, plus its order_id / order_type rules
 const ORDER_REQUIRED = (() => {
@@ -323,11 +332,6 @@ export function s2Extra(opts = {}) {
       // the order screen's prep read (capp-shell-ui readPublic → form-live-status prepFor): no prep_stats / prep_eta_min written for the
       // store — a real production state (the nightly writer has not run for it); the window then comes from the fallback
       if (/^\/restaurants\/[a-z0-9_-]+\/public\.json$/.test(u.pathname)) return json(null);
-      // PLAN-capp-tip-step r6: the member's last-tip leaf — owner-read rules: only u_ana's OWN path, only with the run's member token
-      // (?auth=<ID token>); anything else is the RTDB's 401 «Permission denied». opts.lastTip: cents (≥ 0) | null (no preference)
-      { const m = u.pathname.match(/^\/user_private\/([^/]+)\/last_tip\.json$/);
-        if (m) { if (m[1] !== 'u_ana' || u.searchParams.get('auth') !== MEMBER_TOKEN) return json({ error: 'Permission denied' }, 401);
-          return json(Number.isSafeInteger(opts.lastTip) ? { cents: opts.lastTip, at: S2_EXP - 86400000 } : null); } }
       return null;
     }
     if (!u.host.endsWith('cloudfunctions.net')) return null;
@@ -350,6 +354,9 @@ export function s2Extra(opts = {}) {
       // S3 SBS: the server's item refusal, pre-admission (opts.refusal = { status, json } built by the server's OWN writers — resolve-lines /
       // extras-intake — in scenes-s3.mjs); served once, as the server answers the one tap
       if (opts.place === 'refuse') { if (!opts.refusal || placed.has('__refused')) return null; placed.set('__refused', true); if (opts.onRefuse) opts.onRefuse(); return json(opts.refusal.json, opts.refusal.status); }
+      // fx D4: the answer is UNKNOWN — the server received the placement (its attempt is in flight: a later status read answers
+      // bank_pending, as the server would) and the RESPONSE is lost on the network (sbs.mjs fails the request: ConnectionFailed)
+      if (opts.place === 'network') { placed.set(b.order_id, SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })); return { fail: true }; }
       if (opts.place === 'slow') return { ...json(SDKF.placeResp('bank_pending', { order_id: b.order_id, attempt_id: b.attempt_id })), delay: 60000 };   // frame 4: still answering at the shot
       const r = respOf(b.order_id, b.attempt_id); placed.set(b.order_id, r); return json(r);
     }

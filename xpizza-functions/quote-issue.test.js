@@ -322,4 +322,24 @@ const withSecret = (fn) => {
   ok('a throwing property accessor yields null and a token-less quote — never an exception, whatever is thrown or however it mutates');
 }
 
+// ── 🔴 offer-audience (PLAN r4.1 §3, r4 P1): an audience-exposed quote SIGNS `aud` and the audience-resolved customer ──────────────────
+{
+  const rid = 'x_pizza'; const items = CARTS[rid][0]; const tables = T(rid);
+  const AUD = { kind: 'new', sel: { offer_id: 'of_x', rev: 2, discount_cents: 0 }, ids: { p: 'a'.repeat(64), e: 'b'.repeat(64), kv: 'v1' } };
+  withSecret(() => {
+    const plain = verifyQuoteToken(issueQuote({ items, rid, tables, nowMs: 1_000_000 }).quote_token, SEC, 1_000_001).payload;
+    assert.ok(!('aud' in plain), 'AUD-ABSENT: a quote with no aud signs none (every pre-audience payload byte-identical)');
+    const p = verifyQuoteToken(issueQuote({ items, rid, tables, nowMs: 1_000_000, aud: AUD, customerId: 'u1' }).quote_token, SEC, 1_000_001).payload;
+    assert.deepStrictEqual([p.aud, p.customer_id], [AUD, 'u1'], '🔴 AUD-SIGNED: aud + the audience-resolved customer are signed');
+    const guest = { kind: 'none', sel: null, ids: null };
+    assert.deepStrictEqual(verifyQuoteToken(issueQuote({ items, rid, tables, nowMs: 1_000_000, aud: guest }).quote_token, SEC, 1_000_001).payload.aud, guest,
+      'AUD-GUEST: a guest on an audience-exposed rid signs kind none and the signed ABSENCE of an offer');
+    for (const bad of [{ ...AUD, kind: 'maybe' }, { ...AUD, sel: { offer_id: 'of_x', rev: 2 } }, { ...AUD, ids: { p: 'short', kv: 'v1' } }, { ...AUD, extra: 1 }, { kind: 'new', sel: null }, 'new']) {
+      const r = issueQuote({ items, rid, tables, nowMs: 1_000_000, aud: bad, customerId: 'u1' });
+      assert.deepStrictEqual([r.ok, r.quote_token], [true, null], `🔴 AUD-MALFORMED: ${JSON.stringify(bad)} ⇒ the price, no token (never a token without its aud)`);
+    }
+  });
+  ok('an audience-exposed quote signs aud + customer; a malformed aud issues no token; aud-less payloads unchanged');
+}
+
 console.log(`\nquote-issue: OK (${n})`);

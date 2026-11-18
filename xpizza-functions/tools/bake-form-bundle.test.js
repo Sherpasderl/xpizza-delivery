@@ -91,7 +91,7 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
     for (const rid of ['x_pizza', 'la_musa']) {
       const { dir, file } = tempForm(rid); pointAt(file, port);
       state.envelope = ENV[rid]; state.requests = [];
-      assert.deepStrictEqual(validateEnvelope(ENV[rid], rid, { groupPicker: require(path.join(dir, 'form-group-picker.js')) }), []);
+      assert.deepStrictEqual(validateEnvelope(ENV[rid], rid, { groupPicker: require(path.join(dir, 'form-group-picker.js')) }), [], `🔴 ${rid}: the served envelope is bakeable`);
       const res = await bakeForm(rid, file, { fetchJson: loopbackFetch, buildStartMs: 1761500000000 });
       assert.deepStrictEqual(res.refusals, []); assert.strictEqual(res.changed, true);
       assert.strictEqual(state.requests.length, 1);
@@ -110,6 +110,27 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
     }
     assert.strictEqual(ENV.la_musa.menu.badge_priority.length, 6); assert.ok(ENV.x_pizza.menu.dishes.find((d) => d.name === 'Nutella').extras_policy === 'none');
     ok('real published bodies (both brands, migrated fields included) bake: fresh read (?_bake=<build-start> + no-cache), identity keys stripped, the rest verbatim; the live check then passes; a re-bake is idempotent');
+
+    // ── 1b. PLAN-3a-capp-member-reads (3) (advisor 11-13): a 1d.4 envelope carrying the LIVE-ONLY dish_stats is accepted, and the
+    // baked bundle carries NO dish_stats — byte-equal to the bake of the same envelope without it (a day's stats never freeze) ──
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const ids = ENV[rid].menu.dishes.map((d) => d.dish_id).filter(Boolean);
+      assert.ok(ids.length >= 2, `premise ${rid}: the served envelope carries dish_id`);
+      const stats = require('../catalog/dish-stats-serve').selectDishStats({ [ids[0]]: { orders_30d: 40, top_rank: 1, pairs: [{ dishId: ids[1], count: 20 }] }, [ids[1]]: { orders_30d: 30, top_rank: 2 } }, ENV[rid].menu);
+      const withStats = { ...ENV[rid], representation_version: '1d.4', menu: { ...clone(ENV[rid].menu), dish_stats: stats } };
+      const without = { ...ENV[rid], representation_version: '1d.4', menu: clone(ENV[rid].menu) };
+      assert.ok(withStats.menu.dish_stats && Object.keys(withStats.menu.dish_stats).length === 2, 'premise: a real dish_stats');
+      const groupPicker = require(path.join(path.dirname(FORMS[rid]), 'form-group-picker.js'));
+      assert.deepStrictEqual(validateEnvelope(withStats, rid, { groupPicker }), [], `🔴 ${rid}: a 1d.4 envelope carrying dish_stats is bakeable`);
+      const a = tempForm(rid); pointAt(a.file, port); state.envelope = withStats;
+      assert.deepStrictEqual((await bakeForm(rid, a.file, { fetchJson: loopbackFetch, buildStartMs: 1761500000100 })).refusals, []);
+      const bakedA = extractBundle(fs.readFileSync(a.file, 'utf8'));
+      assert.ok(!('dish_stats' in bakedA), `🔴 ${rid}: no dish_stats baked (a live-only decoration)`);
+      const b = tempForm(rid); pointAt(b.file, port); state.envelope = without;
+      await bakeForm(rid, b.file, { fetchJson: loopbackFetch, buildStartMs: 1761500000100 });
+      assert.strictEqual(fs.readFileSync(a.file, 'utf8'), fs.readFileSync(b.file, 'utf8'), `🔴 ${rid}: the baked form is byte-equal to the bake without dish_stats`);
+    }
+    ok('(3) a 1d.4 envelope carrying dish_stats bakes (both brands); the bundle carries NO dish_stats and the form is byte-equal to the bake without it');
 
     // ── 2. published-only changes reach the bake (an added and a removed dish, a repriced dish and option, a gate, a priority) ──
     {
@@ -234,8 +255,8 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
       assert.strictEqual(a.status, 1); assert.ok(/--this-form is required/.test(a.stderr));
       const b = spawnSync(process.execPath, [tool, '--this-form'], { cwd: os.tmpdir(), encoding: 'utf8' });
       assert.strictEqual(b.status, 1); assert.ok(/not a registered form/.test(b.stderr));
-      assert.deepStrictEqual([...KNOWN_REPRESENTATIONS], ['1d.1', '1d.2', '1d.3']);
-      ok('CLI: no --this-form → exit 1 (it never rewrites a working tree); --this-form outside a registered form folder → exit 1; accepts 1d.1/1d.2/1d.3');
+      assert.deepStrictEqual([...KNOWN_REPRESENTATIONS], ['1d.1', '1d.2', '1d.3', '1d.4']);
+      ok('CLI: no --this-form → exit 1 (it never rewrites a working tree); --this-form outside a registered form folder → exit 1; accepts 1d.1/1d.2/1d.3/1d.4');
     }
 
     // ── 7. the EXTENDED live check: the display structures the forms boot from — baked-but-different FAILS, published-only WARNS ──
@@ -294,4 +315,4 @@ const loopbackFetch = (url, opts) => getJson(url, { ...opts, get: http.get, time
   } finally { server.close(); for (const d of TEMP) fs.rmSync(d, { recursive: true, force: true }); }
   FINISHED = true;
   console.log(`\nbake-form-bundle: OK (${n})`);
-})().catch((e) => { console.error('bake-form-bundle: FAILED', e); process.exit(1); });
+})().catch((e) => { console.error(`  ✗ ${(e && e.message) || e}`); console.error('bake-form-bundle: FAILED', e); process.exit(1); });

@@ -44,7 +44,9 @@ const { REWARD_ICONS } = require('./reward-icons');
    '1d.1' marker (they stay byte-identical) and log menu_representation_changed on a mismatch — a console warning only. */
 /* PLAN 4 r3 §8.1 (version collision ruled): advanced 1d.2 → 1d.3 because the body can now carry `badge_priority` and a
    dish's `reward_icon`. 7f72757f's photo field and its category-rename validation are kept as they were. */
-const REPRESENTATION_VERSION = '1d.3';
+/* PLAN-3a-capp-member-reads (3) §3.2: advanced 1d.3 → 1d.4 because the body can now carry `dish_stats` (the C-4 dish badges). The forms
+   keep their own marker and only console.warn menu_representation_changed. */
+const REPRESENTATION_VERSION = '1d.4';
 
 // EVERY field this endpoint serves, and what has to be true of it. One table, because the list of
 // what may appear and the rules for what must appear are the same fact — kept apart they drift, and
@@ -81,7 +83,9 @@ const BODY_CONTRACT = Object.freeze({
   extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
   // PLAN-public-menu-display r2 T2: absolute dish photo URLs, { [String(dish.id)]: { card, hero } }. Declared but NEVER
   // required — a decoration omitted on any trouble (catalog/public-photos.js), so its absence is not a half-menu.
+  dish_stats: { type: 'object' },   /* (3): a decoration (catalog/dish-stats-serve.js), omitted on any trouble — never required */
   photos: { type: 'object' }, avail_identity: { required: true, type: 'object' }, item_keys: { type: 'object' },   /* S1d: { [String(dish.id)]: item_key }, endpoint-only (never the bake's body) */   // PLAN-avail-identity r1: { field } — the restaurant's availability identity, from the server's ONE rule
+  offers: { type: 'array' },        /* PLAN-3a-capp-offers-read Q1: a decoration (catalog/offers-serve.js), ABSENT when offers are off — never required */
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -258,6 +262,14 @@ async function buildPublicMenu(db, rid, deps = {}) {
     // A diagnostic, never a decision — no caller branches on it and no response changes shape.
     console.warn('public_menu_identity_absent', JSON.stringify({ rid: restaurantId, reason: enriched.reason }));
   }
+  /* PLAN-3a-capp-offers-read Q1 — OFFERS, on the same branch and for the same reason (they move by the minute: a baked copy would freeze
+     them). No representation bump (advisor Q-A): absent when off, so the body and the ETag are unchanged; on, the body moves the ETag. */
+  if (deps.overlayIdentity !== false) body = await require('./offers-serve').withOffers(restaurantId, body, deps.offers || {});
+
+  /* PLAN-3a-capp-member-reads (3) — DISH_STATS, last, and only where it can be joined: on the endpoint's overlay branch AFTER the
+     overlay applied (the served dishes carry dish_id). Never on the overlayIdentity:false bake / reconciler path (stats move daily: a
+     baked copy would freeze them). withDishStats never throws and never blocks past its own 1.5 s deadline. */
+  if (deps.overlayIdentity !== false && enriched.applied) body = await require('./dish-stats-serve').withDishStats(restaurantId, body, deps.dishStats || {});
 
   // THE ETAG IS OVER THE REPRESENTATION — this rid, this projection version, this body. Not 1A's
   // content_hash: that identifies the VERSION, and what a cache holds is this module's projection of

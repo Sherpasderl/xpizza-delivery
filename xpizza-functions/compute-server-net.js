@@ -39,7 +39,7 @@
 const { computeServerTotal } = require('./menu-pricing');
 const { orderBreakdownCents } = require('./order-money');
 const { applyRedemptionToPricing } = require('./rewards-redeem-pricing');
-const { isServerDeliveryCtx, netDeliveryCents, tipCentsOf } = require('./delivery/delivery-pricing');   // S3a envío; S2 tip
+const { isServerDeliveryCtx, netDeliveryCents, tipCentsOf } = require('./delivery/delivery-pricing'); const OP = require('./marketing/offer-price');   // S3a envío; S2 tip · MARKETING (PLAN-5f-marketing-price): the restaurant offer — a server ctx, never a request field
 
 /* The delivery slot, computed HERE from server-side context. The client never supplies a fee: S3a's
    `deliveryContext` is the SERVER's envío (delivery/delivery-pricing.js quoteDelivery, from Sherpa config + hub +
@@ -57,7 +57,7 @@ function tipCentsFor(deliveryContext) {
   return isServerDeliveryCtx(deliveryContext) ? tipCentsOf(deliveryContext) : 0;
 }
 
-function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null }) {
+function computeServerNet({ items, reward = null, deliveryContext = null, rid, tables = null, offer = null }) {
   // BASE — the same recompute createOrder does, from the same tables. An unpriceable cart stops here
   // and returns an error with NO total: pricing an unknown item as free would make a tampered name the
   // cheapest possible attack, which is the 1B charge-boundary lesson.
@@ -82,8 +82,8 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
     if (!priced || priced.ok !== true) return { error: (priced && priced.error) || 'reward_unpriceable' };
     netAfterReward = priced.total_cents;
     fiscal_cents = priced.tax_cents;
-  }
-  const reward_discount_cents = base_cents - netAfterReward;
+  } else if (OP.discountOf(offer) > 0) { const ob = OP.foodBreakdown(base.total, rid, offer); netAfterReward = ob.total_cents; fiscal_cents = ob.tax_cents; }   // MARKETING: the ONE food breakdown with the offer (the recorded-total sites call the same function); a reward ⇒ no offer
+  const offer_discount_cents = reward ? 0 : OP.discountOf(offer); const reward_discount_cents = base_cents - netAfterReward - offer_discount_cents;
 
   const delivery_cents = deliveryCentsFor(deliveryContext, rid);
   const tip_cents = tipCentsFor(deliveryContext);
@@ -107,14 +107,14 @@ function computeServerNet({ items, reward = null, deliveryContext = null, rid, t
      cannot round-trip, and money that cannot round-trip is not money. Every component is checked, not
      just the net, because the components go into the token's provenance breakdown and a NaN there is
      a fact nobody can later verify. */
-  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents };
+  const out = { net_total_cents, base_cents, reward_discount_cents, delivery_cents, fiscal_cents, tip_cents, offer_discount_cents };
   for (const k of Object.keys(out)) {
     if (!Number.isSafeInteger(out[k])) return { error: `non_finite_${k}` };
   }
 
   return {
     net_total_cents,
-    components: { base_cents, reward_discount_cents, delivery_cents, fiscal_cents, ...(tip_cents > 0 ? { tip_cents } : {}) },   // S2: tip_cents only when > 0
+    components: { base_cents, reward_discount_cents, delivery_cents, fiscal_cents, ...(tip_cents > 0 ? { tip_cents } : {}), ...(offer_discount_cents > 0 ? { offer_discount_cents } : {}) },   // S2: tip_cents only when > 0 · marketing: offer_discount_cents only when > 0 (OFF byte-identical)
   };
 }
 

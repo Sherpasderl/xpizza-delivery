@@ -47,6 +47,11 @@
    "map": "R11"
   },
   {
+   "rule": "portal-marketing",
+   "file": "^xpizza-portal/(marketing(-builder|-detail|-logic|-focus)?|anuncio-logic)\\.js$|^xpizza-portal/marketing-harness\\.mjs$",
+   "exempt": "portal «Marketing» (Ofertas + the dark Anuncio, advisor 11-15): reads OFFER / booking records from 3a's marketing endpoints — `status` is an offer's or a booking's own state (or an HTTP status), `items` a 2×1 offer's dish keys — never a persisted order; marketing-harness.mjs is a test helper (the real cores at a pin)"
+  },
+  {
    "rule": "form-cart",
    "file": "^(xpizza-orders|la-musa-orders)/",
    "fn": "^(updateCart|updateCartReviewBody|renderCartReview)",
@@ -155,7 +160,7 @@
   },
   {
    "key": "tip_cents",
-   "sites": [{"file": "index.js", "fn": "createOrderApp.all"}, {"file": "index.js", "fn": "chargeOnlineApp.all"}, {"file": "compute-server-net.js", "fn": "computeServerNet"}, {"file": "delivery/delivery-pricing.js", "fn": "storedCtx"}, {"file": "delivery/delivery-pricing.js", "fn": "withTip"}, {"file": "delivery/delivery-wire.js", "fn": "withDelivery"}, {"file": "delivery/delivery-wire.js", "fn": "orderFields"}, {"file": "quote-issue.js", "fn": "issueQuoteInner"}],   
+   "sites": [{"file": "index.js", "fn": "createOrderApp.all"}, {"file": "index.js", "fn": "chargeOnlineApp.all"}, {"file": "compute-server-net.js", "fn": "computeServerNet"}, {"file": "delivery/delivery-pricing.js", "fn": "storedCtx"}, {"file": "delivery/delivery-pricing.js", "fn": "withTip"}, {"file": "delivery/delivery-wire.js", "fn": "withDelivery"}, {"file": "delivery/delivery-wire.js", "fn": "orderFields"}, {"file": "quote-issue.js", "fn": "issueQuoteInner"}, {"file": "ledger/alloc-snapshot.js", "fn": "snapshotOf"}],   
    "reason": "S2-srv-tip (SCOPED by 2e at assembly, obligation 3: exactly the reviewed write / object-key sites; a NEW tip_cents write elsewhere is a §1 decision): tips ARE implemented (PLAN-capp-S2-r4 §3, owner Q7 TIP_MAX L 2,000): the order's tip_cents (written only when > 0 by the existing atomic order write — cash via the spread breakdown, card via the pending order) and the same key on the server envío ctx / the signed quote payload / computeServerNet components. §1's 'no tip' is superseded for this field only; covered by s2tip.test.js + delivery/tip-consumers.test.mjs. PROPOSED by the Customer App session (S2-srv-tip, PLAN-capp-S2-r4 §3) for 2e review"
   },
   {
@@ -258,6 +263,7 @@
   "claim-order.js": "R17",
   "my-orders.js": "R17",
   "my-favorites.js": "R17",
+  "customer-push.js": "R17",
   "my-last-tip.js": "R17",
   "my-address.js": "R17",
   "claim-prefill.js": "R17",
@@ -319,7 +325,10 @@
   "ratings": "S5 RATINGS WRITER (Customer App): reads ONE order (orders/{id} customer_uid / status / restaurant_id) for the VERIFIED signed-in customer who placed it (+ its deleted_uids tombstone) to decide whether it may be rated, and writes ONLY order_ratings/{order_id} (create-if-absent, no customer identity) — never an order field; `status` in its handler is the Express HTTP status; covered by ratings/rating-core.test.js + test/s5-ratings.emulator.test.js S-A1 (ratings_v2): + the fulfilment stamp's orders/{id}/status + restaurant_id (the status trigger) and the member's OWN user_orders/{uid}/{id}.items recipe keys (dish-vote validation through the one resolver) — never an amount or a collector.",
   "support": "S-F support tickets (NOTE-S-F-support-tickets-build): the createSupportTicket validator + owner check + ticket / alert writer. It reads the order's customer_uid / tracking_token (ownership) and restaurant_id (copied onto the ticket), never as a displayed order fact; the ticket and its dispatcher alert carry order_id + reason only",
   "delivery_pricing": "ENVÍO (Customer App S3a): derives the delivery fee + free-delivery promo for ONE request from Sherpa config (platform_config/delivery_pricing), the restaurant hub (identity hub_lat/hub_lng) and the request pin (lat/lng + pin_confirmed); on the card path ALSO reads the stored order (orders/{id} order_type / lat / lng / payment_status / active_attempt_id + its payment_attempts state) to keep a live checkout's stored economics or refuse a changed context; writes NOTHING itself — its result reaches the order only through the existing atomic order write (delivery_cents / promo_discount_cents / delivery_snapshot) and the confirmed-net gate; a refusal is an HTTP status on a refusal object, never an order status; covered by delivery/delivery-pricing.test.js + test/s3a-envio.emulator.test.js",
-  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js"
+  "driver_pay": "driver payable LEDGER writer (Customer App S8): reads a delivered order's protected attribution (delivered_by_driver_uid / delivered_at / order_type) through the bounded delivered_at range query and writes ONLY driver_ledger_weeks/{week} (one create-if-absent node per closed week, then .paid) — never an order field, never cash-to-remit; covered by test/driver-ledger.emulator.test.js",
+  "marketing": "portal «Marketing» offers (PLAN-3a-marketing-server steps 1–2): the restaurant's ONE brand root (marketing_brand/{brandId}: offer records, their price-path mirror and op claims, PLAN-3a-marketing-brand-root r3) and the platform switches (platform_config/marketing) — never an /orders path read or written; 5f's price path reads the mirror",
+  "marketing_price": "the marketing PRICE PATH (PLAN-5f-marketing-price r0): offerFor picks the ONE restaurant offer for a cart from the live mirror (marketing_brand/{brandId}/live/{rid}) and the server-priced cart (computeServerTotal per line, menu table prices); foodBreakdown is the ISV split of the paid food (+ the platform-factura rebaja); frozenOf is the order's frozen offer fact; withOffer reads platform_config/marketing, marketing_live/{rid} and, for a card retry, orders/{id}/offer (that order's own frozen offer) — never another order; offer-usage (step 2) counts marketing_usage/{offerId} by transaction and flags ONLY that order's own orders/{id}/offer/usage (held → released, set-once)",
+  "ledger": "the SHADOW LEDGER (PLAN-5f-ledger-shadow-s1-r3, S3): the PURE per-order projector of the nightly rebuild — reads an order's status / created_at / active_attempt_id (and the server-only payment_commit marker) only to DATE and ROUTE journals computed from the PRIVATE ledger_alloc snapshot + provider-reported attempt facts; no customer, merchant or driver surface, nothing displayed or charged"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -525,6 +534,19 @@
   "createorder-classify.js#classifyExistingOrder": "intake",
   "tip.js#orderRefusal": "intake",
   "tip.js#refuse": "intake",
+  "pickup-card-only.js#pickupCardOnlyRefusal": "intake",
+  "ledger/alloc-snapshot.js#snapshotOf": "intake",
+  "ledger/alloc-snapshot.js#offerOf": "intake",
+  "ledger/alloc-snapshot.js#withCommittedCreatedAt": "intake",
+  "ledger/projector.js#quarantineOf": "ledger",
+  "ledger/projector.js#attemptFacts": "ledger",
+  "ledger/projector.js#projectOrder": "ledger",
+  "ledger/projector.js#foodParts": "ledger",
+  "ledger/rebuild.js#touchedSet": "ledger",
+  "ledger/rebuild.js#readSources": "ledger",
+  "ledger/rebuild.js#capped": "ledger",
+  "ledger/rebuild.js#rebuildOrder": "ledger",
+  "ledger/rebuild.js#runNightly": "ledger",
   "payer-email.js#refuse": "intake",
   "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
   "createorder-classify.js#computeIncomingFingerprint": "intake",
@@ -558,6 +580,7 @@
   "index.js#deleteTasksOnOrderTerminal": "dispatch",
   "index.js#earnRewardsOnCompletion": "rewards",
   "index.js#getPublicMenu": "intake",
+  "directory/directory.js#buildDirectory>anon": "intake",
   "directory/directory.js#handleDirectory": "intake",
   "directory/directory.js#identityFields": "intake",
   "directory/directory.js#sendJson": "intake",
@@ -809,6 +832,7 @@
   "signup-endpoints.js#getSignupConfig": "infra",
   "signup-endpoints.js#setPromos": "infra",
   "signup-endpoints.js#completeProfile": "infra",
+  "signup-endpoints.js#setMyName": "infra",
   "ratings/rate-order.js#rateOrderCore": "ratings",
   "ratings/rate-order.js#<top>>anon": "ratings",
   "ratings/rating-core.js#eligibility": "ratings",
@@ -827,6 +851,11 @@
   "ratings/aggregate.js#publish": "ratings",
   "ratings/merchant-comments.js#merchantRatingCommentsCore": "ratings",
   "ratings/merchant-comments.js#getMerchantRatingComments": "ratings",
+  "ratings/merchant-reviews.js#merchantReviewsCore": "ratings",
+  "ratings/merchant-reviews.js#getMerchantReviews": "ratings",
+  "ratings/merchant-reviews.js#merchantReviewsCore>anon": "ratings",
+  "ratings/merchant-reviews.js#merchantReviewsCore>anon>anon": "ratings",
+  "ratings/review-buckets.js#addCounts": "ratings",
   "ratings/my-rating.js#myRatingCore": "ratings",
   "ratings/my-rating.js#getMyRating": "ratings",
   "ratings/rating-v2.js#indexNode": "ratings",
@@ -846,6 +875,43 @@
   "delivery/delivery-wire.js#quoteDeliveryFor": "delivery_pricing",
   "delivery/pricing-admin-functions.js#handler>anon": "delivery_pricing",
   "delivery/pricing-admin-core.js#exactKeys": "delivery_pricing",
+  "marketing/functions.js#handler>anon": "marketing",
+  "marketing/offer-model.js#paramsOf": "marketing",
+  "marketing/offer-model.js#dishesOf": "marketing",
+  "marketing/offer-model.js#resolveCats": "marketing",
+  "catalog/offers-serve.js#publicOffer": "marketing",
+  "ratings/_rtdb-fake.js#get>anon": "fixtures",
+  "ratings/_rtdb-fake.js#set": "fixtures",
+  "marketing/offers-core.js#resolveDishes": "marketing",
+  "marketing/offers-core.js#judged": "marketing",
+  "marketing/config.js#exactKeys": "marketing",
+  "marketing/offer-model.js#exactKeys": "marketing",
+  "marketing/audience-core.js#kindOf": "marketing_price",
+  "marketing/audience-writer.js#onOrderStatus": "marketing_price",
+  "index.js#markAudienceOnStatus": "marketing_price",
+  "marketing/offer-wire.js#selOf": "marketing_price",
+  "marketing/offer-wire.js#sameSel": "marketing_price",
+  "marketing/audience-core.js#audShapeOk": "marketing_price",
+  "marketing/audience-read.js#resolveAudience>anon": "marketing_price",
+  "marketing/offer-price.js#discountOf": "marketing_price",
+  "marketing/offer-price.js#dishUnitsOf": "marketing_price",
+  "marketing/offer-price.js#entryOf": "marketing_price",
+  "marketing/offer-price.js#foodBreakdown": "marketing_price",
+  "marketing/offer-price.js#frozenOf": "marketing_price",
+  "marketing/offer-price.js#mintStored": "marketing_price",
+  "marketing/offer-price.js#offerFor": "marketing_price",
+  "marketing/offer-price.js#cartOf": "marketing_price",
+  "marketing/offer-price.js#nextOfferFor": "marketing_price",
+  "marketing/offer-price.js#quoteOfferOf": "marketing_price",
+  "marketing/offer-price.js#savingOf": "marketing_price",
+  "marketing/offer-price.js#pollOfferOf": "marketing_price",
+  "marketing/offer-price.js#savingOf>anon": "marketing_price",
+  "marketing/offer-wire.js#storedOfferOf": "marketing_price",
+  "marketing/offer-wire.js#storedOfferOf>anon": "marketing_price",
+  "marketing/offer-wire.js#withOffer": "marketing_price",
+  "marketing/offer-usage.js#costOf": "marketing_price",
+  "marketing/offer-usage.js#holdForOrder>anon": "marketing_price",
+  "marketing/offer-usage.js#releaseForOrder>anon": "marketing_price",
   "delivery/pricing-admin-core.js#setDeliveryPricingCore": "delivery_pricing",
   "delivery/pricing-admin-core.js#lockSummary": "delivery_pricing",
   "delivery/zones.js#normalizeInput": "delivery_pricing",
@@ -1216,6 +1282,19 @@
   "la-musa-orders/account.js#canonicalRecipeToLegacy>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
   "la-musa-orders/index.html<script@2>#pizzaExtrasTotal": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
   "xpizza-portal/ventas-harness.mjs#constructor": "portal TEST harness (ventas-harness.mjs) — not production",
+  "xpizza-portal/calificaciones-harness.mjs#get>anon": "portal TEST harness (calificaciones-harness.mjs) — its in-memory RTDB fake's path walk, not production",
+  "xpizza-portal/calificaciones-harness.mjs#set": "portal TEST harness (calificaciones-harness.mjs) — its in-memory RTDB fake's path write, not production",
+  "xpizza-portal/calificaciones.js#pill": "portal «Calificaciones» — a pill's menu options (the periods, the branches, the stars, the comment choice), not persisted orders",
+  "xpizza-portal/calificaciones2-harness.mjs#getMyBranches": "portal TEST harness (calificaciones2-harness.mjs) — the real getMyBranchesCore's HTTP status handed to its fake response, not production",
+  "xpizza-portal/calificaciones2-harness.mjs#get>anon": "portal TEST harness (calificaciones2-harness.mjs) — its in-memory RTDB fake's path walk, not production",
+  "xpizza-portal/calificaciones2-harness.mjs#set": "portal TEST harness (calificaciones2-harness.mjs) — its in-memory RTDB fake's path write, not production",
+  "xpizza-portal/stats-harness.mjs#add": "portal TEST harness (stats-harness.mjs, the shared Ventas stats world) — not production",
+  "xpizza-portal/stats-harness.mjs#fetch": "portal TEST harness (stats-harness.mjs, the shared Ventas stats world) — not production",
+  "xpizza-portal/pause-control.js#send": "portal branch operations — «Pausar pedidos»: the pause call's HTTP status (409 = a superseded control), not a persisted order",
+  "xpizza-portal/rend-logic.js#statsState": "portal «Ventas» — the stats read's HTTP status (signed out / denied / unavailable), not a persisted order",
+  "xpizza-portal/rend-logic.js#topProducts": "portal «Ventas» — getSalesStats' AGGREGATE top-products items (name, cents), not persisted orders",
+  "xpizza-portal/ventas-tab.js#shown": "portal «Ventas» — the stats read's HTTP status deciding what is shown, not a persisted order",
+  "xpizza-portal/ventas-tab.js#errCard": "portal «Ventas» — the stats read's HTTP status for the error card, not a persisted order",
   "xpizza-portal/availability.js#decorate": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
   "xpizza-portal/availability.js#paintReadOnly": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
   "xpizza-portal/availability.js#paintDrawer": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders",
@@ -1225,6 +1304,15 @@
   "xpizza-portal/shell.js#showBootError": "portal branch operations (PORTAL-UI 1a) — published menu items, branch control state and HTTP statuses, not persisted orders"
  },
  "writtenFields": {
+  "offer_reconcile": {
+   "class": "fact",
+   "facts": ["MONEY"],
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §4; Codex #103 ruling: a MONEY fact): WHO absorbs an audience-'new' discount — the fulfilment writer's create-if-absent decision { funded_by: restaurant | sherpa, reason, at } (the deadline sweep's 'sherpa'/'ids_expired'), never overwritten; the payout / settlement input, read ONLY through marketing/offer-price offerFunder (absent ⇒ 'sherpa'; marketing/offer-funder.guard pins the single reader); dispatcher writes cannot touch it (rules + audience-rules.guard)"
+  },
+  "audience_ids": {
+   "class": "identity",
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §2): the SIGNED brand-scoped identity codes { p?, e?, kv } (HMACs of the verified phone hash / verified email under the owner's AUDIENCE_KEY_V1 — no phone, email or uid) frozen on an audience-exposed app order at placement, read only by the fulfilment writer to set the brand's markers, and deleted by it (or by the 30-day deadline sweep / account deletion) — never shown, never a money fact"
+  },
   "menu_version_id": {
    "class": "pointer",
    "reason": "S1d (PLAN-portal-item-edit r6 §2.5): the catalog version that priced the order — provenance bookkeeping beside the stored item keys, never displayed as an order fact"
@@ -1348,6 +1436,8 @@
   "tip_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "promo_discount_cents": { "class": "fact", "facts": ["BREAKDOWN"] },
   "delivery_snapshot": { "class": "pointer", "reason": "S3a envío provenance (mode, policy_version, km, band, promo id) — the pricing inputs the fee was computed from, kept for audit; never displayed as an order fact" },
+  "offer": { "class": "fact", "facts": ["BREAKDOWN"] },
+  "delivery_discount_funder": { "class": "pointer", "reason": "who funds promo_discount_cents — 'sherpa' | 'restaurant' (PLAN-5f-marketing-price Q3, explicit); the settlement's input, never displayed as an order fact" },
   "desc_rebaja_cents": {
    "class": "fact",
    "facts": [
@@ -1790,6 +1880,24 @@
  },
  "opaqueWriteResolutions": [
   {
+   "file": "xpizza-functions/index.js",
+   "fn": "createOrderApp.all",
+   "how": "computed-key-at-root",
+   "detail": "LA().allocPath(orderId)",
+   "fields": [],
+   "reason": "LEDGER S1 (PLAN-5f-ledger-shadow-s1-r3 §1): ledger/alloc-snapshot.js allocPath returns `ledger_alloc/<orderId>` — the PRIVATE frozen allocation snapshot, a server-only root (no rule), never under orders/; so no order field is written. The two sites (held + ASAP) ride the order's own multi-path update; pinned by ledger-writes.guard.",
+   "count": 2
+  },
+  {
+   "file": "xpizza-functions/marketing/anuncio-core.js",
+   "fn": "recordAnuncioDays",
+   "how": "dynamic-root-path",
+   "detail": "*/*/days/*",
+   "fields": [],
+   "reason": "PLAN-3a-marketing-server §4.4: recordAnuncioDays' path is always `anuncio_bookings/<rid>/<bookingId>/days/<YYYY-MM-DD>` (the week's slot names the booking) — the Anuncio's shown / hidden day record, never an /orders path",
+   "count": 1
+  },
+  {
    "file": "xpizza-functions/catalog/capp-serialize.js",
    "fn": "serialize>anon",
    "how": "unmodelled-member-base",
@@ -1806,6 +1914,26 @@
    "fields": [],
    "reason": "D4 §A2 B4: the spread is the handler's pendingOrderRecord — the SAME object hosted's acquireHostedAttempt writes, built and census-resolved at index.js chargeOnlineApp.all; finishSdk adds only the literal payment_flow / pay_deadline_at / payment_fingerprint (direct writes, counted as such)",
    "count": 1
+  },
+  {
+   "file": "xpizza-functions/signup-endpoints.js",
+   "fn": "deleteAccountCore",
+   "how": "spread-at-root",
+   "detail": "audienceIdsGone",
+   "fields": [
+    "audience_ids"
+   ],
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §5): account deletion removes the frozen identity codes of every order in the deleted account's history — audienceIdsGone maps exactly `orders/<history id>/audience_ids` → null (its only producer, the history ids read before the same atomic update removes user_orders), so the only order field written is the audience_ids delete",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/index.js",
+   "fn": "createOrderApp.all",
+   "how": "computed-key-at-root",
+   "detail": "dayPath(orderId, updates[`orders/${orderId}`], nowMs)",
+   "fields": [],
+   "reason": "offer-audience (PLAN-5f-offer-audience r4.1 §5): marketing/audience-place stampCash adds `audience_ids_by_day/<HN YYYY-MM-DD>/<orderId> = true` (dayPath is the only producer) beside the order's frozen codes in the SAME multi-path update — the 30-day deadline index, never an /orders path, so no order field is written. Two sites: the held (cash) order and the fresh one",
+   "count": 2
   },
   {
    "file": "xpizza-functions/index.js",
@@ -2032,6 +2160,10 @@
   }
  ],
  "moneyPathNonFactReads": {
+  "resolution@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #114 #4): the PRESENCE of resolve-manual close_fulfilled's marker (resolution offline_fulfilled) puts the order on the MANUAL HOLD — nothing is posted; never an amount or a selector of money",
+  "created_at@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3 (Codex #110 r2 condition): the AUTHORITATIVE order date — every journal is DATED by it (the snapshot's created_at is informational); never an amount or a selector of money",
+  "active_attempt_id@xpizza-functions/ledger/projector.js#projectOrder": "ledger S3: selects WHICH paid attempt is the order's sale (the primary collection); any other paid attempt goes to customer_refund_suspense — the amounts are the PROVIDER-reported ones, never this pointer's",
+  "offer@xpizza-functions/index.js#paymentStatus": "marketing price (Q5): the customer poll SHOWS the stored order's frozen offer (pollOfferOf → type / discount_cents / waived_envio_cents, the order screen's «Descuento»; no merchant name) — a display of what the order write saved, never re-priced, never charged and never a total (total_cents beside it is the stored one); no offer id / rev / usage leaves (Q9)",
   "payment_cancel@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
   "payment_placed@xpizza-functions/payments/sdk/coordinator.js#placeOriginal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
   "payment_placed@xpizza-functions/payments/sdk/finish.js#bindingRefusal": "SDK card payments (D4): a PRESENCE test of the server-only decision marker — a placed or cancelled SDK order admits no new attempt / is never reused by a new placement; never an amount or an identity",
@@ -2269,7 +2401,18 @@
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",
+  "xpizza-portal/anuncio-logic.js#weeksModel": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#bookingsView": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyBook": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyCancel": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyBookRecovery": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#classifyCancelRecovery": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/anuncio-logic.js#ok200": "the portal «Anuncio» non-drawing half — DARK by design (advisor 11-14): no shipped page imports anuncio-logic.js until the Anuncio launch; exercised by anuncio-logic.test.mjs against 3a's real cores",
+  "xpizza-portal/marketing-logic.js#appliesTo": "Ofertas «Aplica a:» list for a CATEGORY 2×1 (the server's frozen dish keys) — exercised by marketing-logic.test.mjs; no page row renders it yet (the detail shows «Cómo está armada» without the dish list)",
+  "xpizza-portal/marketing-logic.js#bogo": "PARAMS_OK.bogo — reached by DYNAMIC dispatch PARAMS_OK[o.type] from recordShapeOk (classifyWrite, every Ofertas write), which the static reference walk cannot see",
   "la-musa-orders/account.js#renderConfirmCard": "legacy confirm card superseded by deliverCardHtml / renderS2RichSummary — it is referenced only in comments",
+  "xpizza-portal/ventas-logic.js#viewModel": "the RETIRED Ventas page's view model — ventas.js handed the page to ventas-tab.js (c27397ed6, V3b-2); ventas-logic.js is byte-frozen (portalui-guards: zero diff), so viewModel stays, referenced only in rend-logic.js comments",
+  "xpizza-portal/calificaciones2-harness.mjs#publishStats": "portal «Calificaciones» step-2 TEST harness — publishes public_stats through 3a's REAL producer (readCountable → aggregate.publish) for the portal suites only; no page references it, by design",
   "xpizza-portal/photo-contract-fake.mjs#createPhotoFake": "portal DISH PHOTOS B contract fake — a TEST helper imported only by the portal suites (photo-flow / photo-logic tests); no page references it, by design",
   "xpizza-portal/photo-contract-fake.mjs#getEditableCatalog": "portal DISH PHOTOS B contract fake — a TEST helper imported only by the portal suites (photo-flow / photo-logic tests); no page references it, by design",
   "xpizza-dashboard/xpizza-delivery.js#acceptSecondOrder": "the the dashboard page's copy of the SHARED SDK (xpizza-delivery.js): acceptSecondOrder is referenced nowhere in the the dashboard page scope — an operation of another surface (driver / dispatch / intake) that this page never runs",

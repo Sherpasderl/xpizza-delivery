@@ -7,7 +7,9 @@
 //
 //   googleStart      POST {restaurant_id, session_id}              → {ok, nonce} | {ok:false, reason}
 //   googleSignIn     POST {restaurant_id, session_id, id_token}    → {ok, linked:true, token, name} | {ok, linked:false, ticket, email, name}
-//   completeProfile  POST {restaurant_id, email, accept_terms, promos}  (customer ID token) → {ok} | {ok:false, reason}
+//   completeProfile  POST {restaurant_id, email, accept_terms, promos, given_name?, family_name?}  (customer ID token) → {ok} | {ok:false, reason}
+//   setMyName        POST {given_name, family_name[, context:'platform']}  (customer ID token) → {ok} | {ok:false, reason}
+//                    reviews v2 (PLAN-3a-merchant-reviews-v2 r3 §3): the structured name, written only in the fenced user_private txn
 //   setPromos        POST {restaurant_id, value}                         (customer ID token) → {ok} | {ok:false, reason}
 //                    platform: POST {context:'platform', value}          (customer ID token) → {ok, value} (the stored value) | {ok:false, reason}
 //   getSignupConfig  GET  ?restaurant_id=                           → {terms_url, privacy_url, legal_ready, google_enabled, email_login_enabled}
@@ -104,10 +106,24 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
       // S3a ADDITIVE `name` (1..80, trimmed): written server-side so the app needs no Database SDK; the forms never send it
       const nm = b.name === undefined ? undefined : (typeof b.name === 'string' ? b.name.trim() : '');
       if (nm !== undefined && !(nm.length >= 1 && nm.length <= 80)) return res.status(400).json({ ok: false, reason: 'bad_request' });
-      const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now() });
+      const r = await S.completeProfile(db, { uid, rid, email: b.email, acceptTerms: b.accept_terms, promos: b.promos, now: now(), givenName: b.given_name, familyName: b.family_name });
       if (r.ok && nm !== undefined) await db.ref(`user_profiles/${uid}/name`).set(nm);
       return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
     } catch (e) { console.error('completeProfile', e && e.message); return res.status(500).json({ ok: false }); }
+  };
+
+  // reviews v2 (r3 §3): a later edit of the structured name. The name is account-level (no restaurant scope); the app's
+  // context:'platform' is tolerated, nothing else beside the two fields.
+  const setMyName = async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ ok: false });
+      const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}; const db = getDatabase();
+      if (Object.keys(b).some((k) => !['given_name', 'family_name', 'context'].includes(k)) || (b.context !== undefined && b.context !== 'platform')) return res.status(400).json({ ok: false, reason: 'bad_request' });
+      if (await limited(db, 'profile', req, res)) return;   // the profile family's per-IP limit, as completeProfile / setPromos
+      const uid = await customerOf(req, db); if (!uid) return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+      const r = await S.setMyName(db, { uid, givenName: b.given_name, familyName: b.family_name });
+      return res.status(r.ok ? 200 : (r.reason === 'deleted' ? 403 : 400)).json(r);
+    } catch (e) { console.error('setMyName', e && e.message); return res.status(500).json({ ok: false }); }
   };
 
   const setPromos = async (req, res) => {
@@ -134,7 +150,7 @@ function makeSignup({ getDatabase, getAuth, resolveRid, checkRateLimit, env = pr
     } catch (e) { console.error('getSignupConfig', e && e.message); res.set('Cache-Control', 'no-store'); return res.status(500).json({ ok: false }); }
   };
 
-  return { googleStart, googleSignIn, completeProfile, setPromos, getSignupConfig };
+  return { googleStart, googleSignIn, completeProfile, setMyName, setPromos, getSignupConfig };
 }
 
 // ── hooks called from the existing endpoints ──
@@ -196,7 +212,14 @@ async function deleteAccountCore(db, ACCOUNT, { uid, phoneHash, now, sweepCutoff
   // the inline redaction is best-effort — a failure is drained by pruneResidual's drainRatingRedactions via the owner_uid index
   // PLAN-3a-capp-member-reads R3.1: the favorites node is REPLACED by the deletion FENCE { _deleted: at } (overriding accountDeleteUpdates'
   // null on the same key, as user_private is) — every setFavorite is a parent transaction that aborts on it, so none outlives the account
-  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now });   // r4: `at` only — a fence's version v is never clobbered
+  // offer-audience (r4.1 §5): every history order's frozen codes go with the account (their day-index entries are swept at the deadline);
+  // the brand markers are KEPT (owner 5013)
+  const audienceIdsGone = Object.fromEntries(historyIds.map((id) => [`orders/${id}/audience_ids`, null]));
+  await db.ref().update({ ...ACCOUNT.accountDeleteUpdates(uid, null, at, { fenceAt: at }), [`user_private/${uid}`]: { deleted_at: at }, [`user_favorites/${uid}`]: { _deleted: at }, [`ratings_redact_pending/${uid}/at`]: now, ...audienceIdsGone });   // r4: `at` only — a fence's version v is never clobbered
+  // PLAN-3a-capp-push-tokens (Codex push r1): the push prefs FENCE rode the update above; NOW the devices are discovered and drained
+  // (compare-and-clear on uid + claim). The update above also opened the DURABLE drain obligation: a failure here leaves it open
+  // (incomplete) and pruneResidual re-drains it until zero tokens remain; the sender also refuses a tombstoned uid.
+  try { await require('./customer-push').drainPushFor(db, uid); } catch (e) { console.error(`deleteAccountCore: push drain failed (${e && e.code ? e.code : 'error'}) — the obligation stays open; the sender refuses the tombstoned uid`); }   // no identifier in the log (Codex push r3)
   try { await redactRatings(db, uid, historyIds); } catch (e) { console.error(`deleteAccountCore: inline rating redaction for ${uid} failed (${e && e.code ? e.code : 'error'}) — the journal drains it`); }
   if (phoneHash) await db.ref(`phone_index/${phoneHash}`).transaction((cur) => (cur === null ? null : (cur === uid ? null : undefined)));
   await S.removeLinks(db, uid);
@@ -308,7 +331,10 @@ async function pruneResidual(db, now = Date.now()) {
   // has its own schedule, drainRatingRedactions in index.js)
   let ratings;
   try { ratings = await drainRatingRedactions(db, now); } catch (e) { ratings = { error: true }; console.error('pruneResidual: rating drain failed', e && e.code ? e.code : 'error'); }
-  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db) };
+  // PLAN-3a-capp-push-tokens (Codex push r2): every open push drain obligation is re-drained until its uid holds ZERO tokens (isolated)
+  let pushDrain;
+  try { pushDrain = await require('./customer-push').drainPending(db, now); } catch (e) { pushDrain = { error: true }; console.error('pruneResidual: push drain failed', e && e.code ? e.code : 'error'); }
+  return { ratings, deadLinks: await pruneDeadLinks(db), expired: await S.pruneExpired(db, now), tombstones: await backfillDeletedUids(db), pushDrain };
 }
 // security backlog 2026-11-01: an account tombstoned in user_private BEFORE the sweep wrote deleted_uids gets it now (its OWN
 // deleted_at), create-if-absent — so every deleted_uids-only check refuses it too. Live / revived accounts are never touched.

@@ -68,7 +68,7 @@ async function place(db, uid, id, { rid = 'x_pizza', items } = {}) {
   if (uid) attachCustomerAttribution(u, id, uid, { now: 1, total: 300, orderType: 'pickup', items_text: '1x', restaurantId: rid, items: body });
   await db.ref().update(u);
 }
-const fulfil = async (db, id, status = 'delivered', now = 1000) => { db.set(`orders/${id}/status`, status); return stampRatingFulfilment(db, { orderId: id, status, now }); };
+const fulfil = async (db, id, status = 'delivered', now = 1000) => { db.set(`orders/${id}/status`, status); return stampRatingFulfilment(db, { orderId: id, status, eventTime: now }); };
 const rate = (db, uid, body, { now = 2000, resolveContext = async (rid) => usableCtx(rid) } = {}) => rateOrderCore(db, { body, idToken: `tok-${uid}`, now, verifyIdToken, resolveContext });
 const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
 
@@ -233,10 +233,10 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
     const db = fakeDb(); await place(db, null, 'XPZ-r'); db.set('orders/XPZ-r/status', 'completed');
     let fail = true;
     const fdb = { ...db, ref: (p) => { const r = db.ref(p); if (p !== 'ratings_v2/XPZ-r') return r; return { ...r, transaction: async (fn) => { if (fail) { fail = false; throw new Error('injected'); } return r.transaction(fn); } }; } };
-    await assert.rejects(stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1000 }), /injected/, '🔴 a failed stamp PROPAGATES (never swallowed)');
+    await assert.rejects(stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1000 }), /injected/, '🔴 a failed stamp PROPAGATES (never swallowed)');
     assert.strictEqual(db.get('ratings_v2/XPZ-r'), undefined, 'nothing written by the failed attempt');
-    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1100 }), 'stamped', 'the retry stamps');
-    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', now: 1200 }), 'kept', 'a further retry is a no-op (set-once)');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1100 }), 'stamped', 'the retry stamps');
+    assert.strictEqual(await stampRatingFulfilment(fdb, { orderId: 'XPZ-r', status: 'completed', eventTime: 1200 }), 'kept', 'a further retry is a no-op (set-once)');
     assert.strictEqual(node(db, 'XPZ-r').fulfilled_at, 1100);
   }
   ok('Codex r1 P2: a failed fulfilment stamp propagates (the trigger retries it); the retry stamps once; further retries are no-ops');
@@ -396,6 +396,171 @@ const node = (db, id) => V2.normalize(db.get(`ratings_v2/${id}`));
   }
   ok('the single reader readCountable: a live node of a live owner only; a live node of a TOMBSTONED owner (a residual record) is never exposed; withdrawn / absent ⇒ null');
 
+  // ════ Calificaciones v2 S1 (PLAN-3a-merchant-reviews-v2 r1 §0 B1, r3 §8, r6.2 §1): the disclosure stamp and the post_cutover stamp,
+  // both decided at the FIRST submission (cur.rated_at == null) by the REAL rateOrder over the REAL config writer (ratings-config). ════
+  const RC = require('./ratings-config');
+  const ACK = { at: 1_700_000_000_000, by: 'owner', policy_url: 'https://sherpa.example/privacidad' };
+  const enable = async (db, stamp) => { const r = await RC.writeRatingsConfig(db, { payload: { disclosure_v: 1, policy_ack: ACK }, stamp }); assert.strictEqual(r.ok, true, 'premise: the real config writer enabled disclosure'); };
+  // a config read that THROWS (an RTDB outage on platform_config/ratings only); every other path is the same db
+  const cfgOutage = (db) => ({ ...db, ref: (p) => (String(p).startsWith('platform_config/ratings') ? { ...db.ref(p), get: async () => { throw new Error('injected config outage'); }, once: async () => { throw new Error('injected config outage'); } } : db.ref(p)) });
+  const stampOf = (db, id) => { const x = node(db, id); return { disclosure: x.disclosure, post_cutover: x.post_cutover }; };
+  const H = 60 * 60 * 1000;
+
+  // ── 22. r1 B1: the disclosure request field; the stamp needs disclosure_v === 1 AND a well-formed policy_ack ──
+  {
+    assert.deepStrictEqual(V2.parseRequest({ order_id: 'O1', store: 4, disclosure: 1 }), { ok: true, kind: 'v2', orderId: 'O1', fields: { store: 4 }, disclosure: 1 }, 'disclosure rides beside the fields, never inside them');
+    for (const bad of [{ order_id: 'O1', disclosure: 1 }, { order_id: 'O1', store: 4, disclosure: 2 }, { order_id: 'O1', store: 4, disclosure: true }, { order_id: 'O1', thumb: 'up', disclosure: 1 }, { order_id: 'O1', action: 'withdraw', disclosure: 1 }])
+      assert.strictEqual(V2.parseRequest(bad).ok, false, `🔴 accepted ${JSON.stringify(bad)}`);
+    const run = async (setup, body) => { const db = fakeDb(); await place(db, A, 'XPZ-d1'); await fulfil(db, 'XPZ-d1'); await setup(db); const r = await rate(db, A, { order_id: 'XPZ-d1', store: 5, ...body }); assert.strictEqual(r.httpStatus, 200); return node(db, 'XPZ-d1').disclosure; };
+    assert.strictEqual(await run(async () => {}, { disclosure: 1 }), 0, 'disclosure stamp dark: disclosure_v absent ⇒ not stamped');
+    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1, disclosure_cutover_at: 1500 }), { disclosure: 1 }), 0, 'disclosure stamp: disclosure_v 1 WITHOUT a policy_ack ⇒ not stamped');
+    assert.strictEqual(await run(async (db) => db.set('platform_config/ratings', { disclosure_v: 1, policy_ack: { at: 0, by: '', policy_url: 'u' }, disclosure_cutover_at: 1500 }), { disclosure: 1 }), 0, 'disclosure stamp: a malformed ack (at 0, by \'\') ⇒ not stamped');
+    assert.strictEqual(await run(async (db) => enable(db, 1500), { disclosure: 1 }), 1, 'disclosure stamp: the real writer\'s enable + a request with disclosure 1 ⇒ stamped 1');
+    assert.strictEqual(await run(async (db) => enable(db, 1500), {}), 0, 'disclosure stamp: no request field ⇒ 0 even when enabled');
+  }
+  ok('r1 B1: `disclosure` is a request field beside the rating; it is stamped 1 only with disclosure_v 1 AND a well-formed policy_ack, else 0');
+
+  // ── 23. r3 §8: decided at the FIRST submission only — never by v2Updater's `first`, never by an edit ──
+  {
+    const db = fakeDb();
+    for (const id of ['XPZ-f1', 'XPZ-f2', 'XPZ-f4']) { await place(db, A, id); await fulfil(db, id); }
+    await place(db, A, 'XPZ-f3'); db.set('orders/XPZ-f3/status', 'delivered');
+    await rate(db, A, { order_id: 'XPZ-f1', store: 4 }, { now: 1100 });                       // dark: the first submission ⇒ 0
+    await rate(db, A, { order_id: 'XPZ-f2', store: 4 }, { now: 1100 });
+    await rate(db, A, { order_id: 'XPZ-f3', thumb: 'up' }, { now: 1100 });                    // a legacy thumb is a first submission too
+    await enable(db, 1200);
+    await rate(db, A, { order_id: 'XPZ-f1', store: null }, { now: 1300 });                    // clear-all: v2Updater's `first` is true again
+    await rate(db, A, { order_id: 'XPZ-f1', store: 5, disclosure: 1 }, { now: 1400 });
+    assert.strictEqual(node(db, 'XPZ-f1').disclosure, 0, 'first submission: clear-all then re-rate with disclosure 1 ⇒ stays 0');
+    await rate(db, A, { order_id: 'XPZ-f2', action: 'withdraw' }, { now: 1300 });
+    await rate(db, A, { order_id: 'XPZ-f2', store: 5, disclosure: 1 }, { now: 1400 });
+    assert.strictEqual(node(db, 'XPZ-f2').disclosure, 0, 'first submission: withdraw then re-rate ⇒ unchanged');
+    await fulfil(db, 'XPZ-f3');
+    await rate(db, A, { order_id: 'XPZ-f3', store: 5, disclosure: 1 }, { now: 1400 });
+    assert.strictEqual(node(db, 'XPZ-f3').disclosure, 0, 'first submission: legacy thumb then a v2 rating with disclosure 1 ⇒ 0');
+    await rate(db, A, { order_id: 'XPZ-f4', store: 5, disclosure: 1 }, { now: 1400 });
+    await rate(db, A, { order_id: 'XPZ-f4', comment: 'rica' }, { now: 1500 });
+    assert.strictEqual(node(db, 'XPZ-f4').disclosure, 1, 'first submission: disclosed then edited without it ⇒ stays 1');
+  }
+  ok('r3 §8: the disclosure stamp is frozen at the first submission (clear-all, withdraw, legacy thumb, an edit without the field never move it)');
+
+  // ── 24. r6.2 §1: post_cutover — stamped by BOTH writers when the cut-over EXISTS at the write (no clock trust) ──
+  {
+    const C = 50 * H;
+    const db = fakeDb();
+    for (const id of ['XPZ-c1', 'XPZ-c3', 'XPZ-c4']) { await place(db, A, id); await fulfil(db, id, 'delivered', C - 10 * H); }
+    await place(db, A, 'XPZ-c2'); db.set('orders/XPZ-c2/status', 'delivered');
+    await rate(db, A, { order_id: 'XPZ-c3', store: 4 }, { now: C - 9 * H });                 // before activation: no stamp
+    await rate(db, A, { order_id: 'XPZ-c4', store: 4 }, { now: C - 9 * H });
+    assert.deepStrictEqual(stampOf(db, 'XPZ-c3'), { disclosure: 0, post_cutover: undefined }, 'dark: no config ⇒ no post_cutover key at all');
+    await enable(db, C);
+    const r = await rate(db, A, { order_id: 'XPZ-c1', store: 2, disclosure: 0 }, { now: C - 2 * H });   // an instance clock 2 h SLOW
+    assert.strictEqual(r.httpStatus, 200);
+    assert.strictEqual(node(db, 'XPZ-c1').rated_at, C - 2 * H, 'premise: the skewed rated_at lands in the pre band');
+    assert.strictEqual(node(db, 'XPZ-c1').post_cutover, true, 'post_cutover stamp: rateOrder after activation with a skewed clock ⇒ stamped');
+    await rate(db, A, { order_id: 'XPZ-c2', thumb: 'down' }, { now: C - 2 * H });
+    assert.strictEqual(node(db, 'XPZ-c2').post_cutover, true, 'post_cutover stamp: the legacy thumb after activation with a skewed clock ⇒ stamped');
+    await rate(db, A, { order_id: 'XPZ-c3', comment: 'editada' }, { now: C + H });
+    assert.strictEqual(node(db, 'XPZ-c3').post_cutover, undefined, 'post_cutover stamp: a pre-activation rating re-rated after ⇒ still unstamped');
+    await rate(db, A, { order_id: 'XPZ-c4', store: null }, { now: C + H });
+    await rate(db, A, { order_id: 'XPZ-c4', store: 5 }, { now: C + 2 * H });
+    assert.strictEqual(node(db, 'XPZ-c4').post_cutover, undefined, 'post_cutover stamp: clear-all then re-rate after activation ⇒ not stamped');
+    // carried forward by every other updater: withdraw, deletion, the fulfilment stamp
+    await rate(db, A, { order_id: 'XPZ-c1', action: 'withdraw' }, { now: C + H });
+    assert.deepStrictEqual([node(db, 'XPZ-c1').state, node(db, 'XPZ-c1').post_cutover], ['withdrawn', true], 'post_cutover carried: withdraw keeps the stamp');
+    await fulfil(db, 'XPZ-c1', 'completed', C + 2 * H);
+    await V2.ratingRef(db, 'XPZ-c1').transaction(V2.deletionUpdater({}));
+    assert.deepStrictEqual([node(db, 'XPZ-c1').state, node(db, 'XPZ-c1').post_cutover], ['deleted', true], 'post_cutover carried: deletion keeps the stamp');
+  }
+  ok('r6.2 §1: after activation BOTH writers stamp post_cutover on the first submission whatever the instance clock; an earlier rating never gains it; withdraw / fulfilment / deletion carry it');
+
+  // ── 25. r6.2 §1: the fulfilment placeholder never stamps; fulfilled BEFORE the cut-over, first rated AFTER ⇒ stamped ──
+  {
+    const C = 50 * H;
+    const db = fakeDb(); await place(db, A, 'XPZ-p1'); await place(db, A, 'XPZ-p2');
+    await fulfil(db, 'XPZ-p1', 'delivered', C - 3 * H);
+    await enable(db, C);
+    await fulfil(db, 'XPZ-p2', 'delivered', C + H);
+    assert.strictEqual(node(db, 'XPZ-p2').post_cutover, undefined, 'the fulfilment placeholder (not a submission) never stamps');
+    assert.strictEqual(node(db, 'XPZ-p2').disclosure, undefined, 'the placeholder has no disclosure decision either');
+    await rate(db, A, { order_id: 'XPZ-p1', store: 4 }, { now: C + H });
+    assert.strictEqual(node(db, 'XPZ-p1').post_cutover, true, 'fulfilled before the cut-over, first rated after ⇒ stamped (judged at rating time)');
+  }
+  ok('r6.2 §1: the placeholder never stamps; a pre-cut-over fulfilment first rated after the cut-over is stamped');
+
+  // ── 26. r6.2 §1: a config read that FAILS, or a malformed cut-over ⇒ the rating is WRITTEN and STAMPED (never refused), disclosure 0 ──
+  {
+    const C = 50 * H;
+    const db = fakeDb(); await enable(db, C);
+    await place(db, A, 'XPZ-o1'); await fulfil(db, 'XPZ-o1', 'delivered', C + H);
+    await place(db, A, 'XPZ-o2'); db.set('orders/XPZ-o2/status', 'delivered');
+    const out = cfgOutage(db);
+    // the rateOrder handler answers 503 for ANY throw from the core (rate-order.js): a refusal-by-throw is modelled exactly so
+    const asHandler = (p) => p.catch(() => ({ httpStatus: 503, body: { ok: false, error: 'unavailable' } }));
+    const r1 = await asHandler(rateOrderCore(out, { body: { order_id: 'XPZ-o1', store: 5, disclosure: 1 }, idToken: `tok-${A}`, now: C + 2 * H, verifyIdToken, resolveContext: async (rid) => usableCtx(rid) }));
+    assert.deepStrictEqual([r1.httpStatus, r1.body], [200, { ok: true }], 'config read throws at rateOrder ⇒ the rating is still written (never refused)');
+    assert.deepStrictEqual(stampOf(db, 'XPZ-o1'), { disclosure: 0, post_cutover: true }, 'config read throws at rateOrder ⇒ stamped post_cutover with disclosure 0');
+    const r2 = await asHandler(rateOrderCore(out, { body: { order_id: 'XPZ-o2', thumb: 'up' }, idToken: `tok-${A}`, now: C + 2 * H, verifyIdToken }));
+    assert.deepStrictEqual([r2.httpStatus, node(db, 'XPZ-o2').legacy_thumb], [200, 1], 'config read throws on the legacy thumb ⇒ still written');
+    assert.deepStrictEqual(stampOf(db, 'XPZ-o2'), { disclosure: 0, post_cutover: true }, 'config read throws on the legacy thumb ⇒ stamped post_cutover');
+    for (const [i, bad] of ['x', 0, -1, 1.5].entries()) {
+      const g = fakeDb(); g.set('platform_config/ratings', { disclosure_v: 1, policy_ack: ACK, disclosure_cutover_at: bad });
+      await place(g, A, `XPZ-m${i}`); await fulfil(g, `XPZ-m${i}`, 'delivered', 1000);
+      const r = await rate(g, A, { order_id: `XPZ-m${i}`, store: 3 }, { now: 2000 });
+      assert.deepStrictEqual([r.httpStatus, node(g, `XPZ-m${i}`).store, node(g, `XPZ-m${i}`).post_cutover], [200, 3, true], `a malformed cut-over (${JSON.stringify(bad)}) ⇒ written and stamped`);
+    }
+  }
+  ok('r6.2 §1: an unreadable config or a malformed cut-over ⇒ the rating is written and stamped post_cutover (disclosure 0) — at rateOrder AND the legacy thumb');
+
+  // ── 26b. Codex r1 P1: a MALFORMED cut-over (or disclosure_v 1 with NO cut-over — raw nodes the writer never produces) never grants
+  //         disclosure: a first request WITH disclosure 1 stores 0, at rateOrder AND the legacy thumb; the write is kept ──
+  {
+    for (const [label, cfg, post] of [['"x"', { disclosure_cutover_at: 'x' }, true], ['0', { disclosure_cutover_at: 0 }, true], ['-1', { disclosure_cutover_at: -1 }, true],
+      ['1.5', { disclosure_cutover_at: 1.5 }, true], ['absent', {}, undefined]]) {
+      const g = fakeDb(); g.set('platform_config/ratings', { disclosure_v: 1, policy_ack: ACK, ...cfg });
+      await place(g, A, 'XPZ-q1'); await fulfil(g, 'XPZ-q1', 'delivered', 1000);
+      const r = await rate(g, A, { order_id: 'XPZ-q1', store: 5, disclosure: 1 }, { now: 2000 });
+      assert.deepStrictEqual([r.httpStatus, stampOf(g, 'XPZ-q1')], [200, { disclosure: 0, post_cutover: post }], `a ${label} cutover with disclosure_v 1 + a valid ack: rateOrder WITH disclosure 1 ⇒ stored 0 (post_cutover ${post})`);
+      await place(g, A, 'XPZ-q2'); g.set('orders/XPZ-q2/status', 'delivered');
+      const t = await rate(g, A, { order_id: 'XPZ-q2', thumb: 'up' }, { now: 2000 });
+      assert.deepStrictEqual([t.httpStatus, stampOf(g, 'XPZ-q2')], [200, { disclosure: 0, post_cutover: post }], `a ${label} cutover: the legacy thumb ⇒ written, disclosure 0 (post_cutover ${post})`);
+    }
+  }
+  ok('Codex r1 P1: disclosure needs a VALID cut-over too — malformed or absent ⇒ stored 0 (the write kept; malformed still stamped post_cutover)');
+
+  // ── 27. r3 §4: fulfilled_at = the ORDER's own terminal timestamp (delivered_at from the REAL driver writer), else the event time —
+  //        never the trigger's wall clock; clamped ≤ the event time; set once ──
+  {
+    const DC = await import(path.join(FN, '..', 'xpizza-driver', 'driver-complete.js'));
+    const deliverAt = async (db, id, at) => db.ref().update(DC.buildCompleteTaskUpdates({ driverId: 'drv1', taskId: `t-${id}`, task: { type: 'delivery', order_id: id, status: 'accepted' }, allTasks: {}, now: at }));
+    const HN_DAY = (ms) => new Date(ms - 6 * 3600e3).toISOString().slice(0, 10);
+    const D = Date.UTC(2026, 10, 14, 5, 30);   // 23:30 HN on Fri 13 Nov
+    const db = fakeDb(); await place(db, A, 'XPZ-ft1');
+    await deliverAt(db, 'XPZ-ft1', D);
+    assert.strictEqual(await stampRatingFulfilment(db, { orderId: 'XPZ-ft1', status: 'delivered', eventTime: D + 2 * 3600e3 }), 'stamped', 'premise: stamped 2 h late');
+    assert.strictEqual(node(db, 'XPZ-ft1').fulfilled_at, D, 'fulfilment time: an event processed 2 h late across HN midnight ⇒ the order\'s delivered_at');
+    assert.strictEqual(HN_DAY(node(db, 'XPZ-ft1').fulfilled_at), '2026-11-13', 'fulfilment time: the order\'s HN day');
+    assert.ok(db.get(`rating_index/x_pizza/${V2.indexKey(D, 'XPZ-ft1')}`), 'the index key encodes the order\'s own time');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft1', status: 'delivered', eventTime: D + 5 * 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft1').fulfilled_at, D, 'fulfilment time: a retried event ⇒ the same stamp');
+    // no terminal timestamp (a completed pickup: no writer sets completed_at) ⇒ the event time
+    await place(db, A, 'XPZ-ft2'); db.set('orders/XPZ-ft2/status', 'completed');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft2', status: 'completed', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft2').fulfilled_at, D + 3600e3, 'fulfilment time: no completed_at ⇒ the event time');
+    // a device clock AHEAD of the event (delivered_at > event time) ⇒ clamped to the event time; a malformed one ⇒ the event time
+    await place(db, A, 'XPZ-ft3'); await deliverAt(db, 'XPZ-ft3', D + 9 * 3600e3);
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft3', status: 'delivered', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft3').fulfilled_at, D + 3600e3, 'fulfilment time: a delivered_at after the event ⇒ clamped to the event time');
+    await place(db, A, 'XPZ-ft4'); await deliverAt(db, 'XPZ-ft4', D); db.set('orders/XPZ-ft4/delivered_at', 'x');
+    await stampRatingFulfilment(db, { orderId: 'XPZ-ft4', status: 'delivered', eventTime: D + 3600e3 });
+    assert.strictEqual(node(db, 'XPZ-ft4').fulfilled_at, D + 3600e3, 'fulfilment time: a malformed delivered_at ⇒ the event time');
+    // no usable event time ⇒ the trigger fails (and retries); nothing is stamped from a wall clock
+    await place(db, A, 'XPZ-ft5'); await deliverAt(db, 'XPZ-ft5', D);
+    await assert.rejects(stampRatingFulfilment(db, { orderId: 'XPZ-ft5', status: 'delivered', eventTime: NaN }), /event time/, 'fulfilment time: no event time ⇒ a thrown error (retried), never a wall clock');
+    assert.strictEqual(db.get('ratings_v2/XPZ-ft5'), undefined, 'nothing stamped without an event time');
+  }
+  ok('r3 §4: fulfilled_at = the order\'s delivered_at (the real driver writer) clamped ≤ the event time, else the event time; set once; never a wall clock');
+
   FINISHED = true;
   console.log(`\nrating-v2: OK (${n})`);
-})().catch((e) => { process.stderr.write(`rating-v2: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });
+})().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\n`); process.stderr.write(`rating-v2: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

@@ -2,7 +2,7 @@
 /**
  * 3a stack (S-A(d), S-B, S-F, convergence §1) — the NEW server-only RTDB nodes, behaviourally on the REAL rules file:
  *   npm run test:stack-server-only-rules
- *   rating_index/{rid}, stats_buckets/{rid}/{day}, stats_agg/{rid}, support_tickets/{id}, support_ticket_counts/{orderId},
+ *   rating_index/{rid}, rating_buckets/{rid}/{day} (reviews v2), stats_buckets/{rid}/{day}, stats_agg/{rid}, support_tickets/{id}, support_ticket_counts/{orderId},
  *   restaurants/{rid}/platform_config — NO client reads or writes them: anonymous, a customer (incl. the order's own member), a
  *   handheld, a seeded dispatcher, a kitchen staff member and a brand owner are all denied, at the node, at a child and at the root of
  *   each subtree; public_stats/{rid} stays PUBLIC-READ and client-unwritable (the S-B publication).
@@ -18,6 +18,7 @@ const U = 'u_' + 'a'.repeat(24), DISP = 'd_' + 'b'.repeat(24), COOK = 'k_' + 'c'
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const NODES = [
   ['rating_index/x_pizza', 'rating_index/x_pizza/0000000000001-XPZ-1', 'XPZ-1'],
+  ['rating_buckets/x_pizza', 'rating_buckets/x_pizza/2027-03-09', { n5: 1, at: 1 }],   // reviews v2 S4 (counts only)
   ['stats_buckets/x_pizza', 'stats_buckets/x_pizza/2027-03-09', { v: 1, orders: 1 }],
   ['stats_agg/x_pizza', 'stats_agg/x_pizza/watermark', '2027-03-09'],
   ['support_tickets', 'support_tickets/t1', { order_id: 'XPZ-1', reason: 'late' }],
@@ -49,7 +50,7 @@ const NODES = [
       }
       assert.ok(true, name);
     }
-    ok('every client role (anonymous, a customer incl. the order\'s own member, a handheld, a dispatcher, kitchen staff, a brand owner) is denied READ, WRITE and DELETE on rating_index, stats_buckets, stats_agg, support_tickets, support_ticket_counts and restaurants/{rid}/platform_config');
+    ok('every client role (anonymous, a customer incl. the order\'s own member, a handheld, a dispatcher, kitchen staff, a brand owner) is denied READ, WRITE and DELETE on rating_index, rating_buckets, stats_buckets, stats_agg, support_tickets, support_ticket_counts and restaurants/{rid}/platform_config');
     for (const [name, c] of who) {
       await assertSucceeds(c.database().ref('public_stats/x_pizza').get());
       await assertFails(c.database().ref('public_stats/x_pizza').set({ v: 1, rating_count: 999 }));

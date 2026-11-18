@@ -77,7 +77,7 @@ const REWARD = { none: null, plain: [{ qty: 1, name: 'Margherita' }], brk: [{ qt
 const versionOf = (v) => (v === 'old'
   ? { blocks: OLD_BLOCKS, orderContentKey: MAIN_OD.orderContentKey, rateLimitKey: MAIN_OD.rateLimitKey, isContentRetap: MAIN_OD.isContentRetap, duplicateSiblingDecision: MAIN.duplicateSiblingDecision }
   : { blocks: NEW_BLOCKS, orderContentKey: OD.orderContentKey, rateLimitKey: OD.rateLimitKey, isContentRetap: OD.isContentRetap, duplicateSiblingDecision: MG.duplicateSiblingDecision, readContentStamp: OD.readContentStamp });
-const common = { SCHED, CONTENT_DEDUP_WINDOW_MS: 120000, restaurantId: 'x_pizza', pricingTables: null, menuNamesOf: () => MENU, console: { warn() {} } };
+const common = { SCHED, CONTENT_DEDUP_WINDOW_MS: 120000, restaurantId: 'x_pizza', pricingTables: null, menuNamesOf: () => MENU, OFW: require('./marketing/offer-wire'), console: { warn() {} } };   // marketing price (5f): the lifted cash block's offer hold reads the REAL offer-wire (no minted offer ⇒ none held, as in production)
 
 // X: the online checkout — its stamp by `xv`'s REAL charge block; the pending record (+ the candidate intake's §3 fields)
 async function intakeX(store, xv, text, freeItems, type, slot) {
@@ -103,7 +103,7 @@ async function createY(store, yv, clientText, freeItems, type, slot) {
   if (freeItems) updates['orders/Y'].redemption = { model: 'add_free' };
   if (yv === 'new') {
     const rewardSuffixOf = new Function('rewardAppendText', `${REWARD_SUFFIX_OF}\nreturn rewardSuffixOf;`)(OD.rewardAppendText);   // eslint-disable-line no-new-func
-    await runBlock(PROV_BLOCK, { updates, orderId: 'Y', fields, rewardSuffixOf, redemptionCanonical: freeItems ? { model: 'add_free' } : null, redemptionFreeItems: freeItems || null });
+    await runBlock(PROV_BLOCK, { OFW: common.OFW, updates, orderId: 'Y', fields, rewardSuffixOf, redemptionCanonical: freeItems ? { model: 'add_free' } : null, redemptionFreeItems: freeItems || null });
   }
   Object.assign(store, updates);
 }

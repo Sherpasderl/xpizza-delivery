@@ -24,7 +24,8 @@ const { premigrationGaps } = require('../catalog/menu-structure-rows');   // PLA
 const { selectForms, publicMenuUrl, getJson, IDENTITY_KEYS } = require('./form-bundle-live-check');
 
 // Every representation a consumer accepts during the rollout (r3 §8.1): the bake, the live check and the forms' adapter.
-const KNOWN_REPRESENTATIONS = Object.freeze(['1d.1', '1d.2', '1d.3']);
+// PLAN-3a-capp-member-reads (3): + 1d.4 (the served body may carry the live-only dish_stats, which projectMenu strips)
+const KNOWN_REPRESENTATIONS = Object.freeze(['1d.1', '1d.2', '1d.3', '1d.4']);
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x !== '');
@@ -54,9 +55,11 @@ function validateEnvelope(env, rid, { groupPicker }) {
   return r;
 }
 
-// PURE. The published menu minus the identity keys on its dish and extra records; everything else verbatim.
+// PURE. The published menu minus the identity keys on its dish and extra records and minus the LIVE-ONLY top-level dish_stats
+// (PLAN-3a-capp-member-reads (3), advisor 11-13: stats move daily — a bake must never freeze them); everything else verbatim.
 function projectMenu(menu) {
   const out = JSON.parse(JSON.stringify(menu));
+  delete out.dish_stats;
   const strip = (rec) => (isObj(rec) ? Object.fromEntries(Object.entries(rec).filter(([k]) => !IDENTITY_KEYS.has(k))) : rec);
   if (Array.isArray(out.dishes)) out.dishes = out.dishes.map(strip);
   if (Array.isArray(out.extras)) out.extras = out.extras.map(strip);

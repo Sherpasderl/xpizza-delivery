@@ -35,7 +35,7 @@
   };
   // the mockup's two drawn tiles; any other brand ⇒ the plain card icon (no invented logo)
   const TILE = {
-    visa: '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><text x="20" y="17.6" text-anchor="middle" font-family="Red Hat Display, Arial, sans-serif" font-weight="800" font-style="italic" font-size="11.5" letter-spacing=".2" fill="#1A1F71">VISA</text></svg>',
+    visa: '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><text x="20" y="17.6" text-anchor="middle" font-family="Figtree, Arial, sans-serif" font-weight="800" font-style="italic" font-size="11.5" letter-spacing=".2" fill="#1A1F71">VISA</text></svg>',
     mastercard: '<svg class="bb" viewBox="0 0 40 26" aria-hidden="true"><rect x=".5" y=".5" width="39" height="25" rx="4" fill="#FFFFFF" stroke="#D2D5DB"></rect><circle cx="16" cy="13" r="7" fill="#EB001B"></circle><circle cx="24" cy="13" r="7" fill="#F79E1B" fill-opacity=".92"></circle></svg>',
   };
   const brandTile = (b) => (Object.prototype.hasOwnProperty.call(TILE, b) ? TILE[b] : IC.card);

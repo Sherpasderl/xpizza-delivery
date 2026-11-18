@@ -37,6 +37,7 @@ function paymentMethodOf(v) {
 // The order paths' early refusal, BEFORE any classification, reserve or write: a malformed tip, or a tip on a reward
 // order (tip + reward is not supported in S2, §3.5 — so a reward reservation can never carry a tip). null → proceed.
 function orderRefusal(body) {
+  { const pc = require('./pickup-card-only').pickupCardOnlyRefusal(body); if (pc) return pc; }   // OWNER 11-16: an app pickup is card only
   const t = ofBody(body);
   if (Number.isNaN(t)) return { status: 400, error: 'tip_invalid' };
   if (t > 0 && body.redeem != null) return { status: 409, error: 'tip_reward_unsupported' };

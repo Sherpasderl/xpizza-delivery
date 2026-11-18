@@ -1,0 +1,67 @@
+// Test support for the customer-app suites (never loaded by the app; never packaged): the VIRTUAL clock (PLAN-capp-virtual-clock r0,
+// advisor 11-13). The cells wait on virtual time, not on the machine — a 300 ms debounce fires at +300 whatever the load.
+//   createClock(t0) → the timers the code under test is handed ({ setTimeout, clearTimeout, setInterval, clearInterval }) + now(),
+//   drain()         settle until QUIET (2 consecutive empty rounds): microtasks / setImmediate turns + one real 0 ms yield (the
+//                   environment's own 0 ms tasks: jsdom's popstate), WebCrypto digests in flight (the threadpool is outside any
+//                   clock), and the timers due at the CURRENT virtual time — never advancing it; bounded (a timer that re-arms
+//                   itself at the same instant is a failure, never a hang)
+//   jump(t)         a wall-clock jump, forward only (the passed timers fire at the next drain)
+//   flush(ms = 30)  drain, advance to +ms firing each due timer in (due, arming) order with a drain after each, drain — the same
+//                   virtual duration the real-sleep flush waited, now exact
+//   fireThrough(t)  SYNCHRONOUS (the callback-driven fakes: capp-ui's fakeTimers): fire every timer due by t in (due, arming) order —
+//                   chained arms and re-armed intervals included — with no drain between; time ends at max(now, t); bounded (a timer
+//                   that re-arms itself at the same instant is a failure, never a hang)
+//   lastDue         the latest due among the pending timers (null when none)
+import { trackDigests, digestsInFlight, digestsSettled } from './capp-test-digests.mjs';
+
+trackDigests();
+const TURNS = 25, ROUNDS = 200, QUIET = 2;
+// one round: microtask / setImmediate turns, then ONE real 0 ms yield — the environment's own zero-delay tasks (jsdom delivers the
+// history traversal and its popstate on real 0 ms timers) land inside a round, never by timing luck; no virtual time passes
+const turns = async () => { for (let i = 0; i < TURNS; i++) await new Promise((r) => setImmediate(r)); await new Promise((r) => setTimeout(r, 0)); };
+
+export function createClock(t0 = 0) {
+  let now = Number(t0) || 0, seq = 0;
+  const q = new Map();   // id → { due, seq, f, every }
+  const arm = (f, ms, every) => { const id = ++seq; q.set(id, { due: now + Math.max(0, Number(ms) || 0), seq: id, f, every }); return id; };
+  // the earliest timer due at or before `limit` (ties: the one armed first)
+  const earliest = (limit) => { let best = null; for (const [id, t] of q) if (t.due <= limit && (!best || t.due < best[1].due || (t.due === best[1].due && t.seq < best[1].seq))) best = [id, t]; return best; };
+  function fire([id, t]) {
+    if (t.every != null) { t.due += Math.max(1, t.every); t.seq = ++seq; } else q.delete(id);
+    t.f();
+  }
+  // the timers due NOW, one by one (each may arm more); the count fired
+  function runDue() { let n = 0; for (let e = earliest(now); e; e = earliest(now)) { fire(e); n++; if (n > ROUNDS) break; } return n; }
+  // QUIET = that many consecutive rounds with no digest in flight and no virtual timer due (a two-hop environment chain lands)
+  async function drain() {
+    for (let r = 0, quiet = 0; r < ROUNDS; r++) {
+      await turns();
+      if (digestsInFlight()) { quiet = 0; await digestsSettled(); continue; }
+      if (runDue() === 0) { if (++quiet >= QUIET) return; } else quiet = 0;
+    }
+    throw new Error(`drain: not quiet after ${ROUNDS} rounds — a timer re-arms itself at the same instant`);
+  }
+  async function flush(ms = 30) {
+    await drain();
+    const target = now + Math.max(0, Number(ms) || 0);
+    for (let e = earliest(target); e; e = earliest(target)) { now = e[1].due; fire(e); await drain(); }
+    now = target;
+    await drain();
+  }
+  function fireThrough(t) {
+    const limit = Number(t);
+    for (let e = earliest(limit), at = null, same = 0; e; e = earliest(limit)) {
+      if (e[1].due === at) { if (++same > ROUNDS) throw new Error(`fireThrough: not quiet after ${ROUNDS} firings at ${at} — a timer re-arms itself at the same instant`); } else { at = e[1].due; same = 0; }
+      now = Math.max(now, e[1].due); fire(e);
+    }
+    if (limit > now) now = limit;
+  }
+  return {
+    setTimeout: (f, ms) => arm(f, ms, null), clearTimeout: (h) => { q.delete(h); },
+    setInterval: (f, ms) => arm(f, ms, Math.max(1, Number(ms) || 0)), clearInterval: (h) => { q.delete(h); },
+    now: () => now, drain, flush, fireThrough, get pending() { return q.size; },
+    get lastDue() { let m = null; for (const t of q.values()) if (m == null || t.due > m) m = t.due; return m; },
+    // a wall-clock JUMP (a cell moving the app's time): forward only; the timers it passed fire at the next drain, in due order
+    jump(t) { const v = Number(t); if (!(v >= now)) throw new Error(`jump: the virtual clock only moves forward (${now} → ${t})`); now = v; },
+  };
+}

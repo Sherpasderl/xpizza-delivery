@@ -339,6 +339,23 @@ const deleteA = (db, at) => quietly(() => SE.deleteAccountCore(db, ACCOUNT, { ui
   }
   ok('an unexpected failure ⇒ 503 { reason: unavailable, retryable } — no message or stack leaves');
 
+  // ── 11b. Codex asm9b r1 P2: the add-time identity/name READ rejected (an outage) ⇒ refused 503, no favorite data, no write ──
+  {
+    const db = fakeDb(); seedRestaurants(db); const h = harness(db);
+    const before = JSON.stringify(db.get(`user_favorites/${A}`) ?? null);
+    let tx = 0;
+    const orig = db.ref;
+    db.ref = (p) => { const r = orig(p);
+      if (String(p) === 'restaurants/x_pizza/identity/name') r.once = async () => { throw new Error('rtdb unavailable'); };
+      if (String(p).startsWith('user_favorites/')) { const t = r.transaction; r.transaction = (...a) => { tx += 1; return t.apply(r, a); }; }
+      return r; };
+    const r = await quietly(() => h.fav(`tok-${A}`, 'x_pizza', true));
+    assert.deepStrictEqual([r.code, r.body], [503, { ok: false, reason: 'unavailable', retryable: true }], '🔴 a rejected identity/name read ⇒ 503 (refused; no favorite data)');
+    assert.strictEqual(tx, 0, '🔴 a rejected identity/name read ⇒ no favorites transaction');
+    assert.strictEqual(JSON.stringify(db.get(`user_favorites/${A}`) ?? null), before, '🔴 a rejected identity/name read ⇒ nothing written');
+  }
+  ok('a rejected identity/name read on add ⇒ 503 unavailable; no favorites transaction, nothing written');
+
   FINISHED = true;
   console.log(`\nmy-favorites: OK (${n})`);
 })().catch((e) => { process.stderr.write(`  ✗ ${(e && e.message) || e}\nmy-favorites: FAILED — ${(e && e.stack) || e}\n`); process.exit(1); });

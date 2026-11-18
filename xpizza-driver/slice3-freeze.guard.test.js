@@ -104,7 +104,7 @@ const SLICE3_DEPS = CONTRACT.deps;
 // The approved coexistence revision of slice2-freeze (Codex r1 P3): its WHOLE file is pinned, so unrelated slice2
 // protections (e.g. the stacked-view.js purity check) cannot be silently removed under the coexistence exemption.
 const SLICE2_GUARD = 'slice2-freeze.guard.test.js';
-const SLICE2_GUARD_SHA = '2cc4d9aaa94a50192f8319e94899edc5b4cb1f313eb414d05d58e94d65045765';
+const SLICE2_GUARD_SHA = '4cdffb7d3660af68c576d658c85593c1d47aea71a22354862638d9134c1eddc7';
 const SLICE2_GUARD_CHECKS = 18;   // a removed check drops this count (Codex P3: removing the purity check ⇒ 16). Re-pinned 16→18: the #962+stacked-seq re-gate ADDED 2 exact-pin sensitivity cells, never removed one.
 
 function assertContract(regions) {   // the names/kinds/restore-bytes half — reusable by the NEG cells on tampered inputs
@@ -211,6 +211,11 @@ const ALLOWED_ADDS = new Set([
   'xpizza-driver/capture-earnings.mjs',         // earnings capture harness (CAPTURE-PLAN-earnings.md); Chrome ONLY under --shoot
   'xpizza-driver/CAPTURE-PLAN-earnings.md',     // one-pass capture plan (scene list + fixtures + computed-style diff list) for #31/#32 + the 7 re-verify scenes
   'xpizza-driver/rate-subscription.test.js',    // subscribeDriverRate/unsubscribeDriverRate lifecycle: error→blank+re-render, double-boot→one listener, sign-out→none (lift-real idiom)
+  // shared Figtree pin, owner 11-13 one typeface — the generated css + self-hosted woff2 the driver links (SLICE 5)
+  'xpizza-driver/figtree-fonts.css',
+  'xpizza-driver/fonts-figtree/OFL.txt',
+  'xpizza-driver/fonts-figtree/figtree-latin.8330490a01.woff2',
+  'xpizza-driver/fonts-figtree/figtree-latin-ext.f153aa07c1.woff2',
 ]);
 
 const REPO = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: __dir }).toString('utf8').trim();

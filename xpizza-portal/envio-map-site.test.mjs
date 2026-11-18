@@ -1,13 +1,13 @@
 // «Envío» step 1 (PLAN-portal-envio-step1 r2 §1, §4; C2, C3) — the MAP SITE (xpizza-portal-map/, its own Netlify site and origin).
 // Run: node --test xpizza-portal/envio-map-site.test.mjs
-//   • its committed copies are byte-identical to their ONE source (the protocol module, the Archivo face) and the sync tool writes them;
+//   • its committed copies are byte-identical to their ONE source (the protocol module, the portal's Figtree latin face) and the sync tool writes them;
 //   • its headers: the Maps CSP on THIS origin only, framed only by the portal, no X-Frame-Options, no build command;
 //   • the key is dispatch's Maps key (same referrer-restricted browser key; compared, never printed);
 //   • the overlay model: 256-vertex rings, the outside hole, the mockup's labels and pins, scaled by u = W/640;
 //   • the frame's life (C2) with fake Google Maps classes: listener before `listening`; ready only after tilesloaded; failures once.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DIR } from './ventas-harness.mjs';
 import * as MP from './envio-map-protocol.js';
@@ -20,12 +20,18 @@ const { overlayModel, boot } = await import('../xpizza-portal-map/map.js');
 
 test('the map site\'s copies are byte-identical to their one source, and the sync tool writes them', () => {
   assert.ok(read(join(MAP, 'envio-map-protocol.js')).equals(read(join(DIR, 'envio-map-protocol.js'))), 'protocol copy drifted — run node xpizza-functions/tools/sync-client.js');
-  assert.ok(read(join(MAP, 'fonts', 'archivo-latin.7150c0ec5a.woff2')).equals(read(join(DIR, 'fonts', 'archivo-latin.7150c0ec5a.woff2'))), 'font copy drifted');
+  const FACE = 'figtree-latin.8330490a01.woff2';   // the portal's ONE critical file (its preload), owner 11-13: Figtree everywhere
+  assert.ok(read(join(MAP, 'fonts', FACE)).equals(read(join(DIR, 'fonts', FACE))), 'font copy drifted');
   const sync = readFileSync(join(DIR, '..', 'xpizza-functions', 'tools', 'sync-client.js'), 'utf8');
   assert.ok(sync.includes("path.join(ROOT, 'xpizza-portal', 'envio-map-protocol.js'), path.join(ROOT, 'xpizza-portal-map', 'envio-map-protocol.js')"));
-  assert.ok(sync.includes("'archivo-latin.7150c0ec5a.woff2'), path.join(ROOT, 'xpizza-portal-map', 'fonts', 'archivo-latin.7150c0ec5a.woff2')"));
+  assert.ok(sync.includes(`'${FACE}'), path.join(ROOT, 'xpizza-portal-map', 'fonts', '${FACE}')`));
   const css = readFileSync(join(MAP, 'map.css'), 'utf8');
-  assert.ok(css.includes('url(fonts/archivo-latin.7150c0ec5a.woff2)') && existsSync(join(MAP, 'fonts', 'archivo-latin.7150c0ec5a.woff2')));
+  // the map's @font-face IS the portal's generated latin rule, byte for byte (the one pipeline decides its descriptors)
+  const portalFace = (readFileSync(join(DIR, 'portal-fonts.css'), 'utf8').match(/@font-face\{font-family:'Figtree';[^}]*figtree-latin\.[0-9a-f]{10}\.woff2[^}]*\}/) || [])[0];
+  assert.ok(portalFace && css.includes(portalFace), 'the map\'s face is the portal\'s generated latin rule, verbatim');
+  assert.deepEqual(readdirSync(join(MAP, 'fonts')).filter((n) => n.endsWith('.woff2')), [FACE], 'exactly the one face file (Archivo has left)');
+  assert.match(css, /--body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;--disp:var\(--body\)/, 'the map\'s tokens: one family');
+  assert.doesNotMatch(css, /Archivo|Söhne/, 'no Archivo / Söhne left');
 });
 
 test('headers: the Maps CSP lives on THIS origin only; framed only by the portal; no X-Frame-Options; no build command', () => {

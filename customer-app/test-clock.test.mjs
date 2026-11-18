@@ -1,0 +1,94 @@
+// The capp tests' VIRTUAL clock (PLAN-capp-virtual-clock r0, advisor 11-13): deterministic order, exact virtual waits, a drain that
+// stops only when quiet — and FAILS (never hangs) on a self-re-arming instant loop.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createClock } from './test-clock.mjs';
+
+test('VC1 timers run in (due, arming) order — same-due timers FIFO; clearTimeout removes one; time moves only by tick', async () => {
+  const c = createClock(1000), seen = [];
+  c.setTimeout(() => seen.push('b30'), 30); c.setTimeout(() => seen.push('a10'), 10); const x = c.setTimeout(() => seen.push('gone'), 10);
+  c.setTimeout(() => seen.push('c30'), 30); c.clearTimeout(x);
+  await c.drain();
+  assert.deepEqual(seen, [], '🔴 VC1: draining never advances time');
+  assert.equal(c.now(), 1000);
+  await c.flush(29);
+  assert.deepEqual(seen, ['a10'], '🔴 VC1: only what is due by +29');
+  await c.flush(1);
+  assert.deepEqual(seen, ['a10', 'b30', 'c30'], '🔴 VC1: same due ⇒ arming order');
+  assert.equal(c.now(), 1030, '🔴 VC1: now() is the virtual time');
+});
+
+test('VC2 a timer\'s promise chain settles BEFORE the next timer fires (each firing is drained)', async () => {
+  const c = createClock(0), seen = [];
+  c.setTimeout(() => { Promise.resolve().then(() => Promise.resolve()).then(() => seen.push('chain-of-10')); seen.push('t10'); }, 10);
+  c.setTimeout(() => seen.push('t20'), 20);
+  await c.flush(20);
+  assert.deepEqual(seen, ['t10', 'chain-of-10', 't20'], '🔴 VC2: the 10 ms timer\'s microtasks land before the 20 ms timer');
+});
+
+test('VC3 intervals re-arm at their period; clearInterval stops them; a timer armed DURING a tick fires within it if due', async () => {
+  const c = createClock(0); let n = 0;
+  const h = c.setInterval(() => { n++; if (n === 2) c.setTimeout(() => { n += 100; }, 5); }, 10);
+  await c.flush(25);
+  assert.equal(n, 102, '🔴 VC3: two interval firings (10, 20) + the 5 ms timer armed at 20 fired at 25');
+  c.clearInterval(h); await c.flush(50);
+  assert.equal(n, 102, '🔴 VC3: cleared ⇒ no more firings');
+});
+
+test('VC4 drain FAILS on a timer that re-arms itself at the same instant (a loop is a failure, never a hang)', async () => {
+  const c = createClock(0);
+  const loop = () => c.setTimeout(loop, 0); loop();
+  await assert.rejects(c.drain(), /not quiet after/, '🔴 VC4: bounded');
+});
+
+test('VC5 drain waits for WebCrypto digests in flight (the threadpool is outside any clock; 64 MB so it outlasts the microtask turns)', async () => {
+  const c = createClock(0); let done = false;
+  c.setTimeout(() => { globalThis.crypto.subtle.digest('SHA-256', new Uint8Array(64 << 20)).then(() => { done = true; }); }, 0);
+  await c.drain();
+  assert.equal(done, true, '🔴 VC5: the digest landed before drain returned');
+});
+
+test('VC6 jump(t) moves the virtual time FORWARD only (a wall-clock jump): the timers it passed fire at the next drain, in order', async () => {
+  const c = createClock(0), seen = [];
+  c.setTimeout(() => seen.push('a'), 100); c.setTimeout(() => seen.push('b'), 50);
+  c.jump(200);
+  assert.deepEqual(seen, [], 'a jump fires nothing by itself');
+  await c.drain();
+  assert.deepEqual(seen, ['b', 'a'], '🔴 VC6: the passed timers fire at the next drain, in due order');
+  assert.throws(() => c.jump(150), /forward/, '🔴 VC6: never backwards');
+});
+
+test('VC7 drain lets the ENVIRONMENT\'s own zero-delay task chains land (jsdom: the history traversal, then popstate, each a real 0 ms timer) — never virtual time', async () => {
+  const c = createClock(0); let landed = false;
+  setTimeout(() => setTimeout(() => { landed = true; }, 0), 0);   // a TWO-hop environment chain, as jsdom's traversal → popstate
+  await c.drain();
+  assert.equal(landed, true, '🔴 VC7: the environment\'s 0 ms task landed within drain');
+  assert.equal(c.now(), 0, 'no virtual time passed');
+});
+
+// step 8b (advisor 11-14 (a)): the callback-driven fakes (capp-ui's fakeTimers) flush SYNCHRONOUSLY — fireThrough(t) fires every timer
+// due by t in (due, arming) order, chained arms and re-armed intervals included, with no drain between (the cell awaits settle() itself)
+test('VC8 fireThrough(t) is synchronous: every timer due by t in (due, arming) order — a chained arm due by t fires within; time ends at t', () => {
+  const c = createClock(0), seen = [];
+  c.setTimeout(() => seen.push('b20'), 20);
+  c.setTimeout(() => { seen.push('a10'); c.setTimeout(() => seen.push('chain15'), 5); c.setTimeout(() => seen.push('late99'), 89); }, 10);
+  c.setTimeout(() => seen.push('c20'), 20);
+  assert.equal(c.lastDue, 20, 'premise: lastDue is the latest due pending');
+  c.fireThrough(c.lastDue);
+  assert.deepEqual(seen.filter((s) => s !== 'chain15'), ['a10', 'b20', 'c20'], '🔴 VC8: (due, arming) order — never the arming order alone');
+  assert.deepEqual(seen, ['a10', 'chain15', 'b20', 'c20'], '🔴 VC8: a chained arm due by t fires within the same fireThrough');
+  assert.equal(c.now(), 20, '🔴 VC8: time ends at t');
+  assert.equal(c.pending, 1, 'the arm due past t waits');
+  assert.equal(c.lastDue, 99);
+});
+
+test('VC9 fireThrough re-arms intervals at their period up to t; no pending timer ⇒ lastDue null; a same-instant loop FAILS (never hangs)', () => {
+  const c = createClock(0); let n = 0;
+  assert.equal(c.lastDue, null, '🔴 VC9: nothing pending ⇒ no lastDue');
+  const h = c.setInterval(() => n++, 1000); c.setTimeout(() => {}, 3000);
+  c.fireThrough(c.lastDue);
+  assert.equal(n, 3, '🔴 VC9: a 1 s interval fires at 1, 2 and 3 s through t = 3 s');
+  c.clearInterval(h); assert.equal(c.pending, 0, 'cleared');
+  const d = createClock(0); const loop = () => d.setTimeout(loop, 0); d.setTimeout(loop, 0);
+  assert.throws(() => d.fireThrough(0), /not quiet/, '🔴 VC9: a same-instant loop is a failure, never a hang');
+});

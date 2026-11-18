@@ -226,7 +226,10 @@ function verifyQuoteToken(token, secret, nowMs) {
     // Signed, therefore believable — and only now is expires_at worth reading. `>=` so a token is dead
     // AT its expiry rather than one millisecond later: the boundary belongs to the closed side.
     if (!Number.isFinite(Number(payload.expires_at)) || nowMs >= Number(payload.expires_at)) {
-      return { ok: false, reason: 'expired', payload: null };
+      /* offer-audience (PLAN r4.1 §3): an expired token that SIGNED an audience block surfaces THAT block — only after the HMAC verified
+         above, never the rest of the payload — so the gate can refuse it offer_changed instead of the grace / stale paths (an expired
+         token never grants its discount). A token with no aud returns exactly what it always did. */
+      return { ok: false, reason: 'expired', payload: null, ...('aud' in payload ? { expired_aud: payload.aud } : {}) };
     }
     return { ok: true, reason: 'ok', payload };
   } catch (_) {

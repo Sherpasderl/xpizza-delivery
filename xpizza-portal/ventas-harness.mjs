@@ -26,12 +26,15 @@ export const IDS = ['switcher', 'switchmenu', 'discard', 'review', 'pubback', 'p
   // PORTAL-UI 1b: the Menú section label (hidden in the lifecycle-only shell) and the Sucursales confirm modal
   'navmenulabel', 'sucscrim', 'sucmodal',
   // ENVÍO: the Sherpa-admin group label (desktop) and its mobile chip anchor (shell.js 'Sherpa' group)
-  'navadmlabel', 'mnadmanchor'];
+  'navadmlabel', 'mnadmanchor',
+  // INICIO (PLAN-portal-inicio-r0): the home's nav items and its view host
+  'navinicio', 'mninicio', 'viewinicio'];
 // the classes index.html gives them, so `hidden` / `on` start where the real page starts
 const INITIAL_CLASS = {
   navprod: 'nav on', navbiz: 'nlabel hidden', navventas: 'nav hidden', mnav: 'mnav', mnprod: 'mn on', mnventas: 'mn',
   viewmenu: 'main', viewventas: 'main vmain hidden', switchmenu: 'switchmenu hidden', app: 'app',
   navadmlabel: 'nlabel hidden', mnadmanchor: 'hidden',
+  navinicio: 'nav hidden', mninicio: 'mn hidden', viewinicio: 'main ops hidden',
 };
 
 export function installDom() {
@@ -49,6 +52,8 @@ export function installDom() {
       },
       append: (...cs) => { for (const c of cs) { if (c && typeof c === 'object') c.parent = n; } n.children.push(...cs); },
       replaceChildren: (...cs) => { n.children = []; n.append(...cs); },
+      // the DOM's insertBefore (null ref = append) — pausas.js puts its failure box under the page's top block
+      insertBefore: (c, ref) => { if (c && typeof c === 'object') c.parent = n; const i = ref ? n.children.indexOf(ref) : -1; if (i === -1) n.children.push(c); else n.children.splice(i, 0, c); return c; },
       remove: () => { if (n.parent) n.parent.children = n.parent.children.filter((c) => c !== n); n.parent = null; },
       setAttribute: (k, v) => { n.attrs[k] = String(v); },
       getAttribute: (k) => (k in n.attrs ? n.attrs[k] : null),
@@ -177,7 +182,8 @@ export async function loadModules(which = ['app', 'ventas', 'shell'], transforms
       tmps.push(tmp);
       const src = (transforms[name] || ((s) => s))(readFileSync(join(DIR, `${name}.js`), 'utf8'))
         .replace(/from '\.\/auth\.js'/g, `from './__ventas-auth-stub.${tag}.mjs'`)
-        .replace(/from '\.\/app\.js'/g, `from './__ventas-under-test.app.${tag}.mjs?t=${tag}'`);   // shell.js → the SAME app module instance under test
+        .replace(/from '\.\/app\.js'/g, `from './__ventas-under-test.app.${tag}.mjs?t=${tag}'`)   // shell.js → the SAME app module instance under test
+        .replace(/from '\.\/shell\.js'/g, `from './__ventas-under-test.shell.${tag}.mjs?t=${tag}'`);   // inicio.js → the SAME shell instance under test
       writeFileSync(tmp, src);
       mods[name] = await import(`${pathToFileURL(tmp).href}?t=${tag}`);
     }

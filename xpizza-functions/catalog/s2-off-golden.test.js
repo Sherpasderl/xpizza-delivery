@@ -16,6 +16,9 @@ const R = (rel) => path.join(FN, rel);
 const EXTRAS = { authoring: false };
 const swap = (rel, exportsOf) => { const p = require.resolve(R(rel)); require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsOf(require(p)) }; };
 swap('catalog/item-text-edit', () => ({ textEditCapabilities: () => ({ enabled: false }) }));
+// the Extras page switch (platform-structure extrasCatalog) is ON in production since the extras switch-on (5f, 11-16): this file is the
+// OFF proof, so it pins the switch OFF (the ON behaviour is proven by the s2core-* suites)
+swap('catalog/platform-structure', (real) => ({ ...real, structureCapabilities: () => ({ ...real.structureCapabilities(), extrasCatalog: false }) }));
 { const p = require.resolve(R('catalog/platform-extras')); const real = require(p); require.cache[p] = { id: p, filename: p, loaded: true, exports: { ...real, extrasCapabilities: () => ({ ...real.extrasCapabilities(), authoring: EXTRAS.authoring }) } }; }
 const { editCatalogCore } = require(R('catalog/edit-catalog-handler'));
 const { publishEditedCore } = require(R('catalog/publish-edited-handler'));

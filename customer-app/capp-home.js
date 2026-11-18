@@ -160,6 +160,19 @@
     if (r && Number.isFinite(r.new_until) && Number.isFinite(t) && t < r.new_until) return '<span class="pill new">Nuevo en Sherpa</span>';
     return '';
   }
+  // SBS asm9 D6: a logo that FAILS to load becomes the initials plate (the cards' and the store avatar's own no-logo look) — never the
+  // broken-image glyph with its alt text overflowing the circle. ONE capture listener (an img's error does not bubble), installed once
+  // by the shell; inline onerror is not allowed (CSP script-src 'self')
+  function logoFallback(doc) {
+    if (!doc || typeof doc.addEventListener !== 'function') return () => {};
+    const h = (e) => {
+      const img = e.target; if (!img || img.tagName !== 'IMG' || !img.hasAttribute('data-initials')) return;
+      const box = img.parentElement; if (!box) return;
+      box.classList.add('txt'); box.setAttribute('aria-hidden', 'true'); box.textContent = img.getAttribute('data-initials');
+    };
+    doc.addEventListener('error', h, true);
+    return () => doc.removeEventListener('error', h, true);   // Codex P3: the shell's destroy() removes it (one listener per mount)
+  }
   // fees (Sherpa data): a PRICED fee only; the promotion is the member's price (P feeFree), never assumed while auth is unresolved
   const priced = (r) => !!r.fee && r.fee.state === 'priced' && Number.isInteger(r.fee.from_cents) && r.fee.from_cents >= 0;
   // a promotional claim needs a PRICED fee too (Codex s7a2 r1 #7): no verified price ⇒ no «Envío gratis» of any kind
@@ -186,7 +199,7 @@
   // the platform's «moments» (P mealDishes): a store's sections carry a moment id (its presentation `meals`); the title is Sherpa's
   const mealDishes = (stores, meal) => stores.flatMap((r) => (r.sections || []).filter((s) => r.meals[s.id] === meal).flatMap((s) => s.items.filter((it) => it.img).map((it) => ({ r, it })))).slice(0, 10);
   const initials = (name) => esc(String(name).split(' ').map((x) => x[0]).join('').slice(0, 2));
-  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt=""></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
+  const logoChip = (r, cls) => (r.logo ? `<span class="${cls}${r.logoWide ? ' wide' : ''}"><img src="${esc(r.logo)}" alt="" data-initials="${initials(r.name)}"></span>` : `<span class="${cls} txt" aria-hidden="true">${initials(r.name)}</span>`);
   const heroImg = (r, lazy) => (r.hero ? `<img src="${esc(r.hero)}" alt=""${lazy ? ' loading="lazy"' : ''}>` : '');
   const city = (platform) => (platform && typeof platform.city_label === 'string' && platform.city_label ? platform.city_label : '');
   // a row's entry state (r3.3-F1): gone ⇒ disabled in place; held ⇒ the drawn pressed state while its verification is awaited
@@ -250,16 +263,23 @@
   const shellWrap = (vm, inner) => `${desknavHtml(vm)}${inner}${tabbarHtml(vm)}`;
 
   // ── INICIO ──
-  function rcardHtml(r, vm) {
+  // C-1b (D-3 r3 9.4): a «Para vos» card adds the heart at the photo's top-right (filled = saved; a tap toggles IN PLACE — its own
+  // data-act, so the delegated click finds it before the card) and, for a recent order, «Pediste el 28 oct» after the meta. Its meta is
+  // 9.4's ONE line «[★ rating ·] ● Abierto [· Pediste el …]» — no closing time, no fee (C1b-P2, 16b; advisor 11-14: both layouts). The heart
+  // is a span: the card itself is the store's button (a nested button is invalid); the store page's heart is the keyboard path
+  const HEART = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 8a4.2 4.2 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z"/></svg>';
+  function rcardHtml(r, vm, pv) {
     const now = vm.now, auth = vm.promoAuth, open = !r.gone && isOpen(r.cfg, now);   // the promo's ADMITTED identity (the shell's)
     // the guest-only pill is reserved (hidden) while auth is unresolved, so its line never appears under a finger
     const deal = promoOn(r) && auth !== 'member' ? `<span class="pill deal"${auth === 'guest' ? '' : ' style="visibility:hidden" aria-hidden="true"'}>Envío gratis con tu cuenta</span>` : '';
     const pills = open ? [isValue(r, vm.platform) ? '<span class="pill value">Buen precio</span>' : '', deal].filter(Boolean).join('') : '';
     const fee = feeHtml(r, auth), rh = ratingHtml(r.ratings, now);
-    return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>
+    const heart = pv ? `<span class="heart${pv.fav ? ' on' : ''}" data-act="fav-card" data-rid="${esc(r.id)}" role="button" aria-pressed="${pv.fav}" aria-label="${pv.fav ? 'Quitar de favoritos' : 'Guardar en favoritos'}">${HEART}</span>` : '';
+    const again = pv && pv.again ? ` · <span class="again">Pediste el ${esc(pv.again)}</span>` : '';
+    return `<button class="rcard${open ? '' : ' closed'}${rowCls(r)}" data-act="open-store" data-rid="${esc(r.id)}" aria-label="${esc(r.name)}${open ? '' : ', cerrado'}"${rowAttrs(r)}>${heart}
     <span class="ph">${heroImg(r, true)}${logoChip(r, 'logo')}</span>
     <span class="rt"><span class="nm">${esc(r.name)}</span>${open && r.etaDel ? `<span class="eta">${r.etaDel[0]}–${r.etaDel[1]} min</span>` : ''}</span>
-    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b> · cierra ${esc(closesText(r.cfg, now))}${fee ? ` · ${fee}` : ''}</span>`
+    ${open ? `<span class="meta">${rh ? `${rh}<span>·</span>` : ''}<span class="dot"></span><b>Abierto</b>${pv ? '' : `${vm.desk ? '' : ` · cierra ${esc(closesText(r.cfg, now))}`}${fee ? ` · ${fee}` : ''}`}${again}</span>`   /* SBS asm9 D1: the desk = f1a's one line (no closing time); C-1b: a «Para vos» card = 9.4's one line */
       : `<span class="closedline"><span class="dot off"></span>Cerrado · ${esc(opensText(r.cfg, now))}${vm.schedulingLive && !r.gone && hasSlot(r.cfg, now) ? '<span class="lnk">Programar pedido</span>' : ''}</span>`}
     ${pills ? `<span class="pills">${pills}</span>` : ''}
   </button>`;
@@ -267,7 +287,7 @@
   const dcard = ({ r, it }) => `<button class="dcard" data-act="open-dish" data-rid="${esc(r.id)}" data-id="${esc(it.id)}" aria-label="${esc(it.n)} · ${esc(r.name)}"${rowAttrs(r)}><span class="ph"><img src="${esc(it.img)}" alt="" loading="lazy">${logoChip(r, 'lg')}</span><span class="nm">${esc(it.n)}</span><span class="prrow"><span class="pr">${esc(dishPrice(it))}</span></span><span class="st">${esc(r.name)}</span></button>`;
   function scard(r, vm) {
     const open = !r.gone && isOpen(r.cfg, vm.now), pickup = vm.filters.has('pickup');
-    const eta = open ? (pickup ? (r.etaPick ? `Listo en ≈ ${r.etaPick[1]} min` : '') : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
+    const eta = open ? (pickup ? (r.etaPick && r.etaPick[1] > r.etaPick[0] ? `Listo en ${r.etaPick[0]}–${r.etaPick[1]} min` : '')   /* rule 11 (owed SBS 11-14): the window, never «≈ N» */ : (r.etaDel ? `${r.etaDel[0]}–${r.etaDel[1]} min` : '')) : '';
     // a store with no drawable fee keeps its line box (a zero-width space), so a fee that arrives later never grows the card
     const fee = feeHtml(r, vm.promoAuth);
     const line = open ? `<span>${fee || '​'}</span>` : `<span>Cerrado · ${esc(opensText(r.cfg, vm.now))}</span>`;
@@ -305,9 +325,11 @@
     }
     if (vm.outOfZone) return page(emptyHtml('pin', 'Ningún restaurante entrega en esta dirección', 'Probá otra dirección o recogé en tienda.', ['addr', 'Cambiar dirección']));   // frame 4
     const live = all.filter((r) => !r.gone);
+    // G-C (D-3 r3 f1a; advisor 11-13): the floor of the PRICED fees — the desk guest's 4th chip «Envío desde L {floor}», a fact, not a claim
+    const floor = live.filter(priced).reduce((m, r) => Math.min(m, r.fee.from_cents), Infinity), atFloor = (r) => priced(r) && r.fee.from_cents === floor;
     const cuisine = vm.cuisine || '', F = vm.filters;
     const vis = all.filter((r) => (!cuisine || r.cuisines.includes(cuisine)) && (!F.has('open') || (!r.gone && isOpen(r.cfg, vm.now))) && (!F.has('free') || feeFree(r, vm.promoAuth))
-      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)));
+      && (!F.has('pickup') || r.pickup) && (!F.has('fast') || (r.etaDel && r.etaDel[0] <= 30)) && (!F.has('fee') || !vm.desk || atFloor(r)));   // the fee chip is the desk's: never a hidden filter on the phone
     const notes = [];
     // MOCKUP-capp-native-store-update state 1 A (owner: both A + B; A hidden by the customer until the next day): the INSTALLED app
     // has a newer store build — first in the Inicio body
@@ -317,8 +339,12 @@
     const tax = vm.platform && Array.isArray(vm.platform.cuisines) ? vm.platform.cuisines : [];
     const cuisineIds = tax.filter((x) => CUIS[x.id] && live.some((r) => r.cuisines.includes(x.id)));
     const cuisRow = cuisineIds.length ? `<div class="cuisrow" role="group" aria-label="Tipo de comida"><button class="cuis" aria-pressed="${!cuisine}" data-act="cuisine" data-val="">${CUIS.todo.icon}<span>Todo</span></button>${cuisineIds.map((x) => `<button class="cuis" aria-pressed="${cuisine === x.id}" data-act="cuisine" data-val="${esc(x.id)}">${CUIS[x.id].icon}<span>${esc(x.label)}</span></button>`).join('')}</div>` : '';
-    const chips = [['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))],
-      ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)]].filter((x) => x[3]);   // only chips the data supports
+    const cOpen = ['open', 'Abierto ahora', IC.store, live.some((r) => isOpen(r.cfg, vm.now))], cFree = ['free', 'Envío gratis', IC.bike, live.some((r) => feeFree(r, vm.promoAuth))];
+    const cPick = ['pickup', 'Pickup', IC.bag, live.some((r) => r.pickup && r.etaPick)], cFast = ['fast', 'Menos de 30 min', IC.clock, live.some((r) => r.etaDel && r.etaDel[0] <= 30)];
+    // the phone: v6's chips in v6's order; the desk (G-C, f1a): the same set in the frame's order, the 4th slot following the viewer —
+    // the member's «Envío gratis» where the rule-10 predicate holds, else the guest's «Envío desde L {floor}»
+    const cFee = ['fee', Number.isFinite(floor) ? `Envío desde ${money(floor / 100)}` : '', IC.bike, Number.isFinite(floor)];
+    const chips = (vm.desk ? [cOpen, cPick, cFast, cFree[3] ? cFree : cFee] : [cOpen, cFree, cPick, cFast]).filter((x) => x[3]);   // only chips the data supports
     const fchips = chips.length ? `<div class="fchips" role="group" aria-label="Filtros">${chips.map(([k, l, ic]) => `<button class="fchip" aria-pressed="${F.has(k)}" data-act="filter" data-val="${k}">${ic}${l}</button>`).join('')}</div>` : '';
     const open = (r) => !r.gone && isOpen(r.cfg, vm.now);
     const featured = vis.map((r, i) => [r, i]).sort((a, b) => (open(b[0]) - open(a[0])) || (a[1] - b[1])).map(([r]) => r).slice(0, 10);
@@ -345,7 +371,16 @@
         + dishD('La casa recomienda', [...new Set(houseList.map((x) => x.r.name))].join(' · '), houseList.map(dcard))
         + meals.map(([title, d]) => dishD(title, [...new Set(d.map((x) => x.r.name))].join(' · '), d.map(dcard))).join('')
         + `<section class="hsec" aria-label="Todos los restaurantes">${hdD('Todos los restaurantes', allSub)}<div class="rgrid">${vis.map((r) => rcardHtml(r, vm)).join('')}</div></section>`;
-    const rows = vm.desk ? rowsDesk : rowsPhone;
+    // C-1b (9.4): «Para vos · Tus favoritos y los que ya pediste» — ONE row, only when the member has ≥ 1 favorite or recent order
+    // (vm.paraVos, the shell's per-visit list); before «Destacados»: the desk's 4-card grid, the phone's row of 300 px cards
+    const pv = Array.isArray(vm.paraVos) ? vm.paraVos.filter((x) => x && x.r) : [];
+    const pvCards = pv.map((x) => rcardHtml(x.r, vm, x)).join('');
+    const pvPhone = pv.length ? `<section class="hsec paravos" aria-label="Para vos"><div class="hd"><div><h2>Para vos</h2><p>Tus favoritos y los que ya pediste</p></div><button class="nxt" data-act="rownext" aria-label="Ver más de Para vos">${IC.chev}</button></div><div class="hrow pvrow">${pvCards}</div></section>` : '';
+    // C1b-P3 (advisor 11-14): the desk pages 4 at a time with ‹ › exactly like «Destacados» (only past 4; the shell resets the page per
+    // Inicio visit); no «Ver todo» until a destination is designed. The phone row scrolls instead (its «›»)
+    const pvPages = Math.max(1, Math.ceil(pv.length / PAGE)), pvPg = Math.min(Math.max(vm.pvPage | 0, 0), pvPages - 1);
+    const pvDesk = pv.length ? `<section class="hsec paravos" aria-label="Para vos">${hdD('Para vos', 'Tus favoritos y los que ya pediste', pvPages > 1 ? arrowsD('pv-prev', 'pv-next', pvPg === 0, pvPg >= pvPages - 1, 'Para vos') : '')}<div class="rgrid rgrid4">${pv.slice(pvPg * PAGE, pvPg * PAGE + PAGE).map((x) => rcardHtml(x.r, vm, x)).join('')}</div></section>` : '';
+    const rows = vis.length ? (vm.desk ? pvDesk + rowsDesk : pvPhone + rowsPhone) : (vm.desk ? rowsDesk : rowsPhone);
     return page(notes.join('') + cuisRow + fchips + rows, `<div class="credit">${nLive} restaurantes${c ? ` en ${esc(c)}` : ''}</div>`);
   }
 
@@ -412,15 +447,16 @@
     const known = vm.auth === 'guest';
     return shellWrap(vm, `<div class="flow"><div class="flowbar plain"><h1>Cuenta</h1></div>
     <div class="guestcard"${known ? '' : ' style="visibility:hidden" aria-hidden="true"'}><h2>Tu cuenta</h2>
-      <ul><li>${IC.check}<span>Efectivo al entregar o al recoger</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
+      <ul><li>${IC.check}<span>Opción de pago en efectivo y tarjeta</span></li><li>${IC.check}<span>Recompensas, promos y envío gratis</span></li><li>${IC.check}<span>Programá pedidos y guardá tu dirección</span></li></ul>
       ${known ? '<button class="primary" data-act="signin" data-ctx="account">Entrá o creá tu cuenta</button>' : '<span class="primary" aria-hidden="true">Entrá o creá tu cuenta</span>'}</div>
     <div class="rows">${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos<span>Los de este teléfono</span></span>${IC.chev}</button>` : ''}${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}</div></div>`);
   }
 
-  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 1b / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
-  // email on three lines; the initial in the avatar), Pedidos / Promociones (.switch) / Ayuda, the session group, the muted version.
-  // vm.acct = { placeholder, name, phone, email, promos: true | false | null (no served value ⇒ inert, frame 4b), settled, version } — inert and
-  // still loading ⇒ frame 4b's ON-dimmed placeholder; inert and SETTLED (no stored consent) ⇒ OFF + dimmed (ruling (ii), OWNER-PENDING)
+  // G7 (MOCKUP-capp-member-cuenta-APPROVED-2026-10-27, frames 1 / 4a / 4b): the MEMBER's Cuenta — .acct-hero (name, phone and
+  // email on three lines; the initial in the avatar), Pedidos / Direcciones / Notificaciones / Ayuda, the session group, the muted version.
+  // MOCKUP-capp-notificaciones 2b (owner 11-16): ONE «Notificaciones» row (vm.notifRow { title, sub }) where «Promociones» was — the
+  // email + WhatsApp consent switch (and its frame 4b inert states) now lives on that screen (CappPush.screenHtml).
+  // vm.acct = { placeholder, name, phone, email, promos, settled, version }
   // C-6a (D-3 r3, DECIDED «Footer at launch: Ayuda · Términos · Privacidad only»): the desktop site footer, last in every Inicio state.
   // Desktop only (CSS). Ayuda = the platform's support chat (vm.helpOk — none configured ⇒ no Ayuda); Términos / Privacidad = the
   // platform's legal URLs once known (https only; never a dead link). While they may still arrive (vm.legalPending) their slots are
@@ -450,10 +486,11 @@
     if (t.screen === 'orders') return S_('Pedidos');
     if (t.screen === 'search') return t.q ? `«${t.q}» — Buscar · Sherpa` : S_('Buscar');
     if (t.screen === 'account') return S_('Cuenta');
+    if (t.screen === 'notifs') return S_('Notificaciones');
     return c ? `Sherpa — Pedí a domicilio en ${c}` : 'Sherpa — Pedí a domicilio';
   }
   function accountMemberHtml(vm) {
-    const a = vm.acct || {}, inert = typeof a.promos !== 'boolean';
+    const a = vm.acct || {};
     const hero = a.placeholder
       ? '<div class="acct-hero"><span class="av ph" aria-hidden="true"></span><div class="t"><span class="bar n"></span><span class="bar s"></span><span class="bar e"></span></div></div>'
       : `<div class="acct-hero"><span class="av" aria-hidden="true">${esc(String(a.name || '').trim().charAt(0).toUpperCase())}</span><div class="t"><b>${esc(a.name)}</b><span>${esc(a.phone)}</span><span>${esc(a.email)}</span></div></div>`;
@@ -461,7 +498,7 @@
     <div style="height:12px"></div>${hero}<div class="rows">
       ${ORDERS_SCREEN ? `<button class="rowbtn" data-act="tab" data-tab="orders">${IC.bag}<span class="t">Pedidos</span>${IC.chev}</button>` : ''}
       <button class="rowbtn" data-act="addr">${IC.pin}<span class="t">Direcciones${vm.addr && vm.addr.line ? `<span>${esc(vm.addr.line)}</span>` : ''}</span>${IC.chev}</button>
-      <button class="rowbtn" data-act="promos"${inert ? ' aria-disabled="true"' : ''}>${IC.bell}<span class="t">Promociones<span>Ofertas por correo y WhatsApp</span></span><span class="switch" role="switch" aria-checked="${inert ? !a.settled : a.promos}"${inert ? ' aria-disabled="true"' : ''}></span></button>
+      ${vm.notifRow && vm.notifRow.title ? `<button class="rowbtn" data-act="sub-notifs">${IC.bell}<span class="t">${esc(vm.notifRow.title)}<span>${esc(vm.notifRow.sub)}</span></span>${IC.chev}</button>` : ''}
       ${vm.helpOk ? `<button class="rowbtn" data-act="site-help">${IC.help}<span class="t">Ayuda</span>${IC.chev}</button>` : ''}
       ${vm.updateRow ? `<button class="rowbtn" data-act="app-update-row">${IC.update}<span class="t">Actualizar la app<span>Hay una versión nueva en ${esc(vm.updateRow)}</span></span>${IC.chev}</button>` : ''}</div>
     <div class="rows sess">
@@ -481,5 +518,5 @@
   // frame 4 only when EVERY listed store answers «outside» (an unknown coverage is never counted as outside)
   const allOutOfZone = (rows, loc) => { const live = (rows || []).filter((r) => !r.gone); return !!loc && live.length > 0 && live.every((r) => covers(r.entry, loc) === false); };
 
-  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
+  return { homeHtml, titleOf, footHtml, legalUrl, brandLockHtml, searchHtml, ordersHtml, tabbarHtml, desknavHtml, shellWrap, neutralReturnHtml, accountGuestHtml, accountMemberHtml, forgetSheetHtml, addrSheetHtml, softaskHtml, pinEditorHtml, searchModel, storeOf, ratingHtml, logoFallback, isOpen, opensText, closesText, houseDishes, mealDishes, isValue, feeHtml, covers, allOutOfZone, kmBetween, CUIS, IC, norm };
 });

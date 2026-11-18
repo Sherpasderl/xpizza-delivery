@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { placeResp, cancelPending, noSdkOrder, namespaceRefusal, SDK_ORDER_ID_RE } from './test/fake-sdk-checkout.mjs';
 import { realSdkServer } from './test/real-sdk-server.mjs';
+import { createClock } from './test-clock.mjs';
 const require = createRequire(import.meta.url);
 const C = require('./capp-checkout.js');
 const A = require('./capp-api.js');
@@ -186,6 +187,28 @@ test('a DISPATCHED placement of another tender (an unresolved hosted card / a ca
   assert.equal(s.srv.of('placeSdkOrder').length, 0, '🔴 SDK-legacy: never paid over a dispatched placement');
   assert.notEqual(out.kind, 'placed', 'resolved, not placed');
 });
+// vclock F-3 (advisor 11-14): the dispatched-placement check sits BEFORE the authority check — with no authority, the dispatched hosted
+// card still resolves (its own pay-stash credentials need none), never «offline» / «guest_ticket_invalid»; nothing sent either way
+test('F-3: a DISPATCHED hosted card with NO member token at the SDK tap is resolved first — never «offline», nothing sent', async () => {
+  const s = rig({ member: { uid: 'u_ana', idToken: null, getIdToken: async () => null }, script: { chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  await s.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
+  const id = rec(s.storage).order_id;
+  assert.ok(rec(s.storage).dispatched === 1 && rec(s.storage).sdk !== true, 'premise: a dispatched hosted card, unresolved');
+  const out = await s.api.placeSdk(args(SAVED));
+  assert.equal(s.srv.of('placeSdkOrder').length, 0, '🔴 SDK-legacy-noauth: nothing sent');
+  assert.deepEqual([out.kind, out.order_id], ['existing_order', id], '🔴 SDK-legacy-noauth: a member without a token is resolved, never «offline»');
+});
+test('F-3: a guest whose keyed ticket EXPIRED at the SDK tap, over a DISPATCHED hosted card, is resolved first — never «guest_ticket_invalid», nothing sent', async () => {
+  const g = rig({ member: null, guestCardOnly: true, script: { chargeOnlineOrder: ['network'], paymentStatus: [{ status: 200, json: { ok: true, state: 'pending' } }] } });
+  const id = g.api.orderIdForCode({ flow: flowOf('online') });
+  const tk = { ticket: 'tk_1', order_id: id, expires_at: at(12, 10), phone: '+504 9999-0000', phone_key: GUEST_KEY };
+  await g.api.place({ flow: flowOf('online'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500, checkoutTicket: tk });
+  assert.ok(rec(g.storage).order_id === id && rec(g.storage).dispatched === 1 && rec(g.storage).sdk !== true, 'premise: the guest\'s dispatched hosted card, unresolved');
+  g.clock.t = at(12, 11);   // the ticket expired: its phone_key still names the principal, but it authorizes nothing
+  const out = await g.api.placeSdk(args(NEW, { checkoutTicket: tk }));
+  assert.equal(g.srv.of('placeSdkOrder').length, 0, '🔴 SDK-legacy-noauth: nothing sent (guest)');
+  assert.deepEqual([out.kind, out.order_id], ['existing_order', id], '🔴 SDK-legacy-noauth: a guest with an expired ticket is resolved, never «guest_ticket_invalid»');
+});
 
 // ── Codex HIGH r1 on S2-checkout (codex-capp-s2-checkout-r1.txt): every finding reproduced first ──
 const DECL_OF = (oid, att, b = 'retryable') => R('declined', { order_id: oid, attempt_id: att, decline: b, pay_deadline_at: at(12, 15) });
@@ -342,7 +365,11 @@ test('Codex r3 P2-3 repro: SDK A in flight, SDK B queued, then place() C — ONE
   const a = s.api.placeSdk(args(SAVED)); await ticks();
   const b = s.api.placeSdk(args(NEW)); const c = s.api.place({ flow: flowOf('cash'), ctx: CTX, sig: 'sig1', expectedNetCents: 31500 });
   await ticks(); relA();
-  const done = await Promise.race([Promise.all([a, b, c]).then(() => 'done'), new Promise((r) => setTimeout(() => r('stuck'), 2000))]);
+  // deadlock = QUIET with the queue unsettled: the virtual clock drains until nothing is left to run (PLAN-capp-virtual-clock step 9)
+  // — never a 2 s real cap racing the work under load (the rig's sleep is instant; capp-api's request timeouts never need to fire)
+  let settled = false; Promise.all([a, b, c]).then(() => { settled = true; });
+  await createClock(0).drain();
+  const done = settled ? 'done' : 'stuck';
   assert.equal(done, 'done', '🔴 SDK-fifo: no deadlock — every queued operation completes');
   assert.deepEqual(order, ['B', 'C-cancel', 'C-cash'], '🔴 SDK-fifo: first in, first out');
 });

@@ -8,12 +8,16 @@
 //      customer_phone, dish_qty) → aggregate.bucketFromOrders → stats_buckets/{rid}/{day}, REPLACED whole (a re-run is idempotent);
 //   2. drop buckets older than 90 days (stats_buckets is server-only; the cust keys expire with them);
 //   3. ratings (F4, few for now): walk rating_index/{rid} in pages through rating-v2.readCountable (RATINGS_BUDGET, loud abort);
-//   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish).
+//   4. publish: public_stats/{rid} = aggregate.publish(...) — a WHOLE-doc replace (stale fields vanish);
+//   5. the Anuncio's hidden days for the days just closed (marketing/anuncio-core recordAnuncioDays; PLAN-3a-marketing-server §4.4).
+// + reviews v2 S4 (PLAN-3a-merchant-reviews-v2 r3 §2): review-buckets.buildReviewBuckets(rid) — its OWN step in its OWN try, right after
+//   retention and BEFORE any day closes: a closeDay / step-3 failure never stops it, and its failure never touches public_stats.
 // Repeat-customer keys are PSEUDONYMOUS: HMAC-SHA256 under HKDF(OTP_SALT, 'sherpa/stats-repeat/v1') of the normalized phone digits,
 // never the digits; stored only inside the 90-day buckets (automatic expiry); only the COUNT is published.
 const crypto = require('crypto');
 const V2 = require('./rating-v2');
 const AG = require('./aggregate');
+const RB = require('./review-buckets');
 const { hnDateISO } = require('../lib/hn-date');
 
 const LEASE_MS = 10 * 60 * 1000;
@@ -112,6 +116,7 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
     // already happened. A retention failure is logged and never blocks the closing / publication.
     let dropped = 0;
     try { dropped = await applyRetention(db, rid, nowMs); } catch (e) { console.error('aggregate retention', rid, e && e.message); }
+    try { await RB.buildReviewBuckets({ db, nowMs }, rid); } catch (e) { console.error('review buckets', rid, e && e.message); }   // reviews v2 S4: isolated
     const yesterday = hnDateISO(nowMs - AG.DAY_MS);
     const wm = await leaf(db, `stats_agg/${rid}/watermark`);
     let day = typeof wm === 'string' && DAY_RE.test(wm) ? nextDay(wm) : yesterday;
@@ -130,7 +135,11 @@ async function aggregateRestaurant({ db, nowMs, keyOf, priceOf, runId }, rid) {
     const firstServedAt = await leaf(db, `stats_agg/${rid}/first_served_at`);
     const doc = AG.publish({ rid, nowMs, buckets, ratings, priceOf, firstServedAt: Number.isFinite(firstServedAt) ? firstServedAt : null });
     await db.ref(`public_stats/${rid}`).set(doc);
-    return { rid, closed, dropped, ratings: ratings.length };
+    // PLAN-3a-marketing-server §4.4: the Anuncio's hidden days, recorded for the days just closed (+1 slot read per rid per day; a write
+    // only for the week's booked rid). Its own try: a recorder failure is logged and never blocks the aggregation.
+    let anuncioDays = [];
+    try { anuncioDays = await require('../marketing/anuncio-core').recordAnuncioDays(db, rid, closed, doc); } catch (e) { console.error('anuncio days', rid, e && e.message); }
+    return { rid, closed, dropped, ratings: ratings.length, anuncio_days: anuncioDays.length };
   } finally {
     await db.ref(`stats_agg/${rid}/lease`).transaction((cur) => (cur && cur.run === runId ? null : cur));
   }

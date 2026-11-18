@@ -62,7 +62,7 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.deepStrictEqual([...B.files.keys()].sort(), want);
   for (const k of B.files.keys()) assert.ok(!/\.test\.|fixtures\/|MOCKUP|netlify\.toml|node_modules/.test(k), `🔴 not runtime: ${k}`);
   assert.ok(!/capp-shell-ui\.js/.test(show('customer-app/index.html').toString('utf8')) && /<script src="capp-shell-ui\.js">/.test(txt(P.ENTRY)), 'the entry is the SHELL (it loads capp-shell-ui.js), never the web single-store index.html');
-  assert.ok(assets.includes('fonts/OFL.txt') && assets.filter((a) => a.endsWith('.woff2')).length === 4, 'the four fonts and their licence');
+  assert.ok(assets.includes('fonts-figtree/OFL.txt') && assets.filter((a) => a.endsWith('.woff2')).length === 2 && assets.every((a) => !a.startsWith('fonts/')), 'the two Figtree files (latin + latin-ext) and their licence — the Red Hat fonts/ gone (the Figtree swap, 11-14)');
   for (const f of [...scripts, ...sheets, ...assets, 'capp-boot.js', 'capp-splash.js']) assert.ok(B.files.get(f).equals(show(`customer-app/${f}`)), `${f} is byte-identical to the committed source`);
   const s = txt(P.ENTRY);
   // the NATIVE page also carries the opening animation (OWNER 11-01): its controller before the boot + its overlay right after #app — ONCE each
@@ -97,6 +97,8 @@ function sha256Of(s) { return require('crypto').createHash('sha256').update(s).d
   assert.strictEqual(rtj.support_whatsapp, '+50497952893', 'the help number rides the runtime block');
   const EXEMPT = { 'capp-auth-firebase.js': ['https://www.gstatic.com'], 'capp-shell-ui.js': ['https://wa.me'], 'capp-runtime.js': TRACK };   // the WEB default SDK; the boot always passes loadSdk
   assert.match(txt('capp-boot.js'), /loadSdk: \(\) => Promise\.all\(\[importModule\(`\$\{sdk\}firebase-app\.js`\)/, 'premise of the exemption: the boot overrides the SDK loader');
+  // Codex r1 P2-9 (advisor ruling (a)): the PACKAGED boot carries «Abrir Ajustes» → the first-party AppSettings plugin
+  assert.match(txt('capp-boot.js'), /if \(n === 'open-os-settings'\) \{[^\n]*Plugins\.AppSettings[^\n]*P\.open\(\)/, '🔴 SETTINGS-PKG: the packaged boot opens the app\'s settings on the shell\'s event');
   const misses = [];
   for (const [f, b] of B.files) {
     if (f.startsWith('vendor/') || !/\.(js|css|html)$/.test(f)) continue;

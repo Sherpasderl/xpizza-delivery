@@ -87,7 +87,14 @@ const order = (rid, oid, method, cart) => ({ ...entry(), restaurant_id: rid, ord
 async function cash(rid, extra, tag, { line = null, hdr = {} } = {}) {
   await clean();
   const oid = `xi_${rid}_${tag}_${Date.now()}`;
-  const r = await post(app.createOrder, order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]), hdr);
+  const b = order(rid, oid, 'cash', [line || B[rid].line(B[rid].item, extra)]);
+  // OWNER 11-16: an APP pickup is card only (400 pickup_card_only) ⇒ the APP cash path is an app DELIVERY inside the bands (a FORM keeps pickup)
+  if (APP) Object.assign(b, { order_type: 'delivery', lat: 14.1 + 1 / 111.195, lng: -87.2, pin_confirmed: true, address_detected: 'Col. Prueba', address_details: 'Casa 1' });
+  // one placeholder band ONLY around this app delivery (read per request, no cache): the quotes and checkouts below see today's
+  // pricing config (absent), exactly as before
+  if (APP) await rtdb.ref('platform_config/delivery_pricing').set({ policy_version: 1, bands: [{ max_km: 7, cents: 3000 }], restaurants: {} });
+  const r = await post(app.createOrder, b, hdr);
+  if (APP) await rtdb.ref('platform_config/delivery_pricing').remove();
   return { ...r, oid, written: (await rtdb.ref(`orders/${oid}`).get()).exists() };
 }
 async function card(rid, extra, tag, { line = null, body = null } = {}) {

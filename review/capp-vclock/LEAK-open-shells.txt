@@ -1,0 +1,100 @@
+Codex G6 r1 \#1: a sign-out — and a close mid-completion — reaches the MOUNTED checkout: its next send carries no member token|2
+Codex G6 r1 \#3: a member apply delayed by a slow token never lands after a sign-out or a switch to another account|2
+Codex G6 r2 \#2 — a REJECTED sign-out admits nothing: still not a member at the next restore, and the sign-out is retried|2
+Codex G6 r2 \#2 — the ALLOW-list: a restored uid is a member ONLY with its completion mark; the mark is written at «Listo», cleared by a confirmed sign-out|4
+Codex G6 r3: a complete account that leaves the sheet by Back then ✕ is a marked member and restores normally after a reload|2
+Codex G6 r4: a guest exit after a complete sign-in leaves NO mark and no member (its sign-out stands)|1
+Codex guest r1 \#3: with the guest flag ABSENT the Cuenta tab is exactly the S7a-2 behaviour — a host event, Inicio stays, the DOM unchanged|1
+Codex s7a2 r1 \#1 (P1): checkout adoption carries the IN-MEMORY cart — a cart whose persistence fails loses nothing across the remount|1
+Codex s7a2 r1 \#3: a STALE menu (verified > 60 s ago) never authorizes ordering — browse-only, revalidated, live in place when FRESH|1
+Codex s7a2 r1 \#4: a LATER terminal outcome settles the return handoff — pending return (kept) → «Ver estado del pedido» → paid ⇒ capp:return removed|1
+Codex s7a2 r1 \#5: a tap HELD while the directory read is in flight is released to frame 7 when that read fails|1
+Codex s7a2 r1 \#6: frame 13 discloses PER CONFIGURATION — two changed configurations of one dish ⇒ two lines, each with its own unit prices|1
+D-2 checkout (v6 :1886-1887): desktop ⇒ col-b = «Tu pedido» (MOVED, once), col-a without it; phone ⇒ no col-b, «Tu pedido» once in col-a|2
+D-2 mount: the desktop class is on \#app BEFORE the first paint returns (no pop-in); the phone never gets it|2
+D-2 no-regression: below the breakpoint the store and the checkout are BYTE-IDENTICAL to a shell with no viewport signal at all|2
+D-2 r1 \#1: desktop → phone with an ASIDE control focused ⇒ focus moves to the visible phone equivalent (the cart bar) and the menu scroll is kept; phone → desktop with the cart bar focused ⇒ focus moves into the aside|1
+D-2 r1 \#2: the aside «Editar» returns focus to THAT aside control when the dish sheet closes (never the hidden cart bar)|1
+D-2 r1 \#3: browse-only ⇒ the ASIDE's ordering controls are disabled like the cart sheet's (ONE selector source), also after a syncPill refresh|1
+D-2 resize: crossing the breakpoint re-renders the view and PRESERVES state — the cart, the screen, a typed field|1
+D-2 store (v6 :1628): desktop ⇒ the deskcart aside inside storewrap, no close button; an item edit refreshes it (v6 syncPill :1726); phone ⇒ no aside|2
+D-2 the signup surface follows the breakpoint (its .app host carries desk too, both ways)|1
+D-4a cold /pago under a LOCK: the lock is checked FIRST and resolved by status only — frozen ⇒ «Necesitamos revisar», a live card send ⇒ its status poll — ZERO sends|2
+D-4a cold /pago, every UNREADABLE lock case (Codex r2 \#4): the marker (reconcile fails), the freeze state (unknown), the pending record ⇒ «Sin conexión» with a status-only retry — never the checkout, ZERO sends|3
+D-4a cold dish: resolved against the VERIFIED FRESH body — waits on a presentation body, opens on the fresh one; absent from the fresh body ⇒ the store|2
+D-4a cold entry: /r/{rid} ⇒ that store; /pedido ⇒ the cart; /pago ⇒ the checkout through the tap path; the URL kept|4
+D-4a generation: a user navigation CANCELS a pending cold link — a late verification never enters the old target|1
+D-4a native / routing off: no replaceState from the router and no hydration (byte-identical boot)|1
+D-4a precedence: a payment RETURN owns the boot — the owner store resolves it, the deep-linked store is never entered; persisted ⇒ the boot strips the query, memory ⇒ the query survives every reflection|2
+D-4a r1 P1: a device Back while a cold link is HELD cancels it — a delayed directory never mounts the store (nor re-arms the sentinel)|1
+D-4a r1 P2: a LOCKED cold dish with a staged CHANGED menu never opens on the old mount (stale prices) — it stays pending|1
+D-4a r1 P2: a cold /pago on a PRESENTATION menu keeps its intent — the fresh menu arriving opens the checkout (never left on the store)|1
+D-4a r1 P2: hydration is gated on bootReturn.mode ∈ {none, invalid} — an OWNERLESS resumed handoff does not hydrate the linked store|1
+D-4a r2: an in-store action during a LOCKED dish hydration cancels it — the dish never opens later when the lock clears|1
+D-4a r2: opening the store SEARCH while a cold /pago waits cancels it — the fresh menu never dismisses the search for the checkout|1
+D-4a reflection: every screen change REPLACES the pathname — the sentinel state, history.length and the search untouched|1
+D-4a sentinel unchanged: a device Back runs ONE in-app back; a BLOCKED back («Enviando…») changes nothing and the URL keeps the locked path|1
+D-4a unverified ≠ absent: offline / 503 / partial keep the link PENDING (URL kept, nothing entered); only a fresh COMPLETE directory without the store ⇒ silent Inicio|4
+D-4a §4: ADOPTION never discards a lock — a staged fresh body is NOT adopted (the mount is not torn down) while a payment lock is held, on the TAP path too|1
+G2 frame 5b: a guest's Cuenta tab = ONE «Entrá o creá tu cuenta» + three benefits, «Pedidos» and «Ayuda» kept; unresolved ⇒ the card hidden (geometry kept); a member ⇒ the host|3
+G6 flag-absent: no runtime.signup ⇒ «Entrá o creá tu cuenta» is the HOST's 'signin' event, as before — no SDK load, no sheet layer|1
+G6 shell: a RESTORED session autofills from the cached profile of THAT uid at once; another uid's cache is never used|3
+G6 shell: the SDK after the first paint; «Entrá» opens the sheet; a verified existing account ⇒ member, the device marker + the profile cache; an ordinary sign-out clears the cache, keeps the marker|1
+G7 Codex r1 \#2: ANOTHER account restores on this device — the previous account's cached profile is never shown and is purged|1
+G7 Codex r1 \#2: a SIGNED-OUT device — the cached profile is never shown; the guest's Cuenta once the SDK answers; the cache purged|1
+G7 Codex r1 \#3 / contract §6: the switch and the cache keep the value setPromos READ BACK from the committed record, not the one sent|1
+G7 Codex r1 \#3: a LEGACY account (completion 'off', no consent stored ⇒ no profile.promos) — the switch INERT and a tap sends nothing (setPromos would answer not_completed)|1
+G7 Codex r1 \#3: a NEW account's promotions choice, saved by completeProfile, reaches the Cuenta — the switch LIVE at that value|1
+G7 Codex r1 \#3: an EXISTING account's stored consent (verifyOtp profile.promos) reaches the Cuenta — the switch LIVE at the server's value, cached|1
+G7 Codex r1 \#5: auth says member, the ID token still pending — the Cuenta draws the member's cached profile at once (never the guest card), the switch live once the member is applied|1
+G7 a REJECTED sign-out restores the member (nothing pretends to be signed out)|1
+G7 decision 7 / Codex r1 \#2: while the session RESOLVES, a profile on this device draws the member GEOMETRY with neutral placeholders — never its name, phone or email; none ⇒ the guest's|2
+G7 flag absent: without runtime.signup a member's Cuenta stays the HOST's tab event, as before|1
+G7 frame 1 / 4a: the member's Cuenta from the cached profile — the initial, name / phone / email on three lines, Pedidos · Promociones (on) · Ayuda, the session group, «v0.1.0»; never the host's tab event|1
+G7 frame 1b: Promociones flips at once and calls setPromos (context platform, the member token); success keeps it and updates the cache; failure reverts + «No se guardó el cambio. Intentá de nuevo.»|2
+G7 frame 2: «Olvidar este teléfono» asks first («¿Olvidar este teléfono?» + the body, [Olvidar este teléfono][Cancelar]); Cancelar changes nothing; confirming forgets the marker and signs out|1
+G7 frame 3: «Cerrar sesión» — no confirmation; the guest's Cuenta at once; the profile cache cleared on the confirmed sign-out; the device marker KEPT|1
+G7 frame 4b: no served promotions value ⇒ the switch INERT (aria-disabled, the .45); a uid without a cached profile ⇒ the placeholder bars, the rows usable|2
+Part B (b) in the shell: runtime.intlPhone reaches the sign-in sheet (the .cc button); absent ⇒ the «+504» span|2
+Pedidos (owner 11-01): every entry point — tabbar / desknav, the guest card row, the member Cuenta row — opens the «Pedidos» screen, desktop AND phone|4
+S3 A2: «Recargar» re-fetches the menu, adopts it, and opens the cart with «1 plato ya no está disponible»|1
+S4 frame G in the shell (schedulingLive + G6): a guest's «Programar» in the mounted checkout opens the sheet with ONLY the G=B subtitle and the guest exit; G6 without the flag keeps its member-only gate|1
+S4 shell: runtime.schedulingLive drives the Inicio cues (frame 3 B's sentence + «Programar pedido»); absent ⇒ none, as before|2
+S7a-2 frame 15: a held tap whose MENU does not load ⇒ «No pudimos abrir {restaurante}» over Inicio, the row still pressed; «Reintentar» re-fetches and enters; «Cerrar» releases the row|1
+browse-only: a CHANGED menu keeps the surface (its prices) while the customer is in it; at checkout entry it is adopted and the cart discloses the change (frame 13) BEFORE the quote|1
+browse-only: a store entered on its STORED menu has every ordering control inert (the existing disabled attribute); a forced tap changes nothing|1
+browse-only: the verified IDENTICAL menu turns the controls live IN PLACE — the same nodes, no re-render; ordering works|1
+frame 10: a cart frozen for a placement is read-only — the note, its controls disabled, «Ver estado del pedido» reads the STATUS (the recovery sheet) and sends NOTHING|1
+frame 11: a fresh return this phone cannot tie to ONE store ⇒ the neutral surface (no tab bar, no store mounted); «Ir a Inicio»; a later boot does not show it again|2
+home promo: an ADMITTED member (a restored complete session) ⇒ «Envío gratis» on the promo store's card, no guest pill|1
+home promo: an INCOMPLETE restored account whose sign-out is rejected — not admitted ⇒ no «Envío gratis» on the home cards, the guest pill reserved|1
+return: a return OWNED by one store (its pay stash) enters THAT store with the return, once — even on a cold boot (no directory yet)|1
+shell location: denied ⇒ the drawn «Ubicación desactivada · Activar» row and NO location (no fallback pin); the pin editor's «Cancelar» changes nothing|1
+shell location: the guest location drives frame 4 (every store outside) and SEEDS the store's checkout pin|2
+shell location: «Entregar en» → «Usar mi ubicación actual» → the soft-ask (first time) → allowed ⇒ the GPS fix is the CONFIRMED guest location, persisted|1
+shell: Inicio paints the directory-only rows BEFORE any envelope lands; menu rows fill in as each lands (never waits for all)|1
+shell: ONE cache — Buscar reuses Inicio's in-flight requests (no duplicate), and the search fills in as they land|1
+shell: a Buscar dish result opens THAT dish's sheet in its store; Back returns to Buscar with the query|1
+shell: a TOMBSTONED row stays in its slot, disabled; a tap does nothing; it leaves on the next visit to Inicio|1
+shell: a held tap whose directory read FAILS shows frame 7; «Reintentar» re-reads|1
+shell: a tap on a PRESENTATION row is HELD (pressed) and opens the moment the verification lands; an eligible row opens at once|1
+store promo r1 \#1: an INCOMPLETE restored account whose sign-out is rejected — not admitted (S.member null) ⇒ no «Envío gratis», the guest pill stays reserved|1
+store promo r1 \#2: an ADMITTED member arriving (a restored complete session) on a scrolled store — «Envío gratis», the pill gone, scroll and focus kept|1
+store promo r1 \#2: unresolved → GUEST through the real Firebase callback keeps the store page — same nodes, scroll 250, focus — and shows the pill|1
+store promo r2 P2-A: a token that ARRIVES LATER upgrades the claim in place (the same header node, «Envío gratis» shown)|1
+store promo r2 P2-A: an admitted member with NO usable token — no «Envío gratis» on Inicio or the store AND no member token on the quote; with a token — both|2
+store promo r2 P2-B: a focused «Detalle del envío» survives the real unresolved → guest callback (the same node focused, scroll 250)|1
+store promo r3: a token EXPIRING while the page is open withdraws the claim IN PLACE (Inicio + the store), the pill reserved|1
+store promo r3: an EXPIRED cached token with the refresh REJECTED — no «Envío gratis» AND no member header on the quote|1
+store promo r3: the token timers are HANDLES — none left after a sign-out, a uid change or destroy|2
+store promo r3: token RECOVERY mid-quote — the quote's member header and the store's «Envío gratis» appear TOGETHER (the notifier patches in place)|1
+store promo r4 \#1: a held quote token RELEASED AFTER a sign-out — no member header, member null (identity rechecked after the await)|1
+store promo r4 \#2: an expiry callback firing 1 ms EARLY re-arms — the claim stays until the cutoff, then is withdrawn|1
+store promo r4 \#5: a real UID SWITCH cancels the old identity's token timers|1
+store promo r5: a SIGN-OUT queued from the token notifier — no quote dispatch carries Ana's token while the member is null|1
+store promo r5: a UID SWITCH queued from the token notifier — no quote dispatch carries Ana's token while she is not the identity|1
+store promo: a GUEST on a promo store — the «Envío gratis con tu cuenta» pill between the name and the facts, «Envío desde L 45» and the fee ⓘ|1
+store promo: an ADMITTED member on a promo store — no pill, «Envío gratis» in place of «Envío desde», the ⓘ kept; a raw session alone (host «member», nothing admitted) claims nothing|2
+store promo: nothing invented — an unpriced store draws no pill, no fee text, no ⓘ; a priced store without a zone draws no ⓘ|2
+store promo: the store ⓘ opens the feeinfo sheet with the DIRECTORY values (no quote yet) — never «undefined» / «NaN»|1
+store promo: while auth is UNRESOLVED the pill is RESERVED (hidden, aria-hidden, same markup ⇒ same box); it resolves IN PLACE — guest shows it; a raw session not admitted re-reserves it (claims nothing)|2

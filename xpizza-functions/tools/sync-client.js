@@ -12,7 +12,7 @@ for (const f of folders) fs.copyFileSync(SRC, path.join(ROOT, f, 'sherpa-client.
 // byte-identical across forms / KDS / server) → the customer app's folder (the platform orders deployment), so the app decides
 // availability exactly as the forms and the server do (capp-guards pins each copy byte-identical to its source)
 for (const f of [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context === 'platform').map((d) => d.folder))])
-  for (const m of ['avail-key.js', 'availability-reducer.js']) fs.copyFileSync(path.join(ROOT, 'xpizza-functions', m), path.join(ROOT, f, m));
+  for (const m of ['avail-key.js', 'availability-reducer.js', 'phone-countries.js']) fs.copyFileSync(path.join(ROOT, 'xpizza-functions', m), path.join(ROOT, f, m));
 // the order-form adapter: only the `orders` deployments' folders — the FORMS, not the customer app (context 'platform'), whose
 // own adapter is customer-app/capp-self-update.js (the forms' adapter depends on form globals; PLAN-capp-S2-r4 §2.2)
 const ORDER_SRC = path.join(ROOT, 'platform', 'client', 'order-self-update.js');
@@ -34,8 +34,12 @@ fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'exposure-transit
 fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'catalog', 'choice-transitions.js'), path.join(ROOT, 'xpizza-portal', 'choice-transitions.js'));
 // S2-core (Codex build r1 P1-2): the capp serializer — the ONE extra-label predicate — → the functions, byte-identical (catalog/capp-serialize-sync.guard.test.js)
 fs.copyFileSync(path.join(ROOT, 'customer-app', 'capp-serialize.js'), path.join(ROOT, 'xpizza-functions', 'catalog', 'capp-serialize.js'));
-// ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' Archivo face → the map site's
+// ENVÍO (PLAN-portal-envio-step1 r2 §1b): the ONE portal↔map message module and the map labels' face (Figtree latin, owner 11-13) → the map site's
 // own folder (it is a separate origin, so it needs its own committed copies; envio-map-site.test.mjs pins them byte-identical)
 fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'envio-map-protocol.js'), path.join(ROOT, 'xpizza-portal-map', 'envio-map-protocol.js'));
-fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'archivo-latin.7150c0ec5a.woff2'), path.join(ROOT, 'xpizza-portal-map', 'fonts', 'archivo-latin.7150c0ec5a.woff2'));
+fs.copyFileSync(path.join(ROOT, 'xpizza-portal', 'fonts', 'figtree-latin.8330490a01.woff2'), path.join(ROOT, 'xpizza-portal-map', 'fonts', 'figtree-latin.8330490a01.woff2'));
+// capp offers (advisor 11-14, rule 4): the ONE offer rules (bogoSaving / inWindow / weeklyIntervals) → the customer app, byte-identical
+// (marketing/offer-rules-sync.guard.test.js); the server requires marketing/offer-rules.js itself
+for (const f of [...new Set(require(path.join(ROOT, 'platform', 'sites.json')).deployments.filter((d) => d.app === 'orders' && d.context === 'platform').map((d) => d.folder))])
+  fs.copyFileSync(path.join(ROOT, 'xpizza-functions', 'marketing', 'offer-rules.js'), path.join(ROOT, f, 'offer-rules.js'));
 console.log(`sync-client: copied sherpa-client.js into ${folders.length} site folders, order-self-update.js into ${orderFolders.length}, order-control-state.js into xpizza-dispatch, pay-rate.js into xpizza-functions + xpizza-driver, cart-sig.js into ${cartSigFolders.length} folders`);

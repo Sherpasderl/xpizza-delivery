@@ -351,6 +351,22 @@ const mirror = async (db, uid, id, status) => { const d = decideStatusMirror(id,
   }
   ok('receipt R3: an online card order (the real confirm patch) ⇒ tender card, priced lines');
 
+  // ── R3b. the EXPORTED projectReceipt is the handler's own projector (advisor 11-14: capp composes it, never a replica) ──
+  {
+    const { projectReceipt } = require('./my-orders');
+    assert.strictEqual(typeof projectReceipt, 'function', 'premise: projectReceipt is exported');
+    const db = fakeDb(); const { call } = harness(db);
+    await place(db, A, 'XPZ-x1', { tip: 2000 }); db.set('orders/XPZ-x1/display_number', 9);
+    await place(db, A, 'LMS-x2', { rid: 'la_musa', type: 'pickup', pay: 'card' });
+    await place(db, A, 'XPZ-x3', { type: 'pickup', pay: 'online' });
+    for (const id of ['XPZ-x1', 'LMS-x2', 'XPZ-x3']) {
+      const r = await rcpt(call, `tok-${A}`, id);
+      assert.strictEqual(r.code, 200, `premise ${id}: the handler served the receipt`);
+      assert.deepStrictEqual(projectReceipt(id, db.get(`user_orders/${A}/${id}`), db.get(`orders/${id}`)), r.body.receipt, `🔴 ${id}: the exported projectReceipt equals the handler's receipt`);
+    }
+  }
+  ok('receipt R3b: the exported projectReceipt over the stored entry + order equals the handler\'s served receipt (delivery cash, pickup card, online)');
+
   // ── R4. ownership: another account's id, a missing history entry, a missing order, a mismatched customer_uid ⇒ ONE uniform 404 ──
   {
     const db = fakeDb(); const { call } = harness(db);

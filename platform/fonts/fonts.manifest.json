@@ -197,76 +197,386 @@
       }
     },
     "portal": {
-      "baseline": "baseline/portal",
+      "baseline": "baseline/figtree",
       "sites": [
         "xpizza-portal"
       ],
       "css": "portal-fonts.css",
       "families": {
-        "Archivo": {
-          "slug": "archivo",
+        "Figtree": {
+          "slug": "figtree",
           "fallbacks": [
             {
-              "name": "Archivo Fallback",
+              "name": "Figtree Fallback",
+              "weights": "400 550",
+              "local": [
+                "Arial",
+                "ArialMT"
+              ],
+              "metricsAt": 400,
+              "against": "arial-regular"
+            },
+            {
+              "name": "Figtree Fallback",
               "weights": "600 800",
               "local": [
                 "Arial Bold",
                 "Arial-BoldMT"
               ],
-              "metricsAt": 800,
+              "metricsAt": 700,
               "against": "arial-bold"
             },
             {
-              "name": "Archivo Fallback Roboto",
+              "name": "Figtree Fallback Roboto",
+              "weights": "400 550",
+              "local": [
+                "Roboto",
+                "Roboto-Regular"
+              ],
+              "metricsAt": 400,
+              "against": "roboto-400"
+            },
+            {
+              "name": "Figtree Fallback Roboto",
               "weights": "600 800",
               "local": [
                 "Roboto Bold",
                 "Roboto-Bold"
               ],
-              "metricsAt": 800,
+              "metricsAt": 700,
               "against": "roboto-700"
             }
           ],
-          "copyright": "Copyright 2020 The Archivo Project Authors (https://github.com/Omnibus-Type/Archivo)"
+          "copyright": "Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree)"
         }
       },
       "preload": [
         {
-          "family": "Archivo",
+          "family": "Figtree",
           "subset": "latin",
-          "decidedBy": "PLAN-portal-fonts r1.1 §2.1: expected (the «Sherpa» wordmark .bname and the h1 at 800 sit in the first viewport of L-login and I-email); to be RATIFIED by the §4 census (P2, heavy slot) — the guard ties the preload to this list"
+          "decidedBy": "PLAN-font-figtree-portal-r0 §2 (the latin variable file: the h1 / wordmark and every body line in the first viewport of L-login and I-email); RATIFIED by the Figtree census re-capture (heavy slot) — the guard ties the preload to this list"
         }
       ],
       "metrics": {
-        "Archivo Fallback|600 800": {
+        "Figtree Fallback|400 550": {
           "face": {
             "upm": 1000,
-            "avgAdvanceEm": 0.548158,
-            "ascentEm": 0.878,
-            "descentEm": 0.21,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-regular",
+          "overrides": {
+            "size-adjust": "99.87%",
+            "ascent-override": "95.12%",
+            "descent-override": "25.03%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
             "lineGapEm": 0.0
           },
           "against": "arial-bold",
           "overrides": {
-            "size-adjust": "106.30%",
-            "ascent-override": "82.60%",
-            "descent-override": "19.76%",
+            "size-adjust": "96.28%",
+            "ascent-override": "98.67%",
+            "descent-override": "25.97%",
             "line-gap-override": "0.00%"
           }
         },
-        "Archivo Fallback Roboto|600 800": {
+        "Figtree Fallback Roboto|400 550": {
           "face": {
             "upm": 1000,
-            "avgAdvanceEm": 0.548158,
-            "ascentEm": 0.878,
-            "descentEm": 0.21,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-400",
+          "overrides": {
+            "size-adjust": "100.61%",
+            "ascent-override": "94.42%",
+            "descent-override": "24.85%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback Roboto|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
             "lineGapEm": 0.0
           },
           "against": "roboto-700",
           "overrides": {
-            "size-adjust": "112.37%",
-            "ascent-override": "78.13%",
-            "descent-override": "18.69%",
+            "size-adjust": "101.78%",
+            "ascent-override": "93.34%",
+            "descent-override": "24.56%",
+            "line-gap-override": "0.00%"
+          }
+        }
+      }
+    },
+    "capp": {
+      "baseline": "baseline/figtree",
+      "sites": [
+        "customer-app"
+      ],
+      "fontsDir": "fonts-figtree",
+      "css": "figtree-fonts.css",
+      "families": {
+        "Figtree": {
+          "slug": "figtree",
+          "fallbacks": [
+            {
+              "name": "Figtree Fallback",
+              "weights": "400 550",
+              "local": [
+                "Arial",
+                "ArialMT"
+              ],
+              "metricsAt": 400,
+              "against": "arial-regular"
+            },
+            {
+              "name": "Figtree Fallback",
+              "weights": "600 800",
+              "local": [
+                "Arial Bold",
+                "Arial-BoldMT"
+              ],
+              "metricsAt": 700,
+              "against": "arial-bold"
+            },
+            {
+              "name": "Figtree Fallback Roboto",
+              "weights": "400 550",
+              "local": [
+                "Roboto",
+                "Roboto-Regular"
+              ],
+              "metricsAt": 400,
+              "against": "roboto-400"
+            },
+            {
+              "name": "Figtree Fallback Roboto",
+              "weights": "600 800",
+              "local": [
+                "Roboto Bold",
+                "Roboto-Bold"
+              ],
+              "metricsAt": 700,
+              "against": "roboto-700"
+            }
+          ],
+          "copyright": "Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree)"
+        }
+      },
+      "preload": [
+        {
+          "family": "Figtree",
+          "subset": "latin",
+          "decidedBy": "PLAN-font-figtree-r0 §8 (capp: exactly ONE preload, the latin variable woff2; the driver the same) — the census of each lane's swap ratifies it"
+        }
+      ],
+      "metrics": {
+        "Figtree Fallback|400 550": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-regular",
+          "overrides": {
+            "size-adjust": "99.87%",
+            "ascent-override": "95.12%",
+            "descent-override": "25.03%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-bold",
+          "overrides": {
+            "size-adjust": "96.28%",
+            "ascent-override": "98.67%",
+            "descent-override": "25.97%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback Roboto|400 550": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-400",
+          "overrides": {
+            "size-adjust": "100.61%",
+            "ascent-override": "94.42%",
+            "descent-override": "24.85%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback Roboto|600 800": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-700",
+          "overrides": {
+            "size-adjust": "101.78%",
+            "ascent-override": "93.34%",
+            "descent-override": "24.56%",
+            "line-gap-override": "0.00%"
+          }
+        }
+      }
+    },
+    "driver": {
+      "baseline": "baseline/figtree",
+      "sites": [
+        "xpizza-driver"
+      ],
+      "fontsDir": "fonts-figtree",
+      "css": "figtree-fonts.css",
+      "families": {
+        "Figtree": {
+          "slug": "figtree",
+          "fallbacks": [
+            {
+              "name": "Figtree Fallback",
+              "weights": "400 550",
+              "local": [
+                "Arial",
+                "ArialMT"
+              ],
+              "metricsAt": 400,
+              "against": "arial-regular"
+            },
+            {
+              "name": "Figtree Fallback",
+              "weights": "600 900",
+              "local": [
+                "Arial Bold",
+                "Arial-BoldMT"
+              ],
+              "metricsAt": 700,
+              "against": "arial-bold"
+            },
+            {
+              "name": "Figtree Fallback Roboto",
+              "weights": "400 550",
+              "local": [
+                "Roboto",
+                "Roboto-Regular"
+              ],
+              "metricsAt": 400,
+              "against": "roboto-400"
+            },
+            {
+              "name": "Figtree Fallback Roboto",
+              "weights": "600 900",
+              "local": [
+                "Roboto Bold",
+                "Roboto-Bold"
+              ],
+              "metricsAt": 700,
+              "against": "roboto-700"
+            }
+          ],
+          "copyright": "Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree)"
+        }
+      },
+      "preload": [
+        {
+          "family": "Figtree",
+          "subset": "latin",
+          "decidedBy": "PLAN-font-figtree-r0 §8 (capp: exactly ONE preload, the latin variable woff2; the driver the same) — the census of each lane's swap ratifies it"
+        }
+      ],
+      "metrics": {
+        "Figtree Fallback|400 550": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-regular",
+          "overrides": {
+            "size-adjust": "99.87%",
+            "ascent-override": "95.12%",
+            "descent-override": "25.03%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback|600 900": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "arial-bold",
+          "overrides": {
+            "size-adjust": "96.28%",
+            "ascent-override": "98.67%",
+            "descent-override": "25.97%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback Roboto|400 550": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.480998,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-400",
+          "overrides": {
+            "size-adjust": "100.61%",
+            "ascent-override": "94.42%",
+            "descent-override": "24.85%",
+            "line-gap-override": "0.00%"
+          }
+        },
+        "Figtree Fallback Roboto|600 900": {
+          "face": {
+            "upm": 1000,
+            "avgAdvanceEm": 0.49648,
+            "ascentEm": 0.95,
+            "descentEm": 0.25,
+            "lineGapEm": 0.0
+          },
+          "against": "roboto-700",
+          "overrides": {
+            "size-adjust": "101.78%",
+            "ascent-override": "93.34%",
+            "descent-override": "24.56%",
             "line-gap-override": "0.00%"
           }
         }

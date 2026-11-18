@@ -15,10 +15,12 @@
 // 2. SERVER MODULES: the modules this branch edits (re-derived from `git diff --name-only <base>` — never a hand list).
 //    For each, every file that HASHES it (sha256 / createHash / a git-show base / baseOf) or LIFTS its source
 //    (readFileSync of it), and for each hashing site the registered inverse (a tools/*-inverse.js that names the module
-//    and that the site requires). An edited module hashed by a site with NO registered inverse → exit 1.
+//    and that the site requires). An edited module hashed by a site with NO registered inverse → exit 1 — unless the site is a
+//    PROVENANCE pin registered in tools/provenance-pins.json and proven by provenance() below.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const acorn = require('acorn');
 
 const FN = path.join(__dirname, '..');
 const ROOT = path.join(FN, '..');
@@ -83,12 +85,73 @@ function deps(file, src) {
   return out;
 }
 
-// `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only
-function build({ extra = {} } = {}) {
+// `extra` ({ 'repo/relative/path.js': source }) adds synthetic files — the guard's sensitivity cells only; `only` (module names) limits the
+// edited-module scan to those modules and `revParse` replaces the git rev-parse — the guard's provenance cells only (speed / a spy)
+// PROVENANCE PINS (advisor 11-15; r2 «reviewed content pins»): a fixture generator that hashes an EXTRACTED tree of a fixed commit
+// records history, not the live module, so an edit to the live module cannot break it and an inverse could only be a hand-built proof.
+// tools/provenance-pins.json registers each such (site, module) with the sha256 of the WHOLE generator and of its consumer test's
+// PROVENANCE-PIN REGION (regionOf), both AS REVIEWED (human + Codex). A row is honoured only while both are byte-identical to those
+// hashes (any edit ⇒ generator_changed / consumer_changed until re-registered by a reviewed diff; the rest of the suite may change) AND the fixture's recorded blob is `git rev-parse <sha>:xpizza-functions/<module>`
+// (fixture_blob). A refused row exits 1. `live_differs` (the live blob is not the pinned one) is information only, never a failure.
+const PROV = path.join(__dirname, 'provenance-pins.json');
+const dig = (o, f) => f.split('.').reduce((v, k) => (v == null ? v : v[k]), o);
+const sha256 = (s) => (s == null ? null : require('crypto').createHash('sha256').update(s).digest('hex'));
+// the consumer's REVIEWED REGION: the exact bytes between `// PROVENANCE-PIN:BEGIN <id>` and `// PROVENANCE-PIN:END <id>`, each a bare line
+// comment, exactly one of each, in order. Liveness is read from the SYNTAX TREE (acorn; Codex r2 P2-1), never lexically: the consumer must
+// parse (else consumer_unparseable, fail closed), no comment other than the two markers may overlap the region, and the region must hold
+// at least one top-level `test(...)` statement. Anything else: why the region is void.
+function regionOf(src, id) {
+  if (src == null) return { reason: 'marker_missing' };
+  const lines = src.split('\n');
+  const at = (k) => lines.flatMap((l, i) => (new RegExp(`PROVENANCE-PIN:${k} ${id}(?![\\w-])`).test(l) ? [i] : []));
+  const b = at('BEGIN'), e = at('END');
+  if (!b.length || !e.length) return { reason: 'marker_missing' };
+  if (b.length > 1 || e.length > 1) return { reason: 'marker_duplicate' };
+  if (lines[b[0]].trim() !== `// PROVENANCE-PIN:BEGIN ${id}` || lines[e[0]].trim() !== `// PROVENANCE-PIN:END ${id}`) return { reason: 'marker_malformed' };
+  if (e[0] < b[0]) return { reason: 'marker_order' };
+  const comments = [];
+  let ast;
+  try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', onComment: comments, ranges: true }); } catch (_) { return { reason: 'consumer_unparseable' }; }
+  const lineStart = (n) => lines.slice(0, n).reduce((a, l) => a + l.length + 1, 0);
+  const rS = lineStart(b[0] + 1), rE = lineStart(e[0]);
+  const isMarker = (c, n) => c.type === 'Line' && c.start >= lineStart(n) && c.end <= lineStart(n) + lines[n].length;
+  if (comments.some((c) => c.start < rE && c.end > rS && !isMarker(c, b[0]) && !isMarker(c, e[0]))) return { reason: 'region_commented' };
+  const live = ast.body.some((st) => st.start >= rS && st.end <= rE && st.type === 'ExpressionStatement' && st.expression.type === 'CallExpression'
+    && st.expression.callee.type === 'Identifier' && st.expression.callee.name === 'test');
+  if (!live) return { reason: 'no_test_call' };
+  return { text: src.slice(rS, rE) };
+}
+function provenance(rows, srcOf, revParse) {
+  return rows.map((r) => {
+    const site = srcOf(r.site);
+    if (site == null) return { site: r.site, module: r.module, status: 'absent' };
+    const refuse = (check, why) => ({ site: r.site, module: r.module, status: 'refused', check, why });
+    if (sha256(site) !== r.site_sha256) return refuse('generator_changed', `${r.site} is not the reviewed generator (re-register)`);
+    const reg = regionOf(srcOf(r.consumer), r.consumer_region);
+    if (reg.reason) return { ...refuse(reg.reason === 'consumer_unparseable' ? 'consumer_unparseable' : 'consumer_changed', `${r.consumer}: no valid PROVENANCE-PIN region ${r.consumer_region} (${reg.reason})`), reason: reg.reason };
+    if (sha256(reg.text) !== r.consumer_sha256) return { ...refuse('consumer_changed', `${r.consumer}: region ${r.consumer_region} is not the reviewed one (re-register)`), reason: 'region_bytes' };
+    let fx; try { fx = JSON.parse(srcOf(r.fixture)); } catch (_) { return refuse('fixture_blob', `fixture ${r.fixture} unreadable`); }
+    const sha = dig(fx, r.sha_field), blob = (dig(fx, r.blobs_field) || {})[r.module];
+    // Codex r2 P2-3: the sha is validated BEFORE it reaches git (an argv array, never a shell)
+    if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) return { ...refuse('fixture_blob', `fixture sha ${JSON.stringify(sha)} is not a full 40-hex sha`), reason: 'sha_format' };
+    const want = revParse(`${sha}:xpizza-functions/${r.module}`);
+    if (!want || blob !== want) return { ...refuse('fixture_blob', `fixture blob ${blob} ≠ ${sha}:${r.module} (${want})`), reason: 'blob_mismatch' };
+    const live = read(path.join(FN, r.module));
+    const liveBlob = live === '' ? null : require('crypto').createHash('sha1').update(`blob ${Buffer.byteLength(live)}\0`).update(live).digest('hex');
+    return { site: r.site, module: r.module, status: 'ok', sha, blob, consumer: r.consumer, live_differs: liveBlob !== blob };
+  });
+}
+
+const gitRevParse = (spec) => { try { return execFileSync('git', ['rev-parse', '-q', '--verify', spec], { cwd: ROOT, encoding: 'utf8' }).trim(); } catch (_) { return null; } };
+
+function build({ extra = {}, provenance: provRows, revParse = gitRevParse, only = null } = {}) {
   const SELF = new Set([__filename, OUT, path.join(FN, 'form-source-inventory.guard.test.js')]);   // the tool, its output and its guard (whose synthetic sources would match)
   const files = walk(ROOT).filter((f) => !SELF.has(f));
   const src = new Map(files.map((f) => [f, read(f)]));
   for (const [r, text] of Object.entries(extra)) { const abs = path.join(ROOT, r); if (!src.has(abs)) files.push(abs); src.set(abs, text); }
+  const srcOf = (r) => { const abs = path.join(ROOT, r); return src.has(abs) ? src.get(abs) : (fs.existsSync(abs) ? read(abs) : null); };
+  const provPins = provenance((provRows || (fs.existsSync(PROV) ? JSON.parse(read(PROV)) : { rows: [] })).rows, srcOf, revParse);
+  const provOk = new Set(provPins.filter((p) => p.status === 'ok').map((p) => `${p.site}|${p.module}`));
   const direct = new Map(files.map((f) => [f, directSurfaces(f, src.get(f))]));
   const edges = new Map(files.map((f) => [f, deps(f, src.get(f))]));
   // transitive closure (memoised DFS; cycles are fine)
@@ -123,7 +186,8 @@ function build({ extra = {} } = {}) {
   const changed = execFileSync('git', ['diff', '--name-only', BASE, '--', 'xpizza-functions/'], { cwd: ROOT, encoding: 'utf8' })
     .split('\n').filter(Boolean)
     .filter((p) => /\.js$/.test(p) && !isTest(p) && !/\/tools\//.test(p) && !/\/test\//.test(p) && !/\/contract\//.test(p) && fs.existsSync(path.join(ROOT, p)))
-    .map((p) => p.replace(/^xpizza-functions\//, '')).sort();
+    .map((p) => p.replace(/^xpizza-functions\//, '')).sort()
+    .filter((m) => !only || only.includes(m));
   const inverses = fs.readdirSync(__dirname).filter((n) => /-inverse\.js$/.test(n))
     .map((n) => ({ name: `tools/${n}`, src: read(path.join(__dirname, n)) }));
   const server = {};
@@ -152,8 +216,9 @@ function build({ extra = {} } = {}) {
         const inv = inverses.filter((v) => (v.src.includes(`'${name}'`) || v.src.includes(`"${name}"`) || (name === 'index.js' && /unapply\w*Index|foldPortalSplit|unapply\w*\(src/.test(v.src)))
           && new RegExp(`${v.name.replace('tools/', '').replace('.js', '')}`).test(s)).map((v) => v.name).sort();
         const isInverseItself = /tools\/[\w-]+-inverse\.js$/.test(rel(f));
-        entry.pins.push({ file: rel(f), inverses: inv });
-        if (!inv.length && !isInverseItself) unregistered.push({ module: m, site: rel(f) });
+        const prov = provOk.has(`${rel(f)}|${m}`);
+        entry.pins.push({ file: rel(f), inverses: inv, ...(prov ? { provenance: true } : {}) });
+        if (!inv.length && !isInverseItself && !prov) unregistered.push({ module: m, site: rel(f) });
       } else entry.lifts.push(rel(f));
     }
     entry.pins.sort((a, b) => a.file.localeCompare(b.file)); entry.lifts.sort();
@@ -185,10 +250,11 @@ function build({ extra = {} } = {}) {
     : [];
   return { _doc: 'PLAN-A §5 — generated by tools/form-source-inventory.js; never hand-edit. Regenerate with --write.', base: BASE,
     surfaces, helpers: [...helpersUsed].sort(), seed, seed_problems: seedProblems, server_modules_edited: changed, server, unregistered,
-    region_pins: regionPins };
+    region_pins: regionPins, provenance_pins: provPins };
 }
+const verdict = (inv) => (inv.seed_problems.length || inv.unregistered.length || inv.provenance_pins.some((p) => p.status === 'refused') ? 1 : 0);
 
-module.exports = { build, OUT, SEED };
+module.exports = { build, verdict, OUT, SEED };
 
 if (require.main === module) {
   const inv = build();
@@ -199,6 +265,9 @@ if (require.main === module) {
   for (const [s, v] of Object.entries(inv.surfaces)) console.log(`  ${s}: ${v.tests.length} tests (${v.via_helper.length} via a helper)`);
   for (const [m, v] of Object.entries(inv.server)) console.log(`  ${m}: ${v.pins.length} hashing sites, ${v.lifts.length} lifting sites`);
   console.log(`  seed: ${inv.seed.length} (${inv.seed.filter((x) => x.status === 'reader').length} readers, ${inv.seed.filter((x) => x.status === 'named-only').length} named-only, ${inv.seed.filter((x) => x.status === 'removed_or_renamed').length} removed/renamed)`);
-  if (inv.seed_problems.length) { console.error('🔴 seed entries not accounted for:', JSON.stringify(inv.seed_problems, null, 1)); process.exit(1); }
-  if (inv.unregistered.length) { console.error('🔴 edited modules hashed with NO registered inverse:', JSON.stringify(inv.unregistered, null, 1)); process.exit(1); }
+  if (inv.seed_problems.length) console.error('🔴 seed entries not accounted for:', JSON.stringify(inv.seed_problems, null, 1));
+  for (const p of inv.provenance_pins) console.log(`  provenance pin ${p.site} → ${p.module}: ${p.status}${p.status === 'refused' ? ` (${p.check}: ${p.why})` : ''}${p.live_differs ? ` — ℹ live blob ≠ pinned blob (fixture at ${p.sha.slice(0, 9)} is stale vs the live module; information only)` : ''}`);
+  if (inv.provenance_pins.some((p) => p.status === 'refused')) console.error('🔴 provenance pins refused:', JSON.stringify(inv.provenance_pins.filter((p) => p.status === 'refused'), null, 1));
+  if (inv.unregistered.length) console.error('🔴 edited modules hashed with NO registered inverse:', JSON.stringify(inv.unregistered, null, 1));
+  if (verdict(inv)) process.exit(1);
 }
