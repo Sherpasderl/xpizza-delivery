@@ -248,6 +248,9 @@ const OP_JUDGED = Object.freeze({
 export function classifyConfirmation(attempt, res) {
   const c = classifyWrite(attempt, res);
   if (c.outcome !== 'refused') return c;
+  // Codex #129 P2-5: the server now MARKS every reply it gives at / after the claim check (`op: 'judged'`, offers-core :168) — such a refusal
+  // settles whatever its status (a 400 start_past: the start passed during an outage). Without the marker, only the codes below do.
+  if (isObj(res.body) && res.body.op === 'judged') return c;
   const err = isObj(res.body) ? res.body.error : undefined;
   return OP_JUDGED[res.status] && OP_JUDGED[res.status].includes(err) ? c : { outcome: 'unknown' };
 }

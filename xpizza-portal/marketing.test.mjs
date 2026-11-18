@@ -80,10 +80,12 @@ async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1', local = nu
     return okJson({});
   };
   const mods = await loadAll();
-  // owner 11-17 (MOCKUP-portal-marketing-unknown): the list's background confirmations run on FAKE timers — none fires unless a cell fires it
-  const timers = [];
+  // owner 11-17 (MOCKUP-portal-marketing-unknown): the list's background confirmations run on FAKE timers over a VIRTUAL clock — none fires
+  // unless a cell fires it; firing one moves the clock to its due time (Codex #129 P2-4: the cells assert the send times, not the arguments)
+  const timers = [], clock = { t: 0 };
   if (mods.marketing._confirmTimers) {
-    mods.marketing._confirmTimers.set = (f, ms) => { const t = { f, ms, on: true }; timers.push(t); return t; };
+    mods.marketing._confirmTimers.now = () => clock.t;
+    mods.marketing._confirmTimers.set = (f, ms) => { const t = { f, ms, at: clock.t + ms, on: true }; timers.push(t); return t; };
     mods.marketing._confirmTimers.clear = (t) => { if (t) t.on = false; };
   }
   const d = w.document;
@@ -97,7 +99,7 @@ async function page({ b, caps = OWNER_CAPS, uid = OWNER, cache = '1', local = nu
     await settle(60);
   };
   const open = async () => { reg().nav.click(); await settle(60); };
-  return { dom, w, d, mods, reg, host, text, btn, signIn, open, timers, navHidden: () => reg().nav.classList.contains('hidden') };
+  return { dom, w, d, mods, reg, host, text, btn, signIn, open, timers, clock, navHidden: () => reg().nav.classList.contains('hidden') };
 }
 async function world(opts = {}) {
   const ext = { fn: null };
@@ -1036,11 +1038,11 @@ test('V1-vi the 2×2 card grid is SCOPED: only the two .mk5-card grid-column rul
 // (fake timers here); only an answer the server gives under that op_id settles it — U2 landed (the dialog's own success word), U3 not
 // landed with the refusal's own sentence / U3b the generic line (neutral), U4 still can't tell + U4b «Volver a confirmar» (ONE same-op_id
 // try) while the page holds the attempt. The list's content never settles anything. Leaving the page, another account or a NEW write cancels.
-async function fire(p, ms = 300) {
+async function fire(p, ms = 300) {   // → the virtual time the timer was due at
   const t = p.timers.find((x) => x.on);
   assert.ok(t, 'premise: a background confirmation is scheduled');
-  t.on = false; t.f(); await settle(ms);
-  return t.ms;
+  t.on = false; p.clock.t = Math.max(p.clock.t, t.at); t.f(); await settle(ms);
+  return t.at;
 }
 async function unconfirmedCreate(p, b, net) {   // «Programar oferta» on the «Lempiras» card, its call + one confirmation ambiguous per `net`
   await openCard(p, 'lps');
@@ -1056,7 +1058,7 @@ test('S1 U1→U2 LANDED: the call landed, both replies lost; the +3 s re-send (t
   await unconfirmedCreate(p, b, { lose: ['marketingOfferSave', 'marketingOfferSave'] });
   assert.equal(offersNamed(b, LPS).length, 1, 'premise: it landed on the server');
   assert.equal(reconf(p), null, 'U1: no button while confirming');
-  assert.equal(await fire(p), 3000, 'the first re-send at +3 s');
+  assert.equal(await fire(p), 3000, 'the first re-send, due +3 s after the handoff');
   const ops = saves(b).map((c) => c.body.op_id);
   assert.equal(ops.length, 3, 'the call, its confirmation, ONE background re-send');
   assert.deepEqual([...new Set(ops)], [ops[0]], 'S1: every re-send carries the SAME op_id');
@@ -1101,7 +1103,7 @@ test('S4 U1→U4→U4b CAN\'T TELL: +3 s, +10 s, +30 s all ambiguous ⇒ the fal
   await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
   const at = [];
   for (let i = 0; i < 3; i += 1) { at.push(await fire(p)); if (i < 2) assert.equal(noticeWord(p), CONFIRMING, `still confirming after try ${i + 1}`); }
-  assert.deepEqual(at, [3000, 10000, 30000], 'S4: the schedule — 3 / 10 / 30 s, then stop');
+  assert.deepEqual(at, [3000, 10000, 30000], 'S4: the schedule — due +3 / +10 / +30 s from the handoff (the clock started at 0), then stop');
   assert.equal(noticeWord(p), CANT, 'S4: U4, the approved fallback line');
   assert.equal(pending(p).length, 0, 'S4: stopped — nothing more scheduled');
   const btn = reconf(p);
@@ -1116,7 +1118,7 @@ test('S4 U1→U4→U4b CAN\'T TELL: +3 s, +10 s, +30 s all ambiguous ⇒ the fal
   assert.equal(notice(p), null, 'S4: settled ⇒ the notice goes');
   assert.match(toastText(p), /^Oferta programada\. Empieza /, 'S4: the success toast');
 });
-test('S5 the button\'s one try still ambiguous (a 503) ⇒ back to U4b (the button again, nothing scheduled); then an op-judged refusal ⇒ U3', async () => {
+test('S5 the button\'s one try still ambiguous (the call dropped) ⇒ back to U4b (the button again, nothing scheduled); then an op-judged refusal ⇒ U3', async () => {
   const b = await world();
   for (let i = 0; i < 10; i += 1) await publish(b, form({ name: `Viva ${i}`, pct: 10 * (1 + (i % 5)), start: NOW, end: NOW + 20 * DAY, days: [i < 5 ? 6 : 0], window: null }));
   const p = await page({ b });
@@ -1124,10 +1126,9 @@ test('S5 the button\'s one try still ambiguous (a 503) ⇒ back to U4b (the butt
   await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
   for (let i = 0; i < 3; i += 1) await fire(p);
   assert.equal(noticeWord(p), CANT, 'premise: U4');
-  const f0 = globalThis.fetch;
-  globalThis.fetch = async (url, opts) => (String(url).endsWith('/marketingOfferSave') ? { ok: false, status: 503, json: async () => ({ error: 'unavailable' }), text: async () => '{}', headers: { get: () => null } } : f0(url, opts));
-  try { reconf(p).click(); await settle(300); } finally { globalThis.fetch = f0; }
-  assert.equal(noticeWord(p), CANT, 'S5: a 503 settles nothing — U4 again');
+  b.net.drop = ['marketingOfferSave'];   // Codex #129: the harness's real transport drop, not a synthetic reply
+  reconf(p).click(); await settle(300);
+  assert.equal(noticeWord(p), CANT, 'S5: a dropped call settles nothing — U4 again');
   assert.ok(reconf(p), 'S5: the button stays (the page still holds the attempt)');
   assert.equal(pending(p).length, 0, 'S5: the button never restarts the schedule');
   reconf(p).click(); await settle(300);   // now it reaches the real core: the branch's live slots are full ⇒ judged too_many_live
@@ -1161,18 +1162,108 @@ test('S8 the re-send is judged a DUPLICATE (another session programmed the ident
   assert.equal(offersNamed(b, LPS).length, 1, 'S8: still ONE');
   assert.equal(pending(p).length, 0);
 });
-test('S9 a re-send answered op_id_conflict (our bug) ⇒ U4 at once, NO button, nothing more scheduled — a conflict is never re-sent', async () => {
+test('S9 a re-send answered op_id_conflict by the REAL core (its op_id was claimed by another kind of operation meanwhile) ⇒ U4 at once, NO button, nothing more scheduled', async () => {
   const b = await world();
+  const o = await publish(b, LIVE());
   const p = await page({ b });
   await p.signIn(); await p.open();
-  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
-  const f0 = globalThis.fetch;
-  globalThis.fetch = async (url, opts) => (String(url).endsWith('/marketingOfferSave') ? { ok: false, status: 409, json: async () => ({ error: 'op_id_conflict' }), text: async () => '{}', headers: { get: () => null } } : f0(url, opts));
-  try { await fire(p); } finally { globalThis.fetch = f0; }
+  const n0 = saves(b).length;   // the seed's own save comes first
+  Object.defineProperty(globalThis.crypto, 'randomUUID', { value: () => 'fixed-op-id-0003', configurable: true, writable: true });
+  try { await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] }); } finally { delete globalThis.crypto.randomUUID; }
+  assert.equal(saves(b)[n0].body.op_id, 'op_fixed-op-id-0003', 'premise: the held create\'s op_id');
+  // the SAME op_id is claimed by a MOVE (the real core, another session) — the held create's re-send now conflicts
+  assert.equal((await offerSetStateRaw({ rid: RID, offerId: o.id, to: 'paused_owner', expectedRev: o.rev, opId: 'op_fixed-op-id-0003', token: b.token })).status, 200, 'premise: the move claimed it');
+  await fire(p);
+  assert.equal(saves(b).length - n0, 3, 'premise: the re-send reached the real core');
   assert.equal(noticeWord(p), CANT, 'S9: U4');
   assert.equal(reconf(p), null, 'S9: no «Volver a confirmar»');
   assert.equal(pending(p).length, 0, 'S9: nothing more scheduled');
 });
+// ═══ Codex #129 (HIGH r1, REVISE): the held attempt on a flaky phone ═════════════════════════════════════════════════════════════
+test('X1 [P1] a re-send whose token refresh STALLS while the merchant leaves the page never reaches the server: the attempt\'s liveness is checked after the token, before fetch', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+  const tok = globalThis.__tok; let release; globalThis.__tok = new Promise((r) => { release = r; });   // the next token() stalls
+  const t = pending(p)[0];
+  t.on = false; p.clock.t = t.at; t.f(); await settle(50);   // the +3 s re-send starts — and waits on its token
+  const n = saves(b).length;
+  p.reg().unmount();                                          // the merchant leaves the page meanwhile
+  release(tok); globalThis.__tok = tok; await settle(250);
+  assert.equal(saves(b).length, n, 'X1: the cancelled re-send never reached fetch');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X1: nothing was created after the page was left');
+});
+test('X2 [P1] a LATE UNKNOWN from an older write never revives it: A dismissed while its confirmation is out, B submitted and saved, then A comes back UNKNOWN ⇒ A is NOT held (no timer can create it beside B)', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openCard(p, 'lps');
+  const sh = await toReview(p);
+  const f0 = globalThis.fetch; let n = 0, gateOpen; const gate = new Promise((r) => { gateOpen = r; });
+  globalThis.fetch = async (url, opts) => {   // A's call never reaches the server; A's confirmation waits on the gate, then never reaches it either
+    if (String(url).endsWith('/marketingOfferSave')) { n += 1; if (n === 1) throw new TypeError('Failed to fetch'); if (n === 2) { await gate; throw new TypeError('Failed to fetch'); } }
+    return f0(url, opts);
+  };
+  try {
+    p.btn('Programar oferta', sh).click(); await settle(80);
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();   // the review sheet, then the builder (as L7)
+    p.d.dispatchEvent(new p.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
+    assert.equal(dlg(p), null, 'premise: A dismissed while its confirmation is out');
+    assert.equal(n, 2, 'premise: A\'s confirmation is the one out (held on the gate)');
+    await openCard(p, 'pct');
+    p.btn('Programar oferta', await toReview(p)).click(); await settle(300);   // B: the third save, through the real core
+    assert.equal(Object.values(b.fake.get('marketing_brand/tb/offers') || {}).filter((r) => r.type === 'pct').length, 1, 'premise: B saved (the real core)');
+    gateOpen(); await settle(300);                                             // A's confirmation finally fails: UNKNOWN, handed over LATE
+  } finally { globalThis.fetch = f0; }
+  assert.equal(pending(p).length, 0, 'X2: a superseded write is never held — no confirmation is scheduled for A');
+  assert.equal(reconf(p), null, 'X2: and no «Volver a confirmar» can re-send it');
+  assert.equal(offersNamed(b, LPS).length, 0, 'X2: A was never created beside B');
+});
+test('X3 [P2] a MOVE\'s re-send judged a DUPLICATE (an identical offer went live meanwhile) ⇒ that existing offer opens, as the dialog does — never the generic «No se guardó»', async () => {
+  const b = await world();
+  const x = await publish(b, LIVE());
+  const paused = await offerSetStateRaw({ rid: RID, offerId: x.id, to: 'paused_owner', expectedRev: x.rev, token: b.token });
+  assert.equal(paused.status, 200, 'premise: X paused');
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await openDetail(p, 'Almuerzo');
+  b.net.drop = ['marketingOfferSetState', 'marketingOfferSetState'];
+  p.btn('Reanudar').click(); await settle(250);
+  assert.equal(noticeWord(p), CONFIRMING, 'premise: U1');
+  const y = await publish(b, LIVE());   // another session: the IDENTICAL offer goes live (the real writers)
+  await fire(p, 400);
+  assert.notEqual(noticeWord(p), NOT_SAVED, 'X3: never the generic line for a duplicate');
+  assert.equal(notice(p), null, 'X3: no notice');
+  const h = p.host().querySelector('.mk5d-head h1');
+  assert.ok(h && h.textContent === 'Almuerzo', 'X3: the existing offer\'s detail opened');
+  assert.equal(p.mods.marketing._mktState.detail, y.id, 'X3: it is the IDENTICAL live one (the server\'s offer_id)');
+});
+test('X4 [P2] the deadlines are measured from the handoff: +3 / +10 / +30 s even when every re-send takes 2 s — the SEND times, not the timer arguments', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: Array(5).fill('marketingOfferSave') });
+  const t0 = p.clock.t, sentAt = [];
+  const f0 = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => { if (String(url).endsWith('/marketingOfferSave')) { sentAt.push(p.clock.t - t0); p.clock.t += 2000; } return f0(url, opts); };   // each re-send «takes» 2 s
+  try { for (let i = 0; i < 3; i += 1) await fire(p); } finally { globalThis.fetch = f0; }
+  assert.deepEqual(sentAt, [3000, 10000, 30000], 'X4: sent at +3 / +10 / +30 s after the handoff — the latency never accumulates');
+  assert.equal(noticeWord(p), CANT, 'then U4');
+});
+test('X5 [P2] an OP-JUDGED 400 settles: the offer\'s start passed during the outage ⇒ the re-send is the real core\'s 400 start_past with op:\'judged\' ⇒ U3 with its own sentence — never UNKNOWN forever', async () => {
+  const b = await world();
+  const p = await page({ b });
+  await p.signIn(); await p.open();
+  await unconfirmedCreate(p, b, { drop: ['marketingOfferSave', 'marketingOfferSave'] });
+  const now0 = b.deps.now; b.deps.now = () => now0() + 3 * DAY;   // the server's clock moves past the offer's start
+  try { await fire(p); } finally { b.deps.now = now0; }
+  const last = b.calls.filter((c) => c.fn === 'marketingOfferSave').pop();
+  assert.ok(last, 'premise: the re-send went out');
+  assert.equal(noticeWord(p), 'No se guardó la oferta. La fecha de inicio ya pasó. Elegí una fecha nueva en «Horario».', 'X5: U3, the refusal\'s own sentence');
+  assert.equal(pending(p).length, 0, 'X5: settled — nothing more scheduled');
+});
+
 test('S7 cancelled: leaving the page, another account, or a NEW write stops the confirmations — nothing more is sent', async () => {
   for (const how of ['leave', 'account', 'write']) {
     const b = await world();

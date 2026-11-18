@@ -97,7 +97,7 @@ function looseOffer(f) {
 }
 
 test('every V1 type round-trips through the REAL save + read: the form an offer reads back into re-authors exactly what was saved', async () => {
-  const b = await backend();
+  const b = await backend({ audience: true });   // the `nuevos` type is authored only while the audience switch is ON (main's offers-core, owner 11-16)
   const forms = [form({ name: 'Pct' }), form({ name: 'Pct tope', max: '300' }), form({ name: 'Lps', type: 'lps', off: '50', min: '250' }),
     form({ name: 'Bogo', type: 'bogo', items: [K1, K3], free_per_order: 2, days: [5, 6], window: { from: 1260, to: 0 } }),
     form({ name: 'Nuevos L', type: 'nuevos', off: '75' }), form({ name: 'Nuevos pct', type: 'nuevos', nuevos_by: 'pct', pct: 15 })];   // every V1 type
@@ -266,6 +266,18 @@ test('an op_id edit replay at a NEWER rev is SAVED (it is our operation); withou
   assert.equal(ML.classifyWrite(a, again).outcome, 'saved', 'with the op_id: our edit is in');
   assert.equal(ML.classifyWrite({ op: 'save', offerId: o.id, expectedRev: o.rev }, again).outcome, 'unknown', 'without one: rev + 2 is never taken as ours');
   assert.equal(ML.classifyWrite({ ...a, offerId: 'o_aaaaaaaaaaaaaaaaaaaaaaaa' }, again).outcome, 'unknown', 'another offer\'s record: never ours');
+});
+// Codex #129 P2-5: the server marks every reply it gives AT / AFTER its op_id claim check `op: 'judged'` (main's offers-core :168) — such a
+// refusal settles the confirmation whatever its status (a 400 start_past: the start passed during an outage); a bare 400 without the
+// marker stays UNKNOWN (it may have been given before the claim check)
+test('classifyConfirmation: an op-judged 400 settles as a refusal with its reason; the same 400 WITHOUT op:\'judged\' stays UNKNOWN', () => {
+  const a = { op: 'create', opId: 'op_x' };
+  const judged = { status: 400, body: { error: 'bad_request', field: 'schedule', reason: 'start_past', op: 'judged' } };
+  const bare = { status: 400, body: { error: 'bad_request', field: 'schedule', reason: 'start_past' } };
+  const c = ML.classifyConfirmation(a, judged);
+  assert.deepEqual([c.outcome, c.reason], ['refused', 'start_past'], 'op-judged ⇒ refused, its reason kept');
+  assert.equal(ML.classifyConfirmation(a, bare).outcome, 'unknown', 'no marker ⇒ still UNKNOWN');
+  assert.equal(ML.classifyConfirmation(a, { status: 409, body: { error: 'op_id_conflict', op: 'judged' } }).conflict, true, 'op_id_conflict stays our bug, never a refusal');
 });
 // SHIP-GATE (owner 11-17, MOCKUP-portal-marketing-unknown APPROVED as recommended; supersedes v5b 1c): the list's words, exact
 test('SHIP-GATE copy: U1 «Confirmando», U4 the fallback, U4b the button, U3/U3b «No se guardó»; no old unknown string ships anywhere in xpizza-portal/', () => {

@@ -77,6 +77,7 @@ const S = {
   filter: { rid: 'all', estado: 'all' }, howOpen: false, menu: null,
   detail: null, dhost: null, ohost: null,   // O3: the open offer's id; the detail's host; the list's row-move host
   loadSeq: 0, notice: null,   // r6.1: the newest list request wins; the UNKNOWN banner over the list
+  wgen: 0,   // owner 11-17 / Codex #129 P1-2: the page's write generation (newWrite)
 };
 const can = (cap) => !!(S.sel && S.sel.caps.includes(cap));
 function snap() {
@@ -324,7 +325,7 @@ function emptyState() {
 function builderCtx() {
   const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };   // the account + brand every write of this context started in
   return { branches: S.branches.map((b) => ({ rid: b.rid, name: b.name, address: b.location && typeof b.location.address_line === 'string' ? b.location.address_line : null })),
-    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: (o) => afterUnknown(origin, o), onWrite: dropConfirm, onChangeType: () => { S.tab = 'create'; render(); } };
+    brandId: S.sel ? S.sel.brandId : null, onDuplicate: (id) => showExisting(id), brandName: S.brandName || '', token, toast, now: () => clock.now(), onDone: () => { S.tab = 'home'; S.reads = null; load(); }, onChanged: () => load(), onUnknown: (o) => afterUnknown(origin, o), onWrite: newWrite, onChangeType: () => { S.tab = 'create'; render(); } };
 }
 // r6.1 (owner 11-15): a write whose outcome is UNKNOWN — every dialog / sheet / detail closes, «Campañas» RE-READS (no cached row paints
 // meanwhile, nor after a failed read) and the banner says so. The list is the truth. A write whose dialog was DISMISSED first still
@@ -337,7 +338,8 @@ function afterUnknown(origin, { dismissed = false, retry = null } = {}) {
   S.tab = 'home'; S.menu = null; S.reads = null; S.offers = []; S.status = 'loading'; S.notice = retry ? ML.CONFIRMING_WORD : ML.UNKNOWN_WORD;
   render();
   load();
-  if (retry) { C.pend = { g: snap(), retry, step: 0, timer: null, busy: false, done: false }; nextConfirm(C.pend); }
+  if (retry && retry.wg !== S.wgen) retry = null;   // Codex #129 P1-2: a write that a NEWER one superseded is never held (it could land beside it)
+  if (retry) { C.pend = { g: snap(), retry, step: 0, t0: _confirmTimers.now(), timer: null, busy: false, done: false }; nextConfirm(C.pend); }
 }
 // ── owner 11-17 (MOCKUP-portal-marketing-unknown, APPROVED as recommended): the list keeps confirming the SAME op_id ───────────────
 // C.pend: the ONE attempt the page still holds — in memory only, never stored. `retry` (from the dialog that sent it) re-sends the very
@@ -347,7 +349,10 @@ function afterUnknown(origin, { dismissed = false, retry = null } = {}) {
 // Cancelling only stops OUR asking: the server may still land the held request (its op_id claim lives 7 days), so no notice ever
 // says it was dropped — the last word is U4's «check the list», which stays true either way.
 const C = { pend: null };
-export const _confirmTimers = { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) };   // the tests' fake timers replace these
+export const _confirmTimers = { now: () => Date.now(), set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) };   // the tests' fake timers replace these
+// a NEW write from this page (the builder's / detail's ctx.onWrite, BEFORE it sends): drops the held attempt and moves the write
+// generation — an UNKNOWN handed over later by an older write carries an older generation and is never held (Codex #129 P1-2)
+function newWrite() { dropConfirm(); S.wgen += 1; return S.wgen; }
 function dropConfirm() {
   const p = C.pend;
   if (!p) return;
@@ -357,14 +362,19 @@ function dropConfirm() {
 }
 function nextConfirm(p) {
   if (p.step >= ML.CONFIRM_DELAYS.length) { p.done = true; S.notice = ML.UNKNOWN_WORD; render(); return; }   // U4 (+ U4b while held)
-  p.timer = _confirmTimers.set(() => { p.timer = null; confirmOnce(p, true); }, ML.CONFIRM_DELAYS[p.step]);
+  // Codex #129 P2-4: each try is DUE at its offset from the handoff (+3 / +10 / +30 s) — a slow re-send never pushes the next one later
+  const wait = Math.max(0, p.t0 + ML.CONFIRM_DELAYS[p.step] - _confirmTimers.now());
+  p.timer = _confirmTimers.set(() => { p.timer = null; confirmOnce(p, true); }, wait);
 }
 async function confirmOnce(p, scheduled) {
   if (C.pend !== p || p.busy || !p.g.alive()) return;
   p.busy = true;
   if (!scheduled) { S.notice = ML.CONFIRMING_WORD; render(); }   // the button's one try: «Confirmando» while it is out
+  // Codex #129 P1-1: the attempt's liveness rides into the API's post-token check (rawCall assertLive) — a re-send whose token refresh
+  // outlived the page (left, another account, a new write) throws there and never reaches fetch
+  const live = () => { if (C.pend !== p || !p.g.alive()) throw Object.assign(new Error('obsolete'), { kind: 'obsolete' }); };
   let s;
-  try { s = await p.retry.resend(); } catch (_) { s = { outcome: 'unknown' }; }
+  try { s = await p.retry.resend(live); } catch (_) { s = { outcome: 'unknown' }; }
   p.busy = false;
   if (C.pend !== p || !p.g.alive()) return;   // cancelled meanwhile: nothing of it is shown
   if (s.outcome === 'saved') {   // U2: landed — the dialog's own success toast (it words it: the builder / detail own their toasts)
@@ -401,7 +411,7 @@ function repeatOffer(o) { if (can('marketing.edit') && S.host && !builderOpen())
 function detailCtx(o) {
   const origin = { uid: S.uid, brandId: S.sel ? S.sel.brandId : null };
   return { offer: o, canEdit: can('marketing.edit'), token, rid: o.branches[0], branches: builderCtx().branches,
-    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: (x) => afterUnknown(origin, x), onWrite: dropConfirm, onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
+    toast, now: () => clock.now(), onBack: () => { closeDetail(); render(); }, onChanged: () => load(), onUnknown: (x) => afterUnknown(origin, x), onWrite: newWrite, onDuplicate: (id) => showExisting(id), onEdit: editOffer, onRepeat: repeatOffer, onClose: () => {} };
 }
 // 409 duplicate (3a e3c5f7366): an identical offer is already programmed — never an error: the list re-reads and THAT offer opens
 async function showExisting(id) {

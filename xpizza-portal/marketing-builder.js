@@ -58,7 +58,8 @@ const B = { open: false, host: null, ctx: null, mode: 'new', offer: null, form: 
 // context it captured — a reply that comes back to another opening only refreshes the list (stale()), never the dialog on screen.
 const stale = (ctx) => { if (ctx && ctx.onChanged) ctx.onChanged(); };
 // ONE call, classified ONCE (r6.1): a thrown call is an UNKNOWN, never a stuck «busy»; there is no recovery read
-const sendOnce = (attempt, send, classify = ML.classifyWrite) => send().then((res) => classify(attempt, res), () => ({ outcome: 'unknown' }));
+// `live` (optional): the list's liveness check for a held attempt, run by the API after the token and before fetch (Codex #129 P1-1)
+const sendOnce = (attempt, send, classify = ML.classifyWrite, live) => Promise.resolve().then(() => send(live)).then((res) => classify(attempt, res), () => ({ outcome: 'unknown' }));
 // r6.1 (owner 11-15): an UNKNOWN outcome closes the dialog; the host goes to «Campañas», re-reads it and says so (ML.UNKNOWN_WORD, the
 // fallback — for a create / repeat / draft only after its one confirmation was ambiguous too)
 // owner 11-17 (MOCKUP-portal-marketing-unknown): the UNKNOWN carries the attempt to the list — `retry` re-sends the SAME request (the SAME
@@ -70,12 +71,13 @@ function unknownOut(ctx, retry = null) { closeBuilder(); if (ctx.onUnknown) ctx.
 function gone(ctx, out, retry = null) { if (out && out.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry: out.conflict ? null : retry }); else stale(ctx); }
 // the attempt the list holds: { op, resend() → the outcome under ML.classifyConfirmation, onLanded(s) → this dialog's own success toast,
 // reason(s) → the refusal's own sentence | null, onDuplicate } — `send` and `attempt` are the very ones this dialog sent (the SAME op_id)
-function retryOf(ctx, attempt, send, landed) {
-  return { op: attempt.op, resend: () => sendOnce(attempt, send, ML.classifyConfirmation),
+function retryOf(ctx, attempt, send, landed, wg) {
+  return { op: attempt.op, wg, resend: (live) => sendOnce(attempt, send, ML.classifyConfirmation, live),
     onLanded: (s) => { const w = landed(s); if (w && ctx.toast) ctx.toast(w); }, reason: reasonOf, onDuplicate: ctx.onDuplicate || null };
 }
 // a NEW write from this page: the attempt the list still holds is dropped (its confirmation must never land it beside the new one)
-const writing = (ctx) => { if (ctx && typeof ctx.onWrite === 'function') ctx.onWrite(); };
+// → the write generation (Codex #129 P1-2): an UNKNOWN that comes back after a newer write began is never held
+const writing = (ctx) => (ctx && typeof ctx.onWrite === 'function' ? ctx.onWrite() : null);
 // owner 11-15 «confirm every save» (MOCKUP v5b 3d): an ambiguous create / repeat / draft / edit (3a 9462baf40) is re-sent ONCE under the SAME op_id — 3a's claim
 // replays the first answer or lands it now, exactly once (offers-core claimCheck). Never a second resend, never a fresh id; only a second
 // ambiguous answer is UNKNOWN (the list + the fallback). While the confirmation is in flight the open dialog says «Confirmando…».
@@ -591,17 +593,17 @@ async function program() {
   const r = authoredNow();
   if (!r.ok) { B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
   const rid = rid0();
-  writing(ctx);
+  const wg = writing(ctx);   // BEFORE the send (Codex #129 P1-2)
   B.busy = true; B.err = null; render();
   const opId = newOpId(), o = B.offer;
   // a draft being continued: its id + rev are its identity — update AND program it in ONE CAS; else a create.
   // a 200 under our op_id IS our offer, CONFIRMED whatever its state now (Codex 11-15 P2-1: another session may have moved it since)
   const att = o ? { op: 'save', opId, offerId: o.id, expectedRev: o.rev, program: true } : { op: 'create', opId };
-  const send = o ? () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, program: true, token })
-    : () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token });
+  const send = o ? (live) => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, program: true, token, assertLive: live })
+    : (live) => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, program: true, token, assertLive: live });
   const s = await sendConfirmed(att, send, g);
   const landed = (x) => ML.stateToast(x.offer, programmedToast(x.offer));   // from the RETURNED offer — its state too (Codex #93 F3)
-  const retry = retryOf(ctx, att, send, landed);
+  const retry = retryOf(ctx, att, send, landed, wg);
   if (B.gen !== g) { gone(ctx, s, retry); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx, s.conflict ? null : retry); return; }
@@ -619,14 +621,15 @@ async function saveDraft() {
   const g = B.gen, ctx = B.ctx, rid = rid0(), token = ctx.token;
   const r = authoredNow();
   if (!r.ok) { B.review = true; B.err = wordOf({ outcome: 'refused', code: 'invalid' }); render(); return; }
-  writing(ctx);
+  const wg = writing(ctx);   // BEFORE the send (Codex #129 P1-2)
   B.busy = true; render();
   const o = B.offer, opId = newOpId();
   const att = o ? { op: 'save', opId, offerId: o.id, expectedRev: o.rev } : { op: 'create', opId };
-  const send = o ? () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token }) : () => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, token });
+  const send = o ? (live) => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token, assertLive: live })
+    : (live) => offerSaveRaw({ rid, expectedRev: 0, offer: r.offer, opId, token, assertLive: live });
   const s = await sendConfirmed(att, send, g);
   const landed = (x) => (x.offer && x.offer.state === 'draft' ? 'Borrador guardado' : ML.stateToast(x.offer, programmedToast(x.offer)));   // a replay: the RETURNED state (Codex #93 r2 F3)
-  const retry = retryOf(ctx, att, send, landed);
+  const retry = retryOf(ctx, att, send, landed, wg);
   if (B.gen !== g) { gone(ctx, s, retry); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx, s.conflict ? null : retry); return; }
@@ -740,11 +743,11 @@ async function saveEdit() {
   const r = ML.offerFromForm(B.form);
   if (!r.ok) return;
   const g = B.gen, ctx = B.ctx, o = B.offer, rid = rid0(), token = ctx.token, opId = newOpId();
-  writing(ctx);
+  const wg = writing(ctx);   // BEFORE the send (Codex #129 P1-2)
   B.busy = true; B.err = null; render();
-  const att = { op: 'save', opId, offerId: o.id, expectedRev: o.rev }, send = () => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token });
+  const att = { op: 'save', opId, offerId: o.id, expectedRev: o.rev }, send = (live) => offerSaveRaw({ rid, offerId: o.id, expectedRev: o.rev, offer: r.offer, opId, token, assertLive: live });
   const s = await sendConfirmed(att, send, g);
-  const retry = retryOf(ctx, att, send, () => 'Cambios guardados');
+  const retry = retryOf(ctx, att, send, () => 'Cambios guardados', wg);
   if (B.gen !== g) { gone(ctx, s, retry); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
   if (s.outcome === 'unknown') { unknownOut(ctx, s.conflict ? null : retry); return; }
@@ -803,14 +806,14 @@ async function repeatGo() {
   const g = B.gen, src = B.offer, ctx = B.ctx, rid = rid0(), token = ctx.token;
   const soon = Math.ceil((now() + 60000) / 60000) * 60000;
   const schedule = { start: Math.max(B.form.start, soon), ...(B.form.end !== null ? { end: B.form.end } : {}) };
-  writing(ctx);
+  const wg = writing(ctx);   // BEFORE the send (Codex #129 P1-2)
   B.busy = true; B.err = null; render();
   const opId = newOpId();
-  const att = { op: 'repeat', opId, sourceId: src.id }, send = () => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token });
+  const att = { op: 'repeat', opId, sourceId: src.id }, send = (live) => offerRepeatRaw({ rid, sourceId: src.id, opId, schedule, token, assertLive: live });
   const r = await sendConfirmed(att, send, g);
   // v5 «… para el sáb 14 nov» — the RETURNED copy's start and state (Codex #93 F3)
   const landed = (x) => ML.stateToast(x.offer, `Campaña programada para el ${longDate(x.offer.schedule && x.offer.schedule.start).replace(/ \d{4}$/, '')}`);
-  const retry = retryOf(ctx, att, send, landed);
+  const retry = retryOf(ctx, att, send, landed, wg);
   if (B.gen !== g) { gone(ctx, r, retry); return; }   // dismissed mid-write: the outcome still runs (Codex r6.1-build P1-1)
   B.busy = false; B.confirming = false;
   if (r.outcome === 'unknown') { unknownOut(ctx, r.conflict ? null : retry); return; }

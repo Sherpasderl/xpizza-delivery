@@ -11,11 +11,11 @@ import { getMarketingRaw, offerSaveRaw, offerSetStateRaw } from './api.js';
 import { refTree } from './ref-tree.mjs';
 
 // ── the pin ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-export const REF = '9462baf409f69df2dd52a2a1b44eaee348f2173b';   // 3a 9462baf40 = the asm10 OF pin (advisor 11-15, Codex APPROVE 0 findings): 20000624d + an OPTIONAL op_id on the edit (marketingOfferSave with offer_id) and on marketingOfferSetState, claimed in the same brand txn — a same-kind resend replays the CURRENT view / the stored judgement 409; another kind, offer or `to` ⇒ op_id_conflict
+export const REF = '31f05c8a40c35fe0c442be8839593954c3afc8b1';   // portal-ui 11-17 (Codex #129): re-pinned to main 31f05c8a4 (asm11, deployed) — its offers-core marks op-judged replies `op: 'judged'`. Previously 3a 9462baf40 = the asm10 OF pin (advisor 11-15, Codex APPROVE 0 findings): 20000624d + an OPTIONAL op_id on the edit (marketingOfferSave with offer_id) and on marketingOfferSetState, claimed in the same brand txn — a same-kind resend replays the CURRENT view / the stored judgement 409; another kind, offer or `to` ⇒ op_id_conflict
 export const BLOBS = {   // `git rev-parse <REF>:xpizza-functions/marketing/<file>` — a moved ref must be re-read, never silently followed
-  'offer-model.js': '23d86c7bbc2576cff65bde313ffcc1a384c30112',
-  'offers-core.js': '55267ade52ce86526701fd4c228e8fae6c7b8afb',
-  'config.js': 'e038e717821142cd80d4e7fda8295b7fb8a26ce4',
+  'offer-model.js': '2dd62c20368e75d2fa5df4d8b4ca53d784ae58d6',
+  'offers-core.js': '47bad7b903c9584e8a23271bfec88a2376b49fd0',
+  'config.js': '274765e18a02cf449b0fdb40cc1904a6f767ab0e',
   'functions.js': '5236ec67a7b78c6ee5be08082acdc174594c849c',
 };
 // backend({ ref }) runs another 3a ref's whole server set (the O2c flip waits for 3a's re-reviewed live-edit SHA — advisor 11-14).
@@ -58,7 +58,7 @@ function prodDb(fake) {   // production's transaction semantics (the SDK's uncac
     } };
   } };
 }
-export async function backend({ offers = true, extra = null, ref = REF } = {}) {
+export async function backend({ offers = true, extra = null, ref = REF, audience = false } = {}) {   // audience: main's audience_enabled switch (owner 11-16: one flag)
   const { C, CFG, createFakeDb, R, makeRtdbMirror, makeRtdbMirrorReader, buildMenu } = libs(ref);
   const fake = createFakeDb({
     brands: { tb: { name: 'Tercera', active: true, locations: { tb_centro: 'member', tb_sur: 'member' }, activation: { state: 'on', since: 1 } } },
@@ -71,7 +71,10 @@ export async function backend({ offers = true, extra = null, ref = REF } = {}) {
   const mirror = makeRtdbMirror(db);
   for (const rid of ['tb_centro', 'tb_sur']) await mirror(rid, { version: 'v1', seq: 1, rid, menu: { [K1]: 150, [K2]: 220, ...(rid === 'tb_centro' ? { [K3]: 90 } : {}) }, extras: {} });
   const setSwitch = async (on, expected) => assert.equal((await CFG.writeMarketingConfig(db, { expected, actor: 'cli:op', now: 1,
-    config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } })).ok, true, 'premise: the config writer');
+    config: { offers_enabled: on, anuncio_enabled: false, collections_enabled: false, ...(audience ? { audience_enabled: true } : {}), anuncio_price_cents: 45000, thresholds: { rating_min: 4.5, min_ratings: 10 } } })).ok, true, 'premise: the config writer');
+  // the owner's go-live marker (main's config writer gates offers ON on it — PLAN-5f-pending-sweep r1 §4): the owner writes it by hand, so
+  // it is planted exactly as 5f's own seed does (xpizza-functions/test/_marketing-price-seed.js:47); an older pin has no gate and no marker
+  if (CFG.EXIT_MARKER) await db.ref(CFG.EXIT_MARKER).set({ at: 1, by: 'test' });
   await setSwitch(offers, 0);
   const CATALOG = { tb_centro: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas'], [K3, 90, 'bebidas']], tb_sur: [[K1, 150, 'pizzas'], [K2, 220, 'pizzas']] };
   const CATS = { tb_centro: ['pizzas', 'bebidas'], tb_sur: ['pizzas'] };

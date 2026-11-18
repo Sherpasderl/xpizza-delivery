@@ -178,17 +178,20 @@ export async function move(kind) {
   if (D.busy) return;
   const o = D.offer, g = D.gen, ctx = D.ctx, rid = ctx.rid, token = ctx.token, opId = newOpId();
   const to = kind === 'pause' ? 'paused_owner' : kind === 'resume' ? 'active' : 'ended';
-  if (typeof ctx.onWrite === 'function') ctx.onWrite();   // a NEW write: the attempt the list still holds is dropped (owner 11-17)
+  const wg = typeof ctx.onWrite === 'function' ? ctx.onWrite() : null;   // a NEW write, BEFORE it sends: the list's held attempt is dropped (owner 11-17; Codex #129 P1-2)
   D.busy = true; D.err = null; render();
   const a = { op: 'state', opId, offerId: o.id, expectedRev: o.rev, to };
-  const send = (classify) => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token }).then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
+  // live (optional): the list's liveness check for a held attempt, run after the token, before fetch (Codex #129 P1-1)
+  const send = (classify, live) => Promise.resolve().then(() => offerSetStateRaw({ rid, offerId: o.id, to, expectedRev: o.rev, opId, token, assertLive: live }))
+    .then((res) => classify(a, res), () => ({ outcome: 'unknown' }));
   const landed = (x) => ML.stateToast(x.offer, DETAIL_TOAST.resume);   // Codex #93 F3: the RETURNED state, not the button pressed
   let r = await send(ML.classifyWrite);
   if (r.outcome === 'unknown' && !r.conflict) { if (D.host && D.gen === g) { D.confirming = true; render(); } r = await send(ML.classifyConfirmation); }   // Codex #93 F2
   // owner 11-17 (MOCKUP-portal-marketing-unknown): the list keeps confirming the SAME request (the SAME op_id); a move's refusal has no
   // sentence of its own here (errWord is generic) ⇒ U3b. op_id_conflict (our bug) is never re-sent.
-  const retry = r.conflict ? null : { op: 'state', resend: () => send(ML.classifyConfirmation),
-    onLanded: (x) => { const w = landed(x); if (w && ctx.toast) ctx.toast(w); }, reason: () => null, onDuplicate: null };
+  // a move judged a DUPLICATE on a re-send opens the existing offer, as the list's own duplicate does (Codex #129 P2-3)
+  const retry = r.conflict ? null : { op: 'state', wg, resend: (live) => send(ML.classifyConfirmation, live),
+    onLanded: (x) => { const w = landed(x); if (w && ctx.toast) ctx.toast(w); }, reason: () => null, onDuplicate: ctx.onDuplicate || null };
   if (!D.host || D.gen !== g) {   // the view it started in is gone: an UNKNOWN still goes to the list (Codex r6.1-build P1-1); a NEWER
     // view's «Confirmando…» is its own — never cleared from here (Codex 11-15 P2-3)
     if (r.outcome === 'unknown' && ctx.onUnknown) ctx.onUnknown({ dismissed: true, retry }); else if (ctx.onChanged) ctx.onChanged();
